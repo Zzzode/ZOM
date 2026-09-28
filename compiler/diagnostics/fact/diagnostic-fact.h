@@ -53,7 +53,8 @@ enum class IdentityDiagnosticEmitter : uint8_t {
   DefinitionIdentityCollision = 0x02,
   ConstantExpressionNotAllowed = 0x03,
   DuplicateGenericParameter = 0x04,
-  InvalidMethodReceiver = 0x05
+  InvalidMethodReceiver = 0x05,
+  ConstructorReceiverUnsupported = 0x06
 };
 enum class BinderDiagnosticProducer : uint8_t { BindModuleSkeleton = 0x01, BindOwnerBody = 0x02 };
 enum class BinderDiagnosticEmitter : uint8_t {

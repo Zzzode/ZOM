@@ -194,6 +194,24 @@ zc::Maybe<const signature::SemanticSignature&> findSignature(
   return zc::none;
 }
 
+/// \brief True when the callable definition is a concrete method provided by a
+/// standalone `impl Interface for Type` block (an Implementation owner in its
+/// stable owner chain), mirroring signature-facts' implementationOccurrence
+/// owner detection.
+///
+/// Such a method publishes its signature at module scope
+/// (`implementationSignatureScope`), so an implicit receiver legitimately has
+/// no member-scope owner nominal even though the callable carries one. A
+/// receiver on any other module-scoped callable stays a malformed signature.
+bool providedByImplementation(identity::DefId callable, const BorrowInterfaceBuildInput& input) {
+  ZC_IF_SOME(entry, input.identities.definition(callable)) {
+    for (const auto& owner : entry.record().owners()) {
+      if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) { return true; }
+    }
+  }
+  return false;
+}
+
 signature::CheckerInvariantFact checkerFailure(const BorrowInterfaceBuildInput& input,
                                                signature::CheckerInvariantKind kind,
                                                zc::Maybe<identity::DefId>&& owner,
@@ -507,28 +525,42 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
     bool hasReceiver = false;
     ZC_IF_SOME(receiver, callable.receiver) {
       const auto& scope = semanticSignature.scope.variant();
-      if (!scope.is<signature::MemberSignatureScope>()) {
-        return signature::CheckerVerificationFailure(checkerFailure(
-            input, signature::CheckerInvariantKind::InvalidFact,
-            zc::Maybe<identity::DefId>(semanticSignature.definition),
-            zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()), ordinal));
-      }
-      const auto owner = scope.get<signature::MemberSignatureScope>().owner;
-      auto ownerSignature = findSignature(owner, input);
-      if (ownerSignature == zc::none) {
-        return signature::CheckerVerificationFailure(checkerFailure(
-            input, signature::CheckerInvariantKind::InvalidFact,
-            zc::Maybe<identity::DefId>(semanticSignature.definition),
-            zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()), ordinal));
-      }
-      ZC_IF_SOME(ownerValue, ownerSignature) {
-        const auto& payload = ownerValue.payload.variant();
-        if (!payload.is<signature::NominalSignature>() &&
-            !payload.is<signature::InterfaceSignature>()) {
+      if (scope.is<signature::ModuleDefinitionSignatureScope>()) {
+        // An impl-provided trait method publishes at module scope; its
+        // implicit receiver has no member-scope owner nominal to close over
+        // (the implementee type is published through coherence/impl heads).
+        // Any other receiver with a module scope is malformed.
+        if (!providedByImplementation(semanticSignature.definition, input)) {
           return signature::CheckerVerificationFailure(checkerFailure(
               input, signature::CheckerInvariantKind::InvalidFact,
               zc::Maybe<identity::DefId>(semanticSignature.definition),
               zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()), ordinal));
+        }
+      } else {
+        if (!scope.is<signature::MemberSignatureScope>()) {
+          return signature::CheckerVerificationFailure(checkerFailure(
+              input, signature::CheckerInvariantKind::InvalidFact,
+              zc::Maybe<identity::DefId>(semanticSignature.definition),
+              zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()), ordinal));
+        }
+        const auto owner = scope.get<signature::MemberSignatureScope>().owner;
+        auto ownerSignature = findSignature(owner, input);
+        if (ownerSignature == zc::none) {
+          return signature::CheckerVerificationFailure(checkerFailure(
+              input, signature::CheckerInvariantKind::InvalidFact,
+              zc::Maybe<identity::DefId>(semanticSignature.definition),
+              zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()), ordinal));
+        }
+        ZC_IF_SOME(ownerValue, ownerSignature) {
+          const auto& payload = ownerValue.payload.variant();
+          if (!payload.is<signature::NominalSignature>() &&
+              !payload.is<signature::InterfaceSignature>()) {
+            return signature::CheckerVerificationFailure(checkerFailure(
+                input, signature::CheckerInvariantKind::InvalidFact,
+                zc::Maybe<identity::DefId>(semanticSignature.definition),
+                zc::Maybe<identity::SourceSpan>(semanticSignature.declarationSpan.clone()),
+                ordinal));
+          }
         }
       }
       if (receiver.mode == signature::ReceiverMode::Shared ||

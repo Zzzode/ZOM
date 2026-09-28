@@ -131,3 +131,8 @@ DIAG(2106, ConstInitializerRequired, kError,
      "`const` declaration requires an initializer", 0)
 DIAG(2107, AssociatedTypeMemberNotAllowed, kError,
      "associated types are declared in interfaces and assigned in impl blocks", 0)
+// A constructor whose parameter list names an explicit `this` receiver is
+// grammar the parser accepts and the spec uses, but constructor-call lowering
+// is not implemented yet; drain the declaration instead of a driver invariant.
+DIAG(2108, ConstructorReceiverUnsupported, kError,
+     "a constructor with an explicit `this` receiver is not supported yet", 0)

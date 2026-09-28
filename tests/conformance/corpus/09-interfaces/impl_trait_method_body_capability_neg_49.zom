@@ -1,0 +1,9 @@
+interface I {
+    fun m(this) -> i32;
+}
+struct C {
+    v: i32,
+}
+impl I for C {
+    fun m(this) -> i32 { return this.v; }
+}

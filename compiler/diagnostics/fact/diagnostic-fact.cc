@@ -834,7 +834,7 @@ zc::Maybe<DiagnosticOccurrenceKey> DiagnosticOccurrenceKey::identityAdmission(
     zc::Vector<uint32_t>&& syntaxPath, IdentityDiagnosticEmitter emitter) {
   if (!source.belongsTo(module.crate()) || syntaxPath.size() == 0 ||
       emitter < IdentityDiagnosticEmitter::DuplicateBound ||
-      emitter > IdentityDiagnosticEmitter::InvalidMethodReceiver) {
+      emitter > IdentityDiagnosticEmitter::ConstructorReceiverUnsupported) {
     return zc::none;
   }
   return DiagnosticOccurrenceKey(zc::heap<Impl>(IdentityDiagnosticOccurrence{

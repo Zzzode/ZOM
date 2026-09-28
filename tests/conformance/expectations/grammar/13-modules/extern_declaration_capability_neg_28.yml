@@ -1,0 +1,5 @@
+section: "13-modules extern FFI declarations"
+covers_rule: "externDecl (externBlockDecl alt), externBlock, externItem"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits extern functions and variables; FFI call/data lowering is unimplemented, so each declaration drains with ZOM4127."

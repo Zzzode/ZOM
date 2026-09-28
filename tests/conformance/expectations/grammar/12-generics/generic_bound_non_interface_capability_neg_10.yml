@@ -1,0 +1,6 @@
+section: "§12 Generic Parameters and Constraints"
+covers_rule: "typeParameterBound"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts any qualified path or type expression as a bound; the"
+  - "checker rejects a bound that does not name an interface trait."

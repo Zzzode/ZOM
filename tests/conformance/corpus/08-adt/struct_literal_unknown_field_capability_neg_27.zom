@@ -1,0 +1,2 @@
+struct P { x: i32, y: i32 }
+fun entry() -> i32 { let p: P = P { x: 1, z: 3 }; return p.x; }

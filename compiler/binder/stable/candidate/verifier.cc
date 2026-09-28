@@ -996,7 +996,9 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
             // InvalidReceiver kind, and the producer (when present) agrees on
             // the node and kind. Drain it as ZOM2097 instead of an admission
             // invariant. Interface methods legally omit an explicit receiver;
-            // the oracle exempts them before recording this failure.
+            // the oracle exempts them before recording this failure. A
+            // constructor naming an explicit `this` receiver is the same class
+            // of admitted-but-unlowered receiver site and drains as ZOM2108.
             const bool matchingReceiverFailure =
                 headerKind == CanonicalHeaderSyntaxFailureKind::InvalidReceiver &&
                 (production == nullptr ||
@@ -1011,13 +1013,12 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
                 return invariant(StableIdentityCandidateInvariantKind::InvalidSyntaxSite, bad);
               }
               ZC_IF_SOME(value, source) {
+                const auto receiverFailureKind =
+                    entry.kind == identity::DefinitionKind::Constructor
+                        ? StableIdentityCandidateSourceFailureKind::ConstructorReceiverUnsupported
+                        : StableIdentityCandidateSourceFailureKind::InvalidMethodReceiver;
                 return StableIdentityCandidateSourceFailure{
-                    StableIdentityCandidateSourceFailureKind::InvalidMethodReceiver,
-                    bad,
-                    zc::mv(value),
-                    zc::none,
-                    zc::none,
-                    zc::none};
+                    receiverFailureKind, bad, zc::mv(value), zc::none, zc::none, zc::none};
               }
             }
             return invariant(StableIdentityCandidateInvariantKind::InvalidDefinitionAuthority, bad);
@@ -1227,6 +1228,38 @@ StableIdentityCandidateVerification CandidateVerifier::verify(
   return reconstructStableCandidates(parsedModule, module, moduleNode, &production);
 }
 
+// Free-function overloading is not part of the language surface. Two top-level
+// functions in the same module/owner/value namespace with the same name are the
+// same declaration even when their overload headers (parameter shape) differ;
+// the overload header is part of the canonical key, so a distinct-arity
+// signature otherwise survives key equality and later collapses binding into an
+// internal invariant. Compare the base function identity without the overload
+// header to reject the second declaration as a redeclaration. Methods (which
+// legitimately pair as getter/setter and drain at the body layer) and
+// constructors (whose overload headers intentionally admit overloads) are
+// excluded.
+bool freeFunctionBaseIdentityMatches(const identity::DefinitionIdentityRecord& left,
+                                     const identity::DefinitionIdentityRecord& right) {
+  if (left.kind() != identity::DefinitionKind::Function ||
+      right.kind() != identity::DefinitionKind::Function) {
+    return false;
+  }
+  if (left.nameSpace() != right.nameSpace() || left.name() != right.name()) { return false; }
+  if (compareBytes(left.module().encode().asPtr(), right.module().encode().asPtr()) != 0) {
+    return false;
+  }
+  const auto leftOwners = left.owners();
+  const auto rightOwners = right.owners();
+  if (leftOwners.size() != rightOwners.size()) { return false; }
+  for (size_t index = 0; index < leftOwners.size(); ++index) {
+    if (compareBytes(leftOwners[index].encode().asPtr(), rightOwners[index].encode().asPtr()) !=
+        0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 StableDefinitionRedeclarationValidation CandidateVerifier::findDefinitionRedeclarations(
     zc::ArrayPtr<const VerifiedStableDefinitionCandidate> definitions) {
   if (definitions.size() > UINT32_MAX) {
@@ -1248,22 +1281,42 @@ StableDefinitionRedeclarationValidation CandidateVerifier::findDefinitionRedecla
   }
 
   zc::Vector<uint32_t> firstIndices;
+  zc::Vector<uint32_t> firstFreeFunctionBases;
   zc::Vector<StableDefinitionRedeclaration> result;
   for (const auto index : order) {
     const auto& candidate = definitions[index];
     uint32_t first = UINT32_MAX;
+    bool overloadCollision = false;
     for (const auto prior : firstIndices) {
       if (definitions[prior].authority.key() == candidate.authority.key()) {
         first = prior;
         break;
       }
     }
+    if (first == UINT32_MAX &&
+        candidate.authority.record().kind() == identity::DefinitionKind::Function) {
+      // A distinct overload header on an otherwise identical free function is an
+      // unsupported free-function overload, not a new definition.
+      for (const auto prior : firstFreeFunctionBases) {
+        if (freeFunctionBaseIdentityMatches(definitions[prior].authority.record(),
+                                            candidate.authority.record())) {
+          first = prior;
+          overloadCollision = true;
+          break;
+        }
+      }
+    }
     if (first == UINT32_MAX) {
       firstIndices.add(index);
+      if (candidate.authority.record().kind() == identity::DefinitionKind::Function) {
+        firstFreeFunctionBases.add(index);
+      }
       continue;
     }
     const auto& authority = definitions[first].authority;
-    if (!authority.sameRecordAs(candidate.authority)) {
+    // An overload collision carries a different (signature-bearing) record;
+    // only an exact-key match with a divergent record is a digest invariant.
+    if (!overloadCollision && !authority.sameRecordAs(candidate.authority)) {
       return invariant(StableIdentityCandidateInvariantKind::DigestCollision, candidate.node);
     }
     auto diagnostic = redeclarationCode(candidate.authority.record().kind());

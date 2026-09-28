@@ -79,9 +79,11 @@ enum class TerminatorKind : uint8_t {
 /// terminator cannot describe an unbounded struct; a wider bound is a later step.
 inline constexpr uint32_t kMaxAggregateReturnSlots = 64;
 
-/// \brief Upper bound on the argument vector a multi-argument call terminator may
-/// carry. This first multi-argument slice caps the vector at two so the terminator
-/// cannot describe an unbounded argument list; a wider bound is a later step.
+/// \brief Upper bound on the argument vector a call terminator may carry. It
+/// covers the two-argument multi-argument call slice and the admitted
+/// two-field by-value aggregate, whose nominal argument flattens to one
+/// integer call argument per field. The terminator cannot describe an
+/// unbounded argument list; a wider bound is a later step.
 inline constexpr uint32_t kMaxCallArguments = 2;
 
 /// \brief Closed relational comparison operator for a LIR compare statement.

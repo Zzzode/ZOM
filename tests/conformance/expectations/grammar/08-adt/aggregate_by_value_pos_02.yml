@@ -1,0 +1,6 @@
+section: "08-adt aggregate by-value parameter capability"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+notes:
+  - "A multi-field all-i32 struct local passes by value to a free function that"
+  - "returns one named field; each named sibling field reads identically."

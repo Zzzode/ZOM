@@ -1,0 +1,8 @@
+fun g(x: i32) -> i32 {
+    return x;
+}
+fun e() -> i32 {
+    let v: i32 = 7;
+    let y: i32 = g(v);
+    return y;
+}

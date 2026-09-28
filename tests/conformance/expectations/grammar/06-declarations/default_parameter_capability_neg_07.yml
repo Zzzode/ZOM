@@ -1,0 +1,5 @@
+section: "06-declarations default function parameter"
+covers_rule: "ordinaryParameter (ASSIGN default expression alt)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a default argument value; the checker drains the owning function with ZOM4099 because default parameters are not in the lowered surface yet."

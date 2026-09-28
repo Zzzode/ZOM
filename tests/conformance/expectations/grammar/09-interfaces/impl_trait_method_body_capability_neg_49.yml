@@ -1,0 +1,5 @@
+section: "09-interfaces impl trait method with receiver body"
+covers_rule: "funDeclaration (impl member)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a concrete receiver-bearing trait method in an impl block; only empty impls and associated-type assignments lower, so the method drains with ZOM4099."

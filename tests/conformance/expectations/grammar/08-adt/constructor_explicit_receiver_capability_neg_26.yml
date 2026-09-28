@@ -1,0 +1,6 @@
+section: "§8.1 StructDeclaration"
+covers_rule: "structConstructor"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts an explicit `this` receiver on a constructor; the"
+  - "diagnostic rail drains the unsupported lowering shape."

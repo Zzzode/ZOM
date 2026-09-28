@@ -1507,6 +1507,269 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
   return zc::none;
 }
 
+// By-value aggregate call pair (module-level shape). Outer none means the two
+// MIR functions are not this shape (the caller falls back to per-pair
+// validation); an outer value carries either a valid inner-none result or the
+// first fault. The nominal argument is flattened in LIR: the caller aggregate
+// constants become the call's integer arguments and the callee's projected
+// field selects one flattened parameter slot, so the field order is taken
+// independently here from the caller's NominalAggregate rvalue.
+struct ByValueAggregateShape final {
+  size_t callerIndex = 0;
+  size_t calleeIndex = 0;
+  identity::SemanticTypeId resultType;
+  identity::SemanticTypeId structType;
+  identity::DefId projectedField;
+  zc::ArrayPtr<const mir::MirNominalAggregateElement> elements;
+  uint32_t mirResultOrdinal = 0;
+  // LIR renumbers the call result temporary to the sole dense body-local slot
+  // (the aggregate user local folds into the call arguments and is dropped).
+  static constexpr uint32_t kLirResultOrdinal = 1;
+};
+
+zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(
+    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+  if (mirFunctions.size() != 2) { return zc::none; }
+  size_t callerIndex = 0;
+  size_t calleeIndex = 0;
+  bool foundCaller = false;
+  bool foundCallee = false;
+  for (size_t index = 0; index < mirFunctions.size(); ++index) {
+    const MirFunction& fn = *mirFunctions[index];
+    bool isCaller = fn.blocks.size() == 2 && fn.locals.size() == 2 &&
+                    fn.locals[0].kind == mir::MirLocalKind::UserLocal &&
+                    fn.locals[1].kind == mir::MirLocalKind::Temporary;
+    bool isCallee = fn.blocks.size() == 1 && fn.locals.size() == 1 &&
+                    fn.locals[0].kind == mir::MirLocalKind::Parameter;
+    if (isCaller) {
+      if (foundCaller) { return zc::none; }
+      callerIndex = index;
+      foundCaller = true;
+    } else if (isCallee) {
+      if (foundCallee) { return zc::none; }
+      calleeIndex = index;
+      foundCallee = true;
+    }
+  }
+  if (!foundCaller || !foundCallee) { return zc::none; }
+  const MirFunction& caller = *mirFunctions[callerIndex];
+  const MirFunction& callee = *mirFunctions[calleeIndex];
+
+  // Caller structural shape.
+  const auto& aggregateLocal = caller.locals[0];
+  const auto& resultLocal = caller.locals[1];
+  const auto& entry = caller.blocks[0];
+  const auto& continuation = caller.blocks[1];
+  if (resultLocal.type != caller.resultType || aggregateLocal.type != callee.locals[0].type ||
+      caller.resultType != callee.resultType || entry.id.ordinal() != 1 ||
+      continuation.id.ordinal() != 2 || entry.statements.size() != 3 ||
+      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != aggregateLocal.id ||
+      entry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      entry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[2].storageLocal() != resultLocal.id ||
+      entry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      continuation.statements.size() != 0 ||
+      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& assignment = entry.statements[1].assignmentValue();
+  if (assignment.destination.local() != aggregateLocal.id ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = assignment.value.nominalAggregateValue();
+  if (aggregate.type != aggregateLocal.type || aggregate.elements.size() < 2) { return zc::none; }
+  // Defense in depth: two elements may never name the same projected field;
+  // the checker rejects the duplicate property name, but the validated shape
+  // must not admit a last-wins pair on its own either.
+  for (size_t left = 0; left < aggregate.elements.size(); ++left) {
+    for (size_t right = left + 1; right < aggregate.elements.size(); ++right) {
+      if (aggregate.elements[left].field == aggregate.elements[right].field) { return zc::none; }
+    }
+  }
+  const auto& call = entry.terminator.callValue();
+  if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
+      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+    return zc::none;
+  }
+  const auto& callArgument = call.arguments[0];
+  if (callArgument.kind() == mir::MirOperandKind::Constant ||
+      callArgument.place().local() != aggregateLocal.id ||
+      callArgument.place().projections().size() != 0 ||
+      callArgument.place().rootType() != aggregateLocal.type ||
+      callArgument.place().resultType() != aggregateLocal.type) {
+    return zc::none;
+  }
+  const auto& continuationReturn = continuation.terminator.returnValue().value;
+  if (continuationReturn == zc::none) { return zc::none; }
+  {
+    const auto& value = ZC_ASSERT_NONNULL(continuationReturn);
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Callee structural shape.
+  const auto& calleeParameter = callee.locals[0];
+  const auto& calleeBlock = callee.blocks[0];
+  if (calleeBlock.id.ordinal() != 1 || calleeBlock.statements.size() != 0 ||
+      calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
+  if (calleeReturn == zc::none) { return zc::none; }
+  zc::Maybe<identity::DefId> projectedField;
+  {
+    const auto& value = ZC_ASSERT_NONNULL(calleeReturn);
+    if (value.kind() == mir::MirOperandKind::Constant ||
+        value.place().local() != calleeParameter.id || value.place().projections().size() != 1 ||
+        value.place().rootType() != calleeParameter.type ||
+        value.place().resultType() != callee.resultType) {
+      return zc::none;
+    }
+    const auto& projection = value.place().projections()[0];
+    if (projection.kind() != mir::MirProjectionKind::Field ||
+        projection.inputType() != calleeParameter.type ||
+        projection.resultType() != callee.resultType) {
+      return zc::none;
+    }
+    projectedField = projection.fieldValue().field;
+  }
+  if (projectedField == zc::none) { return zc::none; }
+
+  // The projected field must be one of the aggregate elements; every element is
+  // an integer constant of the (i32-only) result carrier.
+  bool projectedPresent = false;
+  for (const auto& element : aggregate.elements) {
+    if (element.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    if (element.field == ZC_ASSERT_NONNULL(projectedField)) { projectedPresent = true; }
+  }
+  if (!projectedPresent) { return zc::none; }
+
+  ByValueAggregateShape shape;
+  shape.callerIndex = callerIndex;
+  shape.calleeIndex = calleeIndex;
+  shape.resultType = caller.resultType;
+  shape.structType = aggregateLocal.type;
+  shape.projectedField = ZC_ASSERT_NONNULL(projectedField);
+  shape.elements = aggregate.elements.asPtr();
+  shape.mirResultOrdinal = resultLocal.id.ordinal();
+  return zc::mv(shape);
+}
+
+zc::Maybe<TranslationFinding> validateByValueAggregateCall(
+    const ByValueAggregateShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
+    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != 2) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  auto carrier = integerCarrier(shape.resultType, types);
+  if (carrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  const auto carrierValue = ZC_ASSERT_NONNULL(carrier);
+
+  // Resolve the LIR function indices by MIR owner (the producer's callee index
+  // is positional; owner matching is independent of module order).
+  const MirFunction& caller = *mirFunctions[shape.callerIndex];
+  const MirFunction& callee = *mirFunctions[shape.calleeIndex];
+  zc::Maybe<uint32_t> lirCaller;
+  zc::Maybe<uint32_t> lirCallee;
+  for (uint32_t index = 0; index < functions.size(); ++index) {
+    if (functions[index].owner() == caller.owner) {
+      if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirCaller = index;
+    }
+    if (functions[index].owner() == callee.owner) {
+      if (lirCallee != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirCallee = index;
+    }
+  }
+  if (lirCaller == zc::none || lirCallee == zc::none) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  const uint32_t callerLirIndex = ZC_ASSERT_NONNULL(lirCaller);
+  const uint32_t calleeLirIndex = ZC_ASSERT_NONNULL(lirCallee);
+
+  // Projected field ordinal (one-based parameter slot) in aggregate order.
+  uint32_t projectedOrdinal = 0;
+  for (uint32_t index = 0; index < shape.elements.size(); ++index) {
+    if (shape.elements[index].field == shape.projectedField) { projectedOrdinal = index + 1; }
+  }
+  if (projectedOrdinal == 0) { return fault(TranslationFaultKind::PlaceMappingMismatch, 0); }
+
+  // Caller LIR: zero parameters, one result body local, entry Call with one
+  // constant argument per aggregate element into the result slot, continuation
+  // ReturnLocal.
+  {
+    const Function& lirCallerFn = functions[callerLirIndex];
+    if (lirCallerFn.returnCarrier() != carrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, callerLirIndex);
+    }
+    if (lirCallerFn.parameters().size() != 0 || lirCallerFn.locals().size() != 1 ||
+        lirCallerFn.locals()[0].ordinal() != ByValueAggregateShape::kLirResultOrdinal ||
+        lirCallerFn.locals()[0].carrier() != carrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, callerLirIndex);
+    }
+    if (lirCallerFn.blocks().size() != 2) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, callerLirIndex);
+    }
+    const auto& lirEntry = lirCallerFn.blocks()[0];
+    const auto& lirCont = lirCallerFn.blocks()[1];
+    if (lirEntry.id().ordinal() != 1 || lirCont.id().ordinal() != 2 ||
+        lirEntry.statements().size() != 0 || lirCont.statements().size() != 0) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, callerLirIndex);
+    }
+    const auto& entryTerminator = lirEntry.terminator();
+    if (entryTerminator.kind() != TerminatorKind::Call || !entryTerminator.hasCallDestination() ||
+        entryTerminator.calleeIndex() >= functions.size() ||
+        functions[entryTerminator.calleeIndex()].owner() != callee.owner ||
+        entryTerminator.callDestinationOrdinal() != ByValueAggregateShape::kLirResultOrdinal ||
+        entryTerminator.callNormalTarget() != lirCont.id() ||
+        entryTerminator.callArguments().size() != shape.elements.size()) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 1, 1);
+    }
+    for (uint32_t index = 0; index < shape.elements.size(); ++index) {
+      const auto& actual = entryTerminator.callArguments()[index];
+      if (!sameConstant(actual, shape.elements[index].operand, carrierValue)) {
+        return fault(TranslationFaultKind::PlaceMappingMismatch, callerLirIndex, 1, 1);
+      }
+    }
+    if (lirCont.terminator().kind() != TerminatorKind::ReturnLocal ||
+        lirCont.terminator().returnLocalOrdinal() != ByValueAggregateShape::kLirResultOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 2, 2);
+    }
+  }
+
+  // Callee LIR: one integer parameter slot per flattened field, no body locals,
+  // single block returning the projected field's slot.
+  {
+    const Function& lirCalleeFn = functions[calleeLirIndex];
+    if (lirCalleeFn.returnCarrier() != carrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+    }
+    if (lirCalleeFn.locals().size() != 0 ||
+        lirCalleeFn.parameters().size() != shape.elements.size() ||
+        lirCalleeFn.blocks().size() != 1) {
+      return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+    }
+    for (uint32_t index = 0; index < shape.elements.size(); ++index) {
+      if (lirCalleeFn.parameters()[index].ordinal() != index + 1 ||
+          lirCalleeFn.parameters()[index].carrier() != carrierValue) {
+        return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+      }
+    }
+    const auto& block = lirCalleeFn.blocks()[0];
+    if (block.id().ordinal() != 1 || block.statements().size() != 0 ||
+        block.terminator().kind() != TerminatorKind::ReturnLocal ||
+        block.terminator().returnLocalOrdinal() != projectedOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, calleeLirIndex, 1, 1);
+    }
+  }
+  return zc::none;
+}
+
 }  // namespace
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
@@ -1526,6 +1789,17 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   const auto functions = lirModule.functions();
   if (functions.size() != mirFunctions.size()) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  // The by-value aggregate call pair is validated as a unit because the
+  // flattened field slots and the projected-field return only make sense across
+  // the caller/callee pair. Any other module falls through to per-owner pair
+  // validation.
+  {
+    auto byValueShape = matchByValueAggregateCall(mirFunctions);
+    if (byValueShape != zc::none) {
+      return validateByValueAggregateCall(ZC_ASSERT_NONNULL(byValueShape), mirFunctions, lirModule,
+                                          types);
+    }
   }
   // Every MIR owner matches exactly one LIR owner.
   for (uint32_t m = 0; m < mirFunctions.size(); ++m) {

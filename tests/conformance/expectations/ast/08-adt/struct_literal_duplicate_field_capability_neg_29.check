@@ -1,0 +1,107 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/struct_literal_duplicate_field_capability_neg_29.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #44 @1:1..4:1 file_name="struct_literal_duplicate_field_capability_neg_29.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #7 @1:1..1:32
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #6 @1:1..1:32 name="Point"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #5 @1:14..1:32 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @1:16..1:23 name="x" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:19..1:22 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 FieldDecl #4 @1:24..1:30 name="y" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:27..1:30 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #19 @2:1..2:42
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #18 @2:1..2:42 name="getx"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #11 @2:9..2:19 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #10 @2:10..2:18 name="p"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #9 @2:13..2:18
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #8 @2:13..2:18 segments=["Point"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #12 @2:23..2:26 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #17 @2:27..2:42
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #16 @2:29..2:40
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #15 @2:29..2:40
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         MemberExpression #14 @2:36..2:39 property="x" access=Dot
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             IdentExpr #13 @2:36..2:37 name="p"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #43 @3:1..3:77
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #42 @3:1..3:77 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #20 @3:10..3:12 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #21 @3:16..3:19 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #41 @3:20..3:77
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #35 @3:22..3:59
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #34 @3:22..3:59 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #33 @3:26..3:58 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #32 @3:26..3:58
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #22 @3:26..3:27 name="p"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #24 @3:29..3:34
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #23 @3:29..3:34 segments=["Point"] root=Relative
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 StructLiteralExpr #31 @3:37..3:58
+// CHECK-NEXT:                                   ty:
+// CHECK-NEXT:                                     NamedTypeExpr #26 @3:37..3:42
+// CHECK-NEXT:                                       path:
+// CHECK-NEXT:                                         ModulePath #25 @3:37..3:42 segments=["Point"] root=Relative
+// CHECK-NEXT:                                       args: []
+// CHECK-NEXT:                                   properties:
+// CHECK-NEXT:                                     ObjectProperty #28 @3:45..3:50 name="x" short_form=false
+// CHECK-NEXT:                                       value:
+// CHECK-NEXT:                                         IntLiteral #27 @3:48..3:50 base=10 value="40"
+// CHECK-NEXT:                                     ObjectProperty #30 @3:52..3:56 name="x" short_form=false
+// CHECK-NEXT:                                       value:
+// CHECK-NEXT:                                         IntLiteral #29 @3:55..3:56 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #40 @3:60..3:75
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #39 @3:60..3:75
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         CallExpression #38 @3:67..3:74
+// CHECK-NEXT:                           callee:
+// CHECK-NEXT:                             IdentExpr #36 @3:67..3:71 name="getx"
+// CHECK-NEXT:                           type_args: []
+// CHECK-NEXT:                           args:
+// CHECK-NEXT:                             IdentExpr #37 @3:72..3:73 name="p"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -358,6 +358,19 @@ zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::inval
       zc::Vector<diagnostics::DiagnosticSecondary>());
 }
 
+zc::Maybe<diagnostics::DiagnosticFact>
+StableBindingDiagnosticFactFactory::constructorReceiverUnsupported(
+    const IdentitySyntaxSiteKey& primary) {
+  auto occurrenceValue =
+      occurrence(primary, diagnostics::IdentityDiagnosticEmitter::ConstructorReceiverUnsupported);
+  auto primaryValue = provenance(primary);
+  if (occurrenceValue == zc::none || primaryValue == zc::none) { return zc::none; }
+  return diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(occurrenceValue)),
+      diagnostics::DiagID::ConstructorReceiverUnsupported, zc::Vector<zc::String>(),
+      zc::mv(ZC_ASSERT_NONNULL(primaryValue)), zc::Vector<diagnostics::DiagnosticSecondary>());
+}
+
 zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::definitionRedeclaration(
     const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
     diagnostics::DiagID diagnostic, zc::StringPtr name) {

@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/struct_literal_unknown_field_capability_neg_27.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A property name that does not resolve to a declared field of the nominal is
+// rejected on the literal as ZOM4048, never as a checker invariant.
+
+// CHECK-LITERAL: Error [ZOM4048]: Unknown field `z` in aggregate literal
+// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_unknown_field_capability_neg_27.zom:2:33

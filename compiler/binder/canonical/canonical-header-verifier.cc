@@ -1115,8 +1115,17 @@ private:
       const auto name =
           tree.ident(ast::IdentId(syntax.payload.words[ast::kFunctionParameterDeclNameWord]));
       if (name == "this"_zc) {
-        if (callable.kind != CallableHeaderKind::Method || foundReceiver || ordinal != 0) {
+        if (foundReceiver || ordinal != 0 ||
+            (callable.kind != CallableHeaderKind::Method &&
+             callable.kind != CallableHeaderKind::Constructor)) {
           failure.set(CanonicalHeaderSyntaxFailureKind::InvalidCallableSyntax, parameter);
+          return false;
+        }
+        if (callable.kind == CallableHeaderKind::Constructor) {
+          // Constructors name the instance under construction with an explicit
+          // `this` in source, but constructor-call lowering does not admit a
+          // receiver yet; drain it on the receiver site, matching the producer.
+          failure.set(CanonicalHeaderSyntaxFailureKind::InvalidReceiver, parameter);
           return false;
         }
         ReceiverShape shape = ReceiverShape::Shared;

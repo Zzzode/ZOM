@@ -73,6 +73,44 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
                                                     placeCategory, placeSpan.clone()});
 }
 
+void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
+  HirNominalAggregateExpression aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
+  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
+  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  const identity::SourceSpan initializerSpan =
+      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+
+  // Fixed source-preorder stride matching the generic materializer: function F,
+  // body F+1, local F+2, aggregate initializer F+3, return F+4, direct call
+  // F+5. The call is the return value; its sole argument references local 1
+  // inline and allocates no extra node.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId localId = ctx.allocNode();
+  const HirNodeId initializerId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId callId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
+                               initializerSpan.clone()});
+  ctx.addAggregate(HirNominalAggregateExpression{initializerId, aggregate.definition,
+                                                 aggregate.type, zc::mv(aggregate.elements),
+                                                 aggregate.category, aggregate.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
+                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+}
+
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
   HirNominalAggregateExpression aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));

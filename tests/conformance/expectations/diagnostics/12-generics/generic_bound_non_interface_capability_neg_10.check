@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_bound_non_interface_capability_neg_10.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A resolved nominal that is not an interface in a generic parameter bound is
+// rejected on the bound site as ZOM4129, never as a checker invariant.
+
+// CHECK-LITERAL: Error [ZOM4129]: generic bound `conformance::conformance::conformance::R` is not an interface
+// CHECK-LITERAL:   --> conformance/12-generics/generic_bound_non_interface_capability_neg_10.zom:2:13

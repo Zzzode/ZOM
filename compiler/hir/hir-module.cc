@@ -606,6 +606,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const auto receiverCallCount = candidate.impl->receiverCalls.size();
   size_t directCallArgumentCount = 0;
   size_t directCallLiteralArgumentCount = 0;
+  // A by-value aggregate call (`let p: P = P { .. }; return f(p);`) passes the
+  // aggregate-initialized owner local inline as the sole call argument. The
+  // local is consumed by the call instead of a local-reference expression, so
+  // these calls correct the local-reference, literal, and expression count
+  // equations exactly once per function.
+  size_t directAggregateCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   // A self-call pool record forwards the implicit header receiver: its
   // receiver node slot is unset and it carries zero explicit arguments. Such a
@@ -645,6 +651,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     directCallArgumentCount += call.arguments.size();
     for (const auto& argument : call.arguments) {
       if (argument.value != zc::none) ++directCallLiteralArgumentCount;
+    }
+    if (call.arguments.size() == 1 && call.arguments[0].value == zc::none &&
+        call.arguments[0].parameter == zc::none && call.arguments[0].local != zc::none) {
+      ++directAggregateCallCount;
     }
   }
   for (const auto& call : candidate.impl->receiverCalls) {
@@ -884,7 +894,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
               sequentialLocalReferenceCorrection !=
-          static_cast<int64_t>(localReturnCount) + discardedStatementCallCount ||
+          static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
+              directAggregateCallCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
           functionCount + localAliasReborrowCount + conditionalCount * 2 +
               equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
@@ -893,13 +904,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount - voidFunctionCount ||
       static_cast<int64_t>(candidate.impl->expressions.size()) !=
-          static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
-                               directCallCount - aggregateCount - receiverSelfCallCount -
-                               uninitializedLocalReturnCount - parameterReferenceCount -
-                               parameterReborrowCount - parameterFieldProjectionCount +
-                               localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
-                               equalityConditionalCount + loopCount + binaryWriteCount +
-                               parameterFieldWriteCount + receiverFieldArithmeticCount) +
+          static_cast<int64_t>(
+              declarationCount + functionCount - voidFunctionCount - directCallCount -
+              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
+              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
+              localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
+              equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
+              receiverFieldArithmeticCount + directAggregateCallCount) +
               sequentialLiteralCorrection ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
@@ -921,7 +932,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
               equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount) +
+              receiverFieldArithmeticCount + directAggregateCallCount) +
               sequentialLiteralCorrection ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
@@ -2526,6 +2537,189 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (receiverSpan == zc::none ||
             !sameSpan(receiver.sourceSpan, ZC_ASSERT_NONNULL(receiverSpan)) ||
             !typeExists(receiver.type, semanticTypes) ||
+            !typeExists(projection.type, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += 4;
+        continue;
+      }
+    }
+    // By-value struct parameter field-return shape: a free function whose body
+    // is the single statement `return <ordinary-parameter>.<field>;`. Four node
+    // ids: function, body, return, parameter field projection. The projection
+    // roots at the ordinary by-value parameter (a nominal place, no
+    // dereference), unlike the receiver shape.
+    {
+      zc::Maybe<const HirParameterFieldProjectionExpression&> projectionRecord;
+      for (const auto& projection : candidate.impl->parameterFieldProjections) {
+        if (projection.node != returnStatement.value) continue;
+        if (projectionRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        projectionRecord = projection;
+      }
+      if (function.receiver == zc::none && projectionRecord != zc::none) {
+        const auto& projection = ZC_ASSERT_NONNULL(projectionRecord);
+        const auto valueNodeId = hirId(expectedFunction + 3);
+        if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            returnStatement.node != hirId(expectedFunction + 2) ||
+            returnStatement.value != valueNodeId || projection.node != valueNodeId ||
+            function.body != block.node || block.statements.size() != 1 ||
+            block.statements[0] != returnStatement.node ||
+            returnStatement.resultType != function.resultType ||
+            projection.type != function.resultType ||
+            projection.category != HirValueCategory::Place || function.parameters.size() != 1 ||
+            function.parameters[0].type != projection.receiverType ||
+            function.parameters[0].key != projection.parameter) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t sourceDefinitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { sourceDefinitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[sourceDefinitionSlot];
+        const auto& sourceTree = bound.tree();
+        if (sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !sourceTree.contains(sourceDefinition.node) ||
+            sourceTree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceShape = functionReturnShape(sourceTree, sourceTree.node(sourceDefinition.node));
+        if (sourceShape == zc::none || !ZC_ASSERT_NONNULL(sourceShape).returnsParameterField) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& source = ZC_ASSERT_NONNULL(sourceShape);
+        if (!sourceTree.contains(source.value) ||
+            sourceTree.node(source.value).kind != ast::SyntaxKind::MemberExpression ||
+            static_cast<ast::MemberAccessKind>(
+                sourceTree.node(source.value).payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Dot) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const ast::NodeId objectNode(
+            sourceTree.node(source.value).payload.words[ast::kMemberExpressionObjectWord]);
+        if (!sourceTree.contains(objectNode) ||
+            sourceTree.node(objectNode).kind != ast::SyntaxKind::IdentExpr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto bodySpan = bound.parsedModule().spanFor(sourceTree.node(source.body).range);
+        auto returnSpan =
+            bound.parsedModule().spanFor(sourceTree.node(source.returnStatement).range);
+        auto projectionSpan = bound.parsedModule().spanFor(sourceTree.node(source.value).range);
+        if (bodySpan == zc::none || returnSpan == zc::none || projectionSpan == zc::none ||
+            !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+            !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+            !sameSpan(projection.sourceSpan, ZC_ASSERT_NONNULL(projectionSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto objectTypeIndex = factIndex(facts.nodeTypes(), objectNode);
+        auto memberTypeIndex = factIndex(facts.nodeTypes(), source.value);
+        auto memberIndex = factIndex(facts.members(), source.value);
+        auto placeIndex = factIndex(facts.places(), source.value);
+        if (objectTypeIndex == zc::none || memberTypeIndex == zc::none || memberIndex == zc::none ||
+            placeIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t objectTypeSlot = 0;
+        size_t memberTypeSlot = 0;
+        size_t memberSlot = 0;
+        size_t placeSlot = 0;
+        ZC_IF_SOME(slot, objectTypeIndex) { objectTypeSlot = slot; }
+        ZC_IF_SOME(slot, memberTypeIndex) { memberTypeSlot = slot; }
+        ZC_IF_SOME(slot, memberIndex) { memberSlot = slot; }
+        ZC_IF_SOME(slot, placeIndex) { placeSlot = slot; }
+        const auto& memberFact = facts.members().entries()[memberSlot].value;
+        const auto& placeFact = facts.places().entries()[placeSlot].value;
+        if (facts.nodeTypes().entries()[objectTypeSlot].value != projection.receiverType ||
+            facts.nodeTypes().entries()[memberTypeSlot].value != projection.type ||
+            memberFact.node != source.value || memberFact.receiverType != projection.receiverType ||
+            memberFact.member != projection.field || memberFact.memberType != projection.type ||
+            memberFact.adjustment != zc::none || placeFact.node != source.value ||
+            placeFact.type != projection.type || placeFact.mutablePlace || !placeFact.movable ||
+            !placeFact.root.variant().is<checker::checked::CallableParameterPlaceRoot>() ||
+            placeFact.projections.size() != 1 ||
+            !placeFact.projections[0].variant().is<checker::checked::FieldProjection>() ||
+            placeFact.projections[0].variant().get<checker::checked::FieldProjection>().field !=
+                projection.field) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto rootAuthority = registries.callableParameter(
+            placeFact.root.variant().get<checker::checked::CallableParameterPlaceRoot>().parameter);
+        if (rootAuthority == zc::none ||
+            ZC_ASSERT_NONNULL(rootAuthority).key() != projection.parameter) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        const auto expectedVisibility = visibility(root.visibility);
+        const auto expectedLinkage = linkage(callable);
+        if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            callable.success != function.resultType || callable.parameters.size() != 1 ||
+            callable.parameters[0].parameter != projection.parameter ||
+            callable.parameters[0].type != projection.receiverType ||
+            callable.parameters[0].hasDefault ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        if (!typeExists(projection.receiverType, semanticTypes) ||
             !typeExists(projection.type, semanticTypes)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -5057,6 +5251,247 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         nextFunction += 9;
         continue;
       }
+    }
+    // By-value aggregate call: `let p: P = P { .. }; return f(p);`. Fixed
+    // six-node preorder: function F, body F+1, local F+2, aggregate
+    // initializer F+3, return F+4, direct call F+5. The call's sole argument is
+    // the owner local copied by value and allocates no extra node.
+    if (sourceShapeMaybe != zc::none &&
+        ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsDirectAggregateCall) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectAggregateCall = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      };
+      const auto rejectAggregateCallMissing = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      };
+      zc::Maybe<const HirLocalBinding&> aggregateLocal;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node != hirId(expectedFunction + 2)) continue;
+        if (aggregateLocal != zc::none) return rejectAggregateCall();
+        aggregateLocal = candidateLocal;
+      }
+      zc::Maybe<const HirNominalAggregateExpression&> aggregateRecord;
+      for (const auto& candidateAggregate : candidate.impl->aggregates) {
+        if (candidateAggregate.node != hirId(expectedFunction + 3)) continue;
+        if (aggregateRecord != zc::none) return rejectAggregateCall();
+        aggregateRecord = candidateAggregate;
+      }
+      zc::Maybe<const HirDirectCallExpression&> aggregateCall;
+      for (const auto& candidateCall : candidate.impl->calls) {
+        if (candidateCall.node != hirId(expectedFunction + 5)) continue;
+        if (aggregateCall != zc::none) return rejectAggregateCall();
+        aggregateCall = candidateCall;
+      }
+      zc::Maybe<const HirReturnStatement&> aggregateReturn;
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node != hirId(expectedFunction + 4)) continue;
+        if (aggregateReturn != zc::none) return rejectAggregateCall();
+        aggregateReturn = candidateReturn;
+      }
+      if (aggregateLocal == zc::none || aggregateRecord == zc::none || aggregateCall == zc::none ||
+          aggregateReturn == zc::none) {
+        return rejectAggregateCallMissing();
+      }
+      const auto& localRecord = ZC_ASSERT_NONNULL(aggregateLocal);
+      const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
+      const auto& call = ZC_ASSERT_NONNULL(aggregateCall);
+      const auto& returnStatementRecord = ZC_ASSERT_NONNULL(aggregateReturn);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 2 ||
+          block.statements[0] != localRecord.node ||
+          block.statements[1] != returnStatementRecord.node ||
+          localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
+          localRecord.initializer != hirId(expectedFunction + 3) ||
+          localRecord.initializerSpan == zc::none ||
+          aggregate.node != hirId(expectedFunction + 3) || aggregate.type != localRecord.type ||
+          aggregate.category != HirValueCategory::Value ||
+          returnStatementRecord.node != hirId(expectedFunction + 4) ||
+          returnStatementRecord.value != call.node ||
+          returnStatementRecord.resultType != function.resultType ||
+          call.node != hirId(expectedFunction + 5) || call.resultType != function.resultType ||
+          function.receiver != zc::none || !typeExists(localRecord.type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectAggregateCall();
+      }
+
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+          rootPosition == zc::none) {
+        return rejectAggregateCallMissing();
+      }
+      size_t definitionSlot = 0;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+      ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& signature = signatures.definitions[signatureSlot];
+      const auto& root = signatures.roots[rootSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectAggregateCall();
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedVisibility = visibility(root.visibility);
+      auto expectedLinkage = linkage(callable);
+      ast::NodeId initializer;
+      ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
+      if (expectedVisibility == zc::none || expectedLinkage == zc::none || !source.returnsLocal ||
+          source.localInitializer == zc::none || source.localWrites.size != 0 ||
+          !tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::CallExpression ||
+          !tree.contains(initializer) ||
+          tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Function ||
+          root.canonicalDefinition != function.definition || root.sourceModule != module ||
+          callable.receiver != zc::none || callable.raises != zc::none ||
+          callable.success != function.resultType || callable.parameters.size() != 0 ||
+          function.parameters.size() != 0 ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+        return rejectAggregateCall();
+      }
+      const auto& sourceCall = tree.node(source.value);
+      const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList typeArguments{
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                    sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+          tree.list(arguments).size() != 1) {
+        return rejectAggregateCall();
+      }
+      const ast::NodeId argumentNode = tree.list(arguments)[0];
+      if (!tree.contains(argumentNode) ||
+          tree.node(argumentNode).kind != ast::SyntaxKind::IdentExpr) {
+        return rejectAggregateCall();
+      }
+      auto ownerBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
+      auto argumentBinding = resolvedOwnerLocal(bound.bindings(), argumentNode);
+      auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+      auto argumentTypeIndex = factIndex(facts.nodeTypes(), argumentNode);
+      auto initializerTypeIndex = factIndex(facts.nodeTypes(), initializer);
+      auto initializerAggregateIndex = factIndex(facts.aggregates(), initializer);
+      auto checkedCallIndex = factIndex(facts.calls(), source.value);
+      auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+      auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+      auto initializerSpan = bound.parsedModule().spanFor(tree.node(initializer).range);
+      auto argumentSpan = bound.parsedModule().spanFor(tree.node(argumentNode).range);
+      if (ownerBinding == zc::none || argumentBinding == zc::none ||
+          ownerBinding != argumentBinding ||
+          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
+                             tree) ||
+          calleeTypeIndex == zc::none || argumentTypeIndex == zc::none ||
+          initializerTypeIndex == zc::none || initializerAggregateIndex == zc::none ||
+          checkedCallIndex == zc::none || callKey == zc::none || callSpan == zc::none ||
+          initializerSpan == zc::none || argumentSpan == zc::none) {
+        return rejectAggregateCallMissing();
+      }
+      auto dispatchIndex = dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                             ZC_ASSERT_NONNULL(callKey));
+      if (dispatchIndex == zc::none) { return rejectAggregateCallMissing(); }
+      auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+      if (callee == zc::none) { return rejectAggregateCallMissing(); }
+      size_t calleeTypeSlot = 0;
+      size_t argumentTypeSlot = 0;
+      size_t initializerTypeSlot = 0;
+      size_t initializerAggregateSlot = 0;
+      size_t checkedCallSlot = 0;
+      size_t dispatchSlot = 0;
+      ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+      ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+      ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+      ZC_IF_SOME(value, initializerAggregateIndex) { initializerAggregateSlot = value; }
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      const auto& checkedInitializer = facts.aggregates().entries()[initializerAggregateSlot].value;
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+      bool dispatchOwnerMatches = false;
+      ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+      bool callSpanMatches = false;
+      bool dispatchSpanMatches = false;
+      bool hirSpanMatches = false;
+      ZC_IF_SOME(value, callSpan) {
+        callSpanMatches =
+            sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan, value);
+        dispatchSpanMatches = sameSpan(dispatch.fact.sourceSpan, value);
+        hirSpanMatches = sameSpan(call.sourceSpan, value);
+      }
+      if (aggregate.type != facts.nodeTypes().entries()[initializerTypeSlot].value ||
+          checkedInitializer.node != initializer ||
+          checkedInitializer.resultType != aggregate.type ||
+          !sameSpan(checkedInitializer.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+          !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(bound.parsedModule().spanFor(
+                                                tree.node(source.localPattern).range))) ||
+          !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
+                    ZC_ASSERT_NONNULL(initializerSpan)) ||
+          call.callee != ZC_ASSERT_NONNULL(callee) ||
+          call.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+          call.arguments.size() != 1 || !selected.is<checker::checked::DirectCallable>() ||
+          selected.get<checker::checked::DirectCallable>().callee != call.callee ||
+          !target.is<checker::dispatch::DirectTarget>() ||
+          target.get<checker::dispatch::DirectTarget>().callee != call.callee ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          invocation.calleeType != call.calleeType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
+          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          invocation.arguments.size() != 1 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          !dispatchOwnerMatches || dispatch.fact.receiver != zc::none ||
+          dispatch.fact.arguments.size() != 1 || dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none || !callSpanMatches || !dispatchSpanMatches ||
+          !hirSpanMatches) {
+        return rejectAggregateCall();
+      }
+      const auto& checkedArgument = invocation.arguments[0];
+      const auto& dispatchArgument = dispatch.fact.arguments[0];
+      const auto& hirArgument = call.arguments[0];
+      if (checkedArgument.sourceNode != argumentNode ||
+          checkedArgument.sourceType != argumentType ||
+          checkedArgument.parameterType != argumentType || checkedArgument.adjustment != zc::none ||
+          !sameNodeKey(
+              dispatchArgument.sourceNode,
+              ZC_ASSERT_NONNULL(checkedNodeKey(tree, bound.parsedModule(), argumentNode))) ||
+          dispatchArgument.sourceType != argumentType ||
+          dispatchArgument.parameterType != argumentType ||
+          dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
+          argumentType != aggregate.type || argumentType != localRecord.type ||
+          hirArgument.value != zc::none || hirArgument.parameter != zc::none ||
+          hirArgument.local != hirLocalId(1) ||
+          !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+        return rejectAggregateCall();
+      }
+      nextFunction += 6;
+      continue;
     }
     // number of extra HIR nodes the unsafe block contributes (0 when absent, 1
     // when present and valid), or zc::none when present but invalid.

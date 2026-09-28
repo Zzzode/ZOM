@@ -240,6 +240,9 @@ struct HirDirectCallArgument final {
   identity::SemanticTypeId type;
   zc::Maybe<checker::checked::CanonicalConstValue> value;
   zc::Maybe<identity::CallableParameterKey> parameter;
+  // Populated for an owner-local by-value aggregate argument: the caller local
+  // whose nominal value the call copies into the callee parameter.
+  zc::Maybe<HirLocalId> local;
   identity::SourceSpan sourceSpan;
 };
 

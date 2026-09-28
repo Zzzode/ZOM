@@ -4541,5 +4541,114 @@ ZC_TEST("HIR pipeline lowers a discarded unit receiver call and a parameter-RHS 
   }
 }
 
+ZC_TEST("HIR pipeline reads either named sibling field of a two-field local aggregate") {
+  {
+    HirPipelineFixture fixture(
+        "struct Point { x: i32, y: i32, }\n"
+        "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.x; }"_zc);
+    ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+    const auto& module = fixture.hirModule();
+    ZC_REQUIRE(module.aggregates().size() == 1);
+    ZC_REQUIRE(module.localFieldProjections().size() == 1);
+    ZC_REQUIRE(module.aggregates()[0].elements.size() == 2);
+    ZC_EXPECT(module.localFieldProjections()[0].type == module.functions()[0].resultType);
+  }
+  {
+    HirPipelineFixture fixture(
+        "struct Point { x: i32, y: i32, }\n"
+        "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.y; }"_zc);
+    ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+    const auto& module = fixture.hirModule();
+    ZC_REQUIRE(module.aggregates().size() == 1);
+    ZC_REQUIRE(module.localFieldProjections().size() == 1);
+    ZC_REQUIRE(module.aggregates()[0].elements.size() == 2);
+    ZC_EXPECT(module.localFieldProjections()[0].type == module.functions()[0].resultType);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a by-value aggregate call and its parameter field callee") {
+  HirPipelineFixture fixture(
+      "struct Point { x: i32, y: i32, }\n"
+      "fun first(p: Point) -> i32 { return p.x; }\n"
+      "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return first(p); }"_zc);
+  ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.calls().size() == 1);
+  ZC_REQUIRE(module.parameterFieldProjections().size() == 1);
+
+  zc::Maybe<const HirFunctionDeclaration&> callee;
+  zc::Maybe<const HirFunctionDeclaration&> caller;
+  for (const auto& function : module.functions()) {
+    if (function.parameters.size() == 1) {
+      callee = function;
+    } else {
+      caller = function;
+    }
+  }
+  ZC_REQUIRE(callee != zc::none);
+  ZC_REQUIRE(caller != zc::none);
+  const auto& calleeDecl = ZC_ASSERT_NONNULL(callee);
+  const auto& callerDecl = ZC_ASSERT_NONNULL(caller);
+  ZC_EXPECT(calleeDecl.receiver == zc::none);
+  ZC_EXPECT(calleeDecl.parameters[0].type == module.aggregates()[0].type);
+
+  // The call passes the one aggregate-initialized owner local by value.
+  const auto& call = module.calls()[0];
+  ZC_EXPECT(call.callee == calleeDecl.definition);
+  ZC_EXPECT(call.resultType == callerDecl.resultType);
+  ZC_REQUIRE(call.arguments.size() == 1);
+  ZC_EXPECT(call.arguments[0].value == zc::none);
+  ZC_EXPECT(call.arguments[0].parameter == zc::none);
+  ZC_REQUIRE(call.arguments[0].local != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(call.arguments[0].local) == module.locals()[0].local);
+  ZC_EXPECT(call.arguments[0].type == module.locals()[0].type);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> calleeFunction;
+  zc::Maybe<const mir::MirFunction&> callerFunction;
+  for (const auto& function : builtMir[0].builtMir().functions()) {
+    if (function.owner == calleeDecl.definition) calleeFunction = function;
+    if (function.owner == callerDecl.definition) callerFunction = function;
+  }
+  ZC_REQUIRE(calleeFunction != zc::none);
+  ZC_REQUIRE(callerFunction != zc::none);
+  // Callee: one struct parameter, single block returning one projected field.
+  ZC_IF_SOME(function, calleeFunction) {
+    ZC_REQUIRE(function.locals.size() == 1);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(function.locals[0].type == calleeDecl.parameters[0].type);
+    ZC_REQUIRE(function.blocks.size() == 1);
+    ZC_EXPECT(function.blocks[0].statements.size() == 0);
+    const auto& terminator = function.blocks[0].terminator;
+    ZC_EXPECT(terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_REQUIRE(terminator.returnValue().value != zc::none);
+    ZC_IF_SOME(operand, terminator.returnValue().value) {
+      ZC_EXPECT(operand.place().local() == function.locals[0].id);
+      ZC_REQUIRE(operand.place().projections().size() == 1);
+      ZC_EXPECT(operand.place().projections()[0].kind() == mir::MirProjectionKind::Field);
+    }
+  }
+  // Caller: aggregate UserLocal and result Temporary; entry calls with the
+  // whole aggregate place and continues to a result return.
+  ZC_IF_SOME(function, callerFunction) {
+    ZC_REQUIRE(function.locals.size() == 2);
+    ZC_EXPECT(function.locals[0].kind == mir::MirLocalKind::UserLocal);
+    ZC_EXPECT(function.locals[1].kind == mir::MirLocalKind::Temporary);
+    ZC_REQUIRE(function.blocks.size() == 2);
+    ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call);
+    const auto& mirCall = function.blocks[0].terminator.callValue();
+    ZC_EXPECT(mirCall.callee == calleeDecl.definition);
+    ZC_REQUIRE(mirCall.arguments.size() == 1);
+    ZC_EXPECT(mirCall.arguments[0].kind() != mir::MirOperandKind::Constant);
+    ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[0].id);
+    ZC_EXPECT(mirCall.arguments[0].place().projections().size() == 0);
+    ZC_EXPECT(function.blocks[1].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

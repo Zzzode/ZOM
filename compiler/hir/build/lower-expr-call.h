@@ -24,6 +24,13 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 /// destination.
 void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one by-value aggregate call body through the recursive driver:
+/// `let p: P = P { .. }; return f(p);`. Node stride: function, body, local,
+/// aggregate initializer, return, direct call. The aggregate lowers into the
+/// local's initializer destination and the direct call, whose sole argument is
+/// that local passed by value, is the return value.
+void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one mutable-receiver call body through the recursive driver:
 /// `mut cell = T { .. }; return cell.method(<args>);`. Node stride: function,
 /// body, local, aggregate initializer, return, receiver reference, receiver

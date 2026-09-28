@@ -1,0 +1,24 @@
+// RUN: %zomc compile --dump-ast %corpus/13-modules/extern_declaration_capability_neg_28.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #9 @1:1..5:1 file_name="extern_declaration_capability_neg_28.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #8 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         ExternBlock #7 @1:1..4:2 abi=Cdecl
+// CHECK-NEXT:           items:
+// CHECK-NEXT:             ExternDecl #4 @2:5..2:29 name="puts" abi=Cdecl
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:14..2:20 name="s"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:17..2:20 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:               ret_ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:25..2:28 kind=I32
+// CHECK-NEXT:               raises_ty: null
+// CHECK-NEXT:             ExternVarDecl #6 @3:5..3:25 name="errno" abi=Cdecl is_mut=true
+// CHECK-NEXT:               ty:
+// CHECK-NEXT:                 PredefinedTypeExpr #5 @3:21..3:24 kind=I32
+// CHECK-NEXT:       attrs: null

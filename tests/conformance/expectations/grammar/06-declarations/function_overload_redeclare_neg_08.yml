@@ -1,0 +1,5 @@
+section: "06-declarations free-function overloading"
+covers_rule: "funDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits two same-named functions with different parameter counts; callable overloading is unsupported and the second declaration is rejected as ZOM3005."

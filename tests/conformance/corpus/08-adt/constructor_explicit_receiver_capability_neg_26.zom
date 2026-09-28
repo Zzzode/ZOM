@@ -1,0 +1,4 @@
+struct Vec2 {
+    x: i32,
+    init(this, a: i32) { this.x = a; }
+}

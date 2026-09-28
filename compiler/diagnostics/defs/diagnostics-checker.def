@@ -186,15 +186,13 @@ DIAG(4116, ImplAssociatedTypeNotMember, kError,
      "associated type {0} is not declared by implemented interface {1}", 2)
 DIAG(4117, ImplMissingAssociatedType, kError,
      "implementation is missing required associated type {0} of interface {1}", 2)
-DIAG(4118, AssociatedTypeBoundNotFound, kError,
-     "this associated type bound cannot be resolved", 0)
-DIAG(4119, AssociatedTypeBoundNotInterface, kError,
-     "associated type bound {0} is not an interface", 1)
+DIAG(4118, AssociatedTypeBoundNotFound, kError, "this associated type bound cannot be resolved", 0)
+DIAG(4119, AssociatedTypeBoundNotInterface, kError, "associated type bound {0} is not an interface",
+     1)
 DIAG(4120, TypeNameUnresolved, kError, "cannot find type {0} in this scope", 1)
 DIAG(4121, DynTypeNotAllowedAsBound, kError,
      "a dyn type is a value type and cannot be used as an interface bound", 0)
-DIAG(4122, DuplicateInterfaceBound, kError,
-     "interface bound {0} is listed more than once", 1)
+DIAG(4122, DuplicateInterfaceBound, kError, "interface bound {0} is listed more than once", 1)
 DIAG(4123, ImplGenericAssociatedTypeUnsupported, kError,
      "assigning a generic associated type in an impl is not supported yet", 0)
 DIAG(4124, GenericConcreteDynErasureUnsupported, kError,
@@ -205,3 +203,24 @@ DIAG(4124, GenericConcreteDynErasureUnsupported, kError,
 DIAG(4125, MethodCallSemanticsUnavailable, kError, "method call `{0}` is not supported yet", 1)
 DIAG(4126, CannotMutateSharedReceiver, kError,
      "cannot mutate a field through the shared `this` receiver; mark the method `mutating`", 0)
+// An `extern "abi" { ... }` foreign declaration (function or variable) is
+// grammar the parser and binder accept, but the FFI lowering surface (RFC 0006
+// call ABI) is not implemented yet. Drain it on the declaration instead of
+// reaching a signature invariant.
+DIAG(4127, ExternDeclarationSemanticsUnavailable, kError,
+     "extern/FFI declarations are not supported yet", 0)
+DIAG(4128, EnumDiscriminantSemanticsUnavailable, kError,
+     "explicit enum discriminants are not supported yet", 0)
+// A generic parameter bound (inline `T: B` or a `where T: B` predicate) must
+// name an interface. A resolved non-interface definition is a user error, not
+// a missing checker fact.
+DIAG(4129, GenericBoundNotInterface, kError,
+     "generic bound `{0}` is not an interface", 1)
+// Primitive types (i32, bool, str, ...) are never traits and cannot stand in
+// an interface-bound position.
+DIAG(4130, PrimitiveTypeBoundUnsupported, kError,
+     "primitive type `{0}` cannot be used as an interface bound", 1)
+// A struct literal names the same field twice. There is no resolution order
+// between two initializers for one storage slot, so the literal is rejected.
+DIAG(4131, DuplicateStructField, kError,
+     "field {0} is initialized more than once in the aggregate literal", 1)

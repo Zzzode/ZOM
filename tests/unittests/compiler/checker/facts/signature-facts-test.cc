@@ -1953,6 +1953,21 @@ interface FullAssoc {
 }
 )zom"_zc;
 
+constexpr zc::StringPtr kPrimitiveGenericBoundSource = R"zom(class RecoveryOwner {}
+struct Holder<T: i32> {
+    value: T,
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kNonInterfaceGenericBoundSource = R"zom(class RecoveryOwner {}
+struct Plain {
+    value: i32,
+}
+struct Holder<T: Plain> {
+    value: T,
+}
+)zom"_zc;
+
 constexpr zc::StringPtr kImplGenericAssociatedAssignmentSource = R"zom(class RecoveryOwner {}
 interface Iterator {
     type Iter<T>;
@@ -2066,6 +2081,39 @@ ZC_TEST("SignatureFactsBuilder source-rejects a duplicated interface bound") {
   ZC_EXPECT(failures[0].diagnostic == SignatureSourceDiagnostic::DuplicateInterfaceBound);
   ZC_REQUIRE(failures[0].arguments.size() == 1);
   ZC_EXPECT(failures[0].arguments[0].variant().is<SignatureDefinitionDisplayArg>());
+}
+
+// A primitive type is not an interface trait; naming one in a generic
+// parameter bound drains at the bound site with ZOM4130 instead of an
+// invariant. The nominal build and each member's owner-generic rebuild share
+// the same bound site, so the raw builder may list identical facts more than
+// once; the publication pipeline deduplicates them.
+ZC_TEST("SignatureFactsBuilder source-rejects a primitive type used as a generic bound") {
+  auto result = buildSignatures(kPrimitiveGenericBoundSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() >= 1);
+  for (const auto& failure : failures) {
+    ZC_EXPECT(failure.diagnostic == SignatureSourceDiagnostic::PrimitiveTypeBoundUnsupported);
+    ZC_REQUIRE(failure.arguments.size() == 1);
+    ZC_EXPECT(failure.arguments[0].variant().is<SignaturePrimitiveTypeDisplayArg>());
+    ZC_EXPECT(failure.arguments[0].variant().get<SignaturePrimitiveTypeDisplayArg>().kind ==
+              type::semantic::PrimitiveKind::I32);
+  }
+}
+
+// A bound name that resolves to a struct (a nominal that is not an interface)
+// is rejected on the bound site with ZOM4129 and the offending definition.
+ZC_TEST("SignatureFactsBuilder source-rejects a non-interface generic bound") {
+  auto result = buildSignatures(kNonInterfaceGenericBoundSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() >= 1);
+  for (const auto& failure : failures) {
+    ZC_EXPECT(failure.diagnostic == SignatureSourceDiagnostic::GenericBoundNotInterface);
+    ZC_REQUIRE(failure.arguments.size() == 1);
+    ZC_EXPECT(failure.arguments[0].variant().is<SignatureDefinitionDisplayArg>());
+  }
 }
 
 // A GAT assignment in an impl block is grammatically admitted but its semantics

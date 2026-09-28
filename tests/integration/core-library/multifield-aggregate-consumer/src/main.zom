@@ -1,0 +1,9 @@
+// Multi-field aggregate by-value fixture: a two-field i32 struct is constructed
+// as a local and passed by value to a free function that returns one field.
+// The nominal argument flattens to one integer call argument per field in the
+// admitted scalar pipeline, and the callee reads the projected field's slot.
+// The entry folds to the reserved no-argument i32 `zom.module_init` shape and
+// exits 40 (the `x` field).
+struct Point { x: i32, y: i32, }
+fun first(p: Point) -> i32 { return p.x; }
+fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return first(p); }

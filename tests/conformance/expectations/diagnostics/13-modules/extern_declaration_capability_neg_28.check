@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 13-modules/extern_declaration_capability_neg_28.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// FFI call ABI lowering is not implemented yet; every foreign declaration in
+// an extern block (function and variable alike) drains as ZOM4127 on its
+// declaration, never as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4127]: extern/FFI declarations are not supported yet
+// CHECK-LITERAL:   --> conformance/13-modules/extern_declaration_capability_neg_28.zom:3:5
+// CHECK-LITERAL: Error [ZOM4127]: extern/FFI declarations are not supported yet
+// CHECK-LITERAL:   --> conformance/13-modules/extern_declaration_capability_neg_28.zom:2:5

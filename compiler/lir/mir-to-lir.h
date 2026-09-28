@@ -236,6 +236,30 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a by-value aggregate call to a two-function LIR module.
+  ///
+  /// Admits the verified pair: a caller
+  /// `fun entry() -> T { let p: P = P { ..integer constants.. }; return f(p); }`
+  /// (one aggregate-initialized `UserLocal`, one result `Temporary`, entry
+  /// `StorageLive; p = NominalAggregate; StorageLive; Call(f, copy p) -> result`,
+  /// continuation `return result`) and a callee
+  /// `fun f(p: P) -> T { return p.<field>; }` (one struct `Parameter` local,
+  /// single block returning a one-field projection of it). The nominal by-value
+  /// argument is flattened in the admitted scalar pipeline: the caller aggregate
+  /// elements (in source struct-literal order, the only field ordering this slice
+  /// observes) lower to one integer call argument per field, and the callee's
+  /// projected field selects the matching parameter slot. No struct is
+  /// materialized; every non-integer element and every other shape returns
+  /// `none`.
+  ///
+  /// \param caller Verified aggregate-caller MIR function.
+  /// \param callee Verified by-value parameter-field callee MIR function.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerByValueAggregateCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a three-function module (a zero-argument direct call plus one
   /// standalone leaf) to a three-function LIR module.
   ///

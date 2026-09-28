@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/direct_call_local_argument_capability_neg_65.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A direct free-function call whose argument is an owner-local identifier is
+// well-typed source the direct-call lowering slice does not admit yet (only
+// parameter arguments lower). It drains as ZOM4125 naming the callee, never as
+// an internal compiler error. A genuine argument type mismatch still reports
+// ZOM4009 instead.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `g` is not supported yet
+// CHECK-LITERAL:   --> conformance/04-expressions/direct_call_local_argument_capability_neg_65.zom:6:18

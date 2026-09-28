@@ -1,0 +1,6 @@
+section: "§8 aggregate literals"
+covers_rule: "structLiteral"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts the literal; the checker drains the unsupported or"
+  - "ill-typed field set with a registered user diagnostic."

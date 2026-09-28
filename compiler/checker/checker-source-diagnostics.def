@@ -59,6 +59,8 @@ CHECKER_ERROR(BinaryOperatorSemanticsUnavailable)
 CHECKER_ERROR(GenericConcreteDynErasureUnsupported)
 CHECKER_ERROR(MethodCallSemanticsUnavailable)
 CHECKER_ERROR(CannotMutateSharedReceiver)
+CHECKER_ERROR(DuplicateStructField)
+CHECKER_ERROR(FunctionBodySemanticsUnavailable)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)
 

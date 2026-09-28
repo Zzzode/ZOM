@@ -148,12 +148,17 @@ ZC_TEST("DiagnosticTest.TypeCheckerDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::DuplicateInterfaceBound) == 4122);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ImplGenericAssociatedTypeUnsupported) == 4123);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::GenericConcreteDynErasureUnsupported) == 4124);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ExternDeclarationSemanticsUnavailable) == 4127);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::GenericBoundNotInterface) == 4129);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::PrimitiveTypeBoundUnsupported) == 4130);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::DuplicateStructField) == 4131);
 }
 
 ZC_TEST("DiagnosticTest.ReceiverParserDiagnosticIdsAreStable") {
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverMustBeFirstParameter) == 2093);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverDefaultNotAllowed) == 2094);
   ZC_EXPECT(static_cast<uint32_t>(DiagID::ReceiverNotAllowedHere) == 2095);
+  ZC_EXPECT(static_cast<uint32_t>(DiagID::ConstructorReceiverUnsupported) == 2108);
 }
 
 ZC_TEST("DiagnosticTest.ActiveLexerAndParserDiagnosticIdsAreStable") {

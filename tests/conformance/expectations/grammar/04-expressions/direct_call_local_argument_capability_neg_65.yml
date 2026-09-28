@@ -1,0 +1,5 @@
+section: "04-expressions direct call with local variable argument"
+covers_rule: "postfixExpr (call argument list)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits an owner-local identifier as a direct-call argument; only parameter arguments lower, so the unlowered call drains with ZOM4125 (a type mismatch still reports ZOM4009)."

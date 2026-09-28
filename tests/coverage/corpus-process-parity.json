@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 985,
+  "count": 997,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -922,6 +922,10 @@
     "04-expressions/deref_non_pointer_neg_26.zom": {
       "exitCode": 1,
       "sha256": "b66a7b02a9508e36579e8408e2e07e658fea4752c4bed9d8fbf367a6a48757ad"
+    },
+    "04-expressions/direct_call_local_argument_capability_neg_65.zom": {
+      "exitCode": 1,
+      "sha256": "6c271f32c9237451006b6fbcdf28a929968562b3c04348e5dbc68517863fbb8f"
     },
     "04-expressions/dispatch_dump_primitive_index_unary_pos_35.zom": {
       "exitCode": 1,
@@ -2187,6 +2191,10 @@
       "exitCode": 1,
       "sha256": "5c1daed86cb1246e957d20da59d21a3991cbc4153b5fcd78912fa8a56ce6e03a"
     },
+    "06-declarations/default_parameter_capability_neg_07.zom": {
+      "exitCode": 1,
+      "sha256": "6ca26b2209423ab206a7ff6adaf0303bcc8b568a655344ff0c312706b24783d1"
+    },
     "06-declarations/dup_modifier_reject_neg_01.zom": {
       "exitCode": 1,
       "sha256": "6d06d7c67cc19fa641bd5f4bd15fd234ea1bc2e51cca42bd20fd50cfc8b7b3af"
@@ -2239,9 +2247,13 @@
       "exitCode": 1,
       "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
     },
+    "06-declarations/function_overload_redeclare_neg_08.zom": {
+      "exitCode": 1,
+      "sha256": "07cb8062dbba71c6ce1b6b1cc8d84fbf2d78a5d2cb041f2a4c5a48e3bccaf2fb"
+    },
     "06-declarations/function_parameter_cursor_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "00fc715323c7015ef2a9deac1c066cf9c09dd4d82784adef95f803db9a40f0d6"
     },
     "06-declarations/function_parameter_unnamed_reject_neg_02.zom": {
       "exitCode": 1,
@@ -2515,13 +2527,13 @@
       "exitCode": 1,
       "sha256": "2903a3a025fd606eaf4e024e855a9ac62630584792c63866fcb98d3b084158d5"
     },
-    "08-adt/aggregate_distinct_field_type_pos_01.zom": {
+    "08-adt/aggregate_by_value_pos_02.zom": {
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
-    "08-adt/aggregate_duplicate_field_type_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "d8131ebd13dc30471e15a368438a7a42f1723b420f5af388364e63c15e2aa87a"
+    "08-adt/aggregate_distinct_field_type_pos_01.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "08-adt/assoc_type_default_edge_05.zom": {
       "exitCode": 1,
@@ -2577,7 +2589,7 @@
     },
     "08-adt/classes/class-declaration.zom": {
       "exitCode": 1,
-      "sha256": "bd86a8089de984d7fdd5cfa164b3a227ffa0370b1631456376339086318c2f57"
+      "sha256": "01944bba4c2f2ba5fbd51f73d9ebc84ab18d4a203459aa527686d98325b9f8eb"
     },
     "08-adt/classes/class-inheritance.zom": {
       "exitCode": 1,
@@ -2589,19 +2601,23 @@
     },
     "08-adt/classes/explicit-receiver-callables.zom": {
       "exitCode": 1,
-      "sha256": "bd86a8089de984d7fdd5cfa164b3a227ffa0370b1631456376339086318c2f57"
+      "sha256": "be2bd425ea644310eb58ea75bca8116531cc8892e918ed209d8102528e742b86"
     },
     "08-adt/classes/modifiers.zom": {
       "exitCode": 1,
       "sha256": "81239a4b396cd53cf7b73d7b87edae6a5271acee16daf60ffdac9da02359dc2d"
     },
+    "08-adt/constructor_explicit_receiver_capability_neg_26.zom": {
+      "exitCode": 1,
+      "sha256": "9ef1bb5820733c5bca72b3b1e0236b9616f77311cf86cb7656e5ea38ac123e76"
+    },
     "08-adt/enum_discriminant_edge_08.zom": {
       "exitCode": 1,
-      "sha256": "adb46363143d617b3fc48fed7d68eb0f7a90bce534cda4334e62eb63568eaff7"
+      "sha256": "31ba42853b18e969632ff5db3425eee0f6117c68c42b83add5e353410604e6aa"
     },
     "08-adt/enum_discriminant_expr_edge_02.zom": {
       "exitCode": 1,
-      "sha256": "81239a4b396cd53cf7b73d7b87edae6a5271acee16daf60ffdac9da02359dc2d"
+      "sha256": "ce081e6bb218c7819ac316da25a6c4596d448c5ef5e9ade686a233bb45958a9a"
     },
     "08-adt/enum_discriminant_expr_neg_13.zom": {
       "exitCode": 1,
@@ -2609,7 +2625,11 @@
     },
     "08-adt/enum_discriminant_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "adb46363143d617b3fc48fed7d68eb0f7a90bce534cda4334e62eb63568eaff7"
+      "sha256": "f99feea373f3f7abcc69a8569d832352605d3e03690fd9deb0581eb64eada20f"
+    },
+    "08-adt/enum_explicit_discriminant_capability_neg_24.zom": {
+      "exitCode": 1,
+      "sha256": "3bc1ba3d6e150cb82e72c4d918e0d7d39cdc3b050551eb30d373744e07a86ef8"
     },
     "08-adt/enum_generic_pos_07.zom": {
       "exitCode": 0,
@@ -2621,7 +2641,7 @@
     },
     "08-adt/enum_mixed_variants_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "adb46363143d617b3fc48fed7d68eb0f7a90bce534cda4334e62eb63568eaff7"
+      "sha256": "0fdc439bac3c91ddc213f61e698f71f2321906d0ba86f0f8c9c3bad3c7b39281"
     },
     "08-adt/enum_trailing_comma_edge_01.zom": {
       "exitCode": 0,
@@ -2723,10 +2743,6 @@
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
-    "08-adt/inherent_method_receiver_duplicate_field_type_neg_05.zom": {
-      "exitCode": 1,
-      "sha256": "c82973b15ae4d510b0b63a8def11e210804ea7cb2099bfe7a1958036bf7eb313"
-    },
     "08-adt/inherent_method_receiver_extra_field_neg_02.zom": {
       "exitCode": 1,
       "sha256": "5c25650f39e2676bc839215f928a1b2f7b8ceda8e7f4460514fa181f72b5b5a5"
@@ -2805,7 +2821,7 @@
     },
     "08-adt/struct_full_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "bd86a8089de984d7fdd5cfa164b3a227ffa0370b1631456376339086318c2f57"
+      "sha256": "643033d7f33e1025f75cca8b6b66b629de6ab55275011a826add92665cb0bcd4"
     },
     "08-adt/struct_init_deinit_edge_09.zom": {
       "exitCode": 1,
@@ -2813,7 +2829,19 @@
     },
     "08-adt/struct_init_deinit_pos_08.zom": {
       "exitCode": 1,
-      "sha256": "bd86a8089de984d7fdd5cfa164b3a227ffa0370b1631456376339086318c2f57"
+      "sha256": "c14f7e89049e44a71e43feb8c084dc59405aa60860b6defe4c824c1925a3bcc3"
+    },
+    "08-adt/struct_literal_duplicate_field_capability_neg_29.zom": {
+      "exitCode": 1,
+      "sha256": "0b6825080dee8a86795b7292dcd8bf10ec51989a2c57ea3acfbb9ad9f633627f"
+    },
+    "08-adt/struct_literal_missing_field_capability_neg_28.zom": {
+      "exitCode": 1,
+      "sha256": "f933b1441a5d8eef15f44645bf90debf7c933c0aeb5fba9d1ed8ee155c416fd8"
+    },
+    "08-adt/struct_literal_unknown_field_capability_neg_27.zom": {
+      "exitCode": 1,
+      "sha256": "60841d2e19c099c7002f82bb986188b4f6eafa9426d3cb99c7557a14d1b9138f"
     },
     "08-adt/where_clause_pos_06.zom": {
       "exitCode": 0,
@@ -3014,6 +3042,14 @@
     "09-interfaces/impl_multiple_interfaces_neg_23.zom": {
       "exitCode": 1,
       "sha256": "69a04dd7f332f4c29e7f6d0f5f31465cb12f30b2f1100fcd485a1e18180bdda2"
+    },
+    "09-interfaces/impl_trait_method_body_capability_neg_49.zom": {
+      "exitCode": 1,
+      "sha256": "74c87f76961e7f0b7212b92f6c293aaa89886d56fe46206de9690e717869aefb"
+    },
+    "09-interfaces/impl_trait_method_body_receiverless_capability_neg_50.zom": {
+      "exitCode": 1,
+      "sha256": "48e8f3c32e8d80d89b9d61eda54adf9c274f42eba86a7b5a55aa944e9016964b"
     },
     "09-interfaces/impl_where_bound_missing_neg_20.zom": {
       "exitCode": 1,
@@ -3295,6 +3331,14 @@
       "exitCode": 1,
       "sha256": "30945c7ee0f4743fafa6e8c922840568a0aa08d31c54d7b30d9a108b5c1eb494"
     },
+    "12-generics/generic_bound_non_interface_capability_neg_10.zom": {
+      "exitCode": 1,
+      "sha256": "0aea07961b4075bdf4daeeeacd53c82a117fabf52f01090f4dc158605ec01529"
+    },
+    "12-generics/generic_bound_primitive_capability_neg_09.zom": {
+      "exitCode": 1,
+      "sha256": "65415e6ac128144b32d8bbd6a489d4b07f88ec65f4b78d89dfff6f3d541c6ace"
+    },
     "12-generics/generic_bound_satisfied_pos_10.zom": {
       "exitCode": 1,
       "sha256": "ab11e0df60c82f3173ee20d00271caefb1dcf4f3540ca6f9588db043c48b6050"
@@ -3333,7 +3377,7 @@
     },
     "12-generics/higher_bounds_edge_04.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "5bfa3ac53eaff98611966a1ee528222dbdd500d7b6f12d4fcc57467d17e781db"
     },
     "12-generics/lambda_generic_reject_neg_04.zom": {
       "exitCode": 1,
@@ -3385,7 +3429,7 @@
     },
     "12-generics/type_param_default_bound_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "0e9d71ca1d38a93246c27a69f81ec4e87240cb9e393005b6ac12e008738b5e03"
     },
     "12-generics/type_param_default_bound_pos_03.zom": {
       "exitCode": 1,
@@ -3393,7 +3437,7 @@
     },
     "12-generics/type_param_default_bound_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "7807f2e28d1f00586acc84fe4647066e258141cb61f03d91e42987622211ef74"
     },
     "12-generics/type_parameter_bound_list_pos_17.zom": {
       "exitCode": 1,
@@ -3486,6 +3530,10 @@
     "13-modules/export_spec_list_edge_01.zom": {
       "exitCode": 1,
       "sha256": "4b84156b503a0f4c5c5cdc369b151fb3b40e1483b6854eb285a017fde4b82373"
+    },
+    "13-modules/extern_declaration_capability_neg_28.zom": {
+      "exitCode": 1,
+      "sha256": "3c7a87c1f91f09cd8be3494d41e05bf9f72c894f1de8821ceb97be05c46aacaa"
     },
     "13-modules/from_reject_neg_09.zom": {
       "exitCode": 1,
@@ -3881,11 +3929,11 @@
     },
     "20-ffi/extern_abi_system_edge_10.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "166e811df965ad5b5cec4bdc79c95043c32f5eaaded511c79051c12f3f90e5fe"
     },
     "20-ffi/extern_c_basic_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "c3f404a278407b544695864ecef08130802c5b8511173babec165f0d6ef018ef"
     },
     "20-ffi/extern_empty_block_edge_09.zom": {
       "exitCode": 0,
@@ -3897,11 +3945,11 @@
     },
     "20-ffi/extern_multi_fun_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "4c193d4dc41fe2e561d55987b34da2643b4148a1ca79898f69ca9829508f046f"
     },
     "20-ffi/extern_no_abi_string_pos_07.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "46b2164b23e0f6f59314ab4a0a3faa223e73f2c7692b9d7aef9b9bafcf0f6a16"
     },
     "20-ffi/extern_type_alias_reject_neg_13.zom": {
       "exitCode": 1,
@@ -3921,11 +3969,11 @@
     },
     "20-ffi/extern_var_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "81239a4b396cd53cf7b73d7b87edae6a5271acee16daf60ffdac9da02359dc2d"
+      "sha256": "b02884723178578814867c60660711c1211db0a104be4c2833a4b347ac928089"
     },
     "20-ffi/extern_variadic_function_edge_12.zom": {
       "exitCode": 1,
-      "sha256": "4b367438010e7b9b7754fb24cb436a49a6f5f5bf2a7a696fb9dee33c3bae9957"
+      "sha256": "040165edcc69b13f6ea0ce056cb3e1ed3e3d792db0789ebf3a98b8844516df8f"
     },
     "20-ffi/unsafe_extern_block_reject_neg_15.zom": {
       "exitCode": 1,

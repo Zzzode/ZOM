@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/struct_literal_missing_field_capability_neg_28.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A struct literal that omits a required declared field is rejected on the
+// literal as ZOM4049; an uninitialized field must never reach native code.
+
+// CHECK-LITERAL: Error [ZOM4049]: Missing required field conformance::conformance::conformance::P3::c in aggregate literal
+// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_missing_field_capability_neg_28.zom:3:34

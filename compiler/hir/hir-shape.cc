@@ -1105,6 +1105,27 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.unsafeBlock = zc::mv(unsafeBlock);
       return shape;
     }
+    // Single-statement free-function shape:
+    // `return <ordinary-parameter>.<field>;` reads one field of a by-value
+    // struct parameter. There are no locals in the body, so the member object is
+    // necessarily a callable parameter; the builder resolves it against the
+    // binder facts. Methods keep the receiver-only shapes.
+    if (!isMethod && tree.contains(value) &&
+        tree.node(value).kind == ast::SyntaxKind::MemberExpression &&
+        static_cast<ast::MemberAccessKind>(
+            tree.node(value).payload.words[ast::kMemberExpressionAccessWord]) ==
+            ast::MemberAccessKind::Dot) {
+      const ast::NodeId object(tree.node(value).payload.words[ast::kMemberExpressionObjectWord]);
+      if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr) {
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.returnsParameterField = true;
+        shape.unsafeBlock = zc::mv(unsafeBlock);
+        return shape;
+      }
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
@@ -1147,19 +1168,39 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   if (tree.node(letNode).kind != ast::SyntaxKind::LetStmt) { return zc::none; }
   ast::NodeId localReference = value;
   bool returnsReceiverCall = false;
+  bool returnsDirectAggregateCall = false;
   const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
   if (tree.node(value).kind == ast::SyntaxKind::CallExpression) {
     const ast::NodeId callee(tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
-    if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+    const ast::NodeList callTypeArguments{
+        tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+        tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+    const ast::NodeList callArguments{
+        tree.node(value).payload.words[ast::kCallExpressionArgsFirstWord],
+        tree.node(value).payload.words[ast::kCallExpressionArgsSizeWord]};
+    if (tree.contains(callee) && tree.node(callee).kind == ast::SyntaxKind::MemberExpression &&
         static_cast<ast::MemberAccessKind>(
-            tree.node(callee).payload.words[ast::kMemberExpressionAccessWord]) !=
+            tree.node(callee).payload.words[ast::kMemberExpressionAccessWord]) ==
             ast::MemberAccessKind::Dot) {
+      localReference =
+          ast::NodeId(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+      returnsReceiverCall = true;
+    } else if (statements.size == 2 && tree.contains(callee) &&
+               tree.node(callee).kind == ast::SyntaxKind::IdentExpr &&
+               tree.contains(callTypeArguments) && callTypeArguments.empty() &&
+               tree.contains(callArguments) && callArguments.size == 1 &&
+               tree.contains(tree.list(callArguments)[0]) &&
+               tree.node(tree.list(callArguments)[0]).kind == ast::SyntaxKind::IdentExpr) {
+      // By-value struct direct call: `let p: P = P { ..constants.. }; return
+      // f(p);`. The sole call argument must name the single aggregate local;
+      // its declared struct type and field set are checked downstream.
+      localReference = tree.list(callArguments)[0];
+      returnsDirectAggregateCall = true;
+    } else {
       return zc::none;
     }
-    localReference = ast::NodeId(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
-    returnsReceiverCall = true;
   } else if (returnsLocalField) {
     localReference = ast::NodeId(tree.node(value).payload.words[ast::kMemberExpressionObjectWord]);
   } else if (reborrow != zc::none) {
@@ -1206,6 +1247,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsLocalField = returnsLocalField;
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;
+    shape.returnsDirectAggregateCall = returnsDirectAggregateCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
@@ -1228,6 +1270,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsLocalField = returnsLocalField;
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;
+    shape.returnsDirectAggregateCall = returnsDirectAggregateCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;

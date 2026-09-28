@@ -1215,6 +1215,62 @@ public:
     return InterfaceInstantiation{interface, zc::mv(argumentTypes)};
   }
 
+  /// \brief Build one interface bound in a generic-parameter position (inline
+  /// `T: B` or a `where T: B` predicate). Unlike buildInterface this classifies
+  /// every rejected bound as a registered source failure, so a typo, a
+  /// primitive type, or a resolved non-interface definition drains with a
+  /// ZOM code instead of reaching a MissingRequiredFact invariant.
+  zc::Maybe<InterfaceInstantiation> buildGenericBound(ast::NodeId node) {
+    const auto& tree = boundModule.tree();
+    if (!tree.contains(node)) return zc::none;
+    const auto& syntax = tree.node(node);
+    if (syntax.kind == ast::SyntaxKind::PredefinedTypeExpr) {
+      auto primitive = primitiveKindForWord(syntax.payload.words[ast::kPredefinedTypeExprKindWord]);
+      if (primitive != zc::none) {
+        auto failure = signatureSourceFailure(
+            SignatureSourceDiagnostic::PrimitiveTypeBoundUnsupported, boundModule, node, node);
+        if (failure != zc::none) {
+          ZC_IF_SOME(value, failure) {
+            ZC_IF_SOME(kind, primitive) {
+              value.arguments.add(SignatureSourceArgument(SignaturePrimitiveTypeDisplayArg{kind}));
+            }
+            sink.add(zc::mv(value));
+          }
+        }
+      }
+      return zc::none;
+    }
+    auto built = buildInterface(node);
+    if (built != zc::none) return built;
+    if (syntax.kind != ast::SyntaxKind::NamedTypeExpr) {
+      // DynTypeExpr and the other rejected shapes record their own failure
+      // inside buildInterface.
+      return zc::none;
+    }
+    const ast::NodeId path(syntax.payload.words[ast::kNamedTypeExprPathWord]);
+    auto definition = resolvedDefinition(path);
+    if (definition == zc::none) {
+      recordUnresolvedTypeName(node);
+      return zc::none;
+    }
+    ZC_IF_SOME(interface, definition) {
+      ZC_IF_SOME(record, identities.definition(interface)) {
+        if (record.record().kind() != identity::DefinitionKind::Interface) {
+          auto failure = signatureSourceFailure(SignatureSourceDiagnostic::GenericBoundNotInterface,
+                                                boundModule, node, node);
+          if (failure != zc::none) {
+            ZC_IF_SOME(value, failure) {
+              value.arguments.add(
+                  SignatureSourceArgument(SignatureDefinitionDisplayArg{record.handle()}));
+              sink.add(zc::mv(value));
+            }
+          }
+        }
+      }
+    }
+    return zc::none;
+  }
+
   zc::Maybe<PatternInterfaceInstantiation> buildPatternInterface(ast::NodeId node) {
     const auto& tree = boundModule.tree();
     if (!tree.contains(node)) return zc::none;
@@ -1306,65 +1362,55 @@ private:
     return BuiltSourceType{interned.get<type::SemanticTypeInterned>().id, zc::mv(pattern)};
   }
 
-  zc::Maybe<BuiltSourceType> buildPrimitive(uint32_t kind) {
-    PrimitiveKind primitive;
+  static zc::Maybe<PrimitiveKind> primitiveKindForWord(uint32_t kind) {
     switch (kind) {
       case 0:
-        primitive = PrimitiveKind::I8;
-        break;
+        return PrimitiveKind::I8;
       case 1:
-        primitive = PrimitiveKind::I16;
-        break;
+        return PrimitiveKind::I16;
       case 2:
-        primitive = PrimitiveKind::I32;
-        break;
+        return PrimitiveKind::I32;
       case 3:
-        primitive = PrimitiveKind::I64;
-        break;
+        return PrimitiveKind::I64;
       case 4:
-        primitive = PrimitiveKind::U8;
-        break;
+        return PrimitiveKind::U8;
       case 5:
-        primitive = PrimitiveKind::U16;
-        break;
+        return PrimitiveKind::U16;
       case 6:
-        primitive = PrimitiveKind::U32;
-        break;
+        return PrimitiveKind::U32;
       case 7:
-        primitive = PrimitiveKind::U64;
-        break;
+        return PrimitiveKind::U64;
       case 8:
-        primitive = PrimitiveKind::F32;
-        break;
+        return PrimitiveKind::F32;
       case 9:
-        primitive = PrimitiveKind::F64;
-        break;
+        return PrimitiveKind::F64;
       case 10:
-        primitive = PrimitiveKind::Bool;
-        break;
+        return PrimitiveKind::Bool;
       case 11:
-        primitive = PrimitiveKind::Str;
-        break;
+        return PrimitiveKind::Str;
       case 12:
-        primitive = PrimitiveKind::Char;
-        break;
+        return PrimitiveKind::Char;
       case 13:
-        primitive = PrimitiveKind::Null;
-        break;
+        return PrimitiveKind::Null;
       case 14:
-        primitive = PrimitiveKind::Unit;
-        break;
+        return PrimitiveKind::Unit;
       case 15:
-        primitive = PrimitiveKind::Never;
-        break;
+        return PrimitiveKind::Never;
       case 16:
-        primitive = PrimitiveKind::Any;
-        break;
+        return PrimitiveKind::Any;
       default:
         return zc::none;
     }
-    return intern(type::semantic::TypeData(type::semantic::PrimitiveTypeData{primitive}),
-                  TypeKeyPattern::primitive(primitive));
+  }
+
+  zc::Maybe<BuiltSourceType> buildPrimitive(uint32_t kind) {
+    auto primitive = primitiveKindForWord(kind);
+    if (primitive == zc::none) { return zc::none; }
+    ZC_IF_SOME(value, primitive) {
+      return intern(type::semantic::TypeData(type::semantic::PrimitiveTypeData{value}),
+                    TypeKeyPattern::primitive(value));
+    }
+    return zc::none;
   }
 
   zc::Maybe<const binder::BindingTargetValue&> resolvedTarget(ast::NodeId node) const {
@@ -2552,7 +2598,7 @@ zc::Maybe<SourceGenericParametersBuildResult> buildSourceGenericParameters(
           boundListSyntax.payload.words[ast::kTypeParameterBoundListBoundsSizeWord]};
       if (!tree.contains(boundNodes) || boundNodes.empty()) return zc::none;
       for (const auto boundNode : tree.list(boundNodes)) {
-        auto boundInterface = typeBuilder.buildInterface(boundNode);
+        auto boundInterface = typeBuilder.buildGenericBound(boundNode);
         if (boundInterface == zc::none) {
           if (!listFailures.empty()) {
             return SourceGenericParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
@@ -2705,10 +2751,12 @@ zc::Maybe<SourceCallableParametersBuildResult> buildCallableParameters(
   if (!tree.contains(parameterNodes) || parameterNodes.size > UINT32_MAX) return zc::none;
 
   zc::Maybe<const identity::DefinitionKey&> ownerKey;
+  zc::Maybe<ast::NodeId> ownerNode;
   for (const auto& definition : input.boundModule.definitions().definitions()) {
     if (definition.definition != owner) continue;
     if (ownerKey != zc::none) return zc::none;
     ownerKey = definition.key;
+    ownerNode = definition.node;
   }
   if (ownerKey == zc::none) return zc::none;
 
@@ -2765,7 +2813,18 @@ zc::Maybe<SourceCallableParametersBuildResult> buildCallableParameters(
     }
     const auto& syntax = tree.node(entry.node);
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionParameterDeclDefaultWord]))) {
-      return zc::none;
+      // Default argument values are grammar the signature layer accepts but the
+      // lowered surface does not implement yet. Drain the owning callable as
+      // ZOM4099 on the defaulted parameter instead of returning a structural
+      // none that becomes a MissingRequiredFact invariant.
+      ZC_IF_SOME(owner, ownerNode) {
+        auto failure =
+            signatureSourceFailure(SignatureSourceDiagnostic::FunctionBodySemanticsUnavailable,
+                                   input.boundModule, owner, entry.node);
+        if (failure == zc::none) return zc::none;
+        ZC_IF_SOME(value, failure) { listFailures.add(zc::mv(value)); }
+      }
+      return SourceCallableParametersBuildResult(SourceListRejected{zc::mv(listFailures)});
     }
     auto label = identity::SemanticIdentifier::fromCanonical(
         tree.ident(ast::IdentId(syntax.payload.words[ast::kFunctionParameterDeclNameWord])));
@@ -7626,6 +7685,22 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       if (definitionKind == identity::DefinitionKind::Constant ||
           definitionKind == identity::DefinitionKind::Static) {
+        // An extern-block variable is grammar the parser and binder accept, but
+        // the FFI surface (RFC 0006) is not implemented yet. Drain the foreign
+        // declaration itself as ZOM4127 instead of applying the module-binding
+        // declarator contract and reaching an invariant.
+        if (tree.contains(definition.node) &&
+            tree.node(definition.node).kind == ast::SyntaxKind::ExternVarDecl) {
+          auto failure = signatureSourceFailure(
+              SignatureSourceDiagnostic::ExternDeclarationSemanticsUnavailable, input.boundModule,
+              definition.node, definition.node);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                                definition.node.value));
+          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          continue;
+        }
         auto definitionSite = definition.site.clone();
         if (!definitionSite.value().is<binder::PatternBindingSite>()) {
           bool found = false;
@@ -8453,33 +8528,23 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
         if (variantTypeRejected) { continue; }
-        zc::Maybe<CanonicalInteger> discriminant;
         if (tree.contains(discriminantNode)) {
-          auto checkedKey = checkedNodeKey(input.boundModule, discriminantNode);
-          if (checkedKey == zc::none) {
+          // Explicit enum discriminants (`A = 1`) are grammar the parser and
+          // binder accept, but the enum surface does not implement them yet.
+          // Drain the annotated variant as ZOM4128 on its declaration rather
+          // than encoding the discriminant and reaching a downstream IR
+          // invariant.
+          auto failure = signatureSourceFailure(
+              SignatureSourceDiagnostic::EnumDiscriminantSemanticsUnavailable, input.boundModule,
+              definition.node, definition.node);
+          if (failure == zc::none) {
             return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
-                                                discriminantNode.value));
+                                                definition.node.value));
           }
-          ZC_IF_SOME(key, checkedKey) {
-            auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
-                context, module, tree, discriminantNode, key,
-                input.boundModule.parsedModule().source(), input.identities, input.semanticTypes});
-            if (!emitted.is<scalar_literal::EmittedFacts>()) {
-              return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
-                                                  discriminantNode.value));
-            }
-            const auto& literal = emitted.get<scalar_literal::EmittedFacts>().literal.value.literal;
-            auto integer = literal.integerValue();
-            if (integer == zc::none) {
-              return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
-                                                  discriminantNode.value));
-            }
-            ZC_IF_SOME(value, integer) {
-              discriminant =
-                  CanonicalInteger{value.sign, zc::heapArray<uint8_t>(value.magnitude.asPtr())};
-            }
-          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          continue;
         }
+        zc::Maybe<CanonicalInteger> discriminant;
         SignatureScope variantScope(EnclosedSignatureScope{ownerDefinition});
         built.add(
             BuiltSignature{SemanticSignature{definition.definition, definitionKind,
@@ -8714,6 +8779,22 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       ast::NodeId parameters;
       ast::NodeId returnType;
+      if (tree.node(definition.node).kind == ast::SyntaxKind::ExternDecl) {
+        // An `extern "abi" { fun ... }` member is grammar the parser and binder
+        // accept, but the FFI call ABI (RFC 0006) is not implemented yet. The
+        // companion `variable` declaration binds as a Static and drains in the
+        // Constant/Static branch above. Drain the foreign function itself as
+        // ZOM4127 instead of a MissingRequiredFact invariant.
+        auto failure =
+            signatureSourceFailure(SignatureSourceDiagnostic::ExternDeclarationSemanticsUnavailable,
+                                   input.boundModule, definition.node, definition.node);
+        if (failure == zc::none) {
+          return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                              definition.node.value));
+        }
+        ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        continue;
+      }
       if ((definitionKind != identity::DefinitionKind::Function &&
            definitionKind != identity::DefinitionKind::Method &&
            definitionKind != identity::DefinitionKind::Constructor &&
@@ -8722,6 +8803,13 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
+      // A concrete method supplied by a standalone `impl` block ALWAYS publishes its
+      // signature here, even when its body is outside the lowered surface. Coherence
+      // (orphan/conflicting-impl detection) is a signature-level fact and must observe the
+      // complete impl, including receiverless trait methods (`impl I for T { fun act() ... }`)
+      // and receiver-bearing ones. An unsupported BODY is drained later (ZOM4099) by the
+      // checker body / HIR stage; suppressing the signature here would hide those impls from
+      // coherence.
       auto callableGenerics = buildSourceGenericParameters(input, definition.definition);
       bool callableGenericsRejected = false;
       auto callableGenericParams =
@@ -8916,7 +9004,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           }
           auto subject =
               typeBuilder.build(ast::NodeId(predicateSyntax.payload.words[ast::kWherePredTyWord]));
-          auto bound = typeBuilder.buildInterface(
+          auto bound = typeBuilder.buildGenericBound(
               ast::NodeId(predicateSyntax.payload.words[ast::kWherePredBoundWord]));
           if (subject == zc::none || bound == zc::none) {
             if (!sourceFailures.empty()) {

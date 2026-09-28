@@ -90,6 +90,20 @@ bool isUnitSemanticType(const type::SemanticTypeStore& store, identity::Semantic
                  .kind == type::semantic::PrimitiveKind::Unit;
 }
 
+// Returns true when the interned semantic type is the canonical `i32` primitive.
+// The multi-field aggregate lowering slice admits `i32` stored fields only;
+// mixed-width, floating-point, boolean, and aggregate-typed fields keep their
+// owning definition on the capability drain (ZOM4099).
+bool isI32SemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
+  auto lookup = store.get(id);
+  return lookup.is<type::SemanticTypeLookup>() &&
+         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
+         lookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .get<type::semantic::PrimitiveTypeData>()
+                 .kind == type::semantic::PrimitiveKind::I32;
+}
+
 // Builds the implicit `this` receiver parameter of an admitted inherent method.
 // The receiver is a borrow of the enclosing nominal (`&Owner` shared,
 // `&mut Owner` mutable); the owner nominal comes from the verified member scope
@@ -144,23 +158,6 @@ zc::Maybe<HirParameter> buildMethodReceiverParameter(
   return HirParameter{receiver.parameter.clone(),
                       internedReference.get<type::SemanticTypeInterned>().id,
                       receiverEntry->source.clone()};
-}
-
-/// \brief True when two aggregate elements initialize fields of the same
-/// canonical semantic type. The ownership overlay keys per-field drop and
-/// marker plans by field type only, so same-typed sibling fields collide and
-/// cannot be validated in this slice. Such an initializer must drain as a
-/// per-definition capability rejection (ZOM4099) at HIR construction rather
-/// than reach proof validation as an internal incident. Canonical handles make
-/// this alias-transparent; a syntax comparison would not be.
-bool aggregateHasDuplicateFieldTypes(
-    zc::ArrayPtr<const checker::checked::AggregateElementFact> elements) {
-  for (size_t first = 0; first < elements.size(); ++first) {
-    for (size_t second = first + 1; second < elements.size(); ++second) {
-      if (elements[first].destinationType == elements[second].destinationType) return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace
@@ -286,6 +283,25 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       continue;
     }
     const auto& tree = bound.tree();
+    // A concrete method with a body supplied by a standalone `impl Interface
+    // for Type { ... }` block is outside the lowered surface (trait method
+    // bodies do not lower yet). Drain it here, before any shape dispatch, for
+    // BOTH receiverless and `this`-bearing impl methods. Its signature is
+    // still published upstream so coherence (orphan/conflicting-impl) observes
+    // the complete impl; only the body is unsupported. Without this gate the
+    // receiver-bearing shape reaches an invalid-fact invariant.
+    bool providedByImpl = false;
+    for (const auto& owner : definition.record.owners()) {
+      if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) {
+        providedByImpl = true;
+        break;
+      }
+    }
+    if (providedByImpl) {
+      return rejectHirCapability<HirModuleCandidate>(definition.definition, registries,
+                                                     ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                     definition.source.clone());
+    }
     const bool admitted = tree.contains(definition.node) &&
                           tree.node(definition.node).kind == ast::SyntaxKind::MethodDecl &&
                           definition.site.value().is<binder::DeclarationDefinitionSite>() &&
@@ -761,6 +777,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          false,
                                                           false});
         }
         continue;
@@ -931,6 +948,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          false,
                                                           false});
         }
         continue;
@@ -1245,6 +1263,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
+                                                        false,
                                                         false});
         continue;
       }
@@ -1604,7 +1623,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(parameterFieldWriteParameter),
-                                                        true});
+                                                        true,
+                                                        false});
         continue;
       }
       zc::Maybe<checker::checked::CanonicalConstValue> literal;
@@ -1617,6 +1637,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirLocalReferenceExpression> localReference;
       zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
       zc::Maybe<HirParameterFieldProjectionExpression> parameterFieldProjection;
+      bool byValueParameterField = false;
       zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
       zc::Maybe<checker::checked::CanonicalConstValue> parameterFieldWriteLiteral;
       zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
@@ -1726,14 +1747,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
               rejected = true;
               break;
-            }
-            // Same-typed sibling fields cannot be tracked by the ownership
-            // overlay yet; drain the owning definition as ZOM4099 instead of
-            // failing proof validation as an internal incident.
-            if (aggregateHasDuplicateFieldTypes(sourceAggregate.elements.asPtr())) {
-              return rejectHirCapability<HirModuleCandidate>(
-                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-                  ZC_ASSERT_NONNULL(initializerSpan).clone());
             }
             zc::Vector<HirNominalAggregateElement> elements;
             for (const auto& sourceElement : sourceAggregate.elements) {
@@ -2158,6 +2171,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
+                                                        false,
                                                         false});
         continue;
       }
@@ -2234,7 +2248,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                 zc::mv(noInitializer),
                                 ZC_ASSERT_NONNULL(patternSpan).clone(),
                                 zc::mv(noInitializerSpan)};
-        if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow) {
+        if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
+            !shape.returnsDirectAggregateCall) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -2251,9 +2266,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
           const auto& initializerType = facts.nodeTypes().entries()[initializerTypeSlot].value;
           if ((!shape.returnsLocalField && !shape.returnsReceiverCall &&
-               !shape.returnsLocalBorrow && initializerType != nodeType.value) ||
+               !shape.returnsDirectAggregateCall && !shape.returnsLocalBorrow &&
+               initializerType != nodeType.value) ||
               (!shape.returnsLocalField && !shape.returnsReceiverCall &&
-               !shape.returnsLocalBorrow && initializerType != callable.success) ||
+               !shape.returnsDirectAggregateCall && !shape.returnsLocalBorrow &&
+               initializerType != callable.success) ||
               (shape.returnsLocalBorrow && initializerType != localType)) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
@@ -2270,7 +2287,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                   ZC_ASSERT_NONNULL(patternSpan).clone(),
                                   zc::mv(initializerSource)};
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
-              !shape.returnsLocalBorrow) {
+              !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -2325,13 +2342,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            // Same-typed sibling fields cannot be tracked by the ownership
-            // overlay yet; drain the owning definition as ZOM4099 instead of
-            // failing proof validation as an internal incident.
-            if (aggregateHasDuplicateFieldTypes(sourceAggregate.elements.asPtr())) {
-              return rejectHirCapability<HirModuleCandidate>(
-                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-                  ZC_ASSERT_NONNULL(initializerSpan).clone());
+            // The pure aggregate field-return and by-value aggregate-call
+            // native slices admit i32 stored fields only; every other element
+            // type keeps the owning definition on the per-definition capability
+            // drain (ZOM4099). The whole-aggregate return and the field-
+            // overwrite arms accept a mixed-type aggregate through their own
+            // construction and are not restricted here.
+            if ((shape.returnsLocalField && shape.localWrites.size == 0) ||
+                shape.returnsDirectAggregateCall) {
+              for (const auto& sourceElement : sourceAggregate.elements) {
+                if (!isI32SemanticType(checkedModule.semanticTypes(),
+                                       sourceElement.destinationType)) {
+                  return rejectHirCapability<HirModuleCandidate>(
+                      definition.definition, registries,
+                      ir::IrFailureKind::UnsupportedSourceConstruct,
+                      ZC_ASSERT_NONNULL(initializerSpan).clone());
+                }
+              }
             }
             zc::Vector<HirNominalAggregateElement> elements;
             for (const auto& sourceElement : sourceAggregate.elements) {
@@ -2772,6 +2799,74 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), nodeType.value,
                                                 HirValueCategory::Place, valueSpanValue.clone()};
           }
+        }
+      } else if (shape.returnsParameterField) {
+        const ast::NodeId object(
+            tree.node(shape.value).payload.words[ast::kMemberExpressionObjectWord]);
+        auto objectTypeIndex = factIndex(facts.nodeTypes(), object);
+        auto memberIndex = factIndex(facts.members(), shape.value);
+        auto placeIndex = factIndex(facts.places(), shape.value);
+        if (objectTypeIndex == zc::none || memberIndex == zc::none || placeIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t objectTypeSlot = 0;
+        size_t memberSlot = 0;
+        size_t placeSlot = 0;
+        ZC_IF_SOME(index, objectTypeIndex) { objectTypeSlot = index; }
+        ZC_IF_SOME(index, memberIndex) { memberSlot = index; }
+        ZC_IF_SOME(index, placeIndex) { placeSlot = index; }
+        const auto& member = facts.members().entries()[memberSlot].value;
+        const auto& place = facts.places().entries()[placeSlot].value;
+        const auto& root = place.root.variant();
+        if (member.node != shape.value || member.memberType != nodeType.value ||
+            member.adjustment != zc::none ||
+            facts.nodeTypes().entries()[objectTypeSlot].value != member.receiverType ||
+            place.type != nodeType.value || !place.movable ||
+            !root.is<checker::checked::CallableParameterPlaceRoot>() ||
+            place.projections.size() != 1 ||
+            !place.projections[0].variant().is<checker::checked::FieldProjection>() ||
+            place.projections[0].variant().get<checker::checked::FieldProjection>().field !=
+                member.member ||
+            !typeExists(member.receiverType, checkedModule.semanticTypes())) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& parameterRoot = root.get<checker::checked::CallableParameterPlaceRoot>();
+        auto rootAuthority = registries.callableParameter(parameterRoot.parameter);
+        if (rootAuthority == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        ZC_IF_SOME(entry, rootAuthority) {
+          bool matches = false;
+          for (const auto& candidate : parameters) {
+            if (candidate.key == entry.key() && candidate.type == member.receiverType) {
+              matches = true;
+            }
+          }
+          if (!matches) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // A by-value struct parameter is a nominal, not a reference.
+          auto parameterLookup = checkedModule.semanticTypes().get(member.receiverType);
+          if (!parameterLookup.is<type::SemanticTypeLookup>() ||
+              !parameterLookup.get<type::SemanticTypeLookup>()
+                   .data()
+                   .is<type::semantic::NominalTypeData>()) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                valueSpanValue.clone());
+          }
+          parameterFieldProjection = HirParameterFieldProjectionExpression{
+              HirNodeId(),    entry.key().clone(),     member.receiverType,   member.member,
+              nodeType.value, HirValueCategory::Place, valueSpanValue.clone()};
+          byValueParameterField = true;
         }
       } else if (shape.returnsReceiverField) {
         const ast::NodeId object(
@@ -3411,7 +3506,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      nodeType.value, expectedMutability, valueSpanValue.clone()};
       }
       ast::NodeId callNode = shape.value;
-      if (!shape.returnsReceiverCall) {
+      if (!shape.returnsReceiverCall && !shape.returnsDirectAggregateCall) {
         ZC_IF_SOME(initializer, shape.localInitializer) { callNode = initializer; }
       }
       if (!tree.contains(callNode)) {
@@ -3592,7 +3687,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   }
                   callArguments.add(
                       HirDirectCallArgument{argumentType, literal.literal.clone(),
-                                            zc::Maybe<identity::CallableParameterKey>(),
+                                            zc::Maybe<identity::CallableParameterKey>(), zc::none,
                                             ZC_ASSERT_NONNULL(argumentSpan).clone()});
                 }
                 receiverCall = HirReceiverCallExpression{HirNodeId(),
@@ -3882,7 +3977,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               statementCallArguments.add(
                   HirDirectCallArgument{argumentType, literal.literal.clone(),
-                                        zc::Maybe<identity::CallableParameterKey>(),
+                                        zc::Maybe<identity::CallableParameterKey>(), zc::none,
                                         ZC_ASSERT_NONNULL(argumentSpan).clone()});
             }
             statementReceiverCall =
@@ -4010,9 +4105,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               zc::Maybe<identity::CallableParameterKey> noParameter;
               callArguments.add(HirDirectCallArgument{argumentType, literal.literal.clone(),
-                                                      zc::mv(noParameter),
+                                                      zc::mv(noParameter), zc::none,
                                                       ZC_ASSERT_NONNULL(argumentSpan).clone()});
               continue;
+            }
+            // A by-value aggregate call passes the single aggregate-initialized
+            // owner local as the sole argument. The local is the body's one and
+            // only binding; its field set was i32-gated with the aggregate
+            // initializer above. Every other owner-local argument keeps the
+            // parameter-key rejection below.
+            if (shape.returnsDirectAggregateCall && local != zc::none) {
+              auto localBinding = resolvedOwnerLocal(bound.bindings(), argument);
+              if (localBinding != zc::none &&
+                  ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(localBinding),
+                                    shape.localPattern, tree) &&
+                  argumentType == ZC_ASSERT_NONNULL(local).type) {
+                zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+                zc::Maybe<identity::CallableParameterKey> noParameter;
+                zc::Maybe<HirLocalId> argumentLocal = hirLocalId(1);
+                callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
+                                                        zc::mv(noParameter), zc::mv(argumentLocal),
+                                                        ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                continue;
+              }
             }
             auto parameter = resolvedCallableParameter(bound.bindings(), argument);
             zc::Maybe<identity::CallableParameterKey> parameterKey;
@@ -4033,7 +4148,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             zc::Maybe<checker::checked::CanonicalConstValue> noValue;
             callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
-                                                    zc::mv(parameterKey),
+                                                    zc::mv(parameterKey), zc::none,
                                                     ZC_ASSERT_NONNULL(argumentSpan).clone()});
           }
           call =
@@ -4126,7 +4241,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::mv(statementReceiverCall),
                                                       zc::mv(statementReceiverReference),
                                                       zc::none,
-                                                      voidBody});
+                                                      voidBody,
+                                                      byValueParameterField});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -4281,6 +4397,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t directCallCount = 0;
   size_t directCallArgumentCount = 0;
   size_t directCallLiteralArgumentCount = 0;
+  size_t directAggregateCallCount = 0;
   size_t receiverCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   size_t receiverSelfCallCount = 0;
@@ -4457,6 +4574,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     bool missingInitializer = false;
     ZC_IF_SOME(local, function.local) { missingInitializer = local.initializer == zc::none; }
     const bool uninitializedLocal = missingInitializer && function.localWrites.size() == 0;
+    // By-value aggregate call: `let p: P = P { .. }; return f(p);`. The aggregate
+    // initializes the sole owner local and a direct call passes that local by
+    // value as its sole argument. The combination call + aggregate + local is
+    // unique to this shape, so the counting gates key directly off it.
+    const bool isDirectAggregateCall =
+        function.call != zc::none && function.aggregate != zc::none && function.local != zc::none &&
+        function.localReference == zc::none && function.receiverCall == zc::none &&
+        function.receiverSelfCall == zc::none;
     const bool hasParameterReference = function.parameterReference != zc::none;
     const bool hasParameterIndex = function.parameterIndex != zc::none;
     const bool hasParameterReborrow = function.parameterReborrow != zc::none;
@@ -4519,7 +4644,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
     if ((function.literal != zc::none && function.call != zc::none) ||
         (function.literal != zc::none && function.aggregate != zc::none) ||
-        (function.call != zc::none && function.aggregate != zc::none) ||
+        (function.call != zc::none && function.aggregate != zc::none && !isDirectAggregateCall) ||
         (hasParameterReference &&
          (function.literal != zc::none || function.call != zc::none ||
           function.aggregate != zc::none || (hasParameterReborrow && !localAliasReborrow))) ||
@@ -4542,6 +4667,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       directCallArgumentCount += call.arguments.size();
       for (const auto& argument : call.arguments) {
         if (argument.value != zc::none) ++directCallLiteralArgumentCount;
+      }
+      if (isDirectAggregateCall) {
+        ++directAggregateCallCount;
+        // The sole argument is the body's aggregate-initialized owner local,
+        // passed by value; it carries neither a literal constant nor a
+        // parameter key.
+        if (call.arguments.size() != 1 || call.arguments[0].value != zc::none ||
+            call.arguments[0].parameter != zc::none || call.arguments[0].local != hirLocalId(1) ||
+            call.arguments[0].type != ZC_ASSERT_NONNULL(function.local).type) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               1);
+        }
       }
     }
     ZC_IF_SOME(call, function.receiverCall) {
@@ -4607,7 +4745,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (hasLocalBorrow) ++localBorrowCount;
     if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
-        function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow) {
+        function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
+        !isDirectAggregateCall) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -4684,7 +4823,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
           directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
           equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
-          comparisonReturnCount + binaryWriteCount + parameterFieldWriteCount) +
+          comparisonReturnCount + binaryWriteCount + parameterFieldWriteCount +
+          directAggregateCallCount) +
           sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
@@ -4774,6 +4914,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                value.initializerSpan.clone()});
   }
   for (auto& value : pendingFunctions) {
+    // By-value struct parameter field return: `fun f(p: P) -> T { return p.f; }`
+    // with no receiver and no other body carriers. The HIR projection record is
+    // identical to a receiver field projection; MIR construction selects the
+    // by-value builder from the declaration parameters.
+    if (value.byValueParameterField && value.parameterFieldProjection != zc::none &&
+        value.receiver == zc::none && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
+        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
+        value.literal == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
+        value.local == zc::none && value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.receiverSelfCall == zc::none &&
+        value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops);
+      lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     // Receiver field method family. Either one shared-receiver method whose
     // body is the single `return this.<field>;` (four node ids: function, body,
     // return, projection), or one mutating-receiver method that first overwrites
@@ -5061,6 +5227,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    if (value.call != zc::none && value.aggregate != zc::none && value.local != zc::none &&
+        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localReference == zc::none && value.receiverCall == zc::none &&
+        value.receiverSelfCall == zc::none && value.literal == zc::none &&
+        value.parameterReference == zc::none && callFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops);
+      lowerDirectAggregateCallFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     if (value.call != zc::none && value.local == zc::none && value.receiverCall == zc::none &&
         value.aggregate == zc::none && value.localReference == zc::none &&
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {

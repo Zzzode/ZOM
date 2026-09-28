@@ -2835,9 +2835,12 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
     case DiagID::BinaryOperatorSemanticsUnavailable:
       return argumentKinds(arguments, Kind::Operator);
     case DiagID::UnknownStructField:
+    case DiagID::DuplicateStructField:
       return argumentKinds(arguments, Kind::Identifier);
     case DiagID::MethodCallSemanticsUnavailable:
       return argumentKinds(arguments, Kind::DeclaredDefinitionName);
+    case DiagID::FunctionBodySemanticsUnavailable:
+      return argumentKinds(arguments);
     case DiagID::BodyLiteralOutOfRange:
       return argumentKinds(arguments, Kind::Literal, Kind::PrimitiveType);
     case DiagID::ConstantArithmeticFailure:
@@ -2979,6 +2982,8 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::MemberNotFound:
     case DiagID::MethodCallSemanticsUnavailable:
       return matches(Stage::Body, Producer::Call, Class::InvalidOperation, true);
+    case DiagID::FunctionBodySemanticsUnavailable:
+      return matches(Stage::Body, Producer::Inference, Class::InvalidOperation, true);
     case DiagID::IndexRequiresInteger:
     case DiagID::TupleIndexRequiresIntegerLiteral:
     case DiagID::TupleIndexOutOfBounds:
@@ -2991,6 +2996,7 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::AggregateLiteralTargetRequired:
     case DiagID::UnknownStructField:
     case DiagID::MissingStructField:
+    case DiagID::DuplicateStructField:
       return matches(Stage::Body, Producer::Aggregate, Class::InvalidOperation, true);
     case DiagID::ArrayElementTypeMismatch:
       return matches(Stage::Body, Producer::Aggregate, Class::TypeMismatch, true);

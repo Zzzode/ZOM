@@ -503,6 +503,24 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   return branchReturns(thenStmt) && branchReturns(elseStmt);
 }
 
+// Structurally admits `return <identifier>.<field>;` in a statement-less
+// function body: one dot field projection off a bare identifier. In such a body
+// the identifier is a by-value callable parameter; the checker resolves it and a
+// non-parameter identifier keeps its owner on the capability drain. A chained
+// projection (`a.b.c`) is intentionally not admitted.
+bool isAdmittedParameterFieldReturn(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(value);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   const ast::NodeId body(function.payload.words[ast::kFunctionDeclBodyWord]);
   if (!tree.contains(body)) return true;
@@ -550,7 +568,9 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   ZC_IF_SOME(statement, finalStatement) { returnNode = statement; }
   const ast::NodeId returnValue(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(returnValue)) return true;
-  if (statements.size == 1) return isAdmittedReturnValue(tree, returnValue);
+  if (statements.size == 1)
+    return isAdmittedReturnValue(tree, returnValue) ||
+           isAdmittedParameterFieldReturn(tree, returnValue);
 
   if (statements.size == 3) {
     // A leading mutable-local declaration, an admitted `while` loop whose body
@@ -684,6 +704,23 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   ast::NodeId returnReference = returnValue;
   const bool returnsField = tree.node(returnValue).kind == ast::SyntaxKind::MemberExpression;
   const bool returnsReceiverCall = isAdmittedReceiverCall(tree, returnValue);
+  // A by-value aggregate direct call: `let p = P { .. }; return f(p);`. The
+  // sole call argument must be a bare identifier naming this same local; its
+  // nominal type and i32 field set are checker/HIR decisions.
+  bool returnsDirectLocalCall = false;
+  if (!returnsReceiverCall && isAdmittedDirectCall(tree, returnValue)) {
+    const auto& directCall = tree.node(returnValue);
+    const ast::NodeList directArguments{directCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                        directCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+    if (tree.contains(directArguments) && directArguments.size == 1) {
+      const ast::NodeId directArgument = tree.list(directArguments)[0];
+      if (tree.contains(directArgument) &&
+          tree.node(directArgument).kind == ast::SyntaxKind::IdentExpr) {
+        returnsDirectLocalCall = true;
+        returnReference = directArgument;
+      }
+    }
+  }
   if (returnsField) {
     returnReference =
         ast::NodeId(tree.node(returnValue).payload.words[ast::kMemberExpressionObjectWord]);
@@ -701,6 +738,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         ast::NodeId(tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
+  (void)returnsDirectLocalCall;
   if (!tree.contains(initializer) && statements.size == 2) {
     // A local borrow requires the referent to be initialized at the borrow point.
     if (isAdmittedLocalBorrow(tree, returnValue)) return false;

@@ -583,6 +583,13 @@ zc::Maybe<diagnostics::DiagnosticFact> identityAdmissionDiagnostic(
       }
       return binder::StableBindingDiagnosticFactFactory::invalidMethodReceiver(
           ZC_ASSERT_NONNULL(primary));
+    case binder::StableIdentityCandidateSourceFailureKind::ConstructorReceiverUnsupported:
+      if (failure.previousNode != zc::none || failure.previous != zc::none ||
+          failure.identifier != zc::none) {
+        return zc::none;
+      }
+      return binder::StableBindingDiagnosticFactFactory::constructorReceiverUnsupported(
+          ZC_ASSERT_NONNULL(primary));
   }
   ZC_UNREACHABLE;
 }

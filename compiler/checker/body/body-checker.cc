@@ -212,6 +212,42 @@ zc::Maybe<identity::DefId> enclosingBodyOwner(
   return result;
 }
 
+/// \brief True when the binder attached an executable owner body to the
+/// definition. A bodyless interface requirement method has none.
+///
+/// Mirrors hir::detail::hasExecutableBody; the checker cannot depend on the HIR
+/// internal header, so the owner-body walk is duplicated here.
+bool hasExecutableOwnerBody(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                            const binder::MaterializedDefinitionInventoryEntry& definition) {
+  for (const auto& body : boundModule.definitions().ownerBodies()) {
+    const auto& owner = body.owner().owner();
+    if (owner.kind() == binder::StableBodyOwnerKind::Definition) {
+      ZC_IF_SOME(key, owner.definitionKey()) {
+        if (key == definition.key) { return true; }
+      }
+      continue;
+    }
+    if (definition.record.owners().size() == 0) { return true; }
+  }
+  return false;
+}
+
+/// \brief True when a method definition is a concrete method with a body
+/// supplied by a standalone `impl Interface for Type` block (an Implementation
+/// stable owner). Interface requirement declarations are not impl-owned;
+/// inherent struct/class methods are owned by their nominal, not by an impl.
+bool providedByImplWithBody(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                            const binder::MaterializedDefinitionInventoryEntry& definition) {
+  if (definition.record.kind() != identity::DefinitionKind::Method ||
+      !hasExecutableOwnerBody(boundModule, definition)) {
+    return false;
+  }
+  for (const auto& owner : definition.record.owners()) {
+    if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) { return true; }
+  }
+  return false;
+}
+
 zc::Maybe<identity::DefId> returnValueOwner(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId value) {
   const auto& tree = boundModule.tree();
@@ -910,6 +946,63 @@ zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
   ZC_UNREACHABLE
 }
 
+/// \brief Shape of `parameter.<field>` where `parameter` is an ordinary by-value
+/// callable parameter of closed nominal struct type. The place root is the
+/// callable parameter with one field projection; unlike the receiver shape it
+/// carries no dereference.
+struct ParameterFieldShape final {
+  identity::CallableParameterId parameter;
+  identity::SemanticTypeId receiverType;
+  identity::DefId field;
+  identity::SemanticTypeId fieldType;
+};
+
+zc::Maybe<identity::SemanticTypeId> callableParameterReferenceType(const BodyCheckingInput& input,
+                                                                   ast::NodeId node);
+
+zc::Maybe<ParameterFieldShape> parameterFieldShape(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const auto parameter = resolvedCallableParameter(input.boundModule.bindings(), object);
+  if (parameter == zc::none) return zc::none;
+  auto receiverType = callableParameterReferenceType(input, object);
+  if (receiverType == zc::none) return zc::none;
+
+  auto lookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverType));
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& typeData = lookup.get<type::SemanticTypeLookup>().data();
+  if (!typeData.is<type::semantic::NominalTypeData>()) return zc::none;
+  const auto& nominalType = typeData.get<type::semantic::NominalTypeData>();
+  if (nominalType.arguments.size() != 0) return zc::none;
+
+  auto field = nominalFieldShape(
+      input, nominalType.definition,
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
+  if (field == zc::none) return zc::none;
+  (void)nodeTypes;
+  ZC_IF_SOME(param, parameter) {
+    ZC_IF_SOME(type, receiverType) {
+      ZC_IF_SOME(memberField, field) {
+        return ParameterFieldShape{param, type, memberField.definition, memberField.type};
+      }
+    }
+  }
+  ZC_UNREACHABLE
+}
+
 /// \brief The implicit receiver of the inherent method enclosing a `this`
 /// expression: the receiver parameter, the method and owner definitions, the
 /// owner nominal type, the receiver reference type, and the receiver mode.
@@ -1072,7 +1165,41 @@ struct StructLiteralShape final {
   zc::Vector<checked::AggregateElementFact> elements;
 };
 
-zc::Maybe<StructLiteralShape> structLiteralShape(
+/// \brief A user-level error in a struct literal, classified so the production
+/// site can drain it with a registered ZOM code instead of collapsing every
+/// rejected literal into a MissingRequiredFact invariant.
+struct StructLiteralRejection final {
+  enum class Kind : uint8_t {
+    UnknownField,
+    MissingField,
+    DuplicateField,
+    UnsupportedIntegerField,
+    TypeMismatch
+  };
+  Kind kind;
+  zc::Maybe<identity::SemanticIdentifier> name;
+  zc::Maybe<identity::DefId> field;
+  zc::Maybe<identity::SemanticTypeId> actualType;
+  zc::Maybe<identity::SemanticTypeId> expectedType;
+};
+
+using StructLiteralBuildResult = zc::Maybe<zc::OneOf<StructLiteralShape, StructLiteralRejection>>;
+
+/// \brief The integer primitive kind of `type`, or none for non-integers.
+zc::Maybe<type::semantic::PrimitiveKind> integerPrimitiveKind(
+    const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId type) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::PrimitiveTypeData>()) return zc::none;
+  const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
+  if (kind < type::semantic::PrimitiveKind::I8 || kind > type::semantic::PrimitiveKind::Usize) {
+    return zc::none;
+  }
+  return kind;
+}
+
+StructLiteralBuildResult buildStructLiteral(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
   const auto& tree = input.boundModule.tree();
@@ -1094,7 +1221,37 @@ zc::Maybe<StructLiteralShape> structLiteralShape(
   const auto& nominal = typeData.get<type::semantic::NominalTypeData>();
   if (nominal.arguments.size() != 0) return zc::none;
 
+  // The complete declared-field set of the nominal; the inventory is the sole
+  // authority for "this name is not a field", distinct from a missing fact.
+  zc::Vector<identity::DefId> declaredFields;
+  for (const auto& nominalSignature : input.signatureFacts.signatures()) {
+    if (nominalSignature.definition != nominal.definition ||
+        !nominalSignature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    for (const auto field :
+         nominalSignature.payload.variant().get<signature::NominalSignature>().fields) {
+      declaredFields.add(field);
+    }
+  }
+  auto fieldNamed = [&](zc::StringPtr propertyName) -> zc::Maybe<identity::DefId> {
+    zc::Maybe<identity::DefId> result;
+    for (const auto field : declaredFields) {
+      bool named = false;
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition == field && definition.record.name() == propertyName) {
+          named = true;
+        }
+      }
+      if (!named) continue;
+      if (result != zc::none) return zc::none;
+      result = field;
+    }
+    return result;
+  };
+
   zc::Vector<checked::AggregateElementFact> elements(properties.size);
+  zc::Vector<identity::DefId> initializedFields;
   for (uint32_t index = 0; index < properties.size; ++index) {
     const auto property = tree.list(properties)[index];
     if (!tree.contains(property) || tree.node(property).kind != ast::SyntaxKind::ObjectProperty) {
@@ -1104,19 +1261,52 @@ zc::Maybe<StructLiteralShape> structLiteralShape(
     if (syntax.payload.words[ast::kObjectPropertyShortFormWord] != 0) return zc::none;
     const ast::NodeId value(syntax.payload.words[ast::kObjectPropertyValueWord]);
     if (!tree.contains(value)) return zc::none;
-    const auto field = nominalFieldShape(
-        input, nominal.definition,
-        tree.ident(ast::IdentId(syntax.payload.words[ast::kObjectPropertyNameWord])));
+    const auto propertyName =
+        tree.ident(ast::IdentId(syntax.payload.words[ast::kObjectPropertyNameWord]));
+    auto sourceName = identity::SemanticIdentifier::fromSource(propertyName);
+    if (sourceName == zc::none) return zc::none;
+    if (fieldNamed(propertyName) == zc::none) {
+      return StructLiteralBuildResult(StructLiteralRejection{
+          StructLiteralRejection::Kind::UnknownField, zc::mv(ZC_ASSERT_NONNULL(sourceName)),
+          zc::none, zc::none, zc::none});
+    }
+    const auto field = nominalFieldShape(input, nominal.definition, propertyName);
+    if (field == zc::none) return zc::none;
     zc::Maybe<const checked::NodeTypeMap::Entry&> valueType;
     for (const auto& entry : nodeTypes) {
       if (entry.key != value) continue;
       if (valueType != zc::none) return zc::none;
       valueType = entry;
     }
-    if (field == zc::none || valueType == zc::none) return zc::none;
+    if (valueType == zc::none) return zc::none;
     ZC_IF_SOME(member, field) {
       ZC_IF_SOME(sourceType, valueType) {
-        if (sourceType.value != member.type) return zc::none;
+        for (const auto initialized : initializedFields) {
+          if (initialized == member.definition) {
+            return StructLiteralBuildResult(StructLiteralRejection{
+                StructLiteralRejection::Kind::DuplicateField, zc::mv(ZC_ASSERT_NONNULL(sourceName)),
+                zc::none, zc::none, zc::none});
+          }
+        }
+        if (sourceType.value != member.type) {
+          // An integer literal assigned to a non-i32 integer field is a valid
+          // source relation the numeric-literal unification slice does not
+          // implement yet; drain it as ZOM4099 like the scalar positions. Every
+          // other unequal pair is a genuine type error (ZOM4009).
+          const bool integerLiteralWidening =
+              tree.node(value).kind == ast::SyntaxKind::IntLiteral &&
+              integerPrimitiveKind(input.semanticTypes, member.type) != zc::none &&
+              integerPrimitiveKind(input.semanticTypes, sourceType.value) != zc::none;
+          if (integerLiteralWidening) {
+            return StructLiteralBuildResult(
+                StructLiteralRejection{StructLiteralRejection::Kind::UnsupportedIntegerField,
+                                       zc::none, zc::none, sourceType.value, member.type});
+          }
+          return StructLiteralBuildResult(
+              StructLiteralRejection{StructLiteralRejection::Kind::TypeMismatch, zc::none, zc::none,
+                                     sourceType.value, member.type});
+        }
+        initializedFields.add(member.definition);
         zc::Maybe<identity::DefId> fieldDefinition = member.definition;
         zc::Maybe<checked::CoercionAdjustment> noAdjustment;
         elements.add(checked::AggregateElementFact{value, zc::mv(fieldDefinition), index,
@@ -1126,8 +1316,19 @@ zc::Maybe<StructLiteralShape> structLiteralShape(
     }
   }
   if (elements.size() != properties.size) return zc::none;
+  for (const auto field : declaredFields) {
+    bool fieldInitialized = false;
+    for (const auto& initialized : initializedFields) {
+      if (initialized == field) fieldInitialized = true;
+    }
+    if (!fieldInitialized) {
+      return StructLiteralBuildResult(StructLiteralRejection{
+          StructLiteralRejection::Kind::MissingField, zc::none, field, zc::none, zc::none});
+    }
+  }
   ZC_IF_SOME(value, type) {
-    return StructLiteralShape{nominal.definition, value, zc::mv(elements)};
+    return StructLiteralBuildResult(
+        StructLiteralShape{nominal.definition, value, zc::mv(elements)});
   }
   ZC_UNREACHABLE
 }
@@ -1731,27 +1932,44 @@ zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
     return zc::none;
   }
   const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
-  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
-      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr) {
     return zc::none;
   }
-  const auto receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  const bool ownerLocalReceiver =
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) != zc::none;
+  const bool parameterReceiver =
+      !ownerLocalReceiver &&
+      resolvedCallableParameter(input.boundModule.bindings(), receiverNode) != zc::none;
+  if (!ownerLocalReceiver && !parameterReceiver) { return zc::none; }
+  zc::Maybe<identity::SemanticTypeId> receiverSourceType;
+  if (ownerLocalReceiver) {
+    receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  } else {
+    receiverSourceType = callableParameterReferenceType(input, receiverNode);
+  }
   if (receiverSourceType == zc::none) return zc::none;
-  auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
-  if (!receiverLookup.is<type::SemanticTypeLookup>() ||
-      !receiverLookup.get<type::SemanticTypeLookup>()
-           .data()
-           .is<type::semantic::NominalTypeData>()) {
-    return zc::none;
-  }
-  const auto& nominal =
-      receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
-  if (nominal.arguments.size() != 0) return zc::none;
 
   const auto memberName =
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
   auto sourceName = identity::DeclaredDefinitionName::fromSource(memberName);
   if (sourceName == zc::none) return zc::none;
+
+  auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
+  if (!receiverLookup.is<type::SemanticTypeLookup>() ||
+      !receiverLookup.get<type::SemanticTypeLookup>()
+           .data()
+           .is<type::semantic::NominalTypeData>()) {
+    // A by-value parameter whose type is not a closed nominal (a `dyn`
+    // interface, a primitive, ...) still names a dot-method call that has no
+    // lowering yet; drain it with the source spelling instead of an invariant.
+    if (parameterReceiver) {
+      return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), false, 0};
+    }
+    return zc::none;
+  }
+  const auto& nominal =
+      receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
+  if (nominal.arguments.size() != 0) return zc::none;
 
   zc::Maybe<identity::DefId> selected;
   zc::Maybe<identity::DeclaredDefinitionName> selectedName;
@@ -2801,6 +3019,52 @@ checked::CheckedFactsSourceRejected rejectUnsupportedInherentMethodCall(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+/// \brief Rejects a well-typed value reference that the lowered body surface
+/// cannot materialize (a module-level/imported symbol read) with ZOM4099. The
+/// construct is valid source; only code generation for it is unimplemented.
+checked::CheckedFactsSourceRejected rejectUnsupportedFunctionBodyConstruct(
+    const BodyProductionSite& site, uint32_t ownerPreorder) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::FunctionBodySemanticsUnavailable(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Inference,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+/// \brief Builds an aggregate-literal source rejection (ZOM4048 unknown field,
+/// ZOM4049 missing field, or ZOM4131 duplicate field). The display argument is
+/// the source property name for the identifier-arg codes and the field
+/// definition for ZOM4049.
+checked::CheckedFactsSourceRejected rejectAggregateLiteralField(
+    const BodyProductionSite& site, uint32_t ownerPreorder, checked::CheckerErrorId diagnostic,
+    zc::Vector<checked::CheckerDisplayArgument>&& arguments) {
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      diagnostic, checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Aggregate,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 checked::CheckedFactsSourceRejected rejectNonUnionErrorOperator(
     const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId operandType,
     ast::PostfixOperatorKind operation) {
@@ -2905,6 +3169,57 @@ attachRecoveryLedger(checked::CheckedFactsSourceRejected&& rejection,
   rejection.recoveryLedgers.add(
       zc::mv(finished).get<inference::InferenceRecoveryRecovered>().ledger);
   return zc::mv(rejection);
+}
+
+/// \brief Reject a direct free-function call whose identifier argument resolves
+/// to a value outside the parameter-argument lowering slice (an owner local or
+/// a module/imported symbol) as ZOM4125. Returns none when the enclosing owner
+/// cannot be resolved so the caller keeps its existing invariant handling.
+zc::Maybe<zc::OneOf<checked::CheckedFactsSourceRejected, checked::CheckedFactsInvariantRejected>>
+rejectUnsupportedDirectCallArgument(const BodyProductionSite& site, const BodyCheckingInput& input,
+                                    const identity::RegistryBrandIssuer& factStoreBrands,
+                                    ast::NodeId calleeNode) {
+  const auto& tree = input.boundModule.tree();
+  zc::Maybe<identity::DeclaredDefinitionName> name;
+  if (tree.contains(calleeNode) && tree.node(calleeNode).kind == ast::SyntaxKind::IdentExpr) {
+    name = identity::DeclaredDefinitionName::fromSource(
+        tree.ident(ast::IdentId(tree.node(calleeNode).payload.words[ast::kIdentExprNameWord])));
+  }
+  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+      ZC_IF_SOME(callName, name) {
+        return attachRecoveryLedger(
+            rejectUnsupportedInherentMethodCall(site, ownerOrdinal, zc::mv(callName)), input,
+            factStoreBrands);
+      }
+    }
+  }
+  return zc::none;
+}
+
+/// \brief True when a direct-call argument is an owner local of closed nominal
+/// struct type, the admitted by-value struct argument carrier. The local's
+/// initializer shape and field set are checked by the HIR capability gate; here
+/// only the semantic argument kind is decided so the call fact records the
+/// aggregate argument instead of draining the call as an unlowered local read.
+bool isByValueStructLocalArgument(const BodyCheckingInput& input, ast::NodeId argument,
+                                  identity::SemanticTypeId argumentType) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(argument) || tree.node(argument).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  if (resolvedOwnerLocal(input.boundModule.bindings(), argument) == zc::none) { return false; }
+  auto lookup = input.semanticTypes.get(argumentType);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) { return false; }
+  const auto& nominal = data.get<type::semantic::NominalTypeData>();
+  if (nominal.arguments.size() != 0) return false;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != nominal.definition) continue;
+    return definition.record.kind() == identity::DefinitionKind::Struct;
+  }
+  return false;
 }
 
 /// \brief Attaches a ZOM4125 recovery ledger for a method-call site, resolving
@@ -3684,6 +3999,33 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                            factPath(CheckedFactGroup::Capture));
   }
 
+  // Capability gate for concrete methods supplied by a standalone `impl`
+  // block. Their signatures are published upstream so coherence observes the
+  // complete impl, but neither receiverless nor `this`-bearing impl method
+  // bodies lower yet. Reject the whole definition once as ZOM4099 before any
+  // production site is analyzed, so an unsupported `this` receiver/field can
+  // never reach a per-expression capability code or an invariant. Inherent
+  // struct/class methods are owned by their nominal and stay unaffected.
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (!providedByImplWithBody(input.boundModule, definition)) { continue; }
+    const auto& tree = input.boundModule.tree();
+    auto span = parsedModule.spanFor(tree.node(definition.node).range);
+    auto ordinal = definitionPreorder(input.boundModule, definition.definition);
+    ZC_IF_SOME(ownerOrdinal, ordinal) {
+      ZC_IF_SOME(sourceSpan, span) {
+        const auto& syntax = tree.node(definition.node);
+        BodyProductionSite site{definition.node,
+                                checked::CheckedNodeKey{static_cast<uint32_t>(syntax.kind),
+                                                        ownerOrdinal, sourceSpan.clone()},
+                                CheckedFactGroup::NodeType, BodyProductionKind::Unsupported};
+        return attachRecoveryLedger(rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal),
+                                    input, factStoreBrands);
+      }
+    }
+    return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module, 0,
+                           zc::Maybe<identity::DefId>(definition.definition));
+  }
+
   zc::Vector<checked::NodeTypeMap::Entry> nodeTypes;
   zc::Vector<checked::DefinitionTypeMap::Entry> definitionTypes;
   zc::Vector<checked::LiteralFactMap::Entry> literals;
@@ -3972,6 +4314,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
             return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
           }
+          // Owner locals and callable parameters produced a type above. A bare
+          // reference that still has no type but resolves to a module-level or
+          // imported value (a constant, static, or imported symbol) is valid
+          // source whose body read has no lowering yet; drain it as ZOM4099
+          // instead of a missing-fact invariant.
+          if (resolvedDefinition(input.boundModule.bindings(), site.node) != zc::none) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                    factStoreBrands);
+              }
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -4193,11 +4549,77 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 input.boundModule.tree().contains(argument) &&
                 input.boundModule.tree().node(argument).kind == ast::SyntaxKind::IdentExpr &&
                 resolvedCallableParameter(input.boundModule.bindings(), argument) != zc::none;
-            if ((!isLiteralArgument && !isParameterArgument) || argumentType == zc::none ||
-                (isLiteralArgument && literal == zc::none)) {
+            const bool isIdentifierArgument =
+                input.boundModule.tree().contains(argument) &&
+                input.boundModule.tree().node(argument).kind == ast::SyntaxKind::IdentExpr;
+            const bool isLocalOrGlobalArgument =
+                isIdentifierArgument && !isLiteralArgument && !isParameterArgument;
+            // A reference to an aggregate-initialized owner local is scheduled
+            // after this direct-call site (a deferred local reference at stage
+            // 2), so its node-type fact does not exist yet. Resolve its type
+            // from the binding (the declared annotation or the already-typed
+            // struct-literal initializer) for the by-value aggregate argument.
+            zc::Maybe<identity::SemanticTypeId> deferredLocalType;
+            if (isLocalOrGlobalArgument && argumentType == zc::none) {
+              deferredLocalType = ownerLocalReferenceType(input, argument, nodeTypes.asPtr());
+              if (deferredLocalType != zc::none &&
+                  isByValueStructLocalArgument(input, argument,
+                                               ZC_ASSERT_NONNULL(deferredLocalType))) {
+                argumentType = zc::Maybe<const checked::NodeTypeMap::Entry&>{};
+              } else {
+                deferredLocalType = zc::none;
+              }
+            }
+            const bool hasArgumentType = argumentType != zc::none || deferredLocalType != zc::none;
+            const auto argumentTypeId =
+                argumentType != zc::none
+                    ? ZC_ASSERT_NONNULL(argumentType).value
+                    : (deferredLocalType != zc::none ? ZC_ASSERT_NONNULL(deferredLocalType)
+                                                     : identity::SemanticTypeId{});
+            if (isLocalOrGlobalArgument && hasArgumentType &&
+                argumentTypeId == value.parameters[index] &&
+                !isByValueStructLocalArgument(input, argument, argumentTypeId)) {
+              // A typed owner-local or module/imported identifier argument is
+              // valid source the direct-call lowering slice does not admit yet
+              // (only parameter arguments lower). Its type already matches the
+              // parameter, so drain the unlowered call shape (ZOM4125) instead
+              // of a missing-fact invariant. A type-disagreeing identifier
+              // argument is left for the ordinary type-error block below.
+              const ast::NodeId calleeNode(input.boundModule.tree()
+                                               .node(site.node)
+                                               .payload.words[ast::kCallExpressionCalleeWord]);
+              auto capability =
+                  rejectUnsupportedDirectCallArgument(site, input, factStoreBrands, calleeNode);
+              if (capability != zc::none) { return zc::mv(ZC_ASSERT_NONNULL(capability)); }
+            }
+            if ((!isLiteralArgument && !isParameterArgument &&
+                 !(isLocalOrGlobalArgument && hasArgumentType)) ||
+                !hasArgumentType || (isLiteralArgument && literal == zc::none)) {
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            if (deferredLocalType != zc::none) {
+              // The by-value aggregate argument's node-type fact is produced by
+              // a later stage; its type was resolved from the binding above. A
+              // parameter type disagreement is an ordinary type error.
+              if (argumentTypeId != value.parameters[index]) {
+                ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, site.node)) {
+                  ZC_IF_SOME(callOwnerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
+                    return attachRecoveryLedger(
+                        rejectTypeMismatch(site, callOwnerOrdinal, value.parameters[index],
+                                           argumentTypeId),
+                        input, factStoreBrands);
+                  }
+                }
+                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+              checkedArguments.add(checked::CheckedArgumentFact{
+                  argument, argumentTypeId, value.parameters[index], zc::mv(noAdjustment)});
+              continue;
             }
             ZC_IF_SOME(type, argumentType) {
               if (type.value != value.parameters[index]) {
@@ -4516,7 +4938,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto shape = thisShape != zc::none
                          ? zc::none
                          : ownerLocalFieldShape(input, site.node, nodeTypes.asPtr());
-        if (thisShape == zc::none && shape == zc::none) {
+        auto parameterShape = (thisShape != zc::none || shape != zc::none)
+                                  ? zc::none
+                                  : parameterFieldShape(input, site.node, nodeTypes.asPtr());
+        if (thisShape == zc::none && shape == zc::none && parameterShape == zc::none) {
           return rejectMethodCallCapability(site, input, factStoreBrands,
                                             unsupportedThisFieldAccess(input, site.node));
         }
@@ -4555,6 +4980,24 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               checked::CheckedPlaceFact{
                   site.node, checked::PlaceRoot(checked::OwnerLocalPlaceRoot{value.binding}),
                   zc::mv(projections), value.fieldType, value.mutablePlace, true},
+              zc::Array<uint8_t>()});
+        }
+        ZC_IF_SOME(value, parameterShape) {
+          producedType = value.fieldType;
+          zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+          members.add(checked::MemberFactMap::Entry{
+              site.node,
+              checked::CheckedMemberFact{site.node, value.receiverType, value.field,
+                                         value.fieldType, zc::mv(noAdjustment)},
+              zc::Array<uint8_t>()});
+          zc::Vector<checked::PlaceProjection> projections;
+          projections.add(checked::PlaceProjection(checked::FieldProjection{value.field}));
+          places.add(checked::PlaceFactMap::Entry{
+              site.node,
+              checked::CheckedPlaceFact{
+                  site.node,
+                  checked::PlaceRoot(checked::CallableParameterPlaceRoot{value.parameter}),
+                  zc::mv(projections), value.fieldType, false, true},
               zc::Array<uint8_t>()});
         }
       } else if (site.production == BodyProductionKind::OwnerLocalMethodReference) {
@@ -4659,14 +5102,71 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         ZC_IF_SOME(value, shape) { producedType = value.type; }
       } else if (site.production == BodyProductionKind::StructLiteral) {
-        auto shape = structLiteralShape(input, site.node, nodeTypes.asPtr());
-        if (shape == zc::none) {
+        auto built = buildStructLiteral(input, site.node, nodeTypes.asPtr());
+        if (built == zc::none) {
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(),
                                  factPath(CheckedFactGroup::Aggregate));
         }
-        ZC_IF_SOME(value, shape) {
+        ZC_IF_SOME(result, built) {
+          if (result.is<StructLiteralRejection>()) {
+            const auto& rejection = result.get<StructLiteralRejection>();
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                switch (rejection.kind) {
+                  case StructLiteralRejection::Kind::UnknownField:
+                  case StructLiteralRejection::Kind::DuplicateField: {
+                    ZC_IF_SOME(name, rejection.name) {
+                      zc::Vector<checked::CheckerDisplayArgument> arguments;
+                      arguments.add(checked::CheckerDisplayArgument(
+                          checked::IdentifierDisplayArg{name.clone()}));
+                      const auto diagnostic =
+                          rejection.kind == StructLiteralRejection::Kind::UnknownField
+                              ? checked::CheckerErrorId::UnknownStructField()
+                              : checked::CheckerErrorId::DuplicateStructField();
+                      return attachRecoveryLedger(
+                          rejectAggregateLiteralField(site, ownerOrdinal, diagnostic,
+                                                      zc::mv(arguments)),
+                          input, factStoreBrands);
+                    }
+                    break;
+                  }
+                  case StructLiteralRejection::Kind::MissingField: {
+                    ZC_IF_SOME(field, rejection.field) {
+                      zc::Vector<checked::CheckerDisplayArgument> arguments;
+                      arguments.add(
+                          checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{field}));
+                      return attachRecoveryLedger(
+                          rejectAggregateLiteralField(site, ownerOrdinal,
+                                                      checked::CheckerErrorId::MissingStructField(),
+                                                      zc::mv(arguments)),
+                          input, factStoreBrands);
+                    }
+                    break;
+                  }
+                  case StructLiteralRejection::Kind::UnsupportedIntegerField:
+                    return attachRecoveryLedger(
+                        rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                        factStoreBrands);
+                  case StructLiteralRejection::Kind::TypeMismatch:
+                    ZC_IF_SOME(expected, rejection.expectedType) {
+                      ZC_IF_SOME(actual, rejection.actualType) {
+                        return attachRecoveryLedger(
+                            rejectTypeMismatch(site, ownerOrdinal, expected, actual), input,
+                            factStoreBrands);
+                      }
+                    }
+                    break;
+                }
+              }
+            }
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(),
+                                   factPath(CheckedFactGroup::Aggregate));
+          }
+          auto& value = result.get<StructLiteralShape>();
           producedType = value.type;
           aggregates.add(checked::AggregateFactMap::Entry{
               site.node,

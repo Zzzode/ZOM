@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/function_overload_redeclare_neg_08.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Callable overloading is not part of the language surface. Two functions with
+// the same name but different parameter counts are the same declaration and
+// the second one is rejected as ZOM3005 (with a ZOM3017 previous-declaration
+// note), not as a binding-phase internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM3005]: Cannot redeclare function 'f'
+// CHECK-LITERAL:   --> conformance/06-declarations/function_overload_redeclare_neg_08.zom:4:1
+// CHECK-LITERAL: Note [ZOM3017]: Previous declaration is here
+// CHECK-LITERAL:   --> conformance/06-declarations/function_overload_redeclare_neg_08.zom:1:1

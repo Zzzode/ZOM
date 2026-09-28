@@ -84,6 +84,11 @@ public:
   /// missing or malformed.
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> invalidMethodReceiver(
       const IdentitySyntaxSiteKey& primary);
+
+  /// \brief Builds the ZOM2108 fact for a constructor naming an explicit
+  /// `this` receiver, which the constructor-call lowering does not admit yet.
+  ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> constructorReceiverUnsupported(
+      const IdentitySyntaxSiteKey& primary);
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> definitionRedeclaration(
       const IdentitySyntaxSiteKey& duplicate, const IdentitySyntaxSiteKey& previous,
       diagnostics::DiagID diagnostic, zc::StringPtr name);

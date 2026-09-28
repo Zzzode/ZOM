@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_bound_primitive_capability_neg_09.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A primitive type in a generic parameter bound is not an interface trait;
+// the bound site drains as ZOM4130, never as a checker invariant.
+
+// CHECK-LITERAL: Error [ZOM4130]: primitive type `i32` cannot be used as an interface bound
+// CHECK-LITERAL:   --> conformance/12-generics/generic_bound_primitive_capability_neg_09.zom:1:13

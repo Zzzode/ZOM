@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/constructor_explicit_receiver_capability_neg_26.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A constructor that names an explicit `this` receiver is grammar the parser
+// accepts and the spec uses, but constructor-call lowering does not admit a
+// receiver yet. It drains on the receiver parameter as ZOM2108, never as a
+// driver internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM2108]: a constructor with an explicit `this` receiver is not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/constructor_explicit_receiver_capability_neg_26.zom:3:10

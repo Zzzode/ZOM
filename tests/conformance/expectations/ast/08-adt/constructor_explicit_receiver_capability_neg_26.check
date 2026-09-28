@@ -1,0 +1,51 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/constructor_explicit_receiver_capability_neg_26.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #20 @1:1..5:1 file_name="constructor_explicit_receiver_capability_neg_26.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #19 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #18 @1:1..4:2 name="Vec2"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #17 @1:13..4:2 nmembers=2
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @2:5..2:12 name="x" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @2:8..2:11 kind=I32
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:                 ConstructorDecl #16 @3:5..3:39 name="init" visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #8 @3:9..3:23 nparams=2
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #5 @3:10..3:14 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #4 @3:10..3:14
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #3 @3:10..3:14 segments=["Self"] root=Relative
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                         FunctionParameterDecl #7 @3:16..3:22 name="a"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             PredefinedTypeExpr #6 @3:19..3:22 kind=I32
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   raises_ty: null
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #15 @3:24..3:39
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #14 @3:26..3:37
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ExpressionStatement #13 @3:26..3:37
+// CHECK-NEXT:                               expression:
+// CHECK-NEXT:                                 AssignmentExpr #12 @3:26..3:36 op=Assign
+// CHECK-NEXT:                                   lhs:
+// CHECK-NEXT:                                     MemberExpression #10 @3:26..3:32 property="x" access=Dot
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         ThisExpr #9 @3:26..3:30
+// CHECK-NEXT:                                   rhs:
+// CHECK-NEXT:                                     IdentExpr #11 @3:35..3:36 name="a"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:       attrs: null

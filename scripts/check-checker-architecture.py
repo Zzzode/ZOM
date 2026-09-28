@@ -358,6 +358,18 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
      "method call `{0}` is not supported yet", 1),
     (4126, "CannotMutateSharedReceiver", "kError",
      "cannot mutate a field through the shared `this` receiver; mark the method `mutating`", 0),
+    (4127, "ExternDeclarationSemanticsUnavailable", "kError",
+     "extern/FFI declarations are not supported yet", 0),
+    (4128, "EnumDiscriminantSemanticsUnavailable", "kError",
+     "explicit enum discriminants are not supported yet", 0),
+    (4129, "GenericBoundNotInterface", "kError",
+     "generic bound `{0}` is not an interface", 1),
+    (4130, "PrimitiveTypeBoundUnsupported", "kError",
+     "primitive type `{0}` cannot be used as an interface bound", 1),
+    (4131, "DuplicateStructField", "kError",
+     "field {0} is initialized more than once in the aggregate literal", 1),
+    (4099, "FunctionBodySemanticsUnavailable", "kError",
+     "this function body uses a construct the compiler cannot generate code for yet", 0),
 )
 
 REMOVED_CHECKER_DIAGNOSTIC_CODES = (4027, 4034, 4042, 4043, 4053)
@@ -974,7 +986,7 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
     for code, name, severity, _message, _arity in ACCEPTED_CHECKER_DIAGNOSTICS:
         if severity == "kError" and (
             4001 <= code <= 4055 or 4077 <= code <= 4081 or code == 4103 or code == 4124
-            or code == 4125 or code == 4126
+            or code == 4125 or code == 4126 or code == 4099 or code == 4131
         ):
             expected_errors.append(("ERROR", name))
         elif code == 4023:

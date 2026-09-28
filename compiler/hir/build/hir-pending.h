@@ -256,6 +256,10 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<HirParameterReferenceExpression> parameterFieldWriteParameter;
   // True for the void method body (no HirReturnStatement is materialized).
   bool voidBody = false;
+  // True when parameterFieldProjection reads a field of an ordinary by-value
+  // struct parameter (no receiver dereference) rather than the implicit method
+  // receiver. Selects the by-value MIR return builder.
+  bool byValueParameterField = false;
 };
 
 }  // namespace detail

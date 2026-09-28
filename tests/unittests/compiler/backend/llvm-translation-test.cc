@@ -1224,6 +1224,134 @@ ZC_TEST("Same-module call with one integer argument lowers to a verified LLVM mo
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
+// By-value aggregate call:
+//   fun first(p: Point) -> i32 { return p.x; }
+//   fun entry() -> i32 { let p = Point { x: 40, y: 2 }; return first(p); }
+// The nominal by-value argument flattens to two integer call arguments and the
+// callee returns the projected field's parameter slot. The caller folds to the
+// reserved no-argument zom.module_init entry, so the module is runnable.
+mir::MirFunction buildByValueFieldCallee(identity::DefId owner, identity::SemanticTypeId structType,
+                                         identity::SemanticTypeId i32, identity::DefId fieldX) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Parameter, structType,
+                                      scopeId(1), span()});
+  zc::Vector<mir::MirStatement> statements;  // no statements
+  zc::Vector<mir::MirProjection> projections;
+  projections.add(mir::MirProjection::field(fieldX, structType, i32));
+  auto fieldPlace = mir::MirPlace(localId(1), structType, zc::mv(projections), i32);
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(statements),
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(zc::mv(fieldPlace)), span())});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+mir::MirFunction buildByValueAggregateCaller(identity::DefId owner, identity::DefId callee,
+                                             identity::SemanticTypeId structType,
+                                             identity::SemanticTypeId i32,
+                                             identity::DefId aggregate, identity::DefId fieldX,
+                                             identity::DefId fieldY) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, structType,
+                                      scopeId(1), span()});
+  locals.add(
+      mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::Temporary, i32, scopeId(1), span()});
+
+  zc::Vector<mir::MirNominalAggregateElement> elements;
+  elements.add(
+      mir::MirNominalAggregateElement{fieldX, mir::MirOperand::constant(i32, integerConstant(40))});
+  elements.add(
+      mir::MirNominalAggregateElement{fieldY, mir::MirOperand::constant(i32, integerConstant(2))});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(1), span()));
+  entryStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(1), structType),
+      mir::MirRvalue::nominalAggregate(aggregate, structType, zc::mv(elements)),
+      mir::MirInitializationKind::Initialize, span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  zc::Vector<mir::MirOperand> arguments;
+  arguments.add(mir::MirOperand::copy(resultPlace(localId(1), structType)));
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                               resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+  zc::Vector<mir::MirStatement> contStatements;
+  blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(contStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(2), i32)), span())});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("By-value aggregate call flattens fields to a verified two-function LLVM module") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  // A stand-in nominal carrier: the lowering only inspects the i32 element and
+  // result carriers, never the struct layout itself.
+  const auto structType = typeContext.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  const auto aggregate = tests::testDefinition(2);
+  const auto fieldX = tests::testDefinition(3);
+  const auto fieldY = tests::testDefinition(4);
+
+  auto callee = buildByValueFieldCallee(calleeOwner, structType, i32, fieldX);
+  auto caller = buildByValueAggregateCaller(callerOwner, calleeOwner, structType, i32, aggregate,
+                                            fieldX, fieldY);
+
+  auto lir = lir::MirToLirLowering::lowerByValueAggregateCallModule(caller, callee,
+                                                                    typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  ZC_REQUIRE(lirModule.functions().size() == 2);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("zom.module_init"_zc));
+  ZC_EXPECT(ir.contains("zom.callee"_zc));
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(ir.contains("i32 40"_zc));
+  ZC_EXPECT(ir.contains("i32 2"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
 // Parameter-argument call: `fun id(x: i32) -> i32 { return x }`,
 // `fun f(input: i32) -> i32 { let r = id(input); return r }` lowers to a
 // two-function LIR module whose call passes a load of the caller's parameter

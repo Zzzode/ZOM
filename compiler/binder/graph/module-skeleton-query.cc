@@ -8,14 +8,14 @@
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/graph/parsed-module.h"
-#include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
 #include "compiler/binder/stable/definition/header-producer.h"
 #include "compiler/binder/stable/header/verifier.h"
 #include "compiler/binder/stable/implementation/header-producer.h"
+#include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
+#include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
-#include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
@@ -662,12 +662,14 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> projectLocalExportFacts(
       zc::Maybe<StableBindingTargetKey> binding;
       zc::Maybe<StableBindingTargetKey> canonicalTarget;
       zc::Maybe<Namespace> nameSpace;
+      bool matchedLocalDeclaration = false;
       for (const auto& declarationFact : declarations.values()) {
         if (declarationFact.name().text() != sourceName) { continue; }
         if (binding != zc::none) { return zc::none; }
         binding = StableBindingTargetKey::definition(declarationFact.queryKey().clone());
         canonicalTarget = StableBindingTargetKey::definition(declarationFact.queryKey().clone());
         nameSpace = declarationFact.nameSpace();
+        matchedLocalDeclaration = true;
       }
       for (const auto& import : imports.values()) {
         if (import.queryKey().binding().localName().text() != sourceName) { continue; }
@@ -684,9 +686,15 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> projectLocalExportFacts(
       auto bindingName =
           BindingNameKey::from(ZC_ASSERT_NONNULL(nameSpace), zc::mv(ZC_ASSERT_NONNULL(name)));
       if (bindingName == zc::none) { return zc::none; }
-      auto exportFact = localExport(
-          module, ZC_ASSERT_NONNULL(path).clone(), zc::mv(ZC_ASSERT_NONNULL(bindingName)),
-          zc::mv(ZC_ASSERT_NONNULL(binding)), zc::mv(ZC_ASSERT_NONNULL(canonicalTarget)), true);
+      // A specifier that names a local declaration and does not rename it is a
+      // plain public export of that definition (no re-export step, exactly like
+      // an inline `export`). A renamed local specifier, or one naming an
+      // imported binding, introduces an alias/re-export step.
+      const bool isPlainLocalExport = matchedLocalDeclaration && !aliasIdentifier;
+      auto exportFact =
+          localExport(module, ZC_ASSERT_NONNULL(path).clone(),
+                      zc::mv(ZC_ASSERT_NONNULL(bindingName)), zc::mv(ZC_ASSERT_NONNULL(binding)),
+                      zc::mv(ZC_ASSERT_NONNULL(canonicalTarget)), !isPlainLocalExport);
       if (exportFact == zc::none) { return zc::none; }
       exports.add(zc::mv(ZC_ASSERT_NONNULL(exportFact)));
     }
@@ -788,12 +796,14 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> verifyLocalExportFacts(
       zc::Maybe<StableBindingTargetKey> target;
       zc::Maybe<StableBindingTargetKey> canonical;
       zc::Maybe<Namespace> nameSpace;
+      bool matchedLocalDeclaration = false;
       for (const auto& declared : declarations.values()) {
         if (declared.name().text() != sourceName) { continue; }
         if (target != zc::none) { return zc::none; }
         target = StableBindingTargetKey::definition(declared.queryKey().clone());
         canonical = StableBindingTargetKey::definition(declared.queryKey().clone());
         nameSpace = declared.nameSpace();
+        matchedLocalDeclaration = true;
       }
       for (const auto& imported : imports.values()) {
         if (imported.queryKey().binding().localName().text() != sourceName) { continue; }
@@ -809,9 +819,13 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> verifyLocalExportFacts(
       auto bindingName =
           BindingNameKey::from(ZC_ASSERT_NONNULL(nameSpace), zc::mv(ZC_ASSERT_NONNULL(name)));
       if (bindingName == zc::none) { return zc::none; }
+      // Mirror the producer: a non-renaming local specifier is a plain public
+      // export (no re-export step); a renamed local specifier or an imported
+      // binding introduces one.
+      const bool isPlainLocalExport = matchedLocalDeclaration && !alias;
       auto exportFact =
           makeFact(zc::mv(ZC_ASSERT_NONNULL(bindingName)), zc::mv(ZC_ASSERT_NONNULL(target)),
-                   zc::mv(ZC_ASSERT_NONNULL(canonical)), true);
+                   zc::mv(ZC_ASSERT_NONNULL(canonical)), !isPlainLocalExport);
       if (exportFact == zc::none) { return zc::none; }
       exports.add(zc::mv(ZC_ASSERT_NONNULL(exportFact)));
     }

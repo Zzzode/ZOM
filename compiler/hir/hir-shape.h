@@ -92,6 +92,9 @@ struct FunctionReturnShape final {
   bool returnsLocal = false;
   ast::NodeId localReference;
   bool returnsLocalField = false;
+  // Single-statement free-function shape: `return <ordinary-parameter>.<field>;`
+  // reading one field of a by-value struct parameter with one field projection.
+  bool returnsParameterField = false;
   // Single-statement inherent-method shape: `return this.<field>;` read through
   // the implicit shared receiver parameter with one field projection.
   bool returnsReceiverField = false;
@@ -114,6 +117,10 @@ struct FunctionReturnShape final {
   // this struct stays copyable; only the discriminator is stored here.
   bool isSequentialLocalReturn = false;
   bool returnsReceiverCall = false;
+  // Two-statement by-value struct call shape: a leading aggregate-initialized
+  // local passed as the sole argument of a returned direct free-function call:
+  // `let p: P = P { .. }; return f(p);`.
+  bool returnsDirectAggregateCall = false;
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;

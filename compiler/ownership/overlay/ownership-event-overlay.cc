@@ -947,6 +947,12 @@ bool appendMarkerUse(zc::Vector<MarkerUse>& uses, checker::marker::MarkerProofEn
   return true;
 }
 
+// Sorts marker uses into strict canonical key order. Two sibling fields of the
+// same marker-relevant type (for example two `i32` struct fields queried at one
+// initialization event) legitimately produce identical marker-use keys because
+// the marker decision is per type, not per place. Such exact duplicates are
+// collapsed to one use; equal keys carrying different decisions are an invariant
+// violation and fail closed.
 bool sortMarkerUses(zc::Vector<MarkerUse>& uses,
                     const checker::CheckerIdentityAuthority& identities,
                     const type::SemanticTypeStore& semanticTypes) {
@@ -968,9 +974,28 @@ bool sortMarkerUses(zc::Vector<MarkerUse>& uses,
     uses[insertion] = zc::mv(currentUse);
     keys[insertion] = zc::mv(currentKey);
   }
-  for (size_t index = 1; index < keys.size(); ++index) {
-    if (!lessBytes(keys[index - 1].asPtr(), keys[index].asPtr())) return false;
+  zc::Vector<MarkerUse> uniqueUses;
+  for (size_t index = 0; index < uses.size(); ++index) {
+    if (index + 1 < uses.size() && !lessBytes(keys[index].asPtr(), keys[index + 1].asPtr())) {
+      auto currentRecord = encodeMarkerUse(uses[index], identities, semanticTypes);
+      auto nextRecord = encodeMarkerUse(uses[index + 1], identities, semanticTypes);
+      if (currentRecord == zc::none || nextRecord == zc::none) { return false; }
+      const auto& currentBytes = ZC_ASSERT_NONNULL(currentRecord);
+      const auto& nextBytes = ZC_ASSERT_NONNULL(nextRecord);
+      if (currentBytes.size() != nextBytes.size()) { return false; }
+      bool recordsEqual = true;
+      for (size_t byte = 0; byte < currentBytes.size(); ++byte) {
+        if (currentBytes[byte] != nextBytes[byte]) {
+          recordsEqual = false;
+          break;
+        }
+      }
+      if (!recordsEqual) return false;
+      continue;
+    }
+    uniqueUses.add(zc::mv(uses[index]));
   }
+  uses = zc::mv(uniqueUses);
   return true;
 }
 

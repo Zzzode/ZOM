@@ -1028,6 +1028,7 @@ enum class SignatureSourceDiagnostic : uint16_t {
   GenericMarkerInterfaceNotAllowed = 4090,
   PositiveMarkerImplRequiresUnsafe = 4091,
   ExplicitImplConflictsWithBuiltinMarker = 4092,
+  FunctionBodySemanticsUnavailable = 4099,
   BinaryOperatorSemanticsUnavailable = 4103,
   ModuleInitializerSemanticsUnavailable = 4104,
   ModuleStatementSemanticsUnavailable = 4105,
@@ -1047,7 +1048,11 @@ enum class SignatureSourceDiagnostic : uint16_t {
   TypeNameUnresolved = 4120,
   DynTypeNotAllowedAsBound = 4121,
   DuplicateInterfaceBound = 4122,
-  ImplGenericAssociatedTypeUnsupported = 4123
+  ImplGenericAssociatedTypeUnsupported = 4123,
+  ExternDeclarationSemanticsUnavailable = 4127,
+  EnumDiscriminantSemanticsUnavailable = 4128,
+  GenericBoundNotInterface = 4129,
+  PrimitiveTypeBoundUnsupported = 4130
 };
 
 struct SignatureLiteralDisplayArg final {

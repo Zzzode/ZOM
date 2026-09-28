@@ -1480,6 +1480,10 @@ private:
                                                                         functions[callee], types);
             }
             if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerByValueAggregateCallModule(
+                  functions[caller], functions[callee], types);
+            }
+            if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerReceiverCallModule(functions[caller],
                                                                    functions[callee], types);
             }
@@ -1660,7 +1664,7 @@ private:
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
                   "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
-                  "shared-receiver method "
+                  "by-value aggregate call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
                   "field-arithmetic method, shared-receiver conditional method, shared-receiver "
