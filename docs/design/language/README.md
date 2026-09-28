@@ -34,7 +34,8 @@ A language design note should answer one durable semantic question, such as:
 
 - what constitutes a value, place, move, borrow, or temporary;
 - how evaluation, initialization, cleanup, and control flow interact;
-- how overload resolution, conversions, and generic constraints compose;
+- how call resolution, conversions, and generic constraints compose (ZOM has
+  no ad-hoc overload sets; see RFC 0009);
 - how errors, effects, concurrency, or unsafe operations cross boundaries; or
 - which source guarantee each compiler stage must preserve.
 

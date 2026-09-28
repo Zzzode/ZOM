@@ -310,7 +310,7 @@ When an interface inherits from multiple super-interfaces, a method name may be 
 
 **IR-1: Identical signatures are redundant.** Redundant redeclaration of a method already inherited from a superinterface is allowed but produces a redundant-inherited-method warning (not an error).
 
-**IR-2: Same name, different parameter list = independent overload.** No conflict is reported; each signature is tracked separately and dispatch selects the matching overload by argument shape.
+**IR-2: Same name, different parameter list = conflicting member.** ZOM has no per-name overload sets (RFC 0009), so two inherited methods that share a name but differ in their parameter list cannot coexist in one interface: there is no argument-shape ranking to disambiguate them. The compiler emits an inherited-member-conflict error, and the user resolves it by renaming one side or by explicitly declaring the intended member in the child interface.
 
 **IR-3: Same name, same params, different return type = incompatible.** The compiler emits an incompatible-return-type error. The user must resolve by explicitly re-declaring the method in the child interface with the single correct return type.
 
@@ -596,6 +596,6 @@ ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
   nominal pairs in the module.
 - Every ordinary impl names exactly one behavior interface. Marker facts use
   the bodyless declarations defined in Chapter 16.
-- Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn, independent overloads coexist, incompatible return types error, and shared pure-method obligations converge.
+- Multiple interface inheritance uses four conflict-resolution rules (IR-1..IR-4): redundant signatures warn, same-name members with differing parameter lists conflict (there are no overload sets), incompatible return types error, and shared pure-method obligations converge.
 - Eight object-safety rules (OS-0..OS-7) govern whether an interface can be coerced to `dyn I` (Ch.03 §Existential Types), with dedicated diagnostics `ZOM4001` through `ZOM4008`.
 - Interface names and marker names participate in positive generic bound lists.

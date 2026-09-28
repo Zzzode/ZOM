@@ -323,20 +323,28 @@ fun connect(host: str) raises ConnectionError | TimeoutError {
 
 ### Function Overloading
 
+ZOM does not support ad-hoc function overloading. Two functions declared with
+the same name in the same scope name the same declaration regardless of their
+parameter counts or parameter types; the second declaration is rejected with
+`ZOM3005` (`Cannot redeclare function`). A call site resolves to exactly one
+callable target, and the compiler performs no implicit per-name overload
+ranking (see RFC 0009, which rejects C++-style overload sets).
+
+Operations that other languages express as a family of overloaded free
+functions are expressed in ZOM through receiver methods and interfaces:
+
 ```zom
-// Overload by parameter count
-fun format(value: i32) -> str {
-    return value.toString();
+interface Display {
+    fun render(this) -> str;
 }
 
-fun format(value: f64, precision: i32) -> str {
-    return value.toFixed(precision);
-}
-
-fun format(value: str, maxLength: i32) -> str {
-    return value.length > maxLength ? value.substring(0, maxLength) + "..." : value;
+fun renderValue<T: Display>(value: T) -> str {
+    return value.render();
 }
 ```
+
+Each receiver type provides its own `render`, and dispatch selects the target
+from the receiver or the interface witness rather than from an overload set.
 
 ### Generic Functions
 
