@@ -1,0 +1,5 @@
+section: "03-types subtyping and coercion"
+covers_rule: "primitiveType"
+expected: "ACCEPT"
+notes:
+  - "Literals are polymorphic but non-literal values are not; an i32 value assigned to i64 is ZOM4009 (no implicit numeric widening)."

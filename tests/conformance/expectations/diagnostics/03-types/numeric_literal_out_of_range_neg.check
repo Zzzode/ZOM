@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/numeric_literal_out_of_range_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An integer literal unifies with its annotated target but is range-checked.
+// 300 is not representable as u8, so the initializer is rejected with ZOM4077
+// rather than silently truncated.
+
+// CHECK-LITERAL: Error [ZOM4077]: Literal 300 is not representable as u8
+// CHECK-LITERAL:   --> conformance/03-types/numeric_literal_out_of_range_neg.zom:1:29

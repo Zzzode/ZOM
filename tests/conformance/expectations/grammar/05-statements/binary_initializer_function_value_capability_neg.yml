@@ -1,0 +1,5 @@
+section: "05-statements let declaration syntax"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a binary operand that is a first-class function value drains as ZOM4099."

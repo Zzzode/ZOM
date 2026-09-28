@@ -1,0 +1,5 @@
+section: "05-statements unannotated local inference"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "An unannotated local initialized from a relational comparison infers bool; `let z = x == 1` binds bool."

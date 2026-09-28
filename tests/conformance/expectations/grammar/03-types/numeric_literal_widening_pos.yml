@@ -1,0 +1,5 @@
+section: "03-types numeric literal inference"
+covers_rule: "primitiveType"
+expected: "ACCEPT"
+notes:
+  - "A numeric literal unifies with an annotated integer/float target (i64, u8, f32) and with a return type, range-checked."

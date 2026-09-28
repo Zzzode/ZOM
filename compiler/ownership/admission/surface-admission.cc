@@ -329,20 +329,15 @@ bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializ
 }
 
 // Structurally admits a local initializer. A primitive-binary initializer is
-// admitted only when its binding declarator carries an explicit type
-// annotation: an unannotated binary-result local cannot be typed by the
-// checker reference stage, so without the drain it reaches a checker
-// invariant instead of a user diagnostic. The annotated form is the admitted
-// lowering shape.
+// admitted on its structural shape alone: the checker derives the result type
+// from the operand leaves (arithmetic yields the operand type, comparison
+// yields bool), so no binding annotation is required. Literal-literal binaries
+// have no typed operand to anchor inference and stay rejected by
+// isAdmittedPrimitiveBinary.
 bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
                                 ast::NodeId initializer) {
+  (void)declarator;
   if (!tree.contains(initializer)) return true;
-  if (tree.node(initializer).kind == ast::SyntaxKind::BinaryExpr &&
-      isAdmittedPrimitiveBinary(tree, initializer)) {
-    const ast::NodeId annotation(
-        tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
-    return tree.contains(annotation);
-  }
   return isScalarLiteral(tree.node(initializer).kind) ||
          tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
          isAdmittedDirectCall(tree, initializer) ||

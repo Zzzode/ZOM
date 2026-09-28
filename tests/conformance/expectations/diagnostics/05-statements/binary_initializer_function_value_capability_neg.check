@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/binary_initializer_function_value_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A bare function name is not a first-class value in the current lowering
+// slice, so a binary whose operand is a module-level function (`g + 1`) has no
+// typed operand to infer the unannotated local from. It drains as ZOM4099
+// rather than reaching a checker invariant. A call `g()` is unaffected.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_function_value_capability_neg.zom:2:26

@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 997,
+  "count": 1003,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -570,6 +570,20 @@
     "03-types/nullable_reference_initializer_pos_06.zom": {
       "exitCode": 1,
       "sha256": "b4bd721d028e38dc7d04fb4348b6e88d0ec658f914723cb8264b7e3248a68aed"
+    },
+    "03-types/numeric_literal_out_of_range_neg.zom": {
+      "exitCode": 1,
+      "sha256": "fd96dd897885a256031e28e2d1ceb6cf7c82e33752549c0a898c8638ec3ca8a2"
+    },
+    "03-types/numeric_literal_widening_pos.zom": {
+      "exitCode": 0,
+      "hirSha256": "5b32df45a3139d11cf81d5ea3686855f1fa934a4870d692e0791601070737fdc",
+      "mirSha256": "886c1a563f7da63000546c547fe51df93f6005fa5f74e568b43d48707b01bd59",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "03-types/numeric_value_widening_rejected_neg.zom": {
+      "exitCode": 1,
+      "sha256": "44540478f19c0c8cc424eeff166592b503fd5b7399b374f8f7a650d18c1a3ba6"
     },
     "03-types/object-types.zom": {
       "exitCode": 1,
@@ -1653,9 +1667,25 @@
       "exitCode": 1,
       "sha256": "594439d2084d788cb3edd6d190c4f7e042df9e3e7dd5a12a2524660619f04c18"
     },
-    "05-statements/binary_initializer_unannotated_drain_neg_53.zom": {
+    "05-statements/binary_initializer_function_value_capability_neg.zom": {
       "exitCode": 1,
-      "sha256": "5fc0da9f96ed5631e447a4a5d1ec5047f1d6b2c563f0db33c5fbc667b6f573e5"
+      "sha256": "312b9450e7dcd40cd334628a1d2b2f315e4af87a1db4dcbdb6cd21e5551a6b38"
+    },
+    "05-statements/binary_initializer_literal_only_capability_neg.zom": {
+      "exitCode": 1,
+      "sha256": "b52addc770d1b184b3919c0004ceef839c6b7631b05174cf2d1eec9fd31f1e3a"
+    },
+    "05-statements/binary_initializer_unannotated_arith_pos.zom": {
+      "exitCode": 0,
+      "hirSha256": "bbb5cde697ea5811e357035b6fcabf989377e8d452cb876168d0c15e3ac7ba78",
+      "mirSha256": "79ca98457db808662846bc87338b1a849afc2ec74f591f7012d302d5ff6978d3",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "05-statements/binary_initializer_unannotated_comparison_pos.zom": {
+      "exitCode": 0,
+      "hirSha256": "9c74ffaf2d7a5d065d926e5c9523715e59b77fbcbc6056782931b0f728e3f30e",
+      "mirSha256": "d620547688a8eecffabf1a9bec9d9ac6f333546f4aff098da1fbaa35e24241cc",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "05-statements/block_body_edge_01.zom": {
       "exitCode": 1,
@@ -2899,7 +2929,7 @@
     },
     "08-adt/inherent_method_unannotated_binary_local_neg_20.zom": {
       "exitCode": 1,
-      "sha256": "ec8785860f866e7bd9a2438c0cccc6ed43c7f5ddf92e8422c857048a332ac524"
+      "sha256": "4f855964c0485d87e9151d516c37c20219e758738ca4aeac2d5069334d437794"
     },
     "08-adt/inherent_method_void_discarded_call_pos_01.zom": {
       "exitCode": 0,

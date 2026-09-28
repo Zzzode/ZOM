@@ -1,0 +1,5 @@
+section: "05-statements let declaration syntax"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a literal-only binary initializer has no typed operand and drains as ZOM4099."

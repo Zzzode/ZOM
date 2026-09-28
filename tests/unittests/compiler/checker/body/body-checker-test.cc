@@ -28,9 +28,27 @@ public:
 
   scalar_literal::FactEmissionResult emit(const ast::Tree& tree, ast::NodeId node,
                                           const checked::CheckedNodeKey& key) {
+    return emit(tree, node, key, zc::Maybe<identity::SemanticTypeId>(zc::none));
+  }
+
+  /// \brief Interns a closed primitive type and returns its semantic id, used to
+  /// supply an expected-type hint to the literal emitter.
+  zc::Maybe<identity::SemanticTypeId> primitiveId(type::semantic::PrimitiveKind kind) {
+    auto canonical = session.semanticTypes().canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
+    if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto interned =
+        session.semanticTypes().intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+    return interned.get<type::SemanticTypeInterned>().id;
+  }
+
+  scalar_literal::FactEmissionResult emit(
+      const ast::Tree& tree, ast::NodeId node, const checked::CheckedNodeKey& key,
+      zc::Maybe<identity::SemanticTypeId> expectedType) {
     return scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
         session.semanticContext(), session.module(), tree, node, key, session.source(),
-        session.identityAuthority(), session.semanticTypes()});
+        session.identityAuthority(), session.semanticTypes(), zc::mv(expectedType)});
   }
 
   ast::Tree literalTree(ast::SyntaxKind kind, ast::NodePayload payload = {}) const {
@@ -271,6 +289,94 @@ ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsOutOfRangeIntAsSourceFailure") {
   auto tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "18446744073709551616"_zcc);
   expectSourceRejectedWithoutPublication(fixture, tree, type::semantic::PrimitiveKind::U64,
                                          "u64"_zcc);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.UnifiesInRangeIntegerLiteralWithHintedTarget") {
+  // A width-free integer literal adopts a fixed-width integer target in range:
+  // 40 is typed i64 or u8 rather than the default i32.
+  BodyLiteralFixture fixture;
+  for (const auto kind : {type::semantic::PrimitiveKind::I8, type::semantic::PrimitiveKind::I16,
+                          type::semantic::PrimitiveKind::I64, type::semantic::PrimitiveKind::U8,
+                          type::semantic::PrimitiveKind::U64}) {
+    auto tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "40"_zcc);
+    const auto literal = tree.root();
+    checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                                fixture.sourceSpan()};
+    auto result = fixture.emit(tree, literal, key, fixture.primitiveId(kind));
+    ZC_REQUIRE(result.is<scalar_literal::EmittedFacts>());
+    auto facts = zc::mv(result).get<scalar_literal::EmittedFacts>();
+    auto lookup = fixture.session.semanticTypes().get(facts.nodeType.value);
+    ZC_REQUIRE(lookup.is<type::SemanticTypeLookup>());
+    ZC_EXPECT(lookup.get<type::SemanticTypeLookup>().data().get<type::semantic::PrimitiveTypeData>()
+                  .kind == kind);
+  }
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.RejectsIntegerLiteralOutsideHintedRange") {
+  // A literal that overflows its hinted target is a ZOM4077 source failure that
+  // names the target and publishes no facts.
+  BodyLiteralFixture fixture;
+  struct Case {
+    zc::StringPtr text;
+    type::semantic::PrimitiveKind target;
+    zc::StringPtr targetText;
+  };
+  const Case cases[] = {{"300"_zcc, type::semantic::PrimitiveKind::U8, "u8"_zcc},
+                        {"128"_zcc, type::semantic::PrimitiveKind::I8, "i8"_zcc},
+                        {"256"_zcc, type::semantic::PrimitiveKind::U8, "u8"_zcc},
+                        {"9223372036854775808"_zcc, type::semantic::PrimitiveKind::I64, "i64"_zcc}};
+  for (const auto& test : cases) {
+    auto tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, test.text);
+    const auto literal = tree.root();
+    checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                                fixture.sourceSpan()};
+    auto result = fixture.emit(tree, literal, key, fixture.primitiveId(test.target));
+    ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+    const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+    ZC_REQUIRE(rejection.failures.size() == 1);
+    ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::BodyLiteralOutOfRange());
+    ZC_REQUIRE(rejection.failures[0].arguments.size() == 2);
+    const auto& targetArg = rejection.failures[0].arguments[1].variant();
+    ZC_REQUIRE(targetArg.is<checked::PrimitiveTypeDisplayArg>());
+    ZC_EXPECT(targetArg.get<checked::PrimitiveTypeDisplayArg>().kind == test.target);
+  }
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.IgnoresCrossClassHintForIntegerLiteral") {
+  // An int literal does not unify with a float target: the hint is ignored and
+  // the default ladder (i32 for an in-range small literal) stands, leaving the
+  // int->float mismatch to the downstream ZOM4009 comparison.
+  BodyLiteralFixture fixture;
+  auto tree = fixture.integerTree(ast::SyntaxKind::IntLiteral, "40"_zcc);
+  const auto literal = tree.root();
+  checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                              fixture.sourceSpan()};
+  auto result = fixture.emit(tree, literal, key,
+                             fixture.primitiveId(type::semantic::PrimitiveKind::F64));
+  ZC_REQUIRE(result.is<scalar_literal::EmittedFacts>());
+  auto facts = zc::mv(result).get<scalar_literal::EmittedFacts>();
+  auto lookup = fixture.session.semanticTypes().get(facts.nodeType.value);
+  ZC_REQUIRE(lookup.is<type::SemanticTypeLookup>());
+  ZC_EXPECT(lookup.get<type::SemanticTypeLookup>().data().get<type::semantic::PrimitiveTypeData>()
+                .kind == type::semantic::PrimitiveKind::I32);
+}
+
+ZC_TEST("ScalarLiteralBodyFactEmitter.UnifiesFloatLiteralWithF32Hint") {
+  // A parser-width-64 float typed against an f32 target is parsed and emitted
+  // as f32, with the float32 payload.
+  BodyLiteralFixture fixture;
+  auto tree = fixture.floatTree("1.5"_zcc, 64);
+  const auto literal = tree.root();
+  checked::CheckedNodeKey key{static_cast<uint32_t>(tree.node(literal).kind), 0,
+                              fixture.sourceSpan()};
+  auto result = fixture.emit(tree, literal, key,
+                             fixture.primitiveId(type::semantic::PrimitiveKind::F32));
+  ZC_REQUIRE(result.is<scalar_literal::EmittedFacts>());
+  auto facts = zc::mv(result).get<scalar_literal::EmittedFacts>();
+  auto lookup = fixture.session.semanticTypes().get(facts.nodeType.value);
+  ZC_REQUIRE(lookup.is<type::SemanticTypeLookup>());
+  ZC_EXPECT(lookup.get<type::SemanticTypeLookup>().data().get<type::semantic::PrimitiveTypeData>()
+                .kind == type::semantic::PrimitiveKind::F32);
 }
 
 ZC_TEST("ScalarLiteralBodyFactEmitter.EmitsCanonicalFloatWidths") {

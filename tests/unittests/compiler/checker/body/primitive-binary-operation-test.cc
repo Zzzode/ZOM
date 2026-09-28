@@ -1379,4 +1379,73 @@ ZC_TEST("InherentMethodCall.ThisFieldReadProducesReceiverParameterPlace") {
   ZC_EXPECT(foundReceiverFieldRead);
 }
 
+ZC_TEST("PrimitiveBinaryOperation.InfersOperandTypeForUnannotatedArithmeticLocal") {
+  // An unannotated local initialized from a parameter-plus-literal binary infers
+  // the operand type: `let z = a + 1` binds i32 without an annotation.
+  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { let z = a + 1; return z; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  ZC_EXPECT(call.invocation.resultType == i32);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == i32);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == i32);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.InfersBoolForUnannotatedComparisonLocal") {
+  // An unannotated local initialized from a relational comparison infers bool:
+  // `let z = a == 1` binds bool without an annotation.
+  PrimitiveBinaryFixture fixture("fun f(a: i32) -> bool { let z = a == 1; return z; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Eq);
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == i32);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.InfersThroughUnannotatedBinaryLocalChain") {
+  // Each unannotated local follows its binary initializer: the second
+  // initializer `z + 2` references the first inferred local z and produces a
+  // second Add fact, so the chain types without any annotation.
+  PrimitiveBinaryFixture fixture(
+      "fun f(a: i32) -> i32 { let z = a + 1; let w = z + 2; return w; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 2);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+    ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add);
+    ZC_EXPECT(entry.value.invocation.resultType == i32);
+  }
+}
+
+ZC_TEST("PrimitiveBinaryOperation.RejectsFunctionValueOperandForUnannotatedLocal") {
+  // A function name is not a first-class value in the lowering slice, so
+  // `let a = g + 1` has no typed operand to infer from. The body drains with
+  // ZOM4099 (FunctionBodySemanticsUnavailable), never an invariant.
+  PrimitiveBinaryFixture fixture(
+      "fun g() -> i32 { return 5; }\nfun f() -> i32 { let a = g + 1; return a; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+}
+
 }  // namespace zomlang::compiler::checker::body

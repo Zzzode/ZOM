@@ -124,6 +124,42 @@ bool magnitudeFits(zc::ArrayPtr<const uint8_t> magnitude,
   return true;
 }
 
+// Big-endian maximum magnitude of each fixed-width integer primitive:
+// 2^(n-1)-1 for a signed kind, 2^n-1 for an unsigned kind. The platform-sized
+// isize/usize kinds are intentionally absent: a literal hint is a closed,
+// width-exact target, and isize/usize never participate in literal unification.
+zc::Maybe<zc::ArrayPtr<const uint8_t>> fixedWidthIntegerMaximum(
+    type::semantic::PrimitiveKind kind) noexcept {
+  static constexpr uint8_t maxI8Bytes[] = {0x7f};
+  static constexpr uint8_t maxI16Bytes[] = {0x7f, 0xff};
+  static constexpr uint8_t maxI32Bytes[] = {0x7f, 0xff, 0xff, 0xff};
+  static constexpr uint8_t maxI64Bytes[] = {0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+  static constexpr uint8_t maxU8Bytes[] = {0xff};
+  static constexpr uint8_t maxU16Bytes[] = {0xff, 0xff};
+  static constexpr uint8_t maxU32Bytes[] = {0xff, 0xff, 0xff, 0xff};
+  static constexpr uint8_t maxU64Bytes[] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
+  switch (kind) {
+    case type::semantic::PrimitiveKind::I8:
+      return zc::arrayPtr(maxI8Bytes);
+    case type::semantic::PrimitiveKind::I16:
+      return zc::arrayPtr(maxI16Bytes);
+    case type::semantic::PrimitiveKind::I32:
+      return zc::arrayPtr(maxI32Bytes);
+    case type::semantic::PrimitiveKind::I64:
+      return zc::arrayPtr(maxI64Bytes);
+    case type::semantic::PrimitiveKind::U8:
+      return zc::arrayPtr(maxU8Bytes);
+    case type::semantic::PrimitiveKind::U16:
+      return zc::arrayPtr(maxU16Bytes);
+    case type::semantic::PrimitiveKind::U32:
+      return zc::arrayPtr(maxU32Bytes);
+    case type::semantic::PrimitiveKind::U64:
+      return zc::arrayPtr(maxU64Bytes);
+    default:
+      return zc::none;
+  }
+}
+
 IntegerLiteralParseResult parseIntegerLiteral(zc::StringPtr text, uint8_t base,
                                               bool requiresBigIntSuffix) {
   if (base != 2 && base != 8 && base != 10 && base != 16) return MalformedIntegerLiteral{};
@@ -345,6 +381,21 @@ FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
                            input.checkedNode.sourceSpan.clone());
   }
 
+  // Resolve the expected-type hint once. Only a closed primitive target steers
+  // literal typing; a nominal/structural hint is ignored and the default
+  // i32/i64/u64 or f64 typing stands, leaving the cross-class mismatch to the
+  // downstream ZOM4009 comparison.
+  zc::Maybe<type::semantic::PrimitiveKind> hintKind;
+  ZC_IF_SOME(expected, input.expectedType) {
+    auto lookup = input.semanticTypes.get(expected);
+    if (lookup.is<type::SemanticTypeLookup>()) {
+      const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+      if (data.is<type::semantic::PrimitiveTypeData>()) {
+        hintKind = data.get<type::semantic::PrimitiveTypeData>().kind;
+      }
+    }
+  }
+
   type::semantic::PrimitiveKind primitive = type::semantic::PrimitiveKind::Unit;
   checked::CanonicalLiteral literal = checked::CanonicalLiteral::unit();
   if (syntax.kind == ast::SyntaxKind::NullLiteral) {
@@ -420,12 +471,39 @@ FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
       }
       auto accepted = zc::mv(value).get<ParsedIntegerLiteral>();
       primitive = accepted.primitive;
+      // A width-free integer literal unifies with a fixed-width integer hint
+      // and is range-checked against that kind. A non-integer hint is ignored,
+      // so an int->float cross-class mismatch still surfaces as ZOM4009. The
+      // `n` BigInt suffix names its own unbounded value and never takes a hint.
+      if (!isBigInt) {
+        ZC_IF_SOME(hint, hintKind) {
+          ZC_IF_SOME(maximum, fixedWidthIntegerMaximum(hint)) {
+            if (!magnitudeFits(accepted.value.magnitude.asPtr(), maximum)) {
+              return rejectLiteralOutOfRange(
+                  input, checked::CanonicalLiteral::integer(zc::mv(accepted.value)), hint,
+                  actualPreorder);
+            }
+            primitive = hint;
+          }
+        }
+      }
       literal = checked::CanonicalLiteral::integer(zc::mv(accepted.value));
     }
   } else if (syntax.kind == ast::SyntaxKind::FloatLiteralExpr) {
-    const uint32_t width = syntax.payload.words[ast::kFloatLiteralExprWidthWord];
+    const uint32_t astWidth = syntax.payload.words[ast::kFloatLiteralExprWidthWord];
+    // The parser records a width-agnostic float (currently always 64); a float
+    // hint selects f32. An integer or other non-float hint leaves the width at
+    // 64 so the cross-class mismatch stays on the ZOM4009 rail.
+    uint32_t effectiveWidth = astWidth;
+    ZC_IF_SOME(hint, hintKind) {
+      if (hint == type::semantic::PrimitiveKind::F32) {
+        effectiveWidth = 32;
+      } else if (hint == type::semantic::PrimitiveKind::F64) {
+        effectiveWidth = 64;
+      }
+    }
     if (!payloadHasOnlyWords(syntax, ast::kFloatLiteralExprPayloadWordCount) ||
-        (width != 32 && width != 64)) {
+        (effectiveWidth != 32 && effectiveWidth != 64)) {
       return rejectInvariant(
           signature::CheckerInvariantKind::InvalidFact, input.module, actualPreorder, zc::none,
           input.node, input.checkedNode.sourceSpan.clone(), factPath(CheckedFactGroup::Literal));
@@ -440,7 +518,7 @@ FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
     zc::Maybe<checked::CanonicalLiteral> outOfRangeLiteral;
     ZC_IF_SOME(value, text) {
       if (hasValidDecimalFloatSyntax(value)) {
-        if (width == 32) {
+        if (effectiveWidth == 32) {
           ZC_IF_SOME(parsed, value.tryParseAs<float>()) {
             static_assert(sizeof(float) == sizeof(uint32_t));
             uint32_t bits = 0;
@@ -473,10 +551,10 @@ FactEmissionResult FactEmitter::emit(const FactEmissionInput& input) {
     }
     if (!accepted) {
       ZC_IF_SOME(rejected, outOfRangeLiteral) {
-        return rejectLiteralOutOfRange(
-            input, zc::mv(rejected),
-            width == 32 ? type::semantic::PrimitiveKind::F32 : type::semantic::PrimitiveKind::F64,
-            actualPreorder);
+        return rejectLiteralOutOfRange(input, zc::mv(rejected),
+                                       effectiveWidth == 32 ? type::semantic::PrimitiveKind::F32
+                                                            : type::semantic::PrimitiveKind::F64,
+                                       actualPreorder);
       }
       return rejectInvariant(
           signature::CheckerInvariantKind::InvalidFact, input.module, actualPreorder, zc::none,

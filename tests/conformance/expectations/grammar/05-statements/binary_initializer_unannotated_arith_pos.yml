@@ -1,0 +1,5 @@
+section: "05-statements unannotated local inference"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "An unannotated local initialized from an arithmetic binary expression infers the operand type; `let z = x + 1` binds i32."

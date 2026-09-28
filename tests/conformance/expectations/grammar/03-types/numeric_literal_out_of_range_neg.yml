@@ -1,0 +1,5 @@
+section: "03-types numeric literal inference"
+covers_rule: "primitiveType"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts the literal; the checker range-checks it against the target and rejects overflow with ZOM4077."

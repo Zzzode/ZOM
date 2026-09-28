@@ -364,6 +364,17 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
     const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
     ast::NodeId initializer);
 
+/// \brief Structurally derives the result type of a primitive-binary
+/// initializer for an unannotated local, without reading any node-type fact.
+///
+/// A reference operand contributes its parameter annotation or earlier-local
+/// type (which recursively follows another unannotated initializer chain); a
+/// comparison yields bool and an arithmetic or bitwise operation yields the
+/// operand type. Defined after the operator and primitive-kind helpers below.
+zc::Maybe<identity::SemanticTypeId> unannotatedBinaryInitializerType(
+    const BodyCheckingInput& input, ast::NodeId binary,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes, unsigned depth);
+
 zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
@@ -388,29 +399,17 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
         if (entry.key == initializerNode) return entry.value;
       }
       // The initializer's node type is not yet produced. A primitive-binary
-      // initializer is typed one stage after a bare identifier reference, so a
-      // reference to such a local resolves from the declarator's closed
-      // annotation instead; the binary production separately verifies its result
-      // type matches this annotation, so the two agree. A non-binary initializer
-      // is always typed before its uses in schema preorder, so this fallback is
-      // reached only for the binary case.
+      // initializer is typed one stage after a bare identifier reference. An
+      // annotated binding was resolved from its annotation above; for an
+      // unannotated binding derive the binary's result structurally from its
+      // operand leaves, so an earlier reference resolves before the binary's own
+      // node-type fact exists. The binary production independently recomputes
+      // and verifies the same result type, so the two agree. A non-binary
+      // initializer is always typed before its uses in schema preorder, so this
+      // fallback is reached only for the binary case.
       if (tree.contains(initializerNode) &&
           tree.node(initializerNode).kind == ast::SyntaxKind::BinaryExpr) {
-        for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
-          if (local.binding != value || !local.site.value().is<binder::PatternBindingSite>()) {
-            continue;
-          }
-          const auto& site = local.site.value().get<binder::PatternBindingSite>();
-          if (!tree.contains(site.introducer) ||
-              tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
-            return zc::none;
-          }
-          const ast::NodeId annotation(
-              tree.node(site.introducer).payload.words[ast::kVariableDeclaratorTyWord]);
-          if (!tree.contains(annotation)) return zc::none;
-          return signature::resolveClosedSourceType(input.boundModule, input.identities,
-                                                    input.semanticTypes, annotation);
-        }
+        return unannotatedBinaryInitializerType(input, initializerNode, nodeTypes, 0);
       }
       return zc::none;
     }
@@ -1556,6 +1555,69 @@ zc::Maybe<type::semantic::PrimitiveKind> primitiveKindOf(
   return data.get<type::semantic::PrimitiveTypeData>().kind;
 }
 
+namespace {
+// Bound on how deep an unannotated local initializer chain may recurse while
+// resolving a result type, mirroring the existential-initializer chain bound.
+constexpr unsigned kUnannotatedBinaryMaxDepth = 64;
+
+zc::Maybe<identity::SemanticTypeId> internPrimitiveKind(const BodyCheckingInput& input,
+                                                        type::semantic::PrimitiveKind kind) {
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+}  // namespace
+
+zc::Maybe<identity::SemanticTypeId> unannotatedBinaryInitializerType(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes, unsigned depth) {
+  if (depth > kUnannotatedBinaryMaxDepth) return zc::none;
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+  const auto& syntax = tree.node(node);
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+  auto comparison = scalarComparisonOperation(binaryOperator);
+  auto arithmetic = scalarArithmeticOperation(binaryOperator);
+  if (comparison == zc::none && arithmetic == zc::none) return zc::none;
+  const bool isArithmetic = comparison == zc::none;
+  const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+  // A typed operand anchors the result: an identifier resolving to a parameter
+  // or an earlier local, or a one-level nested binary. A scalar literal carries
+  // no type, so a literal-literal binary has no anchor and yields none.
+  auto referenceOperandType = [&](ast::NodeId operand) -> zc::Maybe<identity::SemanticTypeId> {
+    if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
+      return zc::none;
+    }
+    auto parameter = callableParameterReferenceType(input, operand);
+    if (parameter != zc::none) return parameter;
+    return ownerLocalReferenceType(input, operand, nodeTypes);
+  };
+  const ast::NodeId operands[2] = {left, right};
+  zc::Maybe<identity::SemanticTypeId> operandType;
+  for (const ast::NodeId operand : operands) {
+    operandType = tree.node(operand).kind == ast::SyntaxKind::BinaryExpr
+                      ? unannotatedBinaryInitializerType(input, operand, nodeTypes, depth + 1)
+                      : referenceOperandType(operand);
+    if (operandType != zc::none) break;
+  }
+  if (operandType == zc::none) return zc::none;
+  const auto operation = ZC_ASSERT_NONNULL(comparison != zc::none ? comparison : arithmetic);
+  auto primitive = primitiveKindOf(input.semanticTypes, ZC_ASSERT_NONNULL(operandType));
+  if (primitive == zc::none ||
+      !primitiveBinaryOperationAdmits(operation, ZC_ASSERT_NONNULL(primitive))) {
+    return zc::none;
+  }
+  if (!isArithmetic) { return internPrimitiveKind(input, type::semantic::PrimitiveKind::Bool); }
+  return operandType;
+}
+
 /// \brief Operand types of a binary operation the shape validator refused.
 struct InvalidBinaryOperandTypes final {
   identity::SemanticTypeId leftType;
@@ -2058,6 +2120,53 @@ zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput&
     return variant.get<PrimitiveOperation>();
   }
   return zc::none;
+}
+
+/// \brief True for a supported primitive comparison/arithmetic binary that has
+/// no operand the local-binary slice can derive a value type from.
+///
+/// The shape validator resolves an operand from a callable parameter, an earlier
+/// owner local, or a one-level nested binary; a scalar literal alone carries no
+/// type. An identifier that resolves to neither a parameter nor a local (a
+/// module-level function used as a value, `g + 1`) therefore leaves the binary
+/// un-producible. Surface admission structurally lets the binary through, so the
+/// checker must drain it as ZOM4099 here rather than falling to an invariant.
+/// Operands outside the local-binary universe (receiver-field member reads in a
+/// method) are deliberately left to their own production path.
+bool primitiveBinaryLacksReferenceOperand(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return false;
+  const auto binaryOperator =
+      static_cast<ast::BinaryOperatorKind>(tree.node(node).payload.words[ast::kBinaryExprOpWord]);
+  if (scalarComparisonOperation(binaryOperator) == zc::none &&
+      scalarArithmeticOperation(binaryOperator) == zc::none) {
+    return false;
+  }
+  const ast::NodeId left(tree.node(node).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(node).payload.words[ast::kBinaryExprRhsWord]);
+  bool hasReference = false;
+  for (const ast::NodeId operand : {left, right}) {
+    if (!tree.contains(operand)) return false;
+    const auto kind = tree.node(operand).kind;
+    if (kind == ast::SyntaxKind::IdentExpr) {
+      if (callableParameterReferenceType(input, operand) != zc::none ||
+          ownerLocalReferenceType(input, operand, nodeTypes) != zc::none) {
+        hasReference = true;
+      }
+    } else if (kind == ast::SyntaxKind::BinaryExpr) {
+      if (unannotatedBinaryInitializerType(input, operand, nodeTypes, 0) != zc::none) {
+        hasReference = true;
+      }
+    } else if (isScalarLiteral(kind)) {
+      // A literal contributes no value type; it cannot be the anchor by itself.
+    } else {
+      // Receiver-field reads and other non-local operands are handled elsewhere.
+      return false;
+    }
+  }
+  return !hasReference;
 }
 
 // Structural test for a `this.<field>` read operand: a dot member expression
@@ -2683,6 +2792,135 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
                                    zc::mv(parameters)};
   }
   ZC_UNREACHABLE
+}
+
+/// \brief Structurally derives the closed expected type of a numeric literal at
+/// its coercion site, without reading the literal's own not-yet-produced node
+/// type.
+///
+/// Only the annotation-directed sites supply a hint, in priority order:
+/// (a) the initializer of an annotated owner local, (b) a return value,
+/// (c) a typed operand of an admitted primitive binary, (d) a direct or
+/// concrete-method call argument, and (e) an admitted assignment RHS. An
+/// unannotated or otherwise unconstrained literal yields none and keeps the
+/// i32/f64 default. The hint only types the literal; it never widens a
+/// non-literal value, so the ZOM4009 rails are unchanged.
+zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
+    const BodyCheckingInput& input, ast::NodeId literal,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(literal)) return zc::none;
+
+  // (a) Annotated owner-local initializer.
+  auto annotated = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                     input.semanticTypes, literal);
+  if (annotated != zc::none) return annotated;
+
+  // (b) Return value of the enclosing callable.
+  auto returnOwner = returnValueOwner(input.boundModule, literal);
+  ZC_IF_SOME(owner, returnOwner) {
+    auto success = callableSuccess(input.signatureFacts, owner);
+    if (success != zc::none) return success;
+  }
+
+  // A typed value anchoring a binary operand: a parameter or owner-local
+  // reference, or a one-level nested binary with the same anchoring rule.
+  auto referenceOperandType = [&](ast::NodeId operand) -> zc::Maybe<identity::SemanticTypeId> {
+    if (!tree.contains(operand)) return zc::none;
+    if (tree.node(operand).kind == ast::SyntaxKind::BinaryExpr) {
+      return unannotatedBinaryInitializerType(input, operand, nodeTypes, 0);
+    }
+    if (tree.node(operand).kind != ast::SyntaxKind::IdentExpr) return zc::none;
+    auto parameter = callableParameterReferenceType(input, operand);
+    if (parameter != zc::none) return parameter;
+    return ownerLocalReferenceType(input, operand, nodeTypes);
+  };
+
+  zc::Maybe<identity::SemanticTypeId> binaryHint;
+  zc::Maybe<identity::SemanticTypeId> argumentHint;
+  zc::Maybe<identity::SemanticTypeId> assignmentHint;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    // (c) Operand of an admitted primitive arithmetic/comparison binary; the
+    // literal adopts the other, typed operand's type.
+    if (binaryHint == zc::none && syntax.kind == ast::SyntaxKind::BinaryExpr) {
+      const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+      zc::Maybe<ast::NodeId> other;
+      if (left == literal) {
+        other = right;
+      } else if (right == literal) {
+        other = left;
+      }
+      ZC_IF_SOME(otherNode, other) {
+        const auto binaryOperator =
+            static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
+        auto comparison = scalarComparisonOperation(binaryOperator);
+        auto arithmetic = scalarArithmeticOperation(binaryOperator);
+        if (comparison != zc::none || arithmetic != zc::none) {
+          auto otherType = referenceOperandType(otherNode);
+          ZC_IF_SOME(type, otherType) {
+            auto kind = primitiveKindOf(input.semanticTypes, type);
+            ZC_IF_SOME(kindValue, kind) {
+              const auto operation =
+                  ZC_ASSERT_NONNULL(comparison != zc::none ? comparison : arithmetic);
+              if (primitiveBinaryOperationAdmits(operation, kindValue)) { binaryHint = type; }
+            }
+          }
+        }
+      }
+    }
+
+    // (d) Direct or concrete-method call argument: the corresponding parameter
+    // type. Both shape resolvers are purely structural and already carry the
+    // callee parameter vector.
+    if (argumentHint == zc::none && syntax.kind == ast::SyntaxKind::CallExpression) {
+      const ast::NodeList arguments{syntax.payload.words[ast::kCallExpressionArgsFirstWord],
+                                    syntax.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (tree.contains(arguments)) {
+        const auto argumentNodes = tree.list(arguments);
+        for (size_t index = 0; index < argumentNodes.size(); ++index) {
+          if (argumentNodes[index] != literal) continue;
+          auto direct = directCallShape(input, node);
+          if (direct != zc::none) {
+            const auto& parameters = ZC_ASSERT_NONNULL(direct).parameters;
+            if (index < parameters.size()) argumentHint = parameters[index];
+          } else {
+            auto method = concreteMethodCallShape(input, node, nodeTypes);
+            if (method != zc::none) {
+              const auto& parameters = ZC_ASSERT_NONNULL(method).parameters;
+              if (index < parameters.size()) argumentHint = parameters[index];
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    // (e) RHS of an admitted local or field write: the LHS storage type.
+    if (assignmentHint == zc::none && syntax.kind == ast::SyntaxKind::AssignmentExpr &&
+        ast::NodeId(syntax.payload.words[ast::kAssignmentExprRhsWord]) == literal &&
+        static_cast<ast::AssignmentOperatorKind>(
+            syntax.payload.words[ast::kAssignmentExprOpWord]) ==
+            ast::AssignmentOperatorKind::Assign) {
+      const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
+      if (tree.contains(target)) {
+        if (isSimpleLocalWrite(input.boundModule, node)) {
+          assignmentHint = ownerLocalReferenceType(input, target, nodeTypes);
+        } else if (isSimpleOwnerLocalFieldWrite(input.boundModule, node)) {
+          auto shape = ownerLocalFieldShape(input, target, nodeTypes);
+          ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+        } else if (isSimpleReceiverFieldWrite(input.boundModule, node)) {
+          auto shape = thisReceiverFieldShape(input, target);
+          ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+        }
+      }
+    }
+  });
+
+  if (binaryHint != zc::none) return binaryHint;
+  if (argumentHint != zc::none) return argumentHint;
+  if (assignmentHint != zc::none) return assignmentHint;
+  return zc::none;
 }
 
 /// \brief Resolves a zero-argument inherent method self-call
@@ -4176,6 +4414,22 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
         }
+        // A supported primitive comparison/arithmetic binary whose operands the
+        // local slice cannot resolve (a function or module value used as an
+        // operand, `g + 1`, or a literal-only operation) is a capability gap in
+        // a free function body, not an invariant. Surface admission stops most
+        // shapes, but a nested-operand form can still classify here; drain it as
+        // ZOM4099.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::BinaryExpr &&
+            primitiveBinaryLacksReferenceOperand(input, site.node, nodeTypes.asPtr())) {
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(
+                  rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                  factStoreBrands);
+            }
+          }
+        }
         // Every other unproduced site inside an inherent method body is a
         // well-formed construct the current HIR/MIR/LIR slice does not admit
         // (binary results over receiver fields, control flow, nested method
@@ -4314,18 +4568,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
             return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
           }
-          // Owner locals and callable parameters produced a type above. A bare
-          // reference that still has no type but resolves to a module-level or
-          // imported value (a constant, static, or imported symbol) is valid
-          // source whose body read has no lowering yet; drain it as ZOM4099
-          // instead of a missing-fact invariant.
-          if (resolvedDefinition(input.boundModule.bindings(), site.node) != zc::none) {
-            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
-              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                return attachRecoveryLedger(
-                    rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
-                    factStoreBrands);
-              }
+          // Every remaining bare reference with no produced type is legal source
+          // the body slice cannot lower yet: a module-level constant/static, an
+          // imported symbol, or a function used as a first-class value (including
+          // a binary operand such as `g + 1`). An unbound name is rejected by the
+          // binder before this stage. Drain it as ZOM4099 rather than a
+          // missing-fact invariant.
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(
+                  rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                  factStoreBrands);
             }
           }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
@@ -4832,6 +5085,18 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               }
             }
           }
+          // A supported operator with no operand the local-binary slice can
+          // resolve (e.g. a module-level function used as a value, `g + 1`) is a
+          // capability gap, not an invariant: drain it as ZOM4099.
+          if (primitiveBinaryLacksReferenceOperand(input, site.node, nodeTypes.asPtr())) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                    factStoreBrands);
+              }
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -5208,7 +5473,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else {
         auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
             context, module, input.boundModule.tree(), site.node, site.key,
-            input.boundModule.parsedModule().source(), input.identities, input.semanticTypes});
+            input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
+            expectedLiteralType(input, site.node, nodeTypes.asPtr())});
         if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
           return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
         }

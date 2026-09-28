@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/binary_initializer_literal_only_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A literal-vs-literal binary (`2 + 3`) has no typed operand to anchor the
+// result type or a lowering value, so an unannotated local initialized from it
+// drains as ZOM4099. Literal operands are inferable only beside a typed value.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_literal_only_capability_neg.zom:1:1

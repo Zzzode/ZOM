@@ -24,6 +24,17 @@ struct FactEmissionInput final {
   const identity::SourceFileKey& source;
   const CheckerIdentityAuthority& identities;
   type::SemanticTypeStore& semanticTypes;
+  /// \brief Closed target type the literal unifies with at its coercion site.
+  ///
+  /// A numeric literal is polymorphic until a site supplies a closed integer or
+  /// float target: an annotated initializer, a return type, a typed binary
+  /// operand, a call parameter, or an assignment storage type. A fixed-width
+  /// hint range-checks the magnitude and types the literal as that primitive;
+  /// an out-of-range literal is rejected with ZOM4077. No hint (or a hint of a
+  /// different primitive class) keeps the default i32/f64 typing. The hint is
+  /// only a literal-typing input, never a value coercion: a non-literal value
+  /// still gets ZOM4009.
+  zc::Maybe<identity::SemanticTypeId> expectedType;
 };
 
 /// \brief The orthogonal node-type and literal facts for one accepted scalar literal.

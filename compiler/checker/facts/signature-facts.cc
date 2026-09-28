@@ -7882,7 +7882,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
             }
             auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
                 context, module, tree, initializer, checkedNode,
-                input.boundModule.parsedModule().source(), input.identities, input.semanticTypes});
+                input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
+                valueType});
             if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
               auto rejected = zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
               return SignatureFactsInvariantRejected{zc::mv(rejected.failures)};

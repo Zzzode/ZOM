@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/numeric_value_widening_rejected_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Only a numeric literal is polymorphic. A non-literal i32 value does not
+// implicitly widen to i64 (no numeric widening without an explicit cast), so
+// assigning an i32 parameter to an i64 local is ZOM4009.
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected i64, got i32
+// CHECK-LITERAL:   --> conformance/03-types/numeric_value_widening_rejected_neg.zom:1:37
