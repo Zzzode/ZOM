@@ -1,0 +1,16 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_parameter_initializer_neg_55.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A mut local initialized by copy from a parameter followed by a plain
+// overwrite is admitted by ownership surface admission and the checker, but the
+// local-write lowering carrier only builds a literal-initialized storage
+// shape. The definition drains as the expression-statement capability code
+// ZOM4098 (the same code compound assignment and postfix update use), never as
+// an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4098]: this expression statement is not supported yet
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_parameter_initializer_neg_55.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     a = 2;
+// CHECK-LITERAL:   |     ^~~~~
+// CHECK-LITERAL: 1 error generated.

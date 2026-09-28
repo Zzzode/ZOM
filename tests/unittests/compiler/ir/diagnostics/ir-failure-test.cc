@@ -61,7 +61,8 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
   if (branch == IrRejectedBranch::CapabilityRejected) {
     // RFC 0048: source-construct lowering capability at construction phases.
     if (phase == IrFailurePhase::HirConstruction || phase == IrFailurePhase::MirConstruction) {
-      return kind == IrFailureKind::UnsupportedSourceConstruct;
+      return kind == IrFailureKind::UnsupportedSourceConstruct ||
+             kind == IrFailureKind::UnsupportedExpressionStatement;
     }
     if (phase == IrFailurePhase::Monomorphization) {
       return kind == IrFailureKind::RecursiveInstantiation ||
@@ -274,6 +275,7 @@ ZC_TEST("IR failure closed tags match RFC 0010") {
   ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::LinkerInvocation) == 0x12);
   ZC_EXPECT(static_cast<uint8_t>(IrFailurePhase::ExecutablePublication) == 0x13);
   ZC_EXPECT(static_cast<uint8_t>(IrFailureKind::CanonicalCodecMismatch) == 0x13);
+  ZC_EXPECT(static_cast<uint8_t>(IrFailureKind::UnsupportedExpressionStatement) == 0x15);
   ZC_EXPECT(static_cast<uint8_t>(IrFailureDetailKind::InstantiationBudget) == 0x03);
   ZC_EXPECT(static_cast<uint8_t>(BackendOperation::InvokeLinker) == 0x0b);
   for (uint8_t tag = 0x01; tag <= 0x0b; ++tag) {
@@ -287,7 +289,7 @@ ZC_TEST("IR failure matrix accepts every legal coordinate and rejects every ille
   uint32_t legalCount = 0;
   for (uint8_t branchTag = 0x01; branchTag <= 0x02; ++branchTag) {
     for (uint8_t phaseTag = 0x01; phaseTag <= 0x13; ++phaseTag) {
-      for (uint8_t kindTag = 0x01; kindTag <= 0x14; ++kindTag) {
+      for (uint8_t kindTag = 0x01; kindTag <= 0x15; ++kindTag) {
         for (uint8_t ownerTag = 0x01; ownerTag <= 0x04; ++ownerTag) {
           for (uint8_t siteTag = 0x00; siteTag <= 0x05; ++siteTag) {
             for (uint8_t detailTag = 0x01; detailTag <= 0x03; ++detailTag) {
@@ -320,20 +322,24 @@ ZC_TEST("IR failure matrix accepts every legal coordinate and rejects every ille
 }
 
 ZC_TEST("RFC 0048 source-construct capability is legal only at construction phases") {
-  // A definition-owned source-construct capability rejection with no detail is
-  // legal at HIR and MIR construction and illegal everywhere else and on the
-  // invariant branch.
+  // A definition-owned source-construct or expression-statement capability
+  // rejection with no detail is legal at HIR and MIR construction and illegal
+  // everywhere else and on the invariant branch.
+  const IrFailureKind constructionKinds[] = {IrFailureKind::UnsupportedSourceConstruct,
+                                             IrFailureKind::UnsupportedExpressionStatement};
   const IrFailurePhase constructionPhases[] = {IrFailurePhase::HirConstruction,
                                                IrFailurePhase::MirConstruction};
-  for (const auto phase : constructionPhases) {
-    const IrFailureDescriptorShape legal{
-        IrRejectedBranch::CapabilityRejected, phase,    IrFailureKind::UnsupportedSourceConstruct,
-        IrFailureOwnerKind::Definition,       zc::none, IrFailureDetailKind::None};
-    ZC_EXPECT(isLegalIrFailureShape(legal));
-    const IrFailureDescriptorShape invariant{
-        IrRejectedBranch::IrInvariantRejected, phase,    IrFailureKind::UnsupportedSourceConstruct,
-        IrFailureOwnerKind::Definition,        zc::none, IrFailureDetailKind::None};
-    ZC_EXPECT(!isLegalIrFailureShape(invariant));
+  for (const auto kind : constructionKinds) {
+    for (const auto phase : constructionPhases) {
+      const IrFailureDescriptorShape legal{
+          IrRejectedBranch::CapabilityRejected, phase,    kind,
+          IrFailureOwnerKind::Definition,       zc::none, IrFailureDetailKind::None};
+      ZC_EXPECT(isLegalIrFailureShape(legal));
+      const IrFailureDescriptorShape invariant{
+          IrRejectedBranch::IrInvariantRejected, phase,    kind,
+          IrFailureOwnerKind::Definition,        zc::none, IrFailureDetailKind::None};
+      ZC_EXPECT(!isLegalIrFailureShape(invariant));
+    }
   }
   // HIR construction permits a module- or definition-owned construct failure;
   // MIR construction requires a definition owner.

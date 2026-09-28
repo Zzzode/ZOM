@@ -1,0 +1,5 @@
+section: "04-expressions dot member read on a primitive"
+covers_rule: "postfixExpr (member access)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a dot member read on a str value; str carries no lowered nominal field, so the free function body drains with ZOM4099 rather than an invariant."

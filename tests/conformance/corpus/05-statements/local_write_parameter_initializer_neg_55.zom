@@ -1,0 +1,5 @@
+fun f(p: i32) -> i32 {
+    mut a: i32 = p;
+    a = 2;
+    return a;
+}

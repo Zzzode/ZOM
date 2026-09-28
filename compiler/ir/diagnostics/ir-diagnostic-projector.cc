@@ -52,6 +52,7 @@ uint32_t kindTag(IrFailureKind kind) noexcept {
     case IrFailureKind::UnresolvedDispatch:
     case IrFailureKind::UnsupportedTargetCapability:
     case IrFailureKind::UnsupportedSourceConstruct:
+    case IrFailureKind::UnsupportedExpressionStatement:
     case IrFailureKind::BackendTranslationRejected:
     case IrFailureKind::RecursiveInstantiation:
     case IrFailureKind::InstantiationBudgetExceeded:

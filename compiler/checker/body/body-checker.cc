@@ -1555,6 +1555,54 @@ zc::Maybe<type::semantic::PrimitiveKind> primitiveKindOf(
   return data.get<type::semantic::PrimitiveTypeData>().kind;
 }
 
+/// \brief Whether a dot member read targets a resolved owner local or by-value
+/// parameter whose receiver carries no nominal field the body slice can read.
+///
+/// This is true for a primitive receiver (str, char, a numeric type, bool,
+/// unit, ...), which never has a nominal field, and for a closed nominal
+/// receiver whose named member does not resolve (every known field shape is
+/// admitted by `ownerLocalFieldShape` / `parameterFieldShape` before this
+/// guard runs). It keeps the site inside the expression capability family
+/// instead of letting the missing fact reach the invariant rail. `this`
+/// member reads and non-identifier receivers are not classified here.
+bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
+                                     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+                                     ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  zc::Maybe<identity::SemanticTypeId> receiverType;
+  if (resolvedOwnerLocal(input.boundModule.bindings(), object) != zc::none) {
+    receiverType = ownerLocalReferenceType(input, object, nodeTypes);
+  } else if (resolvedCallableParameter(input.boundModule.bindings(), object) != zc::none) {
+    receiverType = callableParameterReferenceType(input, object);
+  }
+  ZC_IF_SOME(type, receiverType) {
+    if (primitiveKindOf(input.semanticTypes, type) != zc::none) { return true; }
+    auto lookup = input.semanticTypes.get(type);
+    if (lookup.is<type::SemanticTypeLookup>()) {
+      const auto& typeData = lookup.get<type::SemanticTypeLookup>().data();
+      if (typeData.is<type::semantic::NominalTypeData>()) {
+        // A known field on the zero-argument nominal matches one of the field
+        // shapes and never reaches this guard; an unknown member name on such a
+        // nominal is an unsupported member read in this slice.
+        return typeData.get<type::semantic::NominalTypeData>().arguments.size() == 0;
+      }
+    }
+  }
+  return false;
+}
+
 namespace {
 // Bound on how deep an unannotated local initializer chain may recurse while
 // resolving a result type, mirroring the existential-initializer chain bound.
@@ -2021,13 +2069,11 @@ zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
       !receiverLookup.get<type::SemanticTypeLookup>()
            .data()
            .is<type::semantic::NominalTypeData>()) {
-    // A by-value parameter whose type is not a closed nominal (a `dyn`
-    // interface, a primitive, ...) still names a dot-method call that has no
-    // lowering yet; drain it with the source spelling instead of an invariant.
-    if (parameterReceiver) {
-      return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), false, 0};
-    }
-    return zc::none;
+    // A receiver whose type is not a closed nominal (a primitive such as str,
+    // a `dyn` interface, ...) still names a dot-method call that has no
+    // lowering yet, whether the receiver is an owner local or a by-value
+    // parameter; drain it with the source spelling instead of an invariant.
+    return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), false, 0};
   }
   const auto& nominal =
       receiverLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
@@ -5207,6 +5253,28 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                   ? zc::none
                                   : parameterFieldShape(input, site.node, nodeTypes.asPtr());
         if (thisShape == zc::none && shape == zc::none && parameterShape == zc::none) {
+          auto unsupportedThisField = unsupportedThisFieldAccess(input, site.node);
+          if (unsupportedThisField != zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands,
+                                              zc::mv(unsupportedThisField));
+          }
+          // A member read on a primitive receiver (such as `str.length`) or an
+          // unknown member of a closed nominal receiver is legal source the
+          // body slice cannot lower. Inside an inherent method it drains with
+          // the method capability code exactly like an unresolvable identifier
+          // reference; in a free function body it is ZOM4099.
+          if (isUnsupportedResolvedMemberRead(input, nodeTypes.asPtr(), site.node)) {
+            ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
+              return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
+            }
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                    factStoreBrands);
+              }
+            }
+          }
           return rejectMethodCallCapability(site, input, factStoreBrands,
                                             unsupportedThisFieldAccess(input, site.node));
         }

@@ -18,6 +18,7 @@ constexpr bool enumInRange(Enum value, Enum first, Enum last) noexcept {
 bool isCapabilityKind(IrFailureKind kind) noexcept {
   return kind == IrFailureKind::UnsupportedTargetCapability ||
          kind == IrFailureKind::UnsupportedSourceConstruct ||
+         kind == IrFailureKind::UnsupportedExpressionStatement ||
          kind == IrFailureKind::RecursiveInstantiation ||
          kind == IrFailureKind::InstantiationBudgetExceeded ||
          kind == IrFailureKind::OutputCreationFailed;
@@ -37,7 +38,8 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
       // cannot emit is a user-facing capability failure at construction.
       case IrFailurePhase::HirConstruction:
       case IrFailurePhase::MirConstruction:
-        return kind == IrFailureKind::UnsupportedSourceConstruct;
+        return kind == IrFailureKind::UnsupportedSourceConstruct ||
+               kind == IrFailureKind::UnsupportedExpressionStatement;
       case IrFailurePhase::Monomorphization:
         return kind == IrFailureKind::RecursiveInstantiation ||
                kind == IrFailureKind::InstantiationBudgetExceeded;
@@ -732,7 +734,7 @@ bool isLegalIrFailureShape(const IrFailureDescriptorShape& shape) noexcept {
       !enumInRange(shape.phase, IrFailurePhase::CheckedModuleAssembly,
                    IrFailurePhase::ExecutablePublication) ||
       !enumInRange(shape.kind, IrFailureKind::InputRevisionMismatch,
-                   IrFailureKind::UnsupportedSourceConstruct) ||
+                   IrFailureKind::UnsupportedExpressionStatement) ||
       !enumInRange(shape.owner, IrFailureOwnerKind::Session, IrFailureOwnerKind::Instance) ||
       !enumInRange(shape.detail, IrFailureDetailKind::None,
                    IrFailureDetailKind::InstantiationBudget)) {

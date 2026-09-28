@@ -86,6 +86,12 @@ enum class IrFailureKind : uint8_t {
   // capability family. The owning definition carries the construct/declaration
   // span; per-construct code selection is supplied with the Phase 3 producer.
   UnsupportedSourceConstruct = 0x14,
+  // A standalone expression statement the current lowering slice cannot emit
+  // (a plain overwrite whose storage shape is not yet built). Legal at the HIR
+  // and MIR construction phases on a definition owner and projected to
+  // ZOM4098, the same code the ownership surface uses for unadmitted
+  // expression statements such as compound assignment and postfix update.
+  UnsupportedExpressionStatement = 0x15,
 };
 
 enum class IrFailureDetailKind : uint8_t {

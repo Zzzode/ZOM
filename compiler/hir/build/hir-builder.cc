@@ -5156,6 +5156,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       const bool initializedByLeaf =
           (value.literal != zc::none) != (value.parameterReference != zc::none);
       if (writesArePlain && initializedByLeaf) {
+        // The MIR local-write family builds the user local from a scalar
+        // literal constant; an initialized mut local whose initializer is a
+        // parameter copy followed by one or more overwrites is well-formed
+        // source the write carrier cannot emit yet. Drain the definition here,
+        // before the candidate is built, with the same expression-statement
+        // capability code the ownership surface projects for compound
+        // assignment and postfix update, so the construct never reaches the
+        // MIR missing-fact invariant.
+        if (value.literal == zc::none) {
+          return rejectHirCapability<HirModuleCandidate>(
+              value.definition, registries, ir::IrFailureKind::UnsupportedExpressionStatement,
+              value.localWrites[0].sourceSpan.clone());
+        }
         HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                        localWrites, localReferences, primitiveBinaryOperations, aggregates,
                        localFieldProjections, parameterFieldProjections, parameterFieldWrites,

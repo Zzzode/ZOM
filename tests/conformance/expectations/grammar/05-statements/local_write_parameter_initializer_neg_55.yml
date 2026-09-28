@@ -1,0 +1,5 @@
+section: "05-statements mut local write with parameter initializer"
+covers_rule: "expressionStatement (assignment expression)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a plain overwrite of a mut local after a parameter-copy initialization; the lowering carrier builds only the literal-initialized storage shape, so the write statement drains with ZOM4098."

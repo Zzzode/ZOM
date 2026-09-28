@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/primitive_str_member_read_capability_neg_66.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dot member read on a primitive str value is syntax the parser and binder
+// accept, but str is not a nominal scalar with lowered fields. The checker body
+// slice drains the free function body with the unsupported-construct code
+// ZOM4099 instead of reaching a missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/primitive_str_member_read_capability_neg_66.zom:3:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     return s.length;
+// CHECK-LITERAL:   |            ^~~~~~~~
+// CHECK-LITERAL: 1 error generated.

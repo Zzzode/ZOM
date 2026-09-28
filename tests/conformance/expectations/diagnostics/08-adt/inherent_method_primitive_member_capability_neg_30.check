@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/inherent_method_primitive_member_capability_neg_30.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dot member read on a primitive str value inside an inherent method body is
+// legal syntax the body slice cannot lower. Inside a method it drains with the
+// method capability code ZOM4125, scoped to the enclosing method, instead of
+// reaching a missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `g` is not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_primitive_member_capability_neg_30.zom:6:16
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 6 |         return s.length;
+// CHECK-LITERAL:   |                ^~~~~~~~
+// CHECK-LITERAL: 1 error generated.

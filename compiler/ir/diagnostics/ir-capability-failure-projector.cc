@@ -68,6 +68,7 @@ bool sameCapabilityRoot(const IrFailureFact& left, const IrFailureFact& right) {
       return left.detail().budgetValue().root == right.detail().budgetValue().root;
     case IrFailureKind::UnsupportedTargetCapability:
     case IrFailureKind::UnsupportedSourceConstruct:
+    case IrFailureKind::UnsupportedExpressionStatement:
     case IrFailureKind::OutputCreationFailed:
       return sameOwner(left.owner(), right.owner());
     case IrFailureKind::InputRevisionMismatch:
@@ -176,6 +177,11 @@ diagnostics::DiagID capabilityDiagnosticId(IrFailureKind kind) noexcept {
     // failure detail.
     case IrFailureKind::UnsupportedSourceConstruct:
       return DiagID::FunctionBodySemanticsUnavailable;
+    // A standalone expression statement the lowering slice cannot emit keeps
+    // the expression-statement code the ownership surface already projects for
+    // its unadmitted forms (compound assignment, postfix update).
+    case IrFailureKind::UnsupportedExpressionStatement:
+      return DiagID::ExpressionStatementSemanticsUnavailable;
     case IrFailureKind::RecursiveInstantiation:
       return DiagID::RecursiveInstantiation;
     case IrFailureKind::InstantiationBudgetExceeded:
@@ -207,6 +213,8 @@ zc::StringPtr irOperationalFailureDisplay(IrFailureKind kind) noexcept {
       return "unsupported-target-capability"_zc;
     case IrFailureKind::UnsupportedSourceConstruct:
       return "unsupported-source-construct"_zc;
+    case IrFailureKind::UnsupportedExpressionStatement:
+      return "unsupported-expression-statement"_zc;
     case IrFailureKind::OutputCreationFailed:
       return "output-creation-failed"_zc;
     case IrFailureKind::RecursiveInstantiation:

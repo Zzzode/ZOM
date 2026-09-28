@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1003,
+  "count": 1006,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -1263,6 +1263,10 @@
       "exitCode": 1,
       "sha256": "4b84156b503a0f4c5c5cdc369b151fb3b40e1483b6854eb285a017fde4b82373"
     },
+    "04-expressions/primitive_str_member_read_capability_neg_66.zom": {
+      "exitCode": 1,
+      "sha256": "9e2f1cf614c1a5e7d4330f8a33381afa96c17eacda3d70ec4be4adb3c70065fd"
+    },
     "04-expressions/range_reject_neg_01.zom": {
       "exitCode": 1,
       "sha256": "bca02da689f976f27b2f26cc5fc84edda32b4a48783174bb445a80e1186eba5a"
@@ -1838,6 +1842,10 @@
     "05-statements/local_annotation_mismatch_neg_01.zom": {
       "exitCode": 1,
       "sha256": "467c9e07f4e8c5dd8cb8a3f1b5e17749ab3d3bce0f469e8f191efef37580ca0e"
+    },
+    "05-statements/local_write_parameter_initializer_neg_55.zom": {
+      "exitCode": 1,
+      "sha256": "9332101b919561d8e210e714d297418ac61fa182b2d23c8f54bfe46925c49c26"
     },
     "05-statements/logical_operator_unsupported_neg_01.zom": {
       "exitCode": 1,
@@ -2762,6 +2770,10 @@
     "08-adt/inherent_method_parameter_arithmetic_pos_05.zom": {
       "exitCode": 0,
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "08-adt/inherent_method_primitive_member_capability_neg_30.zom": {
+      "exitCode": 1,
+      "sha256": "12c344db05fcbde425f6fed64bc05003dd927ed69509f6fbe96df17bb8a6c41b"
     },
     "08-adt/inherent_method_receiver_argument_pos_01.zom": {
       "exitCode": 0,

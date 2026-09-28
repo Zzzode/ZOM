@@ -1,0 +1,4 @@
+fun f() -> i32 {
+    let s: str = "hi";
+    return s.length;
+}
