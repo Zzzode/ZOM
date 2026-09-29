@@ -98,6 +98,16 @@ zc::Maybe<ValueType> boolCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Selects the entry symbol for a caller function.
+///
+/// A parameter-free caller folds to the reserved no-argument `zom.module_init`
+/// entry the runtime `_start` calls, so the module runs natively. A caller with
+/// leading parameters keeps the index-independent `zom.caller` symbol and stays
+/// object-only, since `_start` cannot bind arguments to it.
+zc::String moduleEntrySymbol(size_t callerParameterCount) {
+  return zc::heapString(callerParameterCount == 0 ? "zom.module_init" : "zom.caller");
+}
+
 /// \brief Resolves the opaque-pointer carrier for a shared reference type.
 ///
 /// The implicit `this` receiver of a shared-receiver method is a const
@@ -1391,8 +1401,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
     }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
-                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
+                           callerCarrierValue, zc::mv(parameters), zc::mv(locals),
+                           zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning the integer constant.
@@ -1614,8 +1625,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
       if (carrier == zc::none) { return zc::none; }
       parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
     }
-    functions.add(Function(caller.owner, zc::heapString("zom.caller"), calleeCarrierValue,
-                           zc::mv(parameters), zc::mv(callerShape.shapeLocals),
+    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
+                           calleeCarrierValue, zc::mv(parameters), zc::mv(callerShape.shapeLocals),
                            zc::mv(callerBlocks)));
   }
 
@@ -2198,8 +2209,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
-                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
+                           callerCarrierValue, zc::mv(parameters), zc::mv(locals),
+                           zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, two parameters, a single block returning parameter 0.
@@ -2365,8 +2377,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
     }
     zc::Vector<Local> locals;
     locals.add(Local(resultOrdinal, callerCarrierValue));
-    functions.add(Function(caller.owner, zc::heapString("zom.caller"), callerCarrierValue,
-                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
+    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
+                           callerCarrierValue, zc::mv(parameters), zc::mv(locals),
+                           zc::mv(callerBlocks)));
   }
 
   // Function 1: the callee, a single block returning its integer constant.

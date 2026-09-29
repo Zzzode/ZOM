@@ -1109,7 +1109,7 @@ ZC_TEST("Same-module direct call lowers to a verified two-function LLVM module")
 
   const auto ir = result.textualIr();
   ZC_EXPECT(ir.contains("call i32"_zc));
-  ZC_EXPECT(ir.contains("zom.caller"_zc));
+  ZC_EXPECT(ir.contains("zom.module_init"_zc));
   ZC_EXPECT(ir.contains("zom.callee"_zc));
   ZC_EXPECT(ir.contains("ret i32 5"_zc));
 
@@ -1213,7 +1213,7 @@ ZC_TEST("Same-module call with one integer argument lowers to a verified LLVM mo
   const auto ir = result.textualIr();
   ZC_EXPECT(ir.contains("call i32"_zc));
   ZC_EXPECT(ir.contains("i32 9"_zc));
-  ZC_EXPECT(ir.contains("zom.caller"_zc));
+  ZC_EXPECT(ir.contains("zom.module_init"_zc));
   ZC_EXPECT(ir.contains("zom.callee"_zc));
 
   const auto object = result.objectCode();

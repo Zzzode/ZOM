@@ -1405,12 +1405,15 @@ private:
     // count, requiring exactly one of each, and the deeper `lowerCallModule` /
     // `lowerCallModuleWithArgument` gates (including the call targeting the
     // identified callee and the argument count) fail-close any residual mismatch.
-    // The multi-block and call slices keep their own parameterized symbols
-    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`, `zom.caller` /
-    // `zom.callee`), so they produce a relocatable object only. The scalar and
-    // aggregate field-return slices fold to the reserved no-argument `zom.module_init`
-    // entry the runtime `_start` calls. Every other shape stays fail-closed here,
-    // and `zomc run` remains gated on the host-compatibility path regardless.
+    // The multi-block slices keep their own parameterized symbols
+    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`), so they produce a
+    // relocatable object only. The call slices fold a parameter-free caller to
+    // the reserved no-argument `zom.module_init` entry the runtime `_start`
+    // calls, so they run natively; a parameterized caller keeps `zom.caller`
+    // and stays object-only. The scalar and aggregate field-return slices fold
+    // to `zom.module_init` unconditionally. Every other shape stays
+    // fail-closed here, and `zomc run` remains gated on the
+    // host-compatibility path regardless.
     zc::Maybe<lir::Module> lir;
     ZC_IF_SOME(types, semanticTypes) {
       if (functions.size() == 1) {

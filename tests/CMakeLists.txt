@@ -227,6 +227,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/scalar-local-call-consumer/Zom.toml::scalar_local_call_consumer::scalar_local_call_consumer::42"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer::7"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer::3"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer::42"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/leading-local-comparison-consumer/Zom.toml::leading_local_comparison_consumer::leading_local_comparison_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-inference-consumer/Zom.toml::binary_inference_consumer::binary_inference_consumer::41"
