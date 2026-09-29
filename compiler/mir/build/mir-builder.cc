@@ -1712,7 +1712,7 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
     const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
     checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
   if (declaration.unsafeBlock != zc::none || declaration.receiver != zc::none) return zc::none;
-  if (block.statements.size() < 2) return zc::none;
+  if (block.statements.empty()) return zc::none;
   const size_t bindingCount = block.statements.size() - 1;
 
   auto definition = identities.definition(declaration.definition);
@@ -1929,7 +1929,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   // literal arms. The arm self-gates on the local + conditional/equality
   // structure and rejects every other K-local body, so it stays ahead of the
   // fixed-size single-local and sequential arms.
-  if (block.statements.size() >= 2 && declaration.receiver == zc::none &&
+  if (block.statements.size() >= 1 && declaration.receiver == zc::none &&
       declaration.unsafeBlock == zc::none) {
     auto product = buildLeadingLocalConditionalReturn(declaration, block, hirModule, identities,
                                                       proofs, copyMarker);
