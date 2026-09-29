@@ -919,6 +919,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const auto equalityConditionalCount = candidate.impl->primitiveBinaryOperations.size() -
                                         sequentialBinaryCount - binaryWriteCount -
                                         receiverFieldArithmeticCount;
+  // Unary desugars (`-x` -> `0 - x`, etc.) pool into primitiveBinaryOperations
+  // like comparison returns, but their synthetic operand has no checker-produced
+  // node-type or literal fact. Subtract one per unary desugar from both
+  // equations so the verifier matches the builder's corrected counts.
+  size_t unaryReturnCount = 0;
+  for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+    if (operation.isUnaryDesugar) ++unaryReturnCount;
+  }
   // localReferences: sequential locals contribute N to the localReturnCount
   // baseline but only L_loc + R_loc + binary-local-operand actual local
   // references. Signed because binary local operands can exceed the shortfall.
@@ -990,10 +998,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localWriteCount * 3 + aggregateElementCount + localFieldProjectionCount +
               localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
               directCallArgumentCount + receiverCallArgumentCount + localBorrowCount +
-              unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 + loopCount +
-              sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
-              receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
-              discardedStatementCallCount ||
+              unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 -
+              unaryReturnCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+              parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
+              parameterFieldWriteCount * 4 + discardedStatementCallCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1001,8 +1009,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
-              equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount + directAggregateCallCount +
+              equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
+              parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
               sequentialLiteralCorrection + leadingLocalConditionalCorrection ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
@@ -4322,6 +4330,354 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        sameSpan(comparison.sourceSpan, ZC_ASSERT_NONNULL(valueSpan)) &&
                        typeExists(function.resultType, semanticTypes) &&
                        typeExists(operandType, semanticTypes);
+        }
+        if (!skeletonOk) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += 6;
+        continue;
+      }
+    }
+    // Unary-return shape: `return <op x>`. The HIR builder desugars the unary
+    // operation to an equivalent binary operation with a synthetic constant
+    // operand, reusing the comparison-return materialization path. Fixed-id
+    // layout, relative to the function id (6 nodes): +0 function, +1 body
+    // block, +2 left operand, +3 right operand, +4 binary, +5 return. The
+    // synthetic operand has no AST node and no checker-produced fact; the
+    // verifier checks its constant value against the desugaring mapping.
+    {
+      bool isUnaryShape = false;
+      ZC_IF_SOME(shape, sourceShapeMaybe) { isUnaryShape = shape.returnsUnary; }
+      if (isUnaryShape) {
+        const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (!hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            (sourceDefinition.record.kind() != identity::DefinitionKind::Function &&
+             sourceDefinition.record.kind() != identity::DefinitionKind::Method) ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const bool unaryIsMethod = function.receiver != zc::none;
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || (!unaryIsMethod && rootPosition == zc::none)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        checker::signature::MemberSignatureScope unaryMethodScope;
+        zc::Maybe<HirVisibility> expectedVisibility;
+        if (unaryIsMethod) {
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          unaryMethodScope =
+              signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+          expectedVisibility = memberVisibility(unaryMethodScope.visibility, module);
+        } else {
+          const auto& root = signatures.roots[rootSlot];
+          expectedVisibility = visibility(root.visibility);
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+            signature.definition != function.definition ||
+            signature.definitionKind != (unaryIsMethod ? identity::DefinitionKind::Method
+                                                       : identity::DefinitionKind::Function) ||
+            (!unaryIsMethod &&
+             signatures.roots[rootSlot].canonicalDefinition != function.definition) ||
+            (!unaryIsMethod && signatures.roots[rootSlot].sourceModule != module) ||
+            (unaryIsMethod ? callable.receiver == zc::none : callable.receiver != zc::none) ||
+            callable.raises != zc::none || callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        if (unaryIsMethod) {
+          if (unaryMethodScope.owner == function.definition) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& receiver = ZC_ASSERT_NONNULL(function.receiver);
+          if (ZC_ASSERT_NONNULL(callable.receiver).mode !=
+              checker::signature::ReceiverMode::Shared) {
+            return rejectHirCapability<VerifiedHirModule>(
+                function.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                sourceDefinition.source.clone());
+          }
+          if (ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
+              !typeExists(receiver.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeId methodParameterListNode(
+              tree.node(sourceDefinition.node).payload.words[ast::kMethodDeclParamsIdWord]);
+          if (!tree.contains(methodParameterListNode) ||
+              tree.node(methodParameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeList methodAstParameters{
+              tree.node(methodParameterListNode)
+                  .payload.words[ast::kFunctionParameterListParamsFirstWord],
+              tree.node(methodParameterListNode)
+                  .payload.words[ast::kFunctionParameterListParamsSizeWord]};
+          if (!tree.contains(methodAstParameters) ||
+              methodAstParameters.size != callable.parameters.size() + 1) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+             ++parameterIndex) {
+          const auto& parameter = function.parameters[parameterIndex];
+          const auto& sourceParameter = callable.parameters[parameterIndex];
+          if (parameter.key != sourceParameter.parameter ||
+              parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+              !typeExists(parameter.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        // Unary body validation. The call fact records the unary operation;
+        // the HIR carries the desugared binary operation with one synthetic
+        // constant operand that has no AST node.
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+        auto valueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+        auto operandSpan = bound.parsedModule().spanFor(tree.node(source.unaryOperand).range);
+        auto nodeTypeIndex = factIndex(facts.nodeTypes(), source.value);
+        auto operandTypeIndex = factIndex(facts.nodeTypes(), source.unaryOperand);
+        auto callIndex = factIndex(facts.calls(), source.value);
+        if (bodySpan == zc::none || returnSpan == zc::none || valueSpan == zc::none ||
+            operandSpan == zc::none || nodeTypeIndex == zc::none || operandTypeIndex == zc::none ||
+            callIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t nodeTypeSlot = 0;
+        size_t operandTypeSlot = 0;
+        size_t callSlot = 0;
+        ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
+        ZC_IF_SOME(value, operandTypeIndex) { operandTypeSlot = value; }
+        ZC_IF_SOME(value, callIndex) { callSlot = value; }
+        const auto resultType = facts.nodeTypes().entries()[nodeTypeSlot].value;
+        const auto operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+        const auto& callFact = facts.calls().entries()[callSlot].value;
+        const auto& call = callFact.invocation;
+        const auto& selected = call.selected.variant();
+        const auto selectedOperation =
+            selected.is<checker::checked::PrimitiveCallable>()
+                ? zc::Maybe<checker::PrimitiveOperation>(
+                      selected.get<checker::checked::PrimitiveCallable>().operation)
+                : zc::Maybe<checker::PrimitiveOperation>(zc::none);
+        bool operationSupported = false;
+        ZC_IF_SOME(op, selectedOperation) {
+          operationSupported = isScalarUnaryOperation(op) && callable.success == resultType;
+        }
+        if (resultType != function.resultType || callFact.node != source.value ||
+            !operationSupported || call.calleeType != operandType || call.receiver != zc::none ||
+            call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+            call.arguments.size() != 1 || call.arguments[0].sourceNode != source.unaryOperand ||
+            call.arguments[0].sourceType != operandType || call.successType != resultType ||
+            call.resultType != resultType || call.substitutions != zc::none ||
+            call.witnesses != zc::none || call.raises != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Derive the expected binary operation from the unary operation:
+        //   Neg        -> Sub(0, x)     synthetic on the left
+        //   UnaryPlus  -> Add(x, 0)     synthetic on the right
+        //   BitNot     -> BitXor(x, -1) synthetic on the right
+        //   LogicalNot -> Eq(x, false)  synthetic on the right
+        const auto unaryOperation = ZC_ASSERT_NONNULL(selectedOperation);
+        checker::PrimitiveOperation expectedBinaryOperation;
+        bool syntheticOnLeft = false;
+        switch (unaryOperation) {
+          case checker::PrimitiveOperation::Neg:
+            expectedBinaryOperation = checker::PrimitiveOperation::Sub;
+            syntheticOnLeft = true;
+            break;
+          case checker::PrimitiveOperation::UnaryPlus:
+            expectedBinaryOperation = checker::PrimitiveOperation::Add;
+            break;
+          case checker::PrimitiveOperation::BitNot:
+            expectedBinaryOperation = checker::PrimitiveOperation::BitXor;
+            break;
+          case checker::PrimitiveOperation::LogicalNot:
+            expectedBinaryOperation = checker::PrimitiveOperation::Eq;
+            break;
+          default:
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+        }
+        const HirNodeId syntheticNodeId =
+            syntheticOnLeft ? hirId(expectedFunction + 2) : hirId(expectedFunction + 3);
+        const HirNodeId realNodeId =
+            syntheticOnLeft ? hirId(expectedFunction + 3) : hirId(expectedFunction + 2);
+        // Find the HIR binary expression at the expected node id.
+        zc::Maybe<const HirPrimitiveBinaryExpression&> comparisonValue;
+        for (const auto& comparison : candidate.impl->primitiveBinaryOperations) {
+          if (comparison.node != hirId(expectedFunction + 4)) continue;
+          if (comparisonValue != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          comparisonValue = comparison;
+        }
+        if (comparisonValue == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        // Find the synthetic literal expression at its expected node id.
+        zc::Maybe<const HirScalarLiteralExpression&> syntheticLiteral;
+        for (const auto& expression : candidate.impl->expressions) {
+          if (expression.node != syntheticNodeId) continue;
+          if (syntheticLiteral != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          syntheticLiteral = expression;
+        }
+        if (syntheticLiteral == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        // Find the real parameter reference at its expected node id. The
+        // builder rejects literal operands, so the real operand is always a
+        // parameter reference.
+        zc::Maybe<const HirParameterReferenceExpression&> realReference;
+        for (const auto& reference : candidate.impl->parameterReferences) {
+          if (reference.node != realNodeId) continue;
+          if (realReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          realReference = reference;
+        }
+        if (realReference == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        // Resolve the real operand to its parameter authority.
+        auto parameter = resolvedCallableParameter(bound.bindings(), source.unaryOperand);
+        if (parameter == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        identity::CallableParameterId handle;
+        ZC_IF_SOME(value, parameter) { handle = value; }
+        auto authority = registries.callableParameter(handle);
+        if (authority == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        // Verify the synthetic literal value matches the desugaring mapping.
+        bool syntheticValueOk = false;
+        ZC_IF_SOME(literal, syntheticLiteral) {
+          if (literal.type == operandType && literal.category == HirValueCategory::Value &&
+              sameSpan(literal.sourceSpan, ZC_ASSERT_NONNULL(valueSpan))) {
+            if (unaryOperation == checker::PrimitiveOperation::LogicalNot) {
+              ZC_IF_SOME(boolValue, literal.value.booleanValue()) { syntheticValueOk = !boolValue; }
+            } else if (unaryOperation == checker::PrimitiveOperation::BitNot) {
+              ZC_IF_SOME(intValue, literal.value.integerValue()) {
+                syntheticValueOk = intValue.sign == checker::signature::IntegerSign::Negative &&
+                                   intValue.magnitude.size() == 1 && intValue.magnitude[0] == 1;
+              }
+            } else {
+              // Neg or UnaryPlus: zero of the operand type.
+              ZC_IF_SOME(intValue, literal.value.integerValue()) {
+                syntheticValueOk = intValue.sign == checker::signature::IntegerSign::NonNegative &&
+                                   intValue.magnitude.size() == 0;
+              }
+              if (!syntheticValueOk) {
+                ZC_IF_SOME(floatValue, literal.value.floatValue()) {
+                  syntheticValueOk = floatValue.bits == 0;
+                }
+              }
+            }
+          }
+        }
+        // Skeleton check: six nodes, correct structure and facts.
+        bool skeletonOk = false;
+        ZC_IF_SOME(comparison, comparisonValue) {
+          ZC_IF_SOME(reference, realReference) {
+            ZC_IF_SOME(authorityValue, authority) {
+              skeletonOk =
+                  function.node == hirId(expectedFunction) &&
+                  block.node == hirId(expectedFunction + 1) && function.body == block.node &&
+                  block.statements.size() == 1 && block.statements[0] == returnStatement.node &&
+                  returnStatement.node == hirId(expectedFunction + 5) &&
+                  returnStatement.value == comparison.node &&
+                  returnStatement.resultType == function.resultType &&
+                  comparison.left == hirId(expectedFunction + 2) &&
+                  comparison.right == hirId(expectedFunction + 3) &&
+                  comparison.operandType == operandType && comparison.type == resultType &&
+                  comparison.category == HirValueCategory::Value &&
+                  comparison.operation == expectedBinaryOperation && comparison.isUnaryDesugar &&
+                  sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) &&
+                  sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) &&
+                  sameSpan(comparison.sourceSpan, ZC_ASSERT_NONNULL(valueSpan)) &&
+                  typeExists(function.resultType, semanticTypes) &&
+                  typeExists(operandType, semanticTypes) &&
+                  reference.parameter == authorityValue.key() && reference.type == operandType &&
+                  reference.category == HirValueCategory::Place &&
+                  sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(operandSpan)) &&
+                  syntheticValueOk;
+            }
+          }
         }
         if (!skeletonOk) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,

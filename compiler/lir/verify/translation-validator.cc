@@ -144,6 +144,31 @@ zc::Maybe<uint64_t> zeroExtendedBits(const checker::signature::CanonicalInteger&
   return bits;
 }
 
+// Independent two's-complement sign extension of a canonical integer. Negative
+// values are encoded as their two's complement representation within the carrier
+// width. The value is rejected when its magnitude exceeds the carrier width.
+zc::Maybe<uint64_t> signExtendedBits(const checker::signature::CanonicalInteger& integer,
+                                     IntegerBitWidth width) noexcept {
+  const auto magnitude = integer.magnitude.asPtr();
+  if (magnitude.size() > sizeof(uint64_t)) return zc::none;
+  uint64_t bits = 0;
+  for (const auto byte : magnitude) bits = (bits << 8) | static_cast<uint64_t>(byte);
+  const uint32_t bitCount = static_cast<uint32_t>(width);
+  if (integer.sign == checker::signature::IntegerSign::Negative) {
+    if (bits == 0) return zc::none;
+    if (bitCount < 64) {
+      const uint64_t limit = (static_cast<uint64_t>(1) << bitCount);
+      if (bits > limit) return zc::none;
+      bits = (limit - bits) & (limit - 1);
+    } else {
+      bits = 0 - bits;
+    }
+  } else {
+    if (bitCount < 64 && bits >= (static_cast<uint64_t>(1) << bitCount)) return zc::none;
+  }
+  return bits;
+}
+
 zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType carrier) noexcept {
   if (operand.kind() != mir::MirOperandKind::Constant) return zc::none;
   const auto boolean = operand.constantValue().value.booleanValue();
@@ -157,7 +182,13 @@ zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType
   const auto integer = operand.constantValue().value.integerValue();
   if (integer == zc::none) return zc::none;
   if (carrier.integerWidth() == IntegerBitWidth::Bit1) return zc::none;
+  // Prefer zero extension for non-negative values; fall back to two's complement
+  // sign extension for negative constants such as the -1 used by bitwise-not
+  // desugaring.
   auto bits = zeroExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
+  if (bits == zc::none) {
+    bits = signExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
+  }
   if (bits == zc::none) return zc::none;
   return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(bits));
 }

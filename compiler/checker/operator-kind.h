@@ -85,6 +85,20 @@ enum class PrimitiveOperation : uint8_t {
 ZC_NODISCARD bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
                                                  type::semantic::PrimitiveKind kind) noexcept;
 
+/// \brief Whether a primitive unary operator is defined for an operand of the
+/// given primitive type.
+///
+/// This is the type rule for primitive unary operands. It mirrors the binary
+/// rule:
+/// - Arithmetic unary (`+` `-`) is defined for numeric types only.
+/// - Bitwise unary (`~`) is defined for integers only.
+/// - Logical unary (`!`) is defined for `bool` only.
+///
+/// Returns false for any unrelated operation, so callers can use it as the
+/// single "is this a type error, not an unimplemented form" test.
+ZC_NODISCARD bool primitiveUnaryOperationAdmits(PrimitiveOperation operation,
+                                                type::semantic::PrimitiveKind kind) noexcept;
+
 enum class CompoundAssignmentOperation : uint8_t {
   AddAssign = 0x01,
   SubAssign = 0x02,

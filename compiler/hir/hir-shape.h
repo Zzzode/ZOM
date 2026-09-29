@@ -166,6 +166,15 @@ struct FunctionReturnShape final {
   ast::NodeId comparisonRight;
   bool comparisonLeftIsLiteral = false;
   bool comparisonRightIsLiteral = false;
+  // When the body is a single `return <UnaryExpression>` of one scalar operand,
+  // `shape.value` is the UnaryExpression node and these hold its operand. The
+  // operand is an IdentExpr parameter reference or a scalar literal. The
+  // selected unary operator comes from the checked call fact, not from the
+  // shape. The HIR builder desugars the unary operation to an equivalent binary
+  // operation, reusing the comparison-return materialization path.
+  bool returnsUnary = false;
+  ast::NodeId unaryOperand;
+  bool unaryOperandIsLiteral = false;
   // Single-statement shared-receiver method shape:
   // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
   // reading the field through the implicit receiver with one field projection.

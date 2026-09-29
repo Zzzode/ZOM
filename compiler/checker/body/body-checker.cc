@@ -48,6 +48,7 @@ enum class BodyProductionKind : uint8_t {
   UnsafeBlock = 0x18,
   PrimitiveBinaryOperation = 0x19,
   ReceiverFieldWrite = 0x1a,
+  PrimitiveUnaryOperation = 0x1b,
   Unsupported = 0x17
 };
 
@@ -1464,6 +1465,17 @@ struct PrimitiveBinaryOperationShape final {
   PrimitiveOperation operation;
 };
 
+/// \brief One admitted primitive unary operation (`+` `-` `~` `!`) on a scalar
+/// operand. The operand is a value reference (parameter or owner local) or a
+/// scalar literal; at least one must be a reference. The HIR builder desugars
+/// each to an equivalent binary operation, reusing the comparison-return path.
+struct PrimitiveUnaryOperationShape final {
+  ast::NodeId operandNode;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId resultType;
+  PrimitiveOperation operation;
+};
+
 /// \brief Projects a binary operator to its primitive operation when it is one
 /// of the six relational comparisons of same-typed scalars.
 ///
@@ -2482,6 +2494,59 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   }
   return PrimitiveBinaryOperationShape{left, right, operand, resultType,
                                        ZC_ASSERT_NONNULL(operation)};
+}
+
+zc::Maybe<PrimitiveUnaryOperationShape> primitiveUnaryOperationShape(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::UnaryExpression) {
+    return zc::none;
+  }
+  const auto& syntax = tree.node(node);
+  const auto unaryOperator =
+      static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]);
+  auto kind = OperatorKind::fromUnary(unaryOperator);
+  if (kind == zc::none) return zc::none;
+  const auto& variant = ZC_ASSERT_NONNULL(kind).variant();
+  if (!variant.is<PrimitiveOperation>()) return zc::none;
+  const auto operation = variant.get<PrimitiveOperation>();
+  const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand)) return zc::none;
+  // The operand is a value reference (parameter or owner local) or a scalar
+  // literal. At least one must be a reference; a literal-only unary has no
+  // place to lower and is left unsupported.
+  auto referenceType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
+    if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) {
+      return zc::none;
+    }
+    auto parameter = callableParameterReferenceType(input, operandNode);
+    if (parameter != zc::none) return parameter;
+    return ownerLocalReferenceType(input, operandNode, nodeTypes);
+  };
+  zc::Maybe<identity::SemanticTypeId> operandType;
+  if (tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+    operandType = referenceType(operand);
+  } else if (isScalarLiteral(tree.node(operand).kind)) {
+    ZC_IF_SOME(entry, factEntry(nodeTypes, operand)) { operandType = entry.value; }
+  }
+  if (operandType == zc::none) return zc::none;
+  identity::SemanticTypeId operandTypeValue;
+  ZC_IF_SOME(value, operandType) { operandTypeValue = value; }
+  auto operandKind = primitiveKindOf(input.semanticTypes, operandTypeValue);
+  if (operandKind == zc::none ||
+      !primitiveUnaryOperationAdmits(operation, ZC_ASSERT_NONNULL(operandKind))) {
+    return zc::none;
+  }
+  // LogicalNot produces bool; the arithmetic unary operators produce the
+  // operand type.
+  if (operation == PrimitiveOperation::LogicalNot) {
+    auto boolType = internPrimitiveKind(input, type::semantic::PrimitiveKind::Bool);
+    if (boolType == zc::none) return zc::none;
+    return PrimitiveUnaryOperationShape{operand, operandTypeValue, ZC_ASSERT_NONNULL(boolType),
+                                        operation};
+  }
+  return PrimitiveUnaryOperationShape{operand, operandTypeValue, operandTypeValue, operation};
 }
 
 struct ReferenceReborrowShape final {
@@ -4188,6 +4253,27 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             }
           } else if (operation == ast::UnaryOperatorKind::Deref) {
             production = BodyProductionKind::ReferenceDereference;
+          } else if (operation == ast::UnaryOperatorKind::Plus ||
+                     operation == ast::UnaryOperatorKind::Minus ||
+                     operation == ast::UnaryOperatorKind::LogicalNot ||
+                     operation == ast::UnaryOperatorKind::BitNot) {
+            // Admit the four primitive unary operators (`+` `-` `~` `!`) where
+            // the operand is a scalar value reference (a parameter or an owner
+            // local) or a scalar literal and at least the operand is a
+            // reference; every other unary shape stays unsupported so its
+            // existing rejection stands. A literal-only unary has no place to
+            // lower and is left unsupported.
+            const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
+            if (tree.contains(operand)) {
+              const bool operandIsReference =
+                  tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
+                  (resolvedCallableParameter(boundModule.bindings(), operand) != zc::none ||
+                   resolvedOwnerLocal(boundModule.bindings(), operand) != zc::none);
+              const bool operandIsLiteral = isScalarLiteral(tree.node(operand).kind);
+              if (operandIsReference || operandIsLiteral) {
+                production = BodyProductionKind::PrimitiveUnaryOperation;
+              }
+            }
           }
           break;
         }
@@ -5182,6 +5268,38 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                                      value.operandType, zc::mv(noLeftAdjustment)});
           arguments.add(checked::CheckedArgumentFact{value.rightNode, value.operandType,
                                                      value.operandType, zc::mv(noRightAdjustment)});
+          zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
+          zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
+          zc::Maybe<identity::SemanticTypeId> noRaises;
+          calls.add(checked::CallFactMap::Entry{
+              site.node,
+              checked::TypedCallFact{
+                  site.node,
+                  checked::CheckedCallEnvelope{
+                      checked::SelectedCallable(checked::PrimitiveCallable{value.operation}),
+                      value.operandType, zc::mv(noReceiver), zc::mv(noReceiverMode),
+                      zc::mv(noReceiverAdjustment), zc::mv(arguments), value.resultType,
+                      value.resultType, zc::mv(noSubstitutions), zc::mv(noWitnesses),
+                      zc::mv(noRaises)},
+                  site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
+        }
+      } else if (site.production == BodyProductionKind::PrimitiveUnaryOperation) {
+        auto shape = primitiveUnaryOperationShape(input, site.node, nodeTypes.asPtr());
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) {
+          producedType = value.resultType;
+          zc::Maybe<checked::CheckedArgumentFact> noReceiver;
+          zc::Maybe<signature::ReceiverMode> noReceiverMode;
+          zc::Maybe<checked::ReceiverAdjustment> noReceiverAdjustment;
+          zc::Vector<checked::CheckedArgumentFact> arguments;
+          zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+          arguments.add(checked::CheckedArgumentFact{value.operandNode, value.operandType,
+                                                     value.operandType, zc::mv(noAdjustment)});
           zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
           zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
           zc::Maybe<identity::SemanticTypeId> noRaises;

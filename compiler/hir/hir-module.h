@@ -308,6 +308,12 @@ struct HirPrimitiveBinaryExpression final {
   HirValueCategory category;
   checker::PrimitiveOperation operation;
   identity::SourceSpan sourceSpan;
+  /// True when this binary operation desugars a unary operation (`-x` -> `0 - x`,
+  /// `+x` -> `x + 0`, `~x` -> `x ^ -1`, `!x` -> `x == false`). The synthetic
+  /// operand has no AST node and therefore no checker-produced node-type or
+  /// literal fact, so the HIR verifier subtracts one per unary desugar from its
+  /// nodeTypes and literals equations.
+  bool isUnaryDesugar = false;
 };
 
 /// \brief One checked if/else conditional expression retained for multi-block MIR lowering.

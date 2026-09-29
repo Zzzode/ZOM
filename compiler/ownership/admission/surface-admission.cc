@@ -44,6 +44,7 @@ void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failur
 }
 
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
@@ -273,13 +274,34 @@ bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   return leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
 }
 
+// A primitive unary return is one of the four arithmetic/logical/bitwise unary
+// operators (`+` `-` `~` `!`) over one operand that is an identifier or a
+// scalar literal, with at least one identifier so the checker has a typed
+// anchor. Operator/type support is a checker decision kept out of surface
+// admission.
+bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::UnaryExpression) {
+    return false;
+  }
+  const auto op = static_cast<ast::UnaryOperatorKind>(
+      tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
+  if (op != ast::UnaryOperatorKind::Plus && op != ast::UnaryOperatorKind::Minus &&
+      op != ast::UnaryOperatorKind::LogicalNot && op != ast::UnaryOperatorKind::BitNot) {
+    return false;
+  }
+  const ast::NodeId operand(tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand)) return false;
+  return tree.node(operand).kind == ast::SyntaxKind::IdentExpr ||
+         isScalarLiteral(tree.node(operand).kind);
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
-         isAdmittedPrimitiveBinary(tree, value) ||
+         isAdmittedPrimitiveBinary(tree, value) || isAdmittedPrimitiveUnary(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 

@@ -215,6 +215,21 @@ bool isScalarArithmeticOperation(checker::PrimitiveOperation operation) {
   }
 }
 
+// Returns true for the four primitive unary operators that the unary-return
+// lowering supports. Each is desugared to an equivalent binary operation in the
+// HIR builder, so no new MIR/LIR carrier is needed.
+bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
+  switch (operation) {
+    case checker::PrimitiveOperation::Neg:
+    case checker::PrimitiveOperation::UnaryPlus:
+    case checker::PrimitiveOperation::BitNot:
+    case checker::PrimitiveOperation::LogicalNot:
+      return true;
+    default:
+      return false;
+  }
+}
+
 // Returns true when the syntactic binary operator is a relational comparison or
 // an arithmetic/bitwise operator, i.e. a primitive binary operation lowerable in
 // return position. Strict identity and the logical short-circuit operators are

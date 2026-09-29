@@ -35,9 +35,9 @@ void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 
   ctx.lowerArmLeaf(leftId, comparison.left);
   ctx.lowerArmLeaf(rightId, comparison.right);
-  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{binaryId, leftId, rightId, operandType,
-                                                      resultType, HirValueCategory::Value,
-                                                      operation, binarySpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      binaryId, leftId, rightId, operandType, resultType, HirValueCategory::Value, operation,
+      binarySpan.clone(), comparison.isUnaryDesugar});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, binaryId, function.returnSpan.clone()});
 }

@@ -131,6 +131,11 @@ struct PendingEqualityCondition final {
   identity::SemanticTypeId type;
   checker::PrimitiveOperation operation;
   identity::SourceSpan sourceSpan;
+  // True when this condition desugars a unary operation (`-x` -> `0 - x`,
+  // `+x` -> `x + 0`, `~x` -> `x ^ -1`, `!x` -> `x == false`). The synthetic
+  // operand has no AST node and therefore no checker-produced node-type fact,
+  // so the nodeTypes counting equation subtracts one per unary return.
+  bool isUnaryDesugar = false;
 };
 
 // One conditional condition is either a bare bool parameter reference or an

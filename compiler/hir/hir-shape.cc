@@ -1176,6 +1176,37 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.unsafeBlock = zc::mv(unsafeBlock);
       return shape;
     }
+    // A single `return <UnaryExpression>` returns the unary result directly.
+    // The UnaryExpression is one of the four primitive unary operators
+    // (`+` `-` `~` `!`) over one operand, an IdentExpr parameter reference or a
+    // scalar literal. The HIR builder desugars each to an equivalent binary
+    // operation, reusing the comparison-return materialization path.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::UnaryExpression) {
+      const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+          tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
+      const bool isPrimitiveUnary = unaryOp == ast::UnaryOperatorKind::Plus ||
+                                    unaryOp == ast::UnaryOperatorKind::Minus ||
+                                    unaryOp == ast::UnaryOperatorKind::LogicalNot ||
+                                    unaryOp == ast::UnaryOperatorKind::BitNot;
+      if (isPrimitiveUnary) {
+        const ast::NodeId operand(tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+        if (tree.contains(operand)) {
+          const bool operandIdent = tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+          const bool operandLiteral = isScalarLiteral(tree.node(operand).kind);
+          if (operandIdent || operandLiteral) {
+            FunctionReturnShape shape{};
+            shape.body = body;
+            shape.returnStatement = returnNode;
+            shape.value = value;
+            shape.returnsUnary = true;
+            shape.unaryOperand = operand;
+            shape.unaryOperandIsLiteral = operandLiteral;
+            shape.unsafeBlock = zc::mv(unsafeBlock);
+            return shape;
+          }
+        }
+      }
+    }
     // Single-statement free-function shape:
     // `return <ordinary-parameter>.<field>;` reads one field of a by-value
     // struct parameter. There are no locals in the body, so the member object is

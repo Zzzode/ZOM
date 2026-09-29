@@ -227,6 +227,35 @@ bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
   }
 }
 
+bool primitiveUnaryOperationAdmits(PrimitiveOperation operation,
+                                   type::semantic::PrimitiveKind kind) noexcept {
+  const bool isInteger =
+      kind == type::semantic::PrimitiveKind::I8 || kind == type::semantic::PrimitiveKind::I16 ||
+      kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::I64 ||
+      kind == type::semantic::PrimitiveKind::U8 || kind == type::semantic::PrimitiveKind::U16 ||
+      kind == type::semantic::PrimitiveKind::U32 || kind == type::semantic::PrimitiveKind::U64 ||
+      kind == type::semantic::PrimitiveKind::Isize || kind == type::semantic::PrimitiveKind::Usize;
+  const bool isFloat =
+      kind == type::semantic::PrimitiveKind::F32 || kind == type::semantic::PrimitiveKind::F64;
+  const bool isNumeric = isInteger || isFloat;
+  const bool isBool = kind == type::semantic::PrimitiveKind::Bool;
+  switch (operation) {
+    // Arithmetic unary is defined for numeric types only, matching the binary
+    // arithmetic rule.
+    case PrimitiveOperation::Neg:
+    case PrimitiveOperation::UnaryPlus:
+      return isNumeric;
+    // Bitwise unary is defined for integers only.
+    case PrimitiveOperation::BitNot:
+      return isInteger;
+    // Logical unary is defined for bool only.
+    case PrimitiveOperation::LogicalNot:
+      return isBool;
+    default:
+      return false;
+  }
+}
+
 zc::Maybe<OperatorKind> OperatorKind::fromUnary(ast::UnaryOperatorKind syntax) {
   switch (syntax) {
     case ast::UnaryOperatorKind::Plus:

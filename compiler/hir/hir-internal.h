@@ -207,6 +207,11 @@ bool isScalarComparisonOperation(checker::PrimitiveOperation operation);
 // bool; the logical short-circuit operators (`&&` / `||`) are excluded.
 bool isScalarArithmeticOperation(checker::PrimitiveOperation operation);
 
+// Returns true for the four primitive unary operators (`+` `-` `~` `!`) that
+// the unary-return lowering supports. Each is desugared to an equivalent binary
+// operation in the HIR builder, so no new MIR/LIR carrier is needed.
+bool isScalarUnaryOperation(checker::PrimitiveOperation operation);
+
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts);
 
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts);
