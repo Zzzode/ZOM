@@ -1169,6 +1169,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   ast::NodeId localReference = value;
   bool returnsReceiverCall = false;
   bool returnsDirectAggregateCall = false;
+  bool returnsDirectScalarLocalCall = false;
   const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
@@ -1193,9 +1194,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                tree.contains(callArguments) && callArguments.size == 1 &&
                tree.contains(tree.list(callArguments)[0]) &&
                tree.node(tree.list(callArguments)[0]).kind == ast::SyntaxKind::IdentExpr) {
-      // By-value struct direct call: `let p: P = P { ..constants.. }; return
-      // f(p);`. The sole call argument must name the single aggregate local;
-      // its declared struct type and field set are checked downstream.
+      // Two-statement direct call: `let v = <initializer>; return f(v);`. The
+      // sole call argument must name the single local; the carrier is split on
+      // the initializer kind below once it is resolved: StructLiteralExpr routes
+      // the by-value aggregate slice, a scalar literal routes the scalar-local
+      // slice, and every other initializer keeps the generic capability drain.
       localReference = tree.list(callArguments)[0];
       returnsDirectAggregateCall = true;
     } else {
@@ -1237,6 +1240,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   if (!tree.contains(initializer) && statements.size == 2) {
     // A local borrow requires the referent to be initialized at the borrow point.
     if (localBorrow != zc::none) return zc::none;
+    // An uninitialized local passed as a direct-call argument is outside both
+    // local-argument carriers, which require a literal or aggregate initializer.
+    if (returnsDirectAggregateCall) return zc::none;
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
@@ -1258,6 +1264,20 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
     return zc::none;
   }
+  // Split the sole-local direct-call carrier by initializer kind. A struct
+  // literal initializer rides the by-value aggregate slice and a scalar literal
+  // rides the scalar-local slice. An identifier or call initializer names a
+  // local neither call-argument carrier admits, so the shape is unclaimed: the
+  // builder drains the owning definition with the capability code rather than
+  // assembling an unsupported call record.
+  if (returnsDirectAggregateCall && tree.contains(initializer)) {
+    if (isScalarLiteral(tree.node(initializer).kind)) {
+      returnsDirectAggregateCall = false;
+      returnsDirectScalarLocalCall = true;
+    } else if (tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
+      return zc::none;
+    }
+  }
   if (statements.size == 2) {
     FunctionReturnShape shape{};
     shape.body = body;
@@ -1271,6 +1291,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;
     shape.returnsDirectAggregateCall = returnsDirectAggregateCall;
+    shape.returnsDirectScalarLocalCall = returnsDirectScalarLocalCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;

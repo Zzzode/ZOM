@@ -1,10 +1,10 @@
 // RUN: cd %corpus && ! %zomc compile --check 09-interfaces/impl_trait_method_body_receiverless_capability_neg_50.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// A receiverless concrete trait method supplied by a standalone impl block is
-// not in the lowered surface yet. The owning method drains once as ZOM4099 in
-// the checker body analysis, before any production-site invariant, rather than
-// an internal compiler error.
+// A concrete receiverless method supplied by a standalone `impl Interface for
+// Type` block publishes its signature so coherence observes the impl, but the
+// method body does not lower yet. The definition drains as ZOM4099 instead of
+// reaching a checker invariant.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
 // CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_receiverless_capability_neg_50.zom:5:5

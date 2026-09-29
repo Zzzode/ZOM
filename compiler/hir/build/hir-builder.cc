@@ -2249,7 +2249,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                 ZC_ASSERT_NONNULL(patternSpan).clone(),
                                 zc::mv(noInitializerSpan)};
         if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
-            !shape.returnsDirectAggregateCall) {
+            !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -2266,11 +2266,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
           const auto& initializerType = facts.nodeTypes().entries()[initializerTypeSlot].value;
           if ((!shape.returnsLocalField && !shape.returnsReceiverCall &&
-               !shape.returnsDirectAggregateCall && !shape.returnsLocalBorrow &&
-               initializerType != nodeType.value) ||
+               !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
+               !shape.returnsLocalBorrow && initializerType != nodeType.value) ||
               (!shape.returnsLocalField && !shape.returnsReceiverCall &&
-               !shape.returnsDirectAggregateCall && !shape.returnsLocalBorrow &&
-               initializerType != callable.success) ||
+               !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
+               !shape.returnsLocalBorrow && initializerType != callable.success) ||
               (shape.returnsLocalBorrow && initializerType != localType)) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
@@ -2287,7 +2287,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                   ZC_ASSERT_NONNULL(patternSpan).clone(),
                                   zc::mv(initializerSource)};
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
-              !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall) {
+              !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
+              !shape.returnsDirectScalarLocalCall) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -3506,7 +3507,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      nodeType.value, expectedMutability, valueSpanValue.clone()};
       }
       ast::NodeId callNode = shape.value;
-      if (!shape.returnsReceiverCall && !shape.returnsDirectAggregateCall) {
+      if (!shape.returnsReceiverCall && !shape.returnsDirectAggregateCall &&
+          !shape.returnsDirectScalarLocalCall) {
         ZC_IF_SOME(initializer, shape.localInitializer) { callNode = initializer; }
       }
       if (!tree.contains(callNode)) {
@@ -4129,6 +4131,34 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 continue;
               }
             }
+            // A scalar-local call passes the single literal-initialized i32
+            // owner local as the sole argument, copied by value through local 1.
+            if (shape.returnsDirectScalarLocalCall && local != zc::none) {
+              auto localBinding = resolvedOwnerLocal(bound.bindings(), argument);
+              if (localBinding != zc::none &&
+                  ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(localBinding),
+                                    shape.localPattern, tree) &&
+                  isI32SemanticType(checkedModule.semanticTypes(), argumentType) &&
+                  argumentType == ZC_ASSERT_NONNULL(local).type) {
+                zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+                zc::Maybe<identity::CallableParameterKey> noParameter;
+                zc::Maybe<HirLocalId> argumentLocal = hirLocalId(1);
+                callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
+                                                        zc::mv(noParameter), zc::mv(argumentLocal),
+                                                        ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                continue;
+              }
+            }
+            // Any other owner-local carrier (an identifier- or call-initialized
+            // local, a mixed carrier pair, a non-i32 scalar the checker left on
+            // another rail) is well-formed source the direct-call lowering does
+            // not emit; drain the owning definition with the capability code
+            // instead of collapsing to an invalid-fact invariant.
+            if (resolvedOwnerLocal(bound.bindings(), argument) != zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  ZC_ASSERT_NONNULL(argumentSpan).clone());
+            }
             auto parameter = resolvedCallableParameter(bound.bindings(), argument);
             zc::Maybe<identity::CallableParameterKey> parameterKey;
             ZC_IF_SOME(handle, parameter) {
@@ -4398,6 +4428,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t directCallArgumentCount = 0;
   size_t directCallLiteralArgumentCount = 0;
   size_t directAggregateCallCount = 0;
+  size_t directScalarLocalCallCount = 0;
   size_t receiverCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   size_t receiverSelfCallCount = 0;
@@ -4582,6 +4613,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         function.call != zc::none && function.aggregate != zc::none && function.local != zc::none &&
         function.localReference == zc::none && function.receiverCall == zc::none &&
         function.receiverSelfCall == zc::none;
+    // Scalar-local direct call: `let a: i32 = <literal>; return f(a);`. The
+    // literal initializes the sole owner local and a direct call passes that
+    // local by value as its sole argument; the call + literal + local
+    // combination is unique to this shape.
+    const bool isDirectScalarLocalCall =
+        function.call != zc::none && function.literal != zc::none && function.local != zc::none &&
+        function.localReference == zc::none && function.aggregate == zc::none &&
+        function.receiverCall == zc::none && function.receiverSelfCall == zc::none;
     const bool hasParameterReference = function.parameterReference != zc::none;
     const bool hasParameterIndex = function.parameterIndex != zc::none;
     const bool hasParameterReborrow = function.parameterReborrow != zc::none;
@@ -4642,7 +4681,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
     }
-    if ((function.literal != zc::none && function.call != zc::none) ||
+    if ((function.literal != zc::none && function.call != zc::none && !isDirectScalarLocalCall) ||
         (function.literal != zc::none && function.aggregate != zc::none) ||
         (function.call != zc::none && function.aggregate != zc::none && !isDirectAggregateCall) ||
         (hasParameterReference &&
@@ -4671,6 +4710,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (isDirectAggregateCall) {
         ++directAggregateCallCount;
         // The sole argument is the body's aggregate-initialized owner local,
+        // passed by value; it carries neither a literal constant nor a
+        // parameter key.
+        if (call.arguments.size() != 1 || call.arguments[0].value != zc::none ||
+            call.arguments[0].parameter != zc::none || call.arguments[0].local != hirLocalId(1) ||
+            call.arguments[0].type != ZC_ASSERT_NONNULL(function.local).type) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               1);
+        }
+      }
+      if (isDirectScalarLocalCall) {
+        ++directScalarLocalCallCount;
+        // The sole argument is the body's literal-initialized i32 owner local,
         // passed by value; it carries neither a literal constant nor a
         // parameter key.
         if (call.arguments.size() != 1 || call.arguments[0].value != zc::none ||
@@ -4746,7 +4798,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
-        !isDirectAggregateCall) {
+        !isDirectAggregateCall && !isDirectScalarLocalCall) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -4824,7 +4876,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalLiteralArmCount +
           equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
           comparisonReturnCount + binaryWriteCount + parameterFieldWriteCount +
-          directAggregateCallCount) +
+          directAggregateCallCount + directScalarLocalCallCount) +
           sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
@@ -5240,6 +5292,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
         value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    if (value.call != zc::none && value.literal != zc::none && value.local != zc::none &&
+        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.localReference == zc::none && value.aggregate == zc::none &&
+        value.receiverCall == zc::none && value.receiverSelfCall == zc::none &&
+        value.parameterReference == zc::none && callFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops);
+      lowerDirectScalarLocalCallFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     if (value.call != zc::none && value.aggregate != zc::none && value.local != zc::none &&
         ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
         value.localReference == zc::none && value.receiverCall == zc::none &&

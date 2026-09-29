@@ -1,0 +1,6 @@
+section: "09-interfaces standalone impl trait method"
+covers_rule: "implementation"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts the receiverless trait method; the checker drains its"
+  - "unlowered body as ZOM4099 while the impl signature stays published for coherence."

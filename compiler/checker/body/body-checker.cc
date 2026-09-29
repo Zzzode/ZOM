@@ -3506,6 +3506,25 @@ bool isByValueStructLocalArgument(const BodyCheckingInput& input, ast::NodeId ar
   return false;
 }
 
+/// \brief True when a direct-call argument is an owner local of scalar i32 type,
+/// the admitted by-value scalar-local argument carrier. Only the semantic
+/// argument kind is decided here; the local's literal-only initializer shape is
+/// checked by the HIR capability gate. Resolving through an owner local excludes
+/// globals and imported symbols, which keep the ZOM4125 drain.
+bool isScalarI32OwnerLocalArgument(const BodyCheckingInput& input, ast::NodeId argument,
+                                   identity::SemanticTypeId argumentType) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(argument) || tree.node(argument).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  if (resolvedOwnerLocal(input.boundModule.bindings(), argument) == zc::none) { return false; }
+  auto lookup = input.semanticTypes.get(argumentType);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::PrimitiveTypeData>()) return false;
+  return data.get<type::semantic::PrimitiveTypeData>().kind == type::semantic::PrimitiveKind::I32;
+}
+
 /// \brief Attaches a ZOM4125 recovery ledger for a method-call site, resolving
 /// its enclosing callable owner exactly like the binary-operator rail.
 ///
@@ -4853,17 +4872,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 input.boundModule.tree().node(argument).kind == ast::SyntaxKind::IdentExpr;
             const bool isLocalOrGlobalArgument =
                 isIdentifierArgument && !isLiteralArgument && !isParameterArgument;
-            // A reference to an aggregate-initialized owner local is scheduled
-            // after this direct-call site (a deferred local reference at stage
-            // 2), so its node-type fact does not exist yet. Resolve its type
-            // from the binding (the declared annotation or the already-typed
-            // struct-literal initializer) for the by-value aggregate argument.
+            // A reference to an aggregate- or scalar-initialized owner local is
+            // scheduled after this direct-call site (a deferred local reference
+            // at stage 2), so its node-type fact does not exist yet. Resolve its
+            // type from the binding (the declared annotation or the already-
+            // typed initializer) for the by-value aggregate and scalar-local
+            // argument carriers.
             zc::Maybe<identity::SemanticTypeId> deferredLocalType;
             if (isLocalOrGlobalArgument && argumentType == zc::none) {
               deferredLocalType = ownerLocalReferenceType(input, argument, nodeTypes.asPtr());
               if (deferredLocalType != zc::none &&
-                  isByValueStructLocalArgument(input, argument,
-                                               ZC_ASSERT_NONNULL(deferredLocalType))) {
+                  (isByValueStructLocalArgument(input, argument,
+                                                ZC_ASSERT_NONNULL(deferredLocalType)) ||
+                   isScalarI32OwnerLocalArgument(input, argument,
+                                                 ZC_ASSERT_NONNULL(deferredLocalType)))) {
                 argumentType = zc::Maybe<const checked::NodeTypeMap::Entry&>{};
               } else {
                 deferredLocalType = zc::none;
@@ -4877,7 +4899,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                                      : identity::SemanticTypeId{});
             if (isLocalOrGlobalArgument && hasArgumentType &&
                 argumentTypeId == value.parameters[index] &&
-                !isByValueStructLocalArgument(input, argument, argumentTypeId)) {
+                !isByValueStructLocalArgument(input, argument, argumentTypeId) &&
+                !isScalarI32OwnerLocalArgument(input, argument, argumentTypeId)) {
               // A typed owner-local or module/imported identifier argument is
               // valid source the direct-call lowering slice does not admit yet
               // (only parameter arguments lower). Its type already matches the

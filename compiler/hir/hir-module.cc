@@ -612,6 +612,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // these calls correct the local-reference, literal, and expression count
   // equations exactly once per function.
   size_t directAggregateCallCount = 0;
+  // A scalar-local call (`let a: i32 = <literal>; return f(a);`) has the same
+  // inline owner-local argument as the aggregate call but its F+3 initializer is
+  // a scalar-literal expression rather than an aggregate. It corrects the same
+  // count equations; the two carriers are distinguished by which pool owns the
+  // initializer node.
+  size_t directScalarLocalCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   // A self-call pool record forwards the implicit header receiver: its
   // receiver node slot is unset and it carries zero explicit arguments. Such a
@@ -654,7 +660,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
     if (call.arguments.size() == 1 && call.arguments[0].value == zc::none &&
         call.arguments[0].parameter == zc::none && call.arguments[0].local != zc::none) {
-      ++directAggregateCallCount;
+      // Both admitted local-argument calls share the six-node stride: the
+      // initializer is node F+3, two before the F+5 call node. An expression
+      // record there marks the scalar-local carrier; anything else is the
+      // aggregate carrier.
+      const uint32_t initializerOrdinal = call.node.ordinal() - 2;
+      bool initializerIsExpression = false;
+      for (const auto& expression : candidate.impl->expressions) {
+        if (expression.node.ordinal() == initializerOrdinal) {
+          initializerIsExpression = true;
+          break;
+        }
+      }
+      if (initializerIsExpression) {
+        ++directScalarLocalCallCount;
+      } else {
+        ++directAggregateCallCount;
+      }
     }
   }
   for (const auto& call : candidate.impl->receiverCalls) {
@@ -895,7 +917,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                            localAliasReborrowCount + localBorrowCount) +
               sequentialLocalReferenceCorrection !=
           static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
-              directAggregateCallCount ||
+              directAggregateCallCount - directScalarLocalCallCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
           functionCount + localAliasReborrowCount + conditionalCount * 2 +
               equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
@@ -904,13 +926,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount - voidFunctionCount ||
       static_cast<int64_t>(candidate.impl->expressions.size()) !=
-          static_cast<int64_t>(
-              declarationCount + functionCount - voidFunctionCount - directCallCount -
-              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-              localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
-              equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount + directAggregateCallCount) +
+          static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
+                               directCallCount - aggregateCount - receiverSelfCallCount -
+                               uninitializedLocalReturnCount - parameterReferenceCount -
+                               parameterReborrowCount - parameterFieldProjectionCount +
+                               localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
+                               equalityConditionalCount + loopCount + binaryWriteCount +
+                               parameterFieldWriteCount + receiverFieldArithmeticCount +
+                               directAggregateCallCount + directScalarLocalCallCount) +
               sequentialLiteralCorrection ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
@@ -932,7 +955,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
               equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount + directAggregateCallCount) +
+              receiverFieldArithmeticCount + directAggregateCallCount +
+              directScalarLocalCallCount) +
               sequentialLiteralCorrection ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
@@ -5251,6 +5275,247 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         nextFunction += 9;
         continue;
       }
+    }
+    // Scalar-local call: `let a: i32 = <literal>; return f(a);`. Fixed six-node
+    // preorder: function F, body F+1, local F+2, scalar-literal initializer F+3,
+    // return F+4, direct call F+5. The call's sole argument is the owner i32
+    // local copied by value and allocates no extra node.
+    if (sourceShapeMaybe != zc::none &&
+        ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsDirectScalarLocalCall) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectScalarCall = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      };
+      const auto rejectScalarCallMissing = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      };
+      zc::Maybe<const HirLocalBinding&> scalarLocal;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node != hirId(expectedFunction + 2)) continue;
+        if (scalarLocal != zc::none) return rejectScalarCall();
+        scalarLocal = candidateLocal;
+      }
+      zc::Maybe<const HirScalarLiteralExpression&> initializerExpression;
+      for (const auto& candidateExpression : candidate.impl->expressions) {
+        if (candidateExpression.node != hirId(expectedFunction + 3)) continue;
+        if (initializerExpression != zc::none) return rejectScalarCall();
+        initializerExpression = candidateExpression;
+      }
+      zc::Maybe<const HirDirectCallExpression&> scalarCall;
+      for (const auto& candidateCall : candidate.impl->calls) {
+        if (candidateCall.node != hirId(expectedFunction + 5)) continue;
+        if (scalarCall != zc::none) return rejectScalarCall();
+        scalarCall = candidateCall;
+      }
+      zc::Maybe<const HirReturnStatement&> scalarReturn;
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node != hirId(expectedFunction + 4)) continue;
+        if (scalarReturn != zc::none) return rejectScalarCall();
+        scalarReturn = candidateReturn;
+      }
+      if (scalarLocal == zc::none || initializerExpression == zc::none || scalarCall == zc::none ||
+          scalarReturn == zc::none) {
+        return rejectScalarCallMissing();
+      }
+      const auto& localRecord = ZC_ASSERT_NONNULL(scalarLocal);
+      const auto& expression = ZC_ASSERT_NONNULL(initializerExpression);
+      const auto& call = ZC_ASSERT_NONNULL(scalarCall);
+      const auto& returnStatementRecord = ZC_ASSERT_NONNULL(scalarReturn);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 2 ||
+          block.statements[0] != localRecord.node ||
+          block.statements[1] != returnStatementRecord.node ||
+          localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
+          localRecord.initializer != hirId(expectedFunction + 3) ||
+          localRecord.initializerSpan == zc::none ||
+          expression.node != hirId(expectedFunction + 3) || expression.type != localRecord.type ||
+          expression.category != HirValueCategory::Value ||
+          returnStatementRecord.node != hirId(expectedFunction + 4) ||
+          returnStatementRecord.value != call.node ||
+          returnStatementRecord.resultType != function.resultType ||
+          call.node != hirId(expectedFunction + 5) || call.resultType != function.resultType ||
+          function.receiver != zc::none || !typeExists(localRecord.type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectScalarCall();
+      }
+
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+          rootPosition == zc::none) {
+        return rejectScalarCallMissing();
+      }
+      size_t definitionSlot = 0;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+      ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& signature = signatures.definitions[signatureSlot];
+      const auto& root = signatures.roots[rootSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectScalarCall();
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedVisibility = visibility(root.visibility);
+      auto expectedLinkage = linkage(callable);
+      ast::NodeId initializer;
+      ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
+      if (expectedVisibility == zc::none || expectedLinkage == zc::none || !source.returnsLocal ||
+          source.localInitializer == zc::none || source.localWrites.size != 0 ||
+          !tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::CallExpression ||
+          !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind) ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Function ||
+          root.canonicalDefinition != function.definition || root.sourceModule != module ||
+          callable.receiver != zc::none || callable.raises != zc::none ||
+          callable.success != function.resultType || callable.parameters.size() != 0 ||
+          function.parameters.size() != 0 ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+        return rejectScalarCall();
+      }
+      const auto& sourceCall = tree.node(source.value);
+      const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList typeArguments{
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                    sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+          tree.list(arguments).size() != 1) {
+        return rejectScalarCall();
+      }
+      const ast::NodeId argumentNode = tree.list(arguments)[0];
+      if (!tree.contains(argumentNode) ||
+          tree.node(argumentNode).kind != ast::SyntaxKind::IdentExpr) {
+        return rejectScalarCall();
+      }
+      auto ownerBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
+      auto argumentBinding = resolvedOwnerLocal(bound.bindings(), argumentNode);
+      auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+      auto argumentTypeIndex = factIndex(facts.nodeTypes(), argumentNode);
+      auto initializerTypeIndex = factIndex(facts.nodeTypes(), initializer);
+      auto initializerLiteralIndex = factIndex(facts.literals(), initializer);
+      auto checkedCallIndex = factIndex(facts.calls(), source.value);
+      auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+      auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+      auto initializerSpan = bound.parsedModule().spanFor(tree.node(initializer).range);
+      auto argumentSpan = bound.parsedModule().spanFor(tree.node(argumentNode).range);
+      if (ownerBinding == zc::none || argumentBinding == zc::none ||
+          ownerBinding != argumentBinding ||
+          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
+                             tree) ||
+          calleeTypeIndex == zc::none || argumentTypeIndex == zc::none ||
+          initializerTypeIndex == zc::none || initializerLiteralIndex == zc::none ||
+          checkedCallIndex == zc::none || callKey == zc::none || callSpan == zc::none ||
+          initializerSpan == zc::none || argumentSpan == zc::none) {
+        return rejectScalarCallMissing();
+      }
+      auto dispatchIndex = dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                             ZC_ASSERT_NONNULL(callKey));
+      if (dispatchIndex == zc::none) { return rejectScalarCallMissing(); }
+      auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+      if (callee == zc::none) { return rejectScalarCallMissing(); }
+      size_t calleeTypeSlot = 0;
+      size_t argumentTypeSlot = 0;
+      size_t initializerTypeSlot = 0;
+      size_t initializerLiteralSlot = 0;
+      size_t checkedCallSlot = 0;
+      size_t dispatchSlot = 0;
+      ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+      ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+      ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+      ZC_IF_SOME(value, initializerLiteralIndex) { initializerLiteralSlot = value; }
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      const auto& checkedInitializer = facts.literals().entries()[initializerLiteralSlot].value;
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      const auto& argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+      bool dispatchOwnerMatches = false;
+      ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+      bool callSpanMatches = false;
+      bool dispatchSpanMatches = false;
+      bool hirSpanMatches = false;
+      ZC_IF_SOME(value, callSpan) {
+        callSpanMatches =
+            sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan, value);
+        dispatchSpanMatches = sameSpan(dispatch.fact.sourceSpan, value);
+        hirSpanMatches = sameSpan(call.sourceSpan, value);
+      }
+      if (expression.type != facts.nodeTypes().entries()[initializerTypeSlot].value ||
+          checkedInitializer.node != initializer || checkedInitializer.type != expression.type ||
+          !sameConstant(expression.value, checkedInitializer.literal, module, registries,
+                        semanticTypes) ||
+          !sameSpan(checkedInitializer.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+          !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(bound.parsedModule().spanFor(
+                                                tree.node(source.localPattern).range))) ||
+          !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
+                    ZC_ASSERT_NONNULL(initializerSpan)) ||
+          call.callee != ZC_ASSERT_NONNULL(callee) ||
+          call.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+          call.arguments.size() != 1 || !selected.is<checker::checked::DirectCallable>() ||
+          selected.get<checker::checked::DirectCallable>().callee != call.callee ||
+          !target.is<checker::dispatch::DirectTarget>() ||
+          target.get<checker::dispatch::DirectTarget>().callee != call.callee ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          invocation.calleeType != call.calleeType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
+          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          invocation.arguments.size() != 1 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          !dispatchOwnerMatches || dispatch.fact.receiver != zc::none ||
+          dispatch.fact.arguments.size() != 1 || dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none || !callSpanMatches || !dispatchSpanMatches ||
+          !hirSpanMatches) {
+        return rejectScalarCall();
+      }
+      const auto& checkedArgument = invocation.arguments[0];
+      const auto& dispatchArgument = dispatch.fact.arguments[0];
+      const auto& hirArgument = call.arguments[0];
+      if (checkedArgument.sourceNode != argumentNode ||
+          checkedArgument.sourceType != argumentType ||
+          checkedArgument.parameterType != argumentType || checkedArgument.adjustment != zc::none ||
+          !sameNodeKey(
+              dispatchArgument.sourceNode,
+              ZC_ASSERT_NONNULL(checkedNodeKey(tree, bound.parsedModule(), argumentNode))) ||
+          dispatchArgument.sourceType != argumentType ||
+          dispatchArgument.parameterType != argumentType ||
+          dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
+          argumentType != expression.type || argumentType != localRecord.type ||
+          hirArgument.value != zc::none || hirArgument.parameter != zc::none ||
+          hirArgument.local != hirLocalId(1) ||
+          !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+        return rejectScalarCall();
+      }
+      nextFunction += 6;
+      continue;
     }
     // By-value aggregate call: `let p: P = P { .. }; return f(p);`. Fixed
     // six-node preorder: function F, body F+1, local F+2, aggregate

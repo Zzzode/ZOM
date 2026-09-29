@@ -937,7 +937,7 @@
     },
     "04-expressions/direct_call_local_argument_capability_neg_65.zom": {
       "exitCode": 1,
-      "sha256": "6c271f32c9237451006b6fbcdf28a929968562b3c04348e5dbc68517863fbb8f"
+      "sha256": "4a781a052c5b6f0d78d445143e921958c4c649d7af54011564437028331d8618"
     },
     "04-expressions/dispatch_dump_primitive_index_unary_pos_35.zom": {
       "exitCode": 1,

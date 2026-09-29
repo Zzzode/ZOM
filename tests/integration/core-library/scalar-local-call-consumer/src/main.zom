@@ -1,0 +1,6 @@
+// Scalar-local direct-call fixture: one i32 owner local initialized from an
+// integer literal is passed by value to a free function that doubles its
+// parameter through an admitted arithmetic body. The caller folds to the
+// reserved no-argument i32 `zom.module_init` shape and exits 42.
+fun double(x: i32) -> i32 { let r: i32 = x + x; return r; }
+fun entry() -> i32 { let a: i32 = 21; return double(a); }

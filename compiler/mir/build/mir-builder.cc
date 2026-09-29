@@ -1068,6 +1068,92 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a scalar-local direct-call caller:
+/// `fun entry() -> i32 { let a: i32 = <literal>; return f(a); }`. One UserLocal
+/// of scalar type at localId(1) is initialized from a constant, one Temporary
+/// of the call result type at localId(2) receives the direct call, and the
+/// scalar user local is copied as the call's sole by-value argument. Block 1
+/// calls and continues to block 2, which returns the result temporary.
+zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
+  auto sourceReturn = returnFor(hirModule, block.statements[1]);
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none || sourceLocal == zc::none) { return zc::none; }
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1 || binding.initializer == zc::none) { return zc::none; }
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto literal = expressionFor(hirModule, initializerNode);
+  auto call = callFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (literal == zc::none || call == zc::none) { return zc::none; }
+  const auto& sourceLiteral = ZC_ASSERT_NONNULL(literal);
+  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
+  if (sourceLiteral.type != binding.type || sourceCall.resultType != declaration.resultType ||
+      sourceCall.arguments.size() != 1 || sourceCall.arguments[0].value != zc::none ||
+      sourceCall.arguments[0].parameter != zc::none ||
+      sourceCall.arguments[0].local != binding.local ||
+      sourceCall.arguments[0].type != binding.type) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) { return zc::none; }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  if (userLocal.ordinal() != 1) { return zc::none; }
+  const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, sourceCall.resultType,
+                                                  scope, sourceCall.sourceSpan.clone());
+  if (resultLocal.ordinal() != 2) { return zc::none; }
+
+  // Block 1: initialize the scalar local from a constant, copy it as the
+  // by-value call argument, and call into block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, binding.type, zc::mv(destinationProjections), binding.type),
+      MirRvalue::use(MirOperand::constant(binding.type, sourceLiteral.value.clone())),
+      MirInitializationKind::Initialize, sourceLiteral.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceCall.sourceSpan.clone()));
+  zc::Vector<MirProjection> argumentProjections;
+  auto argumentOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, binding.type, zc::mv(argumentProjections), binding.type));
+  if (argumentOperand == zc::none) { return zc::none; }
+  zc::Vector<MirOperand> arguments;
+  arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  ctx.terminateBlock(
+      MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+                          MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
+                                   sourceCall.resultType),
+                          blockId(2), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+
+  // Block 2: return the result temporary.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, sourceCall.resultType,
+                                         zc::mv(returnProjections), sourceCall.resultType));
+  if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fun m(this) -> T { let x = <literal>; return x; }` on a shared
 /// receiver: one root scope, one receiver parameter local at localId(1), one
 /// UserLocal at localId(2), StorageLive followed by an Initialize Assign of the
@@ -1751,6 +1837,18 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       declaration.unsafeBlock == zc::none) {
     auto product = buildByValueAggregateCallReturn(declaration, block, hirModule, identities,
                                                    proofs, copyMarker);
+    if (product != zc::none) return product;
+  }
+
+  // Scalar-local direct-call caller:
+  // `fun entry() -> i32 { let a: i32 = <literal>; return f(a); }`. The trailing
+  // return value is a direct call whose sole argument copies the
+  // literal-initialized scalar owner local. It must precede the scalar-local
+  // arm, whose gate admits only a bare place return of the local.
+  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto product =
+        buildScalarLocalCallReturn(declaration, block, hirModule, identities, proofs, copyMarker);
     if (product != zc::none) return product;
   }
 

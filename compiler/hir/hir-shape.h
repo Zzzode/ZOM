@@ -121,6 +121,10 @@ struct FunctionReturnShape final {
   // local passed as the sole argument of a returned direct free-function call:
   // `let p: P = P { .. }; return f(p);`.
   bool returnsDirectAggregateCall = false;
+  // Two-statement scalar-local call shape: a leading i32 local initialized from
+  // an integer literal passed as the sole argument of a returned direct
+  // free-function call: `let a: i32 = 21; return f(a);`.
+  bool returnsDirectScalarLocalCall = false;
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;

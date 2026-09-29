@@ -260,6 +260,27 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a scalar-local direct call to a two-function LIR module.
+  ///
+  /// Admits the verified pair: a caller
+  /// `fun entry() -> i32 { let a: i32 = <integer constant>; return f(a); }`
+  /// (one scalar `UserLocal` initialized from a constant, one result
+  /// `Temporary`, entry `StorageLive; a = Use(constant); StorageLive;
+  /// Call(f, copy a) -> result`, continuation `return result`) and a callee
+  /// `fun f(x: i32) -> i32` whose single block either returns its parameter
+  /// directly or computes one admitted arithmetic/use body over it. The
+  /// by-value scalar argument lowers to one integer call argument; the caller
+  /// folds to the reserved no-argument `zom.module_init` entry. Every other
+  /// shape returns `none`.
+  ///
+  /// \param caller Verified scalar-local-caller MIR function.
+  /// \param callee Verified one-parameter callee MIR function.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerScalarLocalCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a three-function module (a zero-argument direct call plus one
   /// standalone leaf) to a three-function LIR module.
   ///

@@ -1448,4 +1448,65 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsFunctionValueOperandForUnannotatedLocal
             checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
 }
 
+ZC_TEST("DirectCall.Argument.EmitsCheckedArgumentFactForI32OwnerLocal") {
+  // A literal-initialized i32 owner local passed as the sole direct-call
+  // argument rides the by-value scalar-local carrier: the call fact records one
+  // ordinary argument with no coercion, just like a parameter argument.
+  PrimitiveBinaryFixture fixture(
+      "fun h(x: i32) -> i32 { return x; }\n"
+      "fun f() -> i32 { let a: i32 = 7; return h(a); }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  size_t directCalls = 0;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    if (!selected.is<checked::DirectCallable>()) continue;
+    ++directCalls;
+    const auto& invocation = entry.value.invocation;
+    ZC_REQUIRE(invocation.arguments.size() == 1);
+    ZC_EXPECT(invocation.arguments[0].sourceType == i32);
+    ZC_EXPECT(invocation.arguments[0].parameterType == i32);
+    ZC_EXPECT(invocation.arguments[0].adjustment == zc::none);
+    ZC_EXPECT(invocation.successType == i32);
+    ZC_EXPECT(invocation.resultType == i32);
+  }
+  ZC_EXPECT(directCalls == 1);
+}
+
+ZC_TEST("DirectCall.Argument.EmitsCheckedArgumentFactForInferredI32OwnerLocal") {
+  // The unannotated form `let a = 7` infers i32 from its integer initializer,
+  // so the scalar-local carrier admits it without a declared annotation.
+  PrimitiveBinaryFixture fixture(
+      "fun h(x: i32) -> i32 { return x; }\n"
+      "fun f() -> i32 { let a = 7; return h(a); }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  size_t directCalls = 0;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    if (!selected.is<checked::DirectCallable>()) continue;
+    ++directCalls;
+    ZC_REQUIRE(entry.value.invocation.arguments.size() == 1);
+    ZC_EXPECT(entry.value.invocation.arguments[0].sourceType == i32);
+    ZC_EXPECT(entry.value.invocation.arguments[0].parameterType == i32);
+  }
+  ZC_EXPECT(directCalls == 1);
+}
+
+ZC_TEST("DirectCall.Argument.DrainsF64OwnerLocalAsUnsupportedMethodCall") {
+  // An owner local of non-i32 scalar type stays on the ZOM4125 capability drain;
+  // the scalar-local carrier admits i32 only.
+  PrimitiveBinaryFixture fixture(
+      "fun h(x: f64) -> f64 { return x; }\n"
+      "fun f() -> f64 { let a: f64 = 7.0; return h(a); }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::MethodCallSemanticsUnavailable());
+}
+
 }  // namespace zomlang::compiler::checker::body

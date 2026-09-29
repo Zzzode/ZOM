@@ -1,11 +1,13 @@
 // RUN: cd %corpus && ! %zomc compile --check 04-expressions/direct_call_local_argument_capability_neg_65.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// A direct free-function call whose argument is an owner-local identifier is
-// well-typed source the direct-call lowering slice does not admit yet (only
-// parameter arguments lower). It drains as ZOM4125 naming the callee, never as
-// an internal compiler error. A genuine argument type mismatch still reports
-// ZOM4009 instead.
+// A direct free-function call initializing a second local (`let y = g(v);`)
+// is well-typed source the call lowering does not admit: the scalar-local
+// carrier passes the owner local only as the sole argument of a returned call
+// (`return g(v)`). The checker publishes the ordinary call fact, so the
+// owning definition drains at the HIR capability gate as ZOM4099, never as an
+// internal compiler error - the same rail the by-value aggregate init-result
+// form uses.
 
-// CHECK-LITERAL: Error [ZOM4125]: method call `g` is not supported yet
-// CHECK-LITERAL:   --> conformance/04-expressions/direct_call_local_argument_capability_neg_65.zom:6:18
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/direct_call_local_argument_capability_neg_65.zom:4:1

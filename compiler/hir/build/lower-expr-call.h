@@ -31,6 +31,13 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
 /// that local passed by value, is the return value.
 void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one scalar-local call body through the recursive driver:
+/// `let a: i32 = <literal>; return f(a);`. Node stride: function, body, local,
+/// scalar-literal initializer, return, direct call. The literal lowers into the
+/// local's initializer destination and the direct call, whose sole argument is
+/// that i32 local copied by value, is the return value.
+void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one mutable-receiver call body through the recursive driver:
 /// `mut cell = T { .. }; return cell.method(<args>);`. Node stride: function,
 /// body, local, aggregate initializer, return, receiver reference, receiver
