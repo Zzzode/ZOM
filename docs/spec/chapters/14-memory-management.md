@@ -15,6 +15,45 @@ ZOM does not define an implicit reference-counting ownership mode, a weak-
 reference modifier, built-in `allocate` or `deallocate` functions, or a
 distinguished `cleanup()` operation.
 
+### 14.1.1 Reclamation and Sharing Model
+
+Reclamation is ownership-based, not reachability-based. A value is released at
+a statically determined point: the end of the scope that holds its drop
+obligation, or the point where a consuming context transfers or discharges that
+obligation. A value is never released because a count reached zero, and never
+because a collector found it unreachable. The owning scope and the transfer
+context therefore determine a value's lifetime completely, and a non-owning
+reference held elsewhere never extends it.
+
+Sharing is non-owning. The language defines no shared-ownership handle, so
+there is no counted handle and no weak form for breaking a cycle between
+counted handles. A program that needs two access paths to one value expresses
+them as borrows (`&T`, `&mut T`, [§14.3](#143-references-and-borrows)), which
+the checker constrains by region, or as raw pointers inside `unsafe`
+([§14.4](#144-raw-pointers-and-unsafe-boundaries)). Neither form owns its
+referent, so neither form delays cleanup.
+
+Cleanup is deterministic: it runs on every normal exit that owns the obligation
+([§14.5](#145-deinitialization)). It is not implicit retention. No assignment,
+parameter pass, return, or copy performs a retain, and no scope exit performs a
+release beyond the drop obligations ownership checking already proved.
+
+Storage comes from declaration contexts — bindings, fields, elements, and
+temporaries — rather than from a source-level allocator interface. Converting a
+value or a reference to a raw pointer changes neither ownership nor the
+lifetime of the pointee, and no source operation releases a value individually,
+so a dangling pointer is not produced by releasing an owned value from source.
+
+Every ownership condition stated in this chapter is decided statically and
+reported through [§14.6](#146-ownership-diagnostics). Ownership contributes no
+runtime obligation: it specifies no count update, no reference-validity
+metadata, and no release action that the program must perform at execution
+time. Conditions that are decided at execution time belong to the operations
+that own them — checked conversions and forced unwraps are specified by
+[Chapter 3](03-types.md) and [Chapter 11](11-error-handling.md) — and
+nullability is the ordinary union rule of [Chapter 3](03-types.md), not an
+ownership property.
+
 ## 14.2 Value Transfer
 
 The following contexts consume a value:
@@ -144,7 +183,10 @@ Conformance must cover:
 - normal-path exactly-once linear consumption;
 - raw-pointer operations inside and outside `unsafe`;
 - deinitialization after return, propagation, replacement, and partial
-  initialization; and
+  initialization;
+- reclamation at scope exit and on transfer, with no count-based release, no
+  reachability-based release, and no source operation that releases one value;
+  and
 - panic abort versus unwind cleanup capability.
 
 Parser or AST acceptance alone is not ownership conformance. A positive case
