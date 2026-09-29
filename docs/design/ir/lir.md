@@ -39,7 +39,8 @@ flowchart LR
 
 `MirToLirLowering` exposes static per-shape entry points (scalar initializer,
 aggregate field initializer, aggregate return, equality-conditional, loop,
-comparison-driven conditional, and direct-call module variants). The
+comparison-driven conditional, leading-local comparison conditional, and
+direct-call module variants). The
 production consumer is the CLI native path, which selects the entry point from
 the module's function and block counts, then runs both verification stages on
 the exact MIR function set it handed to lowering before calling the LLVM

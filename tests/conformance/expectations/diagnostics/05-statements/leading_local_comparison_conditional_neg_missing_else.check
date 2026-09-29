@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/leading_local_comparison_conditional_neg_missing_else.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A leading-local comparison conditional requires an explicit else: without a
+// second arm the body has no total return, so the ownership surface fails the
+// shape closed and the checker drains it as ZOM4099.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK:   --> conformance/05-statements/leading_local_comparison_conditional_neg_missing_else.zom:1:1

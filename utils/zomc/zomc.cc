@@ -1425,6 +1425,9 @@ private:
             lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
           }
           if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerLeadingLocalConditionalReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
           if (lir == zc::none) {
@@ -1667,6 +1670,7 @@ private:
       return NativeObjectResult(
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
+                  "leading-local comparison conditional, "
                   "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
                   "by-value aggregate call, scalar-local direct call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "

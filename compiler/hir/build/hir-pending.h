@@ -148,6 +148,51 @@ struct PendingConditionalReturn final {
   identity::SourceSpan conditionalSpan;
 };
 
+// One leading scalar-local binding in a leading-local conditional body. The
+// initializer is a scalar literal, a parameter copy, or a copy of an earlier
+// leading local (`referencedLocal` is its zero-based binding index).
+struct PendingLeadingLocalBinding final {
+  identity::SemanticTypeId type;
+  identity::SourceSpan patternSpan;
+  identity::SourceSpan initializerSpan;
+  SequentialInitializerKind kind;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<identity::CallableParameterKey> parameter;
+  size_t referencedLocal;
+};
+
+// One comparison-condition operand in a leading-local conditional body: a
+// scalar literal, a parameter place reference, or a reference to one of the
+// leading locals (`referencedLocal` is its zero-based binding index when
+// `isLocal` is set).
+struct PendingLeadingConditionOperand final {
+  identity::SemanticTypeId type;
+  identity::SourceSpan sourceSpan;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<identity::CallableParameterKey> parameter;
+  size_t referencedLocal = 0;
+  bool isLocal = false;
+};
+
+// K leading scalar-local bindings followed by one comparison conditional with
+// two literal arms. The comparison operands may name the leading locals; the
+// bool result drives the conditional exactly like the sole-if equality shape.
+struct PendingLeadingLocalConditionalReturn final {
+  zc::Vector<PendingLeadingLocalBinding> bindings;
+  PendingLeadingConditionOperand left;
+  PendingLeadingConditionOperand right;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId conditionType;
+  checker::PrimitiveOperation operation;
+  identity::SourceSpan conditionSpan;
+  checker::checked::CanonicalConstValue thenLiteral;
+  checker::checked::CanonicalConstValue elseLiteral;
+  identity::SemanticTypeId resultType;
+  identity::SourceSpan thenSpan;
+  identity::SourceSpan elseSpan;
+  identity::SourceSpan returnSpan;
+};
+
 struct PendingLoopReturn final {
   HirParameterReferenceExpression condition;
   checker::checked::CanonicalConstValue returnLiteral;
@@ -260,6 +305,9 @@ struct PendingFunctionDeclaration final {
   // struct parameter (no receiver dereference) rather than the implicit method
   // receiver. Selects the by-value MIR return builder.
   bool byValueParameterField = false;
+  // Populated for K leading scalar-local bindings followed by one comparison
+  // conditional with two literal arms.
+  zc::Maybe<PendingLeadingLocalConditionalReturn> leadingLocalConditionalReturn;
 };
 
 }  // namespace detail

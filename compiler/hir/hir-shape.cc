@@ -438,6 +438,62 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   return shape;
 }
 
+zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::Tree& tree,
+                                                                     ast::NodeId body) {
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements) || statements.size < 2) return zc::none;
+  const size_t bindingCount = statements.size - 1;
+  LeadingLocalConditionalShape shape{};
+  shape.body = body;
+  for (size_t index = 0; index < bindingCount; ++index) {
+    auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
+    if (declaratorNode == zc::none) return zc::none;
+    ast::NodeId declarator;
+    ZC_IF_SOME(value, declaratorNode) { declarator = value; }
+    const ast::NodeId pattern(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+    const ast::NodeId initializer(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+    if (!tree.contains(initializer)) return zc::none;
+    SequentialInitializerKind kind;
+    size_t referencedLocal = 0;
+    if (isScalarLiteral(tree.node(initializer).kind)) {
+      kind = SequentialInitializerKind::Literal;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
+      kind = SequentialInitializerKind::ParameterReference;
+      for (size_t earlier = 0; earlier < index; ++earlier) {
+        if (matchesLocalReference(tree, shape.bindings[earlier].pattern, initializer)) {
+          kind = SequentialInitializerKind::LocalReference;
+          referencedLocal = earlier;
+          break;
+        }
+      }
+    } else {
+      return zc::none;
+    }
+    shape.bindings.add(SequentialLocalBinding{declarator, pattern, initializer, kind,
+                                              referencedLocal, zc::none, zc::none});
+  }
+  auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
+  if (tailItem == zc::none) return zc::none;
+  ast::NodeId tailStatement;
+  ZC_IF_SOME(value, tailItem) { tailStatement = value; }
+  if (tree.node(tailStatement).kind != ast::SyntaxKind::IfStmt) return zc::none;
+  auto conditional = conditionalReturnShape(tree, body, tailStatement);
+  if (conditional == zc::none || !ZC_ASSERT_NONNULL(conditional).conditionIsEquality) {
+    return zc::none;
+  }
+  if (!isScalarLiteral(tree.node(ZC_ASSERT_NONNULL(conditional).thenReturnValue).kind) ||
+      !isScalarLiteral(tree.node(ZC_ASSERT_NONNULL(conditional).elseReturnValue).kind)) {
+    return zc::none;
+  }
+  shape.ifStatement = tailStatement;
+  return shape;
+}
+
 zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                    const ast::Node& function) {
   const bool isMethod = function.kind == ast::SyntaxKind::MethodDecl;
@@ -788,6 +844,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       ZC_IF_SOME(value, conditionalItem) { conditionalStmt = value; }
       if (tree.node(conditionalStmt).kind == ast::SyntaxKind::IfStmt) {
         return conditionalReturnShape(tree, body, conditionalStmt);
+      }
+    }
+  }
+  // Leading scalar-local bindings followed by one comparison conditional with
+  // literal arms. The conditional shape carries the condition/arm nodes; the
+  // leading bindings are derived on demand via leadingLocalConditionalShape.
+  {
+    auto leading = leadingLocalConditionalShape(tree, body);
+    if (leading != zc::none) {
+      ast::NodeId ifStatement;
+      ZC_IF_SOME(value, leading) { ifStatement = value.ifStatement; }
+      auto conditional = conditionalReturnShape(tree, body, ifStatement);
+      if (conditional != zc::none) {
+        ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
+        return conditional;
       }
     }
   }

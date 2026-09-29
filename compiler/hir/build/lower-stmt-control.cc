@@ -79,6 +79,109 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
                                               conditional.conditionalSpan.clone()});
 }
 
+void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& function,
+                                                HirFnCtx& ctx) {
+  PendingLeadingLocalConditionalReturn leading =
+      zc::mv(ZC_ASSERT_NONNULL(function.leadingLocalConditionalReturn));
+  const size_t bindingCount = leading.bindings.size();
+
+  // Source-preorder layout: function, body, per binding (local, initializer),
+  // then left operand, right operand, comparison, then arm, else arm,
+  // conditional, return.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  zc::Vector<HirNodeId> localIds;
+  zc::Vector<HirNodeId> initializerIds;
+  for (size_t index = 0; index < bindingCount; ++index) {
+    localIds.add(ctx.allocNode());
+    initializerIds.add(ctx.allocNode());
+  }
+  const HirNodeId leftId = ctx.allocNode();
+  const HirNodeId rightId = ctx.allocNode();
+  const HirNodeId equalityId = ctx.allocNode();
+  const HirNodeId thenValueId = ctx.allocNode();
+  const HirNodeId elseValueId = ctx.allocNode();
+  const HirNodeId conditionalId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  for (const auto localId : localIds) { statements.add(localId); }
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(HirReturnStatement{returnId, function.resultType, conditionalId,
+                                   function.returnSpan.clone()});
+
+  for (size_t index = 0; index < bindingCount; ++index) {
+    const auto& binding = leading.bindings[index];
+    switch (binding.kind) {
+      case SequentialInitializerKind::Literal:
+        ZC_IF_SOME(literal, binding.literal) {
+          ctx.addExpression(HirScalarLiteralExpression{initializerIds[index], binding.type,
+                                                       literal.clone(), HirValueCategory::Value,
+                                                       binding.initializerSpan.clone()});
+        }
+        break;
+      case SequentialInitializerKind::ParameterReference:
+        ZC_IF_SOME(parameter, binding.parameter) {
+          ctx.addParameterReference(HirParameterReferenceExpression{
+              initializerIds[index], parameter.clone(), binding.type, HirValueCategory::Place,
+              binding.initializerSpan.clone()});
+        }
+        break;
+      case SequentialInitializerKind::LocalReference:
+        ctx.addLocalReference(HirLocalReferenceExpression{
+            initializerIds[index], hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
+            binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
+        break;
+      case SequentialInitializerKind::Aggregate:
+      case SequentialInitializerKind::PrimitiveBinary:
+        break;
+    }
+    ctx.addLocal(HirLocalBinding{localIds[index], hirLocalId(static_cast<uint32_t>(index + 1)),
+                                 binding.type, initializerIds[index], binding.patternSpan.clone(),
+                                 binding.initializerSpan.clone()});
+  }
+
+  auto lowerConditionOperand = [&](HirNodeId destination,
+                                   const PendingLeadingConditionOperand& operand) {
+    ZC_IF_SOME(literal, operand.literal) {
+      ctx.addExpression(HirScalarLiteralExpression{destination, operand.type, literal.clone(),
+                                                   HirValueCategory::Value,
+                                                   operand.sourceSpan.clone()});
+      return;
+    }
+    if (operand.isLocal) {
+      ctx.addLocalReference(HirLocalReferenceExpression{
+          destination, hirLocalId(static_cast<uint32_t>(operand.referencedLocal + 1)), operand.type,
+          HirValueCategory::Place, operand.sourceSpan.clone()});
+      return;
+    }
+    ZC_IF_SOME(parameter, operand.parameter) {
+      ctx.addParameterReference(
+          HirParameterReferenceExpression{destination, parameter.clone(), operand.type,
+                                          HirValueCategory::Place, operand.sourceSpan.clone()});
+    }
+  };
+  lowerConditionOperand(leftId, leading.left);
+  lowerConditionOperand(rightId, leading.right);
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      equalityId, leftId, rightId, leading.operandType, leading.conditionType,
+      HirValueCategory::Value, leading.operation, leading.conditionSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{thenValueId, leading.resultType,
+                                               leading.thenLiteral.clone(), HirValueCategory::Value,
+                                               leading.thenSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{elseValueId, leading.resultType,
+                                               leading.elseLiteral.clone(), HirValueCategory::Value,
+                                               leading.elseSpan.clone()});
+  ctx.addConditional(HirConditionalExpression{conditionalId, equalityId, thenValueId, elseValueId,
+                                              leading.resultType, HirValueCategory::Value,
+                                              leading.returnSpan.clone()});
+}
+
 void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingLoopReturn loop = zc::mv(ZC_ASSERT_NONNULL(function.loopReturn));
 

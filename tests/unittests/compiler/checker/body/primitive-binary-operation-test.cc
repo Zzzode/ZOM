@@ -1509,4 +1509,54 @@ ZC_TEST("DirectCall.Argument.DrainsF64OwnerLocalAsUnsupportedMethodCall") {
             checked::CheckerErrorId::MethodCallSemanticsUnavailable());
 }
 
+ZC_TEST("LeadingLocalConditional.AdmitsComparisonOverLeadingI32Local") {
+  // A scalar-local binding followed by an explicit-else comparison conditional
+  // is an admitted body: the comparison's left operand reads the leading local
+  // and its right operand is a scalar literal, and both arms return a literal.
+  PrimitiveBinaryFixture fixture(
+      "fun entry() -> i32 { let a: i32 = 1; if (a < 5) { return 41; } else { return 7; } }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  size_t comparisons = 0;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    if (!selected.is<checked::PrimitiveCallable>()) continue;
+    const auto& operation = selected.get<checked::PrimitiveCallable>().operation;
+    if (operation != checker::PrimitiveOperation::Lt) continue;
+    ++comparisons;
+    ZC_REQUIRE(entry.value.invocation.arguments.size() == 2);
+    ZC_EXPECT(entry.value.invocation.arguments[0].sourceType == i32);
+    ZC_EXPECT(entry.value.invocation.arguments[1].sourceType == i32);
+    ZC_EXPECT(entry.value.invocation.successType == boolType);
+    ZC_EXPECT(entry.value.invocation.resultType == boolType);
+  }
+  ZC_EXPECT(comparisons == 1);
+}
+
+ZC_TEST("LeadingLocalConditional.AdmitsComparisonOverTwoLeadingI32Locals") {
+  // Two leading locals may both feed the comparison; each operand resolves to a
+  // distinct owner local of the shared operand type.
+  PrimitiveBinaryFixture fixture(
+      "fun entry() -> i32 { let a: i32 = 1; let b: i32 = 2;"
+      " if (a < b) { return 41; } else { return 7; } }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  size_t comparisons = 0;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    if (!selected.is<checked::PrimitiveCallable>()) continue;
+    if (selected.get<checked::PrimitiveCallable>().operation != checker::PrimitiveOperation::Lt) {
+      continue;
+    }
+    ++comparisons;
+    ZC_REQUIRE(entry.value.invocation.arguments.size() == 2);
+    ZC_EXPECT(entry.value.invocation.arguments[0].sourceType == i32);
+    ZC_EXPECT(entry.value.invocation.arguments[1].sourceType == i32);
+  }
+  ZC_EXPECT(comparisons == 1);
+}
+
 }  // namespace zomlang::compiler::checker::body

@@ -1,0 +1,6 @@
+section: "05-statements leading-local comparison conditional without else"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts an if without else; the ownership surface fails the body"
+  - "closed as an unadmitted shape so the checker drains it with a user diagnostic."

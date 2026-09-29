@@ -795,6 +795,53 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // Leading-local conditional corrections. Each such function contributes K
+  // locals but only R_init (local-reference initializers) plus lc_local
+  // (comparison operands reading a leading local) actual local references. Its
+  // expressions/literals baseline grants one per-function value plus the
+  // conditional/equality arm and operand credits, so the same signed correction
+  // C = K - R_init - lc_local balances the localReferences, expressions, and
+  // literals equations.
+  int64_t leadingLocalConditionalCorrection = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& functionDeclaration : candidate.impl->functions) {
+      auto sourceDefinitionIndex = definitionIndex(definitions, functionDeclaration.definition);
+      if (sourceDefinitionIndex == zc::none) continue;
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      if (!tree.contains(sourceDefinition.node)) continue;
+      auto shape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      if (shape == zc::none || !ZC_ASSERT_NONNULL(shape).isLeadingLocalConditional) continue;
+      auto leading = leadingLocalConditionalShape(tree, ZC_ASSERT_NONNULL(shape).body);
+      if (leading == zc::none) continue;
+      size_t localReferencesUsed = 0;
+      ZC_IF_SOME(value, leading) {
+        for (const auto& binding : value.bindings) {
+          if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+            ++localReferencesUsed;
+          }
+        }
+        auto namesBinding = [&](ast::NodeId operand) {
+          if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
+            return false;
+          }
+          for (const auto& binding : value.bindings) {
+            if (tree.node(binding.pattern).payload.words[ast::kIdentifierPatternNameWord] ==
+                tree.node(operand).payload.words[ast::kIdentExprNameWord]) {
+              return true;
+            }
+          }
+          return false;
+        };
+        if (namesBinding(ZC_ASSERT_NONNULL(shape).conditionLeft)) ++localReferencesUsed;
+        if (namesBinding(ZC_ASSERT_NONNULL(shape).conditionRight)) ++localReferencesUsed;
+        leadingLocalConditionalCorrection +=
+            static_cast<int64_t>(value.bindings.size()) - static_cast<int64_t>(localReferencesUsed);
+      }
+    }
+  }
   // Shared-receiver field-arithmetic methods (`return this.<field> OP
   // <literal>;`) derived from the source shapes. Each materializes one pooled
   // primitive binary plus a parameter-field projection, so like the sequential
@@ -915,7 +962,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
       static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
-              sequentialLocalReferenceCorrection !=
+              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection !=
           static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
               directAggregateCallCount - directScalarLocalCallCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
@@ -934,7 +981,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                equalityConditionalCount + loopCount + binaryWriteCount +
                                parameterFieldWriteCount + receiverFieldArithmeticCount +
                                directAggregateCallCount + directScalarLocalCallCount) +
-              sequentialLiteralCorrection ||
+              sequentialLiteralCorrection + leadingLocalConditionalCorrection ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -957,7 +1004,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
               receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
-              sequentialLiteralCorrection ||
+              sequentialLiteralCorrection + leadingLocalConditionalCorrection ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
                                   receiverFieldArithmeticCount + binaryWriteCount ||
@@ -3067,6 +3114,469 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       FunctionReturnShape source{};
       ZC_IF_SOME(value, sourceShape) { source = value; }
       if (source.isConditional) {
+        if (source.isLeadingLocalConditional) {
+          // K leading scalar-local bindings followed by one comparison
+          // conditional with two literal arms. Fixed-id layout relative to the
+          // function id: function, body, per binding (local, initializer), then
+          // left operand, right operand, comparison, then arm, else arm,
+          // conditional, return: 9 + 2K nodes.
+          auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);
+          if (leadingMaybe == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          LeadingLocalConditionalShape leading{};
+          ZC_IF_SOME(value, leadingMaybe) { leading = zc::mv(value); }
+          const size_t bindingCount = leading.bindings.size();
+          // Shared signature/header validation (free-function variant).
+          auto signaturePosition =
+              signatureIndex(signatures.definitions.asPtr(), function.definition);
+          auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+          if (signaturePosition == zc::none || rootPosition == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t signatureSlot = 0;
+          size_t rootSlot = 0;
+          ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+          ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+          const auto& signature = signatures.definitions[signatureSlot];
+          const auto& root = signatures.roots[rootSlot];
+          if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+              !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& callable =
+              signature.payload.variant().get<checker::signature::CallableSignature>();
+          auto expectedVisibility = visibility(root.visibility);
+          auto expectedLinkage = linkage(callable);
+          if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+              signature.definition != function.definition ||
+              signature.definitionKind != identity::DefinitionKind::Function ||
+              signatures.roots[rootSlot].sourceModule != module || callable.receiver != zc::none ||
+              function.receiver != zc::none || callable.raises != zc::none ||
+              callable.success != function.resultType ||
+              !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+              !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+              !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+              function.parameters.size() != callable.parameters.size()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          if (function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+               ++parameterIndex) {
+            const auto& parameter = function.parameters[parameterIndex];
+            const auto& sourceParameter = callable.parameters[parameterIndex];
+            if (parameter.key != sourceParameter.parameter ||
+                parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+                !typeExists(parameter.type, semanticTypes)) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+          // Spans and checked facts.
+          auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+          auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+          auto conditionSpan = bound.parsedModule().spanFor(tree.node(source.condition).range);
+          auto thenSpan = bound.parsedModule().spanFor(tree.node(source.thenReturnValue).range);
+          auto elseSpan = bound.parsedModule().spanFor(tree.node(source.elseReturnValue).range);
+          if (bodySpan == zc::none || returnSpan == zc::none || conditionSpan == zc::none ||
+              thenSpan == zc::none || elseSpan == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.condition);
+          auto thenTypeIndex = factIndex(facts.nodeTypes(), source.thenReturnValue);
+          auto elseTypeIndex = factIndex(facts.nodeTypes(), source.elseReturnValue);
+          auto thenLiteralIndex = factIndex(facts.literals(), source.thenReturnValue);
+          auto elseLiteralIndex = factIndex(facts.literals(), source.elseReturnValue);
+          if (conditionTypeIndex == zc::none || thenTypeIndex == zc::none ||
+              elseTypeIndex == zc::none || thenLiteralIndex == zc::none ||
+              elseLiteralIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t conditionTypeSlot = 0;
+          size_t thenTypeSlot = 0;
+          size_t elseTypeSlot = 0;
+          ZC_IF_SOME(value, conditionTypeIndex) { conditionTypeSlot = value; }
+          ZC_IF_SOME(value, thenTypeIndex) { thenTypeSlot = value; }
+          ZC_IF_SOME(value, elseTypeIndex) { elseTypeSlot = value; }
+          const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+          if (facts.nodeTypes().entries()[thenTypeSlot].value != function.resultType ||
+              facts.nodeTypes().entries()[elseTypeSlot].value != function.resultType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Fixed-id layout: bindings first, then the seven tail nodes.
+          const uint32_t tailBase = 2u + static_cast<uint32_t>(bindingCount) * 2u;
+          const HirNodeId leftId = hirId(expectedFunction + tailBase);
+          const HirNodeId rightId = hirId(expectedFunction + tailBase + 1);
+          const HirNodeId equalityId = hirId(expectedFunction + tailBase + 2);
+          const HirNodeId thenId = hirId(expectedFunction + tailBase + 3);
+          const HirNodeId elseId = hirId(expectedFunction + tailBase + 4);
+          const HirNodeId conditionalId = hirId(expectedFunction + tailBase + 5);
+          const HirNodeId returnId = hirId(expectedFunction + tailBase + 6);
+          bool structureOk = function.node == hirId(expectedFunction) &&
+                             block.node == hirId(expectedFunction + 1) &&
+                             function.body == block.node &&
+                             block.statements.size() == bindingCount + 1;
+          if (structureOk) {
+            for (size_t bindingIndex = 0; bindingIndex < bindingCount; ++bindingIndex) {
+              if (block.statements[bindingIndex] !=
+                  hirId(expectedFunction + 2u + static_cast<uint32_t>(bindingIndex) * 2u)) {
+                structureOk = false;
+              }
+            }
+            if (block.statements[bindingCount] != returnId) structureOk = false;
+          }
+          structureOk = structureOk && sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan));
+          if (!structureOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify the bindings against their owner locals and checked facts.
+          zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
+          for (size_t bindingIndex = 0; bindingIndex < bindingCount; ++bindingIndex) {
+            const auto& binding = leading.bindings[bindingIndex];
+            const HirNodeId localNodeId =
+                hirId(expectedFunction + 2u + static_cast<uint32_t>(bindingIndex) * 2u);
+            const HirNodeId initializerNodeId =
+                hirId(expectedFunction + 3u + static_cast<uint32_t>(bindingIndex) * 2u);
+            zc::Maybe<const HirLocalBinding&> localRecord;
+            for (const auto& local : candidate.impl->locals) {
+              if (local.node != localNodeId) continue;
+              if (localRecord != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              localRecord = local;
+            }
+            if (localRecord == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
+            auto initializerSpan =
+                bound.parsedModule().spanFor(tree.node(binding.initializer).range);
+            auto ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
+            if (patternSpan == zc::none || initializerSpan == zc::none ||
+                ownerBinding == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            for (const auto existing : localBindingIds) {
+              if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+            }
+            auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
+            if (initializerTypeIndex == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t initializerTypeSlot = 0;
+            ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+            const auto bindingType = facts.nodeTypes().entries()[initializerTypeSlot].value;
+            const auto& localValue = ZC_ASSERT_NONNULL(localRecord);
+            if (!typeExists(bindingType, semanticTypes) ||
+                localValue.local != hirLocalId(static_cast<uint32_t>(bindingIndex + 1)) ||
+                localValue.initializer != initializerNodeId || localValue.type != bindingType ||
+                !sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(patternSpan)) ||
+                localValue.initializerSpan == zc::none ||
+                !sameSpan(ZC_ASSERT_NONNULL(localValue.initializerSpan),
+                          ZC_ASSERT_NONNULL(initializerSpan)) ||
+                !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
+                                   tree)) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            bool initializerRecordOk = false;
+            if (binding.initializerKind == SequentialInitializerKind::Literal) {
+              for (const auto& expression : candidate.impl->expressions) {
+                if (expression.node != initializerNodeId) continue;
+                if (initializerRecordOk) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::AdditionalFact, module,
+                                                      registries, index + 1);
+                }
+                auto literalIndex = factIndex(facts.literals(), binding.initializer);
+                if (literalIndex != zc::none) {
+                  size_t literalSlot = 0;
+                  ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+                  const auto& literalFact = facts.literals().entries()[literalSlot].value;
+                  initializerRecordOk =
+                      expression.type == bindingType &&
+                      expression.category == HirValueCategory::Value &&
+                      literalFact.type == bindingType &&
+                      sameConstant(expression.value, literalFact.literal, module, registries,
+                                   semanticTypes) &&
+                      sameSpan(expression.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+                }
+              }
+            } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+              auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
+              for (const auto& reference : candidate.impl->localReferences) {
+                if (reference.node != initializerNodeId) continue;
+                if (initializerRecordOk) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::AdditionalFact, module,
+                                                      registries, index + 1);
+                }
+                initializerRecordOk =
+                    referenceBinding != zc::none &&
+                    binding.referencedLocal < localBindingIds.size() &&
+                    ZC_ASSERT_NONNULL(referenceBinding) ==
+                        localBindingIds[binding.referencedLocal] &&
+                    reference.local ==
+                        hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)) &&
+                    reference.type == bindingType &&
+                    reference.category == HirValueCategory::Place &&
+                    sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+              }
+            } else {
+              auto parameterHandle =
+                  resolvedCallableParameter(bound.bindings(), binding.initializer);
+              for (const auto& reference : candidate.impl->parameterReferences) {
+                if (reference.node != initializerNodeId) continue;
+                if (initializerRecordOk) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::AdditionalFact, module,
+                                                      registries, index + 1);
+                }
+                bool parameterMatches = false;
+                if (parameterHandle != zc::none) {
+                  identity::CallableParameterId handle;
+                  ZC_IF_SOME(value, parameterHandle) { handle = value; }
+                  auto authority = registries.callableParameter(handle);
+                  ZC_IF_SOME(entry, authority) {
+                    parameterMatches =
+                        reference.parameter == entry.key() && reference.type == bindingType &&
+                        reference.category == HirValueCategory::Place &&
+                        sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+                  }
+                }
+                initializerRecordOk = parameterMatches;
+              }
+            }
+            if (!initializerRecordOk) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
+          }
+          // Comparison call fact.
+          auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
+          auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
+          auto callIndex = factIndex(facts.calls(), source.condition);
+          auto leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
+          auto rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
+          if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+              leftSpan == zc::none || rightSpan == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t leftTypeSlot = 0;
+          size_t rightTypeSlot = 0;
+          size_t callSlot = 0;
+          ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+          ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+          ZC_IF_SOME(value, callIndex) { callSlot = value; }
+          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          if (operandType != rightType || callFact.node != source.condition ||
+              !selected.is<checker::checked::PrimitiveCallable>() ||
+              !isScalarComparisonOperation(
+                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              call.calleeType != operandType || call.receiver != zc::none ||
+              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+              call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||
+              call.arguments[0].sourceType != operandType ||
+              call.arguments[1].sourceNode != source.conditionRight ||
+              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+              call.resultType != conditionType || call.substitutions != zc::none ||
+              call.witnesses != zc::none || call.raises != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify one comparison operand node: literal, parameter reference, or
+          // leading-local reference.
+          auto verifyConditionOperand = [&](bool isLiteral, ast::NodeId operandSourceNode,
+                                            HirNodeId operandId,
+                                            const identity::SourceSpan& operandSpan) -> bool {
+            if (isLiteral) {
+              auto literalIndex = factIndex(facts.literals(), operandSourceNode);
+              if (literalIndex == zc::none) return false;
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              for (const auto& expression : candidate.impl->expressions) {
+                if (expression.node != operandId) continue;
+                return expression.type == operandType &&
+                       expression.category == HirValueCategory::Value &&
+                       sameConstant(expression.value, literalFact.literal, module, registries,
+                                    semanticTypes) &&
+                       sameSpan(expression.sourceSpan, operandSpan);
+              }
+              return false;
+            }
+            auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandSourceNode);
+            if (ownerBinding != zc::none) {
+              for (size_t bindingIndex = 0; bindingIndex < localBindingIds.size(); ++bindingIndex) {
+                if (ZC_ASSERT_NONNULL(ownerBinding) != localBindingIds[bindingIndex]) continue;
+                for (const auto& reference : candidate.impl->localReferences) {
+                  if (reference.node != operandId) continue;
+                  return reference.local == hirLocalId(static_cast<uint32_t>(bindingIndex + 1)) &&
+                         reference.type == operandType &&
+                         reference.category == HirValueCategory::Place &&
+                         sameSpan(reference.sourceSpan, operandSpan);
+                }
+                return false;
+              }
+              return false;
+            }
+            auto parameter = resolvedCallableParameter(bound.bindings(), operandSourceNode);
+            if (parameter == zc::none) return false;
+            identity::CallableParameterId handle;
+            ZC_IF_SOME(value, parameter) { handle = value; }
+            auto authority = registries.callableParameter(handle);
+            if (authority == zc::none) return false;
+            for (const auto& reference : candidate.impl->parameterReferences) {
+              if (reference.node != operandId) continue;
+              ZC_IF_SOME(entry, authority) {
+                return reference.parameter == entry.key() && reference.type == operandType &&
+                       reference.category == HirValueCategory::Place &&
+                       sameSpan(reference.sourceSpan, operandSpan);
+              }
+            }
+            return false;
+          };
+          if (!verifyConditionOperand(source.conditionLeftIsLiteral, source.conditionLeft, leftId,
+                                      ZC_ASSERT_NONNULL(leftSpan)) ||
+              !verifyConditionOperand(source.conditionRightIsLiteral, source.conditionRight,
+                                      rightId, ZC_ASSERT_NONNULL(rightSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Equality, arms, conditional, and return records.
+          zc::Maybe<const HirPrimitiveBinaryExpression&> equalityRecord;
+          for (const auto& equality : candidate.impl->primitiveBinaryOperations) {
+            if (equality.node != equalityId) continue;
+            if (equalityRecord != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            equalityRecord = equality;
+          }
+          if (equalityRecord == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          const auto armLiteralOk = [&](HirNodeId armId, ast::NodeId armSourceNode,
+                                        const identity::SourceSpan& armSpan) -> bool {
+            auto literalIndex = factIndex(facts.literals(), armSourceNode);
+            if (literalIndex == zc::none) return false;
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != armId) continue;
+              return expression.type == function.resultType &&
+                     expression.category == HirValueCategory::Value &&
+                     sameConstant(expression.value, literalFact.literal, module, registries,
+                                  semanticTypes) &&
+                     sameSpan(expression.sourceSpan, armSpan);
+            }
+            return false;
+          };
+          zc::Maybe<const HirConditionalExpression&> conditionalRecord;
+          for (const auto& candidateConditional : candidate.impl->conditionals) {
+            if (candidateConditional.node != conditionalId) continue;
+            if (conditionalRecord != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            conditionalRecord = candidateConditional;
+          }
+          const auto& equality = ZC_ASSERT_NONNULL(equalityRecord);
+          bool tailOk =
+              equality.left == leftId && equality.right == rightId &&
+              equality.operandType == operandType && equality.type == conditionType &&
+              equality.category == HirValueCategory::Value &&
+              equality.operation == selected.get<checker::checked::PrimitiveCallable>().operation &&
+              sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+              armLiteralOk(thenId, source.thenReturnValue, ZC_ASSERT_NONNULL(thenSpan)) &&
+              armLiteralOk(elseId, source.elseReturnValue, ZC_ASSERT_NONNULL(elseSpan));
+          if (conditionalRecord != zc::none) {
+            const auto& conditional = ZC_ASSERT_NONNULL(conditionalRecord);
+            tailOk = tailOk && conditional.condition == equalityId &&
+                     conditional.thenReturnValue == thenId &&
+                     conditional.elseReturnValue == elseId &&
+                     conditional.type == function.resultType &&
+                     conditional.category == HirValueCategory::Value &&
+                     sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+          } else {
+            tailOk = false;
+          }
+          zc::Maybe<const HirReturnStatement&> returnRecord;
+          for (const auto& candidateReturn : candidate.impl->returns) {
+            if (candidateReturn.node != returnId) continue;
+            if (returnRecord != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            returnRecord = candidateReturn;
+          }
+          if (returnRecord != zc::none) {
+            const auto& returnValue = ZC_ASSERT_NONNULL(returnRecord);
+            tailOk = tailOk && returnValue.value == conditionalId &&
+                     returnValue.resultType == function.resultType &&
+                     sameSpan(returnValue.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+          } else {
+            tailOk = false;
+          }
+          if (!tailOk || !typeExists(operandType, semanticTypes) ||
+              !typeExists(conditionType, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          nextFunction += 9u + static_cast<uint32_t>(bindingCount) * 2u;
+          continue;
+        }
         const bool conditionalIsMethod = function.receiver != zc::none;
         auto signaturePosition =
             signatureIndex(signatures.definitions.asPtr(), function.definition);

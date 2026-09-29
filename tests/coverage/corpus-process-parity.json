@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1006,
+  "count": 1008,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -1838,6 +1838,14 @@
     "05-statements/labeled_basic_pos_01.zom": {
       "exitCode": 1,
       "sha256": "e815eee92d8a3f9f5b8b00aefda8a37ff860a4c2aa3fa55b7c58d878337bb8da"
+    },
+    "05-statements/leading_local_comparison_conditional_neg_missing_else.zom": {
+      "exitCode": 1,
+      "sha256": "ab58a594cbaf0cba76f78b45488326829da0c1e005bf06e53715421bfb6e5482"
+    },
+    "05-statements/leading_local_comparison_conditional_pos.zom": {
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "05-statements/local_annotation_mismatch_neg_01.zom": {
       "exitCode": 1,

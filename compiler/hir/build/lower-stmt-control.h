@@ -20,6 +20,14 @@ namespace detail {
 /// comparison condition (plus left, right, equality before the arms).
 void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers K leading scalar-local bindings followed by one comparison
+/// conditional return. Node stride is 9 + 2K: function, body, then per binding
+/// one local and one initializer id, then the two comparison operands, the
+/// comparison, the two arm literals, the conditional, and the return. The body
+/// block lists each binding local followed by the return.
+void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& function,
+                                                HirFnCtx& ctx);
+
 /// \brief Lowers one empty-body `while` loop followed by a scalar return
 /// through the recursive driver. Six node ids: function, body, condition
 /// parameter reference, return literal, loop, return. The body block lists the

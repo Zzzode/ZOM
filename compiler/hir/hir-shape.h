@@ -82,6 +82,17 @@ struct SequentialLocalShape final {
   zc::Maybe<size_t> returnsLocal;
 };
 
+// K leading scalar-local bindings followed by one comparison conditional
+// return. Each binding initializer is a scalar literal, a parameter copy, or a
+// copy of an earlier binding (only the reference part of
+// SequentialLocalBinding is populated); the trailing IfStmt is a relational
+// comparison whose arms each return a scalar literal.
+struct LeadingLocalConditionalShape final {
+  ast::NodeId body;
+  ast::NodeId ifStatement;
+  zc::Vector<SequentialLocalBinding> bindings;
+};
+
 struct FunctionReturnShape final {
   ast::NodeId body;
   ast::NodeId returnStatement;
@@ -128,6 +139,11 @@ struct FunctionReturnShape final {
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;
+  // Leading scalar-local bindings plus a trailing comparison conditional:
+  // `let id = <literal | parameter | earlier local>; ...; if (a CMP b) { return
+  // <literal>; } else { return <literal>; }` with one or more leading bindings.
+  // Per-binding layout is derived on demand via leadingLocalConditionalShape.
+  bool isLeadingLocalConditional = false;
   ast::NodeId condition;
   // When the condition is an `a CMP b` relational comparison, the condition node
   // is a BinaryExpr and these hold its two operands. Each operand is either an
@@ -196,6 +212,14 @@ zc::Maybe<ast::NodeId> reborrowReference(const ast::Tree& tree, ast::NodeId expr
 // ever the per-binding layout is needed, keeping FunctionReturnShape copyable
 // and guaranteeing the producer and verifiers derive one identical layout.
 zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast::NodeId body);
+
+// Classifies a function body as K (>= 1) leading scalar `let` bindings followed
+// by one explicit-else `if` whose relational comparison condition reads
+// identifier or literal operands and whose two arms tail-return scalar
+// literals. Binding initializers are scalar literals, parameter references, or
+// references to earlier bindings. Returns none for every other body.
+zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::Tree& tree,
+                                                                     ast::NodeId body);
 
 zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                    const ast::Node& function);

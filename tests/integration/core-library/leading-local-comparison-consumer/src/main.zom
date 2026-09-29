@@ -1,0 +1,12 @@
+// Leading-local comparison conditional fixture: one i32 owner local
+// initialized from an integer literal guards a less-than comparison whose
+// operands read that local and an integer literal. Both arms return a scalar
+// literal, and the left operand's true value selects the arm that exits 41.
+fun entry() -> i32 {
+  let a: i32 = 1;
+  if (a < 5) {
+    return 41;
+  } else {
+    return 7;
+  }
+}

@@ -150,6 +150,25 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerEqualityConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers K leading scalar locals followed by a comparison conditional
+  /// to a single-function LIR module.
+  ///
+  /// Admits the verified shape of `let a: i32 = <lit/param/local>; ...; if (x
+  /// CMP y) { return lt; } else { return le; }`: a parameter-local prefix, K
+  /// integer `UserLocal` body locals each brought to life by one `StorageLive`
+  /// plus an initializing `Assign` of a constant or zero-projection place, then
+  /// a function-result local and a bool comparison temporary. The entry block
+  /// holds the K preamble pairs before the comparison temp assignment and
+  /// `SwitchInt`; lowering otherwise matches `lowerEqualityConditionalReturn`.
+  /// The leading locals, result, parameters, and arm constants share one
+  /// non-one-bit integer carrier; the comparison temporary is Bit1.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerLeadingLocalConditionalReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a one-block sequential integer arithmetic body to a
   /// single-function LIR module.
   ///

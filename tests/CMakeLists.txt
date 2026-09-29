@@ -164,6 +164,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/scalar-local-call-consumer/Zom.toml::scalar_local_call_consumer::scalar_local_call_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/leading-local-comparison-consumer/Zom.toml::leading_local_comparison_consumer::leading_local_comparison_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-inference-consumer/Zom.toml::binary_inference_consumer::binary_inference_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-consumer/Zom.toml::receiver_consumer::receiver_consumer"
@@ -224,6 +226,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/multifield-aggregate-consumer/Zom.toml::multifield_aggregate_consumer::multifield_aggregate_consumer::40"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/scalar-local-call-consumer/Zom.toml::scalar_local_call_consumer::scalar_local_call_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/leading-local-comparison-consumer/Zom.toml::leading_local_comparison_consumer::leading_local_comparison_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-inference-consumer/Zom.toml::binary_inference_consumer::binary_inference_consumer::41"
       --run-case

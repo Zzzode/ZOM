@@ -534,6 +534,65 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
       }
     }
   }
+  // Leading scalar-local bindings followed by one comparison conditional:
+  // zero-or-more (in practice one or more here, since zero is the sole-if
+  // shape above) leading `let id = <scalar literal | identifier>;` statements
+  // followed by a single explicit-else `if` whose relational comparison reads
+  // identifiers or scalar literals (at least one identifier) and whose arms
+  // each tail-return a scalar literal. Every other leading-let + if shape
+  // (non-comparison condition, non-literal arms, other initializer kinds)
+  // fails closed to its existing drain.
+  if (statements.size >= 2) {
+    auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
+    if (tailItem != zc::none) {
+      ast::NodeId tailStmt;
+      ZC_IF_SOME(value, tailItem) { tailStmt = value; }
+      if (tree.node(tailStmt).kind == ast::SyntaxKind::IfStmt) {
+        bool allLeadingBindings = true;
+        for (size_t index = 0; index + 1 < statements.size; ++index) {
+          auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
+          if (declaratorNode == zc::none) {
+            allLeadingBindings = false;
+            break;
+          }
+          ast::NodeId declarator;
+          ZC_IF_SOME(value, declaratorNode) { declarator = value; }
+          const ast::NodeId leadingInitializer(
+              tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+          if (!tree.contains(leadingInitializer) ||
+              (!isScalarLiteral(tree.node(leadingInitializer).kind) &&
+               tree.node(leadingInitializer).kind != ast::SyntaxKind::IdentExpr)) {
+            allLeadingBindings = false;
+            break;
+          }
+        }
+        if (allLeadingBindings && isAdmittedConditionalBody(tree, tailStmt)) {
+          const ast::NodeId condition(tree.node(tailStmt).payload.words[ast::kIfStmtCondWord]);
+          const ast::NodeId thenStmt(tree.node(tailStmt).payload.words[ast::kIfStmtThenStmtWord]);
+          const ast::NodeId elseStmt(tree.node(tailStmt).payload.words[ast::kIfStmtElseStmtWord]);
+          auto armTailLiteral = [&](ast::NodeId branch) -> bool {
+            const auto& branchNode = tree.node(branch);
+            const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                            branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (!tree.contains(branchStmts) || branchStmts.empty()) return false;
+            auto tail = statementItem(tree, tree.list(branchStmts)[branchStmts.size - 1]);
+            if (tail == zc::none) return false;
+            ast::NodeId tailReturn;
+            ZC_IF_SOME(value, tail) { tailReturn = value; }
+            if (tree.node(tailReturn).kind != ast::SyntaxKind::ReturnStmt) return false;
+            const ast::NodeId returnValue(
+                tree.node(tailReturn).payload.words[ast::kReturnStmtValueWord]);
+            return tree.contains(returnValue) && isScalarLiteral(tree.node(returnValue).kind);
+          };
+          if (tree.contains(condition) &&
+              tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
+              armTailLiteral(thenStmt) && armTailLiteral(elseStmt)) {
+            return true;
+          }
+        }
+      }
+    }
+  }
   if (statements.size == 2) {
     // A leading admitted `while` loop followed by a scalar return is an admitted
     // function body. The loop condition is a bool parameter reference and the

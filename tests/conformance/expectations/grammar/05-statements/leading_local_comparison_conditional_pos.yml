@@ -1,0 +1,6 @@
+section: "05-statements leading-local comparison conditional"
+covers_rule: "ifStatement"
+expected: "ACCEPT"
+notes:
+  - "A scalar-local binding may precede one explicit-else conditional whose"
+  - "relational comparison reads that local; both arms tail-return a scalar literal."
