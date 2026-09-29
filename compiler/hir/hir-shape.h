@@ -21,7 +21,8 @@ enum class SequentialInitializerKind : uint8_t {
   Aggregate,
   LocalReference,
   ParameterReference,
-  PrimitiveBinary
+  PrimitiveBinary,
+  PrimitiveUnary
 };
 
 // One operand of a sequential primitive-binary initializer. Exactly one payload
@@ -70,6 +71,11 @@ struct SequentialLocalBinding final {
   // Populated for PrimitiveBinary: the two operand classifications.
   zc::Maybe<SequentialBinaryOperand> leftOperand;
   zc::Maybe<SequentialBinaryOperand> rightOperand;
+  // Populated for PrimitiveUnary: the desugared binary operation and the real
+  // operand classification (parameter or earlier local). The synthetic operand
+  // has no AST node and is derived by the builder from the operation + type.
+  zc::Maybe<checker::PrimitiveOperation> unaryOperation;
+  zc::Maybe<SequentialBinaryOperand> unaryOperand;
 };
 
 struct SequentialLocalShape final {

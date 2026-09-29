@@ -364,7 +364,8 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
          tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
          isAdmittedDirectCall(tree, initializer) ||
          isAdmittedAggregateInitializer(tree, initializer) ||
-         isAdmittedPrimitiveBinary(tree, initializer);
+         isAdmittedPrimitiveBinary(tree, initializer) ||
+         isAdmittedPrimitiveUnary(tree, initializer);
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
@@ -716,11 +717,13 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     ZC_IF_SOME(declarator, soleDeclarator) {
       const ast::NodeId soleInitializer(
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      // An unannotated binary-result binding drains through the single-local
-      // gate below as ZOM4099; the sequential rail requires the annotation.
+      // An unannotated binary- or unary-result binding drains through the
+      // single-local gate below as ZOM4099; the sequential rail requires the
+      // annotation.
       if (isAdmittedLocalInitializer(tree, declarator, soleInitializer) &&
           tree.contains(soleInitializer) &&
-          tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr) {
+          (tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr ||
+           tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression)) {
         sequentialLocalShape = true;
       }
     }

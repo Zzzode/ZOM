@@ -254,7 +254,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     zc::Maybe<HirNodeId> leftNestedLeafRightId;
     zc::Maybe<HirNodeId> rightNestedLeafLeftId;
     zc::Maybe<HirNodeId> rightNestedLeafRightId;
-    if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary) {
+    if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary ||
+        sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary) {
       leftOperandId = ctx.allocNode();
       rightOperandId = ctx.allocNode();
       ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
@@ -412,6 +413,30 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
           ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
               initializerNodeId, leftOperandId, rightOperandId, binding.operandType, binding.type,
               HirValueCategory::Value, operation, binding.initializerSpan.clone()});
+        }
+        break;
+      }
+      case SequentialInitializerKind::PrimitiveUnary: {
+        // A unary binding is a desugared binary; the builder already arranged
+        // the real and synthetic operands into left/right. Mark the operation
+        // as a unary desugar so the digest subtracts the synthetic literal.
+        HirNodeId leftOperandId;
+        HirNodeId rightOperandId;
+        ZC_IF_SOME(id, leftOperandIds[index]) { leftOperandId = id; }
+        ZC_IF_SOME(id, rightOperandIds[index]) { rightOperandId = id; }
+        ZC_IF_SOME(left, binding.leftOperand) {
+          lowerBinaryOperand(leftOperandId, left, leftNestedLeafLeftIds[index],
+                             leftNestedLeafRightIds[index]);
+        }
+        ZC_IF_SOME(right, binding.rightOperand) {
+          lowerBinaryOperand(rightOperandId, right, rightNestedLeafLeftIds[index],
+                             rightNestedLeafRightIds[index]);
+        }
+        ZC_IF_SOME(operation, binding.operation) {
+          ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+              initializerNodeId, leftOperandId, rightOperandId, binding.operandType, binding.type,
+              HirValueCategory::Value, operation, binding.initializerSpan.clone(),
+              binding.isUnaryDesugar});
         }
         break;
       }

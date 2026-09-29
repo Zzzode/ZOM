@@ -744,6 +744,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             case SequentialInitializerKind::LocalReference:
               ++sequentialLocalInitializers;
               break;
+            case SequentialInitializerKind::PrimitiveUnary:
+              // A unary binding desugars to one binary with a synthetic literal
+              // operand. The binary counts as a sequential binary; the synthetic
+              // literal counts as a literal-bearing slot (offset by the
+              // unaryReturnCount subtraction in the digest equations, since it
+              // has no checker fact). The real operand is tallied as a parameter
+              // or local reference.
+              ++sequentialBinaryCount;
+              ++sequentialBinaryLiteralOperands;
+              ZC_IF_SOME(operand, binding.unaryOperand) {
+                if (operand.kind == SequentialBinaryOperandKind::ParameterReference) {
+                  ++sequentialBinaryParameterOperands;
+                } else if (operand.kind == SequentialBinaryOperandKind::LocalReference) {
+                  ++sequentialBinaryLocalOperands;
+                }
+              }
+              break;
             case SequentialInitializerKind::PrimitiveBinary:
               ++sequentialBinaryCount;
               for (const auto* operand : {&binding.leftOperand, &binding.rightOperand}) {
@@ -1616,7 +1633,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // return statement follows the last binding's nodes. This mirrors the
       // materializer's id allocation exactly.
       auto bindingWidth = [&](const SequentialLocalBinding& binding) -> uint32_t {
-        if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary) return 2u;
+        if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary &&
+            binding.initializerKind != SequentialInitializerKind::PrimitiveUnary)
+          return 2u;
         uint32_t width = 4u;
         for (const auto* operand : {&binding.leftOperand, &binding.rightOperand}) {
           ZC_IF_SOME(value, *operand) {
@@ -1817,6 +1836,154 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
               !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
                         ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
+          }
+        } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveUnary) {
+          // PrimitiveUnary: the initializer node is a HirPrimitiveBinaryExpression
+          // flagged isUnaryDesugar, referencing two operand nodes (left at +1,
+          // right at +2). One operand is the real unary operand (parameter or
+          // earlier local); the other is a synthetic constant with no source
+          // fact. The checked call fact keys on the unary expression node and
+          // carries one argument.
+          if (binding.unaryOperation == zc::none || binding.unaryOperand == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const uint32_t leftOperandOrdinal = initializerNodeOrdinal + 1;
+          const uint32_t rightOperandOrdinal = initializerNodeOrdinal + 2;
+          zc::Maybe<const HirPrimitiveBinaryExpression&> binary;
+          for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+            if (operation.node != hirId(initializerNodeOrdinal)) continue;
+            if (binary != zc::none) bindingsValid = false;
+            binary = operation;
+          }
+          auto callIndex = factIndex(facts.calls(), binding.initializer);
+          if (!bindingsValid || binary == zc::none || callIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& binaryValue = ZC_ASSERT_NONNULL(binary);
+          size_t callSlot = 0;
+          ZC_IF_SOME(value, callIndex) { callSlot = value; }
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          if (!selected.is<checker::checked::PrimitiveCallable>()) {
+            bindingsValid = false;
+            break;
+          }
+          const auto unaryOperation = selected.get<checker::checked::PrimitiveCallable>().operation;
+          const auto unaryOperandType =
+              call.arguments.size() == 1 ? call.arguments[0].sourceType : bindingType;
+          const ast::NodeId unaryOperandNode(
+              tree.node(binding.initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+          // Neg desugars to 0 - x (synthetic on the left); the other three
+          // place the synthetic on the right.
+          const bool syntheticOnLeft =
+              ZC_ASSERT_NONNULL(binding.unaryOperation) == checker::PrimitiveOperation::Neg;
+          if (!binaryValue.isUnaryDesugar || !isScalarUnaryOperation(unaryOperation) ||
+              unaryOperation != ZC_ASSERT_NONNULL(binding.unaryOperation) ||
+              binaryValue.node != hirId(initializerNodeOrdinal) ||
+              binaryValue.left != hirId(leftOperandOrdinal) ||
+              binaryValue.right != hirId(rightOperandOrdinal) || binaryValue.type != bindingType ||
+              binaryValue.category != HirValueCategory::Value ||
+              !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+              callFact.node != binding.initializer || call.calleeType != unaryOperandType ||
+              call.receiver != zc::none || call.receiverMode != zc::none ||
+              call.receiverAdjustment != zc::none || call.arguments.size() != 1 ||
+              call.arguments[0].sourceNode != unaryOperandNode ||
+              call.arguments[0].sourceType != unaryOperandType || call.successType != bindingType ||
+              call.resultType != bindingType || call.substitutions != zc::none ||
+              call.witnesses != zc::none || call.raises != zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the real operand at its ordinal.
+          const auto& classified = ZC_ASSERT_NONNULL(binding.unaryOperand);
+          const uint32_t realOrdinal = syntheticOnLeft ? rightOperandOrdinal : leftOperandOrdinal;
+          auto realSpan = bound.parsedModule().spanFor(tree.node(classified.node).range);
+          if (realSpan == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          bool realValid = false;
+          if (classified.kind == SequentialBinaryOperandKind::LocalReference) {
+            zc::Maybe<const HirLocalReferenceExpression&> reference;
+            for (const auto& localReference : candidate.impl->localReferences) {
+              if (localReference.node != hirId(realOrdinal)) continue;
+              if (reference != zc::none) {
+                bindingsValid = false;
+                break;
+              }
+              reference = localReference;
+            }
+            if (reference == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            auto referenceBinding = resolvedOwnerLocal(bound.bindings(), classified.node);
+            const auto& referenceValue = ZC_ASSERT_NONNULL(reference);
+            realValid = referenceBinding != zc::none &&
+                        classified.referencedLocal < localBindingIds.size() &&
+                        ZC_ASSERT_NONNULL(referenceBinding) ==
+                            localBindingIds[classified.referencedLocal] &&
+                        referenceValue.local ==
+                            hirLocalId(static_cast<uint32_t>(classified.referencedLocal + 1)) &&
+                        referenceValue.type == unaryOperandType &&
+                        referenceValue.category == HirValueCategory::Place &&
+                        sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(realSpan));
+          } else if (classified.kind == SequentialBinaryOperandKind::ParameterReference) {
+            zc::Maybe<const HirParameterReferenceExpression&> reference;
+            for (const auto& parameterReference : candidate.impl->parameterReferences) {
+              if (parameterReference.node != hirId(realOrdinal)) continue;
+              if (reference != zc::none) {
+                bindingsValid = false;
+                break;
+              }
+              reference = parameterReference;
+            }
+            if (reference == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            auto parameterHandle = resolvedCallableParameter(bound.bindings(), classified.node);
+            bool parameterMatches = false;
+            ZC_IF_SOME(handle, parameterHandle) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) {
+                parameterMatches = ZC_ASSERT_NONNULL(reference).parameter == entry.key();
+              }
+            }
+            const auto& referenceValue = ZC_ASSERT_NONNULL(reference);
+            realValid = parameterMatches && referenceValue.type == unaryOperandType &&
+                        referenceValue.category == HirValueCategory::Place &&
+                        sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(realSpan));
+          }
+          if (!realValid) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the synthetic constant operand at the other ordinal. It is
+          // a scalar literal with no checker-produced literal fact.
+          const uint32_t syntheticOrdinal =
+              syntheticOnLeft ? leftOperandOrdinal : rightOperandOrdinal;
+          zc::Maybe<const HirScalarLiteralExpression&> syntheticLiteral;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != hirId(syntheticOrdinal)) continue;
+            if (syntheticLiteral != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            syntheticLiteral = expression;
+          }
+          if (syntheticLiteral == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& syntheticValue = ZC_ASSERT_NONNULL(syntheticLiteral);
+          if (syntheticValue.type != unaryOperandType ||
+              syntheticValue.category != HirValueCategory::Value) {
             bindingsValid = false;
             break;
           }

@@ -139,6 +139,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
         break;
       case SequentialInitializerKind::Aggregate:
       case SequentialInitializerKind::PrimitiveBinary:
+      case SequentialInitializerKind::PrimitiveUnary:
         break;
     }
     ctx.addLocal(HirLocalBinding{localIds[index], hirLocalId(static_cast<uint32_t>(index + 1)),

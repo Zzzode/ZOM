@@ -130,6 +130,76 @@ zc::Maybe<type::semantic::PrimitiveKind> primitiveKindOf(const type::SemanticTyp
   return data.get<type::semantic::PrimitiveTypeData>().kind;
 }
 
+// Desugars a primitive unary operation to an equivalent binary operation with
+// a synthetic constant operand. Returns the binary operation, whether the
+// synthetic operand is on the left, and the synthetic constant value.
+struct PrimitiveUnaryDesugar {
+  checker::PrimitiveOperation binaryOperation;
+  bool syntheticOnLeft;
+  checker::checked::CanonicalConstValue syntheticValue;
+};
+
+zc::Maybe<PrimitiveUnaryDesugar> desugarPrimitiveUnary(checker::PrimitiveOperation unaryOperation,
+                                                       type::semantic::PrimitiveKind kind) {
+  checker::PrimitiveOperation binaryOperation;
+  bool syntheticOnLeft = false;
+  switch (unaryOperation) {
+    case checker::PrimitiveOperation::Neg:
+      // -x == 0 - x: synthetic zero on the left.
+      binaryOperation = checker::PrimitiveOperation::Sub;
+      syntheticOnLeft = true;
+      break;
+    case checker::PrimitiveOperation::UnaryPlus:
+      // +x == x + 0: synthetic zero on the right.
+      binaryOperation = checker::PrimitiveOperation::Add;
+      break;
+    case checker::PrimitiveOperation::BitNot:
+      // ~x == x ^ -1: synthetic -1 on the right.
+      binaryOperation = checker::PrimitiveOperation::BitXor;
+      break;
+    case checker::PrimitiveOperation::LogicalNot:
+      // !x == x == false: synthetic false on the right.
+      binaryOperation = checker::PrimitiveOperation::Eq;
+      break;
+    default:
+      return zc::none;
+  }
+  zc::Maybe<checker::checked::CanonicalConstValue> syntheticValue;
+  switch (unaryOperation) {
+    case checker::PrimitiveOperation::Neg:
+    case checker::PrimitiveOperation::UnaryPlus: {
+      // Zero of the operand type: integer zero or float zero.
+      if (kind == type::semantic::PrimitiveKind::F32) {
+        syntheticValue = checker::checked::CanonicalConstValue::float32(0);
+      } else if (kind == type::semantic::PrimitiveKind::F64) {
+        syntheticValue = checker::checked::CanonicalConstValue::float64(0);
+      } else {
+        syntheticValue =
+            checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                checker::signature::IntegerSign::NonNegative, zc::Array<uint8_t>{}});
+      }
+      break;
+    }
+    case checker::PrimitiveOperation::BitNot: {
+      // -1: Negative sign with magnitude {1}.
+      auto magnitude = zc::heapArray<uint8_t>(1);
+      magnitude[0] = 1;
+      syntheticValue =
+          checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+              checker::signature::IntegerSign::Negative, zc::mv(magnitude)});
+      break;
+    }
+    case checker::PrimitiveOperation::LogicalNot:
+      syntheticValue = checker::checked::CanonicalConstValue::boolean(false);
+      break;
+    default:
+      break;
+  }
+  if (syntheticValue == zc::none) return zc::none;
+  return PrimitiveUnaryDesugar{binaryOperation, syntheticOnLeft,
+                               zc::mv(ZC_ASSERT_NONNULL(syntheticValue))};
+}
+
 // Builds the implicit `this` receiver parameter of an admitted inherent method.
 // The receiver is a borrow of the enclosing nominal (`&Owner` shared,
 // `&mut Owner` mutable); the owner nominal comes from the verified member scope
@@ -2400,6 +2470,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           identity::SemanticTypeId bindingOperandType = bindingType;
           zc::Maybe<PendingSequentialBinaryOperand> bindingLeftOperand;
           zc::Maybe<PendingSequentialBinaryOperand> bindingRightOperand;
+          bool bindingIsUnaryDesugar = false;
           if (binding.initializerKind == SequentialInitializerKind::Literal) {
             auto literalIndex = factIndex(facts.literals(), binding.initializer);
             if (literalIndex == zc::none) {
@@ -2476,6 +2547,154 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               rejected = true;
               break;
             }
+          } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveUnary) {
+            // A primitive unary initializer desugars to an equivalent binary
+            // with a synthetic constant operand. Validate the checked call
+            // fact, resolve the real operand, and build the synthetic operand.
+            if (binding.unaryOperation == zc::none || binding.unaryOperand == zc::none) {
+              rejected = true;
+              break;
+            }
+            auto callIndex = factIndex(facts.calls(), binding.initializer);
+            if (callIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t callSlot = 0;
+            ZC_IF_SOME(index, callIndex) { callSlot = index; }
+            const auto& callFact = facts.calls().entries()[callSlot].value;
+            const auto& call = callFact.invocation;
+            const auto& selected = call.selected.variant();
+            if (!selected.is<checker::checked::PrimitiveCallable>()) {
+              rejected = true;
+              break;
+            }
+            const auto operation = selected.get<checker::checked::PrimitiveCallable>().operation;
+            const auto unaryOperandType =
+                call.arguments.size() == 1 ? call.arguments[0].sourceType : bindingType;
+            const ast::NodeId unaryOperandNode(
+                tree.node(binding.initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+            if (!isScalarUnaryOperation(operation) ||
+                operation != ZC_ASSERT_NONNULL(binding.unaryOperation) ||
+                callFact.node != binding.initializer || call.calleeType != unaryOperandType ||
+                call.receiver != zc::none || call.receiverMode != zc::none ||
+                call.receiverAdjustment != zc::none || call.arguments.size() != 1 ||
+                call.arguments[0].sourceNode != unaryOperandNode ||
+                call.arguments[0].sourceType != unaryOperandType ||
+                call.successType != bindingType || call.resultType != bindingType ||
+                call.substitutions != zc::none || call.witnesses != zc::none ||
+                call.raises != zc::none) {
+              rejected = true;
+              break;
+            }
+            auto operandKind = primitiveKindOf(checkedModule.semanticTypes(), unaryOperandType);
+            if (operandKind == zc::none) {
+              rejected = true;
+              break;
+            }
+            auto desugar = desugarPrimitiveUnary(operation, ZC_ASSERT_NONNULL(operandKind));
+            if (desugar == zc::none) {
+              rejected = true;
+              break;
+            }
+            // Resolve the real operand: a parameter reference or a reference to
+            // an earlier local. The operand's source span is the identifier's
+            // span, not the enclosing unary expression's span.
+            const auto& classified = ZC_ASSERT_NONNULL(binding.unaryOperand);
+            auto operandSpan = bound.parsedModule().spanFor(tree.node(classified.node).range);
+            if (operandSpan == zc::none) {
+              rejected = true;
+              break;
+            }
+            zc::Maybe<PendingSequentialBinaryOperand> resolvedReal;
+            zc::Maybe<checker::checked::CanonicalConstValue> noLiteral;
+            zc::Maybe<identity::CallableParameterKey> noParameter;
+            zc::Maybe<checker::PrimitiveOperation> noNested;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+            if (classified.kind == SequentialBinaryOperandKind::LocalReference) {
+              if (classified.referencedLocal >= localBindingIds.size()) {
+                rejected = true;
+                break;
+              }
+              auto referenceBinding = resolvedOwnerLocal(bound.bindings(), classified.node);
+              if (referenceBinding == zc::none || ZC_ASSERT_NONNULL(referenceBinding) !=
+                                                      localBindingIds[classified.referencedLocal]) {
+                rejected = true;
+                break;
+              }
+              resolvedReal =
+                  PendingSequentialBinaryOperand{SequentialBinaryOperandKind::LocalReference,
+                                                 unaryOperandType,
+                                                 ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                 zc::mv(noLiteral),
+                                                 zc::mv(noParameter),
+                                                 classified.referencedLocal,
+                                                 zc::mv(noNested),
+                                                 zc::mv(noNestedLeft),
+                                                 zc::mv(noNestedRight)};
+            } else if (classified.kind == SequentialBinaryOperandKind::ParameterReference) {
+              auto parameterHandle = resolvedCallableParameter(bound.bindings(), classified.node);
+              if (parameterHandle == zc::none) {
+                rejected = true;
+                break;
+              }
+              zc::Maybe<identity::CallableParameterKey> resolvedKey;
+              ZC_IF_SOME(handle, parameterHandle) {
+                auto authority = registries.callableParameter(handle);
+                ZC_IF_SOME(entry, authority) {
+                  for (const auto& parameter : parameters) {
+                    if (parameter.key == entry.key() && parameter.type == unaryOperandType) {
+                      resolvedKey = entry.key().clone();
+                    }
+                  }
+                }
+              }
+              if (resolvedKey == zc::none) {
+                rejected = true;
+                break;
+              }
+              resolvedReal =
+                  PendingSequentialBinaryOperand{SequentialBinaryOperandKind::ParameterReference,
+                                                 unaryOperandType,
+                                                 ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                 zc::mv(noLiteral),
+                                                 zc::mv(resolvedKey),
+                                                 0,
+                                                 zc::mv(noNested),
+                                                 zc::mv(noNestedLeft),
+                                                 zc::mv(noNestedRight)};
+            } else {
+              rejected = true;
+              break;
+            }
+            // Build the synthetic constant operand.
+            zc::Maybe<checker::checked::CanonicalConstValue> noLiteral2;
+            zc::Maybe<identity::CallableParameterKey> noParameter2;
+            zc::Maybe<checker::PrimitiveOperation> noNested2;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft2;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight2;
+            auto syntheticValue = ZC_ASSERT_NONNULL(desugar).syntheticValue.clone();
+            auto syntheticOperand =
+                PendingSequentialBinaryOperand{SequentialBinaryOperandKind::Literal,
+                                               unaryOperandType,
+                                               ZC_ASSERT_NONNULL(initializerSpan).clone(),
+                                               zc::mv(syntheticValue),
+                                               zc::mv(noParameter2),
+                                               0,
+                                               zc::mv(noNested2),
+                                               zc::mv(noNestedLeft2),
+                                               zc::mv(noNestedRight2)};
+            if (ZC_ASSERT_NONNULL(desugar).syntheticOnLeft) {
+              bindingLeftOperand = zc::mv(syntheticOperand);
+              bindingRightOperand = zc::mv(ZC_ASSERT_NONNULL(resolvedReal));
+            } else {
+              bindingLeftOperand = zc::mv(ZC_ASSERT_NONNULL(resolvedReal));
+              bindingRightOperand = zc::mv(syntheticOperand);
+            }
+            bindingOperation = ZC_ASSERT_NONNULL(desugar).binaryOperation;
+            bindingOperandType = unaryOperandType;
+            bindingIsUnaryDesugar = true;
           } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveBinary) {
             // A primitive binary initializer: validate its checked call fact and
             // resolve each operand to a literal, a parameter, or an earlier local.
@@ -2771,7 +2990,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
               zc::mv(bindingLiteral), zc::mv(bindingAggregate), zc::mv(bindingParameter),
               binding.referencedLocal, zc::mv(bindingOperation), bindingOperandType,
-              zc::mv(bindingLeftOperand), zc::mv(bindingRightOperand)});
+              zc::mv(bindingLeftOperand), zc::mv(bindingRightOperand), bindingIsUnaryDesugar});
         }
         if (rejected) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5232,6 +5451,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               break;
             case SequentialInitializerKind::LocalReference:
             case SequentialInitializerKind::ParameterReference:
+              break;
+            case SequentialInitializerKind::PrimitiveUnary:
+              // A unary binding desugars to one binary with a synthetic literal
+              // operand. The binary counts as a sequential binary; the synthetic
+              // literal counts as a literal-bearing slot. The unaryReturnCount
+              // subtraction removes the synthetic operand from the nodeTypes and
+              // literals equations, since it has no checker-produced fact.
+              ++sequentialBinaryCount;
+              ++literalBearingSlots;
+              ++unaryReturnCount;
               break;
             case SequentialInitializerKind::PrimitiveBinary:
               ++sequentialBinaryCount;

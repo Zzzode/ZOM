@@ -278,6 +278,8 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     size_t referencedLocal = 0;
     zc::Maybe<SequentialBinaryOperand> leftOperand;
     zc::Maybe<SequentialBinaryOperand> rightOperand;
+    zc::Maybe<checker::PrimitiveOperation> unaryOperation;
+    zc::Maybe<SequentialBinaryOperand> unaryOperand;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
@@ -389,12 +391,46 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       kind = SequentialInitializerKind::PrimitiveBinary;
       leftOperand = zc::mv(left);
       rightOperand = zc::mv(right);
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::UnaryExpression) {
+      // A primitive unary operation (`+` `-` `~` `!`) over one operand that is
+      // an identifier naming an earlier local or a parameter. The builder
+      // desugars the unary to an equivalent binary operation.
+      const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+          tree.node(initializer).payload.words[ast::kUnaryExpressionOpWord]);
+      const bool isPrimitiveUnary = unaryOp == ast::UnaryOperatorKind::Plus ||
+                                    unaryOp == ast::UnaryOperatorKind::Minus ||
+                                    unaryOp == ast::UnaryOperatorKind::LogicalNot ||
+                                    unaryOp == ast::UnaryOperatorKind::BitNot;
+      if (!isPrimitiveUnary) return zc::none;
+      const ast::NodeId unaryOperandNode(
+          tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (!tree.contains(unaryOperandNode) ||
+          tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
+        return zc::none;
+      }
+      SequentialBinaryOperand classified{};
+      classified.node = unaryOperandNode;
+      classified.kind = SequentialBinaryOperandKind::ParameterReference;
+      for (size_t earlier = 0; earlier < index; ++earlier) {
+        if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
+          classified.kind = SequentialBinaryOperandKind::LocalReference;
+          classified.referencedLocal = earlier;
+          break;
+        }
+      }
+      auto operation = checker::OperatorKind::fromUnary(unaryOp);
+      if (operation == zc::none) return zc::none;
+      if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
+        return zc::none;
+      kind = SequentialInitializerKind::PrimitiveUnary;
+      unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
+      unaryOperand = zc::mv(classified);
     } else {
       return zc::none;
     }
-    shape.bindings.add(SequentialLocalBinding{declarator, pattern, initializer, kind,
-                                              referencedLocal, zc::mv(leftOperand),
-                                              zc::mv(rightOperand)});
+    shape.bindings.add(SequentialLocalBinding{
+        declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
+        zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand)});
   }
   auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnItem == zc::none) return zc::none;
@@ -475,7 +511,8 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
       return zc::none;
     }
     shape.bindings.add(SequentialLocalBinding{declarator, pattern, initializer, kind,
-                                              referencedLocal, zc::none, zc::none});
+                                              referencedLocal, zc::none, zc::none, zc::none,
+                                              zc::none});
   }
   auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (tailItem == zc::none) return zc::none;
@@ -1248,7 +1285,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         routeToSequential =
             shape.bindings.size() >= 2 ||
             (shape.bindings.size() == 1 &&
-             shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary);
+             (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
+              shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

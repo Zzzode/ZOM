@@ -71,6 +71,10 @@ struct PendingSequentialBinding final {
   identity::SemanticTypeId operandType;
   zc::Maybe<PendingSequentialBinaryOperand> leftOperand;
   zc::Maybe<PendingSequentialBinaryOperand> rightOperand;
+  // True when this PrimitiveBinary binding is the desugared form of a unary
+  // operation. The right operand is a synthetic constant derived by the builder
+  // from the operation and type; the tally subtracts it from the literal count.
+  bool isUnaryDesugar = false;
 };
 
 struct PendingSequentialLocalReturn final {
