@@ -59,6 +59,10 @@ void Parser::Impl::diagnoseTokenPatterns() {
   int32_t typeLiteralBraceDepth = -1;
   int32_t bindingPatternBraceDepth = -1;
   int32_t matchArmPatternBraceDepth = -1;
+  // Tracks unmatched ternary '?' tokens so the object-literal property-name
+  // check does not fire on the 'then' branch of a ternary (e.g. `? 1 : 0`).
+  // '?' in type position (after ':', '->', '<', ',') is not counted.
+  int32_t ternaryDepth = 0;
   // RFC 0002: Forward state tracking for match arm pattern detection.
   // whenPatternDepth tracks nesting depth from the 'when' keyword (parens,
   // brackets, braces, angles). When it returns to 0 and we see '=>', we
@@ -75,6 +79,22 @@ void Parser::Impl::diagnoseTokenPatterns() {
     const lexer::Token& current = tokenAt(i);
     const ast::SyntaxKind kind = current.getKind();
     const ast::SyntaxKind next = i + 1 < count ? kindAt(i + 1) : ast::SyntaxKind::EndOfFile;
+
+    // Track ternary '?' tokens to suppress the object-literal property-name
+    // false positive on the 'then' branch (e.g. `? 1 : 0`). '?' in type
+    // position (after ':', '->', '<', ',') is not a ternary operator.
+    if (kind == ast::SyntaxKind::Question) {
+      const ast::SyntaxKind prev = i > 0 ? kindAt(i - 1) : ast::SyntaxKind::EndOfFile;
+      if (prev != ast::SyntaxKind::Colon && prev != ast::SyntaxKind::Arrow &&
+          prev != ast::SyntaxKind::LessThan && prev != ast::SyntaxKind::Comma) {
+        ++ternaryDepth;
+      }
+    } else if (kind == ast::SyntaxKind::Colon && ternaryDepth > 0) {
+      --ternaryDepth;
+    } else if (kind == ast::SyntaxKind::Semicolon || kind == ast::SyntaxKind::RightBrace) {
+      ternaryDepth = 0;
+    }
+
     const bool insideInterfaceBody = interfaceBodyDepth >= 0 && braceDepth >= interfaceBodyDepth;
     const bool insideInterfaceTopLevel =
         interfaceBodyDepth >= 0 && braceDepth == interfaceBodyDepth;
@@ -287,7 +307,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
       }
     }
 
-    if (braceDepth > 0 && isInvalidObjectLiteralPropertyName(kind) &&
+    if (braceDepth > 0 && ternaryDepth == 0 && isInvalidObjectLiteralPropertyName(kind) &&
         next == ast::SyntaxKind::Colon) {
       diagnosticEngine.report<diagnostics::DiagID::ExceptedIdentifier>(current.getLocation(),
                                                                        tokenLabel(current));
