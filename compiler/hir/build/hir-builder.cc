@@ -104,6 +104,20 @@ bool isI32SemanticType(const type::SemanticTypeStore& store, identity::SemanticT
                  .kind == type::semantic::PrimitiveKind::I32;
 }
 
+// Returns true when the interned semantic type is the canonical `bool`
+// primitive. The scalar-local direct-call slice admits `i32` and `bool`
+// owner-local arguments; every other scalar type keeps its owning definition
+// on the capability drain (ZOM4099).
+bool isBoolSemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
+  auto lookup = store.get(id);
+  return lookup.is<type::SemanticTypeLookup>() &&
+         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
+         lookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .get<type::semantic::PrimitiveTypeData>()
+                 .kind == type::semantic::PrimitiveKind::Bool;
+}
+
 // Returns the primitive kind of an interned semantic type, or none when the
 // type is not a primitive. Used by the unary-return desugaring to pick the
 // synthetic constant operand that matches the operand type.
@@ -4801,14 +4815,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 continue;
               }
             }
-            // A scalar-local call passes the single literal-initialized i32
-            // owner local as the sole argument, copied by value through local 1.
+            // A scalar-local call passes the single literal-initialized i32 or
+            // bool owner local as the sole argument, copied by value through
+            // local 1.
             if (shape.returnsDirectScalarLocalCall && local != zc::none) {
               auto localBinding = resolvedOwnerLocal(bound.bindings(), argument);
               if (localBinding != zc::none &&
                   ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(localBinding),
                                     shape.localPattern, tree) &&
-                  isI32SemanticType(checkedModule.semanticTypes(), argumentType) &&
+                  (isI32SemanticType(checkedModule.semanticTypes(), argumentType) ||
+                   isBoolSemanticType(checkedModule.semanticTypes(), argumentType)) &&
                   argumentType == ZC_ASSERT_NONNULL(local).type) {
                 zc::Maybe<checker::checked::CanonicalConstValue> noValue;
                 zc::Maybe<identity::CallableParameterKey> noParameter;

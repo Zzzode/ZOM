@@ -228,6 +228,16 @@ zc::Maybe<ArithmeticOp> lirArithmeticOpFor(mir::MirArithmeticOperator op) noexce
 /// \return The operand, or none for a non-integer constant or a projected place.
 zc::Maybe<Operand> lirOperandFor(const mir::MirOperand& operand, ValueType carrier) {
   if (operand.kind() == mir::MirOperandKind::Constant) {
+    const auto boolean = operand.constantValue().value.booleanValue();
+    if (boolean != zc::none) {
+      if (carrier.kind() != ValueTypeKind::Integer ||
+          carrier.integerWidth() != IntegerBitWidth::Bit1) {
+        return zc::none;
+      }
+      auto constant = IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+      if (constant == zc::none) { return zc::none; }
+      return Operand::constant(ZC_REQUIRE_NONNULL(constant));
+    }
     const auto integer = operand.constantValue().value.integerValue();
     if (integer == zc::none) { return zc::none; }
     // Prefer zero extension for non-negative values; fall back to two's
@@ -1218,14 +1228,15 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
   }
 
   auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) {
+    resultCarrier = boolCarrierFor(function.resultType, semanticTypes);
+  }
   if (resultCarrier == zc::none) { return zc::none; }
   const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
-  if (resultCarrierValue.kind() != ValueTypeKind::Integer ||
-      resultCarrierValue.integerWidth() == IntegerBitWidth::Bit1) {
-    return zc::none;
-  }
+  if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
   for (const auto& local : function.locals) {
     auto carrier = integerCarrierFor(local.type, semanticTypes);
+    if (carrier == zc::none) { carrier = boolCarrierFor(local.type, semanticTypes); }
     if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
       return zc::none;
     }
@@ -1282,6 +1293,15 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
       if (left == zc::none || right == zc::none) { return zc::none; }
       statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
                                            ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+    } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assignment.value.comparisonValue();
+      auto op = lirComparisonOpFor(comparison.op);
+      if (comparison.resultType != localDecl.type) { return zc::none; }
+      auto left = leafOperand(comparison.left);
+      auto right = leafOperand(comparison.right);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
+                                        ZC_REQUIRE_NONNULL(right)));
     } else {
       return zc::none;
     }
@@ -1878,13 +1898,19 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
     return zc::none;
   }
   auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  if (callerCarrier == zc::none) {
+    callerCarrier = boolCarrierFor(caller.resultType, semanticTypes);
+  }
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
-  if (callerCarrierValue.kind() != ValueTypeKind::Integer ||
-      callerCarrierValue.integerWidth() == IntegerBitWidth::Bit1) {
-    return zc::none;
+  if (callerCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
+  {
+    auto scalarCarrier = integerCarrierFor(scalarLocal.type, semanticTypes);
+    if (scalarCarrier == zc::none) {
+      scalarCarrier = boolCarrierFor(scalarLocal.type, semanticTypes);
+    }
+    if (scalarCarrier != callerCarrier) { return zc::none; }
   }
-  if (integerCarrierFor(scalarLocal.type, semanticTypes) != callerCarrier) { return zc::none; }
   const auto& entry = caller.blocks[0];
   const auto& continuation = caller.blocks[1];
   if (entry.statements.size() != 3 ||
@@ -1951,11 +1977,16 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
   const auto& calleeParameter = callee.locals[0];
   if (calleeParameter.kind != mir::MirLocalKind::Parameter) { return zc::none; }
   auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  if (calleeCarrier == zc::none) {
+    calleeCarrier = boolCarrierFor(callee.resultType, semanticTypes);
+  }
   if (calleeCarrier == zc::none || ZC_REQUIRE_NONNULL(calleeCarrier) != callerCarrierValue) {
     return zc::none;
   }
   for (const auto& local : callee.locals) {
-    if (integerCarrierFor(local.type, semanticTypes) != calleeCarrier) { return zc::none; }
+    auto localCarrier = integerCarrierFor(local.type, semanticTypes);
+    if (localCarrier == zc::none) { localCarrier = boolCarrierFor(local.type, semanticTypes); }
+    if (localCarrier != calleeCarrier) { return zc::none; }
   }
   const size_t calleeBodyCount = callee.locals.size() - 1;
   for (size_t index = 1; index < callee.locals.size(); ++index) {
@@ -2031,6 +2062,15 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
         calleeStatements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
                                                    ZC_REQUIRE_NONNULL(left),
                                                    ZC_REQUIRE_NONNULL(right)));
+      } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+        const auto& comparison = assignment.value.comparisonValue();
+        auto op = lirComparisonOpFor(comparison.op);
+        if (comparison.resultType != localDecl.type) { return zc::none; }
+        auto left = leafOperand(comparison.left);
+        auto right = leafOperand(comparison.right);
+        if (left == zc::none || right == zc::none) { return zc::none; }
+        calleeStatements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
+                                                ZC_REQUIRE_NONNULL(right)));
       } else {
         return zc::none;
       }

@@ -774,6 +774,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
   } else {
     expectedReturnCarrier = integerCarrier(mir.resultType, types);
     if (expectedReturnCarrier == zc::none) {
+      expectedReturnCarrier = boolCarrier(mir.resultType, types);
+    }
+    if (expectedReturnCarrier == zc::none) {
       expectedReturnCarrier = unitCarrier(mir.resultType, types);
     }
   }
@@ -1125,6 +1128,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 zc::Maybe<ValueType> leafCarrier;
                 if (comparison.left.kind() == mir::MirOperandKind::Constant) {
                   leafCarrier = integerCarrier(comparison.left.constantValue().type, types);
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = boolCarrier(comparison.left.constantValue().type, types);
+                  }
                 } else {
                   leafCarrier = integerCarrier(comparison.left.place().resultType(), types);
                   if (leafCarrier == zc::none) {
