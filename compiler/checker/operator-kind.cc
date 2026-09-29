@@ -217,6 +217,10 @@ bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
     case PrimitiveOperation::BitOr:
     case PrimitiveOperation::BitXor:
       return isInteger || isBool;
+    // Logical short-circuit operators are defined for bool only.
+    case PrimitiveOperation::LogicalAnd:
+    case PrimitiveOperation::LogicalOr:
+      return isBool;
     // Shifts are defined for integer operands only.
     case PrimitiveOperation::Shl:
     case PrimitiveOperation::Shr:

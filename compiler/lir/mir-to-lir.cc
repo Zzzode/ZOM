@@ -852,27 +852,46 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     return zc::none;
   }
   const auto& tempAssign = entry.statements[2].assignmentValue();
+  const bool isLogicalCondition =
+      tempAssign.value.kind() == mir::MirRvalueKind::Arithmetic &&
+      (tempAssign.value.arithmeticValue().op == mir::MirArithmeticOperator::BitAnd ||
+       tempAssign.value.arithmeticValue().op == mir::MirArithmeticOperator::BitOr);
   if (tempAssign.destination.local() != tempLocalDecl.id ||
       tempAssign.destination.projections().size() != 0 ||
-      tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      (tempAssign.value.kind() != mir::MirRvalueKind::Comparison &&
+       tempAssign.value.kind() != mir::MirRvalueKind::Arithmetic)) {
     return zc::none;
   }
-  const auto& comparison = tempAssign.value.comparisonValue();
-  // The comparison operands must resolve to integer carriers. Both operands
-  // share the operand type; use the result-less operand carrier from the
-  // comparison operand types (each operand is a parameter place-use or constant
-  // of the same integer operand type).
+  // The condition operands must resolve to integer carriers (comparison) or
+  // bool carriers (logical short-circuit). Both operands share the operand
+  // type; use the result-less operand carrier from the operand types.
+  const mir::MirOperand* conditionLeft = nullptr;
+  const mir::MirOperand* conditionRight = nullptr;
+  if (isLogicalCondition) {
+    conditionLeft = &tempAssign.value.arithmeticValue().left;
+    conditionRight = &tempAssign.value.arithmeticValue().right;
+  } else {
+    if (tempAssign.value.kind() != mir::MirRvalueKind::Comparison) { return zc::none; }
+    conditionLeft = &tempAssign.value.comparisonValue().left;
+    conditionRight = &tempAssign.value.comparisonValue().right;
+  }
   auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
+    if (isLogicalCondition) {
+      if (operand.kind() == mir::MirOperandKind::Constant) {
+        return boolCarrierFor(operand.constantValue().type, semanticTypes);
+      }
+      return boolCarrierFor(operand.place().rootType(), semanticTypes);
+    }
     if (operand.kind() == mir::MirOperandKind::Constant) {
       return integerCarrierFor(operand.constantValue().type, semanticTypes);
     }
     return integerCarrierFor(operand.place().rootType(), semanticTypes);
   };
-  auto leftCarrier = operandCarrierFor(comparison.left);
-  auto rightCarrier = operandCarrierFor(comparison.right);
+  auto leftCarrier = operandCarrierFor(*conditionLeft);
+  auto rightCarrier = operandCarrierFor(*conditionRight);
   if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
-  auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
-  auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
+  auto lirLeft = lirOperandFor(*conditionLeft, ZC_REQUIRE_NONNULL(leftCarrier));
+  auto lirRight = lirOperandFor(*conditionRight, ZC_REQUIRE_NONNULL(rightCarrier));
   if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
 
   const auto& switchInt = entry.terminator.switchIntValue();
@@ -940,9 +959,17 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> entryStatements;
-    entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
-                                           ZC_REQUIRE_NONNULL(lirLeft),
-                                           ZC_REQUIRE_NONNULL(lirRight)));
+    if (isLogicalCondition) {
+      auto op = lirArithmeticOpFor(tempAssign.value.arithmeticValue().op);
+      if (op == zc::none) { return zc::none; }
+      entryStatements.add(Statement::arithmetic(tempOrdinal, ZC_REQUIRE_NONNULL(op),
+                                                ZC_REQUIRE_NONNULL(lirLeft),
+                                                ZC_REQUIRE_NONNULL(lirRight)));
+    } else {
+      entryStatements.add(
+          Statement::compare(tempOrdinal, lirComparisonOpFor(tempAssign.value.comparisonValue().op),
+                             ZC_REQUIRE_NONNULL(lirLeft), ZC_REQUIRE_NONNULL(lirRight)));
+    }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
                                                  ZC_REQUIRE_NONNULL(elseId))));
@@ -957,10 +984,17 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
                           Terminator::returnLocal(resultOrdinal)));
   }
 
-  // Declare every integer parameter local plus the result and temp body locals.
+  // Declare every parameter local plus the result and temp body locals.
+  // Logical operator conditionals carry bool parameters; relational comparison
+  // conditionals carry integer parameters.
   zc::Vector<Local> parameters;
   for (size_t i = 0; i < parameterCount; ++i) {
-    auto carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
+    zc::Maybe<ValueType> carrier;
+    if (isLogicalCondition) {
+      carrier = boolCarrierFor(function.locals[i].type, semanticTypes);
+    } else {
+      carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
+    }
     if (carrier == zc::none) { return zc::none; }
     parameters.add(Local(function.locals[i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }

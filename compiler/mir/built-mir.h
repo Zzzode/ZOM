@@ -256,8 +256,9 @@ enum class MirComparisonOperator : uint8_t {
 /// Covers the twelve arithmetic and bitwise binary operators of same-typed
 /// primitive scalars. Unlike a comparison, the result is the shared operand type
 /// rather than bool. The operator is modeled as a self-describing byte so each
-/// kind is distinguishable in the canonical stream. Logical `&&`/`||` are
-/// excluded (their short-circuit semantics are not a primitive binary op). These
+/// kind is distinguishable in the canonical stream. Logical `&&`/`||` lower to
+/// `BitAnd`/`BitOr` because the admitted slice only accepts side-effect-free
+/// operands, making short-circuit and bitwise evaluation equivalent. These
 /// bytes flow through `encodeRvalue`; changing a tag is a codec change.
 enum class MirArithmeticOperator : uint8_t {
   Add = 0x01,

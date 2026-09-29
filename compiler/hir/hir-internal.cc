@@ -193,8 +193,11 @@ bool isScalarComparisonOperation(checker::PrimitiveOperation operation) {
 }
 
 // Returns true for the twelve arithmetic and bitwise binary operators of
-// same-typed scalars. Unlike a comparison, the result is the operand type, not
-// bool; the logical short-circuit operators (`&&` / `||`) are excluded.
+// same-typed scalars, plus the two logical short-circuit operators. The
+// short-circuit operators are admitted because the HIR slice only accepts
+// operands with no side effects (literals, parameters, earlier locals), so
+// lowering to bitwise And/Or is semantically equivalent; the MIR builder
+// maps LogicalAnd to BitAnd and LogicalOr to BitOr.
 bool isScalarArithmeticOperation(checker::PrimitiveOperation operation) {
   switch (operation) {
     case checker::PrimitiveOperation::Add:
@@ -209,6 +212,8 @@ bool isScalarArithmeticOperation(checker::PrimitiveOperation operation) {
     case checker::PrimitiveOperation::BitAnd:
     case checker::PrimitiveOperation::BitOr:
     case checker::PrimitiveOperation::BitXor:
+    case checker::PrimitiveOperation::LogicalAnd:
+    case checker::PrimitiveOperation::LogicalOr:
       return true;
     default:
       return false;

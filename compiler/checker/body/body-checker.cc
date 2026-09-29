@@ -1502,14 +1502,16 @@ zc::Maybe<PrimitiveOperation> scalarComparisonOperation(ast::BinaryOperatorKind 
 }
 
 /// \brief Projects a binary operator to its primitive operation when it is one
-/// of the twelve arithmetic or bitwise operators of same-typed scalars.
+/// of the twelve arithmetic or bitwise operators of same-typed scalars, or one
+/// of the two logical short-circuit operators (`&&` / `||`) on bool operands.
 ///
 /// Reuses `OperatorKind::fromBinary` so the operator mapping lives in exactly
 /// one place. The six relational comparisons (handled by
-/// `scalarComparisonOperation`), strict identity, and the logical short-circuit
-/// operators (`&&` / `||`) return none so their existing handling stands. Unlike
-/// a comparison, the result type of these operators is the operand type, not
-/// bool.
+/// `scalarComparisonOperation`) and strict identity return none so their
+/// existing handling stands. Unlike a comparison, the result type of the
+/// arithmetic and bitwise operators is the operand type, not bool; the logical
+/// operators also produce bool, but their operand type is bool too, so the
+/// same contract holds.
 zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind syntax) {
   ZC_IF_SOME(kind, OperatorKind::fromBinary(syntax)) {
     const auto& variant = kind.variant();
@@ -1527,6 +1529,8 @@ zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind 
       case PrimitiveOperation::BitAnd:
       case PrimitiveOperation::BitOr:
       case PrimitiveOperation::BitXor:
+      case PrimitiveOperation::LogicalAnd:
+      case PrimitiveOperation::LogicalOr:
         return variant.get<PrimitiveOperation>();
       default:
         return zc::none;
@@ -2152,13 +2156,14 @@ zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
 /// \brief Returns the binary operator the checker does not yet implement.
 ///
 /// Surface admission is deliberately operator-agnostic: it admits every
-/// relational, arithmetic, and bitwise `BinaryExpr` of the supported shape and
-/// leaves operator support to the checker, keeping that contract in one place.
-/// The checker supports the six relational and the twelve arithmetic and bitwise
-/// operations. `&&`, `||`, `===`, and `!==` are specified language syntax that it
-/// does not implement yet, and reporting a compiler invariant for spec'd syntax
-/// is wrong -- `ZOM4103` says so honestly, mirroring the `ZOM4095`-`ZOM4099`
-/// family that covers unadmitted body syntax.
+/// relational, arithmetic, bitwise, and logical short-circuit `BinaryExpr` of
+/// the supported shape and leaves operator support to the checker, keeping that
+/// contract in one place. The checker supports the six relational, the twelve
+/// arithmetic and bitwise, and the two logical short-circuit operations.
+/// `===` and `!==` are specified language syntax that it does not implement
+/// yet, and reporting a compiler invariant for spec'd syntax is wrong --
+/// `ZOM4103` says so honestly, mirroring the `ZOM4095`-`ZOM4099` family that
+/// covers unadmitted body syntax.
 ///
 /// Returns none for a supported operator, and for a syntax that maps to no
 /// primitive operation at all, so those keep their existing rejection.
@@ -2168,8 +2173,17 @@ zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput&
   if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
   const auto binaryOperator =
       static_cast<ast::BinaryOperatorKind>(tree.node(node).payload.words[ast::kBinaryExprOpWord]);
-  if (scalarComparisonOperation(binaryOperator) != zc::none ||
-      scalarArithmeticOperation(binaryOperator) != zc::none) {
+  if (scalarComparisonOperation(binaryOperator) != zc::none) return zc::none;
+  auto arithmetic = scalarArithmeticOperation(binaryOperator);
+  if (arithmetic != zc::none) {
+    // Logical operators are classified as arithmetic for fact production, but
+    // the shape validator only admits them in condition positions. A logical
+    // operator outside a condition is an unsupported operator (ZOM4103).
+    if ((arithmetic == PrimitiveOperation::LogicalAnd ||
+         arithmetic == PrimitiveOperation::LogicalOr) &&
+        !isConditionPosition(input.boundModule, node)) {
+      return arithmetic;
+    }
     return zc::none;
   }
   ZC_IF_SOME(kind, OperatorKind::fromBinary(binaryOperator)) {
@@ -2257,16 +2271,21 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // A comparison result is bool; an arithmetic or bitwise result is the operand
   // type. A comparison is lowerable in any position; an arithmetic operation is
   // lowerable only outside a condition, since a non-bool value cannot drive an
-  // `if` / `while` discriminant. Strict identity and the logical short-circuit
-  // operators stay unsupported so their existing rejection stands.
+  // `if` / `while` discriminant. The logical short-circuit operators (`&&` /
+  // `||`) produce bool like a comparison, but the HIR builder only lowers them
+  // as a conditional discriminant, so they are admitted in condition positions
+  // only and rejected with ZOM4103 elsewhere.
   const auto binaryOperator =
       static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
   auto comparison = scalarComparisonOperation(binaryOperator);
   auto arithmetic = scalarArithmeticOperation(binaryOperator);
-  const bool isArithmetic = comparison == zc::none && arithmetic != zc::none;
+  const bool isLogical =
+      arithmetic == PrimitiveOperation::LogicalAnd || arithmetic == PrimitiveOperation::LogicalOr;
+  const bool isArithmetic = comparison == zc::none && arithmetic != zc::none && !isLogical;
   auto operation = comparison != zc::none ? comparison : arithmetic;
   if (operation == zc::none) return zc::none;
   if (isArithmetic && isConditionPosition(input.boundModule, node)) return zc::none;
+  if (isLogical && !isConditionPosition(input.boundModule, node)) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
@@ -2472,8 +2491,8 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
                       rightIsReceiverField)) {
     return zc::none;
   }
-  // A comparison produces bool; an arithmetic or bitwise operation produces the
-  // shared operand type.
+  // A comparison or a logical short-circuit operation produces bool; an
+  // arithmetic or bitwise operation produces the shared operand type.
   identity::SemanticTypeId resultType = operand;
   if (!isArithmetic) {
     auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
@@ -4190,22 +4209,26 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           production = BodyProductionKind::StructLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
-          // Admit the six relational comparisons (result bool, any position) and
+          // Admit the six relational comparisons (result bool, any position),
           // the twelve arithmetic/bitwise operators (result operand type, only
-          // outside a condition) where each operand is a scalar value reference
-          // (a parameter or an owner local) or a scalar literal and at least one
-          // operand is a reference; every other binary shape stays unsupported so
-          // its existing rejection stands. A literal-vs-literal operation has no
-          // place to lower and is left unsupported.
+          // outside a condition), and the two logical short-circuit operators
+          // (result bool, any position) where each operand is a scalar value
+          // reference (a parameter or an owner local) or a scalar literal and
+          // at least one operand is a reference; every other binary shape stays
+          // unsupported so its existing rejection stands. A literal-vs-literal
+          // operation has no place to lower and is left unsupported.
           const auto operation =
               static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
           const bool isComparison = scalarComparisonOperation(operation) != zc::none;
-          const bool isArithmetic =
-              !isComparison && scalarArithmeticOperation(operation) != zc::none;
-          if (!isComparison && !isArithmetic) break;
-          // An arithmetic result is not bool, so it cannot drive an `if` / `while`
-          // condition; it stays unsupported there and the existing rejection
-          // stands.
+          const auto arithmeticOp = scalarArithmeticOperation(operation);
+          const bool isLogical = arithmeticOp == PrimitiveOperation::LogicalAnd ||
+                                 arithmeticOp == PrimitiveOperation::LogicalOr;
+          const bool isArithmetic = !isComparison && arithmeticOp != zc::none && !isLogical;
+          if (!isComparison && arithmeticOp == zc::none) break;
+          // An arithmetic result is not bool, so it cannot drive an `if` /
+          // `while` condition; it stays unsupported there and the existing
+          // rejection stands. Logical operators produce bool and are admitted
+          // in any position.
           if (isArithmetic && isConditionPosition(boundModule, node)) break;
           const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
@@ -4476,10 +4499,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           continue;
         }
         // A binary operator the checker does not implement yet reaches here as
-        // Unsupported, because body admission classifies only the six relational
-        // and twelve arithmetic operators. `&&`, `||`, `===`, and `!==` are
-        // specified language syntax, so report ZOM4103 rather than a compiler
-        // invariant. Every other unsupported node keeps its existing rejection.
+        // Unsupported, because body admission classifies only the six relational,
+        // twelve arithmetic, and two logical short-circuit operators. `===` and
+        // `!==` are specified language syntax, so report ZOM4103 rather than a
+        // compiler invariant. Every other unsupported node keeps its existing
+        // rejection.
         ZC_IF_SOME(operation, unsupportedBinaryOperator(input, site.node)) {
           ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
             ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {

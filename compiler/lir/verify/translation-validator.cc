@@ -1185,18 +1185,30 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 }
                 // An arithmetic result shares the carrier of both operands. The
                 // carrier is resolved from the declared destination slot, not the
-                // statement's left operand, which may be a constant.
+                // statement's left operand, which may be a constant. BitAnd and
+                // BitOr admit a one-bit carrier because the logical short-circuit
+                // operators (`&&`, `||`) lower to them on bool operands.
+                const bool admitsBit1 = arithmetic.op == mir::MirArithmeticOperator::BitAnd ||
+                                        arithmetic.op == mir::MirArithmeticOperator::BitOr;
                 const ValueType* resultCarrier = lirSlotCarrier(lir, destinationOrdinal);
                 if (resultCarrier == nullptr || resultCarrier->kind() != ValueTypeKind::Integer ||
-                    resultCarrier->integerWidth() == IntegerBitWidth::Bit1) {
+                    (resultCarrier->integerWidth() == IntegerBitWidth::Bit1 && !admitsBit1)) {
                   return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }
                 auto resolveLeaf = [&](const mir::MirOperand& leaf) -> zc::Maybe<ValueType> {
                   if (leaf.kind() == mir::MirOperandKind::Constant) {
-                    return integerCarrier(leaf.constantValue().type, types);
+                    auto carrier = integerCarrier(leaf.constantValue().type, types);
+                    if (carrier == zc::none) {
+                      carrier = boolCarrier(leaf.constantValue().type, types);
+                    }
+                    return carrier;
                   }
-                  return integerCarrier(leaf.place().resultType(), types);
+                  auto carrier = integerCarrier(leaf.place().resultType(), types);
+                  if (carrier == zc::none) {
+                    carrier = boolCarrier(leaf.place().resultType(), types);
+                  }
+                  return carrier;
                 };
                 auto leftCarrier = resolveLeaf(arithmetic.left);
                 auto rightCarrier = resolveLeaf(arithmetic.right);

@@ -32,9 +32,23 @@ bool isRelationalBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
-// Returns true when the syntactic binary operator is a relational comparison or
-// an arithmetic/bitwise operator, i.e. a primitive binary operation lowerable in
-// return position. Strict identity and the logical short-circuit operators are
+// Returns true when the syntactic binary operator is one of the two logical
+// short-circuit operators (`&&` / `||`). These produce bool and are admitted
+// as conditional conditions alongside the relational comparisons.
+bool isLogicalBinaryOperator(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<checker::PrimitiveOperation>()) return false;
+    const auto operation = variant.get<checker::PrimitiveOperation>();
+    return operation == checker::PrimitiveOperation::LogicalAnd ||
+           operation == checker::PrimitiveOperation::LogicalOr;
+  }
+  return false;
+}
+
+// Returns true when the syntactic binary operator is a relational comparison,
+// an arithmetic/bitwise operator, or a logical short-circuit operator, i.e. a
+// primitive binary operation lowerable in return position. Strict identity is
 // excluded.
 bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
@@ -174,14 +188,16 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
   shape.condition = condition;
   shape.thenReturnValue = thenNode;
   shape.elseReturnValue = elseNode;
-  // Detect the relational-comparison condition: a comparison BinaryExpr for one
-  // of the six relational operators whose operands are each an IdentExpr
-  // parameter reference or a scalar literal, with at least one parameter
-  // operand. A bare identifier condition keeps the parameter-reference
-  // lowering.
+  // Detect the comparison or logical condition: a BinaryExpr for one of the
+  // six relational operators or the two logical short-circuit operators whose
+  // operands are each an IdentExpr parameter/local reference or a scalar
+  // literal, with at least one identifier operand. A bare identifier condition
+  // keeps the parameter-reference lowering.
   if (tree.contains(condition) && tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
-      isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
-          tree.node(condition).payload.words[ast::kBinaryExprOpWord]))) {
+      (isRelationalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+           tree.node(condition).payload.words[ast::kBinaryExprOpWord])) ||
+       isLogicalBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+           tree.node(condition).payload.words[ast::kBinaryExprOpWord])))) {
     const ast::NodeId left(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
     const ast::NodeId right(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
     if (!tree.contains(left) || !tree.contains(right)) return zc::none;

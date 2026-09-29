@@ -203,8 +203,10 @@ HirLocalId hirLocalId(uint32_t ordinal);
 bool isScalarComparisonOperation(checker::PrimitiveOperation operation);
 
 // Returns true for the twelve arithmetic and bitwise binary operators of
-// same-typed scalars. Unlike a comparison, the result is the operand type, not
-// bool; the logical short-circuit operators (`&&` / `||`) are excluded.
+// same-typed scalars, plus the two logical short-circuit operators on bool
+// operands. Unlike a comparison, the result is the operand type, not bool;
+// for the logical operators the operand type is bool so the same contract
+// holds.
 bool isScalarArithmeticOperation(checker::PrimitiveOperation operation);
 
 // Returns true for the four primitive unary operators (`+` `-` `~` `!`) that

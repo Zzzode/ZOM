@@ -1291,9 +1291,11 @@ zc::Maybe<MirComparisonOperator> mirComparisonOperatorFor(checker::PrimitiveOper
 }
 
 // Maps the HIR-carried arithmetic or bitwise operator to its Built MIR
-// arithmetic operator. Only the twelve arithmetic and bitwise binary operators
-// of same-typed scalars are lowerable; the six relational comparisons and the
-// logical short-circuit operators return none so their existing handling stands.
+// arithmetic operator. The twelve arithmetic and bitwise binary operators of
+// same-typed scalars are lowerable, as are the two logical short-circuit
+// operators (they lower to bitwise And/Or because the admitted slice only
+// accepts side-effect-free operands); the six relational comparisons return
+// none so their existing handling stands.
 zc::Maybe<MirArithmeticOperator> mirArithmeticOperatorFor(checker::PrimitiveOperation operation) {
   switch (operation) {
     case checker::PrimitiveOperation::Add:
@@ -1320,6 +1322,10 @@ zc::Maybe<MirArithmeticOperator> mirArithmeticOperatorFor(checker::PrimitiveOper
       return MirArithmeticOperator::BitOr;
     case checker::PrimitiveOperation::BitXor:
       return MirArithmeticOperator::BitXor;
+    case checker::PrimitiveOperation::LogicalAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::LogicalOr:
+      return MirArithmeticOperator::BitOr;
     default:
       return zc::none;
   }
@@ -2444,24 +2450,44 @@ bool validEqualityConditionalReturnFunction(
       joinBlock.terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
-  // The comparison assignment initializes the bool temporary from an Eq of the
-  // two parameter locals of the shared operand type.
+  // The condition assignment initializes the bool temporary from a Comparison
+  // (relational operators) or an Arithmetic (logical short-circuit operators
+  // lowered to BitAnd/BitOr) of the two parameter locals of the shared operand
+  // type.
   const auto& tempAssign = entry.statements[2].assignmentValue();
+  const bool isLogicalCondition = equality.operation == checker::PrimitiveOperation::LogicalAnd ||
+                                  equality.operation == checker::PrimitiveOperation::LogicalOr;
   if (tempAssign.initialization != MirInitializationKind::Initialize ||
       tempAssign.destination.local() != conditionTemp ||
       tempAssign.destination.rootType() != equality.type ||
       tempAssign.destination.resultType() != equality.type ||
       tempAssign.destination.projections().size() != 0 ||
-      tempAssign.value.kind() != MirRvalueKind::Comparison) {
+      tempAssign.value.kind() !=
+          (isLogicalCondition ? MirRvalueKind::Arithmetic : MirRvalueKind::Comparison)) {
     return false;
   }
-  const auto& comparison = tempAssign.value.comparisonValue();
-  // The MIR comparison operator must be the one mapped from the HIR-carried
-  // relational operator; any other byte is a lowering defect.
-  auto expectedOperator = mirComparisonOperatorFor(equality.operation);
-  if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-      comparison.resultType != equality.type) {
-    return false;
+  // The MIR operator must be the one mapped from the HIR-carried operation;
+  // any other byte is a lowering defect.
+  const MirOperand* conditionLeft = nullptr;
+  const MirOperand* conditionRight = nullptr;
+  if (isLogicalCondition) {
+    const auto& arithmetic = tempAssign.value.arithmeticValue();
+    auto expectedOperator = mirArithmeticOperatorFor(equality.operation);
+    if (expectedOperator == zc::none || arithmetic.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+        arithmetic.resultType != equality.type) {
+      return false;
+    }
+    conditionLeft = &arithmetic.left;
+    conditionRight = &arithmetic.right;
+  } else {
+    const auto& comparison = tempAssign.value.comparisonValue();
+    auto expectedOperator = mirComparisonOperatorFor(equality.operation);
+    if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+        comparison.resultType != equality.type) {
+      return false;
+    }
+    conditionLeft = &comparison.left;
+    conditionRight = &comparison.right;
   }
   // Each comparison operand matches its HIR operand: a literal operand is a
   // Constant of the operand type and value; a parameter operand is a copy of the
@@ -2486,8 +2512,8 @@ bool validEqualityConditionalReturnFunction(
     }
     return false;
   };
-  if (!operandMatches(comparison.left, leftLiteral, leftRef, leftIndex) ||
-      !operandMatches(comparison.right, rightLiteral, rightRef, rightIndex)) {
+  if (!operandMatches(*conditionLeft, leftLiteral, leftRef, leftIndex) ||
+      !operandMatches(*conditionRight, rightLiteral, rightRef, rightIndex)) {
     return false;
   }
   const auto& switchInt = entry.terminator.switchIntValue();
@@ -2733,19 +2759,37 @@ bool validLeadingLocalConditionalReturnFunction(
     return false;
   }
   const auto& tempAssign = tempAssignStatement.assignmentValue();
+  const bool isLogicalCondition = equality.operation == checker::PrimitiveOperation::LogicalAnd ||
+                                  equality.operation == checker::PrimitiveOperation::LogicalOr;
   if (tempAssign.initialization != MirInitializationKind::Initialize ||
       tempAssign.destination.local() != conditionTemp ||
       tempAssign.destination.rootType() != equality.type ||
       tempAssign.destination.resultType() != equality.type ||
       tempAssign.destination.projections().size() != 0 ||
-      tempAssign.value.kind() != MirRvalueKind::Comparison) {
+      tempAssign.value.kind() !=
+          (isLogicalCondition ? MirRvalueKind::Arithmetic : MirRvalueKind::Comparison)) {
     return false;
   }
-  const auto& comparison = tempAssign.value.comparisonValue();
-  auto expectedOperator = mirComparisonOperatorFor(equality.operation);
-  if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-      comparison.resultType != equality.type) {
-    return false;
+  const MirOperand* conditionLeft = nullptr;
+  const MirOperand* conditionRight = nullptr;
+  if (isLogicalCondition) {
+    const auto& arithmetic = tempAssign.value.arithmeticValue();
+    auto expectedOperator = mirArithmeticOperatorFor(equality.operation);
+    if (expectedOperator == zc::none || arithmetic.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+        arithmetic.resultType != equality.type) {
+      return false;
+    }
+    conditionLeft = &arithmetic.left;
+    conditionRight = &arithmetic.right;
+  } else {
+    const auto& comparison = tempAssign.value.comparisonValue();
+    auto expectedOperator = mirComparisonOperatorFor(equality.operation);
+    if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+        comparison.resultType != equality.type) {
+      return false;
+    }
+    conditionLeft = &comparison.left;
+    conditionRight = &comparison.right;
   }
   // Comparison operand: a constant, a parameter copy, or a leading-local copy.
   auto comparisonOperandOk = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
@@ -2788,8 +2832,8 @@ bool validLeadingLocalConditionalReturnFunction(
     }
     return false;
   };
-  if (!comparisonOperandOk(comparison.left, equality.left) ||
-      !comparisonOperandOk(comparison.right, equality.right)) {
+  if (!comparisonOperandOk(*conditionLeft, equality.left) ||
+      !comparisonOperandOk(*conditionRight, equality.right)) {
     return false;
   }
   const auto& switchInt = entry.terminator.switchIntValue();

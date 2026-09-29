@@ -295,10 +295,14 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           case StatementKind::Arithmetic: {
             // The destination and both operands share one integer carrier; the
             // arithmetic result is the same width as its operands, unlike a
-            // comparison's one-bit result. A one-bit destination stays outside
-            // the admitted subset until shift/bitwise semantics on i1 exist.
+            // comparison's one-bit result. BitAnd and BitOr admit a one-bit
+            // destination because the logical short-circuit operators (`&&`,
+            // `||`) lower to them on bool operands; every other arithmetic
+            // operation stays outside the one-bit subset.
+            const bool admitsBit1 = statement.arithmeticOp() == ArithmeticOp::BitAnd ||
+                                    statement.arithmeticOp() == ArithmeticOp::BitOr;
             if (destinationCarrier.kind() != ValueTypeKind::Integer ||
-                destinationCarrier.integerWidth() == IntegerBitWidth::Bit1) {
+                (destinationCarrier.integerWidth() == IntegerBitWidth::Bit1 && !admitsBit1)) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
                            statementIndex);
             }

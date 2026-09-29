@@ -806,8 +806,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           const auto& selected = call.selected.variant();
           if (operandType != rightType || callFact.node != shape.condition ||
               !selected.is<checker::checked::PrimitiveCallable>() ||
-              !isScalarComparisonOperation(
-                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              !(isScalarComparisonOperation(
+                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalAnd ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalOr) ||
               call.calleeType != operandType || call.receiver != zc::none ||
               call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
               call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.conditionLeft ||
@@ -942,12 +946,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           const auto& call = callFact.invocation;
           const auto& selected = call.selected.variant();
           // Both operand type facts must share the primitive scalar type and the
-          // comparison call fact must match the relational-comparison contract
-          // exactly for one of the six supported operators.
+          // call fact must match the binary-operation contract exactly for one
+          // of the six relational comparison operators or the two logical
+          // short-circuit operators (all produce bool).
+          const auto conditionOp = selected.get<checker::checked::PrimitiveCallable>().operation;
+          const bool conditionOpSupported =
+              isScalarComparisonOperation(conditionOp) ||
+              conditionOp == checker::PrimitiveOperation::LogicalAnd ||
+              conditionOp == checker::PrimitiveOperation::LogicalOr;
           if (operandType != rightType || callFact.node != shape.condition ||
-              !selected.is<checker::checked::PrimitiveCallable>() ||
-              !isScalarComparisonOperation(
-                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              !selected.is<checker::checked::PrimitiveCallable>() || !conditionOpSupported ||
               call.calleeType != operandType || call.receiver != zc::none ||
               call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
               call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.conditionLeft ||

@@ -3588,8 +3588,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& selected = call.selected.variant();
           if (operandType != rightType || callFact.node != source.condition ||
               !selected.is<checker::checked::PrimitiveCallable>() ||
-              !isScalarComparisonOperation(
-                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              !(isScalarComparisonOperation(
+                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalAnd ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalOr) ||
               call.calleeType != operandType || call.receiver != zc::none ||
               call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
               call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||
@@ -4045,8 +4049,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& selected = call.selected.variant();
           if (operandType != rightType || callFact.node != source.condition ||
               !selected.is<checker::checked::PrimitiveCallable>() ||
-              !isScalarComparisonOperation(
-                  selected.get<checker::checked::PrimitiveCallable>().operation) ||
+              !(isScalarComparisonOperation(
+                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalAnd ||
+                selected.get<checker::checked::PrimitiveCallable>().operation ==
+                    checker::PrimitiveOperation::LogicalOr) ||
               call.calleeType != operandType || call.receiver != zc::none ||
               call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
               call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||

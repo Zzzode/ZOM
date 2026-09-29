@@ -1,0 +1,7 @@
+// RUN: cd %corpus && %zomc compile --check 05-statements/logical_operator_condition_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// `&&` in a condition position is admitted by the checker and lowers through
+// HIR, MIR, and LIR to a BitAnd on bool carriers. The compiler exits 0.
+
+// CHECK-NOT: Error

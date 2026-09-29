@@ -195,6 +195,13 @@ zc::Maybe<MirArithmeticOperator> arithmeticOperatorFor(
       return MirArithmeticOperator::BitOr;
     case checker::PrimitiveOperation::BitXor:
       return MirArithmeticOperator::BitXor;
+    // Logical short-circuit operators lower to bitwise And/Or: the admitted
+    // HIR slice only accepts side-effect-free operands (literals, parameters,
+    // earlier locals), so short-circuit and bitwise evaluation coincide.
+    case checker::PrimitiveOperation::LogicalAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::LogicalOr:
+      return MirArithmeticOperator::BitOr;
     default:
       return zc::none;
   }
@@ -1744,7 +1751,8 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   if (equality == zc::none) return zc::none;
   const auto& comparisonValue = ZC_ASSERT_NONNULL(equality);
   auto comparison = comparisonOperatorFor(comparisonValue.operation);
-  if (comparison == zc::none) return zc::none;
+  auto arithmetic = arithmeticOperatorFor(comparisonValue.operation);
+  if (comparison == zc::none && arithmetic == zc::none) return zc::none;
   auto thenLiteral = expressionFor(hirModule, conditionalValue.thenReturnValue);
   auto elseLiteral = expressionFor(hirModule, conditionalValue.elseReturnValue);
   if (thenLiteral == zc::none || elseLiteral == zc::none) return zc::none;
@@ -1853,11 +1861,21 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
       MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
   ctx.appendStatement(MirStatement::storageLive(conditionTemp, comparisonValue.sourceSpan.clone()));
   zc::Vector<MirProjection> tempProjections;
+  // A relational comparison lowers to a comparison rvalue; a logical
+  // short-circuit operator lowers to an arithmetic rvalue (BitAnd/BitOr)
+  // because the admitted slice only accepts side-effect-free operands.
+  MirRvalue conditionRvalue =
+      comparison != zc::none
+          ? MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison),
+                                  zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                  zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type)
+          : MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic),
+                                  zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                  zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type);
   ctx.appendStatement(MirStatement::assign(
       MirPlace(conditionTemp, comparisonValue.type, zc::mv(tempProjections), comparisonValue.type),
-      MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison), zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-                            zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type),
-      MirInitializationKind::Initialize, comparisonValue.sourceSpan.clone()));
+      zc::mv(conditionRvalue), MirInitializationKind::Initialize,
+      comparisonValue.sourceSpan.clone()));
   zc::Vector<MirProjection> discriminantProjections;
   auto discriminant = placeUse(proofs, copyMarker,
                                MirPlace(conditionTemp, comparisonValue.type,
