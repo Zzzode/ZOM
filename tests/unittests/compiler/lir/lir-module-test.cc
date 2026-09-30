@@ -99,5 +99,65 @@ ZC_TEST("LIR single-carrier return terminators are unchanged by the aggregate sl
   ZC_EXPECT(scalar.returnAggregateSlots().size() == 0);
 }
 
+ZC_TEST("LIR string constant admits a pointer carrier and preserves bytes") {
+  auto carrier = ValueType::pointer(0);
+  zc::Vector<uint8_t> bytes;
+  bytes.add(static_cast<uint8_t>('h'));
+  bytes.add(static_cast<uint8_t>('e'));
+  bytes.add(static_cast<uint8_t>('l'));
+  bytes.add(static_cast<uint8_t>('l'));
+  bytes.add(static_cast<uint8_t>('o'));
+  auto value = StringConstant::from(carrier, zc::mv(bytes));
+  ZC_REQUIRE(value != zc::none);
+  auto& constant = ZC_REQUIRE_NONNULL(value);
+  ZC_EXPECT(constant.carrier().kind() == ValueTypeKind::Pointer);
+  auto returned = constant.bytes();
+  ZC_REQUIRE(returned.size() == 5);
+  ZC_EXPECT(returned[0] == static_cast<uint8_t>('h'));
+  ZC_EXPECT(returned[4] == static_cast<uint8_t>('o'));
+}
+
+ZC_TEST("LIR string constant fails closed on a non-pointer carrier") {
+  auto carrier = ZC_REQUIRE_NONNULL(ValueType::integer(IntegerBitWidth::Bit32));
+  zc::Vector<uint8_t> bytes;
+  bytes.add(static_cast<uint8_t>('x'));
+  ZC_EXPECT(StringConstant::from(carrier, zc::mv(bytes)) == zc::none);
+}
+
+ZC_TEST("LIR string constant admits an empty byte vector") {
+  auto carrier = ValueType::pointer(0);
+  zc::Vector<uint8_t> bytes;
+  auto value = StringConstant::from(carrier, zc::mv(bytes));
+  ZC_REQUIRE(value != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(value).bytes().size() == 0);
+}
+
+ZC_TEST("LIR return string terminator carries the string constant") {
+  auto carrier = ValueType::pointer(0);
+  zc::Vector<uint8_t> bytes;
+  bytes.add(static_cast<uint8_t>('h'));
+  bytes.add(static_cast<uint8_t>('i'));
+  auto value = StringConstant::from(carrier, zc::mv(bytes));
+  ZC_REQUIRE(value != zc::none);
+  auto terminator = Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(value)));
+  ZC_EXPECT(terminator.kind() == TerminatorKind::ReturnString);
+  auto& returned = terminator.returnStringValue();
+  ZC_EXPECT(returned.carrier().kind() == ValueTypeKind::Pointer);
+  auto returnedBytes = returned.bytes();
+  ZC_REQUIRE(returnedBytes.size() == 2);
+  ZC_EXPECT(returnedBytes[0] == static_cast<uint8_t>('h'));
+  ZC_EXPECT(returnedBytes[1] == static_cast<uint8_t>('i'));
+}
+
+ZC_TEST("LIR return string terminator does not leak aggregate slots") {
+  auto carrier = ValueType::pointer(0);
+  zc::Vector<uint8_t> bytes;
+  bytes.add(static_cast<uint8_t>('z'));
+  auto value = StringConstant::from(carrier, zc::mv(bytes));
+  ZC_REQUIRE(value != zc::none);
+  auto terminator = Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(value)));
+  ZC_EXPECT(terminator.returnAggregateSlots().size() == 0);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::lir

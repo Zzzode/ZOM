@@ -204,7 +204,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-arithmetic-pow-consumer/Zom.toml::reject_arithmetic_pow_consumer::reject_arithmetic_pow_consumer"
       --incident-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
+      --string-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::hello")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
 endif()
 
@@ -268,6 +270,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-void-call-consumer/Zom.toml::receiver_void_call_consumer::receiver_void_call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-local-consumer/Zom.toml::binary_write_local_consumer::binary_write_local_consumer::2"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

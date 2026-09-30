@@ -21,6 +21,12 @@ zc::Maybe<IntegerConstant> IntegerConstant::from(ValueType carrier, uint64_t bit
   return IntegerConstant(carrier, bits);
 }
 
+zc::Maybe<StringConstant> StringConstant::from(ValueType carrier,
+                                               zc::Vector<uint8_t>&& bytes) noexcept {
+  if (carrier.kind() != ValueTypeKind::Pointer) { return zc::none; }
+  return StringConstant(carrier, zc::mv(bytes));
+}
+
 Operand Operand::constant(IntegerConstant value) noexcept { return Operand(value); }
 Operand Operand::localUse(uint32_t localOrdinal) noexcept { return Operand(localOrdinal); }
 
@@ -116,5 +122,9 @@ zc::Maybe<Terminator> Terminator::callVoidFunction(uint32_t calleeIndex,
 }
 
 Terminator Terminator::returnVoid() noexcept { return Terminator(TerminatorKind::ReturnVoid); }
+
+Terminator Terminator::returnString(StringConstant&& value) noexcept {
+  return Terminator(zc::mv(value));
+}
 
 }  // namespace zomlang::compiler::lir

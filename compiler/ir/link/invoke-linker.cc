@@ -853,6 +853,11 @@ CleanupAwareOutcome<PreparedLinkInputs> PreparedLinkInputs::prepareWithTokenSour
     zc::String outputCandidatePath = joinPath(treePath, kOutputCandidateName);
     zc::Vector<zc::String> argv;
     argv.add(zc::str(driverSnapshotPath));
+    // The object-emission slice produces R_X86_64_32 absolute relocations
+    // (e.g. string-constant global addresses).  Those cannot link into a PIE
+    // object, so request a non-PIE executable explicitly.  This is a no-op on
+    // hosts whose ld already defaults to non-PIE.
+    argv.add(zc::str("-no-pie"));
     argv.add(zc::str("-o"));
     argv.add(zc::str(outputCandidatePath));
     argv.add(zc::str("-e"));

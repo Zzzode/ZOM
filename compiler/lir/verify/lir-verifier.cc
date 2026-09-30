@@ -113,6 +113,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
         case TerminatorKind::ReturnInteger:
         case TerminatorKind::ReturnLocal:
         case TerminatorKind::ReturnAggregate:
+        case TerminatorKind::ReturnString:
         case TerminatorKind::ReturnVoid:
           break;
       }
@@ -151,6 +152,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           case TerminatorKind::ReturnInteger:
           case TerminatorKind::ReturnLocal:
           case TerminatorKind::ReturnAggregate:
+          case TerminatorKind::ReturnString:
           case TerminatorKind::ReturnVoid:
             break;
         }
@@ -382,6 +384,12 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
       switch (terminator.kind()) {
         case TerminatorKind::ReturnInteger:
           if (terminator.returnIntegerValue().carrier() != function.returnCarrier()) {
+            return fault(LirVerificationFaultKind::ReturnCarrierMismatch, functionIndex,
+                         blockOrdinal);
+          }
+          break;
+        case TerminatorKind::ReturnString:
+          if (terminator.returnStringValue().carrier() != function.returnCarrier()) {
             return fault(LirVerificationFaultKind::ReturnCarrierMismatch, functionIndex,
                          blockOrdinal);
           }

@@ -1445,6 +1445,9 @@ private:
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(functions[0], types);
           }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerScalarReturn(functions[0], types);
+          }
         }
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
@@ -1688,8 +1691,9 @@ private:
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
                   "field-arithmetic method, shared-receiver conditional method, shared-receiver "
-                  "self-call, three-function direct-call-with-leaf, and "
-                  "void-setter-then-value-getter receiver-call slices)."));
+                  "self-call, three-function direct-call-with-leaf, "
+                  "void-setter-then-value-getter receiver-call, and "
+                  "string literal return slices)."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

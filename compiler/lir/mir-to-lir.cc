@@ -171,6 +171,22 @@ zc::Maybe<ValueType> unitCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Resolves the opaque-pointer carrier for a Str result type.
+///
+/// A string literal return lowers to the address of a null-terminated global
+/// string constant; its physical carrier is a target pointer in address space
+/// zero. Every non-Str primitive fails closed in this slice.
+zc::Maybe<ValueType> stringCarrierFor(identity::SemanticTypeId type,
+                                      const type::SemanticTypeStore& semanticTypes) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  ZC_IF_SOME(primitive, data.primitiveKind()) {
+    if (primitive == type::semantic::PrimitiveKind::Str) { return ValueType::pointer(0); }
+  }
+  return zc::none;
+}
+
 /// \brief Maps a MIR relational operator to its LIR comparison operator.
 ComparisonOp lirComparisonOpFor(mir::MirComparisonOperator op) noexcept {
   switch (op) {
@@ -324,6 +340,63 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
   zc::Vector<Function> functions;
   functions.add(
       Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified scalar string-return shape: a standalone function
+  // with no locals, one block, no statements, and a Return of a string constant.
+  // This mirrors the structural facts that mir::validScalarReturnFunction
+  // checked; we re-check them here so lowering is total over its declared input
+  // and fail-closed on anything else.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 0 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != 0 || block.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> stringBytes;
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    const auto& constant = value.constantValue();
+    if (constant.type != function.resultType) { return zc::none; }
+    stringBytes = constant.value.stringValue();
+  }
+  if (stringBytes == zc::none) { return zc::none; }
+
+  // Resolve the opaque-pointer carrier for the Str result type.
+  auto carrier = stringCarrierFor(function.resultType, semanticTypes);
+  if (carrier == zc::none) { return zc::none; }
+  const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+
+  // Copy the canonical UTF-8 bytes into the LIR string constant.
+  const auto bytes = ZC_REQUIRE_NONNULL(stringBytes);
+  zc::Vector<uint8_t> lirBytes;
+  lirBytes.reserve(bytes.size());
+  for (const auto byte : bytes) { lirBytes.add(byte); }
+
+  auto lirConstant = StringConstant::from(carrierValue, zc::mv(lirBytes));
+  if (lirConstant == zc::none) { return zc::none; }
+
+  // Build the single entry block returning the string constant.
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                        Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+
+  // A zero-parameter caller folds to the reserved no-argument `zom.module_init`
+  // entry the runtime `_start` calls, so the module runs natively.
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 

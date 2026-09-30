@@ -101,6 +101,20 @@ zc::Maybe<ValueType> unitCarrier(identity::SemanticTypeId type,
   return zc::none;
 }
 
+// Independently derived opaque-pointer carrier for a Str primitive. A str
+// value is the address of a null-terminated global string constant; its
+// physical carrier is a target pointer in address space zero.
+zc::Maybe<ValueType> stringCarrier(identity::SemanticTypeId type,
+                                   const type::SemanticTypeStore& types) noexcept {
+  auto lookup = types.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  ZC_IF_SOME(primitive, data.primitiveKind()) {
+    if (primitive == type::semantic::PrimitiveKind::Str) return ValueType::pointer(0);
+  }
+  return zc::none;
+}
+
 // Independently resolves the carrier of one materialized MIR local. Beyond the
 // integer and boolean carriers, a shared- or mutable-reference parameter or
 // temporary carries an opaque pointer, and a one-field aggregate-initialized
@@ -779,6 +793,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     if (expectedReturnCarrier == zc::none) {
       expectedReturnCarrier = unitCarrier(mir.resultType, types);
     }
+    if (expectedReturnCarrier == zc::none) {
+      expectedReturnCarrier = stringCarrier(mir.resultType, types);
+    }
   }
   if (expectedReturnCarrier == zc::none ||
       lir.returnCarrier() != ZC_ASSERT_NONNULL(expectedReturnCarrier)) {
@@ -1321,17 +1338,38 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         const mir::MirOperand& operand = ZC_ASSERT_NONNULL(returned);
         if (folded &&
             (fold.kind == FoldKind::ScalarConstant || fold.kind == FoldKind::DirectConstant)) {
-          if (lirTerminator.kind() != TerminatorKind::ReturnInteger) {
-            return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
-          }
           // The local-fold resolves through the folded initializer; a direct
           // constant return compares the returned operand itself.
           const mir::MirOperand& wanted = fold.kind == FoldKind::DirectConstant
                                               ? operand
                                               : fold.assignment->value.useValue().operand;
-          if (!sameConstant(Operand::constant(lirTerminator.returnIntegerValue()), wanted,
-                            ZC_ASSERT_NONNULL(expectedReturnCarrier))) {
-            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          // A string constant return lowers to ReturnString carrying the UTF-8
+          // bytes; every other direct constant lowers to ReturnInteger.
+          const auto wantedString = wanted.kind() == mir::MirOperandKind::Constant
+                                        ? wanted.constantValue().value.stringValue()
+                                        : zc::none;
+          if (wantedString != zc::none) {
+            if (lirTerminator.kind() != TerminatorKind::ReturnString) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+            }
+            const auto wantedBytes = ZC_ASSERT_NONNULL(wantedString);
+            const auto actualBytes = lirTerminator.returnStringValue().bytes();
+            if (actualBytes.size() != wantedBytes.size()) {
+              return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+            }
+            for (uint32_t i = 0; i < wantedBytes.size(); ++i) {
+              if (actualBytes[i] != wantedBytes[i]) {
+                return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+              }
+            }
+          } else {
+            if (lirTerminator.kind() != TerminatorKind::ReturnInteger) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+            }
+            if (!sameConstant(Operand::constant(lirTerminator.returnIntegerValue()), wanted,
+                              ZC_ASSERT_NONNULL(expectedReturnCarrier))) {
+              return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+            }
           }
         } else if (folded && fold.kind == FoldKind::Aggregate) {
           const auto& aggregate = fold.assignment->value.nominalAggregateValue();

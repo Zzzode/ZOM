@@ -49,6 +49,23 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarInitializer(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one scalar string-return function to a single-function LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validScalarReturnFunction` accepts for a standalone function: a
+  /// `Function` with no locals, one block with no statements, and a `Return` of
+  /// a string constant. It resolves the opaque-pointer carrier from the `Str`
+  /// result type through the semantic type store, copies the canonical UTF-8
+  /// bytes into a `StringConstant`, and emits a `ReturnString` terminator. The
+  /// function folds to the reserved no-argument `zom.module_init` entry so the
+  /// runtime `_start` runs it. Every shape outside this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns `function.resultType`.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerScalarReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one struct-local field-return function to a scalar LIR module.
   ///
   /// Admits exactly the verified Built MIR shape that

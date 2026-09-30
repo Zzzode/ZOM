@@ -19,6 +19,7 @@
 #include "compiler/identity/handle.h"
 #include "compiler/ir/ir-identity.h"
 #include "compiler/lir/lir-store.h"
+#include "zc/core/debug.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 
@@ -61,6 +62,32 @@ private:
   uint64_t bitsValue = 0;
 };
 
+/// \brief One immutable string constant carried by a LIR opaque pointer type.
+///
+/// The bytes are the UTF-8 content of the string literal. The carrier is an
+/// opaque pointer in address space zero; the translator materializes the bytes
+/// as a null-terminated global constant and returns a pointer to it. The null
+/// terminator is appended at materialization, not stored in the bytes.
+class StringConstant final {
+public:
+  /// \brief Builds a string constant for an opaque pointer carrier.
+  /// \param carrier Pointer SSA carrier occupying the value.
+  /// \param bytes UTF-8 content of the string (without a null terminator).
+  /// \return The constant, or none when the carrier is not a pointer.
+  ZC_NODISCARD static zc::Maybe<StringConstant> from(ValueType carrier,
+                                                     zc::Vector<uint8_t>&& bytes) noexcept;
+
+  ZC_NODISCARD const ValueType& carrier() const noexcept { return carrierValue; }
+  ZC_NODISCARD zc::ArrayPtr<const uint8_t> bytes() const noexcept { return bytesValue.asPtr(); }
+
+private:
+  StringConstant(ValueType carrier, zc::Vector<uint8_t>&& bytes) noexcept
+      : carrierValue(carrier), bytesValue(zc::mv(bytes)) {}
+
+  ValueType carrierValue;
+  zc::Vector<uint8_t> bytesValue;
+};
+
 /// \brief Closed terminator kind for the currently supported LIR subset.
 enum class TerminatorKind : uint8_t {
   ReturnInteger = 0x01,
@@ -70,6 +97,7 @@ enum class TerminatorKind : uint8_t {
   Call = 0x05,
   ReturnAggregate = 0x06,
   ReturnVoid = 0x07,
+  ReturnString = 0x08,
 };
 
 /// \brief Upper bound on the slot count of a multi-slot aggregate return.
@@ -287,6 +315,9 @@ public:
   /// \brief Builds a terminator that returns no value (a unit-returning
   /// function).
   ZC_NODISCARD static Terminator returnVoid() noexcept;
+  /// \brief Builds a terminator that returns a string constant (a pointer to
+  /// the materialized global string data).
+  ZC_NODISCARD static Terminator returnString(StringConstant&& value) noexcept;
   /// \brief Builds a terminator that returns an ordered bundle of integer
   /// constants as a multi-slot direct return (RFC 0021 carrier bundle rendered as
   /// a literal struct). The slots are returned in the given order.
@@ -303,6 +334,9 @@ public:
 
   ZC_NODISCARD TerminatorKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD const IntegerConstant& returnIntegerValue() const noexcept { return integerValue; }
+  ZC_NODISCARD const StringConstant& returnStringValue() const noexcept {
+    return ZC_REQUIRE_NONNULL(stringValue);
+  }
   ZC_NODISCARD LirBlockId gotoTarget() const noexcept { return trueTargetValue; }
   ZC_NODISCARD uint32_t conditionOrdinal() const noexcept { return localOrdinalValue; }
   ZC_NODISCARD LirBlockId condTrueTarget() const noexcept { return trueTargetValue; }
@@ -356,11 +390,16 @@ private:
         callArgumentsValue(zc::mv(arguments)) {}
   explicit Terminator(TerminatorKind kind) noexcept
       : kindValue(kind), integerValue(fallbackConstant()) {}
+  explicit Terminator(StringConstant&& value) noexcept
+      : kindValue(TerminatorKind::ReturnString),
+        integerValue(fallbackConstant()),
+        stringValue(zc::mv(value)) {}
 
   ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
 
   TerminatorKind kindValue;
   IntegerConstant integerValue;
+  zc::Maybe<StringConstant> stringValue;
   uint32_t localOrdinalValue = 0;
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;

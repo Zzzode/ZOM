@@ -85,9 +85,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   }
   for (const auto& candidate : functions) {
     if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer &&
-        candidate.returnCarrier().kind() != lir::ValueTypeKind::Unit) {
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Unit &&
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Pointer) {
       return LlvmTranslationResult::failure(
-          zc::heapString("LIR function return carrier must be an integer or unit"));
+          zc::heapString("LIR function return carrier must be an integer, unit, or pointer"));
     }
   }
   // Each function is one of: the single-block integer-constant return
@@ -101,21 +102,25 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     // returns the bundle directly (mirroring the single-block scalar return). A
     // ReturnAggregate in any other position is not lowered in this slice, so
     // reject it before translation begins and the body emitter never reaches it.
+    // The same single-block-only constraint applies to ReturnString: the body
+    // emitter handles it only in the entry block of a one-block function.
     for (size_t index = 0; index < candidateBlocks.size(); ++index) {
-      if (candidateBlocks[index].terminator().kind() == lir::TerminatorKind::ReturnAggregate) {
+      const auto terminatorKind = candidateBlocks[index].terminator().kind();
+      if (terminatorKind == lir::TerminatorKind::ReturnAggregate ||
+          terminatorKind == lir::TerminatorKind::ReturnString) {
         if (index != 0 || candidateBlocks.size() != 1) { return false; }
       }
     }
     if (candidateBlocks.size() == 1) {
       // A single-block function either returns an integer constant (scalar
       // initializer / constant-return callee), returns a local slot (a
-      // one-parameter callee that returns its parameter), or returns a multi-slot
-      // aggregate bundle.
+      // one-parameter callee that returns its parameter), returns a multi-slot
+      // aggregate bundle, or returns a string constant pointer.
       const auto kind = candidateBlocks[0].terminator().kind();
       return kind == lir::TerminatorKind::ReturnInteger ||
              kind == lir::TerminatorKind::ReturnLocal ||
              kind == lir::TerminatorKind::ReturnAggregate ||
-             kind == lir::TerminatorKind::ReturnVoid;
+             kind == lir::TerminatorKind::ReturnString || kind == lir::TerminatorKind::ReturnVoid;
     }
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
@@ -199,6 +204,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Unit) {
       return ::llvm::Type::getVoidTy(*context);
     }
+    if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Pointer) {
+      return ::llvm::PointerType::get(*context, candidate.returnCarrier().pointerAddressSpace());
+    }
     return integerType(candidate.returnCarrier().integerWidth());
   };
   zc::Vector<::llvm::Function*> llvmFunctions;
@@ -257,6 +265,24 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
             ::llvm::InsertValueInst::Create(aggregate, slotValue, {slotIndex}, "agg", entryBlock);
       }
       ::llvm::ReturnInst::Create(*context, aggregate, entryBlock);
+      continue;
+    }
+
+    if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnString) {
+      // Single entry block returning a pointer to a null-terminated global
+      // string constant. The UTF-8 bytes are emitted as a private
+      // ConstantDataArray (with a trailing null) and the function returns its
+      // address; the function's declared return type is an opaque pointer.
+      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+      const auto bytes = blocks[0].terminator().returnStringValue().bytes();
+      const char* data = bytes.size() == 0 ? "" : reinterpret_cast<const char*>(bytes.begin());
+      ::llvm::StringRef stringRef(data, bytes.size());
+      ::llvm::Constant* stringArray =
+          ::llvm::ConstantDataArray::getString(*context, stringRef, /*AddNull=*/true);
+      auto* global = new ::llvm::GlobalVariable(
+          *llvmModule, stringArray->getType(),
+          /*isConstant=*/true, ::llvm::GlobalValue::PrivateLinkage, stringArray, ".str");
+      ::llvm::ReturnInst::Create(*context, global, entryBlock);
       continue;
     }
 
@@ -509,6 +535,11 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           // shape gate above (isSupportedShape) rejects a function carrying it
           // before translation reaches here, so this arm is unreachable. The
           // literal-struct lowering is the next RFC 0021 step.
+          ZC_UNREACHABLE;
+        case lir::TerminatorKind::ReturnString:
+          // A string constant return is lowered only as a single entry block;
+          // the shape gate above (isSupportedShape) rejects a multi-block
+          // function carrying it before translation reaches here.
           ZC_UNREACHABLE;
         case lir::TerminatorKind::ReturnVoid:
           ::llvm::ReturnInst::Create(*context, target);
