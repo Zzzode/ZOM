@@ -1186,6 +1186,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           return zc::none;
         }
       }
+      // A loop body with zero writes has nothing to lower and would ICE in
+      // the HIR builder's per-write digest.  Reject it at the shape level.
+      if (writeCount == 0) return zc::none;
       zc::Maybe<ast::NodeId> localInitializer;
       localInitializer = initializer;
       FunctionReturnShape shape{};

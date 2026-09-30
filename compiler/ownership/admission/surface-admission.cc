@@ -542,8 +542,12 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return false;
   const auto statementNodes = tree.list(statements);
+  bool hasWrite = false;
   for (size_t index = 0; index < statementNodes.size(); ++index) {
-    if (isAdmittedLoopBodyWrite(tree, statementNodes[index])) continue;
+    if (isAdmittedLoopBodyWrite(tree, statementNodes[index])) {
+      hasWrite = true;
+      continue;
+    }
     // A break/continue is admitted only as the trailing body statement.
     if (index + 1 == statementNodes.size() &&
         isAdmittedLoopBodyControlFlow(tree, statementNodes[index])) {
@@ -551,7 +555,7 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
     }
     return false;
   }
-  return true;
+  return hasWrite;
 }
 
 // A nested arithmetic operand is a one-level binary whose own operands are
