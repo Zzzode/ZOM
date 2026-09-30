@@ -6868,7 +6868,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           }
         }
       }
-      leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings;
+      leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings - 1;
     }
   }
   const int64_t lhsChecksum =
