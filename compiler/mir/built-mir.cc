@@ -2735,6 +2735,18 @@ bool validLeadingLocalConditionalReturnFunction(
                  operand.place().resultType() == binding.type &&
                  operand.place().projections().size() == 0;
         }
+        if (auto leafLocal = localReferenceFor(hirModule, leafNode); leafLocal != zc::none) {
+          const auto& value = ZC_ASSERT_NONNULL(leafLocal);
+          return value.local.ordinal() >= 1 && value.local.ordinal() <= static_cast<uint32_t>(i) &&
+                 value.type == binding.type &&
+                 matchesPlaceUse(operand, proofs, copy, binding.type) &&
+                 operand.kind() != MirOperandKind::Constant &&
+                 operand.place().local() ==
+                     localId(static_cast<uint32_t>(parameterCount + value.local.ordinal())) &&
+                 operand.place().rootType() == binding.type &&
+                 operand.place().resultType() == binding.type &&
+                 operand.place().projections().size() == 0;
+        }
         return false;
       };
       if (!leafOk(arithmetic.left, binary.left) || !leafOk(arithmetic.right, binary.right)) {
@@ -10907,10 +10919,12 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         }
       }
       bool returnsRootLocal = true;
+      bool trailingConditionalReturn = false;
       ZC_IF_SOME(block, sourceBlock) {
         auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
         ZC_IF_SOME(returnStatement, sourceReturn) {
           returnsRootLocal = localFieldProjectionFor(hirModule, returnStatement.value) == zc::none;
+          trailingConditionalReturn = conditionalFor(hirModule, returnStatement.value) != zc::none;
         }
       }
       if (sourceBlock != zc::none &&
@@ -10983,7 +10997,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         }
       }
       if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 4 &&
-          returnsRootLocal) {
+          returnsRootLocal && !trailingConditionalReturn) {
         bool validSequence = false;
         ZC_IF_SOME(block, sourceBlock) {
           auto sourceLocal = localFor(hirModule, block.statements[0]);
@@ -11126,13 +11140,15 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                   }
                 }
               }
-              ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
-                if (!matchesPlaceUse(returnValue, proofs, copy, local.type) ||
-                    returnValue.place().local() != mirLocal.id ||
-                    returnValue.place().rootType() != local.type ||
-                    returnValue.place().resultType() != local.type ||
-                    returnValue.place().projections().size() != 0) {
-                  validSequence = false;
+              if (validSequence) {
+                ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+                  if (!matchesPlaceUse(returnValue, proofs, copy, local.type) ||
+                      returnValue.place().local() != mirLocal.id ||
+                      returnValue.place().rootType() != local.type ||
+                      returnValue.place().resultType() != local.type ||
+                      returnValue.place().projections().size() != 0) {
+                    validSequence = false;
+                  }
                 }
               }
             }
