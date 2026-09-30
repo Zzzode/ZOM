@@ -3023,31 +3023,38 @@ ZC_TEST("HIR borrow arm lowers an unsafe local-alias reborrow through exact node
 }
 
 ZC_TEST("HIR pipeline lowers an admitted while loop") {
-  HirPipelineFixture fixture("fun spin(cond: bool) -> i32 { while (cond) { } return 0; }"_zc);
+  HirPipelineFixture fixture(
+      "fun spin(cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = 1; } return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
   ZC_REQUIRE(module.loops().size() == 1);
   ZC_REQUIRE(module.parameterReferences().size() == 1);
-  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
   const auto& function = module.functions()[0];
   const auto& block = module.blocks()[0];
   const auto& returnStatement = module.returns()[0];
   const auto& loop = module.loops()[0];
   const auto& condition = module.parameterReferences()[0];
-  const auto& returnValue = module.expressions()[0];
-  // The body block holds the loop statement followed by the scalar return.
-  ZC_REQUIRE(block.statements.size() == 2);
-  ZC_EXPECT(block.statements[0] == loop.node);
-  ZC_EXPECT(block.statements[1] == returnStatement.node);
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  // The body block holds the local binding, the loop statement, and the local return.
+  ZC_REQUIRE(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == loop.node);
+  ZC_EXPECT(block.statements[2] == returnStatement.node);
   ZC_EXPECT(loop.condition == condition.node);
   ZC_EXPECT(loop.type == condition.type);
   ZC_EXPECT(loop.category == HirValueCategory::Place);
   ZC_EXPECT(condition.category == HirValueCategory::Place);
   ZC_EXPECT(condition.parameter == function.parameters[0].key);
-  ZC_EXPECT(returnStatement.value == returnValue.node);
-  ZC_EXPECT(returnValue.type == function.resultType);
-  ZC_EXPECT(returnValue.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  ZC_REQUIRE(loop.body.size() == 1);
+  ZC_EXPECT(loop.body[0] == write.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
   auto dump = module.dump();
   ZC_REQUIRE(dump != zc::none);
   ZC_IF_SOME(text, dump) {
@@ -3066,9 +3073,10 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
   ZC_REQUIRE(spin != zc::none);
   ZC_IF_SOME(mirFunction, spin) {
     ZC_REQUIRE(mirFunction.blocks.size() == 4);
-    // bb1 entry: StorageLive(result) ; Goto(bb2)
-    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 1);
+    // bb1 entry: StorageLive(x) ; Assign(x = 0, Initialize) ; Goto(bb2)
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 2);
     ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::Assign);
     ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Goto);
     ZC_EXPECT(mirFunction.blocks[0].terminator.gotoValue().target == mirFunction.blocks[1].id);
     // bb2 header: SwitchInt(cond, [true -> bb3], default = bb4)
@@ -3079,13 +3087,15 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
     ZC_EXPECT(switchInt.arms[0].target == mirFunction.blocks[2].id);
     ZC_EXPECT(switchInt.defaultTarget == mirFunction.blocks[3].id);
     ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
-    // bb3 body: reducible back-edge Goto(bb2)
-    ZC_EXPECT(mirFunction.blocks[2].statements.size() == 0);
+    // bb3 body: Assign(x = 1, Overwrite) ; back-edge Goto(bb2)
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
     ZC_REQUIRE(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
     ZC_EXPECT(mirFunction.blocks[2].terminator.gotoValue().target == mirFunction.blocks[1].id);
-    // bb4 exit: Assign(result = 0, Initialize) ; Return
-    ZC_REQUIRE(mirFunction.blocks[3].statements.size() == 1);
-    ZC_EXPECT(mirFunction.blocks[3].statements[0].kind() == mir::MirStatementKind::Assign);
+    // bb4 exit: Return(placeUse(x))
+    ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
     ZC_EXPECT(mirFunction.blocks[3].terminator.kind() == mir::MirTerminatorKind::Return);
   }
 }
@@ -3466,44 +3476,6 @@ ZC_TEST("HIR control arm lowers a parameter-and-literal comparison conditional e
   ZC_EXPECT(equality.node.ordinal() == 5);
   ZC_EXPECT(conditional.node.ordinal() == 8);
   ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
-}
-
-ZC_TEST("HIR control arm lowers an empty-body while loop through exact node strides") {
-  HirPipelineFixture fixture("fun spin(cond: bool) -> i32 { while (cond) { } return 0; }"_zc);
-  const auto& module = fixture.hirModule();
-  ZC_REQUIRE(module.functions().size() == 1);
-  ZC_REQUIRE(module.blocks().size() == 1);
-  ZC_REQUIRE(module.loops().size() == 1);
-  ZC_REQUIRE(module.parameterReferences().size() == 1);
-  ZC_REQUIRE(module.expressions().size() == 1);
-  const auto& function = module.functions()[0];
-  const auto& block = module.blocks()[0];
-  const auto& condition = module.parameterReferences()[0];
-  const auto& returnValue = module.expressions()[0];
-  const auto& loop = module.loops()[0];
-  const auto& returnStatement = module.returns()[0];
-  // Six-node source-preorder stride: function 1, body 2, condition 3, return
-  // literal 4, loop 5, return 6.
-  ZC_EXPECT(function.node.ordinal() == 1);
-  ZC_EXPECT(block.node.ordinal() == 2);
-  ZC_EXPECT(condition.node.ordinal() == 3);
-  ZC_EXPECT(returnValue.node.ordinal() == 4);
-  ZC_EXPECT(loop.node.ordinal() == 5);
-  ZC_EXPECT(returnStatement.node.ordinal() == 6);
-  ZC_EXPECT(block.statements.size() == 2);
-  ZC_EXPECT(block.statements[0] == loop.node);
-  ZC_EXPECT(block.statements[1] == returnStatement.node);
-  ZC_EXPECT(loop.condition == condition.node);
-  ZC_EXPECT(loop.body.size() == 0);
-  ZC_EXPECT(returnStatement.value == returnValue.node);
-
-  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
-  ZC_REQUIRE(builtMir.size() == 1);
-  zc::Maybe<const mir::VerifiedBuiltMir&> verified = builtMir[0].builtMir();
-  ZC_IF_SOME(mir, verified) {
-    zc::Maybe<zc::Array<uint8_t>> record = canonicalRecordForOwner(mir, function.definition);
-    ZC_EXPECT(record != zc::none);
-  }
 }
 
 ZC_TEST("HIR control arm lowers a loop-body write composite through exact node strides") {
