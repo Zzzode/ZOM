@@ -5278,6 +5278,52 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   auto argumentTypeIndex = factIndex(facts.nodeTypes(), argument);
                   auto literalIndex = factIndex(facts.literals(), argument);
                   auto argumentSpan = bound.parsedModule().spanFor(tree.node(argument).range);
+                  // A field-projection argument on the receiver local
+                  // (`cell.echo(cell.value)`) lowers through a local+field
+                  // carrier rather than a literal constant. The two `cell`
+                  // identifiers are distinct AST nodes, so the match is by
+                  // owner-local binding, not by NodeId.
+                  const ast::NodeId argumentObject(
+                      tree.node(argument).payload.words[ast::kMemberExpressionObjectWord]);
+                  const bool isReceiverFieldArgument =
+                      tree.contains(argument) &&
+                      tree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+                      resolvedOwnerLocal(bound.bindings(), argumentObject) == receiverBinding;
+                  if (isReceiverFieldArgument) {
+                    auto argumentMemberIndex = factIndex(facts.members(), argument);
+                    if (argumentTypeIndex == zc::none || argumentMemberIndex == zc::none ||
+                        argumentSpan == zc::none) {
+                      return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                           ir::IrFailureKind::MissingRequiredFact,
+                                                           module, registries, ordinal + 2);
+                    }
+                    size_t argumentTypeSlot = 0;
+                    size_t argumentMemberSlot = 0;
+                    ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+                    ZC_IF_SOME(value, argumentMemberIndex) { argumentMemberSlot = value; }
+                    const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+                    const auto& argumentMember =
+                        facts.members().entries()[argumentMemberSlot].value;
+                    const auto& checkedArgument = invocation.arguments[index];
+                    if (checkedArgument.sourceNode != argument ||
+                        checkedArgument.sourceType != argumentType ||
+                        checkedArgument.parameterType != argumentType ||
+                        checkedArgument.adjustment != zc::none || argumentMember.node != argument ||
+                        argumentMember.memberType != argumentType ||
+                        argumentMember.receiverType != receiver.sourceType ||
+                        argumentMember.adjustment != zc::none) {
+                      return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                           ir::IrFailureKind::InvalidFact, module,
+                                                           registries, ordinal + 2);
+                    }
+                    zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+                    zc::Maybe<identity::CallableParameterKey> noParameter;
+                    zc::Maybe<HirLocalId> receiverLocal = hirLocalId(1);
+                    callArguments.add(HirDirectCallArgument{
+                        argumentType, zc::mv(noValue), zc::mv(noParameter), zc::mv(receiverLocal),
+                        argumentMember.member, ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                    continue;
+                  }
                   if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind) ||
                       argumentTypeIndex == zc::none || literalIndex == zc::none ||
                       argumentSpan == zc::none) {
@@ -5305,7 +5351,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   callArguments.add(
                       HirDirectCallArgument{argumentType, literal.literal.clone(),
                                             zc::Maybe<identity::CallableParameterKey>(), zc::none,
-                                            ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                                            zc::none, ZC_ASSERT_NONNULL(argumentSpan).clone()});
                 }
                 receiverCall = HirReceiverCallExpression{HirNodeId(),
                                                          HirNodeId(),
@@ -5595,7 +5641,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               statementCallArguments.add(
                   HirDirectCallArgument{argumentType, literal.literal.clone(),
                                         zc::Maybe<identity::CallableParameterKey>(), zc::none,
-                                        ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                                        zc::none, ZC_ASSERT_NONNULL(argumentSpan).clone()});
             }
             statementReceiverCall =
                 HirReceiverCallExpression{HirNodeId(),
@@ -5722,7 +5768,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               zc::Maybe<identity::CallableParameterKey> noParameter;
               callArguments.add(HirDirectCallArgument{argumentType, literal.literal.clone(),
-                                                      zc::mv(noParameter), zc::none,
+                                                      zc::mv(noParameter), zc::none, zc::none,
                                                       ZC_ASSERT_NONNULL(argumentSpan).clone()});
               continue;
             }
@@ -5740,9 +5786,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::Maybe<checker::checked::CanonicalConstValue> noValue;
                 zc::Maybe<identity::CallableParameterKey> noParameter;
                 zc::Maybe<HirLocalId> argumentLocal = hirLocalId(1);
-                callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
-                                                        zc::mv(noParameter), zc::mv(argumentLocal),
-                                                        ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                callArguments.add(HirDirectCallArgument{
+                    argumentType, zc::mv(noValue), zc::mv(noParameter), zc::mv(argumentLocal),
+                    zc::none, ZC_ASSERT_NONNULL(argumentSpan).clone()});
                 continue;
               }
             }
@@ -5760,9 +5806,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::Maybe<checker::checked::CanonicalConstValue> noValue;
                 zc::Maybe<identity::CallableParameterKey> noParameter;
                 zc::Maybe<HirLocalId> argumentLocal = hirLocalId(1);
-                callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
-                                                        zc::mv(noParameter), zc::mv(argumentLocal),
-                                                        ZC_ASSERT_NONNULL(argumentSpan).clone()});
+                callArguments.add(HirDirectCallArgument{
+                    argumentType, zc::mv(noValue), zc::mv(noParameter), zc::mv(argumentLocal),
+                    zc::none, ZC_ASSERT_NONNULL(argumentSpan).clone()});
                 continue;
               }
             }
@@ -5795,7 +5841,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             zc::Maybe<checker::checked::CanonicalConstValue> noValue;
             callArguments.add(HirDirectCallArgument{argumentType, zc::mv(noValue),
-                                                    zc::mv(parameterKey), zc::none,
+                                                    zc::mv(parameterKey), zc::none, zc::none,
                                                     ZC_ASSERT_NONNULL(argumentSpan).clone()});
           }
           call =
@@ -6068,6 +6114,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t directScalarLocalCallCount = 0;
   size_t receiverCallCount = 0;
   size_t receiverCallArgumentCount = 0;
+  size_t receiverCallFieldArgumentCount = 0;
   size_t receiverSelfCallCount = 0;
   size_t localReturnCount = 0;
   size_t uninitializedLocalReturnCount = 0;
@@ -6485,6 +6532,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     ZC_IF_SOME(call, function.receiverCall) {
       ++receiverCallCount;
       receiverCallArgumentCount += call.arguments.size();
+      for (const auto& argument : call.arguments) {
+        if (argument.field != zc::none) { ++receiverCallFieldArgumentCount; }
+      }
       if (function.local == zc::none || function.localReference == zc::none ||
           function.call != zc::none || function.literal != zc::none ||
           function.aggregate == zc::none ||
@@ -6535,7 +6585,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.localFieldProjection != zc::none) ++localFieldProjectionCount;
     if (function.parameterFieldProjection != zc::none) ++parameterFieldProjectionCount;
     if (function.parameterFieldWrite != zc::none) ++parameterFieldWriteCount;
-    if (hasParameterReference) ++parameterReferenceCount;
+    if (hasParameterReference) { ++parameterReferenceCount; }
     if (function.parameterFieldWriteParameter != zc::none) ++parameterReferenceCount;
     if (hasParameterIndex) ++parameterIndexCount;
     ZC_IF_SOME(reborrow, function.parameterReborrow) {
@@ -6621,20 +6671,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 2);
   }
-  if (static_cast<int64_t>(facts.literals().size()) !=
+  const int64_t expectedLiterals =
       static_cast<int64_t>(
           pending.size() + pendingFunctions.size() - voidFunctionCount - directCallCount -
           aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
           parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount -
           binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
-          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount +
-          conditionalLiteralArmCount + equalityLiteralOperandCount - conditionalCount +
-          comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
-          binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
-          directScalarLocalCallCount + leadingLocalConditionalBindingCount +
-          leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
-          leadingLocalConditionalBinaryLiteralOperandCount - postfixIncrementWriteCount) +
-          sequentialLiteralAdjustment) {
+          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
+          receiverCallFieldArgumentCount + conditionalLiteralArmCount +
+          equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
+          comparisonReturnCount - unaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
+          directAggregateCallCount + directScalarLocalCallCount +
+          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
+          leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount -
+          postfixIncrementWriteCount) +
+      sequentialLiteralAdjustment;
+  if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
@@ -6663,15 +6715,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }
-  if (facts.members().size() !=
-      localFieldProjectionCount + localFieldWriteCount + receiverCallCount + receiverSelfCallCount +
-          parameterFieldProjectionCount + parameterFieldWriteCount + receiverFieldArithmeticCount) {
+  if (facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
+                                    receiverCallCount + receiverSelfCallCount +
+                                    parameterFieldProjectionCount + parameterFieldWriteCount +
+                                    receiverFieldArithmeticCount + receiverCallFieldArgumentCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 7);
   }
   if (facts.places().size() != localFieldProjectionCount + localFieldWriteCount +
                                    parameterIndexCount + parameterFieldProjectionCount +
-                                   receiverFieldArithmeticCount + parameterFieldWriteCount ||
+                                   receiverFieldArithmeticCount + parameterFieldWriteCount +
+                                   receiverCallFieldArgumentCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

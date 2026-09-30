@@ -4985,6 +4985,47 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             const auto argument = input.boundModule.tree().list(arguments)[index];
             auto argumentType = factEntry(nodeTypes.asPtr(), argument);
             auto literal = factEntry(literals.asPtr(), argument);
+            // A field-projection argument on the receiver local
+            // (`cell.echo(cell.value)`) is admitted structurally: its node-type
+            // fact is produced at a later production stage, so the field type
+            // is resolved from the binding rather than looked up. The two
+            // `cell` identifiers are distinct AST nodes, so the match is by
+            // owner-local binding, not by NodeId.
+            const auto& argumentTree = input.boundModule.tree();
+            const bool isReceiverFieldArgument =
+                argumentTree.contains(argument) &&
+                argumentTree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+                resolvedOwnerLocal(
+                    input.boundModule.bindings(),
+                    ast::NodeId(argumentTree.node(argument)
+                                    .payload.words[ast::kMemberExpressionObjectWord])) ==
+                    resolvedOwnerLocal(input.boundModule.bindings(), value.receiverNode);
+            if (isReceiverFieldArgument) {
+              auto fieldShape = ownerLocalFieldShape(input, argument, nodeTypes.asPtr());
+              if (fieldShape == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              if (ZC_ASSERT_NONNULL(fieldShape).fieldType != value.parameters[index]) {
+                ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                  ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                    return attachRecoveryLedger(
+                        rejectTypeMismatch(site, ownerOrdinal, value.parameters[index],
+                                           ZC_ASSERT_NONNULL(fieldShape).fieldType),
+                        input, factStoreBrands);
+                  }
+                }
+                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+              checkedArguments.add(
+                  checked::CheckedArgumentFact{argument, ZC_ASSERT_NONNULL(fieldShape).fieldType,
+                                               value.parameters[index], zc::mv(noAdjustment)});
+              continue;
+            }
             if (!input.boundModule.tree().contains(argument) ||
                 !isScalarLiteral(input.boundModule.tree().node(argument).kind) ||
                 argumentType == zc::none || literal == zc::none) {

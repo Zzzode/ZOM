@@ -144,7 +144,8 @@ zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statemen
   return item;
 }
 
-bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call) {
+bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call,
+                          ast::NodeId receiver = ast::NodeId()) {
   const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
                                     call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
   const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
@@ -152,13 +153,32 @@ bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call) {
   if (!tree.contains(typeArguments) || !tree.contains(arguments) || !typeArguments.empty()) {
     return false;
   }
+  const bool hasReceiver = tree.contains(receiver);
   for (const auto argument : tree.list(arguments)) {
     // Admit a scalar-literal or an identifier argument (a parameter or local
     // reference resolved downstream). Type and callee-argument matching is a
     // checker/HIR decision and stays out of surface admission.
     if (!tree.contains(argument) || (!isScalarLiteral(tree.node(argument).kind) &&
                                      tree.node(argument).kind != ast::SyntaxKind::IdentExpr)) {
-      return false;
+      // A field-projection argument on the receiver local
+      // (`cell.echo(cell.value)`) is admitted structurally: the argument is a
+      // dot member expression whose object names the same local as the call
+      // receiver. The binding match and field type are checker decisions.
+      if (!hasReceiver || !tree.contains(argument) ||
+          tree.node(argument).kind != ast::SyntaxKind::MemberExpression ||
+          static_cast<ast::MemberAccessKind>(
+              tree.node(argument).payload.words[ast::kMemberExpressionAccessWord]) !=
+              ast::MemberAccessKind::Dot) {
+        return false;
+      }
+      const ast::NodeId fieldObject(
+          tree.node(argument).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(fieldObject) ||
+          tree.node(fieldObject).kind != ast::SyntaxKind::IdentExpr ||
+          tree.node(fieldObject).payload.words[ast::kIdentExprNameWord] !=
+              tree.node(receiver).payload.words[ast::kIdentExprNameWord]) {
+        return false;
+      }
     }
   }
   return true;
@@ -188,7 +208,7 @@ bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression) {
   }
   const ast::NodeId receiver(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
   return tree.contains(receiver) && tree.node(receiver).kind == ast::SyntaxKind::IdentExpr &&
-         hasAdmittedArguments(tree, call);
+         hasAdmittedArguments(tree, call, receiver);
 }
 
 bool isAdmittedReferenceReborrow(const ast::Tree& tree, ast::NodeId expression) {

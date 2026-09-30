@@ -5989,12 +5989,29 @@ bool validReceiverCallReturnFunction(
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index + 1];
     const auto& expected = call.arguments[index];
-    if (expected.value == zc::none) return false;
-    ZC_IF_SOME(value, expected.value) {
-      if (actual.kind() != MirOperandKind::Constant ||
-          actual.constantValue().type != expected.type ||
-          !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+    if (expected.value == zc::none) {
+      // Field-projection argument on the receiver local: the operand is a
+      // place-use of the receiver local with a single field projection.
+      if (expected.field == zc::none || !matchesPlaceUse(actual, proofs, copy, expected.type)) {
         return false;
+      }
+      const auto& argumentPlace = actual.place();
+      const auto field = ZC_ASSERT_NONNULL(expected.field);
+      if (argumentPlace.local() != local.id || argumentPlace.rootType() != local.type ||
+          argumentPlace.resultType() != expected.type || argumentPlace.projections().size() != 1 ||
+          argumentPlace.projections()[0].kind() != MirProjectionKind::Field ||
+          argumentPlace.projections()[0].fieldValue().field != field ||
+          argumentPlace.projections()[0].fieldValue().inputType != local.type ||
+          argumentPlace.projections()[0].fieldValue().resultType != expected.type) {
+        return false;
+      }
+    } else {
+      ZC_IF_SOME(value, expected.value) {
+        if (actual.kind() != MirOperandKind::Constant ||
+            actual.constantValue().type != expected.type ||
+            !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+          return false;
+        }
       }
     }
   }
@@ -7290,7 +7307,36 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                     ZC_IF_SOME(value, argument.value) {
                       arguments.add(MirOperand::constant(argument.type, value.clone()));
                     } else {
-                      constantArguments = false;
+                      ZC_IF_SOME(argumentLocal, argument.local) {
+                        ZC_IF_SOME(field, argument.field) {
+                          // A field-projection argument on the receiver local:
+                          // copy the field value through a place-use.
+                          if (argumentLocal != local.local) {
+                            return rejectMir<BuiltMirCandidate>(
+                                ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                                module, declaration.definition, identities,
+                                static_cast<uint32_t>(pending.size() + 1));
+                          }
+                          zc::Vector<MirProjection> argumentProjections;
+                          argumentProjections.add(
+                              MirProjection::field(field, local.type, argument.type));
+                          auto argumentOperand =
+                              placeUse(proofs, copy,
+                                       MirPlace(localId(1), local.type, zc::mv(argumentProjections),
+                                                argument.type));
+                          if (argumentOperand == zc::none) {
+                            return rejectMir<BuiltMirCandidate>(
+                                ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                                module, declaration.definition, identities,
+                                static_cast<uint32_t>(pending.size() + 1));
+                          }
+                          arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+                        } else {
+                          constantArguments = false;
+                        }
+                      } else {
+                        constantArguments = false;
+                      }
                     }
                   }
                   if (!constantArguments) {

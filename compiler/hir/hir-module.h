@@ -230,19 +230,25 @@ struct HirLocalBorrowExpression final {
 
 /// \brief One verified argument retained by a direct or receiver call expression.
 ///
-/// An argument is either a scalar constant (`value` populated) or a reference to
-/// a function parameter lowered to a place operand (`parameter` populated).
-/// Exactly one of the two is populated; the argument kind is discriminated by
-/// which, mirroring the literal-XOR-parameter shape of a conditional arm. A
-/// constant lowers to a `MirOperand::constant`; a parameter reference lowers to
-/// a copy/move place-use of the caller's parameter local.
+/// An argument is a scalar constant (`value` populated), a reference to a
+/// function parameter lowered to a place operand (`parameter` populated), an
+/// owner-local by-value aggregate (`local` populated, `field` unset), or a
+/// field projection on an owner local (`local` and `field` both populated).
+/// Exactly one carrier is populated; the argument kind is discriminated by
+/// which. A constant lowers to a `MirOperand::constant`; a parameter reference
+/// lowers to a copy/move place-use of the caller's parameter local; a local
+/// carrier lowers to a copy/move place-use, optionally through one field
+/// projection.
 struct HirDirectCallArgument final {
   identity::SemanticTypeId type;
   zc::Maybe<checker::checked::CanonicalConstValue> value;
   zc::Maybe<identity::CallableParameterKey> parameter;
-  // Populated for an owner-local by-value aggregate argument: the caller local
-  // whose nominal value the call copies into the callee parameter.
+  // Populated for an owner-local by-value aggregate argument or a field
+  // projection on that local: the caller local whose value the call copies.
   zc::Maybe<HirLocalId> local;
+  // Populated for a field-projection argument: the field of the `local`
+  // carrier whose value the call copies. Only populated when `local` is set.
+  zc::Maybe<identity::DefId> field;
   identity::SourceSpan sourceSpan;
 };
 

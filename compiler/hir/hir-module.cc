@@ -619,6 +619,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // initializer node.
   size_t directScalarLocalCallCount = 0;
   size_t receiverCallArgumentCount = 0;
+  // A field-projection argument (`cell.echo(cell.value)`) produces a node-type,
+  // member, and place fact but no literal fact, unlike a constant argument.
+  // Tracked to correct the literals, members, and places equations.
+  size_t receiverCallFieldArgumentCount = 0;
   // A self-call pool record forwards the implicit header receiver: its
   // receiver node slot is unset and it carries zero explicit arguments. Such a
   // record still contributes the call, member, dispatch, and two node-type
@@ -681,6 +685,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   }
   for (const auto& call : candidate.impl->receiverCalls) {
     receiverCallArgumentCount += call.arguments.size();
+    for (const auto& argument : call.arguments) {
+      if (argument.local != zc::none && argument.field != zc::none) {
+        ++receiverCallFieldArgumentCount;
+      }
+    }
     if (call.receiver == HirNodeId()) ++receiverSelfCallCount;
   }
   size_t uninitializedLocalReturnCount = 0;
@@ -1161,16 +1170,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
               leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 ||
       static_cast<int64_t>(facts.literals().size()) !=
-          static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
-                               directCallCount - aggregateCount - receiverSelfCallCount -
-                               uninitializedLocalReturnCount - parameterReferenceCount -
-                               parameterReborrowCount - parameterFieldProjectionCount +
-                               localAliasReborrowCount + localWriteCount + aggregateElementCount +
-                               directCallLiteralArgumentCount + receiverCallArgumentCount +
-                               effectiveConditionalCount * 2 + equalityConditionalCount -
-                               unaryReturnCount + loopCount + binaryWriteCount +
-                               parameterFieldWriteCount + receiverFieldArithmeticCount +
-                               directAggregateCallCount + directScalarLocalCallCount) +
+          static_cast<int64_t>(
+              declarationCount + functionCount - voidFunctionCount - directCallCount -
+              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
+              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
+              localAliasReborrowCount + localWriteCount + aggregateElementCount +
+              directCallLiteralArgumentCount + receiverCallArgumentCount -
+              receiverCallFieldArgumentCount + effectiveConditionalCount * 2 +
+              equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
+              parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
+              directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
               leadingLocalConditionalArithmeticParameterCount +
@@ -1184,11 +1193,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       facts.casts().size() != sequentialCastInitializers ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
-                                    receiverCallCount + parameterFieldProjectionCount +
-                                    parameterFieldWriteCount ||
+                                    receiverCallCount + receiverCallFieldArgumentCount +
+                                    parameterFieldProjectionCount + parameterFieldWriteCount ||
       facts.places().size() != localFieldProjectionCount + localFieldWriteCount +
-                                   parameterIndexCount + parameterFieldProjectionCount +
-                                   parameterFieldWriteCount ||
+                                   receiverCallFieldArgumentCount + parameterIndexCount +
+                                   parameterFieldProjectionCount + parameterFieldWriteCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -7973,6 +7982,54 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto argumentTypeIndex = factIndex(facts.nodeTypes(), argument);
         auto literalIndex = factIndex(facts.literals(), argument);
         auto argumentSpan = bound.parsedModule().spanFor(tree.node(argument).range);
+        // A field-projection argument on the receiver local
+        // (`cell.echo(cell.value)`) is admitted structurally: its node-type
+        // fact is produced at a later production stage, so the field type
+        // is resolved from the member fact rather than the literal fact.
+        // The two `cell` identifiers are distinct AST nodes, so the match
+        // is by owner-local binding, not by NodeId.
+        const bool isReceiverFieldArgument =
+            tree.contains(argument) &&
+            tree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+            static_cast<ast::MemberAccessKind>(
+                tree.node(argument).payload.words[ast::kMemberExpressionAccessWord]) ==
+                ast::MemberAccessKind::Dot &&
+            resolvedOwnerLocal(
+                bound.bindings(),
+                ast::NodeId(tree.node(argument).payload.words[ast::kMemberExpressionObjectWord])) ==
+                receiverBinding;
+        if (isReceiverFieldArgument) {
+          auto argumentMemberIndex = factIndex(facts.members(), argument);
+          if (argumentTypeIndex == zc::none || argumentMemberIndex == zc::none ||
+              argumentSpan == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t argumentTypeSlot = 0;
+          size_t argumentMemberSlot = 0;
+          ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+          ZC_IF_SOME(value, argumentMemberIndex) { argumentMemberSlot = value; }
+          const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+          const auto& argumentMember = facts.members().entries()[argumentMemberSlot].value;
+          const auto& checkedArgument = invocation.arguments[argumentIndex];
+          const auto& hirArgument = ZC_ASSERT_NONNULL(receiverCall).arguments[argumentIndex];
+          if (checkedArgument.sourceNode != argument ||
+              checkedArgument.sourceType != argumentType ||
+              checkedArgument.parameterType != argumentType ||
+              checkedArgument.adjustment != zc::none || argumentMember.node != argument ||
+              argumentMember.memberType != argumentType ||
+              argumentMember.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+              argumentMember.adjustment != zc::none || hirArgument.type != argumentType ||
+              hirArgument.value != zc::none || hirArgument.parameter != zc::none ||
+              hirArgument.local != hirLocalId(1) || hirArgument.field != argumentMember.member ||
+              !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          continue;
+        }
         if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind) ||
             argumentTypeIndex == zc::none || literalIndex == zc::none || argumentSpan == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
