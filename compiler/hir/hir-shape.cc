@@ -131,16 +131,6 @@ zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statem
   return declarator;
 }
 
-bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
-  if (!tree.contains(pattern) || !tree.contains(reference) ||
-      tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
-      tree.node(reference).kind != ast::SyntaxKind::IdentExpr) {
-    return false;
-  }
-  return tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord] ==
-         tree.node(reference).payload.words[ast::kIdentExprNameWord];
-}
-
 // Classifies one statement as the conditional-return shape: an `if` with block
 // branches whose tails each return, either over a bare identifier condition or
 // a relational comparison of identifier/scalar-literal operands. Returns none
@@ -318,6 +308,11 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     zc::Maybe<checker::PrimitiveOperation> unaryOperation;
     zc::Maybe<SequentialBinaryOperand> unaryOperand;
     ast::NodeId castInnerNode;
+    ast::NodeId ternaryCondNode;
+    ast::NodeId ternaryThenNode;
+    ast::NodeId ternaryElseNode;
+    bool ternaryConditionIsLocal = false;
+    bool ternaryConditionIsLiteral = false;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
@@ -474,12 +469,47 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       }
       kind = SequentialInitializerKind::Cast;
       castInnerNode = castExpr;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::ConditionalExpr) {
+      // A ternary conditional expression `cond ? then : else`. The condition
+      // is a bool reference or a bool literal; both branches are scalar
+      // literals of the same type. The builder lowers this to a conditional
+      // select.
+      const ast::NodeId cond(tree.node(initializer).payload.words[ast::kConditionalExprCondWord]);
+      const ast::NodeId thenExpr(
+          tree.node(initializer).payload.words[ast::kConditionalExprThenExprWord]);
+      const ast::NodeId elseExpr(
+          tree.node(initializer).payload.words[ast::kConditionalExprElseExprWord]);
+      if (!tree.contains(cond) || !tree.contains(thenExpr) || !tree.contains(elseExpr)) {
+        return zc::none;
+      }
+      const bool conditionIsLiteral = tree.node(cond).kind == ast::SyntaxKind::BoolLiteral;
+      if ((tree.node(cond).kind != ast::SyntaxKind::IdentExpr && !conditionIsLiteral) ||
+          !isScalarLiteral(tree.node(thenExpr).kind) ||
+          !isScalarLiteral(tree.node(elseExpr).kind)) {
+        return zc::none;
+      }
+      kind = SequentialInitializerKind::Ternary;
+      ternaryCondNode = cond;
+      ternaryThenNode = thenExpr;
+      ternaryElseNode = elseExpr;
+      if (conditionIsLiteral) {
+        ternaryConditionIsLiteral = true;
+      } else {
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, cond)) {
+            ternaryConditionIsLocal = true;
+            break;
+          }
+        }
+      }
     } else {
       return zc::none;
     }
     shape.bindings.add(SequentialLocalBinding{
         declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
-        zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand), castInnerNode});
+        zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand), castInnerNode,
+        ternaryCondNode, ternaryThenNode, ternaryElseNode, ternaryConditionIsLocal,
+        ternaryConditionIsLiteral});
   }
   auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnItem == zc::none) return zc::none;
@@ -559,9 +589,9 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     } else {
       return zc::none;
     }
-    shape.bindings.add(SequentialLocalBinding{declarator, pattern, initializer, kind,
-                                              referencedLocal, zc::none, zc::none, zc::none,
-                                              zc::none, ast::NodeId()});
+    shape.bindings.add(SequentialLocalBinding{
+        declarator, pattern, initializer, kind, referencedLocal, zc::none, zc::none, zc::none,
+        zc::none, ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
   }
   auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (tailItem == zc::none) return zc::none;
@@ -1337,7 +1367,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             (shape.bindings.size() == 1 &&
              (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::Cast));
+              shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
+              shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

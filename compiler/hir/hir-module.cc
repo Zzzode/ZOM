@@ -6,6 +6,7 @@
 #include "compiler/hir/hir-module.h"
 
 #include <cstdint>
+#include <cstdio>
 
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -710,6 +711,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t sequentialBinaryLiteralOperands = 0;
   size_t sequentialBinaryParameterOperands = 0;
   size_t sequentialBinaryLocalOperands = 0;
+  // Ternary bindings and, of those, the count whose condition names an earlier
+  // local (rather than a parameter).
+  size_t sequentialTernaryCount = 0;
+  size_t sequentialTernaryLocalConditions = 0;
+  // Ternary bindings whose condition is a parameter reference. These are
+  // counted in parameterReferenceCount (subtracted by the expressions and
+  // literals equations) but are conditions, not initializers, so the
+  // sequentialLiteralCorrection does not compensate for them. Tracked to add
+  // them back.
+  size_t sequentialTernaryParameterConditions = 0;
   {
     const auto& tree = bound.tree();
     for (const auto& functionDeclaration : candidate.impl->functions) {
@@ -731,7 +742,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, sequentialShape) {
         ++sequentialFunctionCount;
         sequentialLocalCount += value.bindings.size();
-        for (const auto& binding : value.bindings) {
+        for (size_t bindingIndex = 0; bindingIndex < value.bindings.size(); ++bindingIndex) {
+          const auto& binding = value.bindings[bindingIndex];
           switch (binding.initializerKind) {
             case SequentialInitializerKind::Literal:
               ++sequentialLiteralInitializers;
@@ -810,6 +822,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 }
               }
               break;
+            case SequentialInitializerKind::Ternary:
+              // A ternary conditional expression. The condition is a bool
+              // reference or a bool literal; both branches are scalar
+              // literals. Each branch counts as a literal-bearing slot. The
+              // condition may name an earlier local or a parameter; track the
+              // local case for the localReferences correction. A bool literal
+              // condition contributes one additional literal.
+              ++sequentialTernaryCount;
+              ++sequentialLiteralInitializers;
+              ++sequentialLiteralInitializers;
+              if (binding.ternaryConditionIsLiteral) { ++sequentialLiteralInitializers; }
+              if (binding.ternaryConditionIsLocal) { ++sequentialTernaryLocalConditions; }
+              if (!binding.ternaryConditionIsLiteral && !binding.ternaryConditionIsLocal) {
+                ++sequentialTernaryParameterConditions;
+              }
+              break;
           }
         }
         if (value.returnsLocal == zc::none) {
@@ -820,6 +848,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // Ternary bindings add their HirConditionalExpression to the conditionals
+  // vector, but the builder's conditionalCount excludes them (the conditional
+  // is the binding initializer counted by localReturnCount, and its condition
+  // and arm literals are counted by sequentialTernaryCount). Subtract to match
+  // the builder's tally.
+  const size_t effectiveConditionalCount = conditionalCount - sequentialTernaryCount;
   // Leading-local conditional corrections. Each such function contributes K
   // locals but only R_init (local-reference initializers) plus lc_local
   // (comparison operands reading a leading local) actual local references. Its
@@ -959,17 +993,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     if (operation.isUnaryDesugar) ++unaryReturnCount;
   }
   // localReferences: sequential locals contribute N to the localReturnCount
-  // baseline but only L_loc + R_loc + binary-local-operand actual local
-  // references. Signed because binary local operands can exceed the shortfall.
+  // baseline but only L_loc + R_loc + binary-local-operand + ternary-local-
+  // condition actual local references. Signed because binary local operands can
+  // exceed the shortfall.
   const int64_t sequentialLocalReferenceCorrection =
       static_cast<int64_t>(sequentialLocalCount) -
       static_cast<int64_t>(sequentialLocalInitializers + sequentialLocalReturns +
-                           sequentialBinaryLocalOperands);
+                           sequentialBinaryLocalOperands + sequentialTernaryLocalConditions);
   // expressions and literals: each sequential function contributes one baseline
   // value node minus its aggregate and parameter-reference credits, but the true
   // scalar-literal count is L_lit plus any binary literal operands. Both
   // equations need the same correction. Signed because an all-reference binary
-  // body carries fewer literals than the per-function baseline grants.
+  // body carries fewer literals than the per-function baseline grants. A
+  // ternary binding's two arm literals are counted by
+  // sequentialLiteralInitializers, so only the per-function baseline is
+  // subtracted here.
   const int64_t sequentialLiteralCorrection =
       static_cast<int64_t>(sequentialLiteralInitializers + sequentialAggregateInitializers +
                            sequentialParameterInitializers + sequentialParameterReturns +
@@ -1005,22 +1043,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
               directAggregateCallCount - directScalarLocalCallCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
-          functionCount + localAliasReborrowCount + conditionalCount * 2 +
+          functionCount + localAliasReborrowCount + effectiveConditionalCount * 2 +
               equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
               sequentialParameterReturns + sequentialBinaryParameterOperands +
               binaryWriteParameterOperands ||
       candidate.impl->blocks.size() != functionCount ||
       candidate.impl->returns.size() != functionCount - voidFunctionCount ||
       static_cast<int64_t>(candidate.impl->expressions.size()) !=
-          static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
-                               directCallCount - aggregateCount - receiverSelfCallCount -
-                               uninitializedLocalReturnCount - parameterReferenceCount -
-                               parameterReborrowCount - parameterFieldProjectionCount +
-                               localAliasReborrowCount + localWriteCount + conditionalCount * 2 +
-                               equalityConditionalCount + loopCount + binaryWriteCount +
-                               parameterFieldWriteCount + receiverFieldArithmeticCount +
-                               directAggregateCallCount + directScalarLocalCallCount) +
-              sequentialLiteralCorrection + leadingLocalConditionalCorrection ||
+          static_cast<int64_t>(
+              declarationCount + functionCount - voidFunctionCount - directCallCount -
+              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
+              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
+              localAliasReborrowCount + localWriteCount + effectiveConditionalCount * 2 +
+              equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
+              receiverFieldArithmeticCount + directAggregateCallCount +
+              directScalarLocalCallCount) +
+              sequentialLiteralCorrection + sequentialTernaryParameterConditions +
+              leadingLocalConditionalCorrection ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -1029,23 +1068,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localWriteCount * 3 + aggregateElementCount + localFieldProjectionCount +
               localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
               directCallArgumentCount + receiverCallArgumentCount + localBorrowCount +
-              unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 -
+              unsafeBlockCount + effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
               unaryReturnCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
               parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
               parameterFieldWriteCount * 4 + discardedStatementCallCount +
-              sequentialCastInitializers - leadingLocalConditionalUnaryCount ||
-      static_cast<int64_t>(facts.literals().size()) !=
-          static_cast<int64_t>(
-              declarationCount + functionCount - voidFunctionCount - directCallCount -
-              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-              localAliasReborrowCount + localWriteCount + aggregateElementCount +
-              directCallLiteralArgumentCount + receiverCallArgumentCount + conditionalCount * 2 +
-              equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
-              parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
-              directScalarLocalCallCount) +
-              sequentialLiteralCorrection + leadingLocalConditionalCorrection -
+              sequentialCastInitializers + sequentialTernaryCount * 3 -
               leadingLocalConditionalUnaryCount ||
+      static_cast<int64_t>(facts.literals().size()) !=
+          static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
+                               directCallCount - aggregateCount - receiverSelfCallCount -
+                               uninitializedLocalReturnCount - parameterReferenceCount -
+                               parameterReborrowCount - parameterFieldProjectionCount +
+                               localAliasReborrowCount + localWriteCount + aggregateElementCount +
+                               directCallLiteralArgumentCount + receiverCallArgumentCount +
+                               effectiveConditionalCount * 2 + equalityConditionalCount -
+                               unaryReturnCount + loopCount + binaryWriteCount +
+                               parameterFieldWriteCount + receiverFieldArithmeticCount +
+                               directAggregateCallCount + directScalarLocalCallCount) +
+              sequentialLiteralCorrection + sequentialTernaryParameterConditions +
+              leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
                                   receiverFieldArithmeticCount + binaryWriteCount ||
@@ -1650,6 +1691,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // return statement follows the last binding's nodes. This mirrors the
       // materializer's id allocation exactly.
       auto bindingWidth = [&](const SequentialLocalBinding& binding) -> uint32_t {
+        if (binding.initializerKind == SequentialInitializerKind::Ternary) {
+          // local + conditional + condition + then-branch + else-branch
+          return 5u;
+        }
         if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary &&
             binding.initializerKind != SequentialInitializerKind::PrimitiveUnary)
           return 2u;
@@ -2031,6 +2076,168 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             bindingsValid = false;
             break;
           }
+        } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
+          // Ternary: the initializer node is a HirConditionalExpression that
+          // selects between two scalar-literal branch values based on a bool
+          // condition. The condition, then-branch, and else-branch are separate
+          // expression nodes at +1, +2, +3.
+          const uint32_t conditionOrdinal = initializerNodeOrdinal + 1;
+          const uint32_t thenOrdinal = initializerNodeOrdinal + 2;
+          const uint32_t elseOrdinal = initializerNodeOrdinal + 3;
+          zc::Maybe<const HirConditionalExpression&> conditional;
+          for (const auto& cond : candidate.impl->conditionals) {
+            if (cond.node != hirId(initializerNodeOrdinal)) continue;
+            if (conditional != zc::none) bindingsValid = false;
+            conditional = cond;
+          }
+          if (!bindingsValid || conditional == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& condValue = ZC_ASSERT_NONNULL(conditional);
+          if (condValue.condition != hirId(conditionOrdinal) ||
+              condValue.thenReturnValue != hirId(thenOrdinal) ||
+              condValue.elseReturnValue != hirId(elseOrdinal) || condValue.type != bindingType ||
+              condValue.category != HirValueCategory::Value ||
+              !sameSpan(condValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the condition node: a bool local or parameter reference.
+          auto condSpan = bound.parsedModule().spanFor(tree.node(binding.ternaryCondNode).range);
+          auto condTypeIndex = factIndex(facts.nodeTypes(), binding.ternaryCondNode);
+          if (condSpan == zc::none || condTypeIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          size_t condTypeSlot = 0;
+          ZC_IF_SOME(value, condTypeIndex) { condTypeSlot = value; }
+          const identity::SemanticTypeId condType = facts.nodeTypes().entries()[condTypeSlot].value;
+          // Resolve the condition to an earlier local, a parameter, or a bool
+          // literal.
+          bool conditionIsLocal = false;
+          size_t conditionLocal = 0;
+          for (size_t earlier = 0; earlier < bindingIndex; ++earlier) {
+            if (matchesLocalReference(tree, source.bindings[earlier].pattern,
+                                      binding.ternaryCondNode)) {
+              conditionIsLocal = true;
+              conditionLocal = earlier;
+              break;
+            }
+          }
+          if (binding.ternaryConditionIsLiteral) {
+            // The condition is a bool literal; verify a scalar-literal
+            // expression at the condition ordinal.
+            zc::Maybe<const HirScalarLiteralExpression&> condLiteral;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != hirId(conditionOrdinal)) continue;
+              if (condLiteral != zc::none) bindingsValid = false;
+              condLiteral = expression;
+            }
+            if (!bindingsValid || condLiteral == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            auto condLiteralIndex = factIndex(facts.literals(), binding.ternaryCondNode);
+            if (condLiteralIndex == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            size_t condLiteralSlot = 0;
+            ZC_IF_SOME(value, condLiteralIndex) { condLiteralSlot = value; }
+            const auto& condLiteralFact = facts.literals().entries()[condLiteralSlot].value;
+            const auto& condLiteralValue = ZC_ASSERT_NONNULL(condLiteral);
+            if (condLiteralValue.type != condType ||
+                condLiteralValue.category != HirValueCategory::Value ||
+                condLiteralFact.type != condType ||
+                !sameConstant(condLiteralValue.value, condLiteralFact.literal, module, registries,
+                              semanticTypes) ||
+                !sameSpan(condLiteralValue.sourceSpan, ZC_ASSERT_NONNULL(condSpan))) {
+              bindingsValid = false;
+              break;
+            }
+          } else if (conditionIsLocal) {
+            zc::Maybe<const HirLocalReferenceExpression&> condRef;
+            for (const auto& reference : candidate.impl->localReferences) {
+              if (reference.node != hirId(conditionOrdinal)) continue;
+              if (condRef != zc::none) bindingsValid = false;
+              condRef = reference;
+            }
+            if (!bindingsValid || condRef == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            const auto& refValue = ZC_ASSERT_NONNULL(condRef);
+            if (refValue.local != hirLocalId(static_cast<uint32_t>(conditionLocal + 1)) ||
+                refValue.type != condType || refValue.category != HirValueCategory::Place ||
+                !sameSpan(refValue.sourceSpan, ZC_ASSERT_NONNULL(condSpan))) {
+              bindingsValid = false;
+              break;
+            }
+          } else {
+            auto parameterHandle =
+                resolvedCallableParameter(bound.bindings(), binding.ternaryCondNode);
+            zc::Maybe<const HirParameterReferenceExpression&> condRef;
+            for (const auto& reference : candidate.impl->parameterReferences) {
+              if (reference.node != hirId(conditionOrdinal)) continue;
+              if (condRef != zc::none) bindingsValid = false;
+              condRef = reference;
+            }
+            if (!bindingsValid || condRef == zc::none || parameterHandle == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            const auto& refValue = ZC_ASSERT_NONNULL(condRef);
+            bool parameterMatches = false;
+            identity::CallableParameterId handle;
+            ZC_IF_SOME(value, parameterHandle) { handle = value; }
+            auto authority = registries.callableParameter(handle);
+            ZC_IF_SOME(entry, authority) {
+              parameterMatches = refValue.parameter == entry.key() && refValue.type == condType &&
+                                 refValue.category == HirValueCategory::Place &&
+                                 sameSpan(refValue.sourceSpan, ZC_ASSERT_NONNULL(condSpan));
+            }
+            if (!parameterMatches) {
+              bindingsValid = false;
+              break;
+            }
+          }
+          // Verify the then-branch and else-branch literal nodes.
+          for (const auto* branchNode : {&binding.ternaryThenNode, &binding.ternaryElseNode}) {
+            const uint32_t branchOrdinal =
+                branchNode == &binding.ternaryThenNode ? thenOrdinal : elseOrdinal;
+            zc::Maybe<const HirScalarLiteralExpression&> branchLiteral;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != hirId(branchOrdinal)) continue;
+              if (branchLiteral != zc::none) bindingsValid = false;
+              branchLiteral = expression;
+            }
+            if (!bindingsValid || branchLiteral == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            auto literalIndex = factIndex(facts.literals(), *branchNode);
+            if (literalIndex == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            const auto& literalValue = ZC_ASSERT_NONNULL(branchLiteral);
+            auto branchSpan = bound.parsedModule().spanFor(tree.node(*branchNode).range);
+            if (literalValue.type != bindingType ||
+                literalValue.category != HirValueCategory::Value ||
+                literalFact.type != bindingType ||
+                !sameConstant(literalValue.value, literalFact.literal, module, registries,
+                              semanticTypes) ||
+                branchSpan == zc::none ||
+                !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(branchSpan))) {
+              bindingsValid = false;
+              break;
+            }
+          }
+          if (!bindingsValid) break;
         } else {
           // PrimitiveBinary: the initializer node is a HirPrimitiveBinaryExpression
           // referencing its two operand nodes (left at +1, right at +2). Each
@@ -3590,6 +3797,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                   }
                 }
               }
+            } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
+              // Ternary bindings are not admitted in the leading-local
+              // conditional shape; leadingLocalConditionalShape rejects any
+              // initializer that is not a scalar literal or identifier. This
+              // arm is a fail-closed defense in depth.
+              initializerRecordOk = false;
             } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
               auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
               for (const auto& reference : candidate.impl->localReferences) {

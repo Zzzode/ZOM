@@ -50,6 +50,7 @@ enum class BodyProductionKind : uint8_t {
   ReceiverFieldWrite = 0x1a,
   PrimitiveUnaryOperation = 0x1b,
   IntegerCast = 0x1c,
+  ConditionalExpression = 0x1d,
   Unsupported = 0x17
 };
 
@@ -4346,6 +4347,28 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
           break;
         }
+        case ast::SyntaxKind::ConditionalExpr: {
+          // Admit a ternary conditional expression whose condition is a scalar
+          // bool literal or reference (parameter or owner local) and whose
+          // branches are scalar literals of the same type. Every other ternary
+          // shape stays unsupported so its existing rejection stands.
+          const ast::NodeId condNode(syntax.payload.words[ast::kConditionalExprCondWord]);
+          const ast::NodeId thenNode(syntax.payload.words[ast::kConditionalExprThenExprWord]);
+          const ast::NodeId elseNode(syntax.payload.words[ast::kConditionalExprElseExprWord]);
+          if (!tree.contains(condNode) || !tree.contains(thenNode) || !tree.contains(elseNode)) {
+            break;
+          }
+          const auto& condSyntax = tree.node(condNode);
+          const auto& thenSyntax = tree.node(thenNode);
+          const auto& elseSyntax = tree.node(elseNode);
+          if (condSyntax.kind != ast::SyntaxKind::IdentExpr &&
+              condSyntax.kind != ast::SyntaxKind::BoolLiteral) {
+            break;
+          }
+          if (!isScalarLiteral(thenSyntax.kind) || !isScalarLiteral(elseSyntax.kind)) { break; }
+          production = BodyProductionKind::ConditionalExpression;
+          break;
+        }
         default:
           break;
       }
@@ -4518,11 +4541,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool unsafeBlock = site.production == BodyProductionKind::UnsafeBlock;
       const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
       const bool integerCast = site.production == BodyProductionKind::IntegerCast;
+      const bool conditionalExpr = site.production == BodyProductionKind::ConditionalExpression;
       if ((stage == 0 && (structured || projected || fieldWrite || receiverFieldWrite ||
                           directCall || concreteMethodCall || errorOperator || indexed ||
-                          unsafeBlock || primitiveBinary || integerCast)) ||
+                          unsafeBlock || primitiveBinary || integerCast || conditionalExpr)) ||
           (stage == 1 && (((!structured && !directCall) || errorOperator || indexed) &&
-                          !unsafeBlock && !primitiveBinary && !integerCast)) ||
+                          !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 &&
            (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
@@ -5415,6 +5439,38 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                      zc::mv(noDynPath), checked::UnsafeRequirement::None,
                                      site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::ConditionalExpression) {
+        // A ternary conditional expression `cond ? then : else`. The condition
+        // is a bool literal or reference; both branches are scalar literals of
+        // the same type. The result type is the branch type.
+        const auto& condNode = input.boundModule.tree().node(site.node);
+        const ast::NodeId condExpr(condNode.payload.words[ast::kConditionalExprCondWord]);
+        const ast::NodeId thenExpr(condNode.payload.words[ast::kConditionalExprThenExprWord]);
+        const ast::NodeId elseExpr(condNode.payload.words[ast::kConditionalExprElseExprWord]);
+        auto condType = factEntry(nodeTypes.asPtr(), condExpr);
+        auto thenType = factEntry(nodeTypes.asPtr(), thenExpr);
+        auto elseType = factEntry(nodeTypes.asPtr(), elseExpr);
+        if (condType == zc::none || thenType == zc::none || elseType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto cond = ZC_ASSERT_NONNULL(condType).value;
+        const auto then = ZC_ASSERT_NONNULL(thenType).value;
+        const auto elseTy = ZC_ASSERT_NONNULL(elseType).value;
+        auto condKind = primitiveKindOf(input.semanticTypes, cond);
+        if (condKind == zc::none ||
+            ZC_ASSERT_NONNULL(condKind) != type::semantic::PrimitiveKind::Bool) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        if (then != elseTy) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = then;
       } else if (site.production == BodyProductionKind::LocalWrite) {
         const auto& assignment = input.boundModule.tree().node(site.node);
         const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);

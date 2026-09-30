@@ -245,6 +245,9 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   zc::Vector<zc::Maybe<HirNodeId>> leftNestedLeafRightIds;
   zc::Vector<zc::Maybe<HirNodeId>> rightNestedLeafLeftIds;
   zc::Vector<zc::Maybe<HirNodeId>> rightNestedLeafRightIds;
+  zc::Vector<zc::Maybe<HirNodeId>> ternaryConditionIds;
+  zc::Vector<zc::Maybe<HirNodeId>> ternaryThenIds;
+  zc::Vector<zc::Maybe<HirNodeId>> ternaryElseIds;
   for (size_t index = 0; index < bindingCount; ++index) {
     localNodeIds.add(ctx.allocNode());
     initializerNodeIds.add(ctx.allocNode());
@@ -271,12 +274,23 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         }
       }
     }
+    zc::Maybe<HirNodeId> ternaryConditionId;
+    zc::Maybe<HirNodeId> ternaryThenId;
+    zc::Maybe<HirNodeId> ternaryElseId;
+    if (sequential.bindings[index].kind == SequentialInitializerKind::Ternary) {
+      ternaryConditionId = ctx.allocNode();
+      ternaryThenId = ctx.allocNode();
+      ternaryElseId = ctx.allocNode();
+    }
     leftOperandIds.add(zc::mv(leftOperandId));
     rightOperandIds.add(zc::mv(rightOperandId));
     leftNestedLeafLeftIds.add(zc::mv(leftNestedLeafLeftId));
     leftNestedLeafRightIds.add(zc::mv(leftNestedLeafRightId));
     rightNestedLeafLeftIds.add(zc::mv(rightNestedLeafLeftId));
     rightNestedLeafRightIds.add(zc::mv(rightNestedLeafRightId));
+    ternaryConditionIds.add(zc::mv(ternaryConditionId));
+    ternaryThenIds.add(zc::mv(ternaryThenId));
+    ternaryElseIds.add(zc::mv(ternaryElseId));
   }
   const HirNodeId returnId = ctx.allocNode();
   const HirNodeId returnValueId = ctx.allocNode();
@@ -450,6 +464,50 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
                                                        binding.initializerSpan.clone()});
         }
         break;
+      case SequentialInitializerKind::Ternary: {
+        // A ternary conditional expression. The condition is a bool parameter
+        // or local reference; both branches are scalar literals. The
+        // initializer node is the HirConditionalExpression that selects the
+        // branch value.
+        HirNodeId conditionId;
+        HirNodeId thenId;
+        HirNodeId elseId;
+        ZC_IF_SOME(id, ternaryConditionIds[index]) { conditionId = id; }
+        ZC_IF_SOME(id, ternaryThenIds[index]) { thenId = id; }
+        ZC_IF_SOME(id, ternaryElseIds[index]) { elseId = id; }
+        if (binding.ternaryConditionIsLiteral) {
+          ZC_IF_SOME(literal, binding.ternaryConditionLiteral) {
+            ctx.addExpression(HirScalarLiteralExpression{
+                conditionId, binding.ternaryConditionType, literal.clone(), HirValueCategory::Value,
+                ZC_ASSERT_NONNULL(binding.ternaryConditionSpan).clone()});
+          }
+        } else if (binding.ternaryConditionIsLocal) {
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              conditionId, hirLocalId(static_cast<uint32_t>(binding.ternaryConditionLocal + 1)),
+              binding.ternaryConditionType, HirValueCategory::Place,
+              ZC_ASSERT_NONNULL(binding.ternaryConditionSpan).clone()});
+        } else {
+          ZC_IF_SOME(parameter, binding.ternaryConditionParameter) {
+            ctx.addParameterReference(HirParameterReferenceExpression{
+                conditionId, parameter.clone(), binding.ternaryConditionType,
+                HirValueCategory::Place, ZC_ASSERT_NONNULL(binding.ternaryConditionSpan).clone()});
+          }
+        }
+        ZC_IF_SOME(literal, binding.ternaryThenLiteral) {
+          ctx.addExpression(HirScalarLiteralExpression{
+              thenId, binding.type, literal.clone(), HirValueCategory::Value,
+              ZC_ASSERT_NONNULL(binding.ternaryThenSpan).clone()});
+        }
+        ZC_IF_SOME(literal, binding.ternaryElseLiteral) {
+          ctx.addExpression(HirScalarLiteralExpression{
+              elseId, binding.type, literal.clone(), HirValueCategory::Value,
+              ZC_ASSERT_NONNULL(binding.ternaryElseSpan).clone()});
+        }
+        ctx.addConditional(HirConditionalExpression{initializerNodeId, conditionId, thenId, elseId,
+                                                    binding.type, HirValueCategory::Value,
+                                                    binding.initializerSpan.clone()});
+        break;
+      }
     }
     ctx.addLocal(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
                                  binding.type, initializerNodeId, binding.patternSpan.clone(),

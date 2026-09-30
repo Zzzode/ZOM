@@ -23,7 +23,8 @@ enum class SequentialInitializerKind : uint8_t {
   ParameterReference,
   PrimitiveBinary,
   PrimitiveUnary,
-  Cast
+  Cast,
+  Ternary
 };
 
 // One operand of a sequential primitive-binary initializer. Exactly one payload
@@ -80,6 +81,16 @@ struct SequentialLocalBinding final {
   // Populated for Cast: the inner expression node of the `as` cast. The cast
   // target type is derived from the initializer's node-type fact.
   ast::NodeId castInnerNode;
+  // Populated for Ternary: the condition, then-branch, and else-branch AST
+  // nodes. The condition is a bool reference or a bool literal; both branches
+  // are scalar literals of the same type. `ternaryConditionIsLocal` is true
+  // when the condition names an earlier local (rather than a parameter);
+  // `ternaryConditionIsLiteral` is true when the condition is a bool literal.
+  ast::NodeId ternaryCondNode;
+  ast::NodeId ternaryThenNode;
+  ast::NodeId ternaryElseNode;
+  bool ternaryConditionIsLocal = false;
+  bool ternaryConditionIsLiteral = false;
 };
 
 struct SequentialLocalShape final {

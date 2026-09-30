@@ -1234,6 +1234,248 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // K leading scalar UserLocal declarations sit between the parameter prefix
+  // and the ternary result UserLocal. A bool-literal condition adds one
+  // Temporary local after the user locals. The shape needs at least the
+  // ternary local itself, so one local is the floor.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 4 || function.locals.size() < 2) {
+    return zc::none;
+  }
+  size_t parameterCount = 0;
+  while (parameterCount < function.locals.size() &&
+         function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++parameterCount;
+  }
+  if (parameterCount >= function.locals.size()) return zc::none;
+  // The last local may be a Temporary (bool-literal condition). The ternary
+  // result is the last UserLocal before it.
+  const bool hasConditionTemp =
+      function.locals[function.locals.size() - 1].kind == mir::MirLocalKind::Temporary;
+  const size_t userLocalCount =
+      function.locals.size() - parameterCount - (hasConditionTemp ? 1 : 0);
+  if (userLocalCount < 1) return zc::none;
+  const size_t leadingLocalCount = userLocalCount - 1;
+  const auto& ternaryLocalDecl = function.locals[parameterCount + leadingLocalCount];
+  if (ternaryLocalDecl.kind != mir::MirLocalKind::UserLocal ||
+      ternaryLocalDecl.type != function.resultType) {
+    return zc::none;
+  }
+  for (size_t i = 0; i < leadingLocalCount; ++i) {
+    if (function.locals[parameterCount + i].kind != mir::MirLocalKind::UserLocal) {
+      return zc::none;
+    }
+  }
+  const mir::MirLocalDeclaration* conditionTempDecl = nullptr;
+  if (hasConditionTemp) { conditionTempDecl = &function.locals[function.locals.size() - 1]; }
+
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  if (resultCarrierValue.kind() != ValueTypeKind::Integer ||
+      resultCarrierValue.integerWidth() == IntegerBitWidth::Bit1) {
+    return zc::none;
+  }
+
+  const uint32_t ternaryOrdinal = ternaryLocalDecl.id.ordinal();
+
+  const auto& entry = function.blocks[0];
+  const auto& thenBlock = function.blocks[1];
+  const auto& elseBlock = function.blocks[2];
+  const auto& joinBlock = function.blocks[3];
+
+  // Entry: per leading local StorageLive plus initializing Assign (2K
+  // statements), then StorageLive(ternary), then optionally
+  // StorageLive(temp) + Assign(temp = boolLiteral), then SwitchInt.
+  const size_t expectedEntryStatements = leadingLocalCount * 2 + 1 + (hasConditionTemp ? 2 : 0);
+  if (entry.statements.size() != expectedEntryStatements ||
+      entry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  zc::Vector<Operand> leadingInitializers;
+  for (size_t i = 0; i < leadingLocalCount; ++i) {
+    const auto& live = entry.statements[i * 2];
+    const auto& assign = entry.statements[i * 2 + 1];
+    const auto& localDecl = function.locals[parameterCount + i];
+    if (live.kind() != mir::MirStatementKind::StorageLive || live.storageLocal() != localDecl.id ||
+        assign.kind() != mir::MirStatementKind::Assign) {
+      return zc::none;
+    }
+    const auto& assignment = assign.assignmentValue();
+    if (assignment.destination.local() != localDecl.id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    auto localCarrier = integerCarrierFor(localDecl.type, semanticTypes);
+    if (localCarrier == zc::none) { localCarrier = boolCarrierFor(localDecl.type, semanticTypes); }
+    if (localCarrier == zc::none) { return zc::none; }
+    auto lowered =
+        lirOperandFor(assignment.value.useValue().operand, ZC_REQUIRE_NONNULL(localCarrier));
+    if (lowered == zc::none) { return zc::none; }
+    leadingInitializers.add(ZC_REQUIRE_NONNULL(lowered));
+  }
+  if (entry.statements[leadingLocalCount * 2].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[leadingLocalCount * 2].storageLocal() != ternaryLocalDecl.id) {
+    return zc::none;
+  }
+  // A bool-literal condition adds StorageLive(temp) + Assign(temp = literal).
+  zc::Maybe<Operand> conditionTempInitializer;
+  if (hasConditionTemp) {
+    const auto& tempLive = entry.statements[leadingLocalCount * 2 + 1];
+    const auto& tempAssign = entry.statements[leadingLocalCount * 2 + 2];
+    if (tempLive.kind() != mir::MirStatementKind::StorageLive ||
+        tempLive.storageLocal() != conditionTempDecl->id ||
+        tempAssign.kind() != mir::MirStatementKind::Assign) {
+      return zc::none;
+    }
+    const auto& assignment = tempAssign.assignmentValue();
+    if (assignment.destination.local() != conditionTempDecl->id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    auto tempCarrier = boolCarrierFor(conditionTempDecl->type, semanticTypes);
+    if (tempCarrier == zc::none) { return zc::none; }
+    auto lowered =
+        lirOperandFor(assignment.value.useValue().operand, ZC_REQUIRE_NONNULL(tempCarrier));
+    if (lowered == zc::none) { return zc::none; }
+    conditionTempInitializer = zc::mv(lowered);
+  }
+
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
+      switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
+      switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
+      switchInt.defaultTarget != elseBlock.id) {
+    return zc::none;
+  }
+  // The discriminant is a bool temporary, parameter, or earlier leading local.
+  const uint32_t conditionOrdinal = switchInt.discriminant.place().local().ordinal();
+  bool conditionIsBool = false;
+  for (size_t i = 0; i < function.locals.size(); ++i) {
+    if (function.locals[i].id.ordinal() == conditionOrdinal) {
+      if (i == parameterCount + leadingLocalCount) return zc::none;
+      auto carrier = boolCarrierFor(function.locals[i].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      conditionIsBool = true;
+      break;
+    }
+  }
+  if (!conditionIsBool) { return zc::none; }
+
+  auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<Statement>& out) -> bool {
+    if (branch.statements.size() != 1 ||
+        branch.statements[0].kind() != mir::MirStatementKind::Assign ||
+        branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
+        branch.terminator.gotoValue().target != joinBlock.id) {
+      return false;
+    }
+    const auto& assignment = branch.statements[0].assignmentValue();
+    if (assignment.destination.local() != ternaryLocalDecl.id ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != mir::MirRvalueKind::Use) {
+      return false;
+    }
+    const auto& operand = assignment.value.useValue().operand;
+    if (operand.kind() != mir::MirOperandKind::Constant ||
+        operand.constantValue().type != function.resultType) {
+      return false;
+    }
+    auto lowered = lirOperandFor(operand, resultCarrierValue);
+    if (lowered == zc::none) { return false; }
+    out.add(Statement::assign(ternaryOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    return true;
+  };
+  zc::Vector<Statement> thenStatements;
+  zc::Vector<Statement> elseStatements;
+  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+    return zc::none;
+  }
+
+  if (joinBlock.statements.size() != 0 ||
+      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsTernary = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsTernary = value.kind() != mir::MirOperandKind::Constant &&
+                     value.place().local() == ternaryLocalDecl.id &&
+                     value.place().projections().size() == 0;
+  }
+  if (!returnsTernary) { return zc::none; }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto thenId = LirBlockId::fromOrdinal(2);
+  auto elseId = LirBlockId::fromOrdinal(3);
+  auto joinId = LirBlockId::fromOrdinal(4);
+  if (entryId == zc::none || thenId == zc::none || elseId == zc::none || joinId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<BasicBlock> blocks;
+  {
+    zc::Vector<Statement> entryStatements;
+    for (size_t i = 0; i < leadingLocalCount; ++i) {
+      entryStatements.add(Statement::assign(function.locals[parameterCount + i].id.ordinal(),
+                                            zc::mv(leadingInitializers[i])));
+    }
+    if (hasConditionTemp) {
+      entryStatements.add(Statement::assign(conditionTempDecl->id.ordinal(),
+                                            ZC_REQUIRE_NONNULL(conditionTempInitializer)));
+    }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                          Terminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),
+                                                 ZC_REQUIRE_NONNULL(elseId))));
+  }
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(thenId), zc::mv(thenStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(elseId), zc::mv(elseStatements),
+                        Terminator::gotoBlock(ZC_REQUIRE_NONNULL(joinId))));
+  {
+    zc::Vector<Statement> none;
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(joinId), zc::mv(none),
+                          Terminator::returnLocal(ternaryOrdinal)));
+  }
+
+  zc::Vector<Local> parameters;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    const auto& parameterLocal = function.locals[i];
+    zc::Maybe<ValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
+    if (carrier == zc::none) { carrier = integerCarrierFor(parameterLocal.type, semanticTypes); }
+    if (carrier == zc::none) { return zc::none; }
+    parameters.add(Local(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+  }
+  zc::Vector<Local> locals;
+  for (size_t i = 0; i < leadingLocalCount; ++i) {
+    const auto& localDecl = function.locals[parameterCount + i];
+    zc::Maybe<ValueType> carrier = integerCarrierFor(localDecl.type, semanticTypes);
+    if (carrier == zc::none) { carrier = boolCarrierFor(localDecl.type, semanticTypes); }
+    if (carrier == zc::none) { return zc::none; }
+    locals.add(Local(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+  }
+  locals.add(Local(ternaryOrdinal, resultCarrierValue));
+  if (hasConditionTemp) {
+    auto tempCarrier = boolCarrierFor(conditionTempDecl->type, semanticTypes);
+    if (tempCarrier == zc::none) { return zc::none; }
+    locals.add(Local(conditionTempDecl->id.ordinal(), ZC_REQUIRE_NONNULL(tempCarrier)));
+  }
+
+  // The runtime `_start` calls the reserved `zom.module_init` symbol, so a
+  // no-argument body takes that name and folds into the entry contract. A
+  // parameterized body keeps a descriptive symbol and is driven through the
+  // host entry path instead.
+  zc::String symbol = zc::heapString(parameterCount == 0 ? "zom.module_init" : "zom.ternary");
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::mv(symbol), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified one-block arithmetic shape: a leading run of

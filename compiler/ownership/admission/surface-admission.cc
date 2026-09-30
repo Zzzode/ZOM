@@ -46,6 +46,7 @@ void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failur
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
@@ -310,6 +311,27 @@ bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(inner).kind);
 }
 
+bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::ConditionalExpr) {
+    return false;
+  }
+  const auto& ternary = tree.node(value);
+  const ast::NodeId cond(ternary.payload.words[ast::kConditionalExprCondWord]);
+  const ast::NodeId thenExpr(ternary.payload.words[ast::kConditionalExprThenExprWord]);
+  const ast::NodeId elseExpr(ternary.payload.words[ast::kConditionalExprElseExprWord]);
+  if (!tree.contains(cond) || !tree.contains(thenExpr) || !tree.contains(elseExpr)) {
+    return false;
+  }
+  // The condition must be a bool literal or a bare identifier (bool parameter
+  // or local).
+  if (tree.node(cond).kind != ast::SyntaxKind::IdentExpr &&
+      tree.node(cond).kind != ast::SyntaxKind::BoolLiteral) {
+    return false;
+  }
+  // Both branches must be scalar literals in this slice.
+  return isScalarLiteral(tree.node(thenExpr).kind) && isScalarLiteral(tree.node(elseExpr).kind);
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
@@ -380,7 +402,8 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
          isAdmittedDirectCall(tree, initializer) ||
          isAdmittedAggregateInitializer(tree, initializer) ||
          isAdmittedPrimitiveBinary(tree, initializer) ||
-         isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer);
+         isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
+         isAdmittedTernary(tree, initializer);
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
@@ -749,14 +772,15 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     ZC_IF_SOME(declarator, soleDeclarator) {
       const ast::NodeId soleInitializer(
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      // An unannotated binary-, unary-, or cast-result binding drains through
-      // the single-local gate below as ZOM4099; the sequential rail requires
-      // the annotation.
+      // An unannotated binary-, unary-, cast-, or ternary-result binding
+      // drains through the single-local gate below as ZOM4099; the sequential
+      // rail requires the annotation.
       if (isAdmittedLocalInitializer(tree, declarator, soleInitializer) &&
           tree.contains(soleInitializer) &&
           (tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression ||
-           tree.node(soleInitializer).kind == ast::SyntaxKind::CastExpression)) {
+           tree.node(soleInitializer).kind == ast::SyntaxKind::CastExpression ||
+           tree.node(soleInitializer).kind == ast::SyntaxKind::ConditionalExpr)) {
         sequentialLocalShape = true;
       }
     }

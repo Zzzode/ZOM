@@ -247,6 +247,19 @@ zc::Maybe<checker::checked::CheckedNodeKey> checkedNodeKey(
 bool sameNodeKey(const checker::checked::CheckedNodeKey& left,
                  const checker::checked::CheckedNodeKey& right);
 
+/// Returns true when the identifier pattern and the identifier expression name
+/// the same source identifier.
+inline bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern,
+                                  ast::NodeId reference) {
+  if (!tree.contains(pattern) || !tree.contains(reference) ||
+      tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+      tree.node(reference).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  return tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord] ==
+         tree.node(reference).payload.words[ast::kIdentExprNameWord];
+}
+
 zc::Maybe<size_t> dispatchFactIndex(
     zc::ArrayPtr<const checker::dispatch::VerifiedDispatchFact> facts,
     const checker::checked::CheckedNodeKey& node);

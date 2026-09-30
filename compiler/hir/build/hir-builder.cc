@@ -2647,6 +2647,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           zc::Maybe<PendingSequentialBinaryOperand> bindingLeftOperand;
           zc::Maybe<PendingSequentialBinaryOperand> bindingRightOperand;
           bool bindingIsUnaryDesugar = false;
+          zc::Maybe<identity::CallableParameterKey> bindingTernaryConditionParameter;
+          bool bindingTernaryConditionIsLocal = false;
+          size_t bindingTernaryConditionLocal = 0;
+          bool bindingTernaryConditionIsLiteral = false;
+          identity::SemanticTypeId bindingTernaryConditionType = bindingType;
+          zc::Maybe<checker::checked::CanonicalConstValue> bindingTernaryConditionLiteral;
+          zc::Maybe<checker::checked::CanonicalConstValue> bindingTernaryThenLiteral;
+          zc::Maybe<checker::checked::CanonicalConstValue> bindingTernaryElseLiteral;
+          zc::Maybe<identity::SourceSpan> bindingTernaryConditionSpan;
+          zc::Maybe<identity::SourceSpan> bindingTernaryThenSpan;
+          zc::Maybe<identity::SourceSpan> bindingTernaryElseSpan;
           if (binding.initializerKind == SequentialInitializerKind::Literal) {
             auto literalIndex = factIndex(facts.literals(), binding.initializer);
             if (literalIndex == zc::none) {
@@ -3169,6 +3180,94 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
             }
             if (rejected) break;
+          } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
+            // A ternary conditional expression `cond ? then : else`. The
+            // condition is a bool IdentExpr naming a parameter or an earlier
+            // local; both branches are scalar literals of the same type.
+            auto condSpan = bound.parsedModule().spanFor(tree.node(binding.ternaryCondNode).range);
+            auto thenSpan = bound.parsedModule().spanFor(tree.node(binding.ternaryThenNode).range);
+            auto elseSpan = bound.parsedModule().spanFor(tree.node(binding.ternaryElseNode).range);
+            if (condSpan == zc::none || thenSpan == zc::none || elseSpan == zc::none) {
+              rejected = true;
+              break;
+            }
+            // Resolve the condition to a bool literal, a parameter, or an
+            // earlier local.
+            if (binding.ternaryConditionIsLiteral) {
+              bindingTernaryConditionIsLiteral = true;
+              auto condLiteralIndex = factIndex(facts.literals(), binding.ternaryCondNode);
+              if (condLiteralIndex == zc::none) {
+                rejected = true;
+                break;
+              }
+              size_t condLiteralSlot = 0;
+              ZC_IF_SOME(index, condLiteralIndex) { condLiteralSlot = index; }
+              const auto& condLiteralFact = facts.literals().entries()[condLiteralSlot].value;
+              bindingTernaryConditionLiteral = condLiteralFact.literal.clone();
+            } else if (binding.ternaryConditionIsLocal) {
+              bindingTernaryConditionIsLocal = true;
+              for (size_t earlier = 0; earlier < bindingIndex; ++earlier) {
+                if (matchesLocalReference(tree, sequentialShape.bindings[earlier].pattern,
+                                          binding.ternaryCondNode)) {
+                  bindingTernaryConditionLocal = earlier;
+                  break;
+                }
+              }
+            } else {
+              auto parameterHandle =
+                  resolvedCallableParameter(bound.bindings(), binding.ternaryCondNode);
+              if (parameterHandle == zc::none) {
+                rejected = true;
+                break;
+              }
+              zc::Maybe<identity::CallableParameterKey> resolvedKey;
+              ZC_IF_SOME(handle, parameterHandle) {
+                auto authority = registries.callableParameter(handle);
+                ZC_IF_SOME(entry, authority) {
+                  for (const auto& parameter : parameters) {
+                    if (parameter.key == entry.key()) { resolvedKey = entry.key().clone(); }
+                  }
+                }
+              }
+              if (resolvedKey == zc::none) {
+                rejected = true;
+                break;
+              }
+              bindingTernaryConditionParameter = zc::mv(resolvedKey);
+            }
+            // The condition type is bool.
+            auto condTypeIndex = factIndex(facts.nodeTypes(), binding.ternaryCondNode);
+            if (condTypeIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t condTypeSlot = 0;
+            ZC_IF_SOME(index, condTypeIndex) { condTypeSlot = index; }
+            bindingTernaryConditionType = facts.nodeTypes().entries()[condTypeSlot].value;
+            // Both branches are scalar literals; fetch their literal facts.
+            for (const auto* branchNode : {&binding.ternaryThenNode, &binding.ternaryElseNode}) {
+              auto literalIndex = factIndex(facts.literals(), *branchNode);
+              if (literalIndex == zc::none) {
+                rejected = true;
+                break;
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.type != bindingType) {
+                rejected = true;
+                break;
+              }
+              if (branchNode == &binding.ternaryThenNode) {
+                bindingTernaryThenLiteral = literalFact.literal.clone();
+              } else {
+                bindingTernaryElseLiteral = literalFact.literal.clone();
+              }
+            }
+            if (rejected) break;
+            bindingTernaryConditionSpan = ZC_ASSERT_NONNULL(condSpan).clone();
+            bindingTernaryThenSpan = ZC_ASSERT_NONNULL(thenSpan).clone();
+            bindingTernaryElseSpan = ZC_ASSERT_NONNULL(elseSpan).clone();
           } else {
             // A reference to a parameter must resolve to a declared parameter.
             auto parameterHandle = resolvedCallableParameter(bound.bindings(), binding.initializer);
@@ -3193,12 +3292,30 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             bindingParameter = zc::mv(resolvedKey);
           }
-          pendingBindings.add(PendingSequentialBinding{
-              bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
-              ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
-              zc::mv(bindingLiteral), zc::mv(bindingAggregate), zc::mv(bindingParameter),
-              binding.referencedLocal, zc::mv(bindingOperation), bindingOperandType,
-              zc::mv(bindingLeftOperand), zc::mv(bindingRightOperand), bindingIsUnaryDesugar});
+          pendingBindings.add(PendingSequentialBinding{bindingType,
+                                                       ZC_ASSERT_NONNULL(patternSpan).clone(),
+                                                       ZC_ASSERT_NONNULL(initializerSpan).clone(),
+                                                       binding.initializerKind,
+                                                       zc::mv(bindingLiteral),
+                                                       zc::mv(bindingAggregate),
+                                                       zc::mv(bindingParameter),
+                                                       binding.referencedLocal,
+                                                       zc::mv(bindingOperation),
+                                                       bindingOperandType,
+                                                       zc::mv(bindingLeftOperand),
+                                                       zc::mv(bindingRightOperand),
+                                                       bindingIsUnaryDesugar,
+                                                       zc::mv(bindingTernaryConditionParameter),
+                                                       bindingTernaryConditionIsLocal,
+                                                       bindingTernaryConditionLocal,
+                                                       bindingTernaryConditionIsLiteral,
+                                                       bindingTernaryConditionType,
+                                                       zc::mv(bindingTernaryConditionLiteral),
+                                                       zc::mv(bindingTernaryThenLiteral),
+                                                       zc::mv(bindingTernaryElseLiteral),
+                                                       zc::mv(bindingTernaryConditionSpan),
+                                                       zc::mv(bindingTernaryThenSpan),
+                                                       zc::mv(bindingTernaryElseSpan)});
         }
         if (rejected) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5564,6 +5681,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t conditionalCount = 0;
   size_t equalityConditionalCount = 0;
   size_t conditionalLiteralArmCount = 0;
+  // Ternary conditional-expression bindings in sequential local return bodies.
+  // Each materializes one HirConditionalExpression (the binding initializer,
+  // counted by localReturnCount) plus its condition and two arm-literal
+  // expressions, contributing three node-type facts and two literal facts
+  // beyond the per-binding local node type.
+  size_t sequentialTernaryCount = 0;
   // Leading scalar-local bindings that precede a comparison conditional in the
   // same body (`let a: i32 = 1; if (a < 5) { .. } else { .. }`). Each binding
   // materializes one local plus one initializer, and each comparison operand
@@ -5706,6 +5829,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               // inner literal is a literal-bearing slot.
               ++castCount;
               ++literalBearingSlots;
+              break;
+            case SequentialInitializerKind::Ternary:
+              // A ternary binding carries one conditional expression and two
+              // literal branch values. Each branch is a literal-bearing slot.
+              // A bool-literal condition contributes one additional literal.
+              ++sequentialTernaryCount;
+              ++literalBearingSlots;
+              ++literalBearingSlots;
+              if (binding.ternaryConditionIsLiteral) { ++literalBearingSlots; }
               break;
           }
         }
@@ -6037,7 +6169,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       loopCount + comparisonReturnCount * 2 - unaryReturnCount + sequentialBinaryCount * 2 +
       binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
-      leadingLocalConditionalBindingCount + castCount - leadingLocalConditionalUnaryCount;
+      leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 -
+      leadingLocalConditionalUnaryCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);

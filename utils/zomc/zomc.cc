@@ -1431,6 +1431,9 @@ private:
             lir = lir::MirToLirLowering::lowerLeadingLocalConditionalReturn(functions[0], types);
           }
           if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerTernaryLocalReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
           if (lir == zc::none) {

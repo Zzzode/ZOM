@@ -75,6 +75,23 @@ struct PendingSequentialBinding final {
   // operation. The right operand is a synthetic constant derived by the builder
   // from the operation and type; the tally subtracts it from the literal count.
   bool isUnaryDesugar = false;
+  // Populated for Ternary: the condition is a bool parameter reference
+  // (`ternaryConditionParameter` set), a reference to an earlier local
+  // (`ternaryConditionIsLocal` true, `ternaryConditionLocal` its zero-based
+  // index), or a bool literal (`ternaryConditionIsLiteral` true,
+  // `ternaryConditionLiteral` set). Both branches are scalar literals carried
+  // as canonical values.
+  zc::Maybe<identity::CallableParameterKey> ternaryConditionParameter;
+  bool ternaryConditionIsLocal = false;
+  size_t ternaryConditionLocal = 0;
+  bool ternaryConditionIsLiteral = false;
+  identity::SemanticTypeId ternaryConditionType;
+  zc::Maybe<checker::checked::CanonicalConstValue> ternaryConditionLiteral;
+  zc::Maybe<checker::checked::CanonicalConstValue> ternaryThenLiteral;
+  zc::Maybe<checker::checked::CanonicalConstValue> ternaryElseLiteral;
+  zc::Maybe<identity::SourceSpan> ternaryConditionSpan;
+  zc::Maybe<identity::SourceSpan> ternaryThenSpan;
+  zc::Maybe<identity::SourceSpan> ternaryElseSpan;
 };
 
 struct PendingSequentialLocalReturn final {

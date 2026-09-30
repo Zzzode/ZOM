@@ -169,6 +169,28 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerLeadingLocalConditionalReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a four-block ternary-initialized local return to a
+  /// single-function LIR module.
+  ///
+  /// Admits the verified Built MIR shape of `let a: T = ...; ...; let r: T =
+  /// cond ? lt : le; return r;`: a parameter-local prefix, K leading integer
+  /// `UserLocal` body locals each brought to life by one `StorageLive` plus an
+  /// initializing `Assign` of a constant or zero-projection place, then one
+  /// `UserLocal` holding the ternary result. The entry block holds the K
+  /// preamble pairs plus one `StorageLive` for the ternary local before a
+  /// `SwitchInt` on a bool parameter or earlier local; the two arm blocks each
+  /// assign the ternary local a constant and jump to the join; the join returns
+  /// the ternary local. Every carrier is an integer width; the condition is
+  /// Bit1. The function folds to the reserved no-argument `zom.module_init`
+  /// entry when it has no parameters, and keeps the parameterized
+  /// `zom.ternary` symbol otherwise. Every other shape returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerTernaryLocalReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a one-block sequential integer arithmetic body to a
   /// single-function LIR module.
   ///
