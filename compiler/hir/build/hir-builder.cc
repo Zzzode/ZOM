@@ -935,7 +935,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    callable.success,
                                                    ZC_ASSERT_NONNULL(thenSpan).clone(),
                                                    ZC_ASSERT_NONNULL(elseSpan).clone(),
-                                                   returnSpanValue.clone()};
+                                                   returnSpanValue.clone(),
+                                                   shape.conditionIsUnary};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
                                                           zc::mv(parameters),
@@ -2657,6 +2658,38 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             const auto& literalFact = facts.literals().entries()[literalSlot].value;
             if (literalFact.type != bindingType ||
                 !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              rejected = true;
+              break;
+            }
+            bindingLiteral = literalFact.literal.clone();
+          } else if (binding.initializerKind == SequentialInitializerKind::Cast) {
+            // An integer `as` cast over a scalar literal inner expression. The
+            // cast is a no-op for widening or identity conversions; validate
+            // the cast fact and lower the inner literal with the cast result
+            // type. The inner literal's node-type fact carries the target type
+            // because the checker adopts it as the literal's expected type.
+            auto castIndex = factIndex(facts.casts(), binding.initializer);
+            if (castIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t castSlot = 0;
+            ZC_IF_SOME(index, castIndex) { castSlot = index; }
+            const auto& castFact = facts.casts().entries()[castSlot].value;
+            if (castFact.node != binding.initializer || castFact.result != bindingType ||
+                castFact.target != bindingType || castFact.source != bindingType) {
+              rejected = true;
+              break;
+            }
+            auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
+            if (literalIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            if (literalFact.type != bindingType) {
               rejected = true;
               break;
             }
@@ -5538,6 +5571,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // dispatched before the flat leaf branches, so it contributes nothing to the
   // shared functionCount baseline and is tallied here instead.
   size_t leadingLocalConditionalBindingCount = 0;
+  // Leading-local conditionals that desugar a unary `!x` condition to `x ==
+  // false`. The synthetic false operand has no AST node and therefore no
+  // checker-produced node-type or literal fact, so the digest equations
+  // subtract one per such conditional.
+  size_t leadingLocalConditionalUnaryCount = 0;
   // Comparison operands of that shape written as scalar literals rather than
   // reads of a leading binding. Each adds one literal fact of its own.
   size_t leadingLocalConditionalLiteralOperandCount = 0;
@@ -5561,6 +5599,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // one call fact and one dispatch fact and two operand node types beyond the
   // per-binding local node type.
   size_t sequentialBinaryCount = 0;
+  // Total integer-cast initializers across sequential bodies. Each carries one
+  // cast fact and one additional node-type fact for the inner literal beyond
+  // the per-binding local node type counted by localReturnCount.
+  size_t castCount = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -5658,6 +5700,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 }
               }
               break;
+            case SequentialInitializerKind::Cast:
+              // A cast binding carries one cast fact and one inner-literal
+              // node-type fact beyond the per-binding local node type. The
+              // inner literal is a literal-bearing slot.
+              ++castCount;
+              ++literalBearingSlots;
+              break;
           }
         }
         sequentialLiteralAdjustment += literalBearingSlots - 1;
@@ -5678,6 +5727,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         leadingLocalConditionalBindingCount += leading.bindings.size();
         if (leading.left.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
         if (leading.right.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
+        if (leading.isUnaryDesugar) ++leadingLocalConditionalUnaryCount;
       }
       continue;
     }
@@ -5977,17 +6027,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            1);
     }
   }
-  if (facts.nodeTypes().size() !=
+  const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
-          (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
-          uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
-          localFieldProjectionCount + localFieldWriteCount + parameterIndexCount * 2 +
-          parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
-          localBorrowCount + unsafeBlockCount + conditionalCount * 2 +
-          equalityConditionalCount * 2 + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
-          sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
-          receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
-          discardedStatementCallCount + leadingLocalConditionalBindingCount) {
+      (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
+      uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
+      localFieldProjectionCount + localFieldWriteCount + parameterIndexCount * 2 +
+      parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
+      localBorrowCount + unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 +
+      loopCount + comparisonReturnCount * 2 - unaryReturnCount + sequentialBinaryCount * 2 +
+      binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
+      parameterFieldWriteCount * 4 + discardedStatementCallCount +
+      leadingLocalConditionalBindingCount + castCount - leadingLocalConditionalUnaryCount;
+  if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
   }
@@ -6005,7 +6056,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
           comparisonReturnCount - unaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
           directAggregateCallCount + directScalarLocalCallCount +
-          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount) +
+          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
+          leadingLocalConditionalUnaryCount) +
           sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
@@ -6026,6 +6078,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                          ir::IrFailureKind::AdditionalFact, module, registries, 5);
   }
   if (facts.aggregates().size() != aggregateCount) {
+    return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                         ir::IrFailureKind::AdditionalFact, module, registries, 6);
+  }
+  if (facts.casts().size() != castCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }

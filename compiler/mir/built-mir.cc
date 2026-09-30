@@ -6422,13 +6422,6 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       auto sequentialReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
       if (!allLeadingLocals || sequentialReturn == zc::none) continue;
-      // A trailing conditional return is the leading-local comparison shape, not
-      // a sequential-local return: its leading bindings initialize the operands
-      // of a pooled comparison that the shared equation already credits through
-      // the conditional term, so its initializers are not value-node excess.
-      if (conditionalFor(hirModule, ZC_ASSERT_NONNULL(sequentialReturn).value) != zc::none) {
-        continue;
-      }
       int64_t valueNodes = 0;
       int64_t binaryBindings = 0;
       for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
@@ -6475,22 +6468,89 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       sequentialValueNodeExcess += valueNodes - binaryBindings - 1;
     }
   }
-  if (!evidence.isResolved() ||
-      evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
-      hirModule.borrowEvidenceLease().key().revision.digest() !=
-          hirModule.borrowEvidenceRevision().digest() ||
+  // A leading-local conditional function has K leading let bindings and a
+  // trailing return whose value is a conditional expression. Its let binding
+  // initializers materialize value nodes (expressions, aggregates, parameter
+  // references) on the RHS of the checksum, but the shared equation credits
+  // only the function, the conditional arms, and the comparison operation on
+  // the LHS. This term carries the per-function excess
+  // (valueNodes - binaryBindings - 1) so the balance holds for any K, mirroring
+  // the sequential-local-return computation. The -1 adjusts for the function
+  // node already counted in the LHS functions term.
+  int64_t leadingLocalConditionalValueNodeExcess = 0;
+  for (const auto& conditionalFunction : hirModule.functions()) {
+    auto conditionalBlock = blockFor(hirModule, conditionalFunction.body);
+    ZC_IF_SOME(block, conditionalBlock) {
+      if (block.statements.size() < 2) continue;
+      const size_t bindingCount = block.statements.size() - 1;
+      bool allLeadingLocals = true;
+      for (size_t i = 0; i < bindingCount; ++i) {
+        if (localFor(hirModule, block.statements[i]) == zc::none) {
+          allLeadingLocals = false;
+          break;
+        }
+      }
+      if (!allLeadingLocals) continue;
+      auto trailingReturn = returnFor(hirModule, block.statements[bindingCount]);
+      if (trailingReturn == zc::none) continue;
+      auto conditional = conditionalFor(hirModule, ZC_ASSERT_NONNULL(trailingReturn).value);
+      if (conditional == zc::none) continue;
+      int64_t valueNodes = 0;
+      int64_t binaryBindings = 0;
+      for (size_t i = 0; i < bindingCount; ++i) {
+        auto localBinding = localFor(hirModule, block.statements[i]);
+        ZC_IF_SOME(local, localBinding) {
+          ZC_IF_SOME(initializer, local.initializer) {
+            auto binary = primitiveBinaryFor(hirModule, initializer);
+            ZC_IF_SOME(value, binary) {
+              ++binaryBindings;
+              for (const auto operand : {value.left, value.right}) {
+                auto nested = primitiveBinaryFor(hirModule, operand);
+                ZC_IF_SOME(nestedValue, nested) {
+                  ++binaryBindings;
+                  for (const auto leaf : {nestedValue.left, nestedValue.right}) {
+                    if (expressionFor(hirModule, leaf) != zc::none ||
+                        parameterReferenceFor(hirModule, leaf) != zc::none) {
+                      ++valueNodes;
+                    }
+                  }
+                  continue;
+                }
+                if (expressionFor(hirModule, operand) != zc::none ||
+                    parameterReferenceFor(hirModule, operand) != zc::none) {
+                  ++valueNodes;
+                }
+              }
+            }
+            if (binary == zc::none && (expressionFor(hirModule, initializer) != zc::none ||
+                                       aggregateFor(hirModule, initializer) != zc::none ||
+                                       parameterReferenceFor(hirModule, initializer) != zc::none)) {
+              ++valueNodes;
+            }
+          }
+        }
+      }
+      leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings;
+    }
+  }
+  const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
                            hirModule.primitiveBinaryOperations().size() +
                            hirModule.loops().size()) +
-              sequentialValueNodeExcess + directAggregateCallValueNodes !=
-          static_cast<int64_t>(
-              hirModule.expressions().size() + hirModule.calls().size() +
-              hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
-              parameterReborrowCount + hirModule.parameterFieldProjections().size() +
-              receiverSelfCallValueNodes + voidFunctionCount - localAliasReborrowCount -
-              hirModule.localWrites().size() - hirModule.parameterFieldWrites().size()) ||
-      hirModule.functions().size() != hirModule.blocks().size() ||
+      sequentialValueNodeExcess + directAggregateCallValueNodes +
+      leadingLocalConditionalValueNodeExcess;
+  const int64_t rhsChecksum = static_cast<int64_t>(
+      hirModule.expressions().size() + hirModule.calls().size() + hirModule.aggregates().size() +
+      uninitializedLocalReturnCount + parameterReturnCount + parameterReborrowCount +
+      hirModule.parameterFieldProjections().size() + receiverSelfCallValueNodes +
+      voidFunctionCount - localAliasReborrowCount - hirModule.localWrites().size() -
+      hirModule.parameterFieldWrites().size());
+  if (!evidence.isResolved() ||
+      evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
+      hirModule.borrowEvidenceLease().key().revision.digest() !=
+          hirModule.borrowEvidenceRevision().digest() ||
+      lhsChecksum != rhsChecksum || hirModule.functions().size() != hirModule.blocks().size() ||
       static_cast<int64_t>(hirModule.functions().size()) - voidFunctionCount !=
           static_cast<int64_t>(hirModule.returns().size())) {
     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,

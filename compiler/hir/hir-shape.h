@@ -22,7 +22,8 @@ enum class SequentialInitializerKind : uint8_t {
   LocalReference,
   ParameterReference,
   PrimitiveBinary,
-  PrimitiveUnary
+  PrimitiveUnary,
+  Cast
 };
 
 // One operand of a sequential primitive-binary initializer. Exactly one payload
@@ -76,6 +77,9 @@ struct SequentialLocalBinding final {
   // has no AST node and is derived by the builder from the operation + type.
   zc::Maybe<checker::PrimitiveOperation> unaryOperation;
   zc::Maybe<SequentialBinaryOperand> unaryOperand;
+  // Populated for Cast: the inner expression node of the `as` cast. The cast
+  // target type is derived from the initializer's node-type fact.
+  ast::NodeId castInnerNode;
 };
 
 struct SequentialLocalShape final {

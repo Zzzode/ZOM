@@ -317,6 +317,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     zc::Maybe<SequentialBinaryOperand> rightOperand;
     zc::Maybe<checker::PrimitiveOperation> unaryOperation;
     zc::Maybe<SequentialBinaryOperand> unaryOperand;
+    ast::NodeId castInnerNode;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
@@ -462,12 +463,23 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       kind = SequentialInitializerKind::PrimitiveUnary;
       unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
       unaryOperand = zc::mv(classified);
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::CastExpression) {
+      // An integer `as` cast whose inner expression is a scalar literal. The
+      // builder lowers the inner literal with the cast result type; the cast
+      // itself is a no-op for widening or identity conversions.
+      const ast::NodeId castExpr(
+          tree.node(initializer).payload.words[ast::kCastExpressionExprWord]);
+      if (!tree.contains(castExpr) || !isScalarLiteral(tree.node(castExpr).kind)) {
+        return zc::none;
+      }
+      kind = SequentialInitializerKind::Cast;
+      castInnerNode = castExpr;
     } else {
       return zc::none;
     }
     shape.bindings.add(SequentialLocalBinding{
         declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
-        zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand)});
+        zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand), castInnerNode});
   }
   auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnItem == zc::none) return zc::none;
@@ -549,7 +561,7 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     }
     shape.bindings.add(SequentialLocalBinding{declarator, pattern, initializer, kind,
                                               referencedLocal, zc::none, zc::none, zc::none,
-                                              zc::none});
+                                              zc::none, ast::NodeId()});
   }
   auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (tailItem == zc::none) return zc::none;
@@ -1324,7 +1336,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             shape.bindings.size() >= 2 ||
             (shape.bindings.size() == 1 &&
              (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary));
+              shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
+              shape.bindings[0].initializerKind == SequentialInitializerKind::Cast));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

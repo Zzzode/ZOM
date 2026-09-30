@@ -49,6 +49,7 @@ enum class BodyProductionKind : uint8_t {
   PrimitiveBinaryOperation = 0x19,
   ReceiverFieldWrite = 0x1a,
   PrimitiveUnaryOperation = 0x1b,
+  IntegerCast = 0x1c,
   Unsupported = 0x17
 };
 
@@ -2969,7 +2970,19 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
   zc::Maybe<identity::SemanticTypeId> binaryHint;
   zc::Maybe<identity::SemanticTypeId> argumentHint;
   zc::Maybe<identity::SemanticTypeId> assignmentHint;
+  zc::Maybe<identity::SemanticTypeId> castHint;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    // (f) Inner expression of an `as` cast: the cast's target type.
+    if (castHint == zc::none && syntax.kind == ast::SyntaxKind::CastExpression) {
+      const ast::NodeId castExpr(syntax.payload.words[ast::kCastExpressionExprWord]);
+      if (castExpr == literal) {
+        const ast::NodeId castTy(syntax.payload.words[ast::kCastExpressionTyWord]);
+        if (tree.contains(castTy)) {
+          castHint = signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                                        input.semanticTypes, castTy);
+        }
+      }
+    }
     // (c) Operand of an admitted primitive arithmetic/comparison binary; the
     // literal adopts the other, typed operand's type.
     if (binaryHint == zc::none && syntax.kind == ast::SyntaxKind::BinaryExpr) {
@@ -3050,6 +3063,7 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
   if (binaryHint != zc::none) return binaryHint;
   if (argumentHint != zc::none) return argumentHint;
   if (assignmentHint != zc::none) return assignmentHint;
+  if (castHint != zc::none) return castHint;
   return zc::none;
 }
 
@@ -4313,6 +4327,25 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::UnsafeBlockExpr:
           production = BodyProductionKind::UnsafeBlock;
           break;
+        case ast::SyntaxKind::CastExpression: {
+          // Admit an integer `as` cast whose inner expression is a scalar
+          // literal and whose target type resolves to a closed integer
+          // primitive. Every other cast shape stays unsupported so its
+          // existing rejection stands.
+          const ast::NodeId castExpr(syntax.payload.words[ast::kCastExpressionExprWord]);
+          const ast::NodeId castTy(syntax.payload.words[ast::kCastExpressionTyWord]);
+          if (tree.contains(castExpr) && isScalarLiteral(tree.node(castExpr).kind) &&
+              tree.contains(castTy)) {
+            auto targetType = signature::resolveClosedSourceType(boundModule, buildInput.identities,
+                                                                 buildInput.semanticTypes, castTy);
+            if (targetType != zc::none &&
+                integerPrimitiveKind(buildInput.semanticTypes, ZC_ASSERT_NONNULL(targetType)) !=
+                    zc::none) {
+              production = BodyProductionKind::IntegerCast;
+            }
+          }
+          break;
+        }
         default:
           break;
       }
@@ -4445,6 +4478,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<checked::ConstantFactMap::Entry> constants;
   zc::Vector<checked::PatternFactMap::Entry> patterns;
   zc::Vector<checked::CallFactMap::Entry> calls;
+  zc::Vector<checked::CastFactMap::Entry> casts;
   zc::Vector<checked::AggregateFactMap::Entry> aggregates;
   zc::Vector<checked::PlaceFactMap::Entry> places;
   zc::Vector<checked::MemberFactMap::Entry> members;
@@ -4483,11 +4517,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool indexed = site.production == BodyProductionKind::ReadIndex;
       const bool unsafeBlock = site.production == BodyProductionKind::UnsafeBlock;
       const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
-      if ((stage == 0 &&
-           (structured || projected || fieldWrite || receiverFieldWrite || directCall ||
-            concreteMethodCall || errorOperator || indexed || unsafeBlock || primitiveBinary)) ||
+      const bool integerCast = site.production == BodyProductionKind::IntegerCast;
+      if ((stage == 0 && (structured || projected || fieldWrite || receiverFieldWrite ||
+                          directCall || concreteMethodCall || errorOperator || indexed ||
+                          unsafeBlock || primitiveBinary || integerCast)) ||
           (stage == 1 && (((!structured && !directCall) || errorOperator || indexed) &&
-                          !unsafeBlock && !primitiveBinary)) ||
+                          !unsafeBlock && !primitiveBinary && !integerCast)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 &&
            (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
@@ -5341,6 +5376,45 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
         }
+      } else if (site.production == BodyProductionKind::IntegerCast) {
+        // An integer `as` cast over a scalar literal inner expression. The
+        // literal adopts the cast target type, so the cast is a widening or
+        // identity conversion that lowers to a no-op. The cast fact records
+        // the source/target/result types for downstream verification.
+        const auto& castNode = input.boundModule.tree().node(site.node);
+        const ast::NodeId castExpr(castNode.payload.words[ast::kCastExpressionExprWord]);
+        const ast::NodeId castTy(castNode.payload.words[ast::kCastExpressionTyWord]);
+        auto targetType = signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                                             input.semanticTypes, castTy);
+        auto sourceType = factEntry(nodeTypes.asPtr(), castExpr);
+        if (targetType == zc::none || sourceType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto source = ZC_ASSERT_NONNULL(sourceType).value;
+        const auto target = ZC_ASSERT_NONNULL(targetType);
+        auto sourceKind = integerPrimitiveKind(input.semanticTypes, source);
+        auto targetKind = integerPrimitiveKind(input.semanticTypes, target);
+        if (sourceKind == zc::none || targetKind == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto castKind = ZC_ASSERT_NONNULL(sourceKind) <= ZC_ASSERT_NONNULL(targetKind)
+                                  ? checked::CastKind::IntegerWiden
+                                  : checked::CastKind::IntegerNarrowChecked;
+        producedType = target;
+        zc::Maybe<identity::ImplId> noImpl;
+        zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
+        zc::Vector<identity::DefId> noDynPath;
+        casts.add(checked::CastFactMap::Entry{
+            site.node,
+            checked::CheckedCastFact{site.node, checked::CastMode::Guaranteed, castKind, source,
+                                     target, target, zc::mv(noImpl), zc::mv(noWitnesses),
+                                     zc::mv(noDynPath), checked::UnsafeRequirement::None,
+                                     site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::LocalWrite) {
         const auto& assignment = input.boundModule.tree().node(site.node);
         const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
@@ -5878,12 +5952,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       auto initializerType = factEntry(nodeTypes.asPtr(), initializer);
       auto initializerLiteral = factEntry(literals.asPtr(), initializer);
       auto initializerAggregate = factEntry(aggregates.asPtr(), initializer);
+      auto initializerCast = factEntry(casts.asPtr(), initializer);
       auto bindingProduction =
           productionSite(input.requirements.impl->productionSiteValues.asPtr(), pattern);
       auto declaredType = valueType(input.signatureFacts, definition.definition);
       auto ownerPreorder = definitionPreorder(input.boundModule, definition.definition);
       if (initializerType == zc::none ||
-          (initializerLiteral == zc::none && initializerAggregate == zc::none) ||
+          (initializerLiteral == zc::none && initializerAggregate == zc::none &&
+           initializerCast == zc::none) ||
           bindingProduction == zc::none || declaredType == zc::none || ownerPreorder == zc::none) {
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
                                definition.definition, initializer, definition.source.clone(),
@@ -5954,6 +6030,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         requirement.group != CheckedFactGroup::Call &&
         requirement.group != CheckedFactGroup::Place &&
         requirement.group != CheckedFactGroup::Coercion &&
+        requirement.group != CheckedFactGroup::Cast &&
         requirement.group != CheckedFactGroup::Member &&
         requirement.group != CheckedFactGroup::Index &&
         requirement.group != CheckedFactGroup::MarkerObligation &&
@@ -5976,6 +6053,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Literal) ||
       aggregates.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Aggregate) ||
+      casts.size() !=
+          requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Cast) ||
       calls.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Call) ||
       places.size() !=
@@ -6142,7 +6221,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           checked::AggregateFactMap::fromEntries(zc::mv(aggregates)),
           checked::PlaceFactMap::fromEntries(zc::mv(places)),
           checked::CoercionFactMap::fromEntries(zc::mv(coercionEntries)),
-          emptyFactMap<checked::CastFactMap>(),
+          checked::CastFactMap::fromEntries(zc::mv(casts)),
           checked::CallFactMap::fromEntries(zc::mv(calls)),
           emptyFactMap<checked::CompoundAssignmentFactMap>(),
           checked::MemberFactMap::fromEntries(zc::mv(members)),

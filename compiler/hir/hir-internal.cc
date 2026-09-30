@@ -241,23 +241,22 @@ bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
 // excluded.
 
 bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
-  return facts.coercions().size() == 0 && facts.casts().size() == 0 &&
-         facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
-         facts.captures().size() == 0 && facts.exhaustiveness().size() == 0 &&
-         facts.unsafeOperations().size() == 0 && facts.projections().size() == 0 &&
-         facts.obligations().size() == 0 && facts.errorUnionShapes().size() == 0 &&
-         facts.errorOperators().size() == 0;
+  return facts.coercions().size() == 0 && facts.compoundAssignments().size() == 0 &&
+         facts.observedOperations().size() == 0 && facts.captures().size() == 0 &&
+         facts.exhaustiveness().size() == 0 && facts.unsafeOperations().size() == 0 &&
+         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
+         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
 }
 
 // True when every unsupported family other than coercions is empty. Coercions
 // are handled separately so a single concrete-to-dyn erasure can fail closed as
 // a per-definition capability rejection instead of a module invariant.
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts) {
-  return facts.casts().size() == 0 && facts.compoundAssignments().size() == 0 &&
-         facts.observedOperations().size() == 0 && facts.captures().size() == 0 &&
-         facts.exhaustiveness().size() == 0 && facts.unsafeOperations().size() == 0 &&
-         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
-         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
+  return facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
+         facts.captures().size() == 0 && facts.exhaustiveness().size() == 0 &&
+         facts.unsafeOperations().size() == 0 && facts.projections().size() == 0 &&
+         facts.obligations().size() == 0 && facts.errorUnionShapes().size() == 0 &&
+         facts.errorOperators().size() == 0;
 }
 
 // A concrete-to-dyn erasure the lowering carrier does not implement yet:

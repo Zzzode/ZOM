@@ -699,6 +699,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t sequentialAggregateInitializers = 0;
   size_t sequentialParameterInitializers = 0;
   size_t sequentialLocalInitializers = 0;
+  size_t sequentialCastInitializers = 0;
   size_t sequentialLocalCount = 0;
   size_t sequentialFunctionCount = 0;
   size_t sequentialParameterReturns = 0;
@@ -761,6 +762,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 }
               }
               break;
+            case SequentialInitializerKind::Cast:
+              // An integer `as` cast over a scalar literal inner expression. The
+              // cast is a no-op for widening or identity conversions; the inner
+              // literal counts as a literal-bearing slot.
+              ++sequentialCastInitializers;
+              ++sequentialLiteralInitializers;
+              break;
             case SequentialInitializerKind::PrimitiveBinary:
               ++sequentialBinaryCount;
               for (const auto* operand : {&binding.leftOperand, &binding.rightOperand}) {
@@ -820,6 +828,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // C = K - R_init - lc_local balances the localReferences, expressions, and
   // literals equations.
   int64_t leadingLocalConditionalCorrection = 0;
+  // Each unary condition (`!x`) desugars to `x == false` in HIR. The synthetic
+  // false operand has no AST node and therefore no checker-produced node-type
+  // or literal fact, so the nodeTypes and literals equations subtract one per
+  // unary leading-local conditional.
+  int64_t leadingLocalConditionalUnaryCount = 0;
   {
     const auto& tree = bound.tree();
     for (const auto& functionDeclaration : candidate.impl->functions) {
@@ -831,6 +844,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!tree.contains(sourceDefinition.node)) continue;
       auto shape = functionReturnShape(tree, tree.node(sourceDefinition.node));
       if (shape == zc::none || !ZC_ASSERT_NONNULL(shape).isLeadingLocalConditional) continue;
+      if (ZC_ASSERT_NONNULL(shape).conditionIsUnary) ++leadingLocalConditionalUnaryCount;
       auto leading = leadingLocalConditionalShape(tree, ZC_ASSERT_NONNULL(shape).body);
       if (leading == zc::none) continue;
       size_t localReferencesUsed = 0;
@@ -1018,7 +1032,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 -
               unaryReturnCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
               parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
-              parameterFieldWriteCount * 4 + discardedStatementCallCount ||
+              parameterFieldWriteCount * 4 + discardedStatementCallCount +
+              sequentialCastInitializers - leadingLocalConditionalUnaryCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1029,10 +1044,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
               parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
-              sequentialLiteralCorrection + leadingLocalConditionalCorrection ||
+              sequentialLiteralCorrection + leadingLocalConditionalCorrection -
+              leadingLocalConditionalUnaryCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
                                   receiverFieldArithmeticCount + binaryWriteCount ||
+      facts.casts().size() != sequentialCastInitializers ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
                                     receiverCallCount + parameterFieldProjectionCount +
@@ -1984,6 +2001,34 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& syntheticValue = ZC_ASSERT_NONNULL(syntheticLiteral);
           if (syntheticValue.type != unaryOperandType ||
               syntheticValue.category != HirValueCategory::Value) {
+            bindingsValid = false;
+            break;
+          }
+        } else if (binding.initializerKind == SequentialInitializerKind::Cast) {
+          // Cast: the initializer node is a HirScalarLiteralExpression carrying
+          // the inner literal with the cast result type. The cast is a no-op
+          // for widening or identity conversions.
+          zc::Maybe<const HirScalarLiteralExpression&> literal;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != hirId(initializerNodeOrdinal)) continue;
+            if (literal != zc::none) bindingsValid = false;
+            literal = expression;
+          }
+          auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
+          if (!bindingsValid || literal == zc::none || literalIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          const auto& literalValue = ZC_ASSERT_NONNULL(literal);
+          if (literalValue.type != bindingType ||
+              literalValue.category != HirValueCategory::Value ||
+              literalFact.type != bindingType ||
+              !sameConstant(literalValue.value, literalFact.literal, module, registries,
+                            semanticTypes) ||
+              !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
             bindingsValid = false;
             break;
           }
@@ -3288,11 +3333,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       FunctionReturnShape source{};
       ZC_IF_SOME(value, sourceShape) { source = value; }
-      fprintf(stderr, "DEBUG hir-module: conditional shape block, isConditional=%d isLeadingLocalConditional=%d\n",
-              (int)source.isConditional, (int)source.isLeadingLocalConditional);
       if (source.isConditional) {
         if (source.isLeadingLocalConditional) {
-          fprintf(stderr, "DEBUG hir-module: isLeadingLocalConditional branch entered\n");
           // K leading scalar-local bindings followed by one comparison
           // conditional with two literal arms. Fixed-id layout relative to the
           // function id: function, body, per binding (local, initializer), then
@@ -3300,7 +3342,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // conditional, return: 9 + 2K nodes.
           auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);
           if (leadingMaybe == zc::none) {
-            fprintf(stderr, "DEBUG hir-module: leadingLocalConditionalShape returned none\n");
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
@@ -3364,7 +3405,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   registries, index + 1);
             }
           }
-          fprintf(stderr, "DEBUG hir-module: signature validated\n");
           // Spans and checked facts.
           auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
           auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
@@ -3377,7 +3417,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
           }
-          fprintf(stderr, "DEBUG hir-module: spans validated\n");
           auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.condition);
           auto thenTypeIndex = factIndex(facts.nodeTypes(), source.thenReturnValue);
           auto elseTypeIndex = factIndex(facts.nodeTypes(), source.elseReturnValue);
@@ -3390,7 +3429,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
           }
-          fprintf(stderr, "DEBUG hir-module: fact indexes validated\n");
           size_t conditionTypeSlot = 0;
           size_t thenTypeSlot = 0;
           size_t elseTypeSlot = 0;
@@ -3404,7 +3442,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          fprintf(stderr, "DEBUG hir-module: node types validated, bindingCount=%zu\n", bindingCount);
           // Fixed-id layout: bindings first, then the seven tail nodes.
           const uint32_t tailBase = 2u + static_cast<uint32_t>(bindingCount) * 2u;
           const HirNodeId leftId = hirId(expectedFunction + tailBase);
@@ -3414,8 +3451,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const HirNodeId elseId = hirId(expectedFunction + tailBase + 4);
           const HirNodeId conditionalId = hirId(expectedFunction + tailBase + 5);
           const HirNodeId returnId = hirId(expectedFunction + tailBase + 6);
-          fprintf(stderr, "DEBUG hir-module: leading-local conditional, bindingCount=%zu tailBase=%u\n",
-                  bindingCount, tailBase);
           bool structureOk = function.node == hirId(expectedFunction) &&
                              block.node == hirId(expectedFunction + 1) &&
                              function.body == block.node &&
@@ -3430,7 +3465,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             if (block.statements[bindingCount] != returnId) structureOk = false;
           }
           structureOk = structureOk && sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan));
-          fprintf(stderr, "DEBUG hir-module: structureOk=%d\n", (int)structureOk);
           if (!structureOk) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
@@ -3439,7 +3473,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // Verify the bindings against their owner locals and checked facts.
           zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
           for (size_t bindingIndex = 0; bindingIndex < bindingCount; ++bindingIndex) {
-            fprintf(stderr, "DEBUG hir-module: verifying binding %zu\n", bindingIndex);
             const auto& binding = leading.bindings[bindingIndex];
             const HirNodeId localNodeId =
                 hirId(expectedFunction + 2u + static_cast<uint32_t>(bindingIndex) * 2u);
@@ -3456,24 +3489,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localRecord = local;
             }
             if (localRecord == zc::none) {
-              fprintf(stderr, "DEBUG hir-module: localRecord not found for binding %zu\n", bindingIndex);
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::MissingRequiredFact, module,
                                                   registries, index + 1);
             }
-            fprintf(stderr, "DEBUG hir-module: localRecord found for binding %zu\n", bindingIndex);
             auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
             auto initializerSpan =
                 bound.parsedModule().spanFor(tree.node(binding.initializer).range);
             auto ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
             if (patternSpan == zc::none || initializerSpan == zc::none ||
                 ownerBinding == zc::none) {
-              fprintf(stderr, "DEBUG hir-module: pattern/initializer/owner validation FAILED\n");
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::MissingRequiredFact, module,
                                                   registries, index + 1);
             }
-            fprintf(stderr, "DEBUG hir-module: pattern/initializer/owner validated\n");
             for (const auto existing : localBindingIds) {
               if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
                 return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -3483,12 +3512,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
             if (initializerTypeIndex == zc::none) {
-              fprintf(stderr, "DEBUG hir-module: initializerTypeIndex not found\n");
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::MissingRequiredFact, module,
                                                   registries, index + 1);
             }
-            fprintf(stderr, "DEBUG hir-module: initializerTypeIndex found\n");
             size_t initializerTypeSlot = 0;
             ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
             const auto bindingType = facts.nodeTypes().entries()[initializerTypeSlot].value;
@@ -3502,12 +3529,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                           ZC_ASSERT_NONNULL(initializerSpan)) ||
                 !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
                                    tree)) {
-              fprintf(stderr, "DEBUG hir-module: local record validation FAILED\n");
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            fprintf(stderr, "DEBUG hir-module: local record validated\n");
             bool initializerRecordOk = false;
             if (binding.initializerKind == SequentialInitializerKind::Literal) {
               for (const auto& expression : candidate.impl->expressions) {
@@ -3529,6 +3554,41 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                       sameConstant(expression.value, literalFact.literal, module, registries,
                                    semanticTypes) &&
                       sameSpan(expression.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+                }
+              }
+            } else if (binding.initializerKind == SequentialInitializerKind::Cast) {
+              // An integer `as` cast over a scalar literal inner expression. The
+              // cast is a no-op for widening or identity conversions; validate
+              // the cast fact and the inner literal expression record.
+              auto castIndex = factIndex(facts.casts(), binding.initializer);
+              if (castIndex != zc::none) {
+                size_t castSlot = 0;
+                ZC_IF_SOME(value, castIndex) { castSlot = value; }
+                const auto& castFact = facts.casts().entries()[castSlot].value;
+                if (castFact.node == binding.initializer && castFact.result == bindingType &&
+                    castFact.target == bindingType && castFact.source == bindingType) {
+                  auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
+                  if (literalIndex != zc::none) {
+                    size_t literalSlot = 0;
+                    ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+                    const auto& literalFact = facts.literals().entries()[literalSlot].value;
+                    if (literalFact.type == bindingType) {
+                      for (const auto& expression : candidate.impl->expressions) {
+                        if (expression.node != initializerNodeId) continue;
+                        if (initializerRecordOk) {
+                          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                              ir::IrFailureKind::AdditionalFact,
+                                                              module, registries, index + 1);
+                        }
+                        initializerRecordOk =
+                            expression.type == bindingType &&
+                            expression.category == HirValueCategory::Value &&
+                            sameConstant(expression.value, literalFact.literal, module, registries,
+                                         semanticTypes) &&
+                            sameSpan(expression.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+                      }
+                    }
+                  }
                 }
               }
             } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
@@ -3577,60 +3637,106 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               }
             }
             if (!initializerRecordOk) {
-              fprintf(stderr, "DEBUG hir-module: initializer record validation FAILED\n");
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            fprintf(stderr, "DEBUG hir-module: initializer record validated\n");
             localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
           }
-          fprintf(stderr, "DEBUG hir-module: bindings verified\n");
-          // Comparison call fact.
-          auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
-          auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
-          auto callIndex = factIndex(facts.calls(), source.condition);
-          auto leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
-          auto rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
-          if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
-              leftSpan == zc::none || rightSpan == zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::MissingRequiredFact, module,
-                                                registries, index + 1);
+          // Condition call fact: equality comparison or unary logical-not. The
+          // unary `!x` desugars to `x == false` in HIR, so the tail verification
+          // below shares the equality-record shape; only the checker call fact
+          // and operand coverage differ.
+          identity::SemanticTypeId operandType;
+          checker::PrimitiveOperation hirOperation;
+          zc::Maybe<identity::SourceSpan> leftSpan;
+          zc::Maybe<identity::SourceSpan> rightSpan;
+          if (source.conditionIsUnary) {
+            // The unary `!x` condition desugars to `x == false`. Validate the
+            // unary call fact and the operand node type; the synthetic false
+            // operand has no AST node and carries no checker-produced fact.
+            auto operandTypeIndex = factIndex(facts.nodeTypes(), source.conditionUnaryOperand);
+            auto unaryCallIndex = factIndex(facts.calls(), source.condition);
+            leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionUnaryOperand).range);
+            if (operandTypeIndex == zc::none || unaryCallIndex == zc::none ||
+                leftSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t operandTypeSlot = 0;
+            size_t unaryCallSlot = 0;
+            ZC_IF_SOME(value, operandTypeIndex) { operandTypeSlot = value; }
+            ZC_IF_SOME(value, unaryCallIndex) { unaryCallSlot = value; }
+            operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+            const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+            const auto& unaryCall = unaryCallFact.invocation;
+            const auto& unarySelected = unaryCall.selected.variant();
+            if (unaryCallFact.node != source.condition ||
+                !unarySelected.is<checker::checked::PrimitiveCallable>() ||
+                unarySelected.get<checker::checked::PrimitiveCallable>().operation !=
+                    checker::PrimitiveOperation::LogicalNot ||
+                unaryCall.calleeType != operandType || unaryCall.receiver != zc::none ||
+                unaryCall.receiverMode != zc::none || unaryCall.receiverAdjustment != zc::none ||
+                unaryCall.arguments.size() != 1 ||
+                unaryCall.arguments[0].sourceNode != source.conditionUnaryOperand ||
+                unaryCall.arguments[0].sourceType != operandType ||
+                unaryCall.successType != conditionType || unaryCall.resultType != conditionType ||
+                unaryCall.substitutions != zc::none || unaryCall.witnesses != zc::none ||
+                unaryCall.raises != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            // The HIR materialization desugars `!x` to `x == false`.
+            hirOperation = checker::PrimitiveOperation::Eq;
+          } else {
+            // Equality comparison call fact.
+            auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
+            auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
+            auto callIndex = factIndex(facts.calls(), source.condition);
+            leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
+            rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
+            if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+                leftSpan == zc::none || rightSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t leftTypeSlot = 0;
+            size_t rightTypeSlot = 0;
+            size_t callSlot = 0;
+            ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+            ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+            ZC_IF_SOME(value, callIndex) { callSlot = value; }
+            operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+            const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+            const auto& callFact = facts.calls().entries()[callSlot].value;
+            const auto& call = callFact.invocation;
+            const auto& selected = call.selected.variant();
+            if (operandType != rightType || callFact.node != source.condition ||
+                !selected.is<checker::checked::PrimitiveCallable>() ||
+                !(isScalarComparisonOperation(
+                      selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalAnd ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalOr) ||
+                call.calleeType != operandType || call.receiver != zc::none ||
+                call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+                call.arguments.size() != 2 ||
+                call.arguments[0].sourceNode != source.conditionLeft ||
+                call.arguments[0].sourceType != operandType ||
+                call.arguments[1].sourceNode != source.conditionRight ||
+                call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+                call.resultType != conditionType || call.substitutions != zc::none ||
+                call.witnesses != zc::none || call.raises != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            hirOperation = selected.get<checker::checked::PrimitiveCallable>().operation;
           }
-          size_t leftTypeSlot = 0;
-          size_t rightTypeSlot = 0;
-          size_t callSlot = 0;
-          ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
-          ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
-          ZC_IF_SOME(value, callIndex) { callSlot = value; }
-          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
-          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
-          const auto& callFact = facts.calls().entries()[callSlot].value;
-          const auto& call = callFact.invocation;
-          const auto& selected = call.selected.variant();
-          if (operandType != rightType || callFact.node != source.condition ||
-              !selected.is<checker::checked::PrimitiveCallable>() ||
-              !(isScalarComparisonOperation(
-                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalAnd ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalOr) ||
-              call.calleeType != operandType || call.receiver != zc::none ||
-              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
-              call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||
-              call.arguments[0].sourceType != operandType ||
-              call.arguments[1].sourceNode != source.conditionRight ||
-              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
-              call.resultType != conditionType || call.substitutions != zc::none ||
-              call.witnesses != zc::none || call.raises != zc::none) {
-            fprintf(stderr, "DEBUG hir-module: condition fact validation FAILED\n");
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::InvalidFact, module, registries,
-                                                index + 1);
-          }
-          fprintf(stderr, "DEBUG hir-module: condition fact validated\n");
           // Verify one comparison operand node: literal, parameter reference, or
           // leading-local reference.
           auto verifyConditionOperand = [&](bool isLiteral, ast::NodeId operandSourceNode,
@@ -3683,16 +3789,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             return false;
           };
-          if (!verifyConditionOperand(source.conditionLeftIsLiteral, source.conditionLeft, leftId,
-                                      ZC_ASSERT_NONNULL(leftSpan)) ||
-              !verifyConditionOperand(source.conditionRightIsLiteral, source.conditionRight,
-                                      rightId, ZC_ASSERT_NONNULL(rightSpan))) {
-            fprintf(stderr, "DEBUG hir-module: operand verification FAILED\n");
+          if (source.conditionIsUnary) {
+            // The unary condition has one real operand (the `x` in `!x`); the
+            // synthetic false right operand has no AST node and no HIR record
+            // to cross-check.
+            if (!verifyConditionOperand(source.conditionUnaryOperandIsLiteral,
+                                        source.conditionUnaryOperand, leftId,
+                                        ZC_ASSERT_NONNULL(leftSpan))) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (!verifyConditionOperand(source.conditionLeftIsLiteral, source.conditionLeft,
+                                             leftId, ZC_ASSERT_NONNULL(leftSpan)) ||
+                     !verifyConditionOperand(source.conditionRightIsLiteral, source.conditionRight,
+                                             rightId, ZC_ASSERT_NONNULL(rightSpan))) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          fprintf(stderr, "DEBUG hir-module: operands verified\n");
           // Equality, arms, conditional, and return records.
           zc::Maybe<const HirPrimitiveBinaryExpression&> equalityRecord;
           for (const auto& equality : candidate.impl->primitiveBinaryOperations) {
@@ -3737,14 +3852,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             conditionalRecord = candidateConditional;
           }
           const auto& equality = ZC_ASSERT_NONNULL(equalityRecord);
-          bool tailOk =
-              equality.left == leftId && equality.right == rightId &&
-              equality.operandType == operandType && equality.type == conditionType &&
-              equality.category == HirValueCategory::Value &&
-              equality.operation == selected.get<checker::checked::PrimitiveCallable>().operation &&
-              sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
-              armLiteralOk(thenId, source.thenReturnValue, ZC_ASSERT_NONNULL(thenSpan)) &&
-              armLiteralOk(elseId, source.elseReturnValue, ZC_ASSERT_NONNULL(elseSpan));
+          bool tailOk = equality.left == leftId && equality.right == rightId &&
+                        equality.operandType == operandType && equality.type == conditionType &&
+                        equality.category == HirValueCategory::Value &&
+                        equality.operation == hirOperation &&
+                        sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+                        armLiteralOk(thenId, source.thenReturnValue, ZC_ASSERT_NONNULL(thenSpan)) &&
+                        armLiteralOk(elseId, source.elseReturnValue, ZC_ASSERT_NONNULL(elseSpan));
           if (conditionalRecord != zc::none) {
             const auto& conditional = ZC_ASSERT_NONNULL(conditionalRecord);
             tailOk = tailOk && conditional.condition == equalityId &&
@@ -3776,12 +3890,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           if (!tailOk || !typeExists(operandType, semanticTypes) ||
               !typeExists(conditionType, semanticTypes)) {
-            fprintf(stderr, "DEBUG hir-module: tail verification FAILED tailOk=%d\n", (int)tailOk);
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          fprintf(stderr, "DEBUG hir-module: leading-local conditional VERIFIED\n");
           nextFunction += 9u + static_cast<uint32_t>(bindingCount) * 2u;
           continue;
         }

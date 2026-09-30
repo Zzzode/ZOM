@@ -200,6 +200,7 @@ struct PendingLeadingLocalConditionalReturn final {
   identity::SourceSpan thenSpan;
   identity::SourceSpan elseSpan;
   identity::SourceSpan returnSpan;
+  bool isUnaryDesugar;
 };
 
 struct PendingLoopReturn final {

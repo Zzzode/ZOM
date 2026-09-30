@@ -45,6 +45,7 @@ void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failur
 
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
@@ -295,6 +296,20 @@ bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value) {
          isScalarLiteral(tree.node(operand).kind);
 }
 
+bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::CastExpression) {
+    return false;
+  }
+  // Only the `as` mode is admitted; `as?` and `as!` stay unsupported.
+  if (tree.node(value).payload.words[ast::kCastExpressionModeWord] != 0) { return false; }
+  const ast::NodeId inner(tree.node(value).payload.words[ast::kCastExpressionExprWord]);
+  if (!tree.contains(inner)) return false;
+  // The inner expression must be a scalar literal in this slice. Identifier
+  // and composite operand casts are checker/HIR decisions kept out of
+  // surface admission.
+  return isScalarLiteral(tree.node(inner).kind);
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
@@ -365,7 +380,7 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
          isAdmittedDirectCall(tree, initializer) ||
          isAdmittedAggregateInitializer(tree, initializer) ||
          isAdmittedPrimitiveBinary(tree, initializer) ||
-         isAdmittedPrimitiveUnary(tree, initializer);
+         isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer);
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
@@ -621,7 +636,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
             return tree.contains(returnValue) && isScalarLiteral(tree.node(returnValue).kind);
           };
           if (tree.contains(condition) &&
-              tree.node(condition).kind == ast::SyntaxKind::BinaryExpr &&
+              (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr ||
+               (tree.node(condition).kind == ast::SyntaxKind::UnaryExpression &&
+                static_cast<ast::UnaryOperatorKind>(
+                    tree.node(condition).payload.words[ast::kUnaryExpressionOpWord]) ==
+                    ast::UnaryOperatorKind::LogicalNot)) &&
               armTailLiteral(thenStmt) && armTailLiteral(elseStmt)) {
             return true;
           }
@@ -730,13 +749,14 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     ZC_IF_SOME(declarator, soleDeclarator) {
       const ast::NodeId soleInitializer(
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      // An unannotated binary- or unary-result binding drains through the
-      // single-local gate below as ZOM4099; the sequential rail requires the
-      // annotation.
+      // An unannotated binary-, unary-, or cast-result binding drains through
+      // the single-local gate below as ZOM4099; the sequential rail requires
+      // the annotation.
       if (isAdmittedLocalInitializer(tree, declarator, soleInitializer) &&
           tree.contains(soleInitializer) &&
           (tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr ||
-           tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression)) {
+           tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression ||
+           tree.node(soleInitializer).kind == ast::SyntaxKind::CastExpression)) {
         sequentialLocalShape = true;
       }
     }

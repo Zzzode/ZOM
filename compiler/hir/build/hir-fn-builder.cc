@@ -440,6 +440,16 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         }
         break;
       }
+      case SequentialInitializerKind::Cast:
+        // An integer `as` cast over a scalar literal inner expression. The cast
+        // is a no-op for widening or identity conversions; lower the inner
+        // literal with the cast result type.
+        ZC_IF_SOME(literal, binding.literal) {
+          ctx.addExpression(HirScalarLiteralExpression{initializerNodeId, binding.type,
+                                                       literal.clone(), HirValueCategory::Value,
+                                                       binding.initializerSpan.clone()});
+        }
+        break;
     }
     ctx.addLocal(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
                                  binding.type, initializerNodeId, binding.patternSpan.clone(),
