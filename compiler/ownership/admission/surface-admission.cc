@@ -512,6 +512,26 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   return true;
 }
 
+// A nested arithmetic operand is a one-level binary whose own operands are
+// leaves (identifier or scalar literal), with at least one identifier leaf.
+// Used as a comparison operand in conditional bodies so the HIR builder can
+// synthesize a temp binding for the arithmetic result.
+bool isAdmittedNestedArithmeticOperand(const ast::Tree& tree, ast::NodeId operand) {
+  if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  const ast::NodeId innerLeft(tree.node(operand).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId innerRight(tree.node(operand).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return false;
+  auto isLeaf = [&](ast::NodeId node) {
+    return tree.node(node).kind == ast::SyntaxKind::IdentExpr ||
+           isScalarLiteral(tree.node(node).kind);
+  };
+  const bool innerLeftIdent = tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr;
+  const bool innerRightIdent = tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+  return isLeaf(innerLeft) && isLeaf(innerRight) && (innerLeftIdent || innerRightIdent);
+}
+
 bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   const auto& ifNode = tree.node(ifStmt);
   // Admit two structural condition shapes: a bare identifier (a bool parameter
@@ -530,9 +550,15 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
     if (!tree.contains(left) || !tree.contains(right)) return false;
     const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
     const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
-    const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind);
-    const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind);
-    if (!leftOk || !rightOk || (!leftIdent && !rightIdent)) return false;
+    const bool leftNested = isAdmittedNestedArithmeticOperand(tree, left);
+    const bool rightNested = isAdmittedNestedArithmeticOperand(tree, right);
+    // At most one operand may be nested in this slice.
+    if (leftNested && rightNested) return false;
+    const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind) || leftNested;
+    const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind) || rightNested;
+    if (!leftOk || !rightOk || (!leftIdent && !rightIdent && !leftNested && !rightNested)) {
+      return false;
+    }
   } else if (tree.node(condition).kind == ast::SyntaxKind::UnaryExpression) {
     // Admit the unary `!x` condition: a LogicalNot whose operand is an
     // identifier or a scalar literal. The HIR builder desugars `!x` to

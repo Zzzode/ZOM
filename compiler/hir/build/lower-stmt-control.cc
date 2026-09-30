@@ -92,9 +92,15 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
   const HirNodeId bodyId = ctx.allocNode();
   zc::Vector<HirNodeId> localIds;
   zc::Vector<HirNodeId> initializerIds;
+  zc::Vector<HirNodeId> arithLeftIds;
+  zc::Vector<HirNodeId> arithRightIds;
   for (size_t index = 0; index < bindingCount; ++index) {
     localIds.add(ctx.allocNode());
     initializerIds.add(ctx.allocNode());
+    if (leading.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary) {
+      arithLeftIds.add(ctx.allocNode());
+      arithRightIds.add(ctx.allocNode());
+    }
   }
   const HirNodeId leftId = ctx.allocNode();
   const HirNodeId rightId = ctx.allocNode();
@@ -117,6 +123,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
 
   for (size_t index = 0; index < bindingCount; ++index) {
     const auto& binding = leading.bindings[index];
+    size_t arithIndex = 0;
     switch (binding.kind) {
       case SequentialInitializerKind::Literal:
         ZC_IF_SOME(literal, binding.literal) {
@@ -137,8 +144,51 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
             initializerIds[index], hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
             binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
         break;
+      case SequentialInitializerKind::PrimitiveBinary: {
+        // Count how many arithmetic bindings preceded this one to index the
+        // pre-allocated leaf operand nodes.
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (leading.bindings[earlier].kind == SequentialInitializerKind::PrimitiveBinary) {
+            ++arithIndex;
+          }
+        }
+        const auto& leftLeaf = ZC_ASSERT_NONNULL(binding.arithmeticLeft);
+        const auto& rightLeaf = ZC_ASSERT_NONNULL(binding.arithmeticRight);
+        ZC_IF_SOME(literal, leftLeaf.literal) {
+          ctx.addExpression(HirScalarLiteralExpression{arithLeftIds[arithIndex], binding.type,
+                                                       literal.clone(), HirValueCategory::Value,
+                                                       binding.initializerSpan.clone()});
+        } else ZC_IF_SOME(parameter, leftLeaf.parameter) {
+          ctx.addParameterReference(HirParameterReferenceExpression{
+              arithLeftIds[arithIndex], parameter.clone(), binding.type, HirValueCategory::Place,
+              binding.initializerSpan.clone()});
+        } else if (leftLeaf.isLocal) {
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              arithLeftIds[arithIndex],
+              hirLocalId(static_cast<uint32_t>(leftLeaf.referencedLocal + 1)), binding.type,
+              HirValueCategory::Place, binding.initializerSpan.clone()});
+        }
+        ZC_IF_SOME(literal, rightLeaf.literal) {
+          ctx.addExpression(HirScalarLiteralExpression{arithRightIds[arithIndex], binding.type,
+                                                       literal.clone(), HirValueCategory::Value,
+                                                       binding.initializerSpan.clone()});
+        } else ZC_IF_SOME(parameter, rightLeaf.parameter) {
+          ctx.addParameterReference(HirParameterReferenceExpression{
+              arithRightIds[arithIndex], parameter.clone(), binding.type, HirValueCategory::Place,
+              binding.initializerSpan.clone()});
+        } else if (rightLeaf.isLocal) {
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              arithRightIds[arithIndex],
+              hirLocalId(static_cast<uint32_t>(rightLeaf.referencedLocal + 1)), binding.type,
+              HirValueCategory::Place, binding.initializerSpan.clone()});
+        }
+        ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+            initializerIds[index], arithLeftIds[arithIndex], arithRightIds[arithIndex],
+            binding.type, binding.type, HirValueCategory::Value,
+            ZC_ASSERT_NONNULL(binding.arithmeticOperation), binding.initializerSpan.clone()});
+        break;
+      }
       case SequentialInitializerKind::Aggregate:
-      case SequentialInitializerKind::PrimitiveBinary:
       case SequentialInitializerKind::PrimitiveUnary:
       case SequentialInitializerKind::Cast:
       case SequentialInitializerKind::Ternary:

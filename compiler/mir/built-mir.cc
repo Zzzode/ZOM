@@ -2674,7 +2674,8 @@ bool validLeadingLocalConditionalReturnFunction(
     return false;
   }
   // One leading-local preamble pair: StorageLive(userLocal) then an Initialize
-  // Assign from a constant or a copy of a parameter or an earlier user local.
+  // Assign from a constant, a copy of a parameter or an earlier user local, or
+  // a one-level arithmetic binary over literal/parameter leaves.
   for (size_t i = 0; i < bindingCount; ++i) {
     const auto& binding = *bindings[i];
     hir::HirNodeId initializerNode;
@@ -2692,10 +2693,56 @@ bool validLeadingLocalConditionalReturnFunction(
         assignment.destination.local() != localId(static_cast<uint32_t>(parameterCount + i + 1)) ||
         assignment.destination.rootType() != binding.type ||
         assignment.destination.resultType() != binding.type ||
-        assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != MirRvalueKind::Use) {
+        assignment.destination.projections().size() != 0) {
       return false;
     }
+    // An arithmetic binding initializer lowers to an Arithmetic rvalue whose
+    // two leaf operands are each a constant or a parameter place-use.
+    if (auto initBinary = primitiveBinaryFor(hirModule, initializerNode); initBinary != zc::none) {
+      const auto& binary = ZC_ASSERT_NONNULL(initBinary);
+      if (assignment.value.kind() != MirRvalueKind::Arithmetic) return false;
+      const auto& arithmetic = assignment.value.arithmeticValue();
+      auto expectedArithmetic = mirArithmeticOperatorFor(binary.operation);
+      if (expectedArithmetic == zc::none ||
+          arithmetic.op != ZC_ASSERT_NONNULL(expectedArithmetic) ||
+          arithmetic.resultType != binding.type || binding.initializerSpan == zc::none ||
+          !sameSpan(assignStatement.sourceSpan(), ZC_ASSERT_NONNULL(binding.initializerSpan))) {
+        return false;
+      }
+      auto leafOk = [&](const MirOperand& operand, hir::HirNodeId leafNode) -> bool {
+        if (auto leafLiteral = expressionFor(hirModule, leafNode); leafLiteral != zc::none) {
+          return operand.kind() == MirOperandKind::Constant &&
+                 operand.constantValue().type == binding.type &&
+                 sameConstant(operand.constantValue().value, ZC_ASSERT_NONNULL(leafLiteral).value,
+                              module, identities, semanticTypes);
+        }
+        if (auto leafParameter = parameterReferenceFor(hirModule, leafNode);
+            leafParameter != zc::none) {
+          size_t parameterIndex = 0;
+          bool resolved = false;
+          for (size_t candidate = 0; candidate < parameterCount; ++candidate) {
+            if (declaration.parameters[candidate].key ==
+                ZC_ASSERT_NONNULL(leafParameter).parameter) {
+              parameterIndex = candidate;
+              resolved = true;
+              break;
+            }
+          }
+          return resolved && matchesPlaceUse(operand, proofs, copy, binding.type) &&
+                 operand.kind() != MirOperandKind::Constant &&
+                 operand.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
+                 operand.place().rootType() == binding.type &&
+                 operand.place().resultType() == binding.type &&
+                 operand.place().projections().size() == 0;
+        }
+        return false;
+      };
+      if (!leafOk(arithmetic.left, binary.left) || !leafOk(arithmetic.right, binary.right)) {
+        return false;
+      }
+      continue;
+    }
+    if (assignment.value.kind() != MirRvalueKind::Use) return false;
     const auto& operand = assignment.value.useValue().operand;
     auto initLiteral = expressionFor(hirModule, initializerNode);
     auto initParameter = parameterReferenceFor(hirModule, initializerNode);

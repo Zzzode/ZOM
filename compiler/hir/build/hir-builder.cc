@@ -642,8 +642,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           // conditional with two literal arms. The bindings reuse the
           // sequential-local binding classification; each comparison operand
           // resolves to a leading local, a parameter, or a scalar literal.
+          // A sole-if whose comparison operand is a nested arithmetic
+          // expression has no source let bindings; the builder synthesizes
+          // one arithmetic temp binding instead.
           auto leadingShapeMaybe = leadingLocalConditionalShape(tree, shape.body);
-          if (leadingShapeMaybe == zc::none) {
+          const bool synthesizedArithmetic =
+              shape.conditionLeftIsNestedArithmetic || shape.conditionRightIsNestedArithmetic;
+          if (leadingShapeMaybe == zc::none && !synthesizedArithmetic) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,
                                                  registries, ordinal + 2);
@@ -658,75 +663,288 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           zc::Vector<PendingLeadingLocalBinding> pendingBindings;
           zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
           bool leadingRejected = false;
-          for (size_t bindingIndex = 0; bindingIndex < leadingShape.bindings.size();
-               ++bindingIndex) {
-            const auto& binding = leadingShape.bindings[bindingIndex];
-            auto ownerBinding =
-                ownerLocalBindingForPattern(bound.definitions(), binding.pattern, tree);
-            auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
-            auto initializerSpan =
-                bound.parsedModule().spanFor(tree.node(binding.initializer).range);
-            auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
-            if (ownerBinding == zc::none || patternSpan == zc::none ||
-                initializerSpan == zc::none || initializerTypeIndex == zc::none ||
-                !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(ownerBinding),
-                                   binding.pattern, tree)) {
-              break;
+          if (synthesizedArithmetic && leadingShapeMaybe == zc::none) {
+            // Synthesize one arithmetic temp binding from the nested
+            // arithmetic comparison operand. The arithmetic result is
+            // computed into the temp, then the comparison reads it.
+            const ast::NodeId arithNode =
+                shape.conditionLeftIsNestedArithmetic ? shape.conditionLeft : shape.conditionRight;
+            auto arithTypeIndex = factIndex(facts.nodeTypes(), arithNode);
+            auto arithCallIndex = factIndex(facts.calls(), arithNode);
+            auto arithSpan = bound.parsedModule().spanFor(tree.node(arithNode).range);
+            if (arithTypeIndex == zc::none || arithCallIndex == zc::none || arithSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
             }
-            size_t initializerTypeSlot = 0;
-            ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
-            const identity::SemanticTypeId bindingType =
-                facts.nodeTypes().entries()[initializerTypeSlot].value;
-            if (!typeExists(bindingType, checkedModule.semanticTypes())) { break; }
-            for (const auto existing : localBindingIds) {
-              if (existing == ZC_ASSERT_NONNULL(ownerBinding)) leadingRejected = true;
+            size_t arithTypeSlot = 0;
+            size_t arithCallSlot = 0;
+            ZC_IF_SOME(index, arithTypeIndex) { arithTypeSlot = index; }
+            ZC_IF_SOME(index, arithCallIndex) { arithCallSlot = index; }
+            const auto arithType = facts.nodeTypes().entries()[arithTypeSlot].value;
+            const auto& arithCallFact = facts.calls().entries()[arithCallSlot].value;
+            const auto& arithCall = arithCallFact.invocation;
+            const auto& arithSelected = arithCall.selected.variant();
+            if (arithCallFact.node != arithNode ||
+                !arithSelected.is<checker::checked::PrimitiveCallable>() ||
+                !isScalarArithmeticOperation(
+                    arithSelected.get<checker::checked::PrimitiveCallable>().operation) ||
+                arithCall.calleeType != arithType || arithCall.receiver != zc::none ||
+                arithCall.receiverMode != zc::none || arithCall.receiverAdjustment != zc::none ||
+                arithCall.arguments.size() != 2 ||
+                arithCall.arguments[0].sourceNode != shape.nestedArithmeticLeft ||
+                arithCall.arguments[0].sourceType != arithType ||
+                arithCall.arguments[1].sourceNode != shape.nestedArithmeticRight ||
+                arithCall.arguments[1].sourceType != arithType ||
+                arithCall.successType != arithType || arithCall.resultType != arithType ||
+                arithCall.substitutions != zc::none || arithCall.witnesses != zc::none ||
+                arithCall.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
             }
-            if (leadingRejected) break;
-            localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
-            zc::Maybe<checker::checked::CanonicalConstValue> bindingLiteral;
-            zc::Maybe<identity::CallableParameterKey> bindingParameter;
-            size_t referencedLocal = 0;
-            if (binding.initializerKind == SequentialInitializerKind::Literal) {
-              auto literalIndex = factIndex(facts.literals(), binding.initializer);
-              if (literalIndex == zc::none) { break; }
-              size_t literalSlot = 0;
-              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
-              const auto& literalFact = facts.literals().entries()[literalSlot].value;
-              if (literalFact.type != bindingType ||
-                  !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
-                break;
+            const auto arithOperation =
+                arithSelected.get<checker::checked::PrimitiveCallable>().operation;
+            // Resolve one arithmetic leaf operand to a parameter or a literal.
+            auto resolveArithmeticLeaf = [&](ast::NodeId leafNode, bool isLiteral,
+                                             const identity::SourceSpan& leafSpan)
+                -> zc::Maybe<PendingLeadingConditionOperand> {
+              if (isLiteral) {
+                auto leafLiteralIndex = factIndex(facts.literals(), leafNode);
+                if (leafLiteralIndex == zc::none) return zc::none;
+                size_t leafLiteralSlot = 0;
+                ZC_IF_SOME(index, leafLiteralIndex) { leafLiteralSlot = index; }
+                const auto& leafLiteralFact = facts.literals().entries()[leafLiteralSlot].value;
+                if (leafLiteralFact.type != arithType) return zc::none;
+                return PendingLeadingConditionOperand{
+                    arithType, leafSpan.clone(), leafLiteralFact.literal.clone(), zc::none, 0,
+                    false};
               }
-              bindingLiteral = literalFact.literal.clone();
-            } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
-              auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
-              if (referenceBinding == zc::none ||
-                  binding.referencedLocal >= localBindingIds.size() - 1 ||
-                  ZC_ASSERT_NONNULL(referenceBinding) != localBindingIds[binding.referencedLocal]) {
-                break;
-              }
-              referencedLocal = binding.referencedLocal;
-            } else {
-              auto parameterHandle =
-                  resolvedCallableParameter(bound.bindings(), binding.initializer);
-              if (parameterHandle == zc::none) { break; }
+              auto parameterHandle = resolvedCallableParameter(bound.bindings(), leafNode);
+              if (parameterHandle == zc::none) return zc::none;
               zc::Maybe<identity::CallableParameterKey> resolvedKey;
               ZC_IF_SOME(handle, parameterHandle) {
                 auto authority = registries.callableParameter(handle);
                 ZC_IF_SOME(entry, authority) {
                   for (const auto& parameter : parameters) {
-                    if (parameter.key == entry.key() && parameter.type == bindingType) {
+                    if (parameter.key == entry.key() && parameter.type == arithType) {
                       resolvedKey = entry.key().clone();
                     }
                   }
                 }
               }
-              if (resolvedKey == zc::none) { break; }
-              bindingParameter = zc::mv(resolvedKey);
+              if (resolvedKey == zc::none) return zc::none;
+              return PendingLeadingConditionOperand{
+                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false};
+            };
+            auto arithLeftSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticLeft).range);
+            auto arithRightSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticRight).range);
+            if (arithLeftSpan == zc::none || arithRightSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto arithLeft = resolveArithmeticLeaf(shape.nestedArithmeticLeft,
+                                                   shape.nestedArithmeticLeftIsLiteral,
+                                                   ZC_ASSERT_NONNULL(arithLeftSpan));
+            auto arithRight = resolveArithmeticLeaf(shape.nestedArithmeticRight,
+                                                    shape.nestedArithmeticRightIsLiteral,
+                                                    ZC_ASSERT_NONNULL(arithRightSpan));
+            if (arithLeft == zc::none || arithRight == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
             }
             pendingBindings.add(PendingLeadingLocalBinding{
-                bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
-                ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
-                zc::mv(bindingLiteral), zc::mv(bindingParameter), referencedLocal});
+                arithType, ZC_ASSERT_NONNULL(arithSpan).clone(),
+                ZC_ASSERT_NONNULL(arithSpan).clone(), SequentialInitializerKind::PrimitiveBinary,
+                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight)});
+          }
+          if (leadingShapeMaybe != zc::none) {
+            for (size_t bindingIndex = 0; bindingIndex < leadingShape.bindings.size();
+                 ++bindingIndex) {
+              const auto& binding = leadingShape.bindings[bindingIndex];
+              auto ownerBinding =
+                  ownerLocalBindingForPattern(bound.definitions(), binding.pattern, tree);
+              auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
+              auto initializerSpan =
+                  bound.parsedModule().spanFor(tree.node(binding.initializer).range);
+              auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
+              if (ownerBinding == zc::none || patternSpan == zc::none ||
+                  initializerSpan == zc::none || initializerTypeIndex == zc::none ||
+                  !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(ownerBinding),
+                                     binding.pattern, tree)) {
+                break;
+              }
+              size_t initializerTypeSlot = 0;
+              ZC_IF_SOME(index, initializerTypeIndex) { initializerTypeSlot = index; }
+              const identity::SemanticTypeId bindingType =
+                  facts.nodeTypes().entries()[initializerTypeSlot].value;
+              if (!typeExists(bindingType, checkedModule.semanticTypes())) { break; }
+              for (const auto existing : localBindingIds) {
+                if (existing == ZC_ASSERT_NONNULL(ownerBinding)) leadingRejected = true;
+              }
+              if (leadingRejected) break;
+              localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
+              zc::Maybe<checker::checked::CanonicalConstValue> bindingLiteral;
+              zc::Maybe<identity::CallableParameterKey> bindingParameter;
+              size_t referencedLocal = 0;
+              if (binding.initializerKind == SequentialInitializerKind::Literal) {
+                auto literalIndex = factIndex(facts.literals(), binding.initializer);
+                if (literalIndex == zc::none) { break; }
+                size_t literalSlot = 0;
+                ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+                const auto& literalFact = facts.literals().entries()[literalSlot].value;
+                if (literalFact.type != bindingType ||
+                    !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+                  break;
+                }
+                bindingLiteral = literalFact.literal.clone();
+              } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+                auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
+                if (referenceBinding == zc::none ||
+                    binding.referencedLocal >= localBindingIds.size() - 1 ||
+                    ZC_ASSERT_NONNULL(referenceBinding) !=
+                        localBindingIds[binding.referencedLocal]) {
+                  break;
+                }
+                referencedLocal = binding.referencedLocal;
+              } else {
+                auto parameterHandle =
+                    resolvedCallableParameter(bound.bindings(), binding.initializer);
+                if (parameterHandle == zc::none) { break; }
+                zc::Maybe<identity::CallableParameterKey> resolvedKey;
+                ZC_IF_SOME(handle, parameterHandle) {
+                  auto authority = registries.callableParameter(handle);
+                  ZC_IF_SOME(entry, authority) {
+                    for (const auto& parameter : parameters) {
+                      if (parameter.key == entry.key() && parameter.type == bindingType) {
+                        resolvedKey = entry.key().clone();
+                      }
+                    }
+                  }
+                }
+                if (resolvedKey == zc::none) { break; }
+                bindingParameter = zc::mv(resolvedKey);
+              }
+              pendingBindings.add(PendingLeadingLocalBinding{
+                  bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
+                  ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
+                  zc::mv(bindingLiteral), zc::mv(bindingParameter), referencedLocal, zc::none,
+                  zc::none, zc::none});
+            }
+          }
+          if (synthesizedArithmetic && leadingShapeMaybe != zc::none) {
+            // Synthesize one arithmetic temp binding from the nested
+            // arithmetic comparison operand. The arithmetic result is
+            // computed into the temp, then the comparison reads it.
+            // The leaf operands may reference leading locals, parameters,
+            // or scalar literals.
+            const ast::NodeId arithNode =
+                shape.conditionLeftIsNestedArithmetic ? shape.conditionLeft : shape.conditionRight;
+            auto arithTypeIndex = factIndex(facts.nodeTypes(), arithNode);
+            auto arithCallIndex = factIndex(facts.calls(), arithNode);
+            auto arithSpan = bound.parsedModule().spanFor(tree.node(arithNode).range);
+            if (arithTypeIndex == zc::none || arithCallIndex == zc::none || arithSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t arithTypeSlot = 0;
+            size_t arithCallSlot = 0;
+            ZC_IF_SOME(index, arithTypeIndex) { arithTypeSlot = index; }
+            ZC_IF_SOME(index, arithCallIndex) { arithCallSlot = index; }
+            const auto arithType = facts.nodeTypes().entries()[arithTypeSlot].value;
+            const auto& arithCallFact = facts.calls().entries()[arithCallSlot].value;
+            const auto& arithCall = arithCallFact.invocation;
+            const auto& arithSelected = arithCall.selected.variant();
+            if (arithCallFact.node != arithNode ||
+                !arithSelected.is<checker::checked::PrimitiveCallable>() ||
+                !isScalarArithmeticOperation(
+                    arithSelected.get<checker::checked::PrimitiveCallable>().operation) ||
+                arithCall.calleeType != arithType || arithCall.receiver != zc::none ||
+                arithCall.receiverMode != zc::none || arithCall.receiverAdjustment != zc::none ||
+                arithCall.arguments.size() != 2 ||
+                arithCall.arguments[0].sourceNode != shape.nestedArithmeticLeft ||
+                arithCall.arguments[0].sourceType != arithType ||
+                arithCall.arguments[1].sourceNode != shape.nestedArithmeticRight ||
+                arithCall.arguments[1].sourceType != arithType ||
+                arithCall.successType != arithType || arithCall.resultType != arithType ||
+                arithCall.substitutions != zc::none || arithCall.witnesses != zc::none ||
+                arithCall.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto arithOperation =
+                arithSelected.get<checker::checked::PrimitiveCallable>().operation;
+            auto resolveArithmeticLeaf = [&](ast::NodeId leafNode, bool isLiteral,
+                                             const identity::SourceSpan& leafSpan)
+                -> zc::Maybe<PendingLeadingConditionOperand> {
+              if (isLiteral) {
+                auto leafLiteralIndex = factIndex(facts.literals(), leafNode);
+                if (leafLiteralIndex == zc::none) return zc::none;
+                size_t leafLiteralSlot = 0;
+                ZC_IF_SOME(index, leafLiteralIndex) { leafLiteralSlot = index; }
+                const auto& leafLiteralFact = facts.literals().entries()[leafLiteralSlot].value;
+                if (leafLiteralFact.type != arithType) return zc::none;
+                return PendingLeadingConditionOperand{
+                    arithType, leafSpan.clone(), leafLiteralFact.literal.clone(), zc::none, 0,
+                    false};
+              }
+              auto ownerBinding = resolvedOwnerLocal(bound.bindings(), leafNode);
+              if (ownerBinding != zc::none) {
+                for (size_t bindingIndex = 0; bindingIndex < localBindingIds.size();
+                     ++bindingIndex) {
+                  if (ZC_ASSERT_NONNULL(ownerBinding) == localBindingIds[bindingIndex]) {
+                    return PendingLeadingConditionOperand{arithType, leafSpan.clone(), zc::none,
+                                                          zc::none,  bindingIndex,     true};
+                  }
+                }
+              }
+              auto parameterHandle = resolvedCallableParameter(bound.bindings(), leafNode);
+              if (parameterHandle == zc::none) return zc::none;
+              zc::Maybe<identity::CallableParameterKey> resolvedKey;
+              ZC_IF_SOME(handle, parameterHandle) {
+                auto authority = registries.callableParameter(handle);
+                ZC_IF_SOME(entry, authority) {
+                  for (const auto& parameter : parameters) {
+                    if (parameter.key == entry.key() && parameter.type == arithType) {
+                      resolvedKey = entry.key().clone();
+                    }
+                  }
+                }
+              }
+              if (resolvedKey == zc::none) return zc::none;
+              return PendingLeadingConditionOperand{
+                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false};
+            };
+            auto arithLeftSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticLeft).range);
+            auto arithRightSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticRight).range);
+            if (arithLeftSpan == zc::none || arithRightSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto arithLeft = resolveArithmeticLeaf(shape.nestedArithmeticLeft,
+                                                   shape.nestedArithmeticLeftIsLiteral,
+                                                   ZC_ASSERT_NONNULL(arithLeftSpan));
+            auto arithRight = resolveArithmeticLeaf(shape.nestedArithmeticRight,
+                                                    shape.nestedArithmeticRightIsLiteral,
+                                                    ZC_ASSERT_NONNULL(arithRightSpan));
+            if (arithLeft == zc::none || arithRight == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            pendingBindings.add(PendingLeadingLocalBinding{
+                arithType, ZC_ASSERT_NONNULL(arithSpan).clone(),
+                ZC_ASSERT_NONNULL(arithSpan).clone(), SequentialInitializerKind::PrimitiveBinary,
+                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight)});
           }
           // Resolve one comparison operand to a leading local, a parameter, or
           // a scalar literal.
@@ -884,10 +1102,26 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            leftOperand = resolveConditionOperand(shape.conditionLeft, shape.conditionLeftIsLiteral,
-                                                  ZC_ASSERT_NONNULL(leftSpan));
-            rightOperand = resolveConditionOperand(
-                shape.conditionRight, shape.conditionRightIsLiteral, ZC_ASSERT_NONNULL(rightSpan));
+            // The nested arithmetic operand resolves to the synthesized
+            // temp local (the last binding); the other operand resolves
+            // normally.
+            if (synthesizedArithmetic && shape.conditionLeftIsNestedArithmetic) {
+              leftOperand = PendingLeadingConditionOperand{
+                  operandType, ZC_ASSERT_NONNULL(leftSpan).clone(), zc::none,
+                  zc::none,    pendingBindings.size() - 1,          true};
+            } else {
+              leftOperand = resolveConditionOperand(
+                  shape.conditionLeft, shape.conditionLeftIsLiteral, ZC_ASSERT_NONNULL(leftSpan));
+            }
+            if (synthesizedArithmetic && shape.conditionRightIsNestedArithmetic) {
+              rightOperand = PendingLeadingConditionOperand{
+                  operandType, ZC_ASSERT_NONNULL(rightSpan).clone(), zc::none,
+                  zc::none,    pendingBindings.size() - 1,           true};
+            } else {
+              rightOperand =
+                  resolveConditionOperand(shape.conditionRight, shape.conditionRightIsLiteral,
+                                          ZC_ASSERT_NONNULL(rightSpan));
+            }
             if (leftOperand == zc::none || rightOperand == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
@@ -5702,6 +5936,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // Comparison operands of that shape written as scalar literals rather than
   // reads of a leading binding. Each adds one literal fact of its own.
   size_t leadingLocalConditionalLiteralOperandCount = 0;
+  // Arithmetic (PrimitiveBinary) bindings in leading-local conditionals. Each
+  // is a synthesized temp local holding a one-level arithmetic result; it
+  // carries one call/dispatch fact and two operand node types beyond the
+  // per-binding local node type. Its literal leaf operands are tallied
+  // separately because the binding itself is not a literal binding.
+  size_t leadingLocalConditionalBinaryCount = 0;
+  size_t leadingLocalConditionalBinaryLiteralOperandCount = 0;
   // Number of comparison-condition operands that are scalar literals rather than
   // parameter references. Each such operand adds one scalar-literal expression
   // and one literal fact beyond the arm literals.
@@ -5856,10 +6097,25 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ++conditionalLiteralArmCount;
       ++conditionalLiteralArmCount;
       ZC_IF_SOME(leading, function.leadingLocalConditionalReturn) {
-        leadingLocalConditionalBindingCount += leading.bindings.size();
+        for (const auto& binding : leading.bindings) {
+          if (binding.kind != SequentialInitializerKind::PrimitiveBinary) {
+            ++leadingLocalConditionalBindingCount;
+          }
+        }
         if (leading.left.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
         if (leading.right.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
         if (leading.isUnaryDesugar) ++leadingLocalConditionalUnaryCount;
+        for (const auto& binding : leading.bindings) {
+          if (binding.kind == SequentialInitializerKind::PrimitiveBinary) {
+            ++leadingLocalConditionalBinaryCount;
+            ZC_IF_SOME(left, binding.arithmeticLeft) {
+              if (left.literal != zc::none) { ++leadingLocalConditionalBinaryLiteralOperandCount; }
+            }
+            ZC_IF_SOME(right, binding.arithmeticRight) {
+              if (right.literal != zc::none) { ++leadingLocalConditionalBinaryLiteralOperandCount; }
+            }
+          }
+        }
       }
       continue;
     }
@@ -6169,8 +6425,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       loopCount + comparisonReturnCount * 2 - unaryReturnCount + sequentialBinaryCount * 2 +
       binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
-      leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 -
-      leadingLocalConditionalUnaryCount;
+      leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -6190,7 +6446,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           comparisonReturnCount - unaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
           directAggregateCallCount + directScalarLocalCallCount +
           leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
-          leadingLocalConditionalUnaryCount) +
+          leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount) +
           sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
@@ -6198,11 +6454,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   if (facts.calls().size() != directCallCount + receiverCallCount + receiverSelfCallCount +
                                   parameterIndexCount + equalityConditionalCount +
                                   comparisonReturnCount + sequentialBinaryCount +
-                                  receiverFieldArithmeticCount + binaryWriteCount ||
+                                  receiverFieldArithmeticCount + binaryWriteCount +
+                                  leadingLocalConditionalBinaryCount ||
       checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
               equalityConditionalCount + comparisonReturnCount + sequentialBinaryCount +
-              receiverFieldArithmeticCount + binaryWriteCount) {
+              receiverFieldArithmeticCount + binaryWriteCount +
+              leadingLocalConditionalBinaryCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 4);
   }

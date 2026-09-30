@@ -46,6 +46,18 @@ bool isLogicalBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Returns true when the syntactic binary operator is a scalar arithmetic or
+// bitwise operator (add, sub, mul, div, rem, bit-and/or/xor, shift). These
+// are admitted as one-level nested arithmetic operands of a comparison.
+bool isArithmeticBinaryOperator(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<checker::PrimitiveOperation>()) return false;
+    return isScalarArithmeticOperation(variant.get<checker::PrimitiveOperation>());
+  }
+  return false;
+}
+
 // Returns true when the syntactic binary operator is a relational comparison,
 // an arithmetic/bitwise operator, or a logical short-circuit operator, i.e. a
 // primitive binary operation lowerable in return position. Strict identity is
@@ -195,15 +207,63 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
     const bool leftLiteral = isScalarLiteral(tree.node(left).kind);
     const bool rightLiteral = isScalarLiteral(tree.node(right).kind);
-    if ((!leftIdent && !leftLiteral) || (!rightIdent && !rightLiteral) ||
-        (!leftIdent && !rightIdent)) {
+    // Classify a one-level nested arithmetic operand: a BinaryExpr with an
+    // arithmetic/bitwise operator whose two operands are each an IdentExpr or
+    // a scalar literal. The HIR builder synthesizes a leading local binding for
+    // the arithmetic result, then compares that local.
+    auto classifyNestedArithmetic = [&](ast::NodeId operand, ast::NodeId& leafLeft,
+                                        ast::NodeId& leafRight, bool& leafLeftIsLiteral,
+                                        bool& leafRightIsLiteral) -> bool {
+      if (tree.node(operand).kind != ast::SyntaxKind::BinaryExpr) return false;
+      const auto op = static_cast<ast::BinaryOperatorKind>(
+          tree.node(operand).payload.words[ast::kBinaryExprOpWord]);
+      if (!isArithmeticBinaryOperator(op)) return false;
+      const ast::NodeId innerLeft(tree.node(operand).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId innerRight(tree.node(operand).payload.words[ast::kBinaryExprRhsWord]);
+      if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return false;
+      const bool innerLeftIdent = tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr;
+      const bool innerRightIdent = tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+      const bool innerLeftLiteral = isScalarLiteral(tree.node(innerLeft).kind);
+      const bool innerRightLiteral = isScalarLiteral(tree.node(innerRight).kind);
+      if ((!innerLeftIdent && !innerLeftLiteral) || (!innerRightIdent && !innerRightLiteral)) {
+        return false;
+      }
+      leafLeft = innerLeft;
+      leafRight = innerRight;
+      leafLeftIsLiteral = innerLeftLiteral;
+      leafRightIsLiteral = innerRightLiteral;
+      return true;
+    };
+    ast::NodeId nestedLeft;
+    ast::NodeId nestedRight;
+    bool nestedLeftIsLiteral = false;
+    bool nestedRightIsLiteral = false;
+    const bool leftIsNestedArithmetic =
+        !leftIdent && !leftLiteral &&
+        classifyNestedArithmetic(left, nestedLeft, nestedRight, nestedLeftIsLiteral,
+                                 nestedRightIsLiteral);
+    const bool rightIsNestedArithmetic =
+        !rightIdent && !rightLiteral && !leftIsNestedArithmetic &&
+        classifyNestedArithmetic(right, nestedLeft, nestedRight, nestedLeftIsLiteral,
+                                 nestedRightIsLiteral);
+    if ((!leftIdent && !leftLiteral && !leftIsNestedArithmetic) ||
+        (!rightIdent && !rightLiteral && !rightIsNestedArithmetic) ||
+        (!leftIdent && !rightIdent && !leftIsNestedArithmetic && !rightIsNestedArithmetic)) {
       return zc::none;
     }
     shape.conditionIsEquality = true;
     shape.conditionLeft = left;
     shape.conditionRight = right;
-    shape.conditionLeftIsLiteral = !leftIdent;
-    shape.conditionRightIsLiteral = !rightIdent;
+    shape.conditionLeftIsLiteral = !leftIdent && !leftIsNestedArithmetic;
+    shape.conditionRightIsLiteral = !rightIdent && !rightIsNestedArithmetic;
+    if (leftIsNestedArithmetic || rightIsNestedArithmetic) {
+      shape.conditionLeftIsNestedArithmetic = leftIsNestedArithmetic;
+      shape.conditionRightIsNestedArithmetic = rightIsNestedArithmetic;
+      shape.nestedArithmeticLeft = nestedLeft;
+      shape.nestedArithmeticRight = nestedRight;
+      shape.nestedArithmeticLeftIsLiteral = nestedLeftIsLiteral;
+      shape.nestedArithmeticRightIsLiteral = nestedRightIsLiteral;
+    }
   } else if (tree.contains(condition) &&
              tree.node(condition).kind == ast::SyntaxKind::UnaryExpression) {
     // Detect the unary `!x` condition: a UnaryExpression with the LogicalNot
@@ -960,7 +1020,16 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       ast::NodeId conditionalStmt;
       ZC_IF_SOME(value, conditionalItem) { conditionalStmt = value; }
       if (tree.node(conditionalStmt).kind == ast::SyntaxKind::IfStmt) {
-        return conditionalReturnShape(tree, body, conditionalStmt);
+        auto conditional = conditionalReturnShape(tree, body, conditionalStmt);
+        if (conditional != zc::none &&
+            (ZC_ASSERT_NONNULL(conditional).conditionLeftIsNestedArithmetic ||
+             ZC_ASSERT_NONNULL(conditional).conditionRightIsNestedArithmetic)) {
+          // A sole-if with a nested arithmetic comparison operand is routed
+          // through the leading-local conditional path: the builder
+          // synthesizes one arithmetic binding, then compares that local.
+          ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
+        }
+        return conditional;
       }
     }
   }

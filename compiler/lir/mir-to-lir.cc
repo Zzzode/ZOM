@@ -1079,7 +1079,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       entry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  zc::Vector<Operand> leadingInitializers;
+  zc::Vector<Statement> leadingInitializers;
   for (size_t i = 0; i < leadingLocalCount; ++i) {
     const auto& live = entry.statements[i * 2];
     const auto& assign = entry.statements[i * 2 + 1];
@@ -1090,13 +1090,26 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     }
     const auto& assignment = assign.assignmentValue();
     if (assignment.destination.local() != localDecl.id ||
-        assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != mir::MirRvalueKind::Use) {
+        assignment.destination.projections().size() != 0) {
       return zc::none;
     }
-    auto lowered = lirOperandFor(assignment.value.useValue().operand, resultCarrierValue);
-    if (lowered == zc::none) { return zc::none; }
-    leadingInitializers.add(ZC_REQUIRE_NONNULL(lowered));
+    if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = assignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none) { return zc::none; }
+      auto lirLeft = lirOperandFor(arithmetic.left, resultCarrierValue);
+      auto lirRight = lirOperandFor(arithmetic.right, resultCarrierValue);
+      if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+      leadingInitializers.add(Statement::arithmetic(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(op),
+                                                    ZC_REQUIRE_NONNULL(lirLeft),
+                                                    ZC_REQUIRE_NONNULL(lirRight)));
+    } else {
+      if (assignment.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
+      auto lowered = lirOperandFor(assignment.value.useValue().operand, resultCarrierValue);
+      if (lowered == zc::none) { return zc::none; }
+      leadingInitializers.add(
+          Statement::assign(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(lowered)));
+    }
   }
   if (entry.statements[leadingLocalCount * 2].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[leadingLocalCount * 2].storageLocal() != resultLocalDecl.id ||
@@ -1189,8 +1202,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   {
     zc::Vector<Statement> entryStatements;
     for (size_t i = 0; i < leadingLocalCount; ++i) {
-      entryStatements.add(Statement::assign(function.locals[parameterCount + i].id.ordinal(),
-                                            zc::mv(leadingInitializers[i])));
+      entryStatements.add(zc::mv(leadingInitializers[i]));
     }
     entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
                                            ZC_REQUIRE_NONNULL(lirLeft),

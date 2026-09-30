@@ -174,19 +174,6 @@ struct PendingConditionalReturn final {
   identity::SourceSpan conditionalSpan;
 };
 
-// One leading scalar-local binding in a leading-local conditional body. The
-// initializer is a scalar literal, a parameter copy, or a copy of an earlier
-// leading local (`referencedLocal` is its zero-based binding index).
-struct PendingLeadingLocalBinding final {
-  identity::SemanticTypeId type;
-  identity::SourceSpan patternSpan;
-  identity::SourceSpan initializerSpan;
-  SequentialInitializerKind kind;
-  zc::Maybe<checker::checked::CanonicalConstValue> literal;
-  zc::Maybe<identity::CallableParameterKey> parameter;
-  size_t referencedLocal;
-};
-
 // One comparison-condition operand in a leading-local conditional body: a
 // scalar literal, a parameter place reference, or a reference to one of the
 // leading locals (`referencedLocal` is its zero-based binding index when
@@ -198,6 +185,25 @@ struct PendingLeadingConditionOperand final {
   zc::Maybe<identity::CallableParameterKey> parameter;
   size_t referencedLocal = 0;
   bool isLocal = false;
+};
+
+// One leading scalar-local binding in a leading-local conditional body. The
+// initializer is a scalar literal, a parameter copy, or a copy of an earlier
+// leading local (`referencedLocal` is its zero-based binding index). A
+// PrimitiveBinary binding instead populates `arithmeticOperation`,
+// `arithmeticLeft`, and `arithmeticRight`; its two leaf operands are each a
+// scalar literal or a parameter reference.
+struct PendingLeadingLocalBinding final {
+  identity::SemanticTypeId type;
+  identity::SourceSpan patternSpan;
+  identity::SourceSpan initializerSpan;
+  SequentialInitializerKind kind;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<identity::CallableParameterKey> parameter;
+  size_t referencedLocal;
+  zc::Maybe<checker::PrimitiveOperation> arithmeticOperation;
+  zc::Maybe<PendingLeadingConditionOperand> arithmeticLeft;
+  zc::Maybe<PendingLeadingConditionOperand> arithmeticRight;
 };
 
 // K leading scalar-local bindings followed by one comparison conditional with

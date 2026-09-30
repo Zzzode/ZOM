@@ -6,7 +6,6 @@
 #include "compiler/hir/hir-module.h"
 
 #include <cstdint>
-#include <cstdio>
 
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
@@ -867,8 +866,40 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // or literal fact, so the nodeTypes and literals equations subtract one per
   // unary leading-local conditional.
   int64_t leadingLocalConditionalUnaryCount = 0;
+  // Arithmetic bindings synthesized by the HIR builder for nested-arithmetic
+  // comparison operands (`a + 1 < 5` -> `let t = a + 1; if (t < 5)`). Each
+  // adds one pooled primitive binary and one synthesized local whose
+  // local-reference operand has no AST node and therefore no checker-produced
+  // node-type fact, so the nodeTypes equation subtracts one per binding. The
+  // arithmetic's two leaf operands are real AST nodes with checker-produced
+  // facts, so the nodeTypes equation adds two per binding and the
+  // expressions/literals equations add the literal-leaf count.
+  int64_t leadingLocalConditionalArithmeticCount = 0;
+  int64_t leadingLocalConditionalArithmeticLiteralCount = 0;
+  int64_t leadingLocalConditionalArithmeticParameterCount = 0;
+  int64_t leadingLocalConditionalArithmeticLocalCount = 0;
   {
     const auto& tree = bound.tree();
+    // Classify one arithmetic leaf operand: literal, parameter reference, or
+    // local reference. The expressions/literals equations subtract every
+    // pooled parameter reference, so arithmetic leaf parameter references must
+    // be added back; local leaf references need no correction (they are not
+    // subtracted) but the per-function expression baseline is freed when the
+    // comparison left operand becomes a synthesized local, hence the
+    // leadingLocalConditionalArithmeticCount term in those equations.
+    auto classifyArithmeticLeaf = [&](ast::NodeId leafNode, bool isLiteral) {
+      if (isLiteral) {
+        ++leadingLocalConditionalArithmeticLiteralCount;
+        return;
+      }
+      if (resolvedCallableParameter(bound.bindings(), leafNode) != zc::none) {
+        ++leadingLocalConditionalArithmeticParameterCount;
+        return;
+      }
+      if (resolvedOwnerLocal(bound.bindings(), leafNode) != zc::none) {
+        ++leadingLocalConditionalArithmeticLocalCount;
+      }
+    };
     for (const auto& functionDeclaration : candidate.impl->functions) {
       auto sourceDefinitionIndex = definitionIndex(definitions, functionDeclaration.definition);
       if (sourceDefinitionIndex == zc::none) continue;
@@ -880,7 +911,27 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (shape == zc::none || !ZC_ASSERT_NONNULL(shape).isLeadingLocalConditional) continue;
       if (ZC_ASSERT_NONNULL(shape).conditionIsUnary) ++leadingLocalConditionalUnaryCount;
       auto leading = leadingLocalConditionalShape(tree, ZC_ASSERT_NONNULL(shape).body);
-      if (leading == zc::none) continue;
+      if (leading == zc::none) {
+        // The HIR builder synthesizes an arithmetic binding for nested-arithmetic
+        // comparison operands. The source shape has no leading let binding, so
+        // leadingLocalConditionalShape returns none, but the synthesized binding
+        // still needs digest corrections.
+        if (ZC_ASSERT_NONNULL(shape).conditionLeftIsNestedArithmetic) {
+          ++leadingLocalConditionalArithmeticCount;
+          classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticLeft,
+                                 ZC_ASSERT_NONNULL(shape).nestedArithmeticLeftIsLiteral);
+          classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticRight,
+                                 ZC_ASSERT_NONNULL(shape).nestedArithmeticRightIsLiteral);
+        }
+        if (ZC_ASSERT_NONNULL(shape).conditionRightIsNestedArithmetic) {
+          ++leadingLocalConditionalArithmeticCount;
+          classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticLeft,
+                                 ZC_ASSERT_NONNULL(shape).nestedArithmeticLeftIsLiteral);
+          classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticRight,
+                                 ZC_ASSERT_NONNULL(shape).nestedArithmeticRightIsLiteral);
+        }
+        continue;
+      }
       size_t localReferencesUsed = 0;
       ZC_IF_SOME(value, leading) {
         for (const auto& binding : value.bindings) {
@@ -904,6 +955,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (namesBinding(ZC_ASSERT_NONNULL(shape).conditionRight)) ++localReferencesUsed;
         leadingLocalConditionalCorrection +=
             static_cast<int64_t>(value.bindings.size()) - static_cast<int64_t>(localReferencesUsed);
+      }
+      // The leading-bindings shape can also carry a nested-arithmetic comparison
+      // operand; the HIR builder synthesizes an arithmetic binding just like the
+      // no-leading-bindings case.
+      if (ZC_ASSERT_NONNULL(shape).conditionLeftIsNestedArithmetic) {
+        ++leadingLocalConditionalArithmeticCount;
+        classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticLeft,
+                               ZC_ASSERT_NONNULL(shape).nestedArithmeticLeftIsLiteral);
+        classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticRight,
+                               ZC_ASSERT_NONNULL(shape).nestedArithmeticRightIsLiteral);
+      }
+      if (ZC_ASSERT_NONNULL(shape).conditionRightIsNestedArithmetic) {
+        ++leadingLocalConditionalArithmeticCount;
+        classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticLeft,
+                               ZC_ASSERT_NONNULL(shape).nestedArithmeticLeftIsLiteral);
+        classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticRight,
+                               ZC_ASSERT_NONNULL(shape).nestedArithmeticRightIsLiteral);
       }
     }
   }
@@ -981,9 +1049,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // initializers. Restore equalityConditionalCount to only the first two so the
   // pooled comparison/conditional equation terms stay exact; sequential binaries
   // and binary-write values are balanced by explicit count terms below.
-  const auto equalityConditionalCount = candidate.impl->primitiveBinaryOperations.size() -
-                                        sequentialBinaryCount - binaryWriteCount -
-                                        receiverFieldArithmeticCount;
+  const auto equalityConditionalCount =
+      candidate.impl->primitiveBinaryOperations.size() - sequentialBinaryCount - binaryWriteCount -
+      receiverFieldArithmeticCount - leadingLocalConditionalArithmeticCount;
   // Unary desugars (`-x` -> `0 - x`, etc.) pool into primitiveBinaryOperations
   // like comparison returns, but their synthetic operand has no checker-produced
   // node-type or literal fact. Subtract one per unary desugar from both
@@ -1030,7 +1098,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           candidate.impl->checkedModule.borrowEvidenceRevision().digest() ||
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + equalityConditionalCount + sequentialBinaryCount +
-              receiverFieldArithmeticCount + binaryWriteCount ||
+              receiverFieldArithmeticCount + binaryWriteCount +
+              leadingLocalConditionalArithmeticCount ||
       // The verifier deliberately keeps the strict unsupported-facts gate,
       // coercions included. HirBuilder::build drains every concrete-to-dyn
       // erasure as a per-definition capability rejection before verification,
@@ -1039,7 +1108,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
       static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
-              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection !=
+              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
+              leadingLocalConditionalArithmeticLocalCount !=
           static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
               directAggregateCallCount - directScalarLocalCallCount ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
@@ -1059,7 +1129,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
-              leadingLocalConditionalCorrection ||
+              leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
+              leadingLocalConditionalArithmeticLiteralCount -
+              leadingLocalConditionalArithmeticCount ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -1073,7 +1145,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
               parameterFieldWriteCount * 4 + discardedStatementCallCount +
               sequentialCastInitializers + sequentialTernaryCount * 3 -
-              leadingLocalConditionalUnaryCount ||
+              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
+              leadingLocalConditionalArithmeticCount * 2 ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
                                directCallCount - aggregateCount - receiverSelfCallCount -
@@ -1086,10 +1159,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                parameterFieldWriteCount + receiverFieldArithmeticCount +
                                directAggregateCallCount + directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
-              leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount ||
+              leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
+              leadingLocalConditionalArithmeticParameterCount +
+              leadingLocalConditionalArithmeticLiteralCount -
+              leadingLocalConditionalArithmeticCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
-                                  receiverFieldArithmeticCount + binaryWriteCount ||
+                                  receiverFieldArithmeticCount + binaryWriteCount +
+                                  leadingLocalConditionalArithmeticCount ||
       facts.casts().size() != sequentialCastInitializers ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
@@ -3546,15 +3623,41 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // function id: function, body, per binding (local, initializer), then
           // left operand, right operand, comparison, then arm, else arm,
           // conditional, return: 9 + 2K nodes.
-          auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);
-          if (leadingMaybe == zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::MissingRequiredFact, module,
-                                                registries, index + 1);
-          }
+          const bool isArithmetic =
+              source.conditionLeftIsNestedArithmetic || source.conditionRightIsNestedArithmetic;
           LeadingLocalConditionalShape leading{};
-          ZC_IF_SOME(value, leadingMaybe) { leading = zc::mv(value); }
-          const size_t bindingCount = leading.bindings.size();
+          size_t bindingCount = 0;
+          if (isArithmetic) {
+            // The HIR builder synthesizes one arithmetic binding for a nested-
+            // arithmetic comparison operand. Collect any real leading bindings
+            // first, then append the synthesized arithmetic binding so the
+            // fixed-id layout accounts for both.
+            auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);
+            if (leadingMaybe != zc::none) {
+              ZC_IF_SOME(value, leadingMaybe) { leading = zc::mv(value); }
+            }
+            const ast::NodeId arithmeticNode = source.conditionLeftIsNestedArithmetic
+                                                   ? source.conditionLeft
+                                                   : source.conditionRight;
+            SequentialLocalBinding synth{};
+            synth.declarator = arithmeticNode;
+            synth.pattern = arithmeticNode;
+            synth.initializer = arithmeticNode;
+            synth.initializerKind = SequentialInitializerKind::PrimitiveBinary;
+            leading.bindings.add(zc::mv(synth));
+            leading.body = source.body;
+            leading.ifStatement = source.returnStatement;
+            bindingCount = leading.bindings.size();
+          } else {
+            auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);
+            if (leadingMaybe == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            ZC_IF_SOME(value, leadingMaybe) { leading = zc::mv(value); }
+            bindingCount = leading.bindings.size();
+          }
           // Shared signature/header validation (free-function variant).
           auto signaturePosition =
               signatureIndex(signatures.definitions.asPtr(), function.definition);
@@ -3648,8 +3751,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          // Fixed-id layout: bindings first, then the seven tail nodes.
-          const uint32_t tailBase = 2u + static_cast<uint32_t>(bindingCount) * 2u;
+          // Fixed-id layout: bindings first, then the seven tail nodes. Each
+          // arithmetic binding allocates two extra leaf-operand nodes.
+          uint32_t arithmeticBindingCount = 0;
+          for (size_t i = 0; i < bindingCount; ++i) {
+            if (leading.bindings[i].initializerKind == SequentialInitializerKind::PrimitiveBinary) {
+              ++arithmeticBindingCount;
+            }
+          }
+          const uint32_t tailBase =
+              2u + static_cast<uint32_t>(bindingCount) * 2u + arithmeticBindingCount * 2u;
           const HirNodeId leftId = hirId(expectedFunction + tailBase);
           const HirNodeId rightId = hirId(expectedFunction + tailBase + 1);
           const HirNodeId equalityId = hirId(expectedFunction + tailBase + 2);
@@ -3702,18 +3813,27 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
             auto initializerSpan =
                 bound.parsedModule().spanFor(tree.node(binding.initializer).range);
-            auto ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
+            // A synthesized arithmetic binding has no source VariableDeclarator,
+            // so there is no owner-local binding to match against.
+            const bool isArithmeticBinding =
+                binding.initializerKind == SequentialInitializerKind::PrimitiveBinary;
+            zc::Maybe<binder::OwnerLocalBindingId> ownerBinding;
+            if (!isArithmeticBinding) {
+              ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
+            }
             if (patternSpan == zc::none || initializerSpan == zc::none ||
-                ownerBinding == zc::none) {
+                (!isArithmeticBinding && ownerBinding == zc::none)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::MissingRequiredFact, module,
                                                   registries, index + 1);
             }
-            for (const auto existing : localBindingIds) {
-              if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
-                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                    ir::IrFailureKind::AdditionalFact, module,
-                                                    registries, index + 1);
+            if (!isArithmeticBinding) {
+              for (const auto existing : localBindingIds) {
+                if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::AdditionalFact, module,
+                                                      registries, index + 1);
+                }
               }
             }
             auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
@@ -3733,14 +3853,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 localValue.initializerSpan == zc::none ||
                 !sameSpan(ZC_ASSERT_NONNULL(localValue.initializerSpan),
                           ZC_ASSERT_NONNULL(initializerSpan)) ||
-                !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
-                                   tree)) {
+                (!isArithmeticBinding &&
+                 !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
+                                    tree))) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
             bool initializerRecordOk = false;
-            if (binding.initializerKind == SequentialInitializerKind::Literal) {
+            if (binding.initializerKind == SequentialInitializerKind::PrimitiveBinary) {
+              // A synthesized arithmetic binding (`let t = a + 1`). The pooled
+              // primitive binary operation record must match the initializer
+              // node, result type, and source span.
+              for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+                if (binary.node != initializerNodeId) continue;
+                if (initializerRecordOk) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::AdditionalFact, module,
+                                                      registries, index + 1);
+                }
+                initializerRecordOk =
+                    binary.type == bindingType && binary.category == HirValueCategory::Value &&
+                    sameSpan(binary.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
+              }
+            } else if (binding.initializerKind == SequentialInitializerKind::Literal) {
               for (const auto& expression : candidate.impl->expressions) {
                 if (expression.node != initializerNodeId) continue;
                 if (initializerRecordOk) {
@@ -3853,7 +3989,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
+            if (!isArithmeticBinding) { localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding)); }
           }
           // Condition call fact: equality comparison or unary logical-not. The
           // unary `!x` desugars to `x == false` in HIR, so the tail verification
@@ -3967,6 +4103,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        sameConstant(expression.value, literalFact.literal, module, registries,
                                     semanticTypes) &&
                        sameSpan(expression.sourceSpan, operandSpan);
+              }
+              return false;
+            }
+            // A synthesized arithmetic binding has no source VariableDeclarator,
+            // so resolvedOwnerLocal cannot find it. Match the operand against the
+            // arithmetic bindings' initializer nodes directly.
+            for (size_t arithmeticIndex = 0; arithmeticIndex < bindingCount; ++arithmeticIndex) {
+              if (leading.bindings[arithmeticIndex].initializerKind !=
+                  SequentialInitializerKind::PrimitiveBinary) {
+                continue;
+              }
+              if (leading.bindings[arithmeticIndex].initializer != operandSourceNode) continue;
+              for (const auto& reference : candidate.impl->localReferences) {
+                if (reference.node != operandId) continue;
+                return reference.local == hirLocalId(static_cast<uint32_t>(arithmeticIndex + 1)) &&
+                       reference.type == operandType &&
+                       reference.category == HirValueCategory::Place &&
+                       sameSpan(reference.sourceSpan, operandSpan);
               }
               return false;
             }
@@ -4106,7 +4260,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          nextFunction += 9u + static_cast<uint32_t>(bindingCount) * 2u;
+          nextFunction +=
+              9u + static_cast<uint32_t>(bindingCount) * 2u + arithmeticBindingCount * 2u;
           continue;
         }
         const bool conditionalIsMethod = function.receiver != zc::none;

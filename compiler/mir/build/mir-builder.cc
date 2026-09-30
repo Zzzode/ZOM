@@ -1997,9 +1997,32 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
     auto literal = expressionFor(hirModule, initializerNode);
     auto localReference = localReferenceFor(hirModule, initializerNode);
     auto parameterReference = parameterReferenceFor(hirModule, initializerNode);
-    if (aggregateFor(hirModule, initializerNode) != zc::none ||
-        primitiveBinaryFor(hirModule, initializerNode) != zc::none) {
-      return zc::none;
+    if (aggregateFor(hirModule, initializerNode) != zc::none) { return zc::none; }
+    if (auto binary = primitiveBinaryFor(hirModule, initializerNode); binary != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(binary);
+      if (value.category != hir::HirValueCategory::Value || value.type != binding.type) {
+        return zc::none;
+      }
+      if (primitiveBinaryFor(hirModule, value.left) != zc::none ||
+          primitiveBinaryFor(hirModule, value.right) != zc::none) {
+        return zc::none;
+      }
+      auto arithmetic = arithmeticOperatorFor(value.operation);
+      if (arithmetic == zc::none) return zc::none;
+      if (value.type != value.operandType) return zc::none;
+      auto left = binaryLeafOperand(hirModule, declaration, value.left, parameterLocals,
+                                    userLocals.asPtr(), i, value.operandType, proofs, copyMarker);
+      auto right = binaryLeafOperand(hirModule, declaration, value.right, parameterLocals,
+                                     userLocals.asPtr(), i, value.operandType, proofs, copyMarker);
+      if (left == zc::none || right == zc::none) return zc::none;
+      ctx.appendStatement(MirStatement::storageLive(userLocals[i], binding.sourceSpan.clone()));
+      zc::Vector<MirProjection> destinationProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(userLocals[i], binding.type, zc::mv(destinationProjections), binding.type),
+          MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                zc::mv(ZC_ASSERT_NONNULL(right)), value.type),
+          MirInitializationKind::Initialize, value.sourceSpan.clone()));
+      continue;
     }
     const int present = (literal != zc::none ? 1 : 0) + (localReference != zc::none ? 1 : 0) +
                         (parameterReference != zc::none ? 1 : 0);

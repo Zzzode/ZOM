@@ -175,6 +175,16 @@ struct FunctionReturnShape final {
   ast::NodeId conditionRight;
   bool conditionLeftIsLiteral = false;
   bool conditionRightIsLiteral = false;
+  // When one comparison operand is itself a one-level arithmetic binary (e.g.
+  // `a + 1 < 5`), the corresponding flag is set and these fields carry the
+  // arithmetic operator's two leaf operands. The HIR builder synthesizes one
+  // leading local binding for the arithmetic result, then compares that local.
+  bool conditionLeftIsNestedArithmetic = false;
+  bool conditionRightIsNestedArithmetic = false;
+  ast::NodeId nestedArithmeticLeft;
+  ast::NodeId nestedArithmeticRight;
+  bool nestedArithmeticLeftIsLiteral = false;
+  bool nestedArithmeticRightIsLiteral = false;
   // When the condition is a unary `!x` expression, the condition node is a
   // UnaryExpression and this holds its operand. The operand is an IdentExpr
   // parameter reference or a scalar literal. The HIR builder desugars the
