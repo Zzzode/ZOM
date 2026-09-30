@@ -1029,6 +1029,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // candidate HIR so the same corrections the builder applied balance here.
   size_t binaryWriteCount = 0;
   size_t binaryWriteParameterOperands = 0;
+  size_t binaryWriteLocalOperands = 0;
   for (const auto& write : candidate.impl->localWrites) {
     zc::Maybe<const HirPrimitiveBinaryExpression&> writeBinary;
     for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
@@ -1040,6 +1041,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       for (const auto operandNode : {binary.left, binary.right}) {
         for (const auto& reference : candidate.impl->parameterReferences) {
           if (reference.node == operandNode) ++binaryWriteParameterOperands;
+        }
+        for (const auto& reference : candidate.impl->localReferences) {
+          if (reference.node == operandNode) ++binaryWriteLocalOperands;
         }
       }
     }
@@ -1111,7 +1115,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
               leadingLocalConditionalArithmeticLocalCount !=
           static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
-              directAggregateCallCount - directScalarLocalCallCount ||
+              directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands ||
       parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
           functionCount + localAliasReborrowCount + effectiveConditionalCount * 2 +
               equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
@@ -1131,7 +1135,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
               leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
-              leadingLocalConditionalArithmeticCount ||
+              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands ||
       executableDefinitions != declarationCount + functionCount ||
       facts.definitionTypes().size() != declarationCount ||
       facts.nodeTypes().size() !=
@@ -1162,7 +1166,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
-              leadingLocalConditionalArithmeticCount ||
+              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
                                   receiverFieldArithmeticCount + binaryWriteCount +
@@ -6516,6 +6520,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                         registries, semanticTypes) &&
                            sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
                   }
+                  // A non-literal operand that names the written user local
+                  // (`x = x + 1`) materializes a localReference, not a
+                  // parameterReference.
+                  auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
+                  if (ownerBinding != zc::none) {
+                    zc::Maybe<const HirLocalReferenceExpression&> operandLocal;
+                    for (const auto& reference : candidate.impl->localReferences) {
+                      if (reference.node != operandId) continue;
+                      if (operandLocal != zc::none) return false;
+                      operandLocal = reference;
+                    }
+                    if (operandLocal == zc::none) return false;
+                    const auto& localValue = ZC_ASSERT_NONNULL(operandLocal);
+                    return localValue.local == ZC_ASSERT_NONNULL(localBinding).local &&
+                           localValue.type == binaryOperandType &&
+                           localValue.category == HirValueCategory::Place &&
+                           sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                  }
                   zc::Maybe<const HirParameterReferenceExpression&> operandReference;
                   for (const auto& reference : candidate.impl->parameterReferences) {
                     if (reference.node != operandId) continue;
@@ -8998,6 +9020,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                          sameConstant(literalValue.value, operandLiteralFact.literal, module,
                                       registries, semanticTypes) &&
                          sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                }
+                // A non-literal operand that names the written user local
+                // (`x = x + 1`) materializes a localReference, not a
+                // parameterReference.
+                auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
+                if (ownerBinding != zc::none) {
+                  zc::Maybe<const HirLocalReferenceExpression&> operandLocal;
+                  for (const auto& reference : candidate.impl->localReferences) {
+                    if (reference.node != operandId) continue;
+                    if (operandLocal != zc::none) return false;
+                    operandLocal = reference;
+                  }
+                  if (operandLocal == zc::none) return false;
+                  const auto& localValue = ZC_ASSERT_NONNULL(operandLocal);
+                  return localValue.local == ZC_ASSERT_NONNULL(localBinding).local &&
+                         localValue.type == binaryOperandType &&
+                         localValue.category == HirValueCategory::Place &&
+                         sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
                 }
                 zc::Maybe<const HirParameterReferenceExpression&> operandReference;
                 for (const auto& reference : candidate.impl->parameterReferences) {

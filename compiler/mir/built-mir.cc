@@ -4730,7 +4730,9 @@ bool validLocalBinaryOverwriteReturnFunction(
   }
   // The overwrite assignment writes an Arithmetic/Comparison rvalue whose
   // operands match the binary's HIR operand nodes: a scalar literal maps to a
-  // constant, a parameter reference to a copy place-use of its parameter local.
+  // constant, a parameter reference to a copy place-use of its parameter local,
+  // and a reference to the written user local (`x = x + 1`) to a copy
+  // place-use of that same local.
   const auto& overwriteAssign = block.statements[2].assignmentValue();
   if (overwriteAssign.destination.local() != userLocalId ||
       overwriteAssign.destination.rootType() != local.type ||
@@ -4762,6 +4764,15 @@ bool validLocalBinaryOverwriteReturnFunction(
       return found && parameter.type == overwriteBinary.operandType &&
              matchesPlaceUse(operand, proofs, copy, overwriteBinary.operandType) &&
              operand.place().local() == localId(static_cast<uint32_t>(parameterIndex) + 1) &&
+             operand.place().rootType() == overwriteBinary.operandType &&
+             operand.place().resultType() == overwriteBinary.operandType &&
+             operand.place().projections().size() == 0;
+    }
+    auto operandLocal = localReferenceFor(hirModule, operandNode);
+    ZC_IF_SOME(localRef, operandLocal) {
+      return localRef.type == overwriteBinary.operandType && localRef.local == reference.local &&
+             matchesPlaceUse(operand, proofs, copy, overwriteBinary.operandType) &&
+             operand.place().local() == userLocalId &&
              operand.place().rootType() == overwriteBinary.operandType &&
              operand.place().resultType() == overwriteBinary.operandType &&
              operand.place().projections().size() == 0;
@@ -6930,6 +6941,18 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings - 1;
     }
   }
+  // Binary-write local operands: each local reference that is an operand of a
+  // binary write value (`x = x + 1`) materializes a localReference, not a value
+  // node, so it joins the RHS checksum as a credit like parameterReturnCount.
+  int64_t binaryWriteLocalOperandCount = 0;
+  for (const auto& write : hirModule.localWrites()) {
+    auto binary = primitiveBinaryFor(hirModule, write.value);
+    ZC_IF_SOME(binaryValue, binary) {
+      for (const auto operand : {binaryValue.left, binaryValue.right}) {
+        if (localReferenceFor(hirModule, operand) != zc::none) { ++binaryWriteLocalOperandCount; }
+      }
+    }
+  }
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
@@ -6937,12 +6960,14 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            hirModule.loops().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
       leadingLocalConditionalValueNodeExcess;
-  const int64_t rhsChecksum = static_cast<int64_t>(
-      hirModule.expressions().size() + hirModule.calls().size() + hirModule.aggregates().size() +
-      uninitializedLocalReturnCount + parameterReturnCount + parameterReborrowCount +
-      hirModule.parameterFieldProjections().size() + receiverSelfCallValueNodes +
-      voidFunctionCount - localAliasReborrowCount - hirModule.localWrites().size() -
-      hirModule.parameterFieldWrites().size());
+  const int64_t rhsChecksum =
+      static_cast<int64_t>(
+          hirModule.expressions().size() + hirModule.calls().size() +
+          hirModule.aggregates().size() + uninitializedLocalReturnCount + parameterReturnCount +
+          parameterReborrowCount + hirModule.parameterFieldProjections().size() +
+          receiverSelfCallValueNodes + voidFunctionCount - localAliasReborrowCount -
+          hirModule.localWrites().size() - hirModule.parameterFieldWrites().size()) +
+      binaryWriteLocalOperandCount;
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=
@@ -8665,8 +8690,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       localReference.category == hir::HirValueCategory::Place &&
                       definition != zc::none) {
                     const auto userLocalId = localId(parameterCount + 1);
-                    // Builds one binary operand: a scalar-literal constant or a
-                    // copy place-use of a parameter local, of the operand type.
+                    // Builds one binary operand: a scalar-literal constant, a
+                    // copy place-use of a parameter local, or a copy place-use
+                    // of the written user local (`x = x + 1`), of the operand
+                    // type.
                     auto buildOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
                       auto operandLiteral = expressionFor(hirModule, operandNode);
                       ZC_IF_SOME(literalValue, operandLiteral) {
@@ -8692,6 +8719,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                         MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
                                                  binaryValue.operandType, zc::mv(projections),
                                                  binaryValue.operandType));
+                      }
+                      auto operandLocal = localReferenceFor(hirModule, operandNode);
+                      ZC_IF_SOME(localRef, operandLocal) {
+                        if (localRef.type != binaryValue.operandType) return zc::none;
+                        if (localRef.local != localReference.local) return zc::none;
+                        zc::Vector<MirProjection> projections;
+                        return placeUse(proofs, copy,
+                                        MirPlace(userLocalId, binaryValue.operandType,
+                                                 zc::mv(projections), binaryValue.operandType));
                       }
                       return zc::none;
                     };

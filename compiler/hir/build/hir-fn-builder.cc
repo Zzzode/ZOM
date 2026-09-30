@@ -128,6 +128,11 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
                                                           leaf.sourceSpan.clone()});
     return;
   }
+  ZC_IF_SOME(local, leaf.local) {
+    addLocalReference(HirLocalReferenceExpression{destination, local.local, local.type,
+                                                  local.category, local.sourceSpan.clone()});
+    return;
+  }
   ZC_IF_SOME(literal, leaf.literal) {
     addExpression(HirScalarLiteralExpression{destination, leaf.type, literal.clone(),
                                              HirValueCategory::Value, leaf.sourceSpan.clone()});

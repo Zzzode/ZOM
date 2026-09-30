@@ -1439,6 +1439,9 @@ private:
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerArithmeticReturn(functions[0], types);
           }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(functions[0], types);
+          }
         }
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by

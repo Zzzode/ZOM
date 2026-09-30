@@ -214,6 +214,23 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerArithmeticReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one scalar-local binary-overwrite-return function to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validLocalBinaryOverwriteReturnFunction` accepts: one block with one
+  /// user local brought to life by StorageLive plus an initializing Assign of a
+  /// constant, then overwritten by an Arithmetic or Comparison rvalue whose
+  /// operands are constants or place-uses of the parameter locals or the user
+  /// local itself (`x = x + 1`), and a place-copy return of that local. Every
+  /// carrier is one equal non-one-bit integer width. Every shape outside this
+  /// slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerScalarLocalOverwriteReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one same-module zero-argument direct call to a two-function
   /// LIR module (caller plus its defined callee).
   ///

@@ -104,12 +104,16 @@ struct PendingSequentialLocalReturn final {
   identity::SourceSpan returnValueSpan;
 };
 
-// One conditional arm carries either a scalar literal value or a reference to a
-// function parameter. Exactly one of the two Maybe fields is populated; the arm
-// kind is discriminated by which one is set.
+// One conditional arm carries a scalar literal value, a reference to a
+// function parameter, or a reference to the function's user local. Exactly one
+// of the three Maybe fields is populated; the arm kind is discriminated by
+// which one is set. The local alternative is reachable only from a binary
+// write operand (`x = x + 1`); conditional and comparison arms never populate
+// it.
 struct PendingConditionalArm final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirParameterReferenceExpression> parameter;
+  zc::Maybe<HirLocalReferenceExpression> local;
   identity::SemanticTypeId type;
   identity::SourceSpan sourceSpan;
 };
@@ -122,9 +126,10 @@ struct PendingConditionalArm final {
 // literal write lowers to a `MirOperand::constant`; a parameter write lowers to
 // a copy/move place-use of the caller's parameter local; a binary write lowers
 // to an Arithmetic or Comparison rvalue exactly like the primitive-binary
-// initializer path. A binary write's two operands are each a scalar literal or a
-// parameter reference (the literal-XOR-parameter shape of a conditional arm),
-// with at least one parameter.
+// initializer path. A binary write's two operands are each a scalar literal, a
+// parameter reference, or a reference to the written user local (the
+// literal-XOR-parameter shape of a conditional arm, generalized with a local
+// alternative), with at least one non-literal operand.
 struct PendingLocalWriteBinary final {
   PendingConditionalArm left;
   PendingConditionalArm right;
