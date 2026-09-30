@@ -130,6 +130,16 @@ zc::Maybe<type::semantic::PrimitiveKind> primitiveKindOf(const type::SemanticTyp
   return data.get<type::semantic::PrimitiveTypeData>().kind;
 }
 
+// Returns true when the interned semantic type is an existential (dyn) type.
+// The HIR/MIR erasure carrier (existential locals, vtable construction) is not
+// built yet, so a function whose return type is existential is rejected as an
+// unsupported construct (ZOM4099), never silently scalar-lowered.
+bool isExistentialSemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
+  auto lookup = store.get(id);
+  return lookup.is<type::SemanticTypeLookup>() &&
+         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ExistentialTypeData>();
+}
+
 // Desugars a primitive unary operation to an equivalent binary operation with
 // a synthetic constant operand. Returns the binary operation, whether the
 // synthetic operand is on the left, and the synthetic constant value.
@@ -608,6 +618,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
+        }
+        if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
         }
         size_t thenTypeSlot = 0;
         size_t elseTypeSlot = 0;
@@ -1648,6 +1663,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
+        if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        }
         size_t returnTypeSlot = 0;
         size_t returnLiteralSlot = 0;
         ZC_IF_SOME(index, returnTypeIndex) { returnTypeSlot = index; }
@@ -1892,6 +1912,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
+        }
+        if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
         }
         size_t leftTypeSlot = 0;
         size_t rightTypeSlot = 0;
@@ -2208,6 +2233,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
+        }
+        if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
         }
         size_t operandTypeSlot = 0;
         size_t callSlot = 0;
@@ -2613,6 +2643,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries,
                                              ordinal + 2);
+      }
+      if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+        return rejectHirCapability<HirModuleCandidate>(
+            definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            definition.source.clone());
       }
       HirVisibility visibilityValue = HirVisibility::external();
       HirLinkage linkageValue = HirLinkage::Internal;
