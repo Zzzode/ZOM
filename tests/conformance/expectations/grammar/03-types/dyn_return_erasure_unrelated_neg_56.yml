@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, returnStmt, functionDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A dyn value returned where a concrete type is expected is a plain type mismatch. The return type is not an erasable existential, so the erasure path is not taken and the checker reports 4009 TypeMismatch."

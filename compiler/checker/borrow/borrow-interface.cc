@@ -286,10 +286,16 @@ ClassifyResult classifyType(identity::SemanticTypeId typeId, const BorrowInterfa
       return BorrowShape::ParametricRegion;
     }
     case TypeDataTag::Function:
-    case TypeDataTag::Existential:
     case TypeDataTag::InterfaceBound:
     case TypeDataTag::InterfaceSelf:
       return BorrowShape::OpaqueRegion;
+    case TypeDataTag::Existential:
+      // An existential (dyn) value carries no expressible region contract in
+      // the current slice. The body checker admits concrete-to-dyn erasure at
+      // annotated initializer, argument, and return sites; classifying the
+      // existential as no-region lets the borrow signature check publish
+      // instead of rejecting the signature before the body checker runs.
+      return BorrowShape::NoRegion;
     case TypeDataTag::Slice:
     case TypeDataTag::Intersection: {
       zc::Maybe<identity::DefId> ownerValue = owner;

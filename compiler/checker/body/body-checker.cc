@@ -527,6 +527,50 @@ zc::Maybe<const type::semantic::ExistentialTypeData&> erasableExistentialType(
   return existential;
 }
 
+// Resolves the return type annotation of a function definition, or none when
+// the definition is not a function declaration with a return annotation.
+zc::Maybe<identity::SemanticTypeId> functionReturnType(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    identity::DefId function) {
+  const auto& tree = boundModule.tree();
+  zc::Maybe<ast::NodeId> functionNode;
+  for (const auto& definition : boundModule.definitions().definitions()) {
+    if (definition.definition == function) {
+      functionNode = definition.node;
+      break;
+    }
+  }
+  if (functionNode == zc::none || !tree.contains(ZC_ASSERT_NONNULL(functionNode)) ||
+      tree.node(ZC_ASSERT_NONNULL(functionNode)).kind != ast::SyntaxKind::FunctionDecl) {
+    return zc::none;
+  }
+  const ast::NodeId returnAnnotation(
+      tree.node(ZC_ASSERT_NONNULL(functionNode)).payload.words[ast::kFunctionDeclRetTyWord]);
+  if (!tree.contains(returnAnnotation)) { return zc::none; }
+  return signature::resolveClosedSourceType(boundModule, identities, semanticTypes,
+                                            returnAnnotation);
+}
+
+// Resolves the return type of a direct call's callee, or none when the callee
+// is not a resolvable function declaration.
+zc::Maybe<identity::SemanticTypeId> directCallReturnType(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId callNode) {
+  const auto& tree = boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const ast::NodeId callee(tree.node(callNode).payload.words[ast::kCallExpressionCalleeWord]);
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  auto callable = resolvedDefinition(boundModule.bindings(), callee);
+  if (callable == zc::none) { return zc::none; }
+  return functionReturnType(boundModule, identities, semanticTypes, ZC_ASSERT_NONNULL(callable));
+}
+
 // Statically decides whether an identifier initializer already carries the
 // declared erasable existential, making the assignment an identity copy that
 // needs no DynErase. It mirrors the producer's identifier type resolution
@@ -589,30 +633,34 @@ bool isIdentityExistentialInitializer(
                                               initializerNode, declared, depth + 1);
     }
     if (initializerSyntax.kind == ast::SyntaxKind::CallExpression) {
-      const ast::NodeId callee(initializerSyntax.payload.words[ast::kCallExpressionCalleeWord]);
-      if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
-        return false;
-      }
-      auto callable = resolvedDefinition(boundModule.bindings(), callee);
-      if (callable == zc::none) { return false; }
-      zc::Maybe<ast::NodeId> functionNode;
-      for (const auto& definition : boundModule.definitions().definitions()) {
-        if (definition.definition == ZC_ASSERT_NONNULL(callable)) {
-          functionNode = definition.node;
-          break;
-        }
-      }
-      if (functionNode == zc::none || !tree.contains(ZC_ASSERT_NONNULL(functionNode)) ||
-          tree.node(ZC_ASSERT_NONNULL(functionNode)).kind != ast::SyntaxKind::FunctionDecl) {
-        return false;
-      }
-      const ast::NodeId returnAnnotation(
-          tree.node(ZC_ASSERT_NONNULL(functionNode)).payload.words[ast::kFunctionDeclRetTyWord]);
-      if (!tree.contains(returnAnnotation)) { return false; }
-      auto returnType = signature::resolveClosedSourceType(boundModule, identities, semanticTypes,
-                                                           returnAnnotation);
+      auto returnType =
+          directCallReturnType(boundModule, identities, semanticTypes, initializerNode);
       return returnType != zc::none && ZC_ASSERT_NONNULL(returnType) == declared;
     }
+  }
+  return false;
+}
+
+// Statically decides whether a return expression already carries the enclosing
+// function's erasable existential return type, making the return an identity
+// copy that needs no DynErase. Reuses the identifier-chain identity test for
+// identifier returns and extends it to direct call results.
+bool isIdentityExistentialReturn(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
+    ast::NodeId node, identity::SemanticTypeId declared, unsigned depth) {
+  constexpr unsigned kMaxChainDepth = 64;
+  if (depth > kMaxChainDepth) { return false; }
+  const auto& tree = boundModule.tree();
+  if (!tree.contains(node)) { return false; }
+  const auto& syntax = tree.node(node);
+  if (syntax.kind == ast::SyntaxKind::IdentExpr) {
+    return isIdentityExistentialInitializer(boundModule, identities, semanticTypes, node, declared,
+                                            depth);
+  }
+  if (syntax.kind == ast::SyntaxKind::CallExpression) {
+    auto returnType = directCallReturnType(boundModule, identities, semanticTypes, node);
+    return returnType != zc::none && ZC_ASSERT_NONNULL(returnType) == declared;
   }
   return false;
 }
@@ -4078,6 +4126,30 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
   zc::Vector<BodyProductionSite> productionSites;
   zc::Maybe<checked::CheckedFactsInvariantRejected> failure;
   uint32_t schemaPreorder = 0;
+  // Pre-compute return value nodes whose enclosing function returns an erasable
+  // dyn existential. The visitor below adds a Coercion requirement for each
+  // such node (except identity returns), matching the coercion fact the body
+  // checker records at the same site.
+  struct ReturnValueInfo {
+    ast::NodeId node;
+    identity::SemanticTypeId expectedType;
+  };
+  zc::Vector<ReturnValueInfo> erasableReturnValues;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::ReturnStmt) return;
+    const ast::NodeId value(syntax.payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(value)) return;
+    auto owner = enclosingBodyOwner(boundModule, value);
+    if (owner == zc::none) return;
+    auto returnType = functionReturnType(boundModule, buildInput.identities,
+                                         buildInput.semanticTypes, ZC_ASSERT_NONNULL(owner));
+    if (returnType == zc::none) return;
+    if (erasableExistentialType(buildInput.semanticTypes, ZC_ASSERT_NONNULL(returnType)) ==
+        zc::none) {
+      return;
+    }
+    erasableReturnValues.add(ReturnValueInfo{value, ZC_ASSERT_NONNULL(returnType)});
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -4117,6 +4189,20 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
           }
         }
+      }
+      // A return expression whose enclosing function returns an erasable dyn
+      // existential drives a concrete-to-dyn coercion, except when the return
+      // expression already carries that exact existential type: a dyn-to-dyn
+      // identity return needs no DynErase. The identity test statically
+      // mirrors the producer's return type resolution so this requirement and
+      // the produced coercion fact always agree.
+      for (const auto& info : erasableReturnValues) {
+        if (info.node != node) continue;
+        if (!isIdentityExistentialReturn(boundModule, buildInput.identities,
+                                         buildInput.semanticTypes, node, info.expectedType, 0)) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+        }
+        break;
       }
       if (isScalarLiteral(syntax.kind)) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
@@ -5862,9 +5948,53 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         ZC_IF_SOME(expectedType, expected) {
           ZC_IF_SOME(ownerOrdinal, ownerPreorder) {
             if (producedType == zc::none || ZC_ASSERT_NONNULL(producedType) != expectedType) {
-              return attachRecoveryLedger(rejectTypeMismatch(site, ownerOrdinal, expectedType,
-                                                             ZC_ASSERT_NONNULL(producedType)),
-                                          input, factStoreBrands);
+              // A concrete return value coerces to an erasable dyn return type
+              // via a concrete-to-dyn DynErase, mirroring the annotated
+              // initializer decision. The adjustment is attached after the
+              // witness store is frozen; here we only select the plan.
+              bool returnErased = false;
+              if (producedType != zc::none) {
+                auto returnExistential = erasableExistentialType(input.semanticTypes, expectedType);
+                ZC_IF_SOME(existential, returnExistential) {
+                  ZC_IF_SOME(impl, selectDynEraseImpl(input, ZC_ASSERT_NONNULL(producedType),
+                                                      existential)) {
+                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                    for (const auto& binding : existential.associatedBindings) {
+                      bindings.add(
+                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                    }
+                    dynErases.add(SelectedDynErase{site.node, ZC_ASSERT_NONNULL(producedType),
+                                                   expectedType, existential.principal.definition,
+                                                   impl, zc::mv(bindings),
+                                                   checked::CoercionSite::Return});
+                    returnErased = true;
+                  }
+                }
+                if (!returnErased && returnExistential != zc::none) {
+                  // An erasable existential with no selected impl is either a
+                  // genuine missing obligation (no impl exists -> ZOM4018) or
+                  // an impl that the non-generic erasure slice cannot lower
+                  // yet (generic concrete or generic impl -> ZOM4124).
+                  const auto& existentialValue = ZC_ASSERT_NONNULL(returnExistential);
+                  if (hasImplForErasureOutsideSlice(input, ZC_ASSERT_NONNULL(producedType),
+                                                    existentialValue)) {
+                    return attachRecoveryLedger(
+                        rejectGenericErasureUnsupported(site, ownerOrdinal,
+                                                        ZC_ASSERT_NONNULL(producedType),
+                                                        existentialValue.principal.definition),
+                        input, factStoreBrands);
+                  }
+                  return attachRecoveryLedger(
+                      rejectTraitNotImplemented(site, ownerOrdinal, ZC_ASSERT_NONNULL(producedType),
+                                                existentialValue.principal.definition),
+                      input, factStoreBrands);
+                }
+              }
+              if (!returnErased) {
+                return attachRecoveryLedger(rejectTypeMismatch(site, ownerOrdinal, expectedType,
+                                                               ZC_ASSERT_NONNULL(producedType)),
+                                            input, factStoreBrands);
+              }
             }
           }
         }
@@ -6097,11 +6227,16 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     }
   }
   // Only annotated-initializer erasures occupy the top-level Coercion fact
-  // group; argument-position erasures ride inside their call's argument
-  // adjustments and are validated through the call fact instead.
-  size_t initializerEraseCount = 0;
+  // Top-level coercions (annotated initializer and return site) each occupy a
+  // node requirement in the Coercion group; argument-position erasures ride
+  // inside their call's argument adjustments and are validated through the
+  // call fact instead.
+  size_t topLevelEraseCount = 0;
   for (const auto& erase : dynErases) {
-    if (erase.site == checked::CoercionSite::AnnotatedInitializer) { ++initializerEraseCount; }
+    if (erase.site == checked::CoercionSite::AnnotatedInitializer ||
+        erase.site == checked::CoercionSite::Return) {
+      ++topLevelEraseCount;
+    }
   }
   if (nodeTypes.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::NodeType) ||
@@ -6115,7 +6250,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Call) ||
       places.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Place) ||
-      initializerEraseCount !=
+      topLevelEraseCount !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Coercion) ||
       members.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Member) ||
@@ -6204,7 +6339,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       for (const auto& erase : dynErases) {
         // Argument-position erasures ride inside the call's CheckedArgumentFact
         // adjustment rather than the top-level coercion map.
-        if (erase.site != checked::CoercionSite::AnnotatedInitializer) { continue; }
+        if (erase.site != checked::CoercionSite::AnnotatedInitializer &&
+            erase.site != checked::CoercionSite::Return) {
+          continue;
+        }
         zc::Vector<checked::CoercionStep> steps;
         steps.add(checked::CoercionStep(
             checked::DynEraseStep{signature::InterfaceInstantiation{

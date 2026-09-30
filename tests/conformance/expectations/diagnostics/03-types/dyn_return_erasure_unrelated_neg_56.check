@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_return_erasure_unrelated_neg_56.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dyn value returned where a concrete type is expected is a plain type
+// mismatch: the return type is not an erasable existential, so the erasure
+// path is not taken and the checker reports 4009 TypeMismatch.
+// CHECK: Error [ZOM4009]:

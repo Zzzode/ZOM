@@ -1,0 +1,13 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Circle {
+    value: u8,
+}
+
+impl Drawable for Circle {}
+
+fun make(drawn: dyn Drawable) -> Circle {
+    return drawn;
+}

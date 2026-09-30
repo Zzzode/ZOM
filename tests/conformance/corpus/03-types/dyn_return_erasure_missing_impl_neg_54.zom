@@ -1,0 +1,11 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Square {
+    value: u8,
+}
+
+fun make(s: Square) -> dyn Drawable {
+    return s;
+}

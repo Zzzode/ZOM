@@ -1,0 +1,13 @@
+interface Drawable {
+    fun draw(this);
+}
+
+struct Box<T> {
+    value: T,
+}
+
+impl Drawable for Box<i32> {}
+
+fun make(shape: Box<i32>) -> dyn Drawable {
+    return shape;
+}

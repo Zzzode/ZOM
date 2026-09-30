@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, returnStmt, functionDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The concrete return value has no impl of the dyn return type's principal interface. The checker rejects the return-position coercion with 4018 CheckerTraitNotImplemented."

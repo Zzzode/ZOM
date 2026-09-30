@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_return_erasure_pos_53.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A concrete return value coerces to an erasable dyn return type. The body
+// checker admits the erasure and publishes a coercion fact; the HIR builder
+// rejects the function as ZOM4099 because the existential lowering carrier
+// is not built yet, never an internal compiler error.
+// CHECK: Error [ZOM4099]:

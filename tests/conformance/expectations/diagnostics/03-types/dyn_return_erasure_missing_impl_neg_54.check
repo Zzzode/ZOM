@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_return_erasure_missing_impl_neg_54.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A concrete return value whose type has no impl of the dyn return type's
+// principal interface is rejected with 4018 CheckerTraitNotImplemented at
+// the return site, never an internal compiler error.
+// CHECK: Error [ZOM4018]:

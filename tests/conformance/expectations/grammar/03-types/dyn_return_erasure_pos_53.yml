@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, returnStmt, functionDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A concrete parameter coerces to the erasable dyn return type. The body checker admits the return-position erasure and publishes a coercion fact; the HIR builder rejects the function with 4099 because existential return lowering is not built yet."
