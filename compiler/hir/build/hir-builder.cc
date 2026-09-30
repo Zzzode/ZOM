@@ -782,64 +782,126 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           // The operand types and comparison call fact are validated below once
           // both operands resolve; placeholder kept out-of-line by computing the
           // spans and node types first.
-          auto leftTypeIndex = factIndex(facts.nodeTypes(), shape.conditionLeft);
-          auto rightTypeIndex = factIndex(facts.nodeTypes(), shape.conditionRight);
-          auto callIndex = factIndex(facts.calls(), shape.condition);
-          auto leftSpan = bound.parsedModule().spanFor(tree.node(shape.conditionLeft).range);
-          auto rightSpan = bound.parsedModule().spanFor(tree.node(shape.conditionRight).range);
-          if (leadingRejected || leftTypeIndex == zc::none || rightTypeIndex == zc::none ||
-              callIndex == zc::none || leftSpan == zc::none || rightSpan == zc::none) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::MissingRequiredFact, module,
-                                                 registries, ordinal + 2);
-          }
-          size_t leftTypeSlot = 0;
-          size_t rightTypeSlot = 0;
-          size_t callSlot = 0;
-          ZC_IF_SOME(index, leftTypeIndex) { leftTypeSlot = index; }
-          ZC_IF_SOME(index, rightTypeIndex) { rightTypeSlot = index; }
-          ZC_IF_SOME(index, callIndex) { callSlot = index; }
-          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
-          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
-          const auto& callFact = facts.calls().entries()[callSlot].value;
-          const auto& call = callFact.invocation;
-          const auto& selected = call.selected.variant();
-          if (operandType != rightType || callFact.node != shape.condition ||
-              !selected.is<checker::checked::PrimitiveCallable>() ||
-              !(isScalarComparisonOperation(
-                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalAnd ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalOr) ||
-              call.calleeType != operandType || call.receiver != zc::none ||
-              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
-              call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.conditionLeft ||
-              call.arguments[0].sourceType != operandType ||
-              call.arguments[1].sourceNode != shape.conditionRight ||
-              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
-              call.resultType != conditionType || call.substitutions != zc::none ||
-              call.witnesses != zc::none || call.raises != zc::none) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
-          }
-          auto leftOperand = resolveConditionOperand(
-              shape.conditionLeft, shape.conditionLeftIsLiteral, ZC_ASSERT_NONNULL(leftSpan));
-          auto rightOperand = resolveConditionOperand(
-              shape.conditionRight, shape.conditionRightIsLiteral, ZC_ASSERT_NONNULL(rightSpan));
-          if (leftOperand == zc::none || rightOperand == zc::none) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
-          }
-          // Every condition operand shares the comparison operand type.
-          const auto& leftResolved = ZC_ASSERT_NONNULL(leftOperand);
-          const auto& rightResolved = ZC_ASSERT_NONNULL(rightOperand);
-          if (leftResolved.type != operandType || rightResolved.type != operandType) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+          zc::Maybe<PendingLeadingConditionOperand> leftOperand;
+          zc::Maybe<PendingLeadingConditionOperand> rightOperand;
+          identity::SemanticTypeId operandType{};
+          checker::PrimitiveOperation operation{};
+          if (shape.conditionIsUnary) {
+            // The unary `!x` condition desugars to `x == false`. The operand is
+            // a parameter reference or a scalar literal; the synthetic false
+            // operand has no AST node and carries no checker-produced fact.
+            auto operandTypeIndex = factIndex(facts.nodeTypes(), shape.conditionUnaryOperand);
+            auto unaryCallIndex = factIndex(facts.calls(), shape.condition);
+            auto operandSpan =
+                bound.parsedModule().spanFor(tree.node(shape.conditionUnaryOperand).range);
+            if (leadingRejected || operandTypeIndex == zc::none || unaryCallIndex == zc::none ||
+                operandSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t operandTypeSlot = 0;
+            size_t unaryCallSlot = 0;
+            ZC_IF_SOME(index, operandTypeIndex) { operandTypeSlot = index; }
+            ZC_IF_SOME(index, unaryCallIndex) { unaryCallSlot = index; }
+            operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+            const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+            const auto& unaryCall = unaryCallFact.invocation;
+            const auto& unarySelected = unaryCall.selected.variant();
+            if (unaryCallFact.node != shape.condition ||
+                !unarySelected.is<checker::checked::PrimitiveCallable>() ||
+                unarySelected.get<checker::checked::PrimitiveCallable>().operation !=
+                    checker::PrimitiveOperation::LogicalNot ||
+                unaryCall.calleeType != operandType || unaryCall.receiver != zc::none ||
+                unaryCall.receiverMode != zc::none || unaryCall.receiverAdjustment != zc::none ||
+                unaryCall.arguments.size() != 1 ||
+                unaryCall.arguments[0].sourceNode != shape.conditionUnaryOperand ||
+                unaryCall.arguments[0].sourceType != operandType ||
+                unaryCall.successType != conditionType || unaryCall.resultType != conditionType ||
+                unaryCall.substitutions != zc::none || unaryCall.witnesses != zc::none ||
+                unaryCall.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            leftOperand = resolveConditionOperand(shape.conditionUnaryOperand,
+                                                  shape.conditionUnaryOperandIsLiteral,
+                                                  ZC_ASSERT_NONNULL(operandSpan));
+            if (leftOperand == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            // The synthetic false operand: `!x` desugars to `x == false`.
+            auto syntheticValue = checker::checked::CanonicalConstValue::boolean(false);
+            rightOperand = PendingLeadingConditionOperand{operandType,
+                                                          ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                          zc::mv(syntheticValue),
+                                                          zc::none,
+                                                          0,
+                                                          false};
+            operation = checker::PrimitiveOperation::Eq;
+          } else {
+            auto leftTypeIndex = factIndex(facts.nodeTypes(), shape.conditionLeft);
+            auto rightTypeIndex = factIndex(facts.nodeTypes(), shape.conditionRight);
+            auto callIndex = factIndex(facts.calls(), shape.condition);
+            auto leftSpan = bound.parsedModule().spanFor(tree.node(shape.conditionLeft).range);
+            auto rightSpan = bound.parsedModule().spanFor(tree.node(shape.conditionRight).range);
+            if (leadingRejected || leftTypeIndex == zc::none || rightTypeIndex == zc::none ||
+                callIndex == zc::none || leftSpan == zc::none || rightSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t leftTypeSlot = 0;
+            size_t rightTypeSlot = 0;
+            size_t callSlot = 0;
+            ZC_IF_SOME(index, leftTypeIndex) { leftTypeSlot = index; }
+            ZC_IF_SOME(index, rightTypeIndex) { rightTypeSlot = index; }
+            ZC_IF_SOME(index, callIndex) { callSlot = index; }
+            operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+            const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+            const auto& callFact = facts.calls().entries()[callSlot].value;
+            const auto& call = callFact.invocation;
+            const auto& selected = call.selected.variant();
+            if (operandType != rightType || callFact.node != shape.condition ||
+                !selected.is<checker::checked::PrimitiveCallable>() ||
+                !(isScalarComparisonOperation(
+                      selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalAnd ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalOr) ||
+                call.calleeType != operandType || call.receiver != zc::none ||
+                call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+                call.arguments.size() != 2 || call.arguments[0].sourceNode != shape.conditionLeft ||
+                call.arguments[0].sourceType != operandType ||
+                call.arguments[1].sourceNode != shape.conditionRight ||
+                call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+                call.resultType != conditionType || call.substitutions != zc::none ||
+                call.witnesses != zc::none || call.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            leftOperand = resolveConditionOperand(shape.conditionLeft, shape.conditionLeftIsLiteral,
+                                                  ZC_ASSERT_NONNULL(leftSpan));
+            rightOperand = resolveConditionOperand(
+                shape.conditionRight, shape.conditionRightIsLiteral, ZC_ASSERT_NONNULL(rightSpan));
+            if (leftOperand == zc::none || rightOperand == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            // Every condition operand shares the comparison operand type.
+            const auto& leftResolved = ZC_ASSERT_NONNULL(leftOperand);
+            const auto& rightResolved = ZC_ASSERT_NONNULL(rightOperand);
+            if (leftResolved.type != operandType || rightResolved.type != operandType) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            operation = selected.get<checker::checked::PrimitiveCallable>().operation;
           }
           auto thenLiteralIndex = factIndex(facts.literals(), shape.thenReturnValue);
           auto elseLiteralIndex = factIndex(facts.literals(), shape.elseReturnValue);
@@ -860,20 +922,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          auto leadingPending = PendingLeadingLocalConditionalReturn{
-              zc::mv(pendingBindings),
-              zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-              zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
-              operandType,
-              conditionType,
-              selected.get<checker::checked::PrimitiveCallable>().operation,
-              ZC_ASSERT_NONNULL(conditionSpan).clone(),
-              thenLiteralFact.literal.clone(),
-              elseLiteralFact.literal.clone(),
-              callable.success,
-              ZC_ASSERT_NONNULL(thenSpan).clone(),
-              ZC_ASSERT_NONNULL(elseSpan).clone(),
-              returnSpanValue.clone()};
+          auto leadingPending =
+              PendingLeadingLocalConditionalReturn{zc::mv(pendingBindings),
+                                                   zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                   zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                   operandType,
+                                                   conditionType,
+                                                   operation,
+                                                   ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                   thenLiteralFact.literal.clone(),
+                                                   elseLiteralFact.literal.clone(),
+                                                   callable.success,
+                                                   ZC_ASSERT_NONNULL(thenSpan).clone(),
+                                                   ZC_ASSERT_NONNULL(elseSpan).clone(),
+                                                   returnSpanValue.clone()};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
                                                           zc::mv(parameters),
@@ -1036,6 +1098,111 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               conditionType,
               selected.get<checker::checked::PrimitiveCallable>().operation,
               ZC_ASSERT_NONNULL(conditionSpan).clone()};
+        } else if (shape.conditionIsUnary) {
+          // The unary `!x` condition desugars to `x == false`. The operand is
+          // a parameter reference or a scalar literal; the synthetic false
+          // operand has no AST node and carries no checker-produced fact. The
+          // desugared comparison reuses the equality condition path.
+          auto operandTypeIndex = factIndex(facts.nodeTypes(), shape.conditionUnaryOperand);
+          auto callIndex = factIndex(facts.calls(), shape.condition);
+          auto operandSpan =
+              bound.parsedModule().spanFor(tree.node(shape.conditionUnaryOperand).range);
+          if (operandTypeIndex == zc::none || callIndex == zc::none || operandSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t operandTypeSlot = 0;
+          size_t callSlot = 0;
+          ZC_IF_SOME(index, operandTypeIndex) { operandTypeSlot = index; }
+          ZC_IF_SOME(index, callIndex) { callSlot = index; }
+          const auto operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          // The call fact must match the primitive-unary contract: one argument
+          // (the operand), a LogicalNot primitive callable, and a bool result.
+          if (callFact.node != shape.condition ||
+              !selected.is<checker::checked::PrimitiveCallable>() ||
+              selected.get<checker::checked::PrimitiveCallable>().operation !=
+                  checker::PrimitiveOperation::LogicalNot ||
+              call.calleeType != operandType || call.receiver != zc::none ||
+              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+              call.arguments.size() != 1 ||
+              call.arguments[0].sourceNode != shape.conditionUnaryOperand ||
+              call.arguments[0].sourceType != operandType || call.successType != conditionType ||
+              call.resultType != conditionType || call.substitutions != zc::none ||
+              call.witnesses != zc::none || call.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Build the real operand: a parameter reference or a scalar literal.
+          bool operandRejected = false;
+          zc::Maybe<PendingConditionalArm> realOperand;
+          if (!shape.conditionUnaryOperandIsLiteral) {
+            auto parameter =
+                resolvedCallableParameter(bound.bindings(), shape.conditionUnaryOperand);
+            if (parameter == zc::none) {
+              operandRejected = true;
+            } else {
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                operandRejected = true;
+              } else {
+                ZC_IF_SOME(entry, authority) {
+                  bool matches = false;
+                  for (const auto& parameterCandidate : parameters) {
+                    if (parameterCandidate.key == entry.key() &&
+                        parameterCandidate.type == operandType) {
+                      matches = true;
+                    }
+                  }
+                  if (!matches) {
+                    operandRejected = true;
+                  } else {
+                    auto reference = HirParameterReferenceExpression{
+                        HirNodeId(), entry.key().clone(), operandType, HirValueCategory::Place,
+                        ZC_ASSERT_NONNULL(operandSpan).clone()};
+                    realOperand = PendingConditionalArm{zc::none, zc::mv(reference), operandType,
+                                                        ZC_ASSERT_NONNULL(operandSpan).clone()};
+                  }
+                }
+              }
+            }
+          } else {
+            auto literalIndex = factIndex(facts.literals(), shape.conditionUnaryOperand);
+            if (literalIndex == zc::none) {
+              operandRejected = true;
+            } else {
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              realOperand =
+                  PendingConditionalArm{literalFact.literal.clone(), zc::none, operandType,
+                                        ZC_ASSERT_NONNULL(operandSpan).clone()};
+            }
+          }
+          if (operandRejected || realOperand == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // The synthetic false operand: `!x` desugars to `x == false`.
+          auto syntheticValue = checker::checked::CanonicalConstValue::boolean(false);
+          auto syntheticOperand =
+              PendingConditionalArm{zc::mv(syntheticValue), zc::none, operandType,
+                                    ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          pendingCondition.equality =
+              PendingEqualityCondition{zc::mv(ZC_ASSERT_NONNULL(realOperand)),
+                                       zc::mv(syntheticOperand),
+                                       operandType,
+                                       conditionType,
+                                       checker::PrimitiveOperation::Eq,
+                                       ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                       true};
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
           if (conditionParameter == zc::none) {
@@ -5519,6 +5686,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ZC_IF_SOME(conditional, function.conditionalReturn) {
         ZC_IF_SOME(equality, conditional.condition.equality) {
           ++equalityConditionalCount;
+          if (equality.isUnaryDesugar) { ++unaryReturnCount; }
           for (const auto* operand : {&equality.left, &equality.right}) {
             if (operand->literal != zc::none) { ++equalityLiteralOperandCount; }
           }

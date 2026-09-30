@@ -1,0 +1,4 @@
+section: "§4.3 Logical OR (||) in condition position"
+covers_rule: "LogicalORExpression"
+expected: "ACCEPT"
+notes: []

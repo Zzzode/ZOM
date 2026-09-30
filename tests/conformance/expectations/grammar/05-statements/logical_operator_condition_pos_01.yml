@@ -1,0 +1,4 @@
+section: "§4.3 Logical AND (&&) in condition position"
+covers_rule: "LogicalANDExpression"
+expected: "ACCEPT"
+notes: []

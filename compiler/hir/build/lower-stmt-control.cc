@@ -41,7 +41,7 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     ctx.lowerArmLeaf(rightId, equality.right);
     ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
         equalityId, leftId, rightId, equality.operandType, equality.type, HirValueCategory::Value,
-        equality.operation, equality.sourceSpan.clone()});
+        equality.operation, equality.sourceSpan.clone(), equality.isUnaryDesugar});
     ctx.lowerArmLeaf(thenValueId, conditional.thenArm);
     ctx.lowerArmLeaf(elseValueId, conditional.elseArm);
     ctx.addConditional(HirConditionalExpression{conditionalId, equalityId, thenValueId, elseValueId,

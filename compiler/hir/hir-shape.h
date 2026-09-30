@@ -160,6 +160,14 @@ struct FunctionReturnShape final {
   ast::NodeId conditionRight;
   bool conditionLeftIsLiteral = false;
   bool conditionRightIsLiteral = false;
+  // When the condition is a unary `!x` expression, the condition node is a
+  // UnaryExpression and this holds its operand. The operand is an IdentExpr
+  // parameter reference or a scalar literal. The HIR builder desugars the
+  // unary to an equivalent equality comparison, reusing the comparison
+  // condition path.
+  bool conditionIsUnary = false;
+  ast::NodeId conditionUnaryOperand;
+  bool conditionUnaryOperandIsLiteral = false;
   ast::NodeId thenReturnValue;
   ast::NodeId elseReturnValue;
   // When the body is a single `return <BinaryExpr comparison>` of two same-typed

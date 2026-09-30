@@ -214,6 +214,27 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     shape.conditionRight = right;
     shape.conditionLeftIsLiteral = !leftIdent;
     shape.conditionRightIsLiteral = !rightIdent;
+  } else if (tree.contains(condition) &&
+             tree.node(condition).kind == ast::SyntaxKind::UnaryExpression) {
+    // Detect the unary `!x` condition: a UnaryExpression with the LogicalNot
+    // operator whose operand is an IdentExpr parameter/local reference or a
+    // scalar literal. The HIR builder desugars `!x` to `x == false`, reusing
+    // the comparison condition path.
+    const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(condition).payload.words[ast::kUnaryExpressionOpWord]);
+    if (unaryOp == ast::UnaryOperatorKind::LogicalNot) {
+      const ast::NodeId operand(
+          tree.node(condition).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (tree.contains(operand)) {
+        const bool operandIdent = tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+        const bool operandLiteral = isScalarLiteral(tree.node(operand).kind);
+        if (operandIdent || operandLiteral) {
+          shape.conditionIsUnary = true;
+          shape.conditionUnaryOperand = operand;
+          shape.conditionUnaryOperandIsLiteral = operandLiteral;
+        }
+      }
+    }
   }
   return shape;
 }
@@ -536,7 +557,8 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   ZC_IF_SOME(value, tailItem) { tailStatement = value; }
   if (tree.node(tailStatement).kind != ast::SyntaxKind::IfStmt) return zc::none;
   auto conditional = conditionalReturnShape(tree, body, tailStatement);
-  if (conditional == zc::none || !ZC_ASSERT_NONNULL(conditional).conditionIsEquality) {
+  if (conditional == zc::none || (!ZC_ASSERT_NONNULL(conditional).conditionIsEquality &&
+                                  !ZC_ASSERT_NONNULL(conditional).conditionIsUnary)) {
     return zc::none;
   }
   if (!isScalarLiteral(tree.node(ZC_ASSERT_NONNULL(conditional).thenReturnValue).kind) ||

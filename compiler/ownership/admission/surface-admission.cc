@@ -495,6 +495,19 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
     const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind);
     const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind);
     if (!leftOk || !rightOk || (!leftIdent && !rightIdent)) return false;
+  } else if (tree.node(condition).kind == ast::SyntaxKind::UnaryExpression) {
+    // Admit the unary `!x` condition: a LogicalNot whose operand is an
+    // identifier or a scalar literal. The HIR builder desugars `!x` to
+    // `x == false`, reusing the comparison condition path.
+    const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(condition).payload.words[ast::kUnaryExpressionOpWord]);
+    if (unaryOp != ast::UnaryOperatorKind::LogicalNot) return false;
+    const ast::NodeId operand(tree.node(condition).payload.words[ast::kUnaryExpressionOperandWord]);
+    if (!tree.contains(operand)) return false;
+    if (tree.node(operand).kind != ast::SyntaxKind::IdentExpr &&
+        !isScalarLiteral(tree.node(operand).kind)) {
+      return false;
+    }
   } else if (tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
     return false;
   }
