@@ -7,13 +7,13 @@
 
 #include <climits>
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/ast/schema-verifier.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/source/manager.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::ast {
 namespace {
@@ -44,8 +44,8 @@ zc::StringPtr textField(const Tree& tree, const NodeSchemaFieldEntry& field, uin
   }
 }
 
-zc::Maybe<uint64_t> offsetFor(const source::SourceManager& sources,
-                              const source::BufferId& buffer, source::SourceLoc location) {
+zc::Maybe<uint64_t> offsetFor(const source::SourceManager& sources, const source::BufferId& buffer,
+                              source::SourceLoc location) {
   if (location.isInvalid()) { return zc::none; }
   const auto sourceRange = sources.getRangeForBuffer(buffer);
   if (location < sourceRange.getStart() || location > sourceRange.getEnd()) { return zc::none; }
@@ -55,8 +55,8 @@ zc::Maybe<uint64_t> offsetFor(const source::SourceManager& sources,
 }  // namespace
 
 zc::Maybe<zc::Array<uint8_t>> encodeCanonicalTree(const Tree& tree,
-                                                   const source::SourceManager& sources,
-                                                   const source::BufferId& buffer) {
+                                                  const source::SourceManager& sources,
+                                                  const source::BufferId& buffer) {
   if (!tree.contains(tree.root()) || verifySchemaFailure(tree) != zc::none ||
       tree.nodeCount() > kMaximumNodes) {
     return zc::none;
@@ -155,8 +155,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeCanonicalTree(const Tree& tree,
 }
 
 zc::Maybe<Tree> decodeCanonicalTree(zc::ArrayPtr<const uint8_t> encoded,
-                                    source::SourceManager& sources,
-                                    const source::BufferId& buffer,
+                                    source::SourceManager& sources, const source::BufferId& buffer,
                                     uint64_t sourceByteLength) {
   identity::CanonicalDecoder decoder(encoded);
   auto root = decoder.decodeUint32();
@@ -249,7 +248,13 @@ zc::Maybe<Tree> decodeCanonicalTree(zc::ArrayPtr<const uint8_t> encoded,
           }
           if (!ZC_ASSERT_NONNULL(present)) { break; }
           auto text = decoder.decodeByteString(kMaximumTextBytes);
-          if (text == zc::none || ZC_ASSERT_NONNULL(text).size() == 0) { return zc::none; }
+          // An empty string is a valid StringId value (e.g. an empty string
+          // literal `""`), but it is never a valid identifier, integer, or
+          // float spelling.
+          if (text == zc::none || (field.storage != NodeSchemaFieldStorage::StringId &&
+                                   ZC_ASSERT_NONNULL(text).size() == 0)) {
+            return zc::none;
+          }
           const auto retained = zc::str(ZC_ASSERT_NONNULL(text).asChars());
           switch (field.storage) {
             case NodeSchemaFieldStorage::StringId:
@@ -299,8 +304,7 @@ zc::Maybe<Tree> decodeCanonicalTree(zc::ArrayPtr<const uint8_t> encoded,
           auto value = decoder.decodeUint64();
           if (value == zc::none) { return zc::none; }
           payload.words[field.firstWord] = static_cast<uint32_t>(ZC_ASSERT_NONNULL(value));
-          payload.words[field.secondWord] =
-              static_cast<uint32_t>(ZC_ASSERT_NONNULL(value) >> 32);
+          payload.words[field.secondWord] = static_cast<uint32_t>(ZC_ASSERT_NONNULL(value) >> 32);
           break;
         }
       }

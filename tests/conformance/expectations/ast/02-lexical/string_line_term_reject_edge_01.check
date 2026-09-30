@@ -16,7 +16,7 @@
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     StringLiteralExpr #2 @1:9..1:11 value="<token>"
+// CHECK-NEXT:                     StringLiteralExpr #2 @1:9..1:11 value=""
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #12 @2:1..2:13
 // CHECK-NEXT:       item:

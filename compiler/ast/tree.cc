@@ -176,7 +176,6 @@ IdentList Tree::appendIdentList(zc::ArrayPtr<const IdentId> ids) {
 }
 
 StringId Tree::appendString(zc::StringPtr value) {
-  if (value.size() == 0) { return StringId(); }
   ZC_IF_SOME(found, impl->stringIndex.find(value)) { return StringId(found); }
 
   zc::StringPtr copy = impl->stringArena.copyString(value);

@@ -58,9 +58,10 @@ ast::IdentId Parser::Impl::internIdent(ParserSyntaxFactory& builder, size_t inde
 ast::StringId Parser::Impl::internString(ParserSyntaxFactory& builder, size_t index) const {
   const lexer::Token& token = tokenAt(index);
   if (token.is(ast::SyntaxKind::EndOfFile)) { return ast::StringId(); }
-  zc::StringPtr text = token.getValue();
-  if (text.size() == 0) { text = tokenLabel(token); }
-  return builder.internString(text);
+  // String, character, and template literal tokens carry their decoded content
+  // as the token value.  An empty value is a valid empty string literal, not a
+  // missing token, so do not fall back to tokenLabel here.
+  return builder.internString(token.getValue());
 }
 
 bool Parser::Impl::tokenTextEquals(size_t index, zc::StringPtr expected) const {

@@ -218,15 +218,17 @@ ast::IdentList ParserEventBuilder::makeIdentList(zc::ArrayPtr<const ast::IdentId
 ast::StringId ParserEventBuilder::internString(zc::StringPtr value) {
   ZC_IREQUIRE(!impl->finished, "parser event builder is already finished");
   ast::StringId result;
-  if (value.size() != 0) {
-    ZC_IF_SOME(found, impl->strings.find(value)) {
-      result = ast::StringId(found);
-    } else {
-      const zc::StringPtr retained = impl->textArena.copyString(value);
-      ++impl->stringCount;
-      impl->strings.insert(retained, impl->stringCount);
-      result = ast::StringId(impl->stringCount);
-    }
+  // An empty string is a valid string literal (e.g. `""`), so it must be
+  // interned and assigned a real StringId.  Skipping it would leave the event
+  // record holding StringId(0), which the ParseSyntaxVerifier replay rejects as
+  // InvalidStringEvent once the receiving TreeBuilder interns the same text.
+  ZC_IF_SOME(found, impl->strings.find(value)) {
+    result = ast::StringId(found);
+  } else {
+    const zc::StringPtr retained = impl->textArena.copyString(value);
+    ++impl->stringCount;
+    impl->strings.insert(retained, impl->stringCount);
+    result = ast::StringId(impl->stringCount);
   }
   impl->events.add(ParserSyntaxEvent(ParserStringEvent{zc::str(value), result}));
   return result;

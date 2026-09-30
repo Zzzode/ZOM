@@ -5,7 +5,6 @@
 
 #include "compiler/parser/query/canonical-parsed-source.h"
 
-#include "zc/core/debug.h"
 #include "compiler/ast/canonical-tree-codec.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
@@ -13,6 +12,7 @@
 #include "compiler/identity/key/source-key.h"
 #include "compiler/parser/token-snapshot.h"
 #include "compiler/source/manager.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::parser {
 namespace {
@@ -257,7 +257,8 @@ zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::fromParsed(
                          facts.asPtr(), provenance);
   if (body == zc::none) { return zc::none; }
   auto encoded = wrapBody(ZC_ASSERT_NONNULL(body).asPtr());
-  return decodeCanonical(encoded.asPtr());
+  auto decoded = decodeCanonical(encoded.asPtr());
+  return decoded;
 }
 
 zc::Maybe<CanonicalParsedSource> CanonicalParsedSource::decodeCanonical(
