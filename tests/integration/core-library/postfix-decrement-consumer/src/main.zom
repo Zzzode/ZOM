@@ -1,0 +1,10 @@
+// Postfix decrement fixture: a parameter-free entry that initializes a mutable
+// local, postfix-decrements it (`x--`), and returns the result. The desugared
+// binary write (`x = x - 1`) folds to the reserved no-argument
+// `zom.module_init` entry the runtime `_start` calls, so `zomc run` executes
+// it natively and exits 40.
+fun entry() -> i32 {
+  mut x = 41;
+  x--;
+  return x;
+}

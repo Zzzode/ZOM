@@ -1,0 +1,10 @@
+// Binary-write reversed-operand fixture: a parameter-free entry that
+// initializes a mutable local, overwrites it with a binary expression whose
+// literal operand precedes the local read (`x = 1 + x`), and returns the
+// result. Exercises the operand-order-independent classification of the
+// binary-write local path. Exits 2.
+fun entry() -> i32 {
+  mut x = 1;
+  x = 1 + x;
+  return x;
+}

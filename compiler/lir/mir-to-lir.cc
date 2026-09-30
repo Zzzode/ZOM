@@ -1795,7 +1795,7 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
   // integer parameter locals followed by one or more body locals, each brought
   // to life by StorageLive plus an initializing Assign of a Use or Arithmetic
   // rvalue, and a place-copy return of the last local. Every carrier is one
-  // equal non-one-bit integer width.
+  // equal integer width (Bit1 admitted for bool carriers).
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1 || function.locals.size() < 1) {
     return zc::none;
@@ -1940,8 +1940,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   // StorageLive plus an initializing Assign of a constant, then overwritten by
   // an Arithmetic or Comparison rvalue whose operands are constants or
   // place-uses of the parameter locals or the user local itself, and a
-  // place-copy return of that local. Every carrier is one equal non-one-bit
-  // integer width.
+  // place-copy return of that local. Every carrier is one equal integer
+  // width (Bit1 admitted for bool carriers).
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1 || function.locals.size() < 1) {
     return zc::none;

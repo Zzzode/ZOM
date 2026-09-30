@@ -1,0 +1,9 @@
+// Binary-write subtraction fixture: a parameter-free entry that initializes
+// a mutable local, overwrites it with a subtraction whose operand reads the
+// same local (`x = x - 1`), and returns the result. Exercises the Sub
+// operation in the binary-write local path. Exits 1.
+fun entry() -> i32 {
+  mut x = 2;
+  x = x - 1;
+  return x;
+}

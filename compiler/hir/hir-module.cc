@@ -1064,6 +1064,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
     if (operation.isUnaryDesugar) ++unaryReturnCount;
   }
+  // Postfix increment/decrement writes (`x++` -> `x = x + 1`) pool into
+  // primitiveBinaryOperations like binary writes, but the PostfixExpression
+  // source node replaces the assignment plus binary nodes (two node-type facts
+  // instead of five) and the synthetic literal 1 has no checked literal fact.
+  // Subtract three per postfix write from nodeTypes and one from literals.
+  size_t postfixIncrementWriteCount = 0;
+  for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+    if (operation.isPostfixDesugar) ++postfixIncrementWriteCount;
+  }
   // localReferences: sequential locals contribute N to the localReturnCount
   // baseline but only L_loc + R_loc + binary-local-operand + ternary-local-
   // condition actual local references. Signed because binary local operands can
@@ -1150,7 +1159,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterFieldWriteCount * 4 + discardedStatementCallCount +
               sequentialCastInitializers + sequentialTernaryCount * 3 -
               leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-              leadingLocalConditionalArithmeticCount * 2 ||
+              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(declarationCount + functionCount - voidFunctionCount -
                                directCallCount - aggregateCount - receiverSelfCallCount -
@@ -1166,7 +1175,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
-              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands ||
+              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
+              postfixIncrementWriteCount ||
       facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
                                   equalityConditionalCount + sequentialBinaryCount +
                                   receiverFieldArithmeticCount + binaryWriteCount +
@@ -8788,23 +8798,35 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, sourceStatement) { sourceStatementNode = value; }
       const ast::NodeId sourceWrite(
           tree.node(sourceStatementNode).payload.words[ast::kExpressionStatementExpressionWord]);
+      // A postfix increment/decrement (`x++` / `x--`) desugars to a binary write
+      // (`x = x + 1` / `x = x - 1`). The PostfixExpression node replaces the
+      // assignment plus binary nodes: the target is the postfix operand and the
+      // write value is the postfix node itself, whose call fact records the
+      // PostIncrement/PostDecrement operation. The synthetic literal 1 has no
+      // AST node and therefore no checked literal fact.
+      const bool isPostfixWrite = tree.node(sourceWrite).kind == ast::SyntaxKind::PostfixExpression;
       const ast::NodeId sourceTarget(
-          tree.node(sourceWrite).payload.words[ast::kAssignmentExprLhsWord]);
+          isPostfixWrite
+              ? ast::NodeId(
+                    tree.node(sourceWrite).payload.words[ast::kPostfixExpressionOperandWord])
+              : ast::NodeId(tree.node(sourceWrite).payload.words[ast::kAssignmentExprLhsWord]));
       const ast::NodeId sourceWriteValue(
-          tree.node(sourceWrite).payload.words[ast::kAssignmentExprRhsWord]);
+          isPostfixWrite
+              ? sourceWrite
+              : ast::NodeId(tree.node(sourceWrite).payload.words[ast::kAssignmentExprRhsWord]));
       auto sourceWriteSpan = bound.parsedModule().spanFor(tree.node(sourceWrite).range);
       auto sourceValueSpan = bound.parsedModule().spanFor(tree.node(sourceWriteValue).range);
       auto assignmentType = factIndex(facts.nodeTypes(), sourceWrite);
       auto targetType = factIndex(facts.nodeTypes(), sourceTarget);
       auto valueType = factIndex(facts.nodeTypes(), sourceWriteValue);
       // A reference or binary write value has no literal fact; a literal write
-      // value does.
+      // value does. A postfix write always has a binary HIR value.
       const bool sourceReferenceValue =
-          tree.contains(sourceWriteValue) &&
+          !isPostfixWrite && tree.contains(sourceWriteValue) &&
           tree.node(sourceWriteValue).kind == ast::SyntaxKind::IdentExpr;
       const bool sourceBinaryValue =
-          tree.contains(sourceWriteValue) &&
-          tree.node(sourceWriteValue).kind == ast::SyntaxKind::BinaryExpr;
+          isPostfixWrite || (tree.contains(sourceWriteValue) &&
+                             tree.node(sourceWriteValue).kind == ast::SyntaxKind::BinaryExpr);
       auto valueLiteral = (sourceReferenceValue || sourceBinaryValue)
                               ? zc::none
                               : factIndex(facts.literals(), sourceWriteValue);
@@ -8949,10 +8971,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             // derived identically to the materializer: the trailing base is the
             // node after the function's return value / unsafe block, then each
             // earlier binary write consumes two ids.
+            //
+            // A postfix write (`x++` -> `x = x + 1`) has no RHS binary node in
+            // the source: the left operand is the postfix target and the right
+            // operand is a synthetic literal 1 with no AST node. The call fact is
+            // keyed on the PostfixExpression node and records PostIncrement or
+            // PostDecrement, not the desugared Add/Sub.
             const ast::NodeId binaryLeftNode(
-                tree.node(sourceWriteValue).payload.words[ast::kBinaryExprLhsWord]);
+                isPostfixWrite
+                    ? sourceTarget
+                    : ast::NodeId(
+                          tree.node(sourceWriteValue).payload.words[ast::kBinaryExprLhsWord]));
             const ast::NodeId binaryRightNode(
-                tree.node(sourceWriteValue).payload.words[ast::kBinaryExprRhsWord]);
+                isPostfixWrite
+                    ? ast::NodeId()
+                    : ast::NodeId(
+                          tree.node(sourceWriteValue).payload.words[ast::kBinaryExprRhsWord]));
             uint32_t trailingBase = expectedFunction + (localHasInitializer ? 6 : 5) +
                                     static_cast<uint32_t>(functionLocalWriteCount) * 2 +
                                     (source.unsafeBlock != zc::none ? 1u : 0u);
@@ -8962,6 +8996,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               ZC_IF_SOME(earlierValue, earlierStatement) {
                 const ast::NodeId earlierWrite(
                     tree.node(earlierValue).payload.words[ast::kExpressionStatementExpressionWord]);
+                if (tree.node(earlierWrite).kind == ast::SyntaxKind::PostfixExpression) {
+                  ++priorBinaryWrites;
+                  continue;
+                }
                 const ast::NodeId earlierRhs(
                     tree.node(earlierWrite).payload.words[ast::kAssignmentExprRhsWord]);
                 if (tree.contains(earlierRhs) &&
@@ -8995,97 +9033,207 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 call.arguments.size() == 2 ? call.arguments[0].sourceType : writeValue.type;
             const bool operationSupported =
                 comparison || (arithmetic && writeValue.type == binaryOperandType);
-            ZC_IF_SOME(binaryValue, binary) {
-              if (!operationSupported || binaryValue.node != expectedValue ||
-                  binaryValue.left != leftOperandId || binaryValue.right != rightOperandId ||
-                  binaryValue.type != writeValue.type ||
-                  binaryValue.operandType != binaryOperandType ||
-                  binaryValue.category != HirValueCategory::Value ||
-                  binaryValue.operation != operation ||
-                  !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
-                  callFact.node != sourceWriteValue || call.calleeType != binaryOperandType ||
-                  call.receiver != zc::none || call.receiverMode != zc::none ||
-                  call.receiverAdjustment != zc::none || call.arguments.size() != 2 ||
-                  call.arguments[0].sourceNode != binaryLeftNode ||
-                  call.arguments[0].sourceType != binaryOperandType ||
-                  call.arguments[1].sourceNode != binaryRightNode ||
-                  call.arguments[1].sourceType != binaryOperandType ||
-                  call.successType != writeValue.type || call.resultType != writeValue.type ||
-                  call.substitutions != zc::none || call.witnesses != zc::none ||
-                  call.raises != zc::none) {
+            if (isPostfixWrite) {
+              // Postfix desugaring: the call fact records PostIncrement or
+              // PostDecrement with one argument (the postfix target), and the
+              // binary lowers to Add or Sub. The right operand is a synthetic
+              // literal 1 with no AST node and no checked literal fact.
+              const bool postfixIncrement = operation == checker::PrimitiveOperation::PostIncrement;
+              const bool postfixDecrement = operation == checker::PrimitiveOperation::PostDecrement;
+              if (!postfixIncrement && !postfixDecrement) {
                 return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                     ir::IrFailureKind::InvalidFact, module,
                                                     registries, index + 1);
               }
-              // Verify one operand at a fixed node id against its classification: a
-              // scalar literal or a parameter reference of the operand type.
-              auto verifyWriteOperand = [&](HirNodeId operandId, ast::NodeId operandNode) -> bool {
-                auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
-                if (operandSpan == zc::none) return false;
-                if (isScalarLiteral(tree.node(operandNode).kind)) {
-                  zc::Maybe<const HirScalarLiteralExpression&> operandLiteral;
-                  for (const auto& expression : candidate.impl->expressions) {
-                    if (expression.node != operandId) continue;
-                    if (operandLiteral != zc::none) return false;
-                    operandLiteral = expression;
-                  }
-                  auto operandLiteralIndex = factIndex(facts.literals(), operandNode);
-                  if (operandLiteral == zc::none || operandLiteralIndex == zc::none) return false;
-                  size_t operandLiteralSlot = 0;
-                  ZC_IF_SOME(value, operandLiteralIndex) { operandLiteralSlot = value; }
-                  const auto& operandLiteralFact =
-                      facts.literals().entries()[operandLiteralSlot].value;
-                  const auto& literalValue = ZC_ASSERT_NONNULL(operandLiteral);
-                  return literalValue.type == binaryOperandType &&
-                         literalValue.category == HirValueCategory::Value &&
-                         operandLiteralFact.type == binaryOperandType &&
-                         sameConstant(literalValue.value, operandLiteralFact.literal, module,
-                                      registries, semanticTypes) &&
-                         sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+              const auto expectedBinaryOperation = postfixIncrement
+                                                       ? checker::PrimitiveOperation::Add
+                                                       : checker::PrimitiveOperation::Sub;
+              ZC_IF_SOME(binaryValue, binary) {
+                if (binaryValue.node != expectedValue || binaryValue.left != leftOperandId ||
+                    binaryValue.right != rightOperandId || binaryValue.type != writeValue.type ||
+                    binaryValue.operandType != binaryOperandType ||
+                    binaryValue.category != HirValueCategory::Value ||
+                    binaryValue.operation != expectedBinaryOperation ||
+                    !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
+                    callFact.node != sourceWriteValue || call.calleeType != binaryOperandType ||
+                    call.receiver != zc::none || call.receiverMode != zc::none ||
+                    call.receiverAdjustment != zc::none || call.arguments.size() != 1 ||
+                    call.arguments[0].sourceNode != binaryLeftNode ||
+                    call.arguments[0].sourceType != binaryOperandType ||
+                    call.successType != writeValue.type || call.resultType != writeValue.type ||
+                    call.substitutions != zc::none || call.witnesses != zc::none ||
+                    call.raises != zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
                 }
-                // A non-literal operand that names the written user local
-                // (`x = x + 1`) materializes a localReference, not a
-                // parameterReference.
-                auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
-                if (ownerBinding != zc::none) {
-                  zc::Maybe<const HirLocalReferenceExpression&> operandLocal;
-                  for (const auto& reference : candidate.impl->localReferences) {
+                // Left operand: a local reference to the written user local.
+                auto operandSpan = bound.parsedModule().spanFor(tree.node(binaryLeftNode).range);
+                if (operandSpan == zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+                auto ownerBinding = resolvedOwnerLocal(bound.bindings(), binaryLeftNode);
+                if (ownerBinding == zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+                zc::Maybe<const HirLocalReferenceExpression&> operandLocal;
+                for (const auto& reference : candidate.impl->localReferences) {
+                  if (reference.node != leftOperandId) continue;
+                  if (operandLocal != zc::none) {
+                    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                        ir::IrFailureKind::AdditionalFact, module,
+                                                        registries, index + 1);
+                  }
+                  operandLocal = reference;
+                }
+                if (operandLocal == zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::MissingRequiredFact,
+                                                      module, registries, index + 1);
+                }
+                const auto& localValue = ZC_ASSERT_NONNULL(operandLocal);
+                if (localValue.local != ZC_ASSERT_NONNULL(localBinding).local ||
+                    localValue.type != binaryOperandType ||
+                    localValue.category != HirValueCategory::Place ||
+                    !sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+                // Right operand: a synthetic literal 1 with no AST node and no
+                // checked literal fact.
+                zc::Maybe<const HirScalarLiteralExpression&> operandLiteral;
+                for (const auto& expression : candidate.impl->expressions) {
+                  if (expression.node != rightOperandId) continue;
+                  if (operandLiteral != zc::none) {
+                    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                        ir::IrFailureKind::AdditionalFact, module,
+                                                        registries, index + 1);
+                  }
+                  operandLiteral = expression;
+                }
+                if (operandLiteral == zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::MissingRequiredFact,
+                                                      module, registries, index + 1);
+                }
+                const auto& literalValue = ZC_ASSERT_NONNULL(operandLiteral);
+                if (literalValue.type != binaryOperandType ||
+                    literalValue.category != HirValueCategory::Value) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+                auto integerValue = literalValue.value.integerValue();
+                if (integerValue == zc::none ||
+                    ZC_ASSERT_NONNULL(integerValue).sign !=
+                        checker::signature::IntegerSign::NonNegative ||
+                    ZC_ASSERT_NONNULL(integerValue).magnitude.size() != 1 ||
+                    ZC_ASSERT_NONNULL(integerValue).magnitude[0] != 1) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+              }
+            } else {
+              ZC_IF_SOME(binaryValue, binary) {
+                if (!operationSupported || binaryValue.node != expectedValue ||
+                    binaryValue.left != leftOperandId || binaryValue.right != rightOperandId ||
+                    binaryValue.type != writeValue.type ||
+                    binaryValue.operandType != binaryOperandType ||
+                    binaryValue.category != HirValueCategory::Value ||
+                    binaryValue.operation != operation ||
+                    !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(sourceValueSpan)) ||
+                    callFact.node != sourceWriteValue || call.calleeType != binaryOperandType ||
+                    call.receiver != zc::none || call.receiverMode != zc::none ||
+                    call.receiverAdjustment != zc::none || call.arguments.size() != 2 ||
+                    call.arguments[0].sourceNode != binaryLeftNode ||
+                    call.arguments[0].sourceType != binaryOperandType ||
+                    call.arguments[1].sourceNode != binaryRightNode ||
+                    call.arguments[1].sourceType != binaryOperandType ||
+                    call.successType != writeValue.type || call.resultType != writeValue.type ||
+                    call.substitutions != zc::none || call.witnesses != zc::none ||
+                    call.raises != zc::none) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
+                }
+                // Verify one operand at a fixed node id against its classification: a
+                // scalar literal or a parameter reference of the operand type.
+                auto verifyWriteOperand = [&](HirNodeId operandId,
+                                              ast::NodeId operandNode) -> bool {
+                  auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+                  if (operandSpan == zc::none) return false;
+                  if (isScalarLiteral(tree.node(operandNode).kind)) {
+                    zc::Maybe<const HirScalarLiteralExpression&> operandLiteral;
+                    for (const auto& expression : candidate.impl->expressions) {
+                      if (expression.node != operandId) continue;
+                      if (operandLiteral != zc::none) return false;
+                      operandLiteral = expression;
+                    }
+                    auto operandLiteralIndex = factIndex(facts.literals(), operandNode);
+                    if (operandLiteral == zc::none || operandLiteralIndex == zc::none) return false;
+                    size_t operandLiteralSlot = 0;
+                    ZC_IF_SOME(value, operandLiteralIndex) { operandLiteralSlot = value; }
+                    const auto& operandLiteralFact =
+                        facts.literals().entries()[operandLiteralSlot].value;
+                    const auto& literalValue = ZC_ASSERT_NONNULL(operandLiteral);
+                    return literalValue.type == binaryOperandType &&
+                           literalValue.category == HirValueCategory::Value &&
+                           operandLiteralFact.type == binaryOperandType &&
+                           sameConstant(literalValue.value, operandLiteralFact.literal, module,
+                                        registries, semanticTypes) &&
+                           sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                  }
+                  // A non-literal operand that names the written user local
+                  // (`x = x + 1`) materializes a localReference, not a
+                  // parameterReference.
+                  auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
+                  if (ownerBinding != zc::none) {
+                    zc::Maybe<const HirLocalReferenceExpression&> operandLocal;
+                    for (const auto& reference : candidate.impl->localReferences) {
+                      if (reference.node != operandId) continue;
+                      if (operandLocal != zc::none) return false;
+                      operandLocal = reference;
+                    }
+                    if (operandLocal == zc::none) return false;
+                    const auto& localValue = ZC_ASSERT_NONNULL(operandLocal);
+                    return localValue.local == ZC_ASSERT_NONNULL(localBinding).local &&
+                           localValue.type == binaryOperandType &&
+                           localValue.category == HirValueCategory::Place &&
+                           sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                  }
+                  zc::Maybe<const HirParameterReferenceExpression&> operandReference;
+                  for (const auto& reference : candidate.impl->parameterReferences) {
                     if (reference.node != operandId) continue;
-                    if (operandLocal != zc::none) return false;
-                    operandLocal = reference;
+                    if (operandReference != zc::none) return false;
+                    operandReference = reference;
                   }
-                  if (operandLocal == zc::none) return false;
-                  const auto& localValue = ZC_ASSERT_NONNULL(operandLocal);
-                  return localValue.local == ZC_ASSERT_NONNULL(localBinding).local &&
-                         localValue.type == binaryOperandType &&
-                         localValue.category == HirValueCategory::Place &&
-                         sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
-                }
-                zc::Maybe<const HirParameterReferenceExpression&> operandReference;
-                for (const auto& reference : candidate.impl->parameterReferences) {
-                  if (reference.node != operandId) continue;
-                  if (operandReference != zc::none) return false;
-                  operandReference = reference;
-                }
-                auto parameterHandle = resolvedCallableParameter(bound.bindings(), operandNode);
-                if (operandReference == zc::none || parameterHandle == zc::none) return false;
-                bool parameterMatches = false;
-                ZC_IF_SOME(handle, parameterHandle) {
-                  auto authority = registries.callableParameter(handle);
-                  ZC_IF_SOME(entry, authority) {
-                    parameterMatches = ZC_ASSERT_NONNULL(operandReference).parameter == entry.key();
+                  auto parameterHandle = resolvedCallableParameter(bound.bindings(), operandNode);
+                  if (operandReference == zc::none || parameterHandle == zc::none) return false;
+                  bool parameterMatches = false;
+                  ZC_IF_SOME(handle, parameterHandle) {
+                    auto authority = registries.callableParameter(handle);
+                    ZC_IF_SOME(entry, authority) {
+                      parameterMatches =
+                          ZC_ASSERT_NONNULL(operandReference).parameter == entry.key();
+                    }
                   }
+                  const auto& referenceValue = ZC_ASSERT_NONNULL(operandReference);
+                  return parameterMatches && referenceValue.type == binaryOperandType &&
+                         referenceValue.category == HirValueCategory::Place &&
+                         sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                };
+                if (!verifyWriteOperand(leftOperandId, binaryLeftNode) ||
+                    !verifyWriteOperand(rightOperandId, binaryRightNode)) {
+                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                      ir::IrFailureKind::InvalidFact, module,
+                                                      registries, index + 1);
                 }
-                const auto& referenceValue = ZC_ASSERT_NONNULL(operandReference);
-                return parameterMatches && referenceValue.type == binaryOperandType &&
-                       referenceValue.category == HirValueCategory::Place &&
-                       sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
-              };
-              if (!verifyWriteOperand(leftOperandId, binaryLeftNode) ||
-                  !verifyWriteOperand(rightOperandId, binaryRightNode)) {
-                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                    ir::IrFailureKind::InvalidFact, module,
-                                                    registries, index + 1);
               }
             }
           } else {

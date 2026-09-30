@@ -280,12 +280,10 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
       ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
   const size_t writeCount = function.localWrites.size();
 
-  // Fixed-id layout matching the generic materializer: function, body, local,
-  // scalar-literal initializer, then per write (write node, write value node),
-  // return, returned local reference, then per binary write two trailing
-  // operand ids, and finally the loop condition parameter reference and the
-  // loop statement. The body block lists [local, loop, return]; the loop
-  // statement carries the write node ids as its body.
+  // Fixed-id layout: function, body, local, initializer, per-write
+  // (write node, write value node), return, value, condition, loop, then
+  // per-binary left+right. The body block lists [local, loop, return]; the
+  // loop statement carries the write node ids as its body.
   const HirNodeId functionId = ctx.allocNode();
   const HirNodeId bodyId = ctx.allocNode();
   const HirNodeId localId = ctx.allocNode();

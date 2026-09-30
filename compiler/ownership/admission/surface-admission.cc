@@ -60,6 +60,21 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
   if (tree.node(expression).kind == ast::SyntaxKind::CallExpression) {
     return isAdmittedReceiverCall(tree, expression);
   }
+  // A postfix increment/decrement (`x++` / `x--`) on an identifier operand
+  // desugars to a binary write (`x = x + 1` / `x = x - 1`). The operand
+  // mutability and integer type are checker decisions kept out of surface
+  // admission.
+  if (tree.node(expression).kind == ast::SyntaxKind::PostfixExpression) {
+    const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+        tree.node(expression).payload.words[ast::kPostfixExpressionOpWord]);
+    if (postfixOp != ast::PostfixOperatorKind::Increment &&
+        postfixOp != ast::PostfixOperatorKind::Decrement) {
+      return false;
+    }
+    const ast::NodeId operand(
+        tree.node(expression).payload.words[ast::kPostfixExpressionOperandWord]);
+    return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+  }
   if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) return false;
   const auto& assignment = tree.node(expression);
   if (static_cast<ast::AssignmentOperatorKind>(
@@ -989,8 +1004,27 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     if (tree.node(writeNode).kind != ast::SyntaxKind::ExpressionStatement) return false;
     const ast::NodeId assignment(
         tree.node(writeNode).payload.words[ast::kExpressionStatementExpressionWord]);
-    if (!tree.contains(assignment) ||
-        tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+    if (!tree.contains(assignment)) return false;
+    // A postfix increment/decrement (`x++` / `x--`) desugars to a binary write
+    // (`x = x + 1` / `x = x - 1`). The operand must name the declared local;
+    // the mutability and integer type are checker decisions.
+    if (tree.node(assignment).kind == ast::SyntaxKind::PostfixExpression) {
+      const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+          tree.node(assignment).payload.words[ast::kPostfixExpressionOpWord]);
+      if (postfixOp != ast::PostfixOperatorKind::Increment &&
+          postfixOp != ast::PostfixOperatorKind::Decrement) {
+        return false;
+      }
+      const ast::NodeId postfixOperand(
+          tree.node(assignment).payload.words[ast::kPostfixExpressionOperandWord]);
+      if (!tree.contains(postfixOperand) ||
+          tree.node(postfixOperand).kind != ast::SyntaxKind::IdentExpr ||
+          !matchesLocalReference(tree, pattern, postfixOperand)) {
+        return false;
+      }
+      continue;
+    }
+    if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
         static_cast<ast::AssignmentOperatorKind>(
             tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
             ast::AssignmentOperatorKind::Assign) {

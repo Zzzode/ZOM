@@ -1,0 +1,8 @@
+[package]
+name = "binary_write_reversed_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "binary_write_reversed_consumer"
+path = "src/main.zom"

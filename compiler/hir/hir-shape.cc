@@ -1625,8 +1625,27 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       if (tree.node(statement).kind != ast::SyntaxKind::ExpressionStatement) return zc::none;
       const ast::NodeId assignment(
           tree.node(statement).payload.words[ast::kExpressionStatementExpressionWord]);
-      if (!tree.contains(assignment) ||
-          tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+      if (!tree.contains(assignment)) return zc::none;
+      // A postfix increment/decrement (`x++` / `x--`) desugars to a binary
+      // write (`x = x + 1` / `x = x - 1`). The operand must be an identifier
+      // reference to the same mutable local as the return value; the binding
+      // match is verified downstream by the builder.
+      if (tree.node(assignment).kind == ast::SyntaxKind::PostfixExpression) {
+        const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+            tree.node(assignment).payload.words[ast::kPostfixExpressionOpWord]);
+        if (postfixOp != ast::PostfixOperatorKind::Increment &&
+            postfixOp != ast::PostfixOperatorKind::Decrement) {
+          return zc::none;
+        }
+        const ast::NodeId postfixOperand(
+            tree.node(assignment).payload.words[ast::kPostfixExpressionOperandWord]);
+        if (!tree.contains(postfixOperand) ||
+            tree.node(postfixOperand).kind != ast::SyntaxKind::IdentExpr) {
+          return zc::none;
+        }
+        continue;
+      }
+      if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
           static_cast<ast::AssignmentOperatorKind>(
               tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
               ast::AssignmentOperatorKind::Assign) {

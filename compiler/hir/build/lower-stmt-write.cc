@@ -98,9 +98,10 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
       ZC_IF_SOME(id, binaryRightIds[index]) { rightId = id; }
       ctx.lowerArmLeaf(leftId, binary.left);
       ctx.lowerArmLeaf(rightId, binary.right);
-      ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
-          writeValueIds[index], leftId, rightId, binary.operandType, binary.type,
-          HirValueCategory::Value, binary.operation, binary.sourceSpan.clone()});
+      ctx.addPrimitiveBinary(
+          HirPrimitiveBinaryExpression{writeValueIds[index], leftId, rightId, binary.operandType,
+                                       binary.type, HirValueCategory::Value, binary.operation,
+                                       binary.sourceSpan.clone(), false, binary.isPostfixDesugar});
     }
     ctx.addLocalWrite(HirLocalWriteStatement{writeIds[index], hirLocalId(1), write.field,
                                              write.type, writeValueIds[index], write.kind,

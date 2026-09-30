@@ -51,6 +51,7 @@ enum class BodyProductionKind : uint8_t {
   PrimitiveUnaryOperation = 0x1b,
   IntegerCast = 0x1c,
   ConditionalExpression = 0x1d,
+  PostfixIncrement = 0x1e,
   Unsupported = 0x17
 };
 
@@ -4408,6 +4409,17 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           if (operation == ast::PostfixOperatorKind::ErrorPropagate ||
               operation == ast::PostfixOperatorKind::ErrorUnwrap) {
             production = BodyProductionKind::ErrorOperator;
+          } else if (operation == ast::PostfixOperatorKind::Increment ||
+                     operation == ast::PostfixOperatorKind::Decrement) {
+            // Admit postfix increment/decrement on a mutable owner local. The
+            // HIR builder desugars the write to `x = x + 1` (or `x = x - 1`),
+            // reusing the binary-write path. The operand type is verified as an
+            // integer primitive at consumption time.
+            const ast::NodeId operand(syntax.payload.words[ast::kPostfixExpressionOperandWord]);
+            if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
+                isMutableOwnerLocal(boundModule, operand)) {
+              production = BodyProductionKind::PostfixIncrement;
+            }
           }
           break;
         }
@@ -5483,6 +5495,49 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                       zc::mv(noReceiverAdjustment), zc::mv(arguments), value.resultType,
                       value.resultType, zc::mv(noSubstitutions), zc::mv(noWitnesses),
                       zc::mv(noRaises)},
+                  site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
+        }
+      } else if (site.production == BodyProductionKind::PostfixIncrement) {
+        // A postfix increment/decrement on a mutable owner local with an
+        // integer primitive type. The HIR builder desugars the write to
+        // `x = x + 1` (or `x = x - 1`), reusing the binary-write path. The
+        // call fact records the primitive operation for downstream
+        // verification; the result type is the operand type.
+        const auto& postfix = input.boundModule.tree().node(site.node);
+        const auto postfixOperator = static_cast<ast::PostfixOperatorKind>(
+            postfix.payload.words[ast::kPostfixExpressionOpWord]);
+        const ast::NodeId operand(postfix.payload.words[ast::kPostfixExpressionOperandWord]);
+        auto operandType = ownerLocalReferenceType(input, operand, nodeTypes.asPtr());
+        if (operandType == zc::none ||
+            integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType)) == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, operandType) {
+          producedType = value;
+          const auto primitiveOperation = postfixOperator == ast::PostfixOperatorKind::Increment
+                                              ? PrimitiveOperation::PostIncrement
+                                              : PrimitiveOperation::PostDecrement;
+          zc::Maybe<checked::CheckedArgumentFact> noReceiver;
+          zc::Maybe<signature::ReceiverMode> noReceiverMode;
+          zc::Maybe<checked::ReceiverAdjustment> noReceiverAdjustment;
+          zc::Vector<checked::CheckedArgumentFact> arguments;
+          zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+          arguments.add(checked::CheckedArgumentFact{operand, value, value, zc::mv(noAdjustment)});
+          zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
+          zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
+          zc::Maybe<identity::SemanticTypeId> noRaises;
+          calls.add(checked::CallFactMap::Entry{
+              site.node,
+              checked::TypedCallFact{
+                  site.node,
+                  checked::CheckedCallEnvelope{
+                      checked::SelectedCallable(checked::PrimitiveCallable{primitiveOperation}),
+                      value, zc::mv(noReceiver), zc::mv(noReceiverMode),
+                      zc::mv(noReceiverAdjustment), zc::mv(arguments), value, value,
+                      zc::mv(noSubstitutions), zc::mv(noWitnesses), zc::mv(noRaises)},
                   site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
         }

@@ -195,6 +195,16 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-void-call-consumer/Zom.toml::receiver_void_call_consumer::receiver_void_call_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-local-consumer/Zom.toml::binary_write_local_consumer::binary_write_local_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-reversed-consumer/Zom.toml::binary_write_reversed_consumer::binary_write_reversed_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-subtraction-consumer/Zom.toml::binary_write_subtraction_consumer::binary_write_subtraction_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-multiply-consumer/Zom.toml::binary_write_multiply_consumer::binary_write_multiply_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-increment-consumer/Zom.toml::postfix_increment_consumer::postfix_increment_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-decrement-consumer/Zom.toml::postfix_decrement_consumer::postfix_decrement_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -270,6 +280,16 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-void-call-consumer/Zom.toml::receiver_void_call_consumer::receiver_void_call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-local-consumer/Zom.toml::binary_write_local_consumer::binary_write_local_consumer::2"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-reversed-consumer/Zom.toml::binary_write_reversed_consumer::binary_write_reversed_consumer::2"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-subtraction-consumer/Zom.toml::binary_write_subtraction_consumer::binary_write_subtraction_consumer::1"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-multiply-consumer/Zom.toml::binary_write_multiply_consumer::binary_write_multiply_consumer::9"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-increment-consumer/Zom.toml::postfix_increment_consumer::postfix_increment_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-decrement-consumer/Zom.toml::postfix_decrement_consumer::postfix_decrement_consumer::40"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --reject-case

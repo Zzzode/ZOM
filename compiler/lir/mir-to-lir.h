@@ -241,7 +241,8 @@ public:
   /// rvalue is a `Use` (an integer constant or a zero-projection parameter or
   /// earlier-body-local place) or an `Arithmetic` rvalue whose operands have the
   /// same shape; exponentiation (`Pow`) stays outside the slice. Every assigned
-  /// and returned carrier is one equal non-one-bit integer width. The function
+  /// and returned carrier is one equal integer width (Bit1 admitted for bool
+  /// carriers). The function
   /// folds to the reserved no-argument `zom.module_init` entry when it has no
   /// parameters, and keeps the parameterized `zom.arithmetic` symbol otherwise.
   /// Every other shape returns `none`.

@@ -314,6 +314,12 @@ struct HirPrimitiveBinaryExpression final {
   /// literal fact, so the HIR verifier subtracts one per unary desugar from its
   /// nodeTypes and literals equations.
   bool isUnaryDesugar = false;
+  /// True when this binary write desugars a postfix increment/decrement
+  /// (`x++` -> `x = x + 1`). The PostfixExpression node replaces the
+  /// assignment plus binary nodes (two node-type facts instead of five) and
+  /// the synthetic literal 1 has no checked literal fact, so the HIR verifier
+  /// subtracts three per postfix write from nodeTypes and one from literals.
+  bool isPostfixDesugar = false;
 };
 
 /// \brief One checked if/else conditional expression retained for multi-block MIR lowering.

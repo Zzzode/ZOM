@@ -3941,6 +3941,112 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(value, writeStatement) { writeStatementNode = value; }
           const ast::NodeId write(
               tree.node(writeStatementNode).payload.words[ast::kExpressionStatementExpressionWord]);
+          // A postfix increment/decrement (`x++` / `x--`) desugars to a binary
+          // write (`x = x + 1` / `x = x - 1`). The PostfixExpression node
+          // carries the call fact; the binary and its literal operand are
+          // synthetic, so the write contributes two node-type facts (the
+          // postfix node and its operand) instead of five and no literal fact.
+          if (tree.node(write).kind == ast::SyntaxKind::PostfixExpression) {
+            const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+                tree.node(write).payload.words[ast::kPostfixExpressionOpWord]);
+            if (postfixOp != ast::PostfixOperatorKind::Increment &&
+                postfixOp != ast::PostfixOperatorKind::Decrement) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const ast::NodeId postfixTarget(
+                tree.node(write).payload.words[ast::kPostfixExpressionOperandWord]);
+            auto postfixTypeIndex = factIndex(facts.nodeTypes(), write);
+            auto postfixTargetTypeIndex = factIndex(facts.nodeTypes(), postfixTarget);
+            auto postfixCallIndex = factIndex(facts.calls(), write);
+            auto postfixSpan = bound.parsedModule().spanFor(tree.node(write).range);
+            auto postfixTargetBinding = resolvedOwnerLocal(bound.bindings(), postfixTarget);
+            auto postfixReturnBinding = resolvedOwnerLocal(bound.bindings(), shape.localReference);
+            if (postfixTypeIndex == zc::none || postfixTargetTypeIndex == zc::none ||
+                postfixCallIndex == zc::none || postfixSpan == zc::none ||
+                postfixTargetBinding == zc::none || postfixReturnBinding == zc::none ||
+                postfixTargetBinding != postfixReturnBinding) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t postfixTypeSlot = 0;
+            size_t postfixTargetSlot = 0;
+            ZC_IF_SOME(index, postfixTypeIndex) { postfixTypeSlot = index; }
+            ZC_IF_SOME(index, postfixTargetTypeIndex) { postfixTargetSlot = index; }
+            const auto& postfixType = facts.nodeTypes().entries()[postfixTypeSlot].value;
+            const auto& postfixTargetType = facts.nodeTypes().entries()[postfixTargetSlot].value;
+            if (local == zc::none || postfixType != postfixTargetType) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t postfixCallSlot = 0;
+            ZC_IF_SOME(index, postfixCallIndex) { postfixCallSlot = index; }
+            const auto& postfixCallFact = facts.calls().entries()[postfixCallSlot].value;
+            const auto& postfixCall = postfixCallFact.invocation;
+            const auto& postfixSelected = postfixCall.selected.variant();
+            if (!postfixSelected.is<checker::checked::PrimitiveCallable>() ||
+                postfixCallFact.node != write || postfixCall.calleeType != postfixTargetType ||
+                postfixCall.receiver != zc::none || postfixCall.receiverMode != zc::none ||
+                postfixCall.receiverAdjustment != zc::none || postfixCall.arguments.size() != 1 ||
+                postfixCall.arguments[0].sourceNode != postfixTarget ||
+                postfixCall.arguments[0].sourceType != postfixTargetType ||
+                postfixCall.successType != postfixTargetType ||
+                postfixCall.resultType != postfixTargetType ||
+                postfixCall.substitutions != zc::none || postfixCall.witnesses != zc::none ||
+                postfixCall.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto postfixOperation =
+                postfixSelected.get<checker::checked::PrimitiveCallable>().operation;
+            if (postfixOperation != checker::PrimitiveOperation::PostIncrement &&
+                postfixOperation != checker::PrimitiveOperation::PostDecrement) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto binaryOperation =
+                postfixOperation == checker::PrimitiveOperation::PostIncrement
+                    ? checker::PrimitiveOperation::Add
+                    : checker::PrimitiveOperation::Sub;
+            // The synthetic literal 1 of the operand's integer type. It has no
+            // AST node and therefore no checked literal fact.
+            auto unitMagnitude = zc::heapArray<uint8_t>(1);
+            unitMagnitude[0] = 1;
+            auto syntheticOne =
+                checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                    checker::signature::IntegerSign::NonNegative, zc::mv(unitMagnitude)});
+            auto postfixTargetSpan = bound.parsedModule().spanFor(tree.node(postfixTarget).range);
+            if (postfixTargetSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto leftReference = HirLocalReferenceExpression{
+                HirNodeId(), hirLocalId(1), postfixTargetType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(postfixTargetSpan).clone()};
+            auto leftArm =
+                PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), postfixTargetType,
+                                      ZC_ASSERT_NONNULL(postfixTargetSpan).clone()};
+            auto rightArm =
+                PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, postfixTargetType,
+                                      ZC_ASSERT_NONNULL(postfixSpan).clone()};
+            PendingLocalWriteValue postfixWriteValue;
+            postfixWriteValue.binary = PendingLocalWriteBinary{
+                zc::mv(leftArm),   zc::mv(rightArm), postfixTargetType,
+                postfixTargetType, binaryOperation,  ZC_ASSERT_NONNULL(postfixSpan).clone()};
+            ZC_ASSERT_NONNULL(postfixWriteValue.binary).isPostfixDesugar = true;
+            localWrites.add(HirLocalWriteStatement{
+                HirNodeId(), HirLocalId(), zc::none, postfixTargetType, HirNodeId(),
+                HirLocalWriteKind::Overwrite, ZC_ASSERT_NONNULL(postfixSpan).clone(),
+                ZC_ASSERT_NONNULL(postfixSpan).clone()});
+            localWriteValues.add(zc::mv(postfixWriteValue));
+            continue;
+          }
           ast::NodeId target;
           ast::NodeId writeValue;
           target = ast::NodeId(tree.node(write).payload.words[ast::kAssignmentExprLhsWord]);
@@ -6023,6 +6129,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // Each materializes a localReference, not a literal or parameterReference, so
   // it joins the literals equation as a subtraction like parameterReferenceCount.
   size_t binaryWriteLocalOperandCount = 0;
+  // Postfix increment/decrement writes (`x++` / `x--`). Each desugars to a
+  // binary write, but the PostfixExpression node replaces the assignment plus
+  // binary nodes (two node-type facts instead of five) and the synthetic
+  // literal 1 has no checked literal fact. The nodeTypes and literals
+  // equations subtract this count to stay in balance.
+  size_t postfixIncrementWriteCount = 0;
   // Void mutating methods (`this.<field> = <parameter>;` with a Unit result):
   // they materialize no return/value node, so the per-function baseline is
   // removed from the nodeTypes, expressions, and literals equations. Their four
@@ -6435,6 +6547,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (value.parameter != zc::none) ++parameterReferenceCount;
         ZC_IF_SOME(binary, value.binary) {
           ++binaryWriteCount;
+          if (binary.isPostfixDesugar) { ++postfixIncrementWriteCount; }
           // Each binary-write parameter operand materializes a parameter
           // reference, so it joins the same parameterReferenceCount balance as a
           // top-level parameter reference; a local operand materializes a
@@ -6463,7 +6576,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
       leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
-      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount;
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      postfixIncrementWriteCount * 3;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -6484,7 +6598,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
           directScalarLocalCallCount + leadingLocalConditionalBindingCount +
           leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
-          leadingLocalConditionalBinaryLiteralOperandCount) +
+          leadingLocalConditionalBinaryLiteralOperandCount - postfixIncrementWriteCount) +
           sequentialLiteralAdjustment) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
