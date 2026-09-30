@@ -2024,8 +2024,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& literalFact = facts.literals().entries()[literalSlot].value;
           const auto& literalValue = ZC_ASSERT_NONNULL(literal);
           if (literalValue.type != bindingType ||
-              literalValue.category != HirValueCategory::Value ||
-              literalFact.type != bindingType ||
+              literalValue.category != HirValueCategory::Value || literalFact.type != bindingType ||
               !sameConstant(literalValue.value, literalFact.literal, module, registries,
                             semanticTypes) ||
               !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
