@@ -1425,6 +1425,9 @@ private:
             lir = lir::MirToLirLowering::lowerLoopReturn(functions[0], types);
           }
           if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerLoopBodyReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
           }
           if (lir == zc::none) {

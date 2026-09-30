@@ -246,9 +246,15 @@ struct PendingLoopReturn final {
 // adds only the loop condition parameter reference and the loop/body spans. The
 // loop body writes are materialized as the loop statement's body node ids, and
 // the function body block is `[local, loop, return]`.
+//
+// A trailing unlabeled `break;` or `continue;` is carried as its source span so
+// the materialized `HirLoopStatement` can select the body block terminator (exit
+// for break, header back-edge for continue/fallthrough). At most one is set.
 struct PendingLoopBodyReturn final {
   HirParameterReferenceExpression condition;
   identity::SourceSpan loopSpan;
+  zc::Maybe<identity::SourceSpan> breakSpan;
+  zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
 // One shared-receiver field-arithmetic return: `return this.<field> OP

@@ -341,6 +341,13 @@ struct HirConditionalExpression final {
 /// terminator branches to the body on a true discriminant and to the exit
 /// otherwise; the body block carries the write assignments then jumps back to
 /// the header, forming a reducible back-edge.
+///
+/// A loop-body composite may end with one trailing unlabeled `break;` or
+/// `continue;`. `breakSpan` is set for a trailing break: the body block exits to
+/// the loop exit instead of jumping back to the header. `continueSpan` is set
+/// for a trailing continue: the body block jumps back to the header, the same
+/// terminator as a write-only fallthrough body (the span is retained for source
+/// fidelity). At most one is set; both are none for a write-only body.
 struct HirLoopStatement final {
   HirNodeId node;
   HirNodeId condition;
@@ -348,6 +355,8 @@ struct HirLoopStatement final {
   identity::SemanticTypeId type;
   HirValueCategory category;
   identity::SourceSpan sourceSpan;
+  zc::Maybe<identity::SourceSpan> breakSpan;
+  zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
 /// \brief One scalar return statement in immutable semantic HIR.

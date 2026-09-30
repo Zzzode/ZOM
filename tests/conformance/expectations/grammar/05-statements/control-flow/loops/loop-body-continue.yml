@@ -1,0 +1,4 @@
+section: "5.7 continue statement"
+covers_rule: "continueStatement"
+expected: "ACCEPT"
+notes: []

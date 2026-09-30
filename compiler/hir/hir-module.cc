@@ -6217,9 +6217,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
         auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
         auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+        zc::Maybe<identity::SourceSpan> sourceBreakSpan;
+        zc::Maybe<identity::SourceSpan> sourceContinueSpan;
+        if (source.loopBodyBreak) {
+          sourceBreakSpan = bound.parsedModule().spanFor(tree.node(source.loopBodyBreak).range);
+        }
+        if (source.loopBodyContinue) {
+          sourceContinueSpan =
+              bound.parsedModule().spanFor(tree.node(source.loopBodyContinue).range);
+        }
         if (conditionParameter == zc::none || conditionTypeIndex == zc::none ||
             conditionSpan == zc::none || loopSpan == zc::none || bodySpan == zc::none ||
-            returnSpan == zc::none || returnValueSpan == zc::none) {
+            returnSpan == zc::none || returnValueSpan == zc::none ||
+            (source.loopBodyBreak && sourceBreakSpan == zc::none) ||
+            (source.loopBodyContinue && sourceContinueSpan == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
@@ -6266,6 +6277,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             ZC_ASSERT_NONNULL(loopValue).type == conditionType &&
             ZC_ASSERT_NONNULL(loopValue).category == HirValueCategory::Place &&
             ZC_ASSERT_NONNULL(loopValue).body.size() == writeCount &&
+            (ZC_ASSERT_NONNULL(loopValue).breakSpan != zc::none) ==
+                static_cast<bool>(source.loopBodyBreak) &&
+            (ZC_ASSERT_NONNULL(loopValue).continueSpan != zc::none) ==
+                static_cast<bool>(source.loopBodyContinue) &&
             ZC_ASSERT_NONNULL(conditionReference).type == conditionType &&
             ZC_ASSERT_NONNULL(conditionReference).category == HirValueCategory::Place &&
             ZC_ASSERT_NONNULL(returnReference).local == ZC_ASSERT_NONNULL(localBinding).local &&
@@ -6285,6 +6300,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                      ZC_ASSERT_NONNULL(conditionSpan)) &&
             sameSpan(ZC_ASSERT_NONNULL(returnReference).sourceSpan,
                      ZC_ASSERT_NONNULL(returnValueSpan));
+        // Break and continue spans are optional; verify them only when present.
+        ZC_IF_SOME(breakSpan, ZC_ASSERT_NONNULL(loopValue).breakSpan) {
+          spansOk = spansOk && sameSpan(breakSpan, ZC_ASSERT_NONNULL(sourceBreakSpan));
+        }
+        ZC_IF_SOME(continueSpan, ZC_ASSERT_NONNULL(loopValue).continueSpan) {
+          spansOk = spansOk && sameSpan(continueSpan, ZC_ASSERT_NONNULL(sourceContinueSpan));
+        }
         if (!structureOk || !spansOk) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,

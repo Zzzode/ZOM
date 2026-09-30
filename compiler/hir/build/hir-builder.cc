@@ -5696,12 +5696,31 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         size_t conditionTypeSlot = 0;
         ZC_IF_SOME(index, conditionTypeIndex) { conditionTypeSlot = index; }
         const auto conditionType = facts.nodeTypes().entries()[conditionTypeSlot].value;
+        zc::Maybe<identity::SourceSpan> breakSpan;
+        zc::Maybe<identity::SourceSpan> continueSpan;
+        if (shape.loopBodyBreak) {
+          breakSpan = bound.parsedModule().spanFor(tree.node(shape.loopBodyBreak).range);
+          if (breakSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
+        if (shape.loopBodyContinue) {
+          continueSpan = bound.parsedModule().spanFor(tree.node(shape.loopBodyContinue).range);
+          if (continueSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
         ZC_IF_SOME(entry, conditionAuthority) {
           auto conditionRef = HirParameterReferenceExpression{
               HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
               ZC_ASSERT_NONNULL(conditionSpan).clone()};
           loopBodyReturn =
-              PendingLoopBodyReturn{zc::mv(conditionRef), ZC_ASSERT_NONNULL(loopSpan).clone()};
+              PendingLoopBodyReturn{zc::mv(conditionRef), ZC_ASSERT_NONNULL(loopSpan).clone(),
+                                    zc::mv(breakSpan), zc::mv(continueSpan)};
         }
         if (loopBodyReturn == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

@@ -1,0 +1,8 @@
+fun entry(cond: bool) -> i32 {
+  mut x = 0;
+  while (cond) {
+    x = x + 1;
+    continue;
+  }
+  return x;
+}

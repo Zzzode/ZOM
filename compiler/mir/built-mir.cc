@@ -3413,6 +3413,9 @@ bool validLoopBodyReturnFunction(
   const auto& header = function.blocks[1];
   const auto& body = function.blocks[2];
   const auto& exit = function.blocks[3];
+  // A trailing break exits the body to the loop exit (bb4); a trailing
+  // continue or a write-only body jumps back to the header (bb2).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
   // Entry: StorageLive(x) ; Assign(x = initializer, Initialize) ; Goto(bb2).
   hir::HirNodeId initializerNode;
   ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
@@ -3428,7 +3431,7 @@ bool validLoopBodyReturnFunction(
       header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
       body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
       body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != blockId(2) || exit.id != blockId(4) ||
+      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
       exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
       exit.terminator.kind() != MirTerminatorKind::Return) {
     return false;
@@ -7479,6 +7482,20 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                              binaryValue.operandType, zc::mv(projections),
                                              binaryValue.operandType));
                               }
+                              // A local operand reads the written user local
+                              // (`x = x + 1`): a copy place-use of that local.
+                              auto operandLocal = localReferenceFor(hirModule, operandNode);
+                              ZC_IF_SOME(localRef, operandLocal) {
+                                if (localRef.type != binaryValue.operandType ||
+                                    localRef.local != local.local) {
+                                  return zc::none;
+                                }
+                                zc::Vector<MirProjection> projections;
+                                return placeUse(
+                                    proofs, copy,
+                                    MirPlace(userLocalId, binaryValue.operandType,
+                                             zc::mv(projections), binaryValue.operandType));
+                              }
                               return zc::none;
                             };
                             auto leftOperand = buildOperand(binaryValue.left);
@@ -7561,6 +7578,17 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
                                                blockId(3)});
                       zc::Vector<MirStatement> exitStatements;
+                      // A trailing break exits the body to the loop exit (bb4); a
+                      // trailing continue or a write-only body jumps back to the
+                      // header (bb2, the reducible back-edge).
+                      const auto bodyTerminatorTarget =
+                          loopValue.breakSpan != zc::none ? blockId(4) : blockId(2);
+                      const auto& bodyTerminatorSpan =
+                          loopValue.breakSpan != zc::none
+                              ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+                              : (loopValue.continueSpan != zc::none
+                                     ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                     : loopValue.sourceSpan);
                       zc::Vector<MirBasicBlock> blocks;
                       blocks.add(MirBasicBlock{
                           blockId(1), scopeId(1), zc::mv(entryStatements),
@@ -7570,9 +7598,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                           MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
                                                    zc::mv(arms), blockId(4),
                                                    loopValue.sourceSpan.clone())});
-                      blocks.add(MirBasicBlock{
-                          blockId(3), scopeId(1), zc::mv(bodyStatements),
-                          MirTerminator::gotoTarget(blockId(2), loopValue.sourceSpan.clone())});
+                      blocks.add(
+                          MirBasicBlock{blockId(3), scopeId(1), zc::mv(bodyStatements),
+                                        MirTerminator::gotoTarget(bodyTerminatorTarget,
+                                                                  bodyTerminatorSpan.clone())});
                       blocks.add(MirBasicBlock{
                           blockId(4), scopeId(1), zc::mv(exitStatements),
                           MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),

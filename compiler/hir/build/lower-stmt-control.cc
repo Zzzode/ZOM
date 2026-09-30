@@ -265,7 +265,7 @@ void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
                                                zc::mv(loop.returnLiteral), HirValueCategory::Value,
                                                loop.returnValueSpan.clone()});
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::Vector<HirNodeId>{}, loop.condition.type,
-                               HirValueCategory::Place, loop.loopSpan.clone()});
+                               HirValueCategory::Place, loop.loopSpan.clone(), zc::none, zc::none});
 }
 
 void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
@@ -298,6 +298,11 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   }
   const HirNodeId returnId = ctx.allocNode();
   const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId loopConditionId = ctx.allocNode();
+  const HirNodeId loopId = ctx.allocNode();
+  // Binary operand nodes trail after the loop node, matching the verifier's
+  // fixed-id layout (function, body, local, initializer, per-write write+value,
+  // return, value, condition, loop, then per-binary left+right).
   zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
   zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
   for (const auto& writeValue : function.localWriteValues) {
@@ -310,8 +315,6 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
     binaryLeftIds.add(zc::mv(leftId));
     binaryRightIds.add(zc::mv(rightId));
   }
-  const HirNodeId loopConditionId = ctx.allocNode();
-  const HirNodeId loopId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -329,7 +332,8 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   for (const auto writeId : writeIds) { loopStatements.add(writeId); }
   ctx.addLoop(HirLoopStatement{loopId, loopConditionId, zc::mv(loopStatements),
                                loopBody.condition.type, HirValueCategory::Place,
-                               zc::mv(loopBody.loopSpan)});
+                               zc::mv(loopBody.loopSpan), zc::mv(loopBody.breakSpan),
+                               zc::mv(loopBody.continueSpan)});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 

@@ -481,16 +481,36 @@ bool isAdmittedLoopBodyWrite(const ast::Tree& tree, ast::NodeId statement) {
           isAdmittedPrimitiveBinary(tree, value));
 }
 
+/// \brief Structurally admits one `while`-body trailing control-flow statement.
+///
+/// The statement is an unlabeled `break;` or `continue;`. A labeled break or
+/// continue stays outside this slice. Structure only; the checker/HIR decide
+/// the loop exit and back-edge lowering.
+bool isAdmittedLoopBodyControlFlow(const ast::Tree& tree, ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return false;
+  ast::NodeId stmt;
+  ZC_IF_SOME(value, item) { stmt = value; }
+  const auto kind = tree.node(stmt).kind;
+  if (kind != ast::SyntaxKind::BreakStmt && kind != ast::SyntaxKind::ContinueStatement) {
+    return false;
+  }
+  const auto labelWord = kind == ast::SyntaxKind::BreakStmt ? ast::kBreakStmtLabelWord
+                                                            : ast::kContinueStatementLabelWord;
+  return tree.node(stmt).payload.words[labelWord] == 0;
+}
+
 /// \brief Shape-matches a `while` loop that has an admitted semantic contract.
 ///
 /// The admitted loop condition is a bare identifier (resolved to a bool
 /// parameter downstream). The body is either empty or a block whose statements
-/// are all admitted scalar-local write statements (`<ident> = <lit | ident |
-/// binary>;`). Both forms are genuine reducible loops that Built MIR lowers to a
-/// four-block CFG with a reducible back-edge; a non-empty body carries its
-/// writes in the loop's body block before the back-edge Goto. Structure only;
-/// the checker/HIR decide which local each write targets and which operators are
-/// supported.
+/// are admitted scalar-local write statements (`<ident> = <lit | ident |
+/// binary>;`) optionally followed by one trailing unlabeled `break;` or
+/// `continue;`. Both forms are genuine reducible loops that Built MIR lowers to
+/// a four-block CFG with a reducible back-edge; a non-empty body carries its
+/// writes in the loop's body block before the back-edge Goto, and a trailing
+/// break exits to the loop exit instead. Structure only; the checker/HIR decide
+/// which local each write targets and which operators are supported.
 bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   if (!tree.contains(whileStmt) || tree.node(whileStmt).kind != ast::SyntaxKind::WhileStmt) {
     return false;
@@ -506,8 +526,15 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return false;
-  for (const auto statement : tree.list(statements)) {
-    if (!isAdmittedLoopBodyWrite(tree, statement)) return false;
+  const auto statementNodes = tree.list(statements);
+  for (size_t index = 0; index < statementNodes.size(); ++index) {
+    if (isAdmittedLoopBodyWrite(tree, statementNodes[index])) continue;
+    // A break/continue is admitted only as the trailing body statement.
+    if (index + 1 == statementNodes.size() &&
+        isAdmittedLoopBodyControlFlow(tree, statementNodes[index])) {
+      continue;
+    }
+    return false;
   }
   return true;
 }
@@ -761,7 +788,8 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer)) return false;
         if (!isAdmittedLoopStatement(tree, middleStmt)) return false;
         // Every loop-body write targets the declared local (checked by identifier
-        // name; the target type and mutability are a checker decision).
+        // name; the target type and mutability are a checker decision). A
+        // trailing break/continue carries no write target and is skipped.
         const ast::NodeId body(tree.node(middleStmt).payload.words[ast::kWhileStmtBodyWord]);
         const auto& bodyBlock = tree.node(body);
         const ast::NodeList bodyStatements{bodyBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
@@ -771,6 +799,10 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
           if (item == zc::none) return false;
           ast::NodeId writeStmt;
           ZC_IF_SOME(value, item) { writeStmt = value; }
+          if (tree.node(writeStmt).kind == ast::SyntaxKind::BreakStmt ||
+              tree.node(writeStmt).kind == ast::SyntaxKind::ContinueStatement) {
+            continue;
+          }
           const ast::NodeId assignment(
               tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
           const ast::NodeId target(
@@ -1163,6 +1195,15 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       }
     }
     if (syntax.kind == ast::SyntaxKind::UnsafeBlockExpr) return;
+    // An admitted while-loop body is validated by isAdmittedLoopStatement; skip
+    // the body block so its trailing break/continue is not rejected as
+    // LoopControl. The condition (a bare identifier) is still traversed.
+    if (syntax.kind == ast::SyntaxKind::WhileStmt &&
+        isAdmittedLoopStatement(boundModule.tree(), nodeId)) {
+      const ast::NodeId condition(syntax.payload.words[ast::kWhileStmtCondWord]);
+      if (boundModule.tree().contains(condition)) { self(condition, self); }
+      return;
+    }
     ast::visitChildNodeIds(boundModule.tree(), syntax,
                            [&](ast::NodeId child) { self(child, self); });
   };

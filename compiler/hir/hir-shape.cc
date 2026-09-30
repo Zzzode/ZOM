@@ -1142,12 +1142,36 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
                                          loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
       if (!tree.contains(loopStatements) || loopStatements.empty()) return zc::none;
-      for (const auto statement : tree.list(loopStatements)) {
-        auto item = statementItem(tree, statement);
+      // The body is a sequence of write statements optionally followed by one
+      // trailing unlabeled `break;` or `continue;` (the bounded slice admits a
+      // break/continue only as the final statement). The write prefix feeds
+      // `localWrites`; the trailing break/continue node is recorded separately.
+      ast::NodeId trailingBreak{};
+      ast::NodeId trailingContinue{};
+      size_t writeCount = loopStatements.size;
+      const auto statementNodes = tree.list(loopStatements);
+      for (size_t statementIndex = 0; statementIndex < statementNodes.size(); ++statementIndex) {
+        auto item = statementItem(tree, statementNodes[statementIndex]);
         if (item == zc::none) return zc::none;
         ast::NodeId writeStmt;
         ZC_IF_SOME(value, item) { writeStmt = value; }
-        if (tree.node(writeStmt).kind != ast::SyntaxKind::ExpressionStatement) return zc::none;
+        const bool isLast = statementIndex + 1 == statementNodes.size();
+        const auto kind = tree.node(writeStmt).kind;
+        if (kind == ast::SyntaxKind::BreakStmt || kind == ast::SyntaxKind::ContinueStatement) {
+          if (!isLast) return zc::none;
+          const auto labelWord = kind == ast::SyntaxKind::BreakStmt
+                                     ? ast::kBreakStmtLabelWord
+                                     : ast::kContinueStatementLabelWord;
+          if (tree.node(writeStmt).payload.words[labelWord] != 0) return zc::none;
+          if (kind == ast::SyntaxKind::BreakStmt) {
+            trailingBreak = writeStmt;
+          } else {
+            trailingContinue = writeStmt;
+          }
+          writeCount = statementIndex;
+          break;
+        }
+        if (kind != ast::SyntaxKind::ExpressionStatement) return zc::none;
         const ast::NodeId assignment(
             tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
         if (!tree.contains(assignment) ||
@@ -1170,12 +1194,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.value = value;
       shape.localPattern = pattern;
       shape.localInitializer = zc::mv(localInitializer);
-      shape.localWrites = ast::NodeList{loopStatements.first, loopStatements.size};
+      shape.localWrites = ast::NodeList{loopStatements.first, static_cast<uint32_t>(writeCount)};
       shape.returnsLocal = true;
       shape.localReference = value;
       shape.isLoopBody = true;
       shape.loopCondition = loopCondition;
       shape.loopStatement = middleStmt;
+      shape.loopBodyBreak = trailingBreak;
+      shape.loopBodyContinue = trailingContinue;
       return shape;
     } else {
       // Discarded receiver-call statement shape:

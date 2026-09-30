@@ -1,0 +1,4 @@
+section: "5.6 break statement"
+covers_rule: "breakStatement"
+expected: "ACCEPT"
+notes: []

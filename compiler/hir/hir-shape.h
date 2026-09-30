@@ -229,6 +229,13 @@ struct FunctionReturnShape final {
   // localReference, returnsLocal) and adds only the loop discriminator, the loop
   // condition node, and the loop statement node.
   bool isLoopBody = false;
+  // Loop-body composite: when the loop body's trailing statement is an unlabeled
+  // `break;` or `continue;`, these record its AST node (empty otherwise). At
+  // most one is set; both are empty when the body ends with a write, so the
+  // back-edge falls through to the header. `localWrites` covers only the write
+  // prefix, excluding the trailing break/continue.
+  ast::NodeId loopBodyBreak{};
+  ast::NodeId loopBodyContinue{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,
