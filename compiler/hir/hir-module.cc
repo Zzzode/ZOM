@@ -6702,13 +6702,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         // Total node span: F+0..F+3 (function, block, local, initializer),
         // writeCount * 2 write nodes, return + value + condition + loop (4), then
-        // each binary write's two operand nodes.
+        // each binary write's two operand nodes. A compound assignment
+        // (`x += 1`) desugars to a binary write, so its two operand nodes are
+        // counted here even though the source RHS is not a BinaryExpr.
         uint32_t binaryWriteNodes = 0;
         for (size_t writeIndex = 0; writeIndex < writeCount; ++writeIndex) {
           auto sourceStatement = statementItem(tree, tree.list(source.localWrites)[writeIndex]);
           ZC_IF_SOME(value, sourceStatement) {
             const ast::NodeId writeNode(
                 tree.node(value).payload.words[ast::kExpressionStatementExpressionWord]);
+            if (tree.node(writeNode).kind == ast::SyntaxKind::PostfixExpression) {
+              binaryWriteNodes += 2;
+              continue;
+            }
+            if (tree.node(writeNode).kind == ast::SyntaxKind::AssignmentExpr &&
+                isCompoundAssignment(static_cast<ast::AssignmentOperatorKind>(
+                    tree.node(writeNode).payload.words[ast::kAssignmentExprOpWord]))) {
+              binaryWriteNodes += 2;
+              continue;
+            }
             const ast::NodeId rhs(tree.node(writeNode).payload.words[ast::kAssignmentExprRhsWord]);
             if (tree.contains(rhs) && tree.node(rhs).kind == ast::SyntaxKind::BinaryExpr) {
               binaryWriteNodes += 2;
@@ -10203,6 +10215,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(statementValue, sourceStatement) {
             const ast::NodeId sourceWrite(
                 tree.node(statementValue).payload.words[ast::kExpressionStatementExpressionWord]);
+            if (tree.node(sourceWrite).kind == ast::SyntaxKind::PostfixExpression) {
+              binaryWriteOperandIds += 2;
+              continue;
+            }
+            if (tree.node(sourceWrite).kind == ast::SyntaxKind::AssignmentExpr &&
+                isCompoundAssignment(static_cast<ast::AssignmentOperatorKind>(
+                    tree.node(sourceWrite).payload.words[ast::kAssignmentExprOpWord]))) {
+              binaryWriteOperandIds += 2;
+              continue;
+            }
             const ast::NodeId sourceRhs(
                 tree.node(sourceWrite).payload.words[ast::kAssignmentExprRhsWord]);
             if (tree.contains(sourceRhs) &&

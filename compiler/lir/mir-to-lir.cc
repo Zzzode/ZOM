@@ -1938,8 +1938,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   // Admit only the verified one-block overwrite shape: a leading run of integer
   // parameter locals followed by exactly one user local, brought to life by
   // StorageLive plus an initializing Assign of a constant, then overwritten by
-  // an Arithmetic or Comparison rvalue whose operands are constants or
-  // place-uses of the parameter locals or the user local itself, and a
+  // one or more Arithmetic or Comparison rvalues whose operands are constants
+  // or place-uses of the parameter locals or the user local itself, and a
   // place-copy return of that local. Every carrier is one equal integer
   // width (Bit1 admitted for bool carriers).
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
@@ -1973,15 +1973,13 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   }
 
   const auto& block = function.blocks[0];
-  if (block.statements.size() != 3) { return zc::none; }
+  if (block.statements.size() < 3) { return zc::none; }
 
   const auto& liveStatement = block.statements[0];
   const auto& initializeStatement = block.statements[1];
-  const auto& overwriteStatement = block.statements[2];
   if (liveStatement.kind() != mir::MirStatementKind::StorageLive ||
       liveStatement.storageLocal() != localDecl.id ||
-      initializeStatement.kind() != mir::MirStatementKind::Assign ||
-      overwriteStatement.kind() != mir::MirStatementKind::Assign) {
+      initializeStatement.kind() != mir::MirStatementKind::Assign) {
     return zc::none;
   }
 
@@ -1995,13 +1993,6 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   const auto& initOperand = initializeAssign.value.useValue().operand;
   if (initOperand.kind() != mir::MirOperandKind::Constant ||
       initOperand.constantValue().type != localDecl.type) {
-    return zc::none;
-  }
-
-  const auto& overwriteAssign = overwriteStatement.assignmentValue();
-  if (overwriteAssign.destination.local() != localDecl.id ||
-      overwriteAssign.destination.projections().size() != 0 ||
-      overwriteAssign.initialization != mir::MirInitializationKind::Overwrite) {
     return zc::none;
   }
 
@@ -2028,27 +2019,43 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   if (initLowered == zc::none) { return zc::none; }
   statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
 
-  if (overwriteAssign.value.kind() == mir::MirRvalueKind::Arithmetic) {
-    const auto& arithmetic = overwriteAssign.value.arithmeticValue();
-    auto op = lirArithmeticOpFor(arithmetic.op);
-    if (op == zc::none) { return zc::none; }
-    if (arithmetic.resultType != localDecl.type) { return zc::none; }
-    auto left = leafOperand(arithmetic.left);
-    auto right = leafOperand(arithmetic.right);
-    if (left == zc::none || right == zc::none) { return zc::none; }
-    statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
-                                         ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
-  } else if (overwriteAssign.value.kind() == mir::MirRvalueKind::Comparison) {
-    const auto& comparison = overwriteAssign.value.comparisonValue();
-    auto op = lirComparisonOpFor(comparison.op);
-    if (comparison.resultType != localDecl.type) { return zc::none; }
-    auto left = leafOperand(comparison.left);
-    auto right = leafOperand(comparison.right);
-    if (left == zc::none || right == zc::none) { return zc::none; }
-    statements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
-                                      ZC_REQUIRE_NONNULL(right)));
-  } else {
-    return zc::none;
+  // Lower each overwrite write (statements 2 through end-1).
+  for (size_t i = 2; i < block.statements.size(); ++i) {
+    const auto& overwriteStatement = block.statements[i];
+    if (overwriteStatement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& overwriteAssign = overwriteStatement.assignmentValue();
+    if (overwriteAssign.destination.local() != localDecl.id ||
+        overwriteAssign.destination.projections().size() != 0 ||
+        overwriteAssign.initialization != mir::MirInitializationKind::Overwrite) {
+      return zc::none;
+    }
+
+    if (overwriteAssign.value.kind() == mir::MirRvalueKind::Use) {
+      auto lowered = leafOperand(overwriteAssign.value.useValue().operand);
+      if (lowered == zc::none) { return zc::none; }
+      statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    } else if (overwriteAssign.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = overwriteAssign.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none) { return zc::none; }
+      if (arithmetic.resultType != localDecl.type) { return zc::none; }
+      auto left = leafOperand(arithmetic.left);
+      auto right = leafOperand(arithmetic.right);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
+                                           ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+    } else if (overwriteAssign.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = overwriteAssign.value.comparisonValue();
+      auto op = lirComparisonOpFor(comparison.op);
+      if (comparison.resultType != localDecl.type) { return zc::none; }
+      auto left = leafOperand(comparison.left);
+      auto right = leafOperand(comparison.right);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
+                                        ZC_REQUIRE_NONNULL(right)));
+    } else {
+      return zc::none;
+    }
   }
 
   if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }

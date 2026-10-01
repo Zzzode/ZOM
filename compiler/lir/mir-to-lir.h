@@ -258,11 +258,11 @@ public:
   /// Admits the verified Built MIR shape that
   /// `mir::validLocalBinaryOverwriteReturnFunction` accepts: one block with one
   /// user local brought to life by StorageLive plus an initializing Assign of a
-  /// constant, then overwritten by an Arithmetic or Comparison rvalue whose
-  /// operands are constants or place-uses of the parameter locals or the user
-  /// local itself (`x = x + 1`), and a place-copy return of that local. Every
-  /// carrier is one equal non-one-bit integer width. Every shape outside this
-  /// slice returns `none`.
+  /// constant, then overwritten by one or more Arithmetic, Comparison, or Use
+  /// rvalues whose operands are constants or place-uses of the parameter locals
+  /// or the user local itself (`x = x + 1`), and a place-copy return of that
+  /// local. Every carrier is one equal non-one-bit integer width. Every shape
+  /// outside this slice returns `none`.
   ///
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the function types.

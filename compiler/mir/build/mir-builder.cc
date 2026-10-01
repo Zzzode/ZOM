@@ -1167,6 +1167,196 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalOverwriteReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a single user-local body with one or more overwrite writes.
+///
+/// `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`. The first
+/// write may be an Initialize when the local has no initializer; every
+/// subsequent write is an Overwrite. A binary write value lowers to an
+/// arithmetic rvalue whose left operand is a place-use of the user local and
+/// whose right operand is a scalar literal, parameter, or earlier local.
+zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() < 3) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) { return zc::none; }
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1) { return zc::none; }
+  if (binding.type != declaration.resultType) { return zc::none; }
+
+  const size_t writeCount = block.statements.size() - 2;
+  zc::Vector<const hir::HirLocalWriteStatement*> writes;
+  for (size_t i = 0; i < writeCount; ++i) {
+    auto write = localWriteFor(hirModule, block.statements[1 + i]);
+    if (write == zc::none) { return zc::none; }
+    const auto& w = ZC_ASSERT_NONNULL(write);
+    if (w.local != binding.local || w.field != zc::none || w.type != binding.type) {
+      return zc::none;
+    }
+    writes.add(&w);
+  }
+
+  auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
+  if (sourceReturn == zc::none) { return zc::none; }
+  auto reference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (reference == zc::none) { return zc::none; }
+  if (ZC_ASSERT_NONNULL(reference).local != binding.local ||
+      ZC_ASSERT_NONNULL(reference).type != binding.type ||
+      ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  // Resolve the initializer (literal or parameter).
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto initializerLiteral = expressionFor(hirModule, initializerNode);
+  auto initializerParameter = parameterReferenceFor(hirModule, initializerNode);
+  if (initializerLiteral == zc::none && initializerParameter == zc::none) { return zc::none; }
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (const auto& parameter : declaration.parameters) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
+                                         parameter.sourceSpan.clone()));
+  }
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+
+  // Operand resolver for binary write values: literal, parameter, or the user
+  // local itself (compound assignment desugar).
+  auto operandFor = [&](hir::HirNodeId operandNode,
+                        identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
+    if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
+      if (ZC_ASSERT_NONNULL(literal).type != operandType) return zc::none;
+      return MirOperand::constant(operandType, ZC_ASSERT_NONNULL(literal).value.clone());
+    }
+    if (auto parameter = parameterReferenceFor(hirModule, operandNode); parameter != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(parameter);
+      auto index = parameterIndexFor(declaration, value.parameter);
+      if (index == zc::none || value.type != operandType ||
+          value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], operandType,
+                               zc::mv(projections), operandType));
+    }
+    if (auto localRef = localReferenceFor(hirModule, operandNode); localRef != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(localRef);
+      if (value.local != binding.local || value.type != operandType ||
+          value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(userLocal, operandType, zc::mv(projections), operandType));
+    }
+    return zc::none;
+  };
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+
+  // Initialize the user local.
+  {
+    zc::Maybe<MirRvalue> rvalue;
+    identity::SourceSpan initializerSpan = binding.sourceSpan.clone();
+    ZC_IF_SOME(literal, initializerLiteral) {
+      rvalue = MirRvalue::use(MirOperand::constant(binding.type, literal.value.clone()));
+      initializerSpan = literal.sourceSpan.clone();
+    }
+    ZC_IF_SOME(parameter, initializerParameter) {
+      auto index = parameterIndexFor(declaration, parameter.parameter);
+      if (index == zc::none || parameter.type != binding.type ||
+          parameter.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], binding.type,
+                                       zc::mv(projections), binding.type));
+      if (operand == zc::none) return zc::none;
+      rvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+      initializerSpan = parameter.sourceSpan.clone();
+    }
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(
+        MirStatement::assign(MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+                             zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+                             zc::mv(initializerSpan)));
+  }
+
+  // Apply each write.
+  for (size_t i = 0; i < writeCount; ++i) {
+    const auto& write = *writes[i];
+    auto writeLiteral = expressionFor(hirModule, write.value);
+    auto writeParameter = parameterReferenceFor(hirModule, write.value);
+    auto writeBinary = primitiveBinaryFor(hirModule, write.value);
+
+    zc::Maybe<MirRvalue> rvalue;
+    if (writeLiteral != zc::none) {
+      if (ZC_ASSERT_NONNULL(writeLiteral).type != binding.type) return zc::none;
+      rvalue = MirRvalue::use(
+          MirOperand::constant(binding.type, ZC_ASSERT_NONNULL(writeLiteral).value.clone()));
+    } else if (writeParameter != zc::none) {
+      const auto& parameter = ZC_ASSERT_NONNULL(writeParameter);
+      auto index = parameterIndexFor(declaration, parameter.parameter);
+      if (index == zc::none || parameter.type != binding.type ||
+          parameter.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], binding.type,
+                                       zc::mv(projections), binding.type));
+      if (operand == zc::none) return zc::none;
+      rvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else if (writeBinary != zc::none) {
+      const auto& binary = ZC_ASSERT_NONNULL(writeBinary);
+      auto arithmetic = arithmeticOperatorFor(binary.operation);
+      if (arithmetic == zc::none) { return zc::none; }
+      if (binary.type != binding.type || binary.operandType != binding.type) { return zc::none; }
+      auto left = operandFor(binary.left, binary.operandType);
+      auto right = operandFor(binary.right, binary.operandType);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                     zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+    } else {
+      return zc::none;
+    }
+
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(
+        MirStatement::assign(MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+                             zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Overwrite,
+                             write.sourceSpan.clone()));
+  }
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers one aggregate-initializer single user-local return body.
 ///
 /// Byte-identical to the legacy dedicated single-local aggregate rail: one
@@ -2489,6 +2679,16 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
                                                copyMarker);
       }
     }
+  }
+
+  // Single user-local body with one or more overwrite writes:
+  // `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`. A binary
+  // write value lowers to an arithmetic rvalue whose left operand is a
+  // place-use of the user local (compound assignment desugar).
+  if (block.statements.size() >= 3 && declaration.unsafeBlock == zc::none) {
+    auto product =
+        buildLocalWriteReturn(declaration, block, hirModule, identities, proofs, copyMarker);
+    if (product != zc::none) return product;
   }
 
   // Sequential N-local body with N>=1 plain initializers:

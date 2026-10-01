@@ -1,0 +1,10 @@
+// Multiple compound assignments on a single mutable local. Each compound
+// assignment desugars to a binary overwrite write (`x = x + <rhs>`). The MIR
+// builder lowers the body through the multi-write local-return rail. The
+// entry folds to the no-argument i32 module initializer and exits 41.
+fun entry() -> i32 {
+    mut x = 30;
+    x += 10;
+    x += 1;
+    return x;
+}
