@@ -1530,13 +1530,41 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           !matchesLocalReference(tree, pattern, value)) {
         return zc::none;
       }
-      // The loop body must be exactly one admitted loop-body write.
+      // The loop body is one admitted accumulator write optionally followed
+      // by one trailing unlabeled `break;` or `continue;` (the bounded slice
+      // admits a break/continue only as the final statement). The write feeds
+      // `forLoopBodyWrite`; the trailing break/continue node is recorded
+      // separately.
       const auto& loopBlock = tree.node(forBody);
       const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
                                          loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
-      if (!tree.contains(loopStatements) || loopStatements.size != 1) return zc::none;
+      if (!tree.contains(loopStatements) || loopStatements.size < 1 || loopStatements.size > 2) {
+        return zc::none;
+      }
       const auto bodyWriteNode = tree.list(loopStatements)[0];
       if (!isAccumulatorBodyWrite(tree, bodyWriteNode)) return zc::none;
+      ast::NodeId trailingBreak{};
+      ast::NodeId trailingContinue{};
+      if (loopStatements.size == 2) {
+        auto trailingItem = statementItem(tree, tree.list(loopStatements)[1]);
+        if (trailingItem == zc::none) return zc::none;
+        ast::NodeId trailingStmt;
+        ZC_IF_SOME(item, trailingItem) { trailingStmt = item; }
+        const auto trailingKind = tree.node(trailingStmt).kind;
+        if (trailingKind != ast::SyntaxKind::BreakStmt &&
+            trailingKind != ast::SyntaxKind::ContinueStatement) {
+          return zc::none;
+        }
+        const auto labelWord = trailingKind == ast::SyntaxKind::BreakStmt
+                                   ? ast::kBreakStmtLabelWord
+                                   : ast::kContinueStatementLabelWord;
+        if (tree.node(trailingStmt).payload.words[labelWord] != 0) return zc::none;
+        if (trailingKind == ast::SyntaxKind::BreakStmt) {
+          trailingBreak = trailingStmt;
+        } else {
+          trailingContinue = trailingStmt;
+        }
+      }
       FunctionReturnShape shape{};
       shape.body = body;
       shape.returnStatement = returnNode;
@@ -1550,6 +1578,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.forLoopBody = forBody;
       shape.forLoopStatement = middleStmt;
       shape.forLoopBodyWrite = bodyWriteNode;
+      shape.forLoopBodyBreak = trailingBreak;
+      shape.forLoopBodyContinue = trailingContinue;
       return shape;
     }
     if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt) {

@@ -6995,11 +6995,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto updateRhsSpan = bound.parsedModule().spanFor(tree.node(updateRhs).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(source.forLoopStatement).range);
         auto valueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+        zc::Maybe<identity::SourceSpan> sourceBreakSpan;
+        zc::Maybe<identity::SourceSpan> sourceContinueSpan;
+        if (source.forLoopBodyBreak) {
+          sourceBreakSpan = bound.parsedModule().spanFor(tree.node(source.forLoopBodyBreak).range);
+        }
+        if (source.forLoopBodyContinue) {
+          sourceContinueSpan =
+              bound.parsedModule().spanFor(tree.node(source.forLoopBodyContinue).range);
+        }
         if (bodySpan == zc::none || returnSpan == zc::none || patternSpan == zc::none ||
             initializerSpan == zc::none || condSpan == zc::none || condLhsSpan == zc::none ||
             condRhsSpan == zc::none || updateSpan == zc::none || updateValueSpan == zc::none ||
             updateLhsSpan == zc::none || updateRhsSpan == zc::none || loopSpan == zc::none ||
-            valueSpan == zc::none) {
+            valueSpan == zc::none || (source.forLoopBodyBreak && sourceBreakSpan == zc::none) ||
+            (source.forLoopBodyContinue && sourceContinueSpan == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
@@ -7289,6 +7299,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                   loop.body[0] != updWrite.node || loop.type != condResultType ||
                                   loop.category != HirValueCategory::Place ||
                                   !sameSpan(loop.sourceSpan, ZC_ASSERT_NONNULL(loopSpan)) ||
+                                  (loop.breakSpan != zc::none) !=
+                                      static_cast<bool>(source.forLoopBodyBreak) ||
+                                  (loop.continueSpan != zc::none) !=
+                                      static_cast<bool>(source.forLoopBodyContinue) ||
                                   retVal.type != returnType ||
                                   retVal.category != HirValueCategory::Value ||
                                   !sameConstant(retVal.value, returnLiteralFact.literal, module,
@@ -7306,6 +7320,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                 return rejectHir<VerifiedHirModule>(
                                     ir::IrFailurePhase::HirVerification,
                                     ir::IrFailureKind::InvalidFact, module, registries, index + 1);
+                              }
+                              // Break and continue spans are optional; verify
+                              // them only when present.
+                              ZC_IF_SOME(breakSpan, loop.breakSpan) {
+                                if (!sameSpan(breakSpan, ZC_ASSERT_NONNULL(sourceBreakSpan))) {
+                                  return rejectHir<VerifiedHirModule>(
+                                      ir::IrFailurePhase::HirVerification,
+                                      ir::IrFailureKind::InvalidFact, module, registries,
+                                      index + 1);
+                                }
+                              }
+                              ZC_IF_SOME(continueSpan, loop.continueSpan) {
+                                if (!sameSpan(continueSpan,
+                                              ZC_ASSERT_NONNULL(sourceContinueSpan))) {
+                                  return rejectHir<VerifiedHirModule>(
+                                      ir::IrFailurePhase::HirVerification,
+                                      ir::IrFailureKind::InvalidFact, module, registries,
+                                      index + 1);
+                                }
                               }
                             }
                           }
@@ -7555,6 +7588,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto bodyWriteRhsSpan = bound.parsedModule().spanFor(tree.node(bodyWriteRhs).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(source.forLoopStatement).range);
         auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+        zc::Maybe<identity::SourceSpan> sourceBreakSpan;
+        zc::Maybe<identity::SourceSpan> sourceContinueSpan;
+        if (source.forLoopBodyBreak) {
+          sourceBreakSpan = bound.parsedModule().spanFor(tree.node(source.forLoopBodyBreak).range);
+        }
+        if (source.forLoopBodyContinue) {
+          sourceContinueSpan =
+              bound.parsedModule().spanFor(tree.node(source.forLoopBodyContinue).range);
+        }
         if (bodySpan == zc::none || returnSpan == zc::none || accPatternSpan == zc::none ||
             accInitializerSpan == zc::none || loopInitPatternSpan == zc::none ||
             loopInitInitializerSpan == zc::none || condSpan == zc::none ||
@@ -7562,7 +7604,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             updateValueSpan == zc::none || updateLhsSpan == zc::none || updateRhsSpan == zc::none ||
             bodyWriteSpan == zc::none || bodyWriteValueSpan == zc::none ||
             bodyWriteLhsSpan == zc::none || bodyWriteRhsSpan == zc::none || loopSpan == zc::none ||
-            returnValueSpan == zc::none) {
+            returnValueSpan == zc::none ||
+            (source.forLoopBodyBreak && sourceBreakSpan == zc::none) ||
+            (source.forLoopBodyContinue && sourceContinueSpan == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
@@ -8012,6 +8056,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               loop.category != HirValueCategory::Place ||
                                               !sameSpan(loop.sourceSpan,
                                                         ZC_ASSERT_NONNULL(loopSpan)) ||
+                                              (loop.breakSpan != zc::none) !=
+                                                  static_cast<bool>(source.forLoopBodyBreak) ||
+                                              (loop.continueSpan != zc::none) !=
+                                                  static_cast<bool>(source.forLoopBodyContinue) ||
                                               retVal.local != hirLocalId(1) ||
                                               retVal.type != returnType ||
                                               retVal.category != HirValueCategory::Place ||
@@ -8035,6 +8083,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
+                                          }
+                                          // Break and continue spans are optional;
+                                          // verify them only when present.
+                                          ZC_IF_SOME(breakSpan, loop.breakSpan) {
+                                            if (!sameSpan(breakSpan,
+                                                          ZC_ASSERT_NONNULL(sourceBreakSpan))) {
+                                              return rejectHir<VerifiedHirModule>(
+                                                  ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+                                            }
+                                          }
+                                          ZC_IF_SOME(continueSpan, loop.continueSpan) {
+                                            if (!sameSpan(continueSpan,
+                                                          ZC_ASSERT_NONNULL(sourceContinueSpan))) {
+                                              return rejectHir<VerifiedHirModule>(
+                                                  ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+                                            }
                                           }
                                         }
                                       }

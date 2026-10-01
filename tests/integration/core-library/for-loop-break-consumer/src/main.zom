@@ -1,0 +1,11 @@
+// For-loop break fixture: a C-style for loop with a trailing break after the
+// accumulator write, exercising the break-to-exit body terminator through the
+// full IR pipeline. The loop exits after the first iteration, so sum is 0.
+fun entry() -> i32 {
+  mut sum = 0;
+  for (let i = 0; i < 10; i = i + 1) {
+    sum = sum + i;
+    break;
+  }
+  return sum;
+}

@@ -1230,13 +1230,15 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
 
   // Body: Assign(local = Arithmetic(op, copy(local), constant), Overwrite);
   // Assign(temp = Comparison(op, copy(local), constant), Overwrite);
-  // Goto(header).
+  // Goto(exit) for a trailing break or Goto(header) back-edge for
+  // continue/fallthrough.
   if (body.statements.size() != 2 || body.statements[0].kind() != mir::MirStatementKind::Assign ||
       body.statements[1].kind() != mir::MirStatementKind::Assign ||
-      body.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != header.id) {
+      body.terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
+  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
+  if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
   const auto& updateAssign = body.statements[0].assignmentValue();
   if (updateAssign.destination.local() != localDecl.id ||
       updateAssign.destination.projections().size() != 0 ||
@@ -1344,7 +1346,8 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
     bodyStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
                                           ZC_REQUIRE_NONNULL(condRightLowered)));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(bodyStatements),
-                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+                          Terminator::gotoBlock(breaksToExit ? ZC_REQUIRE_NONNULL(exitId)
+                                                             : ZC_REQUIRE_NONNULL(headerId))));
   }
   {
     zc::Vector<Statement> exitStatements;
@@ -1528,14 +1531,16 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   // Body: Assign(acc = Arithmetic(op, copy(acc), copy(local)), Overwrite);
   // Assign(local = Arithmetic(op, copy(local), constant), Overwrite);
   // Assign(temp = Comparison(op, copy(local), constant), Overwrite);
-  // Goto(header).
+  // Goto(exit) for a trailing break or Goto(header) back-edge for
+  // continue/fallthrough.
   if (body.statements.size() != 3 || body.statements[0].kind() != mir::MirStatementKind::Assign ||
       body.statements[1].kind() != mir::MirStatementKind::Assign ||
       body.statements[2].kind() != mir::MirStatementKind::Assign ||
-      body.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != header.id) {
+      body.terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
+  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
+  if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
   // Body accumulator arithmetic.
   const auto& accArithAssign = body.statements[0].assignmentValue();
   if (accArithAssign.destination.local() != accDecl.id ||
@@ -1670,7 +1675,8 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     bodyStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
                                           ZC_REQUIRE_NONNULL(condRightLowered)));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(bodyStatements),
-                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
+                          Terminator::gotoBlock(breaksToExit ? ZC_REQUIRE_NONNULL(exitId)
+                                                             : ZC_REQUIRE_NONNULL(headerId))));
   }
   {
     zc::Vector<Statement> exitStatements;

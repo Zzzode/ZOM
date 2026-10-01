@@ -461,8 +461,8 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
   zc::Vector<HirNodeId> loopStatements;
   loopStatements.add(writeId);
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), forLoop.condition.type,
-                               HirValueCategory::Place, zc::mv(forLoop.loopSpan), zc::none,
-                               zc::none});
+                               HirValueCategory::Place, zc::mv(forLoop.loopSpan),
+                               zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan)});
   ctx.addExpression(HirScalarLiteralExpression{
       returnValueId, function.resultType, ZC_ASSERT_NONNULL(function.literal).clone(),
       HirValueCategory::Value, function.valueSpan.clone()});
@@ -582,8 +582,8 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
   loopStatements.add(bodyWriteId);
   loopStatements.add(writeId);
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), forLoop.condition.type,
-                               HirValueCategory::Place, zc::mv(forLoop.loopSpan), zc::none,
-                               zc::none});
+                               HirValueCategory::Place, zc::mv(forLoop.loopSpan),
+                               zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan)});
   // The return value is a place reference to the accumulator local.
   ctx.addLocalReference(HirLocalReferenceExpression{
       returnValueId, forLoop.returnReference.local, forLoop.returnReference.type,

@@ -6231,6 +6231,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         auto updateLhsSpan = bound.parsedModule().spanFor(tree.node(updateLhs).range);
         auto updateRhsSpan = bound.parsedModule().spanFor(tree.node(updateRhs).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopStatement).range);
+        zc::Maybe<identity::SourceSpan> breakSpan;
+        zc::Maybe<identity::SourceSpan> continueSpan;
+        if (shape.forLoopBodyBreak) {
+          breakSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopBodyBreak).range);
+          if (breakSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
+        if (shape.forLoopBodyContinue) {
+          continueSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopBodyContinue).range);
+          if (continueSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
         if (initBinding == zc::none || initTypeIndex == zc::none || initLiteralIndex == zc::none ||
             patternSpan == zc::none || initializerSpan == zc::none ||
             condResultTypeIndex == zc::none || condCallIndex == zc::none ||
@@ -6346,7 +6364,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                         ZC_ASSERT_NONNULL(updateLhsSpan).clone()},
             HirScalarLiteralExpression{
                 HirNodeId(), updateRhsType, updateRhsLiteralFact.literal.clone(),
-                HirValueCategory::Value, ZC_ASSERT_NONNULL(updateRhsSpan).clone()}};
+                HirValueCategory::Value, ZC_ASSERT_NONNULL(updateRhsSpan).clone()},
+            zc::mv(breakSpan),
+            zc::mv(continueSpan)};
       }
       // For-loop accumulator shape: a leading scalar `let` accumulator local,
       // a `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>) {
@@ -6455,6 +6475,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         auto updateLhsSpan = bound.parsedModule().spanFor(tree.node(updateLhs).range);
         auto updateRhsSpan = bound.parsedModule().spanFor(tree.node(updateRhs).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopStatement).range);
+        zc::Maybe<identity::SourceSpan> breakSpan;
+        zc::Maybe<identity::SourceSpan> continueSpan;
+        if (shape.forLoopBodyBreak) {
+          breakSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopBodyBreak).range);
+          if (breakSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
+        if (shape.forLoopBodyContinue) {
+          continueSpan = bound.parsedModule().spanFor(tree.node(shape.forLoopBodyContinue).range);
+          if (continueSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+        }
         // Body write: `<accumulator> = <accumulator> <bin> <loop-local>;`. The
         // target is the accumulator local; the binary's left operand is the
         // accumulator local and its right operand is the loop init local.
@@ -6691,7 +6729,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                         ZC_ASSERT_NONNULL(bodyWriteRhsSpan).clone()},
             HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), returnType,
                                         HirValueCategory::Place,
-                                        ZC_ASSERT_NONNULL(returnSpan).clone()}};
+                                        ZC_ASSERT_NONNULL(returnSpan).clone()},
+            zc::mv(breakSpan),
+            zc::mv(continueSpan)};
       }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       callable.success,

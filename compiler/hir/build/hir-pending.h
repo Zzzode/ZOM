@@ -314,6 +314,12 @@ struct PendingForLoopReturn final {
   HirLocalReferenceExpression writeValueLeft;
   // The arithmetic's right operand: a scalar literal.
   HirScalarLiteralExpression writeValueRight;
+  // A trailing unlabeled `break;` or `continue;` source span, carried so the
+  // materialized `HirLoopStatement` can select the body block terminator (exit
+  // for break, header back-edge for continue/fallthrough). At most one is set;
+  // both are none for an empty body.
+  zc::Maybe<identity::SourceSpan> breakSpan;
+  zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
 // One admitted C-style `for` loop accumulator return: a leading scalar `let`
@@ -362,6 +368,12 @@ struct PendingForLoopAccumulatorReturn final {
   HirLocalReferenceExpression bodyWriteRight;
   // The return value: a place reference to the accumulator local.
   HirLocalReferenceExpression returnReference;
+  // A trailing unlabeled `break;` or `continue;` source span, carried so the
+  // materialized `HirLoopStatement` can select the body block terminator (exit
+  // for break, header back-edge for continue/fallthrough). At most one is set;
+  // both are none when the body ends with a write.
+  zc::Maybe<identity::SourceSpan> breakSpan;
+  zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
 // One receiver field-arithmetic return: `return this.<field> OP

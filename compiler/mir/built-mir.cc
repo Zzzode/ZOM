@@ -3604,6 +3604,9 @@ bool validForLoopReturnFunction(
   const auto& header = function.blocks[1];
   const auto& body = function.blocks[2];
   const auto& exit = function.blocks[3];
+  // A trailing break exits the body to the loop exit (bb4); a trailing
+  // continue or a write-only body jumps back to the header (bb2).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
   // Reducible four-block loop CFG:
   //   bb1 entry:  StorageLive(result) ; StorageLive(i) ; StorageLive(temp) ;
   //               Assign(i = init, Initialize) ;
@@ -3619,7 +3622,7 @@ bool validForLoopReturnFunction(
       header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
       body.sourceScope != scopeId(1) || body.statements.size() != 2 ||
       body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != blockId(2) || exit.id != blockId(4) ||
+      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
       exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
       exit.terminator.kind() != MirTerminatorKind::Return) {
     return false;
@@ -3876,6 +3879,9 @@ bool validForLoopAccumulatorReturnFunction(
   const auto& header = function.blocks[1];
   const auto& body = function.blocks[2];
   const auto& exit = function.blocks[3];
+  // A trailing break exits the body to the loop exit (bb4); a trailing
+  // continue or a write-only body jumps back to the header (bb2).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
   // Reducible four-block loop CFG:
   //   bb1 entry:  StorageLive(result) ; StorageLive(sum) ; StorageLive(i) ;
   //               StorageLive(temp) ; Assign(sum = accInit, Initialize) ;
@@ -3893,7 +3899,7 @@ bool validForLoopAccumulatorReturnFunction(
       header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
       body.sourceScope != scopeId(1) || body.statements.size() != 3 ||
       body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != blockId(2) || exit.id != blockId(4) ||
+      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
       exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
       exit.terminator.kind() != MirTerminatorKind::Return) {
     return false;
@@ -8831,6 +8837,18 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                               declaration.resultType, returnValue.value.clone())),
                                           MirInitializationKind::Initialize,
                                           returnValue.sourceSpan.clone()));
+                                      // A trailing break exits the body to the
+                                      // loop exit (bb4); a trailing continue or
+                                      // a write-only body jumps back to the
+                                      // header (bb2, the reducible back-edge).
+                                      const auto bodyTerminatorTarget =
+                                          loopValue.breakSpan != zc::none ? blockId(4) : blockId(2);
+                                      const auto& bodyTerminatorSpan =
+                                          loopValue.breakSpan != zc::none
+                                              ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+                                              : (loopValue.continueSpan != zc::none
+                                                     ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                                     : loopValue.sourceSpan);
                                       zc::Vector<MirBasicBlock> blocks;
                                       blocks.add(MirBasicBlock{
                                           blockId(1), scopeId(1), zc::mv(entryStatements),
@@ -8843,8 +8861,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                               blockId(4), loopValue.sourceSpan.clone())});
                                       blocks.add(MirBasicBlock{
                                           blockId(3), scopeId(1), zc::mv(bodyStatements),
-                                          MirTerminator::gotoTarget(blockId(2),
-                                                                    loopValue.sourceSpan.clone())});
+                                          MirTerminator::gotoTarget(bodyTerminatorTarget,
+                                                                    bodyTerminatorSpan.clone())});
                                       blocks.add(MirBasicBlock{
                                           blockId(4), scopeId(1), zc::mv(exitStatements),
                                           MirTerminator::returnValue(
@@ -9254,6 +9272,22 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                           ZC_ASSERT_NONNULL(exitCopyOperand))),
                                                       MirInitializationKind::Initialize,
                                                       returnRef.sourceSpan.clone()));
+                                                  // A trailing break exits the
+                                                  // body to the loop exit (bb4);
+                                                  // a trailing continue or a
+                                                  // write-only body jumps back
+                                                  // to the header (bb2, the
+                                                  // reducible back-edge).
+                                                  const auto bodyTerminatorTarget =
+                                                      loopValue.breakSpan != zc::none ? blockId(4)
+                                                                                      : blockId(2);
+                                                  const auto& bodyTerminatorSpan =
+                                                      loopValue.breakSpan != zc::none
+                                                          ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+                                                          : (loopValue.continueSpan != zc::none
+                                                                 ? ZC_ASSERT_NONNULL(
+                                                                       loopValue.continueSpan)
+                                                                 : loopValue.sourceSpan);
                                                   zc::Vector<MirBasicBlock> blocks;
                                                   blocks.add(MirBasicBlock{
                                                       blockId(1), scopeId(1),
@@ -9272,8 +9306,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                       blockId(3), scopeId(1),
                                                       zc::mv(bodyStatements),
                                                       MirTerminator::gotoTarget(
-                                                          blockId(2),
-                                                          loopValue.sourceSpan.clone())});
+                                                          bodyTerminatorTarget,
+                                                          bodyTerminatorSpan.clone())});
                                                   blocks.add(MirBasicBlock{
                                                       blockId(4), scopeId(1),
                                                       zc::mv(exitStatements),

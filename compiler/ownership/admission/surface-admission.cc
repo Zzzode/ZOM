@@ -674,7 +674,8 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
 ///   and whose value is an admitted primitive binary (arithmetic).
 /// - `body` is either an empty block or exactly one admitted loop-body write
 ///   (an `<ident> = <ident | literal | admitted primitive binary>;` assignment
-///   that accumulates into a local declared outside the loop).
+///   that accumulates into a local declared outside the loop) optionally
+///   followed by one trailing unlabeled `break;` or `continue;`.
 ///
 /// Structure only; the checker/HIR decide which local each write targets and
 /// which operators are supported. The loop desugars to `let id = <literal>;
@@ -743,17 +744,21 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
       !tree.contains(updateValue) || !isAdmittedPrimitiveBinary(tree, updateValue)) {
     return false;
   }
-  // Body: an empty block, or exactly one admitted loop-body write. The write
-  // accumulates into a local declared outside the loop; its structure is
-  // validated by isAdmittedLoopBodyWrite.
+  // Body: an empty block, or exactly one admitted loop-body write optionally
+  // followed by one trailing unlabeled break/continue. The write accumulates
+  // into a local declared outside the loop; its structure is validated by
+  // isAdmittedLoopBodyWrite. A break/continue is admitted only as the trailing
+  // body statement, matching the while-loop body slice.
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return false;
   if (statements.empty()) return true;
-  if (statements.size != 1) return false;
-  return isAdmittedLoopBodyWrite(tree, tree.list(statements)[0]);
+  if (statements.size > 2) return false;
+  if (!isAdmittedLoopBodyWrite(tree, tree.list(statements)[0])) return false;
+  if (statements.size == 1) return true;
+  return isAdmittedLoopBodyControlFlow(tree, tree.list(statements)[1]);
 }
 
 // A nested arithmetic operand is a one-level binary whose own operands are

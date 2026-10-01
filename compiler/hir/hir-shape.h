@@ -255,6 +255,13 @@ struct FunctionReturnShape final {
   // AST node is carried for the builder.
   bool isForLoopAccumulator = false;
   ast::NodeId forLoopBodyWrite{};
+  // For-loop accumulator composite: when the loop body's trailing statement is
+  // an unlabeled `break;` or `continue;`, these record its AST node (empty
+  // otherwise). At most one is set; both are empty when the body ends with a
+  // write, so the back-edge falls through to the header. `forLoopBodyWrite`
+  // covers only the write prefix, excluding the trailing break/continue.
+  ast::NodeId forLoopBodyBreak{};
+  ast::NodeId forLoopBodyContinue{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,
