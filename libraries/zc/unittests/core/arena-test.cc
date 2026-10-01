@@ -38,11 +38,10 @@ struct TestObject {
   TestObject(const TestObject& other) {
     ZC_ASSERT(other.index != throwAt);
     index = -1;
-    copiedCount++;
   }
   ~TestObject() noexcept(false) {
     if (index == -1) {
-      --copiedCount;
+      // Copied object; no count to decrement.
     } else {
       --count;
       EXPECT_EQ(index, count);
@@ -53,12 +52,10 @@ struct TestObject {
   int index;
 
   static int count;
-  static int copiedCount;
   static int throwAt;
 };
 
 int TestObject::count = 0;
-int TestObject::copiedCount = 0;
 int TestObject::throwAt = -1;
 
 TEST(Arena, Object) {
