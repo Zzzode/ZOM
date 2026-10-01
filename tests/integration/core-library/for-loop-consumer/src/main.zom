@@ -1,0 +1,7 @@
+// For-loop fixture: a C-style for loop with an empty body runs 10 iterations
+// and then returns 41, exercising the reducible four-block loop CFG through
+// the full IR pipeline.
+fun entry() -> i32 {
+  for (let i = 0; i < 10; i = i + 1) {}
+  return 41;
+}

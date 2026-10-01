@@ -658,6 +658,97 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   return hasWrite;
 }
 
+/// \brief Shape-matches a C-style `for` loop that has an admitted semantic
+/// contract.
+///
+/// The admitted for-loop shape is a bounded slice:
+///   `for (let id = <literal>; <ident> <cmp> <literal>; <ident> = <binary>) {}`
+///
+/// - `init` is a `let` declaration with exactly one declarator whose pattern is
+///   a bare identifier and whose initializer is a scalar literal.
+/// - `cond` is a binary comparison whose operands are each an identifier or a
+///   scalar literal, with at least one identifier operand. Which comparison
+///   operators are supported is a checker decision.
+/// - `update` is an assignment expression whose target is a bare identifier
+///   and whose value is an admitted primitive binary (arithmetic).
+/// - `body` is an empty block in this slice.
+///
+/// Structure only; the checker/HIR decide which local each write targets and
+/// which operators are supported. The loop desugars to `let id = <literal>;
+/// while (<ident> <cmp> <literal>) { <ident> = <binary>; }` downstream.
+bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
+  if (!tree.contains(forStmt) || tree.node(forStmt).kind != ast::SyntaxKind::ForStmt) {
+    return false;
+  }
+  const auto& loop = tree.node(forStmt);
+  const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
+  const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
+  const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
+  const ast::NodeId body(loop.payload.words[ast::kForStmtBodyWord]);
+  // Init: let declaration with one declarator, identifier pattern, scalar
+  // literal initializer.
+  if (!tree.contains(init) || tree.node(init).kind != ast::SyntaxKind::LetStmt) return false;
+  const auto& letNode = tree.node(init);
+  if (static_cast<ast::BindingDeclarationKind>(letNode.payload.words[ast::kLetStmtKindWord]) !=
+      ast::BindingDeclarationKind::Let) {
+    return false;
+  }
+  const ast::NodeId declarations(letNode.payload.words[ast::kLetStmtDeclarationsWord]);
+  if (!tree.contains(declarations) ||
+      tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+    return false;
+  }
+  const ast::NodeList declarators{
+      tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+      tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+  if (!tree.contains(declarators) || declarators.size != 1) return false;
+  const auto declarator = tree.list(declarators)[0];
+  if (!tree.contains(declarator) ||
+      tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+    return false;
+  }
+  const ast::NodeId pattern(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+  const ast::NodeId initializer(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+  if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+      !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind)) {
+    return false;
+  }
+  // Cond: binary comparison with identifier/literal operands, at least one
+  // identifier.
+  if (!tree.contains(cond) || tree.node(cond).kind != ast::SyntaxKind::BinaryExpr) return false;
+  const ast::NodeId condLeft(tree.node(cond).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId condRight(tree.node(cond).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(condLeft) || !tree.contains(condRight)) return false;
+  const bool condLeftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+  const bool condRightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+  const bool condLeftOk = condLeftIdent || isScalarLiteral(tree.node(condLeft).kind);
+  const bool condRightOk = condRightIdent || isScalarLiteral(tree.node(condRight).kind);
+  if (!condLeftOk || !condRightOk || (!condLeftIdent && !condRightIdent)) return false;
+  // Update: assignment with identifier target and admitted primitive binary
+  // value.
+  if (!tree.contains(update) || tree.node(update).kind != ast::SyntaxKind::AssignmentExpr ||
+      static_cast<ast::AssignmentOperatorKind>(
+          tree.node(update).payload.words[ast::kAssignmentExprOpWord]) !=
+          ast::AssignmentOperatorKind::Assign) {
+    return false;
+  }
+  const ast::NodeId updateTarget(tree.node(update).payload.words[ast::kAssignmentExprLhsWord]);
+  const ast::NodeId updateValue(tree.node(update).payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(updateTarget) || tree.node(updateTarget).kind != ast::SyntaxKind::IdentExpr ||
+      !tree.contains(updateValue) || !isAdmittedPrimitiveBinary(tree, updateValue)) {
+    return false;
+  }
+  // Body: empty block in this slice.
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements) || !statements.empty()) return false;
+  return true;
+}
+
 // A nested arithmetic operand is a one-level binary whose own operands are
 // leaves (identifier or scalar literal), with at least one identifier leaf.
 // Used as a comparison operand in conditional bodies so the HIR builder can
@@ -1303,7 +1394,8 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       rejected = true;
     } else if ((syntax.kind == ast::SyntaxKind::WhileStmt &&
                 !isAdmittedLoopStatement(boundModule.tree(), nodeId)) ||
-               syntax.kind == ast::SyntaxKind::ForStmt ||
+               (syntax.kind == ast::SyntaxKind::ForStmt &&
+                !isAdmittedForStatement(boundModule.tree(), nodeId)) ||
                syntax.kind == ast::SyntaxKind::ForInStatement ||
                syntax.kind == ast::SyntaxKind::DoWhileStatement) {
       kind = SurfaceSyntaxKind::Loop;
@@ -1344,6 +1436,18 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
         isAdmittedLoopStatement(boundModule.tree(), nodeId)) {
       const ast::NodeId condition(syntax.payload.words[ast::kWhileStmtCondWord]);
       if (boundModule.tree().contains(condition)) { self(condition, self); }
+      return;
+    }
+    // An admitted for-loop's init, cond, and update are traversed so their
+    // inner expressions are checked; the body (empty in this slice) is skipped.
+    if (syntax.kind == ast::SyntaxKind::ForStmt &&
+        isAdmittedForStatement(boundModule.tree(), nodeId)) {
+      const ast::NodeId init(syntax.payload.words[ast::kForStmtInitWord]);
+      const ast::NodeId cond(syntax.payload.words[ast::kForStmtCondWord]);
+      const ast::NodeId update(syntax.payload.words[ast::kForStmtUpdateWord]);
+      if (boundModule.tree().contains(init)) { self(init, self); }
+      if (boundModule.tree().contains(cond)) { self(cond, self); }
+      if (boundModule.tree().contains(update)) { self(update, self); }
       return;
     }
     ast::visitChildNodeIds(boundModule.tree(), syntax,

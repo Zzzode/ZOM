@@ -42,5 +42,16 @@ void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
 /// materializer's fixed-id layout byte-identically.
 void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one C-style for-loop return through the recursive driver:
+/// `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>) {}` followed
+/// by a scalar return. The for-loop desugars to a leading local binding, a loop
+/// whose condition is the comparison and whose body is the update write, and
+/// the scalar return. Fourteen node ids in fixed layout: function, body, local,
+/// initializer, comparison left, comparison right, comparison condition,
+/// arithmetic left, arithmetic right, arithmetic write value, write, loop,
+/// return, return value. The body block lists [local, loop, return]; the loop
+/// statement carries the write node id as its body.
+void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

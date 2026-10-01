@@ -236,6 +236,18 @@ struct FunctionReturnShape final {
   // prefix, excluding the trailing break/continue.
   ast::NodeId loopBodyBreak{};
   ast::NodeId loopBodyContinue{};
+  // For-loop shape: a C-style `for (let id = <lit>; <ident> <cmp> <lit>;
+  // <ident> = <binary>) {}` followed by a scalar return. The for-loop
+  // desugars to a leading local binding plus a loop whose condition is the
+  // comparison and whose body is the update write. The init, cond, update,
+  // and body AST nodes are carried for the builder.
+  bool isForLoop = false;
+  ast::NodeId forLoopInit{};
+  ast::NodeId forLoopCond{};
+  ast::NodeId forLoopUpdate{};
+  ast::NodeId forLoopBody{};
+  // The ForStmt node itself, carried for the loop source span.
+  ast::NodeId forLoopStatement{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,

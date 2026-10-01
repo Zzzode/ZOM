@@ -254,6 +254,9 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
     const binder::ImmutableDefinitionInventory& definitions, ast::NodeId pattern,
     const ast::Tree& tree);
 
+/// \brief Returns true when the semantic type is the primitive bool type.
+bool isBoolSemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id);
+
 zc::Maybe<checker::checked::CheckedNodeKey> checkedNodeKey(
     const ast::Tree& tree, const binder::CanonicalParsedModule& parsedModule, ast::NodeId target);
 

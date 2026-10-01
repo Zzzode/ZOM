@@ -245,7 +245,7 @@ struct FlowFunctionOutcome final {
 FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
                                    const FunctionEventOverlay& overlay) {
   if (function.blocks.size() == 0) return {zc::none, FlowRejection::Proof};
-  if (!isAdmittedFlowSubset(function)) return {zc::none, FlowRejection::ControlFlow};
+  if (!isAdmittedFlowSubset(function)) { return {zc::none, FlowRejection::ControlFlow}; }
   FlowFunction flow{function.owner, zc::Vector<Point>(), zc::Vector<FlowEdge>()};
   zc::Maybe<Point> current;
   if (!appendLocation(flow, overlay, MirPoint::entry(), current)) {
@@ -294,7 +294,7 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
     ZC_IF_SOME(value, blockPosition) { currentBlock = value; }
     const auto& block = function.blocks[currentBlock];
     auto start = blockStart(block);
-    if (start == zc::none) return {zc::none, FlowRejection::Proof};
+    if (start == zc::none) { return {zc::none, FlowRejection::Proof}; }
     Point startPoint = Point::cfg(zc::mv(ZC_ASSERT_NONNULL(start)));
     if (block.id == function.blocks[0].id &&
         !appendEdge(flow, ZC_ASSERT_NONNULL(current), startPoint)) {
@@ -387,7 +387,7 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
       return {zc::none, FlowRejection::Proof};
     }
   }
-  if (!hasAllSlotPoints(flow, overlay)) return {zc::none, FlowRejection::Proof};
+  if (!hasAllSlotPoints(flow, overlay)) { return {zc::none, FlowRejection::Proof}; }
   return {zc::mv(flow), FlowRejection::Proof};
 }
 

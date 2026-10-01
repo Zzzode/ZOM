@@ -1089,6 +1089,37 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         return shape;
       }
     }
+    // For-loop shape: a C-style `for (let id = <lit>; <ident> <cmp> <lit>;
+    // <ident> = <binary>) {}` followed by a scalar return. The for-loop
+    // desugars to a leading local binding plus a loop whose condition is the
+    // comparison and whose body is the update write.
+    auto forItem = statementItem(tree, tree.list(statements)[0]);
+    if (forItem != zc::none) {
+      ast::NodeId forStmt;
+      ZC_IF_SOME(item, forItem) { forStmt = item; }
+      if (tree.node(forStmt).kind == ast::SyntaxKind::ForStmt) {
+        const auto& loop = tree.node(forStmt);
+        const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
+        const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
+        const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
+        const ast::NodeId forBody(loop.payload.words[ast::kForStmtBodyWord]);
+        if (!tree.contains(init) || !tree.contains(cond) || !tree.contains(update) ||
+            !tree.contains(forBody) || !isScalarLiteral(tree.node(value).kind)) {
+          return zc::none;
+        }
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.isForLoop = true;
+        shape.forLoopInit = init;
+        shape.forLoopCond = cond;
+        shape.forLoopUpdate = update;
+        shape.forLoopBody = forBody;
+        shape.forLoopStatement = forStmt;
+        return shape;
+      }
+    }
   }
   if (statements.size == 3) {
     // Loop-body composite shape: a leading `mut` local declaration, an admitted

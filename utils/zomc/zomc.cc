@@ -15,7 +15,6 @@
 #if defined(__linux__)
 #include <unistd.h>
 
-#include <cstdio>
 #include <cstdlib>
 #elif defined(__APPLE__)
 #include <mach-o/dyld.h>
@@ -1426,6 +1425,9 @@ private:
           }
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerLoopBodyReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerForLoopReturn(functions[0], types);
           }
           if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);

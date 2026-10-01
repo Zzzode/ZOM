@@ -498,5 +498,15 @@ bool typeExists(identity::SemanticTypeId semanticType,
   return semanticTypes.get(semanticType).is<type::SemanticTypeLookup>();
 }
 
+bool isBoolSemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
+  auto lookup = store.get(id);
+  return lookup.is<type::SemanticTypeLookup>() &&
+         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
+         lookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .get<type::semantic::PrimitiveTypeData>()
+                 .kind == type::semantic::PrimitiveKind::Bool;
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

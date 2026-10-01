@@ -752,6 +752,20 @@ bool isMutableOwnerLocal(const driver::module_graph_query::CheckerBoundModuleVie
         tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
       return false;
     }
+    // A for-loop init local is implicitly mutable because the update clause
+    // writes to it. Check whether the binding's introducer is inside a
+    // ForStmt init slot before falling back to the LetStmt mutability.
+    bool forLoopInit = false;
+    ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+      if (syntax.kind != ast::SyntaxKind::ForStmt) return;
+      const ast::NodeId init(syntax.payload.words[ast::kForStmtInitWord]);
+      if (!tree.contains(init) || tree.node(init).kind != ast::SyntaxKind::LetStmt) return;
+      const ast::NodeId declarations(tree.node(init).payload.words[ast::kLetStmtDeclarationsWord]);
+      if (tree.contains(declarations) && subtreeContains(tree, declarations, site.introducer)) {
+        forLoopInit = true;
+      }
+    });
+    if (forLoopInit) return true;
     bool mutableDeclaration = false;
     ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
       if (syntax.kind != ast::SyntaxKind::LetStmt) return;
@@ -1617,10 +1631,10 @@ zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind 
   return zc::none;
 }
 
-/// \brief True when the node is the condition of an enclosing `if` or `while`
-/// statement. An arithmetic result is not bool, so it is not lowerable as a
-/// condition and stays unsupported there; a comparison result is bool and is
-/// lowerable in both positions.
+/// \brief True when the node is the condition of an enclosing `if`, `while`,
+/// or `for` statement. An arithmetic result is not bool, so it is not lowerable
+/// as a condition and stays unsupported there; a comparison result is bool and
+/// is lowerable in both positions.
 bool isConditionPosition(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                          ast::NodeId node) {
   const auto& tree = boundModule.tree();
@@ -1632,6 +1646,10 @@ bool isConditionPosition(const driver::module_graph_query::CheckerBoundModuleVie
     }
     if (syntax.kind == ast::SyntaxKind::WhileStmt &&
         ast::NodeId(syntax.payload.words[ast::kWhileStmtCondWord]) == node) {
+      isCondition = true;
+    }
+    if (syntax.kind == ast::SyntaxKind::ForStmt &&
+        ast::NodeId(syntax.payload.words[ast::kForStmtCondWord]) == node) {
       isCondition = true;
     }
   });

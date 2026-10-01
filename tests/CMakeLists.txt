@@ -302,6 +302,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-decrement-consumer/Zom.toml::postfix_decrement_consumer::postfix_decrement_consumer::40"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-consumer/Zom.toml::for_loop_consumer::for_loop_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)

@@ -269,6 +269,41 @@ struct PendingLoopBodyReturn final {
   zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
+// One admitted C-style `for` loop return: `for (let id = <lit>; <ident> <cmp>
+// <lit>; <ident> = <binary>) {}` followed by a scalar return. The for-loop
+// desugars to a leading local binding plus a loop whose condition is the
+// comparison and whose body is the update write. The init local, comparison
+// condition, and update write are all resolved in the HIR builder and carried
+// here for the lowering function. Every HIR expression carries an empty
+// HirNodeId; the lowering function allocates the node ids. The operand
+// expressions (init literal, comparison left/right, arithmetic left/right) are
+// carried alongside their parent binary/write/local so the lowering function
+// can materialize the operand nodes without reaching back into the AST.
+struct PendingForLoopReturn final {
+  // The loop condition comparison, resolved to a primitive binary expression.
+  // The left operand is a reference to the init local; the right operand is a
+  // scalar literal.
+  HirPrimitiveBinaryExpression condition;
+  // The comparison's left operand: a place reference to the init local.
+  HirLocalReferenceExpression conditionLeft;
+  // The comparison's right operand: a scalar literal.
+  HirScalarLiteralExpression conditionRight;
+  // The loop's source span.
+  identity::SourceSpan loopSpan;
+  // The init local binding (let declaration with scalar literal initializer).
+  HirLocalBinding local;
+  // The init local's scalar literal initializer.
+  HirScalarLiteralExpression initLiteral;
+  // The update write (assignment with arithmetic binary RHS).
+  HirLocalWriteStatement write;
+  // The update write's arithmetic binary value.
+  HirPrimitiveBinaryExpression writeValue;
+  // The arithmetic's left operand: a place reference to the init local.
+  HirLocalReferenceExpression writeValueLeft;
+  // The arithmetic's right operand: a scalar literal.
+  HirScalarLiteralExpression writeValueRight;
+};
+
 // One receiver field-arithmetic return: `return this.<field> OP
 // <literal>;`. The left operand is a projection of the implicit receiver
 // parameter, the right operand is a scalar literal, and the primitive binary
@@ -328,6 +363,11 @@ struct PendingFunctionDeclaration final {
   // return reuse the flat mut-local fields; this holds only the loop condition
   // parameter reference and the loop span.
   zc::Maybe<PendingLoopBodyReturn> loopBodyReturn;
+  // Populated for the C-style for-loop shape: a `for (let id = <lit>;
+  // <ident> <cmp> <lit>; <ident> = <binary>) {}` followed by a scalar
+  // return. The init local, comparison condition, and update write are
+  // carried here; the return literal reuses `literal`.
+  zc::Maybe<PendingForLoopReturn> forLoopReturn;
   // Populated for the mutating-receiver write-read body: one Overwrite of a
   // field reached through the mutable receiver, plus its scalar literal value.
   zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;

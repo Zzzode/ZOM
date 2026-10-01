@@ -837,10 +837,10 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
                                                  const FlowFunction& flow,
                                                  const MovePathFunction& paths) {
   if (function.blocks.size() == 0) return zc::none;
-  if (!isAdmittedFlowSubset(function)) return zc::none;
+  if (!isAdmittedFlowSubset(function)) { return zc::none; }
 
   auto seeded = seedEntryStates(function, paths);
-  if (seeded == zc::none) return zc::none;
+  if (seeded == zc::none) { return zc::none; }
 
   auto order = reachableBlocks(function);
   if (order == zc::none) return zc::none;
@@ -911,10 +911,10 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
       states = cloneStates(ZC_ASSERT_NONNULL(seeded).asPtr());
     } else {
       auto joined = joinPredecessorStates(function, flow, block.id, blockExitStates.asPtr());
-      if (joined == zc::none) return zc::none;
+      if (joined == zc::none) { return zc::none; }
       states = zc::mv(ZC_ASSERT_NONNULL(joined));
     }
-    if (!transferBlock(function, paths, block, states, &facts)) return zc::none;
+    if (!transferBlock(function, paths, block, states, &facts)) { return zc::none; }
   }
   return InitializationFunction{function.owner, zc::mv(facts)};
 }
@@ -1047,13 +1047,13 @@ bool factsUseFlow(const InitializationFunction& facts, const FlowFunction& flow)
 bool validInputs(const mir::VerifiedBuiltMir& builtMir,
                  const VerifiedOwnershipEventOverlay& overlay, const VerifiedFlow& flow,
                  const VerifiedMovePaths& movePaths) {
-  if (!inputsMatch(builtMir, overlay, flow, movePaths)) return false;
-  if (overlay.functions().size() != builtMir.functions().size()) return false;
+  if (!inputsMatch(builtMir, overlay, flow, movePaths)) { return false; }
+  if (overlay.functions().size() != builtMir.functions().size()) { return false; }
   for (size_t index = 0; index < builtMir.functions().size(); ++index) {
     const auto& function = builtMir.functions()[index];
     const auto& paths = movePaths.functions()[index];
     const auto& flowFunction = flow.functions()[index];
-    if (paths.owner != function.owner || flowFunction.owner != function.owner) return false;
+    if (paths.owner != function.owner || flowFunction.owner != function.owner) { return false; }
     for (size_t local = 0; local < function.locals.size(); ++local) {
       const auto root = rootKey(function.owner, function.locals[local]);
       bool found = false;
@@ -1062,10 +1062,10 @@ bool validInputs(const mir::VerifiedBuiltMir& builtMir,
             !samePlace(fact.key.place, root.place)) {
           continue;
         }
-        if (found || !validLocalPlace(function, fact.key.place)) return false;
+        if (found || !validLocalPlace(function, fact.key.place)) { return false; }
         found = true;
       }
-      if (!found) return false;
+      if (!found) { return false; }
     }
     for (const auto& fact : paths.facts) {
       if (fact.key.owner != function.owner || !validLocalPlace(function, fact.key.place)) {
@@ -1073,9 +1073,9 @@ bool validInputs(const mir::VerifiedBuiltMir& builtMir,
       }
     }
     auto functionOverlay = overlayFor(overlay, function.owner);
-    if (functionOverlay == zc::none) return false;
+    if (functionOverlay == zc::none) { return false; }
     ZC_IF_SOME(value, functionOverlay) {
-      if (!hasCompleteInitializationPlans(function, value)) return false;
+      if (!hasCompleteInitializationPlans(function, value)) { return false; }
     }
   }
   return true;
@@ -1375,14 +1375,14 @@ zc::Maybe<zc::Vector<InitializationFunction>> derive(const mir::VerifiedBuiltMir
                                                      const VerifiedOwnershipEventOverlay& overlay,
                                                      const VerifiedFlow& flow,
                                                      const VerifiedMovePaths& movePaths) {
-  if (!validInputs(builtMir, overlay, flow, movePaths)) return zc::none;
+  if (!validInputs(builtMir, overlay, flow, movePaths)) { return zc::none; }
   zc::Vector<InitializationFunction> functions;
   for (size_t index = 0; index < builtMir.functions().size(); ++index) {
     const auto& function = builtMir.functions()[index];
     auto facts = deriveFunction(function, flow.functions()[index], movePaths.functions()[index]);
-    if (facts == zc::none) return zc::none;
+    if (facts == zc::none) { return zc::none; }
     ZC_IF_SOME(value, facts) {
-      if (!factsUseFlow(value, flow.functions()[index])) return zc::none;
+      if (!factsUseFlow(value, flow.functions()[index])) { return zc::none; }
       functions.add(zc::mv(value));
     }
   }
