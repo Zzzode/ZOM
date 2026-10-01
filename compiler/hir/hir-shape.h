@@ -272,6 +272,16 @@ struct FunctionReturnShape final {
   // carried; the trailing return routes through returnsReceiverCall.
   bool hasDiscardedReceiverCallStatement = false;
   ast::NodeId discardedCallStatement;
+  // Match-return shape: a single `match (b) { when true => return <lit>; when
+  // false => return <lit>; }` statement. The scrutinee is a bare identifier
+  // (a bool parameter reference); the two arms tail-return scalar literals.
+  // The HIR builder lowers this to the same conditional path as a
+  // bare-parameter `if`, reusing `condition` (the scrutinee),
+  // `thenReturnValue` (the true arm's return value), and `elseReturnValue`
+  // (the false arm's). `matchStatement` carries the MatchStmt node for the
+  // conditional source span.
+  bool isMatchReturn = false;
+  ast::NodeId matchStatement;
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);

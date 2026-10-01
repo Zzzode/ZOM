@@ -1499,6 +1499,10 @@ private:
                                                                        functions[callee], types);
             }
             if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallModuleWithConditionalCallee(
+                  functions[caller], functions[callee], types);
+            }
+            if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerScalarLocalCallModule(functions[caller],
                                                                       functions[callee], types);
             }
@@ -1692,7 +1696,8 @@ private:
                   "boolean-conditional, reducible while-loop, comparison-driven conditional, "
                   "leading-local comparison conditional, "
                   "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
-                  "by-value aggregate call, scalar-local direct call, shared-receiver method "
+                  "by-value aggregate call, scalar-local direct call, boolean-conditional callee "
+                  "call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
                   "field-arithmetic method, shared-receiver conditional method (constant and "

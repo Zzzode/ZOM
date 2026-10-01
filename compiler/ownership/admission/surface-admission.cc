@@ -842,6 +842,72 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   return branchReturns(thenStmt) && branchReturns(elseStmt);
 }
 
+// Structurally admits a two-arm boolean match: `match (b) { when true => return
+// <lit>; when false => return <lit>; }` (block-bodied arms are also admitted).
+// The scrutinee is a bare identifier (a bool parameter reference); each arm
+// pattern is a bool literal (one true, one false, no duplicates); guards are
+// not admitted; each arm body tails a scalar-literal return. The HIR builder
+// lowers this to the same conditional path as a bare-parameter `if`, so the
+// admitted surface is exactly the conditional surface.
+bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
+  const auto& matchNode = tree.node(node);
+  if (matchNode.kind != ast::SyntaxKind::MatchStmt) return false;
+  const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchStmtScrutineeWord]);
+  if (!tree.contains(scrutinee) || tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                           matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+  if (!tree.contains(arms) || arms.size != 2) return false;
+  bool sawTrue = false;
+  bool sawFalse = false;
+  for (size_t index = 0; index < arms.size; ++index) {
+    const ast::NodeId armId = tree.list(arms)[index];
+    if (!tree.contains(armId)) return false;
+    const auto& arm = tree.node(armId);
+    if (arm.kind != ast::SyntaxKind::MatchArmStmt) return false;
+    const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
+    if (tree.contains(guard)) return false;
+    const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+    if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+      return false;
+    }
+    const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+    if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+      return false;
+    }
+    const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
+    if (value) {
+      if (sawTrue) return false;
+      sawTrue = true;
+    } else {
+      if (sawFalse) return false;
+      sawFalse = true;
+    }
+    const ast::NodeId body(arm.payload.words[ast::kMatchArmStmtBodyWord]);
+    if (!tree.contains(body)) return false;
+    ast::NodeId returnStmt;
+    if (tree.node(body).kind == ast::SyntaxKind::ReturnStmt) {
+      returnStmt = body;
+    } else if (tree.node(body).kind == ast::SyntaxKind::BlockStmt) {
+      const ast::NodeList stmts{tree.node(body).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                tree.node(body).payload.words[ast::kBlockStmtStmtsSizeWord]};
+      if (!tree.contains(stmts) || stmts.size != 1) return false;
+      auto item = statementItem(tree, tree.list(stmts)[0]);
+      if (item == zc::none) return false;
+      ZC_IF_SOME(itemValue, item) { returnStmt = itemValue; }
+      if (tree.node(returnStmt).kind != ast::SyntaxKind::ReturnStmt) return false;
+    } else {
+      return false;
+    }
+    const ast::NodeId returnValue(tree.node(returnStmt).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(returnValue) || !isScalarLiteral(tree.node(returnValue).kind)) {
+      return false;
+    }
+  }
+  return sawTrue && sawFalse;
+}
+
 // Structurally admits `return <identifier>.<field>;` in a statement-less
 // function body: one dot field projection off a bare identifier. In such a body
 // the identifier is a by-value callable parameter; the checker resolves it and a
@@ -875,6 +941,9 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
       ZC_IF_SOME(value, item) { stmt = value; }
       if (tree.node(stmt).kind == ast::SyntaxKind::IfStmt) {
         return isAdmittedConditionalBody(tree, stmt);
+      }
+      if (tree.node(stmt).kind == ast::SyntaxKind::MatchStmt) {
+        return isAdmittedMatchStatement(tree, stmt);
       }
     }
   }
@@ -1269,12 +1338,13 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
 
 bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
   bool found = false;
-  ast::visitTreePreOrder(tree, body, [&](ast::NodeId, const ast::Node& syntax) {
+  ast::visitTreePreOrder(tree, body, [&](ast::NodeId nodeId, const ast::Node& syntax) {
     if (found) return;
     if (syntax.kind == ast::SyntaxKind::SpawnExpression ||
         syntax.kind == ast::SyntaxKind::SuspendStatement ||
-        syntax.kind == ast::SyntaxKind::MatchStmt || syntax.kind == ast::SyntaxKind::WhileStmt ||
-        syntax.kind == ast::SyntaxKind::ForStmt || syntax.kind == ast::SyntaxKind::ForInStatement ||
+        (syntax.kind == ast::SyntaxKind::MatchStmt && !isAdmittedMatchStatement(tree, nodeId)) ||
+        syntax.kind == ast::SyntaxKind::WhileStmt || syntax.kind == ast::SyntaxKind::ForStmt ||
+        syntax.kind == ast::SyntaxKind::ForInStatement ||
         syntax.kind == ast::SyntaxKind::DoWhileStatement ||
         syntax.kind == ast::SyntaxKind::BreakStmt ||
         syntax.kind == ast::SyntaxKind::ContinueStatement ||
@@ -1396,7 +1466,8 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
     } else if (syntax.kind == ast::SyntaxKind::SuspendStatement) {
       kind = SurfaceSyntaxKind::Suspend;
       rejected = true;
-    } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
+    } else if (syntax.kind == ast::SyntaxKind::MatchStmt &&
+               !isAdmittedMatchStatement(boundModule.tree(), nodeId)) {
       kind = SurfaceSyntaxKind::Match;
       rejected = true;
     } else if ((syntax.kind == ast::SyntaxKind::WhileStmt &&

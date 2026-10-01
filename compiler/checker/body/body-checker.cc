@@ -134,6 +134,21 @@ bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target
   return contains;
 }
 
+// A pattern inside a match arm is covered by the arm's exhaustiveness fact, not
+// by a standalone pattern fact. The body-checker only produces pattern facts
+// for identifier patterns in variable declarators, so match-arm patterns must
+// not enter the requirement/production inventory at all.
+bool isMatchArmPattern(const ast::Tree& tree, ast::NodeId node) {
+  bool found = false;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind == ast::SyntaxKind::MatchArmStmt &&
+        ast::NodeId(syntax.payload.words[ast::kMatchArmStmtPatternWord]) == node) {
+      found = true;
+    }
+  });
+  return found;
+}
+
 bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                          ast::NodeId node) {
   const auto& tree = boundModule.tree();
@@ -4230,9 +4245,10 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                                 ordinal, zc::none, node);
       return;
     }
-    const bool bodyNode = isExpression(syntax.kind) || isPattern(syntax.kind) ||
-                          syntax.kind == ast::SyntaxKind::MatchStmt ||
-                          syntax.kind == ast::SyntaxKind::SuspendStatement;
+    const bool bodyNode = (isExpression(syntax.kind) || isPattern(syntax.kind) ||
+                           syntax.kind == ast::SyntaxKind::MatchStmt ||
+                           syntax.kind == ast::SyntaxKind::SuspendStatement) &&
+                          !(isPattern(syntax.kind) && isMatchArmPattern(tree, node));
     if (!bodyNode) return;
     auto span = parsedModule.spanFor(syntax.range);
     if (span == zc::none) {
@@ -4679,6 +4695,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<checked::MemberFactMap::Entry> members;
   zc::Vector<checked::IndexFactMap::Entry> indexes;
   zc::Vector<checked::MarkerObligationFactMap::Entry> markerObligations;
+  zc::Vector<checked::ExhaustivenessFactMap::Entry> exhaustiveness;
   // Concrete-to-dyn erasures selected at annotated initializer sites, one per
   // initializer expression node. Consumed into the coercion fact map and the
   // witness store after every production site has been checked.
@@ -4727,6 +4744,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       }
       if (site.production == BodyProductionKind::Unsupported) {
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::IdentifierPattern) {
+          continue;
+        }
+        // An admitted two-arm boolean match produces its exhaustiveness fact in
+        // a dedicated pass after the main production loop; skip it here so the
+        // Unsupported fallthrough does not reject it.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::MatchStmt) {
           continue;
         }
         // A binary operator the checker does not implement yet reaches here as
@@ -6410,6 +6433,34 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     }
   }
 
+  // Produce exhaustiveness facts for admitted two-arm boolean matches. The
+  // scrutinee type is already in nodeTypes from the main production loop; the
+  // two bool literal constructors cover the closed bool domain.
+  for (const auto& site : input.requirements.impl->productionSiteValues) {
+    if (site.primaryGroup != CheckedFactGroup::Exhaustiveness) continue;
+    const auto& matchNode = input.boundModule.tree().node(site.node);
+    const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchStmtScrutineeWord]);
+    auto scrutineeType = factEntry(nodeTypes.asPtr(), scrutinee);
+    if (scrutineeType == zc::none) {
+      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
+    }
+    identity::SemanticTypeId boolType;
+    ZC_IF_SOME(entry, scrutineeType) { boolType = entry.value; }
+    zc::Vector<checked::PatternConstructor> covered;
+    covered.add(checked::PatternConstructor(
+        checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
+    covered.add(checked::PatternConstructor(
+        checked::LiteralPattern{checked::CanonicalLiteral::boolean(true)}));
+    exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
+        site.node,
+        checked::ExhaustivenessFact{site.node, boolType, checked::ExhaustivenessDomain::Closed,
+                                    zc::mv(covered), zc::Vector<checked::PatternConstructor>(),
+                                    zc::Vector<ast::NodeId>()},
+        zc::Array<uint8_t>()});
+  }
+
   for (const auto& requirement : input.requirements.nodeRequirements()) {
     if (requirement.group != CheckedFactGroup::NodeType &&
         requirement.group != CheckedFactGroup::Literal &&
@@ -6421,7 +6472,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         requirement.group != CheckedFactGroup::Member &&
         requirement.group != CheckedFactGroup::Index &&
         requirement.group != CheckedFactGroup::MarkerObligation &&
-        requirement.group != CheckedFactGroup::Pattern) {
+        requirement.group != CheckedFactGroup::Pattern &&
+        requirement.group != CheckedFactGroup::Exhaustiveness) {
       return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                              requirement.key.schemaPreorder, zc::none, requirement.node,
                              requirement.key.sourceSpan.clone(), factPath(requirement.group));
@@ -6461,6 +6513,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                                    CheckedFactGroup::MarkerObligation) ||
       patterns.size() !=
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Pattern) ||
+      exhaustiveness.size() != requirementCount(input.requirements.nodeRequirements(),
+                                                CheckedFactGroup::Exhaustiveness) ||
       definitionTypes.size() !=
           definitionRequirementCount(input.requirements.definitionRequirements(),
                                      CheckedFactGroup::DefinitionType) ||
@@ -6625,7 +6679,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           emptyFactMap<checked::ObservedOperationFactMap>(),
           emptyFactMap<checked::CaptureFactMap>(),
           checked::MarkerObligationFactMap::fromEntries(zc::mv(markerObligations)),
-          emptyFactMap<checked::ExhaustivenessFactMap>(),
+          checked::ExhaustivenessFactMap::fromEntries(zc::mv(exhaustiveness)),
           emptyFactMap<checked::UnsafeOperationFactMap>(),
           emptyFactMap<checked::ProjectionFactMap>(),
           emptyFactMap<checked::ObligationFactMap>(),

@@ -193,6 +193,10 @@ struct PendingConditionalReturn final {
   PendingConditionalArm thenArm;
   PendingConditionalArm elseArm;
   identity::SourceSpan conditionalSpan;
+  // True when the conditional return was classified from a two-arm boolean
+  // match statement. The match statement and its scrutinee expression produce
+  // two extra node-type facts the count equations must credit.
+  bool isMatchReturn = false;
 };
 
 // One comparison-condition operand in a leading-local conditional body: a

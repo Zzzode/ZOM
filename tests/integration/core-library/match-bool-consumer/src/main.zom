@@ -1,0 +1,13 @@
+// Match-on-bool backend-lowering fixture: a two-arm boolean match on a bool
+// parameter that lowers through the conditional return path to a verified
+// LLVM relocatable object. The parameter-free entry calls the match function
+// with a constant bool argument and folds to the reserved no-argument i32
+// `zom.module_init` entry the runtime `_start` calls, so `zomc run` executes
+// it natively.
+fun matchBool(b: bool) -> i32 {
+    match (b) {
+        when true => return 41;
+        when false => return 7;
+    }
+}
+fun entry() -> i32 { let x = matchBool(true); return x; }

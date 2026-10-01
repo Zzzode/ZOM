@@ -328,6 +328,89 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
   return shape;
 }
 
+// Classifies one statement as the match-return shape: a two-arm boolean match
+// whose scrutinee is a bare identifier (a bool parameter reference) and whose
+// arms each tail-return a scalar literal, one for `true` and one for `false`.
+// The shape reuses the conditional fields (`condition`, `thenReturnValue`,
+// `elseReturnValue`) so the HIR builder lowers it through the bare-parameter
+// conditional path. Returns none for every other statement.
+zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::NodeId body,
+                                                ast::NodeId statement) {
+  if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::MatchStmt) {
+    return zc::none;
+  }
+  const auto& matchNode = tree.node(statement);
+  const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchStmtScrutineeWord]);
+  if (!tree.contains(scrutinee) || tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                           matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+  if (!tree.contains(arms) || arms.size != 2) return zc::none;
+  zc::Maybe<ast::NodeId> trueValue;
+  zc::Maybe<ast::NodeId> falseValue;
+  for (size_t index = 0; index < arms.size; ++index) {
+    const ast::NodeId armId = tree.list(arms)[index];
+    if (!tree.contains(armId)) return zc::none;
+    const auto& arm = tree.node(armId);
+    if (arm.kind != ast::SyntaxKind::MatchArmStmt) return zc::none;
+    const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
+    if (tree.contains(guard)) return zc::none;
+    const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+    if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+      return zc::none;
+    }
+    const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+    if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+      return zc::none;
+    }
+    const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
+    const ast::NodeId armBody(arm.payload.words[ast::kMatchArmStmtBodyWord]);
+    if (!tree.contains(armBody)) return zc::none;
+    ast::NodeId returnStmt;
+    if (tree.node(armBody).kind == ast::SyntaxKind::ReturnStmt) {
+      returnStmt = armBody;
+    } else if (tree.node(armBody).kind == ast::SyntaxKind::BlockStmt) {
+      const ast::NodeList stmts{tree.node(armBody).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                tree.node(armBody).payload.words[ast::kBlockStmtStmtsSizeWord]};
+      if (!tree.contains(stmts) || stmts.size != 1) return zc::none;
+      auto item = statementItem(tree, tree.list(stmts)[0]);
+      if (item == zc::none) return zc::none;
+      ZC_IF_SOME(itemValue, item) { returnStmt = itemValue; }
+      if (tree.node(returnStmt).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
+    } else {
+      return zc::none;
+    }
+    const ast::NodeId returnValue(tree.node(returnStmt).payload.words[ast::kReturnStmtValueWord]);
+    if (!tree.contains(returnValue) || !isScalarLiteral(tree.node(returnValue).kind)) {
+      return zc::none;
+    }
+    if (value) {
+      if (trueValue != zc::none) return zc::none;
+      trueValue = returnValue;
+    } else {
+      if (falseValue != zc::none) return zc::none;
+      falseValue = returnValue;
+    }
+  }
+  if (trueValue == zc::none || falseValue == zc::none) return zc::none;
+  ast::NodeId trueNode;
+  ast::NodeId falseNode;
+  ZC_IF_SOME(value, trueValue) { trueNode = value; }
+  ZC_IF_SOME(value, falseValue) { falseNode = value; }
+  FunctionReturnShape shape{};
+  shape.body = body;
+  shape.returnStatement = statement;
+  shape.value = statement;
+  shape.isConditional = true;
+  shape.isMatchReturn = true;
+  shape.condition = scrutinee;
+  shape.thenReturnValue = trueNode;
+  shape.elseReturnValue = falseNode;
+  shape.matchStatement = statement;
+  return shape;
+}
+
 zc::Maybe<ast::NodeId> localBorrowReference(const ast::Tree& tree, ast::NodeId expression) {
   if (!tree.contains(expression) ||
       tree.node(expression).kind != ast::SyntaxKind::UnaryExpression) {
@@ -1268,6 +1351,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
         }
         return conditional;
+      }
+      if (tree.node(conditionalStmt).kind == ast::SyntaxKind::MatchStmt) {
+        return matchReturnShape(tree, body, conditionalStmt);
       }
     }
   }

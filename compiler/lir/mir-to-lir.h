@@ -365,6 +365,26 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a same-module direct call passing one integer-constant
+  /// argument to a two-function LIR module where the callee is a four-block
+  /// boolean-conditional return.
+  ///
+  /// Admits the caller shape lowered by `lowerCallModuleWithArgument` (two
+  /// blocks: entry Call, continuation Return; one result local) and a callee
+  /// with one boolean parameter, one result local, and four blocks (entry
+  /// SwitchInt, then/else Assign+Goto, join Return) matching the verified
+  /// boolean-conditional diamond. The call argument must be an integer
+  /// constant of the callee parameter type, and the call must target the
+  /// identified callee.
+  ///
+  /// \param caller Verified caller MIR function (two-block Call+Return, one arg).
+  /// \param callee Verified callee MIR function (four-block conditional return).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithConditionalCallee(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a same-module direct call passing two integer-constant
   /// arguments to a two-function LIR module.
   ///

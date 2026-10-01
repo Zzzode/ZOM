@@ -291,10 +291,9 @@ bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
 // a per-definition capability rejection instead of a module invariant.
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts) {
   return facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
-         facts.captures().size() == 0 && facts.exhaustiveness().size() == 0 &&
-         facts.unsafeOperations().size() == 0 && facts.projections().size() == 0 &&
-         facts.obligations().size() == 0 && facts.errorUnionShapes().size() == 0 &&
-         facts.errorOperators().size() == 0;
+         facts.captures().size() == 0 && facts.unsafeOperations().size() == 0 &&
+         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
+         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
 }
 
 // A concrete-to-dyn erasure the lowering carrier does not implement yet:
