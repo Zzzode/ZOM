@@ -1690,7 +1690,8 @@ private:
                   "by-value aggregate call, scalar-local direct call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "
                   "method, shared-receiver parameter-arithmetic method, shared-receiver "
-                  "field-arithmetic method, shared-receiver conditional method, shared-receiver "
+                  "field-arithmetic method, shared-receiver conditional method (constant and "
+                  "comparison argument), shared-receiver "
                   "self-call, three-function direct-call-with-leaf, "
                   "void-setter-then-value-getter receiver-call, and "
                   "string literal return slices)."));

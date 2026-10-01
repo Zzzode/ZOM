@@ -1,0 +1,15 @@
+// A shared-receiver method selects between two literal results on a bool
+// ordinary parameter. The caller passes a field comparison on the owner
+// local as the bool argument. The four-block diamond lowers through a
+// CondBranch callee; the comparison is true (0 < 5), so the true arm
+// returns 42 and the program exits 42.
+struct Cell {
+  value: i32,
+  fun choose(this, flag: bool) -> i32 {
+    if (flag) { return 42; } else { return 0; }
+  }
+}
+fun entry() -> i32 {
+  let cell = Cell { value: 0 };
+  return cell.choose(cell.value < 5);
+}

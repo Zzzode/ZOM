@@ -1158,9 +1158,38 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }
-                if (!sameConstant(actual.left(), comparison.left, ZC_ASSERT_NONNULL(leafCarrier)) ||
-                    !sameConstant(actual.right(), comparison.right,
-                                  ZC_ASSERT_NONNULL(leafCarrier))) {
+                // The receiver-conditional-call shape folds a single-field
+                // aggregate owner local to a scalar in LIR, so a field
+                // projection on the owner becomes a bare local use. Accept
+                // the folded left operand when the MIR place has exactly one
+                // field projection whose root local matches the LIR local use.
+                // The MIR builder stores the comparison result type (bool) as
+                // the operand place result type, so the leaf carrier resolved
+                // from the MIR place is Bit1; the LIR slot carrier is the
+                // correct operand carrier and drives the right-operand check.
+                bool leftOk;
+                zc::Maybe<ValueType> foldedLeafCarrier;
+                if (comparison.left.kind() != mir::MirOperandKind::Constant &&
+                    comparison.left.place().projections().size() == 1 &&
+                    comparison.left.place().projections()[0].kind() ==
+                        mir::MirProjectionKind::Field &&
+                    !actual.left().isConstant() &&
+                    actual.left().localOrdinal() == comparison.left.place().local().ordinal()) {
+                  const auto* slotCarrier = lirSlotCarrier(lir, actual.left().localOrdinal());
+                  if (slotCarrier != nullptr) {
+                    foldedLeafCarrier = *slotCarrier;
+                    leftOk = true;
+                  } else {
+                    leftOk = false;
+                  }
+                } else {
+                  leftOk =
+                      sameConstant(actual.left(), comparison.left, ZC_ASSERT_NONNULL(leafCarrier));
+                }
+                const ValueType& effectiveCarrier = foldedLeafCarrier != zc::none
+                                                        ? ZC_ASSERT_NONNULL(foldedLeafCarrier)
+                                                        : ZC_ASSERT_NONNULL(leafCarrier);
+                if (!leftOk || !sameConstant(actual.right(), comparison.right, effectiveCarrier)) {
                   return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }

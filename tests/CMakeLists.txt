@@ -184,6 +184,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-consumer/Zom.toml::receiver_conditional_consumer::receiver_conditional_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-comp-consumer/Zom.toml::receiver_conditional_comp_consumer::receiver_conditional_comp_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-selfcall-consumer/Zom.toml::receiver_selfcall_consumer::receiver_selfcall_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/arithmetic-consumer/Zom.toml::arithmetic_consumer::arithmetic_consumer"
@@ -272,6 +274,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-local-consumer/Zom.toml::receiver_local_consumer::receiver_local_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-consumer/Zom.toml::receiver_conditional_consumer::receiver_conditional_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-comp-consumer/Zom.toml::receiver_conditional_comp_consumer::receiver_conditional_comp_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-selfcall-consumer/Zom.toml::receiver_selfcall_consumer::receiver_selfcall_consumer::42"
       --run-case

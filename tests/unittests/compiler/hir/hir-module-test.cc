@@ -2334,10 +2334,10 @@ ZC_TEST("HIR pipeline lowers a shared-receiver method receiver-field arithmetic 
   }
 }
 
-ZC_TEST("HIR pipeline drains a mutating-receiver method receiver-field arithmetic as ZOM4099") {
-  // Receiver-field arithmetic on a mutating receiver is well-formed source the
-  // current lowering does not emit; the owning method drains with the
-  // capability diagnostic rather than an invariant.
+ZC_TEST("HIR pipeline lowers a mutating-receiver method receiver-field arithmetic") {
+  // Receiver-field arithmetic on a mutating receiver lowers through the HIR
+  // pipeline: the field read is admitted on a mutable place and the arithmetic
+  // result is returned.
   identity::SemanticContextFactory contextFactory;
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -2346,9 +2346,9 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method receiver-field arithmeti
       session,
       "struct Cell { value: i32, mutating fun plus(this) -> i32 { return this.value + 1; } }\n"
       "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.plus(); }"_zc);
-  ZC_EXPECT(!checked);
-  ZC_EXPECT(session.hasDiagnosticErrors());
-  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(checked);
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() > 0);
 }
 
 ZC_TEST("HIR pipeline drains a mutating-receiver method parameter arithmetic as ZOM4099") {

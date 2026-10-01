@@ -3900,19 +3900,27 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
 
   // Caller: one aggregate-initialized owner local, one shared-receiver borrow
   // temporary, and one result temporary, with one constant bool argument.
+  // A comparison-argument variant adds one bool temporary and two statements
+  // (StorageLive + Comparison assign) for a field comparison on the owner.
+  const bool hasComparisonArgument = (caller.locals.size() == 4);
   if (caller.kind != mir::MirFunctionKind::Function ||
       caller.sourceDefinitionKind != identity::DefinitionKind::Function ||
-      caller.locals.size() != 3 || caller.blocks.size() != 2 ||
+      (caller.locals.size() != 3 && caller.locals.size() != 4) || caller.blocks.size() != 2 ||
       caller.resultType != callee.resultType) {
     return zc::none;
   }
   const auto& ownerLocal = caller.locals[0];
   const auto& borrowTemporary = caller.locals[1];
-  const auto& resultTemporary = caller.locals[2];
+  const auto& resultTemporary = hasComparisonArgument ? caller.locals[3] : caller.locals[2];
   if (ownerLocal.kind != mir::MirLocalKind::UserLocal ||
       borrowTemporary.kind != mir::MirLocalKind::Temporary ||
       resultTemporary.kind != mir::MirLocalKind::Temporary) {
     return zc::none;
+  }
+  const mir::MirLocalDeclaration* comparisonTemporary = nullptr;
+  if (hasComparisonArgument) {
+    comparisonTemporary = &caller.locals[2];
+    if (comparisonTemporary->kind != mir::MirLocalKind::Temporary) { return zc::none; }
   }
   auto callerBorrowMutable = receiverReferenceIsMutable(borrowTemporary.type, semanticTypes);
   if (callerBorrowMutable == zc::none || ZC_ASSERT_NONNULL(callerBorrowMutable)) {
@@ -3923,7 +3931,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
 
   const auto& callerEntry = caller.blocks[0];
   const auto& callerContinuation = caller.blocks[1];
-  if (callerEntry.statements.size() != 5 ||
+  const size_t expectedStatements = hasComparisonArgument ? 7 : 5;
+  if (callerEntry.statements.size() != expectedStatements ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
       callerContinuation.statements.size() != 0 ||
       callerContinuation.terminator.kind() != mir::MirTerminatorKind::Return) {
@@ -3934,10 +3943,22 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
       callerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
       callerEntry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[2].storageLocal() != borrowTemporary.id ||
-      callerEntry.statements[3].kind() != mir::MirStatementKind::BorrowCreation ||
-      callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
-      callerEntry.statements[4].storageLocal() != resultTemporary.id) {
+      callerEntry.statements[3].kind() != mir::MirStatementKind::BorrowCreation) {
     return zc::none;
+  }
+  if (hasComparisonArgument) {
+    if (callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+        callerEntry.statements[4].storageLocal() != comparisonTemporary->id ||
+        callerEntry.statements[5].kind() != mir::MirStatementKind::Assign ||
+        callerEntry.statements[6].kind() != mir::MirStatementKind::StorageLive ||
+        callerEntry.statements[6].storageLocal() != resultTemporary.id) {
+      return zc::none;
+    }
+  } else {
+    if (callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+        callerEntry.statements[4].storageLocal() != resultTemporary.id) {
+      return zc::none;
+    }
   }
   const auto& initialization = callerEntry.statements[1].assignmentValue();
   if (initialization.initialization != mir::MirInitializationKind::Initialize ||
@@ -3964,6 +3985,34 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     return zc::none;
   }
 
+  // For the comparison-argument shape, validate the field-comparison
+  // assignment: the destination is the bool temporary, the left operand is a
+  // field projection on the owner, and the right is a constant.
+  zc::Maybe<ComparisonOp> comparisonOp;
+  zc::Maybe<Operand> comparisonLiteralOperand;
+  if (hasComparisonArgument) {
+    const auto& comparisonAssign = callerEntry.statements[5].assignmentValue();
+    if (comparisonAssign.initialization != mir::MirInitializationKind::Initialize ||
+        comparisonAssign.destination.local() != comparisonTemporary->id ||
+        comparisonAssign.destination.projections().size() != 0 ||
+        comparisonAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      return zc::none;
+    }
+    const auto& comparison = comparisonAssign.value.comparisonValue();
+    comparisonOp = lirComparisonOpFor(comparison.op);
+    if (comparisonOp == zc::none) { return zc::none; }
+    if (comparison.left.kind() == mir::MirOperandKind::Constant ||
+        comparison.left.place().local() != ownerLocal.id ||
+        comparison.left.place().projections().size() != 1) {
+      return zc::none;
+    }
+    if (comparison.right.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    // The literal operand shares the owner field's carrier (the aggregate's
+    // single element type), not the comparison result type.
+    comparisonLiteralOperand = lirOperandFor(comparison.right, ownerCarrierValue);
+    if (comparisonLiteralOperand == zc::none) { return zc::none; }
+  }
+
   const auto& mirCall = callerEntry.terminator.callValue();
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 2 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
@@ -3979,17 +4028,28 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     return zc::none;
   }
   const auto& boolArgument = mirCall.arguments[1];
-  if (boolArgument.kind() != mir::MirOperandKind::Constant ||
-      boolArgument.constantValue().type != conditionLocal.type) {
-    return zc::none;
+  zc::Maybe<Operand> boolArgumentOperand;
+  if (hasComparisonArgument) {
+    // The bool argument is a place-use of the comparison temporary.
+    if (boolArgument.kind() == mir::MirOperandKind::Constant ||
+        boolArgument.place().local() != comparisonTemporary->id ||
+        boolArgument.place().projections().size() != 0) {
+      return zc::none;
+    }
+    boolArgumentOperand = Operand::localUse(comparisonTemporary->id.ordinal());
+  } else {
+    // A bool argument carries an i1 constant distinct from the integer path.
+    if (boolArgument.kind() != mir::MirOperandKind::Constant ||
+        boolArgument.constantValue().type != conditionLocal.type) {
+      return zc::none;
+    }
+    const auto boolConstant = boolArgument.constantValue().value.booleanValue();
+    if (boolConstant == zc::none) { return zc::none; }
+    auto boolIntegerConstant =
+        IntegerConstant::from(conditionCarrierValue, ZC_ASSERT_NONNULL(boolConstant) ? 1 : 0);
+    if (boolIntegerConstant == zc::none) { return zc::none; }
+    boolArgumentOperand = Operand::constant(ZC_ASSERT_NONNULL(boolIntegerConstant));
   }
-  // A bool argument carries an i1 constant distinct from the integer path.
-  const auto boolConstant = boolArgument.constantValue().value.booleanValue();
-  if (boolConstant == zc::none) { return zc::none; }
-  auto boolIntegerConstant =
-      IntegerConstant::from(conditionCarrierValue, ZC_ASSERT_NONNULL(boolConstant) ? 1 : 0);
-  if (boolIntegerConstant == zc::none) { return zc::none; }
-  auto boolArgumentOperand = Operand::constant(ZC_ASSERT_NONNULL(boolIntegerConstant));
   const auto& callerReturn = callerContinuation.terminator.returnValue().value;
   ZC_IF_SOME(value, callerReturn) {
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -4016,9 +4076,17 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
         Statement::assign(ownerLocal.id.ordinal(), ZC_ASSERT_NONNULL(ownerConstant)));
     entryStatements.add(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
+    if (hasComparisonArgument) {
+      // The owner local in LIR is a scalar holding the single field value
+      // directly, so the field comparison is Compare(owner, literal).
+      entryStatements.add(Statement::compare(comparisonTemporary->id.ordinal(),
+                                             ZC_REQUIRE_NONNULL(comparisonOp),
+                                             Operand::localUse(ownerLocal.id.ordinal()),
+                                             ZC_REQUIRE_NONNULL(comparisonLiteralOperand)));
+    }
     zc::Vector<Operand> arguments;
     arguments.add(Operand::localUse(borrowTemporary.id.ordinal()));
-    arguments.add(zc::mv(boolArgumentOperand));
+    arguments.add(ZC_REQUIRE_NONNULL(boolArgumentOperand));
     auto callTerminator = Terminator::callFunction(
         /*calleeIndex=*/1, resultTemporary.id.ordinal(), zc::mv(arguments),
         ZC_REQUIRE_NONNULL(callerContId));
@@ -4032,6 +4100,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     zc::Vector<Local> locals;
     locals.add(Local(ownerLocal.id.ordinal(), ownerCarrierValue));
     locals.add(Local(borrowTemporary.id.ordinal(), receiverCarrierValue));
+    if (hasComparisonArgument) {
+      locals.add(Local(comparisonTemporary->id.ordinal(), conditionCarrierValue));
+    }
     locals.add(Local(resultTemporary.id.ordinal(), callerCarrierValue));
     functions.add(Function(caller.owner, zc::heapString("zom.module_init"), callerCarrierValue,
                            zc::mv(noParameters), zc::mv(locals), zc::mv(callerBlocks)));
@@ -4063,7 +4134,6 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                            zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
-
   return Module(zc::mv(functions));
 }
 
