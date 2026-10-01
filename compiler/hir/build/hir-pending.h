@@ -143,6 +143,12 @@ struct PendingLocalWriteBinary final {
   // five) and the synthetic literal 1 has no checked literal fact, so the
   // digest equations subtract one per desugared write.
   bool isPostfixDesugar = false;
+  // True when this binary write is the desugared form of a compound
+  // assignment (`x += 1` -> `x = x + 1`). The AssignmentExpr node carries
+  // the target and value node-type facts (three instead of five) and the
+  // binary operation has no checked call fact, so the digest equations
+  // subtract two node-type facts and one call fact per desugared write.
+  bool isCompoundAssignmentDesugar = false;
 };
 
 struct PendingLocalWriteValue final {

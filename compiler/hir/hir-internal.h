@@ -162,6 +162,19 @@ bool sameSpan(const identity::SourceSpan& left, const identity::SourceSpan& righ
 
 bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
 
+/// \brief Returns true when the syntactic assignment operator is a compound
+/// assignment that desugars to a primitive binary write (`x += 1` ->
+/// `x = x + 1`). The ten arithmetic, remainder, bitwise, and shift compound
+/// operators are admitted; power, unsigned-shift, logical, and null-coalescing
+/// compound operators stay unsupported.
+bool isCompoundAssignment(ast::AssignmentOperatorKind op) noexcept;
+
+/// \brief Maps a syntactic compound assignment operator to the primitive
+/// binary operation its desugared write applies. Returns none for an operator
+/// that is not an admitted compound assignment.
+zc::Maybe<checker::PrimitiveOperation> compoundAssignmentBinaryOperation(
+    ast::AssignmentOperatorKind op) noexcept;
+
 zc::Maybe<size_t> definitionIndex(const binder::ImmutableDefinitionInventory& definitions,
                                   identity::DefId definition);
 

@@ -4158,13 +4158,102 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
+          // A compound assignment (`x += 1`) desugars to a binary write
+          // (`x = x + 1`). The AssignmentExpr node carries the target and value
+          // node-type facts (three instead of five) and the binary operation
+          // has no checked call fact, so the digest equations subtract two
+          // node-type facts and one call fact per desugared write.
+          const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
+              tree.node(write).payload.words[ast::kAssignmentExprOpWord]);
+          auto compoundOperation = compoundAssignmentBinaryOperation(writeOp);
           // Build the per-write value: a scalar literal consumes its checked
           // literal fact; a parameter reference resolves the parameter and
           // matches its type; a primitive binary validates its own checked call
           // fact (keyed on the write value node) and builds its two operands,
           // exactly like the primitive-binary initializer path.
           PendingLocalWriteValue writeValueRecord;
-          if (binaryWriteValue) {
+          if (compoundOperation != zc::none) {
+            if (field != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto targetSpan = bound.parsedModule().spanFor(tree.node(target).range);
+            if (targetSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto leftReference = HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), writeType,
+                                                             HirValueCategory::Place,
+                                                             ZC_ASSERT_NONNULL(targetSpan).clone()};
+            auto leftArm = PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference),
+                                                 writeType, ZC_ASSERT_NONNULL(targetSpan).clone()};
+            zc::Maybe<PendingConditionalArm> rightArm;
+            if (referenceValue) {
+              auto parameter = resolvedCallableParameter(bound.bindings(), writeValue);
+              if (parameter == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              ZC_IF_SOME(handle, parameter) {
+                auto authority = registries.callableParameter(handle);
+                if (authority == zc::none) {
+                  return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                       ir::IrFailureKind::MissingRequiredFact,
+                                                       module, registries, ordinal + 2);
+                }
+                ZC_IF_SOME(entry, authority) {
+                  bool matches = false;
+                  for (const auto& candidate : parameters) {
+                    if (candidate.key == entry.key() && candidate.type == writeType) {
+                      matches = true;
+                    }
+                  }
+                  if (!matches) {
+                    return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                         ir::IrFailureKind::InvalidFact, module,
+                                                         registries, ordinal + 2);
+                  }
+                  auto reference = HirParameterReferenceExpression{
+                      HirNodeId(), entry.key().clone(), writeType, HirValueCategory::Place,
+                      ZC_ASSERT_NONNULL(valueSpan).clone()};
+                  rightArm = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, writeType,
+                                                   ZC_ASSERT_NONNULL(valueSpan).clone()};
+                }
+              }
+            } else {
+              if (literalIndex == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              size_t rhsLiteralSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { rhsLiteralSlot = index; }
+              const auto& rhsLiteral = facts.literals().entries()[rhsLiteralSlot].value;
+              if (rhsLiteral.type != writeType) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+              rightArm = PendingConditionalArm{rhsLiteral.literal.clone(), zc::none, zc::none,
+                                               writeType, ZC_ASSERT_NONNULL(valueSpan).clone()};
+            }
+            if (rightArm == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            writeValueRecord.binary =
+                PendingLocalWriteBinary{zc::mv(leftArm),
+                                        zc::mv(ZC_ASSERT_NONNULL(rightArm)),
+                                        writeType,
+                                        writeType,
+                                        ZC_ASSERT_NONNULL(compoundOperation),
+                                        ZC_ASSERT_NONNULL(assignmentSpan).clone()};
+            ZC_ASSERT_NONNULL(writeValueRecord.binary).isCompoundAssignmentDesugar = true;
+          } else if (binaryWriteValue) {
             if (field != zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
@@ -6217,6 +6306,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // literal 1 has no checked literal fact. The nodeTypes and literals
   // equations subtract this count to stay in balance.
   size_t postfixIncrementWriteCount = 0;
+  // Compound assignment writes (`x += 1`). Each desugars to a binary write
+  // (`x = x + 1`), but the AssignmentExpr node carries only three node-type
+  // facts (assignment, target, value) instead of five and the binary operation
+  // has no checked call fact. The nodeTypes equation subtracts two per write
+  // and the calls/dispatch equations subtract one per write.
+  size_t compoundAssignmentWriteCount = 0;
   // Void mutating methods (`this.<field> = <parameter>;` with a Unit result):
   // they materialize no return/value node, so the per-function baseline is
   // removed from the nodeTypes, expressions, and literals equations. Their four
@@ -6633,6 +6728,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         ZC_IF_SOME(binary, value.binary) {
           ++binaryWriteCount;
           if (binary.isPostfixDesugar) { ++postfixIncrementWriteCount; }
+          if (binary.isCompoundAssignmentDesugar) { ++compoundAssignmentWriteCount; }
           // Each binary-write parameter operand materializes a parameter
           // reference, so it joins the same parameterReferenceCount balance as a
           // top-level parameter reference; a local operand materializes a
@@ -6662,7 +6758,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
       leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
       leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
-      postfixIncrementWriteCount * 3;
+      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -6690,16 +6786,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 3);
   }
-  if (facts.calls().size() != directCallCount + receiverCallCount + receiverSelfCallCount +
-                                  parameterIndexCount + equalityConditionalCount +
-                                  comparisonReturnCount + sequentialBinaryCount +
-                                  receiverFieldArithmeticCount + binaryWriteCount +
-                                  leadingLocalConditionalBinaryCount ||
-      checkedModule.dispatchFacts().facts().size() !=
-          directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
-              equalityConditionalCount + comparisonReturnCount + sequentialBinaryCount +
-              receiverFieldArithmeticCount + binaryWriteCount +
-              leadingLocalConditionalBinaryCount) {
+  const size_t expectedCalls = directCallCount + receiverCallCount + receiverSelfCallCount +
+                               parameterIndexCount + equalityConditionalCount +
+                               comparisonReturnCount + sequentialBinaryCount +
+                               receiverFieldArithmeticCount + binaryWriteCount -
+                               compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount;
+  if (facts.calls().size() != expectedCalls ||
+      checkedModule.dispatchFacts().facts().size() != expectedCalls) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 4);
   }

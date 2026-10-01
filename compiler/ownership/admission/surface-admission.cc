@@ -49,6 +49,28 @@ bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
+// A compound assignment operator that desugars to a primitive binary write
+// (`x += 1` -> `x = x + 1`). The ten arithmetic, remainder, bitwise, and
+// shift compound operators are admitted; power, unsigned-shift, logical, and
+// null-coalescing compound operators stay unsupported in this slice.
+bool isAdmittedCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
+  switch (op) {
+    case ast::AssignmentOperatorKind::AddAssign:
+    case ast::AssignmentOperatorKind::SubAssign:
+    case ast::AssignmentOperatorKind::MulAssign:
+    case ast::AssignmentOperatorKind::DivAssign:
+    case ast::AssignmentOperatorKind::ModAssign:
+    case ast::AssignmentOperatorKind::BitAndAssign:
+    case ast::AssignmentOperatorKind::BitOrAssign:
+    case ast::AssignmentOperatorKind::BitXorAssign:
+    case ast::AssignmentOperatorKind::ShlAssign:
+    case ast::AssignmentOperatorKind::ShrAssign:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
   const ast::NodeId expression(statement.payload.words[ast::kExpressionStatementExpressionWord]);
   if (!tree.contains(expression)) { return false; }
@@ -77,9 +99,12 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
   }
   if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) return false;
   const auto& assignment = tree.node(expression);
-  if (static_cast<ast::AssignmentOperatorKind>(
-          assignment.payload.words[ast::kAssignmentExprOpWord]) !=
-      ast::AssignmentOperatorKind::Assign) {
+  const auto assignmentOp = static_cast<ast::AssignmentOperatorKind>(
+      assignment.payload.words[ast::kAssignmentExprOpWord]);
+  // A compound assignment (`x += 1`) desugars to a binary write (`x = x + 1`);
+  // the target and value structural checks below are the same as a plain write.
+  if (assignmentOp != ast::AssignmentOperatorKind::Assign &&
+      !isAdmittedCompoundAssignment(assignmentOp)) {
     return false;
   }
   const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
@@ -102,9 +127,12 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
       break;
     // A primitive binary write value (`x = a + b`) is admitted structurally for a
     // scalar-local target only; operator and operand support is a checker/HIR
-    // decision. A field write value stays literal-only in this slice.
+    // decision. A field write value stays literal-only in this slice. A compound
+    // assignment's RHS is the binary's second operand, not a nested binary, so
+    // binary values stay plain-assignment-only.
     case ast::SyntaxKind::BinaryExpr:
-      return tree.node(target).kind == ast::SyntaxKind::IdentExpr &&
+      return assignmentOp == ast::AssignmentOperatorKind::Assign &&
+             tree.node(target).kind == ast::SyntaxKind::IdentExpr &&
              isAdmittedPrimitiveBinary(tree, value);
     default:
       return false;
@@ -160,6 +188,14 @@ bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call,
     // checker/HIR decision and stays out of surface admission.
     if (!tree.contains(argument) || (!isScalarLiteral(tree.node(argument).kind) &&
                                      tree.node(argument).kind != ast::SyntaxKind::IdentExpr)) {
+      // A primitive binary argument (`cell.compare(cell.value > 0)`) is
+      // admitted structurally: the binary operands follow the same
+      // literal-or-identifier shape as a primitive binary return. Operator and
+      // operand support is a checker decision kept out of surface admission.
+      if (tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::BinaryExpr &&
+          isAdmittedPrimitiveBinary(tree, argument)) {
+        continue;
+      }
       // A field-projection argument on the receiver local
       // (`cell.echo(cell.value)`) is admitted structurally: the argument is a
       // dot member expression whose object names the same local as the call
@@ -1048,12 +1084,14 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
       }
       continue;
     }
-    if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
-        static_cast<ast::AssignmentOperatorKind>(
-            tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
-            ast::AssignmentOperatorKind::Assign) {
-      return false;
-    }
+    if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr) return false;
+    const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
+        tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]);
+    // A compound assignment (`x += 1`) desugars to a binary write
+    // (`x = x + 1`); the target and value structural checks below are the
+    // same as a plain write.
+    const bool compoundWrite = isAdmittedCompoundAssignment(writeOp);
+    if (writeOp != ast::AssignmentOperatorKind::Assign && !compoundWrite) { return false; }
     const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
     const ast::NodeId value(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
     if (!tree.contains(target) || !tree.contains(value)) return false;
@@ -1061,9 +1099,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     // (a parameter or local, resolved downstream), or a primitive binary
     // operation of the same operand shape; a field write value stays literal-only
     // in this slice. Structure only; the checker/HIR decide which forms are
-    // supported.
+    // supported. A compound assignment's RHS is the binary's second operand, not
+    // a nested binary, so binary values stay plain-assignment-only.
     const bool identValue = tree.node(value).kind == ast::SyntaxKind::IdentExpr;
-    const bool binaryValue = tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+    const bool binaryValue = !compoundWrite &&
+                             tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
                              isAdmittedPrimitiveBinary(tree, value);
     if (!isScalarLiteral(tree.node(value).kind) && !identValue && !binaryValue) return false;
     if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) {

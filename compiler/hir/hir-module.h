@@ -326,6 +326,12 @@ struct HirPrimitiveBinaryExpression final {
   /// the synthetic literal 1 has no checked literal fact, so the HIR verifier
   /// subtracts three per postfix write from nodeTypes and one from literals.
   bool isPostfixDesugar = false;
+  /// True when this binary write desugars a compound assignment
+  /// (`x += 1` -> `x = x + 1`). The AssignmentExpr node carries the target
+  /// and value node-type facts (three instead of five) and the binary
+  /// operation has no checked call fact, so the HIR verifier subtracts two
+  /// per compound write from nodeTypes and one from calls.
+  bool isCompoundAssignmentDesugar = false;
 };
 
 /// \brief One checked if/else conditional expression retained for multi-block MIR lowering.

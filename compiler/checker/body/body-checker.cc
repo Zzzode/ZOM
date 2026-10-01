@@ -774,16 +774,41 @@ zc::Maybe<PrimitiveOperation> scalarArithmeticOperation(ast::BinaryOperatorKind 
 template <typename Entry, typename Key>
 zc::Maybe<const Entry&> factEntry(zc::ArrayPtr<Entry> entries, const Key& key);
 
+// A compound assignment operator that desugars to a primitive binary write
+// (`x += 1` -> `x = x + 1`). The ten arithmetic, remainder, bitwise, and
+// shift compound operators are admitted; power, unsigned-shift, logical, and
+// null-coalescing compound operators stay unsupported in this slice.
+bool isAdmittedCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
+  switch (op) {
+    case ast::AssignmentOperatorKind::AddAssign:
+    case ast::AssignmentOperatorKind::SubAssign:
+    case ast::AssignmentOperatorKind::MulAssign:
+    case ast::AssignmentOperatorKind::DivAssign:
+    case ast::AssignmentOperatorKind::ModAssign:
+    case ast::AssignmentOperatorKind::BitAndAssign:
+    case ast::AssignmentOperatorKind::BitOrAssign:
+    case ast::AssignmentOperatorKind::BitXorAssign:
+    case ast::AssignmentOperatorKind::ShlAssign:
+    case ast::AssignmentOperatorKind::ShrAssign:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
                         ast::NodeId assignment) {
   const auto& tree = boundModule.tree();
   if (!tree.contains(assignment)) return false;
   const auto& syntax = tree.node(assignment);
-  if (syntax.kind != ast::SyntaxKind::AssignmentExpr ||
-      static_cast<ast::AssignmentOperatorKind>(syntax.payload.words[ast::kAssignmentExprOpWord]) !=
-          ast::AssignmentOperatorKind::Assign) {
-    return false;
-  }
+  if (syntax.kind != ast::SyntaxKind::AssignmentExpr) return false;
+  const auto writeOp =
+      static_cast<ast::AssignmentOperatorKind>(syntax.payload.words[ast::kAssignmentExprOpWord]);
+  // A compound assignment (`x += 1`) desugars to a binary write
+  // (`x = x + 1`); the target and value structural checks below are the
+  // same as a plain write.
+  const bool compoundWrite = isAdmittedCompoundAssignment(writeOp);
+  if (writeOp != ast::AssignmentOperatorKind::Assign && !compoundWrite) { return false; }
   const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
   const ast::NodeId value(syntax.payload.words[ast::kAssignmentExprRhsWord]);
   if (!tree.contains(target) || !tree.contains(value) ||
@@ -808,7 +833,9 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
   // check only admits the write shape.
   const bool reference = valueKind == ast::SyntaxKind::IdentExpr;
   bool binary = false;
-  if (valueKind == ast::SyntaxKind::BinaryExpr) {
+  // A compound assignment's RHS is the binary's second operand, not a nested
+  // binary, so binary values stay plain-assignment-only.
+  if (!compoundWrite && valueKind == ast::SyntaxKind::BinaryExpr) {
     const auto operation = static_cast<ast::BinaryOperatorKind>(
         tree.node(value).payload.words[ast::kBinaryExprOpWord]);
     if (scalarComparisonOperation(operation) != zc::none ||
@@ -3089,22 +3116,26 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
       }
     }
 
-    // (e) RHS of an admitted local or field write: the LHS storage type.
+    // (e) RHS of an admitted local or field write: the LHS storage type. A
+    // compound assignment (`x += 1`) desugars to a binary write, so its RHS
+    // literal receives the same target-type hint as a plain write.
     if (assignmentHint == zc::none && syntax.kind == ast::SyntaxKind::AssignmentExpr &&
-        ast::NodeId(syntax.payload.words[ast::kAssignmentExprRhsWord]) == literal &&
-        static_cast<ast::AssignmentOperatorKind>(
-            syntax.payload.words[ast::kAssignmentExprOpWord]) ==
-            ast::AssignmentOperatorKind::Assign) {
-      const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
-      if (tree.contains(target)) {
-        if (isSimpleLocalWrite(input.boundModule, node)) {
-          assignmentHint = ownerLocalReferenceType(input, target, nodeTypes);
-        } else if (isSimpleOwnerLocalFieldWrite(input.boundModule, node)) {
-          auto shape = ownerLocalFieldShape(input, target, nodeTypes);
-          ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
-        } else if (isSimpleReceiverFieldWrite(input.boundModule, node)) {
-          auto shape = thisReceiverFieldShape(input, target);
-          ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+        ast::NodeId(syntax.payload.words[ast::kAssignmentExprRhsWord]) == literal) {
+      const auto assignmentOp = static_cast<ast::AssignmentOperatorKind>(
+          syntax.payload.words[ast::kAssignmentExprOpWord]);
+      if (assignmentOp == ast::AssignmentOperatorKind::Assign ||
+          isAdmittedCompoundAssignment(assignmentOp)) {
+        const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
+        if (tree.contains(target)) {
+          if (isSimpleLocalWrite(input.boundModule, node)) {
+            assignmentHint = ownerLocalReferenceType(input, target, nodeTypes);
+          } else if (isSimpleOwnerLocalFieldWrite(input.boundModule, node)) {
+            auto shape = ownerLocalFieldShape(input, target, nodeTypes);
+            ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+          } else if (isSimpleReceiverFieldWrite(input.boundModule, node)) {
+            auto shape = thisReceiverFieldShape(input, target);
+            ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+          }
         }
       }
     }
@@ -3898,11 +3929,11 @@ bool addOperatorRequirements(const ast::Node& syntax, ast::NodeId node,
     auto operation = OperatorKind::fromAssignment(
         static_cast<ast::AssignmentOperatorKind>(syntax.payload.words[ast::kAssignmentExprOpWord]));
     if (operation == zc::none) return false;
-    ZC_IF_SOME(value, operation) {
-      if (value.variant().is<CompoundAssignmentOperation>()) {
-        addNodeRequirement(requirements, CheckedFactGroup::CompoundAssignment, node, key);
-      }
-    }
+    // A compound assignment (`x += 1`) desugars to a binary write
+    // (`x = x + 1`) in the HIR builder. The CompoundAssignmentFactMap is
+    // intentionally empty, so no checker requirement is added here; the
+    // admitted compound operators are gated by isSimpleLocalWrite and the
+    // surface admission boundary.
     return true;
   }
   return false;
@@ -5023,6 +5054,37 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Maybe<checked::CoercionAdjustment> noAdjustment;
               checkedArguments.add(
                   checked::CheckedArgumentFact{argument, ZC_ASSERT_NONNULL(fieldShape).fieldType,
+                                               value.parameters[index], zc::mv(noAdjustment)});
+              continue;
+            }
+            // A primitive binary argument (`cell.compare(cell.value > 0)`) is
+            // admitted structurally: its node-type fact (produced at the
+            // primitive-binary production stage) gives the result type, which
+            // must match the callee parameter type. The binary operation and
+            // operand support are checked at the binary's own production site.
+            if (input.boundModule.tree().contains(argument) &&
+                input.boundModule.tree().node(argument).kind == ast::SyntaxKind::BinaryExpr) {
+              if (argumentType == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              if (ZC_ASSERT_NONNULL(argumentType).value != value.parameters[index]) {
+                ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                  ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                    return attachRecoveryLedger(
+                        rejectTypeMismatch(site, ownerOrdinal, value.parameters[index],
+                                           ZC_ASSERT_NONNULL(argumentType).value),
+                        input, factStoreBrands);
+                  }
+                }
+                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+              checkedArguments.add(
+                  checked::CheckedArgumentFact{argument, ZC_ASSERT_NONNULL(argumentType).value,
                                                value.parameters[index], zc::mv(noAdjustment)});
               continue;
             }

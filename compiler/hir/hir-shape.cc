@@ -1648,21 +1648,26 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
         continue;
       }
-      if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
-          static_cast<ast::AssignmentOperatorKind>(
-              tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
-              ast::AssignmentOperatorKind::Assign) {
-        return zc::none;
-      }
+      if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr) return zc::none;
+      const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
+          tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]);
+      // A compound assignment (`x += 1`) desugars to a binary write
+      // (`x = x + 1`); the target and value structural checks below are the
+      // same as a plain write.
+      const bool compoundWrite = isCompoundAssignment(writeOp);
+      if (writeOp != ast::AssignmentOperatorKind::Assign && !compoundWrite) { return zc::none; }
       const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
       const ast::NodeId writeValue(
           tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
       if (!tree.contains(target) || !tree.contains(writeValue)) return zc::none;
       // A scalar-local write value is a scalar literal, an identifier reference
       // (a parameter, resolved downstream), or a primitive binary operation; a
-      // field write value stays literal-only in this slice.
+      // field write value stays literal-only in this slice. A compound
+      // assignment's RHS is the binary's second operand, not a nested binary,
+      // so binary values stay plain-assignment-only.
       const bool identValue = tree.node(writeValue).kind == ast::SyntaxKind::IdentExpr;
-      const bool binaryValue = tree.node(writeValue).kind == ast::SyntaxKind::BinaryExpr;
+      const bool binaryValue =
+          !compoundWrite && tree.node(writeValue).kind == ast::SyntaxKind::BinaryExpr;
       if (!isScalarLiteral(tree.node(writeValue).kind) && !identValue && !binaryValue) {
         return zc::none;
       }

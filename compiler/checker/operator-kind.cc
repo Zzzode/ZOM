@@ -191,11 +191,12 @@ bool primitiveBinaryOperationAdmits(PrimitiveOperation operation,
   const bool isNumeric = isInteger || isFloat;
   const bool isBool = kind == type::semantic::PrimitiveKind::Bool;
   const bool isChar = kind == type::semantic::PrimitiveKind::Char;
+  const bool isStr = kind == type::semantic::PrimitiveKind::Str;
   switch (operation) {
     // Equality is defined for every primitive scalar.
     case PrimitiveOperation::Eq:
     case PrimitiveOperation::Ne:
-      return isNumeric || isBool || isChar;
+      return isNumeric || isBool || isChar || isStr;
     // Ordering is defined for numeric types and char, never for bool.
     case PrimitiveOperation::Lt:
     case PrimitiveOperation::Le:

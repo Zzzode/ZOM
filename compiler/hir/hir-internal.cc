@@ -32,6 +32,52 @@ bool isScalarLiteral(ast::SyntaxKind kind) noexcept {
   }
 }
 
+bool isCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
+  switch (op) {
+    case ast::AssignmentOperatorKind::AddAssign:
+    case ast::AssignmentOperatorKind::SubAssign:
+    case ast::AssignmentOperatorKind::MulAssign:
+    case ast::AssignmentOperatorKind::DivAssign:
+    case ast::AssignmentOperatorKind::ModAssign:
+    case ast::AssignmentOperatorKind::BitAndAssign:
+    case ast::AssignmentOperatorKind::BitOrAssign:
+    case ast::AssignmentOperatorKind::BitXorAssign:
+    case ast::AssignmentOperatorKind::ShlAssign:
+    case ast::AssignmentOperatorKind::ShrAssign:
+      return true;
+    default:
+      return false;
+  }
+}
+
+zc::Maybe<checker::PrimitiveOperation> compoundAssignmentBinaryOperation(
+    ast::AssignmentOperatorKind op) noexcept {
+  switch (op) {
+    case ast::AssignmentOperatorKind::AddAssign:
+      return checker::PrimitiveOperation::Add;
+    case ast::AssignmentOperatorKind::SubAssign:
+      return checker::PrimitiveOperation::Sub;
+    case ast::AssignmentOperatorKind::MulAssign:
+      return checker::PrimitiveOperation::Mul;
+    case ast::AssignmentOperatorKind::DivAssign:
+      return checker::PrimitiveOperation::Div;
+    case ast::AssignmentOperatorKind::ModAssign:
+      return checker::PrimitiveOperation::Rem;
+    case ast::AssignmentOperatorKind::BitAndAssign:
+      return checker::PrimitiveOperation::BitAnd;
+    case ast::AssignmentOperatorKind::BitOrAssign:
+      return checker::PrimitiveOperation::BitOr;
+    case ast::AssignmentOperatorKind::BitXorAssign:
+      return checker::PrimitiveOperation::BitXor;
+    case ast::AssignmentOperatorKind::ShlAssign:
+      return checker::PrimitiveOperation::Shl;
+    case ast::AssignmentOperatorKind::ShrAssign:
+      return checker::PrimitiveOperation::Shr;
+    default:
+      return zc::none;
+  }
+}
+
 zc::Maybe<size_t> definitionIndex(const binder::ImmutableDefinitionInventory& definitions,
                                   identity::DefId definition) {
   const auto entries = definitions.definitions();
