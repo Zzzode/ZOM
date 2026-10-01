@@ -1,0 +1,11 @@
+struct Cell {
+  value: i32,
+  fun compare(this, flag: bool) -> i32 {
+    if (flag) { return 42; } else { return 0; }
+  }
+}
+
+fun entry() -> i32 {
+  let cell = Cell { value: 7 };
+  return cell.compare(cell.value > 0);
+}

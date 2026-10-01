@@ -239,6 +239,12 @@ struct HirLocalBorrowExpression final {
 /// lowers to a copy/move place-use of the caller's parameter local; a local
 /// carrier lowers to a copy/move place-use, optionally through one field
 /// projection.
+///
+/// A field-comparison argument (`local`, `field`, `comparisonOperation`, and
+/// `value` all populated) lowers to a runtime comparison of the field value
+/// against the literal right operand: the caller materializes a bool temporary
+/// holding `local.field <op> value` and passes that temporary as the call
+/// argument.
 struct HirDirectCallArgument final {
   identity::SemanticTypeId type;
   zc::Maybe<checker::checked::CanonicalConstValue> value;
@@ -249,6 +255,10 @@ struct HirDirectCallArgument final {
   // Populated for a field-projection argument: the field of the `local`
   // carrier whose value the call copies. Only populated when `local` is set.
   zc::Maybe<identity::DefId> field;
+  // Populated for a field-comparison argument: the relational operator applied
+  // to the `field` value and the `value` literal. Only populated when `local`,
+  // `field`, and `value` are all set.
+  zc::Maybe<checker::PrimitiveOperation> comparisonOperation;
   identity::SourceSpan sourceSpan;
 };
 

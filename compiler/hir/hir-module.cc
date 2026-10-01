@@ -623,6 +623,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // member, and place fact but no literal fact, unlike a constant argument.
   // Tracked to correct the literals, members, and places equations.
   size_t receiverCallFieldArgumentCount = 0;
+  // A field-comparison argument (`cell.compare(cell.value > 0)`) produces a
+  // node-type, member, place, and literal fact. The literal fact means it is
+  // not subtracted from the literals equation like a field-projection
+  // argument, but the member and place facts still need counting.
+  size_t receiverCallComparisonArgumentCount = 0;
   // A self-call pool record forwards the implicit header receiver: its
   // receiver node slot is unset and it carries zero explicit arguments. Such a
   // record still contributes the call, member, dispatch, and two node-type
@@ -687,7 +692,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     receiverCallArgumentCount += call.arguments.size();
     for (const auto& argument : call.arguments) {
       if (argument.local != zc::none && argument.field != zc::none) {
-        ++receiverCallFieldArgumentCount;
+        if (argument.comparisonOperation != zc::none) {
+          ++receiverCallComparisonArgumentCount;
+        } else {
+          ++receiverCallFieldArgumentCount;
+        }
       }
     }
     if (call.receiver == HirNodeId()) ++receiverSelfCallCount;
@@ -1130,7 +1139,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + equalityConditionalCount + sequentialBinaryCount +
               receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-              leadingLocalConditionalArithmeticCount ||
+              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount ||
       // The verifier deliberately keeps the strict unsupported-facts gate,
       // coercions included. HirBuilder::build drains every concrete-to-dyn
       // erasure as a per-definition capability rejection before verification,
@@ -1170,9 +1179,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverCallCount * 2 + localReturnCount - uninitializedLocalReturnCount +
               localWriteCount * 3 + aggregateElementCount + localFieldProjectionCount +
               localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
-              directCallArgumentCount + receiverCallArgumentCount + localBorrowCount +
-              unsafeBlockCount + effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
-              unaryReturnCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+              directCallArgumentCount + receiverCallArgumentCount + receiverCallFieldArgumentCount +
+              receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
+              effectiveConditionalCount * 2 + equalityConditionalCount * 2 - unaryReturnCount +
+              loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
               parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
               parameterFieldWriteCount * 4 + discardedStatementCallCount +
               sequentialCastInitializers + sequentialTernaryCount * 3 -
@@ -1199,82 +1209,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount +
               sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
-              compoundAssignmentWriteCount + leadingLocalConditionalArithmeticCount ||
+              compoundAssignmentWriteCount + leadingLocalConditionalArithmeticCount +
+              receiverCallComparisonArgumentCount ||
       facts.casts().size() != sequentialCastInitializers ||
       facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
       facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
                                     receiverCallCount + receiverCallFieldArgumentCount +
+                                    receiverCallComparisonArgumentCount +
                                     parameterFieldProjectionCount + parameterFieldWriteCount ||
       facts.places().size() != localFieldProjectionCount + localFieldWriteCount +
-                                   receiverCallFieldArgumentCount + parameterIndexCount +
+                                   receiverCallFieldArgumentCount +
+                                   receiverCallComparisonArgumentCount + parameterIndexCount +
                                    parameterFieldProjectionCount + parameterFieldWriteCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
-    fprintf(stderr, "  nodeTypes: actual=%zu expected=%zu\n", facts.nodeTypes().size(),
-            static_cast<size_t>(
-                declarationCount + functionCount - voidFunctionCount + directCallCount +
-                receiverCallCount * 2 + localReturnCount - uninitializedLocalReturnCount +
-                localWriteCount * 3 + aggregateElementCount + localFieldProjectionCount +
-                localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
-                directCallArgumentCount + receiverCallArgumentCount + localBorrowCount +
-                unsafeBlockCount + effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
-                unaryReturnCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-                parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
-                parameterFieldWriteCount * 4 + discardedStatementCallCount +
-                sequentialCastInitializers + sequentialTernaryCount * 3 -
-                leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-                leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
-                compoundAssignmentWriteCount * 2));
-    fprintf(stderr, "  literals: actual=%zu expected=%lld\n", facts.literals().size(),
-            static_cast<long long>(
-                declarationCount + functionCount - voidFunctionCount - directCallCount -
-                aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-                parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-                localAliasReborrowCount + localWriteCount + aggregateElementCount +
-                directCallLiteralArgumentCount + receiverCallArgumentCount -
-                receiverCallFieldArgumentCount + effectiveConditionalCount * 2 +
-                equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
-                parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
-                directScalarLocalCallCount) +
-                static_cast<long long>(sequentialLiteralCorrection) +
-                static_cast<long long>(sequentialTernaryParameterConditions) +
-                static_cast<long long>(leadingLocalConditionalCorrection) -
-                static_cast<long long>(leadingLocalConditionalUnaryCount) +
-                static_cast<long long>(leadingLocalConditionalArithmeticParameterCount) +
-                static_cast<long long>(leadingLocalConditionalArithmeticLiteralCount) -
-                static_cast<long long>(leadingLocalConditionalArithmeticCount) -
-                static_cast<long long>(binaryWriteLocalOperands) -
-                static_cast<long long>(postfixIncrementWriteCount));
-    fprintf(stderr, "  calls: actual=%zu expected=%lld\n", facts.calls().size(),
-            static_cast<long long>(directCallCount + receiverCallCount + parameterIndexCount +
-                                   equalityConditionalCount + sequentialBinaryCount +
-                                   receiverFieldArithmeticCount + binaryWriteCount -
-                                   compoundAssignmentWriteCount +
-                                   leadingLocalConditionalArithmeticCount));
-    fprintf(
-        stderr, "  expressions: actual=%zu expected=%lld\n", candidate.impl->expressions.size(),
-        static_cast<long long>(
-            declarationCount + functionCount - voidFunctionCount - directCallCount -
-            aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-            parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-            localAliasReborrowCount + localWriteCount + effectiveConditionalCount * 2 +
-            equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-            receiverFieldArithmeticCount + directAggregateCallCount + directScalarLocalCallCount) +
-            static_cast<long long>(sequentialLiteralCorrection) +
-            static_cast<long long>(sequentialTernaryParameterConditions) +
-            static_cast<long long>(leadingLocalConditionalCorrection) +
-            static_cast<long long>(leadingLocalConditionalArithmeticParameterCount) +
-            static_cast<long long>(leadingLocalConditionalArithmeticLiteralCount) -
-            static_cast<long long>(leadingLocalConditionalArithmeticCount) -
-            static_cast<long long>(binaryWriteLocalOperands));
-    fprintf(stderr, "  localReferences: actual=%zu expected=%lld\n",
-            candidate.impl->localReferences.size() + localFieldProjectionCount +
-                localAliasReborrowCount + localBorrowCount,
-            static_cast<long long>(localReturnCount) +
-                static_cast<long long>(discardedStatementCallCount) -
-                static_cast<long long>(directAggregateCallCount) -
-                static_cast<long long>(directScalarLocalCallCount) +
-                static_cast<long long>(binaryWriteLocalOperands));
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
@@ -8116,6 +8064,95 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 index + 1);
           }
           continue;
+        }
+        // A field-comparison argument on the receiver local
+        // (`cell.compare(cell.value > 0)`) is admitted structurally: the
+        // caller computes the comparison at runtime and passes the bool
+        // result. The HIR argument carries the receiver local, field,
+        // comparison operator, and literal right operand.
+        if (tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::BinaryExpr) {
+          const auto syntaxOp = static_cast<ast::BinaryOperatorKind>(
+              tree.node(argument).payload.words[ast::kBinaryExprOpWord]);
+          auto operatorKind = checker::OperatorKind::fromBinary(syntaxOp);
+          if (operatorKind != zc::none) {
+            const auto& variant = ZC_ASSERT_NONNULL(operatorKind).variant();
+            if (variant.is<checker::PrimitiveOperation>()) {
+              const auto operation = variant.get<checker::PrimitiveOperation>();
+              if (operation == checker::PrimitiveOperation::Eq ||
+                  operation == checker::PrimitiveOperation::Ne ||
+                  operation == checker::PrimitiveOperation::Lt ||
+                  operation == checker::PrimitiveOperation::Le ||
+                  operation == checker::PrimitiveOperation::Gt ||
+                  operation == checker::PrimitiveOperation::Ge) {
+                const ast::NodeId left(tree.node(argument).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId right(tree.node(argument).payload.words[ast::kBinaryExprRhsWord]);
+                if (tree.contains(left) && tree.contains(right)) {
+                  auto isReceiverField = [&](ast::NodeId operand) {
+                    if (!tree.contains(operand) ||
+                        tree.node(operand).kind != ast::SyntaxKind::MemberExpression) {
+                      return false;
+                    }
+                    const ast::NodeId fieldObject(
+                        tree.node(operand).payload.words[ast::kMemberExpressionObjectWord]);
+                    return resolvedOwnerLocal(bound.bindings(), fieldObject) == receiverBinding;
+                  };
+                  const bool leftField = isReceiverField(left);
+                  const bool rightField = isReceiverField(right);
+                  if (leftField != rightField) {
+                    const ast::NodeId fieldOperand = leftField ? left : right;
+                    const ast::NodeId literalOperand = leftField ? right : left;
+                    if (isScalarLiteral(tree.node(literalOperand).kind)) {
+                      auto argumentMemberIndex = factIndex(facts.members(), fieldOperand);
+                      auto comparisonLiteralIndex = factIndex(facts.literals(), literalOperand);
+                      if (argumentTypeIndex != zc::none && argumentMemberIndex != zc::none &&
+                          comparisonLiteralIndex != zc::none && argumentSpan != zc::none) {
+                        size_t argumentTypeSlot = 0;
+                        size_t argumentMemberSlot = 0;
+                        size_t comparisonLiteralSlot = 0;
+                        ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+                        ZC_IF_SOME(value, argumentMemberIndex) { argumentMemberSlot = value; }
+                        ZC_IF_SOME(value, comparisonLiteralIndex) { comparisonLiteralSlot = value; }
+                        const auto comparisonType =
+                            facts.nodeTypes().entries()[argumentTypeSlot].value;
+                        const auto& comparisonMember =
+                            facts.members().entries()[argumentMemberSlot].value;
+                        const auto& comparisonLiteral =
+                            facts.literals().entries()[comparisonLiteralSlot].value;
+                        const auto& checkedArgument = invocation.arguments[argumentIndex];
+                        const auto& hirArgument =
+                            ZC_ASSERT_NONNULL(receiverCall).arguments[argumentIndex];
+                        bool literalMatches = false;
+                        ZC_IF_SOME(value, hirArgument.value) {
+                          literalMatches = sameConstant(value, comparisonLiteral.literal, module,
+                                                        registries, semanticTypes);
+                        }
+                        if (checkedArgument.sourceNode != argument ||
+                            checkedArgument.sourceType != comparisonType ||
+                            checkedArgument.parameterType != comparisonType ||
+                            checkedArgument.adjustment != zc::none ||
+                            comparisonMember.node != fieldOperand ||
+                            comparisonMember.receiverType !=
+                                facts.nodeTypes().entries()[receiverTypeSlot].value ||
+                            comparisonMember.adjustment != zc::none ||
+                            comparisonLiteral.node != literalOperand ||
+                            hirArgument.type != comparisonType || hirArgument.value == zc::none ||
+                            hirArgument.parameter != zc::none ||
+                            hirArgument.local != hirLocalId(1) ||
+                            hirArgument.field != comparisonMember.member ||
+                            hirArgument.comparisonOperation != operation || !literalMatches ||
+                            !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+                          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                              ir::IrFailureKind::InvalidFact,
+                                                              module, registries, index + 1);
+                        }
+                        continue;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
         if (!tree.contains(argument) || !isScalarLiteral(tree.node(argument).kind) ||
             argumentTypeIndex == zc::none || literalIndex == zc::none || argumentSpan == zc::none) {

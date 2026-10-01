@@ -1,0 +1,5 @@
+section: "05-statements shared-receiver inherent method call with field-comparison argument"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A receiver method call whose argument is a field comparison on the receiver local lowers through HIR and Built MIR."

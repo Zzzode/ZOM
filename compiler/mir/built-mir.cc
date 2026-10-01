@@ -6091,10 +6091,23 @@ bool validReceiverCallReturnFunction(
   const auto expectedReceiverStep = sharedCall
                                         ? checker::checked::ReceiverAdjustmentStep::BorrowShared
                                         : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
+  // A field-comparison argument adds one bool temporary (localId(3)) holding
+  // the comparison result, shifting the result temporary to localId(4) and
+  // adding two entry statements (StorageLive + Comparison Assign).
+  bool hasComparisonArgument = false;
+  for (const auto& argument : call.arguments) {
+    if (argument.comparisonOperation != zc::none) {
+      hasComparisonArgument = true;
+      break;
+    }
+  }
+  const size_t expectedLocalCount = hasComparisonArgument ? 4 : 3;
+  const size_t expectedEntryStatementCount = hasComparisonArgument ? 7 : 5;
+  const MirLocalId expectedResultLocal = hasComparisonArgument ? localId(4) : localId(3);
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 3 || function.blocks.size() != 2 ||
+      function.locals.size() != expectedLocalCount || function.blocks.size() != 2 ||
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
       sourceBlock.statements[0] != sourceLocal.node ||
       sourceBlock.statements[1] != sourceReturn.node || sourceLocal.initializer != aggregate.node ||
@@ -6110,7 +6123,7 @@ bool validReceiverCallReturnFunction(
   const auto& scope = function.sourceScopes[0];
   const auto& local = function.locals[0];
   const auto& receiverTemporary = function.locals[1];
-  const auto& result = function.locals[2];
+  const auto& result = function.locals[expectedLocalCount - 1];
   const auto& entry = function.blocks[0];
   const auto& continuation = function.blocks[1];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
@@ -6119,10 +6132,11 @@ bool validReceiverCallReturnFunction(
       local.sourceScope != scope.id || !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) ||
       receiverTemporary.id != localId(2) || receiverTemporary.kind != MirLocalKind::Temporary ||
       receiverTemporary.type != call.receiverType || receiverTemporary.sourceScope != scope.id ||
-      !sameSpan(receiverTemporary.sourceSpan, receiver.sourceSpan) || result.id != localId(3) ||
-      result.kind != MirLocalKind::Temporary || result.type != call.resultType ||
-      result.sourceScope != scope.id || !sameSpan(result.sourceSpan, call.sourceSpan) ||
-      entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 5 ||
+      !sameSpan(receiverTemporary.sourceSpan, receiver.sourceSpan) ||
+      result.id != expectedResultLocal || result.kind != MirLocalKind::Temporary ||
+      result.type != call.resultType || result.sourceScope != scope.id ||
+      !sameSpan(result.sourceSpan, call.sourceSpan) || entry.id != blockId(1) ||
+      entry.sourceScope != scope.id || entry.statements.size() != expectedEntryStatementCount ||
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != local.id ||
       !sameSpan(entry.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
@@ -6131,9 +6145,6 @@ bool validReceiverCallReturnFunction(
       entry.statements[2].storageLocal() != receiverTemporary.id ||
       !sameSpan(entry.statements[2].sourceSpan(), receiver.sourceSpan) ||
       entry.statements[3].kind() != MirStatementKind::BorrowCreation ||
-      entry.statements[4].kind() != MirStatementKind::StorageLive ||
-      entry.statements[4].storageLocal() != result.id ||
-      !sameSpan(entry.statements[4].sourceSpan(), call.sourceSpan) ||
       entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
       continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
       continuation.terminator.kind() != MirTerminatorKind::Return ||
@@ -6141,6 +6152,37 @@ bool validReceiverCallReturnFunction(
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
       !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  // With a comparison argument, statements 4 and 5 are the comparison
+  // computation (StorageLive + Comparison Assign) and statement 6 is the
+  // result StorageLive. Without one, statement 4 is the result StorageLive.
+  const size_t resultStorageLiveIndex = expectedEntryStatementCount - 1;
+  if (entry.statements[resultStorageLiveIndex].kind() != MirStatementKind::StorageLive ||
+      entry.statements[resultStorageLiveIndex].storageLocal() != result.id ||
+      !sameSpan(entry.statements[resultStorageLiveIndex].sourceSpan(), call.sourceSpan)) {
+    return false;
+  }
+  if (hasComparisonArgument) {
+    const auto& comparisonTemporary = function.locals[2];
+    if (comparisonTemporary.id != localId(3) ||
+        comparisonTemporary.kind != MirLocalKind::Temporary ||
+        comparisonTemporary.sourceScope != scope.id ||
+        !sameSpan(comparisonTemporary.sourceSpan, call.sourceSpan)) {
+      return false;
+    }
+    if (entry.statements[4].kind() != MirStatementKind::StorageLive ||
+        entry.statements[4].storageLocal() != comparisonTemporary.id ||
+        !sameSpan(entry.statements[4].sourceSpan(), call.sourceSpan) ||
+        entry.statements[5].kind() != MirStatementKind::Assign) {
+      return false;
+    }
+    const auto& comparisonAssignment = entry.statements[5].assignmentValue();
+    if (comparisonAssignment.initialization != MirInitializationKind::Initialize ||
+        comparisonAssignment.destination.local() != comparisonTemporary.id ||
+        comparisonAssignment.destination.projections().size() != 0 ||
+        comparisonAssignment.value.kind() != MirRvalueKind::Comparison) {
+      return false;
+    }
   }
   const auto& initialization = entry.statements[1].assignmentValue();
   if (initialization.initialization != MirInitializationKind::Initialize ||
@@ -6208,7 +6250,16 @@ bool validReceiverCallReturnFunction(
   for (size_t index = 0; index < call.arguments.size(); ++index) {
     const auto& actual = terminator.arguments[index + 1];
     const auto& expected = call.arguments[index];
-    if (expected.value == zc::none) {
+    if (expected.comparisonOperation != zc::none) {
+      // Field-comparison argument: the operand is a place-use of the bool
+      // comparison temporary (localId(3)).
+      if (!matchesPlaceUse(actual, proofs, copy, expected.type)) { return false; }
+      const auto& argumentPlace = actual.place();
+      if (argumentPlace.local() != localId(3) || argumentPlace.rootType() != expected.type ||
+          argumentPlace.resultType() != expected.type || argumentPlace.projections().size() != 0) {
+        return false;
+      }
+    } else if (expected.value == zc::none) {
       // Field-projection argument on the receiver local: the operand is a
       // place-use of the receiver local with a single field projection.
       if (expected.field == zc::none || !matchesPlaceUse(actual, proofs, copy, expected.type)) {
@@ -7468,13 +7519,30 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   zc::Maybe<MirSourceScopeId> noParent;
                   scopes.add(
                       MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+                  // A field-comparison argument (`cell.compare(cell.value > 0)`)
+                  // needs one extra bool temporary to hold the comparison result
+                  // before the call. Detect it before constructing locals so the
+                  // local numbering and statement layout stay consistent.
+                  bool hasComparisonArgument = false;
+                  for (const auto& argument : call.arguments) {
+                    if (argument.comparisonOperation != zc::none) {
+                      hasComparisonArgument = true;
+                      break;
+                    }
+                  }
+                  const MirLocalId resultLocal = hasComparisonArgument ? localId(4) : localId(3);
                   zc::Vector<MirLocalDeclaration> locals;
                   locals.add(MirLocalDeclaration{localId(1), MirLocalKind::UserLocal, local.type,
                                                  scopeId(1), local.sourceSpan.clone()});
                   locals.add(MirLocalDeclaration{localId(2), MirLocalKind::Temporary,
                                                  call.receiverType, scopeId(1),
                                                  reference.sourceSpan.clone()});
-                  locals.add(MirLocalDeclaration{localId(3), MirLocalKind::Temporary,
+                  if (hasComparisonArgument) {
+                    locals.add(MirLocalDeclaration{localId(3), MirLocalKind::Temporary,
+                                                   call.arguments[0].type, scopeId(1),
+                                                   call.sourceSpan.clone()});
+                  }
+                  locals.add(MirLocalDeclaration{resultLocal, MirLocalKind::Temporary,
                                                  call.resultType, scopeId(1),
                                                  call.sourceSpan.clone()});
                   zc::Vector<MirStatement> entryStatements;
@@ -7506,8 +7574,48 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       MirPlace(localId(1), local.type, zc::mv(receiverSourceProjections),
                                local.type),
                       reference.sourceSpan.clone()));
+                  if (hasComparisonArgument) {
+                    // Compute the field comparison into the bool temporary at
+                    // localId(3): load the field value through a place-use and
+                    // compare it against the literal right operand.
+                    const auto& comparisonArgument = call.arguments[0];
+                    const auto comparisonOp = mirComparisonOperatorFor(
+                        ZC_ASSERT_NONNULL(comparisonArgument.comparisonOperation));
+                    if (comparisonOp == zc::none) {
+                      return rejectMirCapability<BuiltMirCandidate>(
+                          ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition,
+                          identities, call.sourceSpan.clone());
+                    }
+                    entryStatements.add(
+                        MirStatement::storageLive(localId(3), call.sourceSpan.clone()));
+                    zc::Vector<MirProjection> fieldProjections;
+                    fieldProjections.add(
+                        MirProjection::field(ZC_ASSERT_NONNULL(comparisonArgument.field),
+                                             local.type, comparisonArgument.type));
+                    auto fieldOperand =
+                        placeUse(proofs, copy,
+                                 MirPlace(localId(1), local.type, zc::mv(fieldProjections),
+                                          comparisonArgument.type));
+                    if (fieldOperand == zc::none) {
+                      return rejectMir<BuiltMirCandidate>(
+                          ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                          module, declaration.definition, identities,
+                          static_cast<uint32_t>(pending.size() + 1));
+                    }
+                    auto literalOperand =
+                        MirOperand::constant(comparisonArgument.type,
+                                             ZC_ASSERT_NONNULL(comparisonArgument.value).clone());
+                    zc::Vector<MirProjection> comparisonDestProjections;
+                    entryStatements.add(MirStatement::assign(
+                        MirPlace(localId(3), comparisonArgument.type,
+                                 zc::mv(comparisonDestProjections), comparisonArgument.type),
+                        MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOp),
+                                              zc::mv(ZC_ASSERT_NONNULL(fieldOperand)),
+                                              zc::mv(literalOperand), comparisonArgument.type),
+                        MirInitializationKind::Initialize, call.sourceSpan.clone()));
+                  }
                   entryStatements.add(
-                      MirStatement::storageLive(localId(3), call.sourceSpan.clone()));
+                      MirStatement::storageLive(resultLocal, call.sourceSpan.clone()));
                   zc::Vector<MirProjection> receiverArgumentProjections;
                   auto receiverArgument =
                       placeUse(proofs, copy,
@@ -7523,6 +7631,23 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   arguments.add(zc::mv(ZC_ASSERT_NONNULL(receiverArgument)));
                   bool constantArguments = true;
                   for (const auto& argument : call.arguments) {
+                    if (argument.comparisonOperation != zc::none) {
+                      // A field-comparison argument: pass the bool temporary
+                      // holding the comparison result (localId(3)).
+                      zc::Vector<MirProjection> comparisonArgProjections;
+                      auto comparisonArgOperand =
+                          placeUse(proofs, copy,
+                                   MirPlace(localId(3), argument.type,
+                                            zc::mv(comparisonArgProjections), argument.type));
+                      if (comparisonArgOperand == zc::none) {
+                        return rejectMir<BuiltMirCandidate>(
+                            ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact,
+                            module, declaration.definition, identities,
+                            static_cast<uint32_t>(pending.size() + 1));
+                      }
+                      arguments.add(zc::mv(ZC_ASSERT_NONNULL(comparisonArgOperand)));
+                      continue;
+                    }
                     ZC_IF_SOME(value, argument.value) {
                       arguments.add(MirOperand::constant(argument.type, value.clone()));
                     } else {
@@ -7570,13 +7695,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                             : MirCallEffect::activateMutableReceiver(localId(2));
                   auto callTerminator =
                       MirTerminator::call(call.callee, zc::mv(arguments), zc::mv(receiverEffect),
-                                          MirPlace(localId(3), call.resultType,
+                                          MirPlace(resultLocal, call.resultType,
                                                    zc::mv(resultProjections), call.resultType),
                                           blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
                   zc::Vector<MirProjection> returnProjections;
                   auto returnOperand =
                       placeUse(proofs, copy,
-                               MirPlace(localId(3), call.resultType, zc::mv(returnProjections),
+                               MirPlace(resultLocal, call.resultType, zc::mv(returnProjections),
                                         call.resultType));
                   if (returnOperand == zc::none) {
                     return rejectMir<BuiltMirCandidate>(ir::IrFailurePhase::MirConstruction,

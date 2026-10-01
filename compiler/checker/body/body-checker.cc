@@ -2339,6 +2339,23 @@ bool isReceiverFieldRead(const ast::Tree& tree, ast::NodeId node) {
   return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::ThisExpr;
 }
 
+// An owner-local field read (`cell.value`) is a dot member expression whose
+// object is an identifier resolving to an owner local. The binding and field
+// type are resolved structurally by `ownerLocalFieldShape` in the shape
+// validator, mirroring the receiver-field path.
+bool isOwnerLocalFieldRead(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
+}
+
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
@@ -2380,13 +2397,16 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     if (parameter != zc::none) return parameter;
     return ownerLocalReferenceType(input, operandNode, nodeTypes);
   };
-  // A receiver-field operand is a `this.<field>` projection read inside an
-  // inherent method. Its operand type is the field type. Like a nested operand,
-  // its node-type fact is produced at a later production stage than the binary,
-  // so it is validated structurally here rather than through a node-type fact
-  // lookup.
+  // A field operand is a `this.<field>` projection read inside an inherent
+  // method or an owner-local field read (`cell.value`). Its operand type is
+  // the field type. Like a nested operand, its node-type fact is produced at
+  // a later production stage than the binary, so it is validated
+  // structurally here rather than through a node-type fact lookup.
   auto receiverFieldType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
     ZC_IF_SOME(shape, thisReceiverFieldShape(input, operandNode)) { return shape.fieldType; }
+    ZC_IF_SOME(shape, ownerLocalFieldShape(input, operandNode, nodeTypes)) {
+      return shape.fieldType;
+    }
     return zc::none;
   };
   // A nested operand is itself a one-level primitive binary (`a + b * c`). Its
@@ -2466,9 +2486,11 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const bool leftIsLiteral = isScalarLiteral(tree.node(left).kind);
   const bool rightIsLiteral = isScalarLiteral(tree.node(right).kind);
   const bool leftIsReceiverField =
-      isReceiverFieldRead(tree, left) && receiverFieldType(left) != zc::none;
+      (isReceiverFieldRead(tree, left) || isOwnerLocalFieldRead(tree, left)) &&
+      receiverFieldType(left) != zc::none;
   const bool rightIsReceiverField =
-      isReceiverFieldRead(tree, right) && receiverFieldType(right) != zc::none;
+      (isReceiverFieldRead(tree, right) || isOwnerLocalFieldRead(tree, right)) &&
+      receiverFieldType(right) != zc::none;
   auto leftNestedType = leftIsNested ? nestedBinaryResultType(left) : zc::none;
   auto rightNestedType = rightIsNested ? nestedBinaryResultType(right) : zc::none;
   if (leftIsNested && leftNestedType == zc::none) return zc::none;
@@ -4380,10 +4402,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             const bool leftIsNested = tree.node(left).kind == ast::SyntaxKind::BinaryExpr;
             const bool rightIsNested = tree.node(right).kind == ast::SyntaxKind::BinaryExpr;
             // An operand may be a `this.<field>` projection read inside an
-            // inherent method. This is structural; the shape validator resolves
-            // the enclosing method, field type, and receiver mutability.
-            const bool leftIsReceiverField = isReceiverFieldRead(tree, left);
-            const bool rightIsReceiverField = isReceiverFieldRead(tree, right);
+            // inherent method or an owner-local field read (`cell.value`).
+            // This is structural; the shape validator resolves the enclosing
+            // method, field type, and receiver mutability.
+            const bool leftIsReceiverField =
+                isReceiverFieldRead(tree, left) || isOwnerLocalFieldRead(tree, left);
+            const bool rightIsReceiverField =
+                isReceiverFieldRead(tree, right) || isOwnerLocalFieldRead(tree, right);
             const bool leftOk = leftIsReference || isScalarLiteral(tree.node(left).kind) ||
                                 leftIsNested || leftIsReceiverField;
             const bool rightOk = rightIsReference || isScalarLiteral(tree.node(right).kind) ||

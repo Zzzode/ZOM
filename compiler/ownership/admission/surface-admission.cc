@@ -44,6 +44,8 @@ void insertFailure(zc::Vector<SurfaceFailure>& failures, SurfaceFailure&& failur
 }
 
 bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedFieldComparisonBinary(const ast::Tree& tree, ast::NodeId value,
+                                     ast::NodeId receiver);
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
@@ -196,6 +198,15 @@ bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call,
           isAdmittedPrimitiveBinary(tree, argument)) {
         continue;
       }
+      // A field-comparison argument (`cell.compare(cell.value > 0)`) is
+      // admitted structurally: one operand is a dot member expression on the
+      // receiver local and the other is a scalar literal. The operator, field
+      // type, and comparison result type are checker decisions.
+      if (hasReceiver && tree.contains(argument) &&
+          tree.node(argument).kind == ast::SyntaxKind::BinaryExpr &&
+          isAdmittedFieldComparisonBinary(tree, argument, receiver)) {
+        continue;
+      }
       // A field-projection argument on the receiver local
       // (`cell.echo(cell.value)`) is admitted structurally: the argument is a
       // dot member expression whose object names the same local as the call
@@ -345,6 +356,39 @@ bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind) || leftNested;
   const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind) || rightNested;
   return leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
+}
+
+// A field-comparison binary is a binary expression whose one operand is a dot
+// member expression on the receiver local and whose other operand is a scalar
+// literal (`cell.value > 0`). The operator, field type, and comparison result
+// type are checker decisions kept out of surface admission.
+bool isAdmittedFieldComparisonBinary(const ast::Tree& tree, ast::NodeId value,
+                                     ast::NodeId receiver) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) return false;
+  const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return false;
+  auto isReceiverField = [&](ast::NodeId operand) {
+    if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::MemberExpression) {
+      return false;
+    }
+    if (static_cast<ast::MemberAccessKind>(
+            tree.node(operand).payload.words[ast::kMemberExpressionAccessWord]) !=
+        ast::MemberAccessKind::Dot) {
+      return false;
+    }
+    const ast::NodeId fieldObject(
+        tree.node(operand).payload.words[ast::kMemberExpressionObjectWord]);
+    return tree.contains(fieldObject) &&
+           tree.node(fieldObject).kind == ast::SyntaxKind::IdentExpr &&
+           tree.node(fieldObject).payload.words[ast::kIdentExprNameWord] ==
+               tree.node(receiver).payload.words[ast::kIdentExprNameWord];
+  };
+  const bool leftField = isReceiverField(left);
+  const bool rightField = isReceiverField(right);
+  if (leftField == rightField) return false;
+  const ast::NodeId literalOperand = leftField ? right : left;
+  return isScalarLiteral(tree.node(literalOperand).kind);
 }
 
 // A primitive unary return is one of the four arithmetic/logical/bitwise unary
