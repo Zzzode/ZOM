@@ -14,10 +14,10 @@
 
 #include "compiler/binder/surface/owner-body-query.h"
 
-#include "zc/core/vector.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 
@@ -239,6 +239,26 @@ zc::Maybe<MemberAccessKind> memberAccessKind(const DetachedModuleBodyNode& node)
     default:
       return zc::none;
   }
+}
+
+// A qualified member access such as `Color::Red` names a type as its base. The
+// base identifier is resolved in the type namespace rather than the value
+// namespace so the enum definition resolves and the deferred member projection
+// can record the variant access.
+bool isQualifiedMemberBase(const OwnerBodySyntaxPathEntry& entry,
+                           zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries,
+                           const ModuleBodySyntax& syntax) {
+  if (entry.syntaxKind != ast::SyntaxKind::IdentExpr || entry.parentIndex == kNoParent ||
+      entry.parentIndex >= entries.size()) {
+    return false;
+  }
+  const auto& parent = entries[entry.parentIndex];
+  if (parent.syntaxKind != ast::SyntaxKind::MemberExpression) { return false; }
+  // The object field is the first (and only NodeId) child of a MemberExpression.
+  const auto components = entry.path.components();
+  if (components.size() == 0 || components[components.size() - 1] != 0) { return false; }
+  auto access = memberAccessKind(syntax.nodes()[parent.nodeIndex]);
+  return access != zc::none && ZC_ASSERT_NONNULL(access) == MemberAccessKind::Qualified;
 }
 
 zc::Maybe<StableExplicitCaptureMode> explicitCaptureMode(const DetachedModuleBodyNode& node) {
@@ -1059,6 +1079,7 @@ zc::Maybe<OwnerBodyLookupFacts> projectOwnerBodyLookups(
     Namespace nameSpace = Namespace::Value;
     if (entry.syntaxKind == ast::SyntaxKind::IdentExpr) {
       name = syntax.nodes()[entry.nodeIndex].identifierField(0);
+      if (isQualifiedMemberBase(entry, entries, syntax)) { nameSpace = Namespace::Type; }
     } else if (entry.syntaxKind == ast::SyntaxKind::ModulePath ||
                entry.syntaxKind == ast::SyntaxKind::AttributePath) {
       if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) { continue; }
@@ -1855,6 +1876,7 @@ bool OwnerBodyLookupProjection::verify(
     Namespace nameSpace = Namespace::Value;
     if (entry.syntaxKind == ast::SyntaxKind::IdentExpr) {
       name = syntax.nodes()[entry.nodeIndex].identifierField(0);
+      if (isQualifiedMemberBase(entry, entries, syntax)) { nameSpace = Namespace::Type; }
     } else if (entry.syntaxKind == ast::SyntaxKind::ModulePath ||
                entry.syntaxKind == ast::SyntaxKind::AttributePath) {
       if (entry.parentIndex == kNoParent || entry.parentIndex >= entries.size()) { continue; }

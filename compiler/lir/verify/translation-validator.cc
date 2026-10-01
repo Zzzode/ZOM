@@ -115,6 +115,20 @@ zc::Maybe<ValueType> stringCarrier(identity::SemanticTypeId type,
   return zc::none;
 }
 
+// Independently derived i32 carrier for a nominal (enum) semantic type. This
+// duplicates the producer derivation on purpose: the validator must not call
+// any mir-to-lir helper. Enum variants lower to integer discriminants; the
+// default representation is i32. Struct types are nominal but never appear as
+// integer constants in the admitted lowering shapes.
+zc::Maybe<ValueType> enumCarrier(identity::SemanticTypeId type,
+                                 const type::SemanticTypeStore& types) noexcept {
+  auto lookup = types.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) return zc::none;
+  return ValueType::integer(IntegerBitWidth::Bit32);
+}
+
 // Independently resolves the carrier of one materialized MIR local. Beyond the
 // integer and boolean carriers, a shared- or mutable-reference parameter or
 // temporary carries an opaque pointer, and a one-field aggregate-initialized
@@ -125,6 +139,7 @@ zc::Maybe<ValueType> localCarrier(const mir::MirLocalDeclaration& source,
                                   const type::SemanticTypeStore& types) noexcept {
   ZC_IF_SOME(carrier, integerCarrier(source.type, types)) { return carrier; }
   ZC_IF_SOME(carrier, boolCarrier(source.type, types)) { return carrier; }
+  ZC_IF_SOME(carrier, enumCarrier(source.type, types)) { return carrier; }
   ZC_IF_SOME(carrier, pointerCarrier(source.type, types)) { return carrier; }
   for (const auto& block : function.blocks) {
     for (const auto& statement : block.statements) {
@@ -371,7 +386,18 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               case mir::MirRvalueKind::Use:
                 if (!fold.hasFieldProjection &&
                     source->value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
-                  fold.kind = FoldKind::ScalarConstant;
+                  // Only fold when the source local is the sole non-parameter
+                  // local. Functions with multiple locals lower through the
+                  // arithmetic return path, which materializes every local in
+                  // LIR; folding here would mismatch the materialized slots.
+                  bool soleNonParameter = true;
+                  for (const auto& local : mir.locals) {
+                    if (local.kind != mir::MirLocalKind::Parameter && local.id != root) {
+                      soleNonParameter = false;
+                      break;
+                    }
+                  }
+                  if (soleNonParameter) { fold.kind = FoldKind::ScalarConstant; }
                 }
                 break;
               case mir::MirRvalueKind::NominalAggregate:

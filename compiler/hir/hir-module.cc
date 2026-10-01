@@ -824,6 +824,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             ++deadLocalReturnCount;
             switch (binding.initializerKind) {
               case SequentialInitializerKind::Literal:
+              case SequentialInitializerKind::EnumVariant:
                 ++deadLiterals;
                 break;
               case SequentialInitializerKind::Aggregate: {
@@ -878,6 +879,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ++sequentialLocalCount;
           switch (binding.initializerKind) {
             case SequentialInitializerKind::Literal:
+            case SequentialInitializerKind::EnumVariant:
               ++sequentialLiteralInitializers;
               break;
             case SequentialInitializerKind::Aggregate:
@@ -2065,7 +2067,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           bindingsValid = false;
           break;
         }
-        if (binding.initializerKind == SequentialInitializerKind::Literal) {
+        if (binding.initializerKind == SequentialInitializerKind::Literal ||
+            binding.initializerKind == SequentialInitializerKind::EnumVariant) {
           zc::Maybe<const HirScalarLiteralExpression&> literal;
           for (const auto& expression : candidate.impl->expressions) {
             if (expression.node != hirId(initializerNodeOrdinal)) continue;
@@ -4086,7 +4089,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     binary.type == bindingType && binary.category == HirValueCategory::Value &&
                     sameSpan(binary.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
               }
-            } else if (binding.initializerKind == SequentialInitializerKind::Literal) {
+            } else if (binding.initializerKind == SequentialInitializerKind::Literal ||
+                       binding.initializerKind == SequentialInitializerKind::EnumVariant) {
               for (const auto& expression : candidate.impl->expressions) {
                 if (expression.node != initializerNodeId) continue;
                 if (initializerRecordOk) {

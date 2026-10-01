@@ -506,7 +506,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   shape.body = body;
   for (size_t index = 0; index < bindingCount; ++index) {
     auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
-    if (declaratorNode == zc::none) return zc::none;
+    if (declaratorNode == zc::none) { return zc::none; }
     ast::NodeId declarator;
     ZC_IF_SOME(value, declaratorNode) { declarator = value; }
     const ast::NodeId pattern(
@@ -715,6 +715,19 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
           }
         }
       }
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
+               static_cast<ast::MemberAccessKind>(
+                   tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
+                   ast::MemberAccessKind::Qualified) {
+      // A qualified enum variant access `EnumName::Variant`. The builder
+      // resolves the variant index from the binder and lowers it to an integer
+      // constant.
+      const ast::NodeId object(
+          tree.node(initializer).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+        return zc::none;
+      }
+      kind = SequentialInitializerKind::EnumVariant;
     } else {
       return zc::none;
     }
@@ -754,7 +767,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(returnValue)) return zc::none;
   }
-  if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) return zc::none;
+  if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
   for (size_t index = 0; index < shape.bindings.size(); ++index) {

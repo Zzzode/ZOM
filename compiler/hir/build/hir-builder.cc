@@ -813,6 +813,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   break;
                 }
                 bindingLiteral = literalFact.literal.clone();
+              } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+                // A qualified enum variant access lowers to an integer constant
+                // (the variant discriminant). The body-checker emits a literal
+                // fact with the discriminant value.
+                auto literalIndex = factIndex(facts.literals(), binding.initializer);
+                if (literalIndex == zc::none) { break; }
+                size_t literalSlot = 0;
+                ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+                const auto& literalFact = facts.literals().entries()[literalSlot].value;
+                if (literalFact.type != bindingType ||
+                    !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+                  break;
+                }
+                bindingLiteral = literalFact.literal.clone();
               } else if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
                 auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.initializer);
                 if (referenceBinding == zc::none ||
@@ -2973,6 +2987,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           zc::Maybe<identity::SourceSpan> bindingTernaryThenSpan;
           zc::Maybe<identity::SourceSpan> bindingTernaryElseSpan;
           if (binding.initializerKind == SequentialInitializerKind::Literal) {
+            auto literalIndex = factIndex(facts.literals(), binding.initializer);
+            if (literalIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            if (literalFact.type != bindingType ||
+                !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              rejected = true;
+              break;
+            }
+            bindingLiteral = literalFact.literal.clone();
+          } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+            // A qualified enum variant access `Enum::Variant` lowers to an
+            // integer constant (the variant discriminant). The body-checker
+            // emits a literal fact with the discriminant value.
             auto literalIndex = factIndex(facts.literals(), binding.initializer);
             if (literalIndex == zc::none) {
               rejected = true;
@@ -7100,6 +7132,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ++localReturnCount;
           switch (binding.kind) {
             case SequentialInitializerKind::Literal:
+            case SequentialInitializerKind::EnumVariant:
               ++literalBearingSlots;
               break;
             case SequentialInitializerKind::Aggregate:
@@ -7169,6 +7202,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ++localReturnCount;
           switch (dead.initializerKind) {
             case SequentialInitializerKind::Literal:
+            case SequentialInitializerKind::EnumVariant:
               ++literalBearingSlots;
               break;
             case SequentialInitializerKind::Aggregate: {

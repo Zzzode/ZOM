@@ -1,0 +1,7 @@
+enum Color { Red, Green, Blue }
+
+fun entry() -> i32 {
+  let c: Color = Color::Red;
+  let r: i32 = 41;
+  return r;
+}

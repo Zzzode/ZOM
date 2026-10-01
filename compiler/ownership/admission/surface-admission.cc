@@ -49,6 +49,7 @@ bool isAdmittedFieldComparisonBinary(const ast::Tree& tree, ast::NodeId value,
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedEnumVariant(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression);
 
 // A compound assignment operator that desugars to a primitive binary write
@@ -447,6 +448,22 @@ bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(thenExpr).kind) && isScalarLiteral(tree.node(elseExpr).kind);
 }
 
+// A qualified enum variant access (`Color::Red`) lowers to an integer constant
+// (the variant discriminant). The base must be a bare identifier naming the
+// enum type; the checker verifies the binding and discriminant.
+bool isAdmittedEnumVariant(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(value);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Qualified) {
+    return false;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
@@ -518,7 +535,7 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
          isAdmittedAggregateInitializer(tree, initializer) ||
          isAdmittedPrimitiveBinary(tree, initializer) ||
          isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
-         isAdmittedTernary(tree, initializer);
+         isAdmittedTernary(tree, initializer) || isAdmittedEnumVariant(tree, initializer);
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {

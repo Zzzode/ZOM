@@ -52,6 +52,7 @@ enum class BodyProductionKind : uint8_t {
   IntegerCast = 0x1c,
   ConditionalExpression = 0x1d,
   PostfixIncrement = 0x1e,
+  EnumVariantValue = 0x1f,
   Unsupported = 0x17
 };
 
@@ -1008,6 +1009,90 @@ zc::Maybe<NominalFieldShape> nominalFieldShape(const BodyCheckingInput& input,
     ZC_IF_SOME(type, fieldType) { return NominalFieldShape{definition, type, fieldMutable}; }
   }
   return zc::none;
+}
+
+/// \brief Shape of a qualified enum variant access such as `Color::Red`. The
+/// enum type is the nominal type of the enum definition; the variant is the
+/// resolved enum variant definition; the discriminant is the zero-based index
+/// of the variant within the enum's variant list.
+struct EnumVariantValueShape final {
+  identity::SemanticTypeId enumType;
+  identity::DefId variant;
+  uint64_t discriminant;
+};
+
+/// \brief Resolves a qualified enum variant access `Enum::Variant`. The base
+/// identifier must resolve to an enum definition and the member must name a
+/// unit variant (empty payload) of that enum. The enum type is interned as a
+/// closed nominal type.
+zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& input,
+                                                       ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Qualified) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const auto baseDefinition = resolvedDefinition(input.boundModule.bindings(), object);
+  if (baseDefinition == zc::none) return zc::none;
+  const auto enumDefId = ZC_ASSERT_NONNULL(baseDefinition);
+  bool baseIsEnum = false;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition == enumDefId) {
+      baseIsEnum = definition.record.kind() == identity::DefinitionKind::Enum;
+      break;
+    }
+  }
+  if (!baseIsEnum) return zc::none;
+  const auto propertyName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> variant;
+  uint64_t discriminant = 0;
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != enumDefId ||
+        !signature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominal = signature.payload.variant().get<signature::NominalSignature>();
+    for (size_t variantIndex = 0; variantIndex < nominal.variants.size(); ++variantIndex) {
+      const auto candidate = nominal.variants[variantIndex];
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition != candidate || definition.record.name() != propertyName) {
+          continue;
+        }
+        if (definition.record.kind() != identity::DefinitionKind::EnumVariant) return zc::none;
+        if (variant != zc::none) return zc::none;
+        variant = candidate;
+        discriminant = static_cast<uint64_t>(variantIndex);
+      }
+    }
+  }
+  if (variant == zc::none) return zc::none;
+  // A unit variant (empty payload) is the only admitted shape in this slice.
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
+        !signature.payload.variant().is<signature::EnumVariantSignature>()) {
+      continue;
+    }
+    const auto& variantSignature =
+        signature.payload.variant().get<signature::EnumVariantSignature>();
+    if (variantSignature.payload.size() != 0) return zc::none;
+  }
+  auto admitted = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::NominalTypeData{enumDefId, {}}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return EnumVariantValueShape{interned.get<type::SemanticTypeInterned>().id,
+                               ZC_ASSERT_NONNULL(variant), discriminant};
 }
 
 zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
@@ -4237,6 +4322,23 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
     }
     erasableReturnValues.add(ReturnValueInfo{value, ZC_ASSERT_NONNULL(returnType)});
   });
+  // Collect IdentExpr nodes that are the base of a qualified member access
+  // (`Color` in `Color::Red`). These are type-namespace references resolved by
+  // the binder, not value references; the body checker must not classify them
+  // as IdentifierReference production sites or require NodeType facts for them.
+  zc::Vector<ast::NodeId> qualifiedMemberBases;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::MemberExpression) return;
+    if (static_cast<ast::MemberAccessKind>(
+            syntax.payload.words[ast::kMemberExpressionAccessWord]) !=
+        ast::MemberAccessKind::Qualified) {
+      return;
+    }
+    const ast::NodeId object(syntax.payload.words[ast::kMemberExpressionObjectWord]);
+    if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr) {
+      qualifiedMemberBases.add(object);
+    }
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -4250,6 +4352,14 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                            syntax.kind == ast::SyntaxKind::SuspendStatement) &&
                           !(isPattern(syntax.kind) && isMatchArmPattern(tree, node));
     if (!bodyNode) return;
+    // Skip the base identifier of a qualified member access; it is a
+    // type-namespace reference, not a value production site, and needs no
+    // NodeType fact or production site.
+    if (syntax.kind == ast::SyntaxKind::IdentExpr) {
+      for (const auto base : qualifiedMemberBases) {
+        if (base == node) return;
+      }
+    }
     auto span = parsedModule.spanFor(syntax.range);
     if (span == zc::none) {
       failure = rejectInvariant(signature::CheckerInvariantKind::InputReceiptMismatch,
@@ -4306,9 +4416,33 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                  syntax.kind == ast::SyntaxKind::ImportCallExpression) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
       } else if (syntax.kind == ast::SyntaxKind::MemberExpression) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Member, node, key);
-        if (!isMethodCallCallee(tree, node)) {
-          addNodeRequirement(nodeRequirements, CheckedFactGroup::Place, node, key);
+        // A qualified enum variant access (`Color::Red`) lowers to an integer
+        // constant; it needs a Literal requirement, not Member/Place.
+        const auto accessKind = static_cast<ast::MemberAccessKind>(
+            syntax.payload.words[ast::kMemberExpressionAccessWord]);
+        bool isEnumVariant = false;
+        if (accessKind == ast::MemberAccessKind::Qualified) {
+          const ast::NodeId object(syntax.payload.words[ast::kMemberExpressionObjectWord]);
+          if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr) {
+            const auto baseDefinition = resolvedDefinition(boundModule.bindings(), object);
+            if (baseDefinition != zc::none) {
+              for (const auto& definition : boundModule.definitions().definitions()) {
+                if (definition.definition == ZC_ASSERT_NONNULL(baseDefinition) &&
+                    definition.record.kind() == identity::DefinitionKind::Enum) {
+                  isEnumVariant = true;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        if (isEnumVariant) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Member, node, key);
+          if (!isMethodCallCallee(tree, node)) {
+            addNodeRequirement(nodeRequirements, CheckedFactGroup::Place, node, key);
+          }
         }
       } else if (syntax.kind == ast::SyntaxKind::IndexExpression) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
@@ -4386,11 +4520,35 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             production = BodyProductionKind::ReceiverFieldWrite;
           }
           break;
-        case ast::SyntaxKind::MemberExpression:
-          production = isMethodCallCallee(tree, node)
-                           ? BodyProductionKind::OwnerLocalMethodReference
-                           : BodyProductionKind::OwnerLocalFieldReference;
+        case ast::SyntaxKind::MemberExpression: {
+          // A qualified access whose base resolves to an enum definition is an
+          // enum variant value. The full variant resolution and type production
+          // happen in the check loop via `enumVariantValueShape`.
+          const auto& memberSyntax = tree.node(node);
+          const auto accessKind = static_cast<ast::MemberAccessKind>(
+              memberSyntax.payload.words[ast::kMemberExpressionAccessWord]);
+          if (accessKind == ast::MemberAccessKind::Qualified) {
+            const ast::NodeId object(memberSyntax.payload.words[ast::kMemberExpressionObjectWord]);
+            if (tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr) {
+              const auto baseDefinition = resolvedDefinition(boundModule.bindings(), object);
+              if (baseDefinition != zc::none) {
+                for (const auto& definition : boundModule.definitions().definitions()) {
+                  if (definition.definition == ZC_ASSERT_NONNULL(baseDefinition) &&
+                      definition.record.kind() == identity::DefinitionKind::Enum) {
+                    production = BodyProductionKind::EnumVariantValue;
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          if (production == BodyProductionKind::Unsupported) {
+            production = isMethodCallCallee(tree, node)
+                             ? BodyProductionKind::OwnerLocalMethodReference
+                             : BodyProductionKind::OwnerLocalFieldReference;
+          }
           break;
+        }
         case ast::SyntaxKind::IndexExpression:
           production = BodyProductionKind::ReadIndex;
           break;
@@ -6144,6 +6302,40 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+      } else if (site.production == BodyProductionKind::EnumVariantValue) {
+        // A qualified enum variant access `Enum::Variant`. The variant must be
+        // a unit variant (empty payload); the enum type is the produced type.
+        // The variant discriminant is emitted as an integer literal fact so the
+        // HIR builder can lower it to a scalar constant.
+        auto shape = enumVariantValueShape(input, site.node);
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) {
+          producedType = value.enumType;
+          // Build the big-endian magnitude of the discriminant, stripping
+          // leading zero bytes so zero is an empty magnitude.
+          zc::Vector<uint8_t> bytes;
+          uint64_t remaining = value.discriminant;
+          while (remaining != 0) {
+            bytes.add(static_cast<uint8_t>(remaining & 0xff));
+            remaining >>= 8;
+          }
+          auto magnitude = zc::heapArray<uint8_t>(bytes.size());
+          for (size_t index = 0; index < bytes.size(); ++index) {
+            magnitude[index] = bytes[bytes.size() - index - 1];
+          }
+          literals.add(checked::LiteralFactMap::Entry{
+              site.node,
+              checked::CheckedLiteralFact{
+                  site.node,
+                  signature::CanonicalConstValue::integer(signature::CanonicalInteger{
+                      signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
+                  value.enumType, site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
+        }
       } else {
         auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
             context, module, input.boundModule.tree(), site.node, site.key,
@@ -6226,6 +6418,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       ZC_IF_SOME(value, producedType) {
         nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value, zc::Array<uint8_t>()});
       }
+      if (site.production == BodyProductionKind::EnumVariantValue) {}
     }
   }
 

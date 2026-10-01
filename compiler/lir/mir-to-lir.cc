@@ -128,6 +128,21 @@ zc::Maybe<ValueType> boolCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Resolves the i32 carrier for a nominal (enum) semantic type.
+///
+/// Enum variants lower to integer discriminants; the default representation
+/// is i32. A non-nominal type fails closed. Struct types are nominal but
+/// never appear as integer constants in the admitted lowering shapes, so the
+/// integer-value check in lirOperandFor rejects them downstream.
+zc::Maybe<ValueType> enumCarrierFor(identity::SemanticTypeId type,
+                                    const type::SemanticTypeStore& semanticTypes) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) { return zc::none; }
+  return ValueType::integer(IntegerBitWidth::Bit32);
+}
+
 /// \brief Selects the entry symbol for a caller function.
 ///
 /// A parameter-free caller folds to the reserved no-argument `zom.module_init`
@@ -2422,12 +2437,16 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
   if (resultCarrier == zc::none) {
     resultCarrier = boolCarrierFor(function.resultType, semanticTypes);
   }
+  if (resultCarrier == zc::none) {
+    resultCarrier = enumCarrierFor(function.resultType, semanticTypes);
+  }
   if (resultCarrier == zc::none) { return zc::none; }
   const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
   if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
   for (const auto& local : function.locals) {
     auto carrier = integerCarrierFor(local.type, semanticTypes);
     if (carrier == zc::none) { carrier = boolCarrierFor(local.type, semanticTypes); }
+    if (carrier == zc::none) { carrier = enumCarrierFor(local.type, semanticTypes); }
     if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
       return zc::none;
     }

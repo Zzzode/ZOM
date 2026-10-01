@@ -390,6 +390,7 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     const HirNodeId initializerNodeId = initializerNodeIds[index];
     switch (binding.kind) {
       case SequentialInitializerKind::Literal:
+      case SequentialInitializerKind::EnumVariant:
         ZC_IF_SOME(literal, binding.literal) {
           ctx.addExpression(HirScalarLiteralExpression{initializerNodeId, binding.type,
                                                        literal.clone(), HirValueCategory::Value,
