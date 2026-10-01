@@ -1,0 +1,11 @@
+// For-loop accumulator fixture: a C-style for loop with a non-empty body that
+// accumulates into a leading mutable local, exercising the reducible four-block
+// loop CFG with an accumulator write through the full IR pipeline. The sum of
+// 0..9 is 45.
+fun entry() -> i32 {
+  mut sum = 0;
+  for (let i = 0; i < 10; i = i + 1) {
+    sum = sum + i;
+  }
+  return sum;
+}

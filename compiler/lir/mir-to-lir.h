@@ -193,6 +193,34 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerForLoopReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one reducible four-block for-loop accumulator return to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validForLoopAccumulatorReturnFunction` accepts: a `Function` with
+  /// zero or more integer parameters, an integer accumulator user local, an
+  /// integer loop-variable user local, a boolean temporary (the comparison
+  /// result), and an integer function-result local; a reducible four-block loop
+  /// (`entry: StorageLive(result); StorageLive(acc); StorageLive(i);
+  /// StorageLive(temp); Assign(acc = constant, Initialize); Assign(i = constant,
+  /// Initialize); Assign(temp = Comparison(op, copy(i), constant), Initialize);
+  /// Goto(header)`; `header: SwitchInt(copy(temp)) [true -> body], default =
+  /// exit`; `body: Assign(acc = Arithmetic(op, copy(acc), copy(i)), Overwrite);
+  /// Assign(i = Arithmetic(op, copy(i), constant), Overwrite); Assign(temp =
+  /// Comparison(op, copy(i), constant), Overwrite); Goto(header)`; `exit:
+  /// Assign(result = copy(acc), Initialize); Return(place-use result)`). The
+  /// entry init assigns lower to LIR `Assign`s, the entry/body comparisons to
+  /// LIR `Compare` statements, the header `SwitchInt` to a `CondBranch`, the
+  /// body arithmetics to LIR `Arithmetic` statements, the entry/body `Goto`s to
+  /// LIR `Goto`, the exit copy-assign to a LIR `Assign` of a local use, and the
+  /// place-use return to `ReturnLocal`. Every shape outside this slice returns
+  /// `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerForLoopAccumulatorReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one four-block comparison-driven conditional return to LIR.
   ///
   /// Admits the verified Built MIR shape that

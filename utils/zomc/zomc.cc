@@ -1430,6 +1430,9 @@ private:
             lir = lir::MirToLirLowering::lowerForLoopReturn(functions[0], types);
           }
           if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerForLoopAccumulatorReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
           }
           if (lir == zc::none) {

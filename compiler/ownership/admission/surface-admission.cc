@@ -662,7 +662,8 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
 /// contract.
 ///
 /// The admitted for-loop shape is a bounded slice:
-///   `for (let id = <literal>; <ident> <cmp> <literal>; <ident> = <binary>) {}`
+///   `for (let id = <literal>; <ident> <cmp> <literal>; <ident> = <binary>)
+///    { <body> }`
 ///
 /// - `init` is a `let` declaration with exactly one declarator whose pattern is
 ///   a bare identifier and whose initializer is a scalar literal.
@@ -671,11 +672,13 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
 ///   operators are supported is a checker decision.
 /// - `update` is an assignment expression whose target is a bare identifier
 ///   and whose value is an admitted primitive binary (arithmetic).
-/// - `body` is an empty block in this slice.
+/// - `body` is either an empty block or exactly one admitted loop-body write
+///   (an `<ident> = <ident | literal | admitted primitive binary>;` assignment
+///   that accumulates into a local declared outside the loop).
 ///
 /// Structure only; the checker/HIR decide which local each write targets and
 /// which operators are supported. The loop desugars to `let id = <literal>;
-/// while (<ident> <cmp> <literal>) { <ident> = <binary>; }` downstream.
+/// while (<ident> <cmp> <literal>) { <body> <ident> = <binary>; }` downstream.
 bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
   if (!tree.contains(forStmt) || tree.node(forStmt).kind != ast::SyntaxKind::ForStmt) {
     return false;
@@ -740,13 +743,17 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
       !tree.contains(updateValue) || !isAdmittedPrimitiveBinary(tree, updateValue)) {
     return false;
   }
-  // Body: empty block in this slice.
+  // Body: an empty block, or exactly one admitted loop-body write. The write
+  // accumulates into a local declared outside the loop; its structure is
+  // validated by isAdmittedLoopBodyWrite.
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
-  if (!tree.contains(statements) || !statements.empty()) return false;
-  return true;
+  if (!tree.contains(statements)) return false;
+  if (statements.empty()) return true;
+  if (statements.size != 1) return false;
+  return isAdmittedLoopBodyWrite(tree, tree.list(statements)[0]);
 }
 
 // A nested arithmetic operand is a one-level binary whose own operands are
@@ -1439,7 +1446,8 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       return;
     }
     // An admitted for-loop's init, cond, and update are traversed so their
-    // inner expressions are checked; the body (empty in this slice) is skipped.
+    // inner expressions are checked; the body (empty or one admitted loop-body
+    // write) is skipped, matching the while-loop traversal.
     if (syntax.kind == ast::SyntaxKind::ForStmt &&
         isAdmittedForStatement(boundModule.tree(), nodeId)) {
       const ast::NodeId init(syntax.payload.words[ast::kForStmtInitWord]);

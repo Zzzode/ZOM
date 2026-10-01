@@ -53,5 +53,21 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
 /// statement carries the write node id as its body.
 void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one C-style for-loop accumulator return through the recursive
+/// driver: a leading scalar `let` accumulator local, a `for (let id = <lit>;
+/// <ident> <cmp> <lit>; <ident> = <binary>) { <accumulator> = <accumulator>
+/// <bin> <ident>; }` loop, and a trailing `return <accumulator-local>;`. The
+/// for-loop desugars to a leading accumulator binding, a loop-init binding, a
+/// loop whose condition is the comparison and whose body is the accumulator
+/// write plus the update write, and the local-reference return. Twenty node
+/// ids in fixed layout: function, body, accumulator local, accumulator init
+/// literal, loop-init local, loop-init literal, comparison left, comparison
+/// right, comparison condition, body-write left, body-write right, body-write
+/// binary, body write, update left, update right, update binary, update write,
+/// loop, return, return value reference. The body block lists [accumulator
+/// local, loop-init local, loop, return]; the loop statement carries the
+/// body-write and update-write node ids as its body.
+void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

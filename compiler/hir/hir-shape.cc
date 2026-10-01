@@ -72,6 +72,45 @@ bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Structurally admits one for-loop accumulator body write: an
+// `<ident> = <binary>;` assignment whose binary operands are leaves
+// (identifier or scalar literal), with at least one identifier. The builder
+// resolves which local each operand names; the shape only records the
+// structure. This mirrors the surface-admission loop-body write contract for
+// the binary-value case.
+bool isAccumulatorBodyWrite(const ast::Tree& tree, ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return false;
+  ast::NodeId writeStmt;
+  ZC_IF_SOME(value, item) { writeStmt = value; }
+  if (tree.node(writeStmt).kind != ast::SyntaxKind::ExpressionStatement) return false;
+  const ast::NodeId assignment(
+      tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+  if (!tree.contains(assignment) || tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+      static_cast<ast::AssignmentOperatorKind>(
+          tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
+          ast::AssignmentOperatorKind::Assign) {
+    return false;
+  }
+  const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+  const ast::NodeId value(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(target) || !tree.contains(value) ||
+      tree.node(target).kind != ast::SyntaxKind::IdentExpr ||
+      tree.node(value).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return false;
+  auto isLeaf = [&](ast::NodeId operand) {
+    return tree.node(operand).kind == ast::SyntaxKind::IdentExpr ||
+           isScalarLiteral(tree.node(operand).kind);
+  };
+  const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+  const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+  return isLeaf(left) && isLeaf(right) && (leftIdent || rightIdent);
+}
+
 // One method parameter-list classification: whether the leading declared
 // parameter is the implicit `this` receiver and the count of ordinary declared
 // parameters after it.
@@ -1129,6 +1168,75 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     auto middleItem = statementItem(tree, tree.list(statements)[1]);
     ast::NodeId middleStmt;
     ZC_IF_SOME(item, middleItem) { middleStmt = item; }
+    // For-loop accumulator shape: a leading scalar `let` accumulator local, a
+    // C-style `for` loop whose body writes that accumulator, and a trailing
+    // `return <accumulator-local>;`. The for-loop init/cond/update reuse the
+    // for-loop fields; the accumulator local and the body write are carried for
+    // the builder.
+    if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::ForStmt) {
+      auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+      ast::NodeId letNode;
+      ZC_IF_SOME(item, leadingItem) { letNode = item; }
+      const auto& loop = tree.node(middleStmt);
+      const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
+      const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
+      const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
+      const ast::NodeId forBody(loop.payload.words[ast::kForStmtBodyWord]);
+      if (leadingItem == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
+          static_cast<ast::BindingDeclarationKind>(
+              tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+              ast::BindingDeclarationKind::Mut ||
+          !tree.contains(init) || !tree.contains(cond) || !tree.contains(update) ||
+          !tree.contains(forBody) || tree.node(value).kind != ast::SyntaxKind::IdentExpr) {
+        return zc::none;
+      }
+      const ast::NodeId declarations(
+          tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
+      if (!tree.contains(declarations) ||
+          tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+        return zc::none;
+      }
+      const ast::NodeList declarators{
+          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+      if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
+      const auto declarator = tree.list(declarators)[0];
+      if (!tree.contains(declarator) ||
+          tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+        return zc::none;
+      }
+      const ast::NodeId pattern(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId initializer(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(pattern) ||
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind) ||
+          !matchesLocalReference(tree, pattern, value)) {
+        return zc::none;
+      }
+      // The loop body must be exactly one admitted loop-body write.
+      const auto& loopBlock = tree.node(forBody);
+      const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                         loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+      if (!tree.contains(loopStatements) || loopStatements.size != 1) return zc::none;
+      const auto bodyWriteNode = tree.list(loopStatements)[0];
+      if (!isAccumulatorBodyWrite(tree, bodyWriteNode)) return zc::none;
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.localPattern = pattern;
+      shape.localInitializer = initializer;
+      shape.isForLoopAccumulator = true;
+      shape.forLoopInit = init;
+      shape.forLoopCond = cond;
+      shape.forLoopUpdate = update;
+      shape.forLoopBody = forBody;
+      shape.forLoopStatement = middleStmt;
+      shape.forLoopBodyWrite = bodyWriteNode;
+      return shape;
+    }
     if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt) {
       auto leadingItem = statementItem(tree, tree.list(statements)[0]);
       ast::NodeId letNode;

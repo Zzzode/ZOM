@@ -304,9 +304,11 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-consumer/Zom.toml::for_loop_consumer::for_loop_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-accumulator-consumer/Zom.toml::for_loop_accumulator_consumer::for_loop_accumulator_consumer::45"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
-  set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 60)
+  set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)
 endif()
 add_test(
   NAME package-workspace-build

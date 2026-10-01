@@ -304,6 +304,54 @@ struct PendingForLoopReturn final {
   HirScalarLiteralExpression writeValueRight;
 };
 
+// One admitted C-style `for` loop accumulator return: a leading scalar `let`
+// accumulator local, a `for (let id = <lit>; <ident> <cmp> <lit>;
+// <ident> = <binary>) { <accumulator> = <accumulator> <bin> <ident>; }` loop,
+// and a trailing `return <accumulator-local>;`. The for-loop init/cond/update
+// mirror PendingForLoopReturn; the accumulator local, its initializer, the body
+// write (an arithmetic binary over the accumulator and the loop local), and the
+// return reference are carried here. Every HIR expression carries an empty
+// HirNodeId; the lowering function allocates the node ids.
+struct PendingForLoopAccumulatorReturn final {
+  // The loop condition comparison, resolved to a primitive binary expression.
+  // The left operand is a reference to the init local; the right operand is a
+  // scalar literal.
+  HirPrimitiveBinaryExpression condition;
+  // The comparison's left operand: a place reference to the init local.
+  HirLocalReferenceExpression conditionLeft;
+  // The comparison's right operand: a scalar literal.
+  HirScalarLiteralExpression conditionRight;
+  // The loop's source span.
+  identity::SourceSpan loopSpan;
+  // The init local binding (let declaration with scalar literal initializer).
+  HirLocalBinding local;
+  // The init local's scalar literal initializer.
+  HirScalarLiteralExpression initLiteral;
+  // The update write (assignment with arithmetic binary RHS).
+  HirLocalWriteStatement write;
+  // The update write's arithmetic binary value.
+  HirPrimitiveBinaryExpression writeValue;
+  // The arithmetic's left operand: a place reference to the init local.
+  HirLocalReferenceExpression writeValueLeft;
+  // The arithmetic's right operand: a scalar literal.
+  HirScalarLiteralExpression writeValueRight;
+  // The accumulator local binding (the leading `let sum = <lit>` declaration).
+  HirLocalBinding accumulatorLocal;
+  // The accumulator local's scalar literal initializer.
+  HirScalarLiteralExpression accumulatorInitLiteral;
+  // The body write (`sum = sum + i`), an arithmetic binary over the
+  // accumulator and the loop local.
+  HirLocalWriteStatement bodyWrite;
+  // The body write's arithmetic binary value.
+  HirPrimitiveBinaryExpression bodyWriteValue;
+  // The body arithmetic's left operand: a place reference to the accumulator.
+  HirLocalReferenceExpression bodyWriteLeft;
+  // The body arithmetic's right operand: a place reference to the init local.
+  HirLocalReferenceExpression bodyWriteRight;
+  // The return value: a place reference to the accumulator local.
+  HirLocalReferenceExpression returnReference;
+};
+
 // One receiver field-arithmetic return: `return this.<field> OP
 // <literal>;`. The left operand is a projection of the implicit receiver
 // parameter, the right operand is a scalar literal, and the primitive binary
@@ -368,6 +416,12 @@ struct PendingFunctionDeclaration final {
   // return. The init local, comparison condition, and update write are
   // carried here; the return literal reuses `literal`.
   zc::Maybe<PendingForLoopReturn> forLoopReturn;
+  // Populated for the C-style for-loop accumulator shape: a leading scalar
+  // `let` accumulator local, a `for` loop whose body writes that accumulator,
+  // and a trailing `return <accumulator-local>;`. The accumulator local, the
+  // for-loop init/cond/update, the body write, and the return reference are
+  // carried here; there is no return literal.
+  zc::Maybe<PendingForLoopAccumulatorReturn> forLoopAccumulatorReturn;
   // Populated for the mutating-receiver write-read body: one Overwrite of a
   // field reached through the mutable receiver, plus its scalar literal value.
   zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;

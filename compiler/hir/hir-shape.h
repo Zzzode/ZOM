@@ -248,6 +248,13 @@ struct FunctionReturnShape final {
   ast::NodeId forLoopBody{};
   // The ForStmt node itself, carried for the loop source span.
   ast::NodeId forLoopStatement{};
+  // For-loop accumulator shape: a leading scalar `let` accumulator local, a
+  // C-style `for` loop whose body writes that accumulator, and a trailing
+  // `return <accumulator-local>;`. Reuses the for-loop fields and the
+  // accumulator local fields (localPattern, localInitializer). The body write
+  // AST node is carried for the builder.
+  bool isForLoopAccumulator = false;
+  ast::NodeId forLoopBodyWrite{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,
