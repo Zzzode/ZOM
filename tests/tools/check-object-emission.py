@@ -37,7 +37,10 @@ ELF_MAGIC = b"\x7fELF"
 
 # Matches the hex-byte column of `objdump -s` output, e.g.
 # " 0000 68656c6c 6f00                        hello."
-_OBJDUMP_HEX = re.compile(r"^\s*[0-9a-f]+\s+((?:[0-9a-f]{2,4}\s+)+)")
+# GNU objdump >= 2.47 groups hex bytes in 4-byte (8 hex digit) words; older
+# versions used 2-byte (4 hex digit) groups. Accept any run of 2+ hex digits
+# per group so both formats parse.
+_OBJDUMP_HEX = re.compile(r"^\s*[0-9a-f]+\s+((?:[0-9a-f]{2,}\s+)+)")
 
 
 def emit_case(zomc: str, manifest: str, package: str, binary: str) -> None:
