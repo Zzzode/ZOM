@@ -1,0 +1,5 @@
+section: "08-adt inherent method receiver field arithmetic"
+covers_rule: "methodDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Mutating receiver field-arithmetic method lowers through the HIR/MIR/LIR pipeline."

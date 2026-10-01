@@ -1,0 +1,12 @@
+// A mutating-receiver method whose body reads a field and returns arithmetic
+// lowers like the shared field-arithmetic method: the field projection is a
+// place read through the mutable receiver pointer, and the arithmetic result
+// flows into the return. The module initializer returns 42.
+struct Cell {
+  value: i32,
+  mutating fun plus(this) -> i32 { return this.value + 1; }
+}
+fun entry() -> i32 {
+  mut cell = Cell { value: 41 };
+  return cell.plus();
+}

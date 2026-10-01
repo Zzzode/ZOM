@@ -11,7 +11,7 @@
 namespace zomlang::compiler::hir {
 namespace detail {
 
-/// \brief Lowers one shared-receiver field-arithmetic method through the
+/// \brief Lowers one receiver field-arithmetic method through the
 /// recursive driver: `return this.<field> OP <literal>;`. The field projects
 /// off the implicit receiver parameter into its own id, the scalar literal
 /// lowers into its own id, the primitive-binary node combines them into its

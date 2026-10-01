@@ -267,6 +267,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-fieldread-consumer/Zom.toml::receiver_mut_fieldread_consumer::receiver_mut_fieldread_consumer::42"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-fieldarith-consumer/Zom.toml::receiver_mut_fieldarith_consumer::receiver_mut_fieldarith_consumer::42"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-local-consumer/Zom.toml::receiver_local_consumer::receiver_local_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-conditional-consumer/Zom.toml::receiver_conditional_consumer::receiver_conditional_consumer::42"

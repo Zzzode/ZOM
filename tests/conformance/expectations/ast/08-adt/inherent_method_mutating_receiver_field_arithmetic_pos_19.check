@@ -1,7 +1,7 @@
-// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_mutating_receiver_field_arithmetic_neg_22.zom | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/08-adt/inherent_method_mutating_receiver_field_arithmetic_pos_19.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #39 @1:1..9:1 file_name="inherent_method_mutating_receiver_field_arithmetic_neg_22.zom"
+// CHECK: SourceFile #39 @1:1..9:1 file_name="inherent_method_mutating_receiver_field_arithmetic_pos_19.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #18 @1:1..4:2

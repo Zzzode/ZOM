@@ -993,7 +993,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
-  // Shared-receiver field-arithmetic methods (`return this.<field> OP
+  // Receiver field-arithmetic methods (`return this.<field> OP
   // <literal>;`) derived from the source shapes. Each materializes one pooled
   // primitive binary plus a parameter-field projection, so like the sequential
   // binary tally this count is subtracted back when deriving the pooled
@@ -5577,13 +5577,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         continue;
       }
     }
-    // Receiver-field arithmetic method shape: a shared-receiver inherent method
-    // with no ordinary parameters whose body is the single statement
-    // `return this.<field> OP <literal>;`. Six node ids: function, body, field
-    // projection, literal, primitive binary, return. The branch is
+    // Receiver-field arithmetic method shape: a shared or mutable receiver
+    // inherent method with no ordinary parameters whose body is the single
+    // statement `return this.<field> OP <literal>;`. Six node ids: function,
+    // body, field projection, literal, primitive binary, return. The branch is
     // self-contained: it validates the source shape, the receiver-keyed member
     // and place facts, the literal and arithmetic call facts, and the method
-    // header before advancing past six nodes.
+    // header before advancing past six nodes. The field projection is a place
+    // read; the place mutability follows the receiver mode and is not
+    // constrained because the body never writes through it.
     {
       auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
       if (sourceDefinitionIndex != zc::none) {
@@ -5687,8 +5689,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            // Method header: member-signature scope, shared receiver matching the
-            // header, zero ordinary parameters, and matching linkage/visibility.
+            // Method header: member-signature scope, shared or mutable
+            // receiver matching the header, zero ordinary parameters, and
+            // matching linkage/visibility.
             auto signaturePosition =
                 signatureIndex(signatures.definitions.asPtr(), function.definition);
             if (signaturePosition == zc::none) {
@@ -5716,8 +5719,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             if (memberScope.owner == function.definition || callable.raises != zc::none ||
                 callable.success != function.resultType || callable.parameters.size() != 0 ||
                 function.parameters.size() != 0 || callable.receiver == zc::none ||
-                ZC_ASSERT_NONNULL(callable.receiver).mode !=
-                    checker::signature::ReceiverMode::Shared ||
+                (ZC_ASSERT_NONNULL(callable.receiver).mode !=
+                     checker::signature::ReceiverMode::Shared &&
+                 ZC_ASSERT_NONNULL(callable.receiver).mode !=
+                     checker::signature::ReceiverMode::Mutable) ||
                 ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
                 expectedLinkage == zc::none ||
                 !sameVisibility(function.visibility, expectedVisibility) ||
@@ -5746,9 +5751,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            // The receiver parameter carries the shared reference `&Owner`; its
-            // referent must equal the projection's receiver type and the
-            // receiver must be shared.
+            // The receiver parameter carries a reference `&Owner` or
+            // `&mut Owner`; its referent must equal the projection's receiver
+            // type.
             auto receiverLookup = semanticTypes.get(receiver.type);
             if (!receiverLookup.is<type::SemanticTypeLookup>() ||
                 !receiverLookup.get<type::SemanticTypeLookup>()
@@ -5766,15 +5771,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            if (receiverReference.mutability != type::semantic::Mutability::Const) {
-              // A field-arithmetic body is admitted only through a shared
-              // receiver; a mutable receiver is well-formed source the current
-              // lowering does not emit. Drain the owning definition with the
-              // capability code rather than an invariant.
-              return rejectHirCapability<VerifiedHirModule>(
-                  function.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-                  sourceDefinition.source.clone());
-            }
+            // Both shared and mutable receivers are admitted: the body only
+            // reads the field, so the receiver mutability does not affect the
+            // arithmetic lowering.
             auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
             auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
             auto fieldSpan = bound.parsedModule().spanFor(tree.node(fieldSourceNode).range);
@@ -5827,7 +5826,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 memberFact.receiverType != projection.receiverType ||
                 memberFact.member != projection.field || memberFact.memberType != projection.type ||
                 memberFact.adjustment != zc::none || placeFact.node != fieldSourceNode ||
-                placeFact.type != projection.type || placeFact.mutablePlace || !placeFact.movable ||
+                placeFact.type != projection.type || !placeFact.movable ||
                 !placeFact.root.variant().is<checker::checked::CallableParameterPlaceRoot>() ||
                 placeFact.projections.size() != 1 ||
                 !placeFact.projections[0].variant().is<checker::checked::FieldProjection>() ||

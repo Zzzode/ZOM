@@ -269,7 +269,7 @@ struct PendingLoopBodyReturn final {
   zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
-// One shared-receiver field-arithmetic return: `return this.<field> OP
+// One receiver field-arithmetic return: `return this.<field> OP
 // <literal>;`. The left operand is a projection of the implicit receiver
 // parameter, the right operand is a scalar literal, and the primitive binary
 // result flows into the return. The field projection is a place read; its type
@@ -338,7 +338,7 @@ struct PendingFunctionDeclaration final {
   // binding), the receiver is a parameter reference and there is no local or
   // aggregate carrier.
   zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
-  // Populated for the shared-receiver field-arithmetic body:
+  // Populated for the receiver field-arithmetic body:
   // `return this.<field> OP <literal>;` projects one field off the implicit
   // receiver and combines it with a scalar literal.
   zc::Maybe<PendingReceiverFieldArithmetic> receiverFieldArithmetic;

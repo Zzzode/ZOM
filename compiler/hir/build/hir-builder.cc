@@ -4801,13 +4801,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                registries, ordinal + 2);
         }
       } else if (shape.returnsReceiverFieldArithmetic) {
-        // Shared-receiver field arithmetic: `return this.<field> OP <literal>;`
+        // Receiver-field arithmetic: `return this.<field> OP <literal>;`
         // (or the mirrored operand order). The binary result type is the field
         // type. The field operand reuses the receiver-field projection facts;
         // the literal operand consumes its checked literal fact and the binary
-        // its checked primitive-arithmetic call fact. A field read through a
-        // mutable receiver keeps the same capability drain as the plain
-        // receiver-field return.
+        // its checked primitive-arithmetic call fact. Both shared and mutable
+        // receivers are admitted: the body only reads the field, so the
+        // receiver mutability does not affect the arithmetic lowering.
         const bool fieldIsLeft = !shape.comparisonLeftIsLiteral;
         const ast::NodeId fieldNode = fieldIsLeft ? shape.comparisonLeft : shape.comparisonRight;
         const ast::NodeId literalNode = fieldIsLeft ? shape.comparisonRight : shape.comparisonLeft;
@@ -4902,14 +4902,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
-        }
-        if (receiverLookup.get<type::SemanticTypeLookup>()
-                .data()
-                .get<type::semantic::ReferenceTypeData>()
-                .mutability != type::semantic::Mutability::Const) {
-          return rejectHirCapability<HirModuleCandidate>(
-              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-              definition.source.clone());
         }
         auto fieldProjection =
             HirParameterFieldProjectionExpression{HirNodeId(),
@@ -6374,7 +6366,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // node-type fact than a binary comparison return because the synthetic operand
   // has no AST node and therefore no checker-produced node type.
   size_t unaryReturnCount = 0;
-  // Shared-receiver field-arithmetic methods (`return this.<field> OP
+  // Receiver field-arithmetic methods (`return this.<field> OP
   // <literal>;`). Each carries three node-type facts beyond the per-function
   // baseline (the receiver `this`, the field projection, and the literal; the
   // binary result is the baseline), one member and place fact, and one
@@ -7149,7 +7141,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Shared-receiver field arithmetic: `return this.<field> OP <literal>;`
+    // Receiver field arithmetic: `return this.<field> OP <literal>;`
     // with an implicit receiver and no ordinary parameters. Six node ids:
     // function, body, field projection, literal, binary, return.
     if (value.receiverFieldArithmetic != zc::none && value.literal == zc::none &&

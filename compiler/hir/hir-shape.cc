@@ -935,10 +935,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       return shape;
     }
     // The receiver-field arithmetic tail: `return this.<field> OP <literal>`
-    // (or the mirrored operand order) on a shared receiver with no ordinary
-    // parameters. Exactly one operand is a `this.<field>` dot projection and
-    // the other is a scalar literal; parameter and nested operands keep their
-    // own shapes. The operator family is a checker decision.
+    // (or the mirrored operand order) on a shared or mutable receiver with no
+    // ordinary parameters. Exactly one operand is a `this.<field>` dot
+    // projection and the other is a scalar literal; parameter and nested
+    // operands keep their own shapes. The operator family is a checker
+    // decision.
     if (tree.node(value).kind == ast::SyntaxKind::BinaryExpr && hasReceiver && ordinaryCount == 0 &&
         isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
             tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
