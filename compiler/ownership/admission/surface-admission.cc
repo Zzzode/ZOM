@@ -845,8 +845,9 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
 // Structurally admits a two-arm boolean match: `match (b) { when true => return
 // <lit>; when false => return <lit>; }` (block-bodied arms are also admitted).
 // The scrutinee is a bare identifier (a bool parameter reference); each arm
-// pattern is a bool literal (one true, one false, no duplicates); guards are
-// not admitted; each arm body tails a scalar-literal return. The HIR builder
+// pattern is a bool literal (one true, one false, no duplicates) or one arm is
+// a `default` (wildcard) arm covering the remaining bool value; guards are not
+// admitted; each arm body tails a scalar-literal return. The HIR builder
 // lowers this to the same conditional path as a bare-parameter `if`, so the
 // admitted surface is exactly the conditional surface.
 bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
@@ -861,6 +862,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   if (!tree.contains(arms) || arms.size != 2) return false;
   bool sawTrue = false;
   bool sawFalse = false;
+  bool sawDefault = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return false;
@@ -869,20 +871,25 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
     if (tree.contains(guard)) return false;
     const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
-    if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
-      return false;
-    }
-    const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
-    if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
-      return false;
-    }
-    const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
-    if (value) {
-      if (sawTrue) return false;
-      sawTrue = true;
+    if (!tree.contains(pattern)) return false;
+    if (tree.node(pattern).kind == ast::SyntaxKind::LiteralPattern) {
+      const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+      if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+        return false;
+      }
+      const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
+      if (value) {
+        if (sawTrue) return false;
+        sawTrue = true;
+      } else {
+        if (sawFalse) return false;
+        sawFalse = true;
+      }
+    } else if (tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
+      if (sawDefault) return false;
+      sawDefault = true;
     } else {
-      if (sawFalse) return false;
-      sawFalse = true;
+      return false;
     }
     const ast::NodeId body(arm.payload.words[ast::kMatchArmStmtBodyWord]);
     if (!tree.contains(body)) return false;
@@ -905,7 +912,8 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       return false;
     }
   }
-  return sawTrue && sawFalse;
+  // Two literal arms (true + false), or one literal arm plus one default arm.
+  return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }
 
 // Structurally admits `return <identifier>.<field>;` in a statement-less

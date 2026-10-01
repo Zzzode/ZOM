@@ -148,6 +148,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-default-consumer/Zom.toml::match_default_consumer::match_default_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/loop-consumer/Zom.toml::loop_consumer::loop_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/equality-consumer/Zom.toml::equality_consumer::equality_consumer"
@@ -316,6 +318,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-default-consumer/Zom.toml::match_default_consumer::match_default_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)

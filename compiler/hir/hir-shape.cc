@@ -331,9 +331,11 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
 // Classifies one statement as the match-return shape: a two-arm boolean match
 // whose scrutinee is a bare identifier (a bool parameter reference) and whose
 // arms each tail-return a scalar literal, one for `true` and one for `false`.
-// The shape reuses the conditional fields (`condition`, `thenReturnValue`,
-// `elseReturnValue`) so the HIR builder lowers it through the bare-parameter
-// conditional path. Returns none for every other statement.
+// One arm may instead be a `default` (wildcard) arm covering the remaining
+// bool value. The shape reuses the conditional fields (`condition`,
+// `thenReturnValue`, `elseReturnValue`) so the HIR builder lowers it through
+// the bare-parameter conditional path. Returns none for every other
+// statement.
 zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::NodeId body,
                                                 ast::NodeId statement) {
   if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::MatchStmt) {
@@ -349,6 +351,8 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   if (!tree.contains(arms) || arms.size != 2) return zc::none;
   zc::Maybe<ast::NodeId> trueValue;
   zc::Maybe<ast::NodeId> falseValue;
+  zc::Maybe<ast::NodeId> defaultValue;
+  bool sawDefault = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
@@ -357,14 +361,25 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
     const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
     if (tree.contains(guard)) return zc::none;
     const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
-    if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+    if (!tree.contains(pattern)) return zc::none;
+    // A literal pattern carries its bool value explicitly; a wildcard
+    // (default) arm covers the remaining bool value and is assigned after
+    // both arms are read.
+    bool isLiteral = false;
+    bool literalValue = false;
+    if (tree.node(pattern).kind == ast::SyntaxKind::LiteralPattern) {
+      const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+      if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+        return zc::none;
+      }
+      isLiteral = true;
+      literalValue = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
+    } else if (tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
+      if (sawDefault) return zc::none;
+      sawDefault = true;
+    } else {
       return zc::none;
     }
-    const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
-    if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
-      return zc::none;
-    }
-    const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
     const ast::NodeId armBody(arm.payload.words[ast::kMatchArmStmtBodyWord]);
     if (!tree.contains(armBody)) return zc::none;
     ast::NodeId returnStmt;
@@ -385,15 +400,30 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
     if (!tree.contains(returnValue) || !isScalarLiteral(tree.node(returnValue).kind)) {
       return zc::none;
     }
-    if (value) {
-      if (trueValue != zc::none) return zc::none;
-      trueValue = returnValue;
+    if (isLiteral) {
+      if (literalValue) {
+        if (trueValue != zc::none) return zc::none;
+        trueValue = returnValue;
+      } else {
+        if (falseValue != zc::none) return zc::none;
+        falseValue = returnValue;
+      }
     } else {
-      if (falseValue != zc::none) return zc::none;
-      falseValue = returnValue;
+      defaultValue = returnValue;
     }
   }
-  if (trueValue == zc::none || falseValue == zc::none) return zc::none;
+  // Assign the default arm to the missing bool value.
+  if (sawDefault) {
+    if (trueValue != zc::none && falseValue == zc::none) {
+      falseValue = defaultValue;
+    } else if (falseValue != zc::none && trueValue == zc::none) {
+      trueValue = defaultValue;
+    } else {
+      return zc::none;
+    }
+  } else if (trueValue == zc::none || falseValue == zc::none) {
+    return zc::none;
+  }
   ast::NodeId trueNode;
   ast::NodeId falseNode;
   ZC_IF_SOME(value, trueValue) { trueNode = value; }
@@ -404,6 +434,7 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   shape.value = statement;
   shape.isConditional = true;
   shape.isMatchReturn = true;
+  shape.matchHasDefaultArm = sawDefault;
   shape.condition = scrutinee;
   shape.thenReturnValue = trueNode;
   shape.elseReturnValue = falseNode;

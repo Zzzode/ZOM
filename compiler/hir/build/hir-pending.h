@@ -197,6 +197,10 @@ struct PendingConditionalReturn final {
   // match statement. The match statement and its scrutinee expression produce
   // two extra node-type facts the count equations must credit.
   bool isMatchReturn = false;
+  // True when the match-return has a default (wildcard) arm instead of a
+  // second literal arm. The default arm produces one fewer pattern-literal
+  // fact, which the count equations must subtract.
+  bool hasDefaultArm = false;
 };
 
 // One comparison-condition operand in a leading-local conditional body: a

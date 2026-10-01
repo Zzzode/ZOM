@@ -1532,9 +1532,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ordinal + 2);
         }
         {
-          auto conditionalReturn = PendingConditionalReturn{
-              zc::mv(pendingCondition), zc::mv(ZC_ASSERT_NONNULL(thenArm)),
-              zc::mv(ZC_ASSERT_NONNULL(elseArm)), valueSpanValue.clone(), shape.isMatchReturn};
+          auto conditionalReturn = PendingConditionalReturn{zc::mv(pendingCondition),
+                                                            zc::mv(ZC_ASSERT_NONNULL(thenArm)),
+                                                            zc::mv(ZC_ASSERT_NONNULL(elseArm)),
+                                                            valueSpanValue.clone(),
+                                                            shape.isMatchReturn,
+                                                            shape.matchHasDefaultArm};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
                                                           zc::mv(parameters),
@@ -6916,6 +6919,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // AST nodes (the MatchStmt and its scrutinee expression) that the checker
   // produces node-type facts for, so the nodeTypes equation credits them here.
   size_t matchReturnCount = 0;
+  // Match-return shapes whose second arm is a default (wildcard) arm. Such a
+  // match has one pattern literal instead of two, so both the nodeTypes and
+  // literals equations subtract one per default arm.
+  size_t matchDefaultArmCount = 0;
   // Ternary conditional-expression bindings in sequential local return bodies.
   // Each materializes one HirConditionalExpression (the binding initializer,
   // counted by localReturnCount) plus its condition and two arm-literal
@@ -7205,7 +7212,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.conditionalReturn != zc::none) {
       ++conditionalCount;
       ZC_IF_SOME(conditional, function.conditionalReturn) {
-        if (conditional.isMatchReturn) { ++matchReturnCount; }
+        if (conditional.isMatchReturn) {
+          ++matchReturnCount;
+          if (conditional.hasDefaultArm) { ++matchDefaultArmCount; }
+        }
         ZC_IF_SOME(equality, conditional.condition.equality) {
           ++equalityConditionalCount;
           if (equality.isUnaryDesugar) { ++unaryReturnCount; }
@@ -7528,13 +7538,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
       receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount * 3 + localBorrowCount +
       unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 +
-      matchReturnCount * 2 + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
-      sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
-      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
-      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      sequentialTernaryCount * 3 + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
-      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
+      unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
+      parameterFieldWriteCount * 4 + discardedStatementCallCount +
+      leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 15;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7551,13 +7561,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount -
           binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
           aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
-          receiverCallFieldArgumentCount + conditionalLiteralArmCount + matchReturnCount * 2 +
-          equalityLiteralOperandCount - conditionalCount + comparisonReturnLiteralOperandCount -
-          comparisonReturnCount - unaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
-          directAggregateCallCount + directScalarLocalCallCount +
-          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
-          leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount -
-          postfixIncrementWriteCount + static_cast<int64_t>(forLoopReturnCount) * 3 +
+          receiverCallFieldArgumentCount + conditionalLiteralArmCount + matchReturnCount * 2 -
+          matchDefaultArmCount + equalityLiteralOperandCount - conditionalCount +
+          comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
+          binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
+          directScalarLocalCallCount + leadingLocalConditionalBindingCount +
+          leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
+          leadingLocalConditionalBinaryLiteralOperandCount - postfixIncrementWriteCount +
+          static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 4 -
           static_cast<int64_t>(forLoopAccumulatorReturnCount)) +
       sequentialLiteralAdjustment;

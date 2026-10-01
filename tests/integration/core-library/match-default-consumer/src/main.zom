@@ -1,0 +1,14 @@
+// Match-default backend-lowering fixture: a two-arm boolean match with one
+// literal arm and one `default` arm on a bool parameter that lowers through
+// the conditional return path to a verified LLVM relocatable object. The
+// default arm covers the remaining bool value (false). The parameter-free
+// entry calls the match function with a constant bool argument and folds to
+// the reserved no-argument i32 `zom.module_init` entry the runtime `_start`
+// calls, so `zomc run` executes it natively.
+fun matchDefault(b: bool) -> i32 {
+    match (b) {
+        when true => return 41;
+        default => return 7;
+    }
+}
+fun entry() -> i32 { let x = matchDefault(true); return x; }

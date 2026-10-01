@@ -660,6 +660,32 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // facts for. Each match-return shape produces one exhaustiveness fact, so
   // the fact count gives the match-return count.
   const auto matchReturnCount = facts.exhaustiveness().size();
+  // A match-return with a default (wildcard) arm has one pattern literal
+  // instead of two, so both the nodeTypes and literals equations subtract one
+  // per default arm. Derive the count from the same exhaustiveness facts that
+  // give matchReturnCount, inspecting each match's arms in the AST.
+  size_t matchDefaultArmCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.exhaustiveness().entries()) {
+      if (!tree.contains(entry.value.node)) continue;
+      const auto& matchNode = tree.node(entry.value.node);
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!tree.contains(arms)) continue;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = tree.list(arms)[index];
+        if (!tree.contains(armId)) continue;
+        const auto& arm = tree.node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (tree.contains(pattern) && tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
+          ++matchDefaultArmCount;
+          break;
+        }
+      }
+    }
+  }
   // equalityConditionalCount is derived below, after the sequential-binary tally,
   // because the primitiveBinaryOperations vector pools conditional/comparison
   // binaries with sequential-local binary initializers.
@@ -1305,13 +1331,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverCallArgumentCount + receiverCallFieldArgumentCount +
               receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
               effectiveConditionalCount * 2 + equalityConditionalCount * 2 - unaryReturnCount +
-              matchReturnCount * 2 + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-              parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
-              parameterFieldWriteCount * 4 + discardedStatementCallCount +
-              sequentialCastInitializers + sequentialTernaryCount * 3 -
-              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
-              compoundAssignmentWriteCount * 2 ||
+              matchReturnCount * 2 - matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 +
+              binaryWriteCount * 2 + parameterFieldProjectionCount +
+              receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
+              discardedStatementCallCount + sequentialCastInitializers +
+              sequentialTernaryCount * 3 - leadingLocalConditionalUnaryCount -
+              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
+              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1320,9 +1346,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount -
               receiverCallFieldArgumentCount + effectiveConditionalCount * 2 +
-              matchReturnCount * 2 + equalityConditionalCount - unaryReturnCount + loopCount +
-              binaryWriteCount + parameterFieldWriteCount + receiverFieldArithmeticCount +
-              directAggregateCallCount + directScalarLocalCallCount) +
+              matchReturnCount * 2 - matchDefaultArmCount + equalityConditionalCount -
+              unaryReturnCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
+              receiverFieldArithmeticCount + directAggregateCallCount +
+              directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
               leadingLocalConditionalArithmeticParameterCount +
