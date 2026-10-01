@@ -287,8 +287,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // Concrete-to-dyn erasure is accepted and verified by the checker but the
   // HIR/MIR erasure carrier (existential locals, vtable construction) is not
   // built yet. Fail closed as a per-definition capability rejection projected
-  // to ZOM4099, never as an invariant and never silently scalar-lowered. Any
-  // other coercion shape stays an invariant rejection.
+  // to ZOM4099, never as an invariant and never silently scalar-lowered. An
+  // AnnotatedInitializer coercion whose erased local is never read (dead
+  // erase) is admitted: the binding is skipped during sequential-local-return
+  // lowering, so no existential carrier is needed. Any other coercion shape
+  // stays an invariant rejection.
+  zc::Vector<ast::NodeId> deadEraseInitializers;
   if (facts.coercions().size() != 0) {
     // Validate every coercion before admitting any capability failure, so a
     // malformed entry can never be masked by an earlier well-formed one.
@@ -303,9 +307,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              ir::IrFailureKind::InvalidFact, module, registries, 3);
       }
     }
-    // All coercions are well-formed single DynErase steps; reject the first
-    // one's enclosing definition as an unsupported construct.
+    // All coercions are well-formed single DynErase steps. Admit a dead-erase
+    // AnnotatedInitializer coercion; reject the first non-admitted one's
+    // enclosing definition as an unsupported construct.
     for (const auto& entry : facts.coercions().entries()) {
+      if (entry.value.site == checker::checked::CoercionSite::AnnotatedInitializer &&
+          isDeadErasedInitializer(bound.tree(), bound.definitions(), entry.key)) {
+        deadEraseInitializers.add(entry.key);
+        continue;
+      }
       const auto owner =
           enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key);
       return rejectHirCapability<HirModuleCandidate>(ZC_ASSERT_NONNULL(owner), registries,
@@ -2846,6 +2856,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
       zc::Maybe<HirLocalBorrowExpression> localBorrow;
+      zc::Vector<SequentialLocalBinding> deadBindings;
       if (shape.isSequentialLocalReturn) {
         auto sequentialShapeMaybe = sequentialLocalShape(tree, shape.body);
         if (sequentialShapeMaybe == zc::none) {
@@ -2855,6 +2866,38 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         SequentialLocalShape sequentialShape{};
         ZC_IF_SOME(value, sequentialShapeMaybe) { sequentialShape = zc::mv(value); }
+        // Dead-erase slice: skip the erasure cone (the erased local and its
+        // transitively-dead concrete source) so only scalar locals reach
+        // MIR/LIR. Unrelated dead scalar locals stay in the shape. The
+        // verifier performs the same filter, guaranteeing one identical
+        // node-id layout. The MIR sequential-local-return classifier requires
+        // at least two statements, so a filtered shape with fewer than two
+        // bindings is rejected.
+        {
+          const auto dead = deadSequentialBindings(tree, sequentialShape);
+          const auto removed =
+              erasureRelatedDeadBindings(tree, sequentialShape, dead, deadEraseInitializers);
+          bool anyRemoved = false;
+          for (const bool isRemoved : removed) {
+            if (isRemoved) anyRemoved = true;
+          }
+          if (anyRemoved) {
+            // Collect removed bindings for the fact count validation. The
+            // checker produces facts for every binding; the filter skips
+            // removed ones, so the count validation must add their
+            // contributions back.
+            for (size_t i = 0; i < sequentialShape.bindings.size(); ++i) {
+              if (removed[i]) deadBindings.add(sequentialShape.bindings[i]);
+            }
+            auto filtered = filterDeadSequentialBindings(sequentialShape, removed);
+            if (filtered.bindings.size() < 2) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            sequentialShape = zc::mv(filtered);
+          }
+        }
         const auto returnTypeIndex = factIndex(facts.nodeTypes(), sequentialShape.returnValue);
         if (returnTypeIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3625,9 +3668,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
-        PendingSequentialLocalReturn sequential{zc::mv(pendingBindings), sequentialType,
-                                                zc::mv(returnParameter), returnLocal,
-                                                ZC_ASSERT_NONNULL(returnValueSpan).clone()};
+        PendingSequentialLocalReturn sequential{zc::mv(pendingBindings),
+                                                sequentialType,
+                                                zc::mv(returnParameter),
+                                                returnLocal,
+                                                ZC_ASSERT_NONNULL(returnValueSpan).clone(),
+                                                zc::mv(deadBindings)};
         pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                         callable.success,
                                                         zc::mv(parameters),
@@ -7061,6 +7107,57 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               ++literalBearingSlots;
               if (binding.ternaryConditionIsLiteral) { ++literalBearingSlots; }
+              break;
+          }
+        }
+        // Dead-erase slice: count the dead bindings' fact contributions. The
+        // checker produces facts for every binding; the filter skips dead ones,
+        // so the count validation must add their node types, literals,
+        // aggregates, and calls back to the expected counts.
+        for (const auto& dead : sequential.deadBindings) {
+          ++localReturnCount;
+          switch (dead.initializerKind) {
+            case SequentialInitializerKind::Literal:
+              ++literalBearingSlots;
+              break;
+            case SequentialInitializerKind::Aggregate: {
+              ++aggregateCount;
+              ++literalBearingSlots;
+              auto aggregateIndex = factIndex(facts.aggregates(), dead.initializer);
+              if (aggregateIndex != zc::none) {
+                size_t aggregateSlot = 0;
+                ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+                aggregateElementCount +=
+                    facts.aggregates().entries()[aggregateSlot].value.elements.size();
+              }
+              break;
+            }
+            case SequentialInitializerKind::LocalReference:
+            case SequentialInitializerKind::ParameterReference:
+              break;
+            case SequentialInitializerKind::PrimitiveUnary:
+              ++sequentialBinaryCount;
+              ++literalBearingSlots;
+              ++unaryReturnCount;
+              break;
+            case SequentialInitializerKind::PrimitiveBinary:
+              ++sequentialBinaryCount;
+              ZC_IF_SOME(left, dead.leftOperand) {
+                if (left.kind == SequentialBinaryOperandKind::Literal) ++literalBearingSlots;
+              }
+              ZC_IF_SOME(right, dead.rightOperand) {
+                if (right.kind == SequentialBinaryOperandKind::Literal) ++literalBearingSlots;
+              }
+              break;
+            case SequentialInitializerKind::Cast:
+              ++castCount;
+              ++literalBearingSlots;
+              break;
+            case SequentialInitializerKind::Ternary:
+              ++sequentialTernaryCount;
+              ++literalBearingSlots;
+              ++literalBearingSlots;
+              if (dead.ternaryConditionIsLiteral) { ++literalBearingSlots; }
               break;
           }
         }

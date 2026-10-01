@@ -599,6 +599,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   const auto& facts = candidate.impl->checkedModule.checkedFacts();
   const auto bound = candidate.impl->checkedModule.retainAdmittedBoundModule();
   const auto& definitions = bound.definitions();
+  // Dead-erase slice: the admitted dead-erase initializer nodes, derived from
+  // the same checked facts the builder drained. Both the builder and the
+  // verifier restrict their dead-binding filter to this erasure cone, so the
+  // two derive one identical filtered shape.
+  const auto deadEraseInitializers = deadEraseInitializerNodes(bound.tree(), definitions, facts);
   const auto& signatures = candidate.impl->checkedModule.ownModuleInterface().signatures();
   const auto declarationCount = candidate.impl->declarations.size();
   const auto functionCount = candidate.impl->functions.size();
@@ -634,13 +639,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // facts, but owns no expression/literal record, so the per-function baseline
   // must be corrected exactly like a direct call.
   size_t receiverSelfCallCount = 0;
-  const auto localReturnCount = candidate.impl->locals.size();
+  size_t localReturnCount = candidate.impl->locals.size();
   const auto localWriteCount = candidate.impl->localWrites.size();
   const auto parameterReferenceCount = candidate.impl->parameterReferences.size();
   const auto parameterIndexCount = candidate.impl->parameterIndexes.size();
   const auto parameterReborrowCount = candidate.impl->parameterReborrows.size();
   const auto localBorrowCount = candidate.impl->localBorrows.size();
-  const auto aggregateCount = candidate.impl->aggregates.size();
+  size_t aggregateCount = candidate.impl->aggregates.size();
   const auto localFieldProjectionCount = candidate.impl->localFieldProjections.size();
   const auto parameterFieldProjectionCount = candidate.impl->parameterFieldProjections.size();
   const auto parameterFieldWriteCount = candidate.impl->parameterFieldWrites.size();
@@ -738,6 +743,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // sequentialLiteralCorrection does not compensate for them. Tracked to add
   // them back.
   size_t sequentialTernaryParameterConditions = 0;
+  // Dead-erase slice: bindings skipped by the builder's dead-binding filter.
+  // The checker produces facts for every binding, so the HIR-node-based counts
+  // (localReturnCount, aggregateCount, aggregateElementCount) must add the dead
+  // bindings back to match the fact totals. The pre-pass corrections below
+  // already count all bindings, so only the HIR-node-based counts need this.
+  size_t deadLocalReturnCount = 0;
+  size_t deadAggregateCount = 0;
+  // Dead bindings' fact contributions beyond the per-binding local node type.
+  // These are added to the expected counts because the checker produces facts
+  // for every binding but the HIR only has nodes for live bindings.
+  size_t deadNodeTypesExtra = 0;
+  size_t deadLiterals = 0;
+  size_t deadCalls = 0;
+  size_t deadCasts = 0;
   {
     const auto& tree = bound.tree();
     for (const auto& functionDeclaration : candidate.impl->functions) {
@@ -757,10 +776,74 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (!sequential) continue;
       auto sequentialShape = sequentialLocalShape(tree, sourceBody);
       ZC_IF_SOME(value, sequentialShape) {
+        // Dead-erase slice: identify the erasure-cone removed bindings. The
+        // corrections below count only kept bindings (the HIR has no nodes for
+        // removed ones); the removed bindings' fact contributions are tracked
+        // separately and added to the expected counts in the equations below.
+        const auto dead = deadSequentialBindings(tree, value);
+        const auto removed = erasureRelatedDeadBindings(tree, value, dead, deadEraseInitializers);
         ++sequentialFunctionCount;
-        sequentialLocalCount += value.bindings.size();
         for (size_t bindingIndex = 0; bindingIndex < value.bindings.size(); ++bindingIndex) {
           const auto& binding = value.bindings[bindingIndex];
+          if (removed[bindingIndex]) {
+            // Track the removed binding's fact contributions. The checker
+            // produces facts for every binding; the HIR only has nodes for
+            // kept ones, so the expected counts must add the removed facts.
+            ++deadLocalReturnCount;
+            switch (binding.initializerKind) {
+              case SequentialInitializerKind::Literal:
+                ++deadLiterals;
+                break;
+              case SequentialInitializerKind::Aggregate: {
+                ++deadAggregateCount;
+                auto aggregateIndex = factIndex(facts.aggregates(), binding.initializer);
+                if (aggregateIndex != zc::none) {
+                  size_t aggregateSlot = 0;
+                  ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+                  const auto elementCount =
+                      facts.aggregates().entries()[aggregateSlot].value.elements.size();
+                  deadNodeTypesExtra += elementCount;
+                  deadLiterals += elementCount;
+                }
+                break;
+              }
+              case SequentialInitializerKind::LocalReference:
+              case SequentialInitializerKind::ParameterReference:
+                break;
+              case SequentialInitializerKind::PrimitiveUnary:
+                // Desugars to a binary: 1 extra node-type (the binary) plus
+                // 1 call fact. The synthetic literal operand has no checker
+                // fact (subtracted by unaryReturnCount for live bindings).
+                ++deadNodeTypesExtra;
+                ++deadCalls;
+                break;
+              case SequentialInitializerKind::PrimitiveBinary:
+                ++deadNodeTypesExtra;
+                ++deadNodeTypesExtra;
+                ++deadCalls;
+                for (const auto* operand : {&binding.leftOperand, &binding.rightOperand}) {
+                  ZC_IF_SOME(operandValue, *operand) {
+                    if (operandValue.kind == SequentialBinaryOperandKind::Literal) {
+                      ++deadLiterals;
+                    }
+                  }
+                }
+                break;
+              case SequentialInitializerKind::Cast:
+                ++deadNodeTypesExtra;
+                ++deadLiterals;
+                ++deadCasts;
+                break;
+              case SequentialInitializerKind::Ternary:
+                deadNodeTypesExtra += 3;
+                ++deadLiterals;
+                ++deadLiterals;
+                if (binding.ternaryConditionIsLiteral) { ++deadLiterals; }
+                break;
+            }
+            continue;
+          }
+          ++sequentialLocalCount;
           switch (binding.initializerKind) {
             case SequentialInitializerKind::Literal:
               ++sequentialLiteralInitializers;
@@ -865,6 +948,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // Dead-erase slice: the checker produces facts for every binding, but the
+  // builder only emits HIR nodes for live bindings. The corrections above
+  // count only live bindings; the dead bindings' fact contributions are
+  // tracked separately (deadLocalReturnCount, deadNodeTypesExtra, deadLiterals,
+  // deadCalls, deadCasts, deadAggregateCount) and added to the expected counts
+  // in the equations below.
   // Ternary bindings add their HirConditionalExpression to the conditionals
   // vector, but the builder's conditionalCount excludes them (the conditional
   // is the binding initializer counted by localReturnCount, and its condition
@@ -1139,47 +1228,75 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + equalityConditionalCount + sequentialBinaryCount +
               receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount ||
-      // The verifier deliberately keeps the strict unsupported-facts gate,
-      // coercions included. HirBuilder::build drains every concrete-to-dyn
-      // erasure as a per-definition capability rejection before verification,
-      // so a coercion reaching here means that drain was bypassed - an internal
-      // invariant, unlike the user-facing capability path in build().
-      !noUnsupportedFacts(facts) || candidate.impl->patterns.size() != declarationCount ||
-      static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
+              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (!unsupportedNonErasureFacts(facts)) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (candidate.impl->patterns.size() != declarationCount) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
-              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
-              leadingLocalConditionalArithmeticLocalCount !=
-          static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
-              directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands ||
-      parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
-          functionCount + localAliasReborrowCount + effectiveConditionalCount * 2 +
-              equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
-              sequentialParameterReturns + sequentialBinaryParameterOperands +
-              binaryWriteParameterOperands ||
-      candidate.impl->blocks.size() != functionCount ||
-      candidate.impl->returns.size() != functionCount - voidFunctionCount ||
-      static_cast<int64_t>(candidate.impl->expressions.size()) !=
-          static_cast<int64_t>(
-              declarationCount + functionCount - voidFunctionCount - directCallCount -
-              aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-              parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-              localAliasReborrowCount + localWriteCount + effectiveConditionalCount * 2 +
-              equalityConditionalCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount + directAggregateCallCount +
-              directScalarLocalCallCount) +
-              sequentialLiteralCorrection + sequentialTernaryParameterConditions +
-              leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
-              leadingLocalConditionalArithmeticLiteralCount -
-              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands ||
-      executableDefinitions != declarationCount + functionCount ||
-      facts.definitionTypes().size() != declarationCount ||
-      facts.nodeTypes().size() !=
+          sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
+          leadingLocalConditionalArithmeticLocalCount !=
+      static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
+          directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (parameterReferenceCount + parameterIndexCount + parameterReborrowCount >
+      functionCount + localAliasReborrowCount + effectiveConditionalCount * 2 +
+          equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
+          sequentialParameterReturns + sequentialBinaryParameterOperands +
+          binaryWriteParameterOperands) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (candidate.impl->blocks.size() != functionCount ||
+      candidate.impl->returns.size() != functionCount - voidFunctionCount) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (static_cast<int64_t>(candidate.impl->expressions.size()) !=
+      static_cast<int64_t>(
+          declarationCount + functionCount - voidFunctionCount - directCallCount - aggregateCount -
+          receiverSelfCallCount - uninitializedLocalReturnCount - parameterReferenceCount -
+          parameterReborrowCount - parameterFieldProjectionCount + localAliasReborrowCount +
+          localWriteCount + effectiveConditionalCount * 2 + equalityConditionalCount + loopCount +
+          binaryWriteCount + parameterFieldWriteCount + receiverFieldArithmeticCount +
+          directAggregateCallCount + directScalarLocalCallCount) +
+          sequentialLiteralCorrection + sequentialTernaryParameterConditions +
+          leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
+          leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
+          binaryWriteLocalOperands) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (executableDefinitions != declarationCount + functionCount ||
+      facts.definitionTypes().size() != declarationCount) {
+    return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InputRevisionMismatch, module,
+                                        registries, 0);
+  }
+  if (facts.nodeTypes().size() !=
           declarationCount + functionCount - voidFunctionCount + directCallCount +
-              receiverCallCount * 2 + localReturnCount - uninitializedLocalReturnCount +
-              localWriteCount * 3 + aggregateElementCount + localFieldProjectionCount +
-              localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
-              directCallArgumentCount + receiverCallArgumentCount + receiverCallFieldArgumentCount +
+              receiverCallCount * 2 + localReturnCount + deadLocalReturnCount -
+              uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
+              deadNodeTypesExtra + localFieldProjectionCount + localFieldWriteCount +
+              parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
+              receiverCallArgumentCount + receiverCallFieldArgumentCount +
               receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
               effectiveConditionalCount * 2 + equalityConditionalCount * 2 - unaryReturnCount +
               loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
@@ -1205,14 +1322,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
-              postfixIncrementWriteCount ||
+              postfixIncrementWriteCount + deadLiterals ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount +
               sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
               compoundAssignmentWriteCount + leadingLocalConditionalArithmeticCount +
-              receiverCallComparisonArgumentCount ||
-      facts.casts().size() != sequentialCastInitializers ||
-      facts.patterns().size() != declarationCount || facts.aggregates().size() != aggregateCount ||
+              receiverCallComparisonArgumentCount + deadCalls ||
+      facts.casts().size() != sequentialCastInitializers + deadCasts ||
+      facts.patterns().size() != declarationCount ||
+      facts.aggregates().size() != aggregateCount + deadAggregateCount ||
       facts.members().size() != localFieldProjectionCount + localFieldWriteCount +
                                     receiverCallCount + receiverCallFieldArgumentCount +
                                     receiverCallComparisonArgumentCount +
@@ -1742,6 +1860,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       SequentialLocalShape source{};
       ZC_IF_SOME(value, sequentialShapeMaybe) { source = zc::mv(value); }
+      // Dead-erase slice: apply the same erasure-cone filter the builder
+      // uses, so the verifier validates the HIR against the filtered shape
+      // (the one the builder actually lowered). Without this filter the
+      // verifier would expect HIR nodes for bindings the builder skipped.
+      {
+        const auto dead = deadSequentialBindings(tree, source);
+        const auto removed = erasureRelatedDeadBindings(tree, source, dead, deadEraseInitializers);
+        bool anyRemoved = false;
+        for (const bool isRemoved : removed) {
+          if (isRemoved) anyRemoved = true;
+        }
+        if (anyRemoved) { source = filterDeadSequentialBindings(source, removed); }
+      }
       const size_t bindingCount = source.bindings.size();
       // Signature and function metadata.
       auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);

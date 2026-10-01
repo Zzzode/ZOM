@@ -287,6 +287,35 @@ zc::Maybe<ast::NodeId> reborrowReference(const ast::Tree& tree, ast::NodeId expr
 // and guaranteeing the producer and verifiers derive one identical layout.
 zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast::NodeId body);
 
+// Computes the backward-liveness dead set for a sequential-local shape. A
+// binding is live when it is the returned local or is referenced (directly or
+// transitively) by a live binding's initializer. Every other binding is dead:
+// it is written but never read, so skipping it during lowering changes no
+// observable value. The returned vector has one entry per shape binding.
+zc::Vector<bool> deadSequentialBindings(const ast::Tree& tree, const SequentialLocalShape& shape);
+
+// Restricts `dead` to the erasure cone: a dead binding is removed only when its
+// initializer is one of `erasedInitializers` (an admitted dead-erase coercion
+// site) or it is referenced (transitively) by a removed binding. Unrelated dead
+// scalar locals stay in the shape so ordinary sequential-local bodies lower
+// unchanged. A removed binding that is still referenced by a kept binding is
+// kept instead (and its references with it), so the remap is always
+// well-defined; such a shape is rejected downstream by the LIR slice. The
+// returned vector has one entry per shape binding.
+zc::Vector<bool> erasureRelatedDeadBindings(const ast::Tree& tree,
+                                            const SequentialLocalShape& shape,
+                                            const zc::Vector<bool>& dead,
+                                            const zc::Vector<ast::NodeId>& erasedInitializers);
+
+// Returns a copy of `shape` with the bindings flagged in `removed` dropped and
+// every binding-index field (LocalReference, binary/unary/ternary operands,
+// returnsLocal) remapped to the filtered binding order. A kept binding never
+// references a removed one, so the remap is always well-defined. The caller
+// must reject the result when it carries fewer than two bindings, since the
+// MIR sequential-local-return classifier requires at least two statements.
+SequentialLocalShape filterDeadSequentialBindings(const SequentialLocalShape& shape,
+                                                  const zc::Vector<bool>& removed);
+
 // Classifies a function body as K (>= 1) leading scalar `let` bindings followed
 // by one explicit-else `if` whose relational comparison condition reads
 // identifier or literal operands and whose two arms tail-return scalar

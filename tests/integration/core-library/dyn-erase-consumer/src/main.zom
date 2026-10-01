@@ -1,0 +1,21 @@
+// Dead-erase fixture: a concrete-to-dyn erasure whose erased local is never
+// read. The erased local (`d`) and its transitively-dead concrete source (`c`)
+// are skipped during sequential-local-return lowering, so only scalar locals
+// reach MIR/LIR. The function returns 42 through the live arithmetic binding.
+interface Marker {
+  fun tag(this) -> i32;
+}
+
+struct Cell {
+  value: i32,
+}
+
+impl Marker for Cell {}
+
+fun entry() -> i32 {
+  let c: Cell = Cell { value: 42 };
+  let d: dyn Marker = c;
+  let a: i32 = 40;
+  let answer: i32 = a + 2;
+  return answer;
+}

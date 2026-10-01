@@ -286,14 +286,6 @@ bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
 // return position. Strict identity and the logical short-circuit operators are
 // excluded.
 
-bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts) {
-  return facts.coercions().size() == 0 && facts.compoundAssignments().size() == 0 &&
-         facts.observedOperations().size() == 0 && facts.captures().size() == 0 &&
-         facts.exhaustiveness().size() == 0 && facts.unsafeOperations().size() == 0 &&
-         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
-         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
-}
-
 // True when every unsupported family other than coercions is empty. Coercions
 // are handled separately so a single concrete-to-dyn erasure can fail closed as
 // a per-definition capability rejection instead of a module invariant.
@@ -310,6 +302,79 @@ bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& fa
 bool isSingleDynEraseAdjustment(const checker::checked::CoercionAdjustment& adjustment) {
   return adjustment.steps.size() == 1 &&
          adjustment.steps[0].variant().is<checker::checked::DynEraseStep>();
+}
+
+bool isDeadErasedInitializer(const ast::Tree& tree,
+                             const binder::ImmutableDefinitionInventory& definitions,
+                             ast::NodeId initializerNode) {
+  if (!tree.contains(initializerNode)) return false;
+  // Find the VariableDeclarator whose init word is the initializer, then read
+  // its identifier pattern name.
+  zc::Maybe<ast::NodeId> pattern;
+  for (const auto& local : definitions.ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& site = local.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    const auto& declarator = tree.node(site.introducer);
+    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) !=
+        initializerNode) {
+      continue;
+    }
+    pattern = ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+    break;
+  }
+  if (pattern == zc::none) return false;
+  ast::NodeId patternNode;
+  ZC_IF_SOME(value, pattern) { patternNode = value; }
+  if (!tree.contains(patternNode) ||
+      tree.node(patternNode).kind != ast::SyntaxKind::IdentifierPattern) {
+    return false;
+  }
+  const auto name = tree.node(patternNode).payload.words[ast::kIdentifierPatternNameWord];
+  // Locate the enclosing function body so the scan covers every read site.
+  const auto owner = enclosingExecutableDefinition(tree, definitions, initializerNode);
+  if (owner == zc::none) return false;
+  for (const auto& definition : definitions.definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(owner)) continue;
+    if (!tree.contains(definition.node) ||
+        tree.node(definition.node).kind != ast::SyntaxKind::FunctionDecl) {
+      continue;
+    }
+    const ast::NodeId body(tree.node(definition.node).payload.words[ast::kFunctionDeclBodyWord]);
+    if (!tree.contains(body)) return false;
+    // Scan the body for an IdentExpr whose name matches the binding. The
+    // pattern declaration itself is an IdentifierPattern, not an IdentExpr, so
+    // the declaration is never counted as a read. The initializer expression
+    // is the RHS of the let; any IdentExpr inside it names a different binding
+    // (the concrete source), never the erased local itself.
+    bool read = false;
+    ast::visitTreePreOrder(tree, body, [&](ast::NodeId node, const ast::Node& syntax) {
+      if (read) return;
+      if (syntax.kind == ast::SyntaxKind::IdentExpr &&
+          syntax.payload.words[ast::kIdentExprNameWord] == name) {
+        read = true;
+      }
+    });
+    return !read;
+  }
+  return false;
+}
+
+zc::Vector<ast::NodeId> deadEraseInitializerNodes(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    const checker::checked::VerifiedCheckedFacts& facts) {
+  zc::Vector<ast::NodeId> nodes;
+  for (const auto& entry : facts.coercions().entries()) {
+    if (entry.value.site == checker::checked::CoercionSite::AnnotatedInitializer &&
+        isSingleDynEraseAdjustment(entry.value) &&
+        isDeadErasedInitializer(tree, definitions, entry.key)) {
+      nodes.add(entry.key);
+    }
+  }
+  return nodes;
 }
 
 // Returns the innermost executable definition whose AST subtree contains

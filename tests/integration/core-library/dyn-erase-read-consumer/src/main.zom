@@ -1,0 +1,22 @@
+// Reject fixture: the erased local `d` is read by the later binding `e`, so the
+// dead-erase admission does not apply and the coercion is rejected as an
+// unsupported construct (ZOM4099). The checker accepts the erasure; the HIR
+// builder drains it before lowering.
+interface Marker {
+  fun tag(this) -> i32;
+}
+
+struct Cell {
+  value: i32,
+}
+
+impl Marker for Cell {}
+
+fun entry() -> i32 {
+  let c: Cell = Cell { value: 42 };
+  let d: dyn Marker = c;
+  let e: dyn Marker = d;
+  let a: i32 = 40;
+  let answer: i32 = a + 2;
+  return answer;
+}

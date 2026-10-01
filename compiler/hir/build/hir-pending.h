@@ -102,6 +102,10 @@ struct PendingSequentialLocalReturn final {
   zc::Maybe<identity::CallableParameterKey> returnParameter;
   size_t returnLocal;
   identity::SourceSpan returnValueSpan;
+  // Dead-erase slice: bindings skipped by the dead-binding filter. The checker
+  // produces facts for every binding, so the count validation must add these
+  // back to the expected counts. The HIR lowering only sees `bindings`.
+  zc::Vector<SequentialLocalBinding> deadBindings;
 };
 
 // One conditional arm carries a scalar literal value, a reference to a

@@ -652,6 +652,204 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   return shape;
 }
 
+namespace {
+// Visits every earlier-local index referenced by `binding`'s initializer: the
+// LocalReference target, the local operands of a primitive binary (including
+// nested arithmetic), the unary operand, or a ternary condition resolved by
+// identifier matching against earlier patterns. Aggregate element references
+// are scalar and are not tracked: a removed aggregate binding is skipped
+// wholesale, and its scalar element sources stay as ordinary dead locals the
+// pipeline lowers.
+template <typename Visit>
+void forEachBindingLocalReference(const ast::Tree& tree, const SequentialLocalShape& shape,
+                                  size_t bindingIndex, Visit&& visit) {
+  const auto& binding = shape.bindings[bindingIndex];
+  if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+    visit(binding.referencedLocal);
+  } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveBinary) {
+    for (const auto* operand : {&binding.leftOperand, &binding.rightOperand}) {
+      ZC_IF_SOME(value, *operand) {
+        if (value.kind == SequentialBinaryOperandKind::LocalReference) {
+          visit(value.referencedLocal);
+        }
+        ZC_IF_SOME(nestedLeft, value.nestedLeft) {
+          if (nestedLeft.kind == SequentialBinaryOperandKind::LocalReference) {
+            visit(nestedLeft.referencedLocal);
+          }
+        }
+        ZC_IF_SOME(nestedRight, value.nestedRight) {
+          if (nestedRight.kind == SequentialBinaryOperandKind::LocalReference) {
+            visit(nestedRight.referencedLocal);
+          }
+        }
+      }
+    }
+  } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveUnary) {
+    ZC_IF_SOME(value, binding.unaryOperand) {
+      if (value.kind == SequentialBinaryOperandKind::LocalReference) {
+        visit(value.referencedLocal);
+      }
+    }
+  } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
+    if (binding.ternaryConditionIsLocal) {
+      // The shape stores only the flag; the referenced binding is found by
+      // matching the condition identifier against earlier patterns, the same
+      // way the builder resolves it.
+      for (size_t earlier = 0; earlier < bindingIndex; ++earlier) {
+        if (matchesLocalReference(tree, shape.bindings[earlier].pattern, binding.ternaryCondNode)) {
+          visit(earlier);
+          break;
+        }
+      }
+    }
+  }
+}
+}  // namespace
+
+zc::Vector<bool> deadSequentialBindings(const ast::Tree& tree, const SequentialLocalShape& shape) {
+  const size_t count = shape.bindings.size();
+  zc::Vector<bool> live;
+  for (size_t i = 0; i < count; ++i) live.add(false);
+  // The returned local is the seed of liveness.
+  ZC_IF_SOME(returned, shape.returnsLocal) {
+    if (returned < count) live[returned] = true;
+  }
+  // Propagate liveness backward through referenced locals until fixpoint.
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; i < count; ++i) {
+      if (!live[i]) continue;
+      forEachBindingLocalReference(tree, shape, i, [&](size_t referenced) {
+        if (referenced < count && !live[referenced]) {
+          live[referenced] = true;
+          changed = true;
+        }
+      });
+    }
+  }
+  zc::Vector<bool> dead;
+  for (size_t i = 0; i < count; ++i) dead.add(!live[i]);
+  return dead;
+}
+
+zc::Vector<bool> erasureRelatedDeadBindings(const ast::Tree& tree,
+                                            const SequentialLocalShape& shape,
+                                            const zc::Vector<bool>& dead,
+                                            const zc::Vector<ast::NodeId>& erasedInitializers) {
+  const size_t count = shape.bindings.size();
+  zc::Vector<bool> removed;
+  for (size_t i = 0; i < count; ++i) removed.add(false);
+  // Seed: dead bindings whose initializer is an admitted dead-erase coercion
+  // site. Only these bindings (and their dead transitive references) may be
+  // filtered; unrelated dead scalar locals stay in the shape so ordinary
+  // sequential-local bodies lower unchanged.
+  for (size_t i = 0; i < count; ++i) {
+    if (!dead[i]) continue;
+    for (const auto erased : erasedInitializers) {
+      if (shape.bindings[i].initializer == erased) {
+        removed[i] = true;
+        break;
+      }
+    }
+  }
+  // A removed binding drags its dead transitive references out of the lowered
+  // shape: the HIR nodes that read them disappear with the removed binding, so
+  // the references have no reader left. The LIR sequential slice admits scalar
+  // locals only, so an aggregate source cannot stay behind.
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; i < count; ++i) {
+      if (!removed[i]) continue;
+      forEachBindingLocalReference(tree, shape, i, [&](size_t referenced) {
+        if (referenced < count && dead[referenced] && !removed[referenced]) {
+          removed[referenced] = true;
+          changed = true;
+        }
+      });
+    }
+  }
+  // Constraint: a kept binding's references must be kept. If a removed binding
+  // is still referenced by a kept binding, keep it (and its references,
+  // transitively) so the lowered shape stays self-consistent. Such a shape
+  // carries an aggregate or erased local the LIR slice cannot lower, so it is
+  // rejected downstream; the filter never produces a broken remap.
+  changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; i < count; ++i) {
+      if (removed[i]) continue;
+      forEachBindingLocalReference(tree, shape, i, [&](size_t referenced) {
+        if (referenced < count && removed[referenced]) {
+          removed[referenced] = false;
+          changed = true;
+        }
+      });
+    }
+  }
+  return removed;
+}
+
+SequentialLocalShape filterDeadSequentialBindings(const SequentialLocalShape& shape,
+                                                  const zc::Vector<bool>& removed) {
+  const size_t count = shape.bindings.size();
+  // Build the old-to-new index map; removed bindings map to -1.
+  zc::Vector<int> remap;
+  for (size_t i = 0; i < count; ++i) remap.add(-1);
+  size_t newCount = 0;
+  for (size_t i = 0; i < count; ++i) {
+    if (!removed[i]) remap[i] = static_cast<int>(newCount++);
+  }
+  SequentialLocalShape filtered{};
+  filtered.body = shape.body;
+  filtered.returnStatement = shape.returnStatement;
+  filtered.returnValue = shape.returnValue;
+  for (size_t i = 0; i < count; ++i) {
+    if (removed[i]) continue;
+    SequentialLocalBinding binding = shape.bindings[i];
+    if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+      const int mapped = remap[binding.referencedLocal];
+      ZC_IREQUIRE(mapped >= 0, "kept binding must not reference a removed binding");
+      binding.referencedLocal = static_cast<size_t>(mapped);
+    }
+    auto remapOperand = [&](SequentialBinaryOperand& operand) {
+      if (operand.kind == SequentialBinaryOperandKind::LocalReference) {
+        const int mapped = remap[operand.referencedLocal];
+        ZC_IREQUIRE(mapped >= 0, "kept binding must not reference a removed binding");
+        operand.referencedLocal = static_cast<size_t>(mapped);
+      }
+      ZC_IF_SOME(nestedLeft, operand.nestedLeft) {
+        if (nestedLeft.kind == SequentialBinaryOperandKind::LocalReference) {
+          const int mapped = remap[nestedLeft.referencedLocal];
+          ZC_IREQUIRE(mapped >= 0, "kept binding must not reference a removed binding");
+          nestedLeft.referencedLocal = static_cast<size_t>(mapped);
+        }
+      }
+      ZC_IF_SOME(nestedRight, operand.nestedRight) {
+        if (nestedRight.kind == SequentialBinaryOperandKind::LocalReference) {
+          const int mapped = remap[nestedRight.referencedLocal];
+          ZC_IREQUIRE(mapped >= 0, "kept binding must not reference a removed binding");
+          nestedRight.referencedLocal = static_cast<size_t>(mapped);
+        }
+      }
+    };
+    ZC_IF_SOME(left, binding.leftOperand) { remapOperand(left); }
+    ZC_IF_SOME(right, binding.rightOperand) { remapOperand(right); }
+    ZC_IF_SOME(unary, binding.unaryOperand) { remapOperand(unary); }
+    // The ternary condition local index is not stored in the shape; the builder
+    // resolves it on-the-fly by matching the condition identifier against the
+    // (filtered) earlier bindings, so no remapping is needed here.
+    filtered.bindings.add(zc::mv(binding));
+  }
+  ZC_IF_SOME(returned, shape.returnsLocal) {
+    const int mapped = remap[returned];
+    ZC_IREQUIRE(mapped >= 0, "returned local must not be removed");
+    filtered.returnsLocal = static_cast<size_t>(mapped);
+  }
+  return filtered;
+}
+
 zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::Tree& tree,
                                                                      ast::NodeId body) {
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;

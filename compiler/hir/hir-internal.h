@@ -227,11 +227,32 @@ bool isScalarArithmeticOperation(checker::PrimitiveOperation operation);
 // operation in the HIR builder, so no new MIR/LIR carrier is needed.
 bool isScalarUnaryOperation(checker::PrimitiveOperation operation);
 
-bool noUnsupportedFacts(const checker::checked::VerifiedCheckedFacts& facts);
-
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts);
 
 bool isSingleDynEraseAdjustment(const checker::checked::CoercionAdjustment& adjustment);
+
+/// Returns true when the owner local whose initializer is `initializerNode` is
+/// never read in its enclosing function body. The local's own initializer and
+/// pattern declaration are not reads; every other IdentExpr in the body that
+/// matches the binding's identifier name is a read. Used to admit a
+/// concrete-to-dyn erasure whose erased value is dead (never observed), so the
+/// erasure can be skipped during lowering without building an existential
+/// carrier.
+bool isDeadErasedInitializer(const ast::Tree& tree,
+                             const binder::ImmutableDefinitionInventory& definitions,
+                             ast::NodeId initializerNode);
+
+/// Collects the initializer nodes of admitted dead-erase coercions:
+/// AnnotatedInitializer, single-step DynErase sites whose erased local is never
+/// read in its enclosing body. The builder drains these coercions instead of
+/// rejecting them; the sequential-local dead-binding filter may remove a dead
+/// binding only when its initializer is in this set (or it is referenced only
+/// by bindings that are themselves removed). The builder and the verifier both
+/// derive the set from the same checked facts, guaranteeing one identical
+/// filtered shape.
+zc::Vector<ast::NodeId> deadEraseInitializerNodes(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    const checker::checked::VerifiedCheckedFacts& facts);
 
 zc::Maybe<identity::DefId> enclosingExecutableDefinition(
     const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
