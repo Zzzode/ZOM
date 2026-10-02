@@ -537,6 +537,25 @@ ast::NodeId Parser::Impl::parsePatternRange(ParserSyntaxFactory& builder, size_t
       return builder.makeEnumPattern(rangeFor(start, end), makeModulePath(builder, start, pathEnd),
                                      builder.makeList(args.asPtr()));
     }
+    // A unit enum pattern (e.g., `Color.Red`) has a qualified path that
+    // extends to the end of the pattern range with no trailing `(...)`.
+    // A bare identifier (e.g., `value` in `const value = 1`) is a simple
+    // identifier pattern, not an enum pattern, so require at least one path
+    // separator to distinguish the two.
+    if (pathEnd > start && pathEnd == end) {
+      bool hasSeparator = false;
+      for (size_t i = start + 1; i < pathEnd; ++i) {
+        if (isModulePathSeparatorAt(i, pathEnd)) {
+          hasSeparator = true;
+          break;
+        }
+      }
+      if (hasSeparator) {
+        return builder.makeEnumPattern(rangeFor(start, end),
+                                       makeModulePath(builder, start, pathEnd),
+                                       builder.makeList(zc::ArrayPtr<const ast::NodeId>()));
+      }
+    }
   }
 
   size_t structStart = start;

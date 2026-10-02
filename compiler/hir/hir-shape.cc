@@ -399,6 +399,10 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   ast::NodeId intLiteralNode{};
   zc::Maybe<ast::NodeId> intLiteralValue;
   zc::Maybe<ast::NodeId> guardNode;
+  bool sawEnumPattern = false;
+  ast::NodeId enumPatternNode{};
+  zc::Maybe<ast::NodeId> enumThenValue;
+  zc::Maybe<ast::NodeId> enumElseValue;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
@@ -432,6 +436,16 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
     } else if (tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
       if (sawDefault) return zc::none;
       sawDefault = true;
+    } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
+      // A unit enum variant pattern (e.g., `Color.Red`). Two enum arms on the
+      // same scrutinee lower to the equality conditional path; the first arm
+      // is the "then" branch and the second is the "else" branch. The variant
+      // discriminant is read from the checker's literal fact by the builder.
+      if (sawIntLiteral || sawDefault) return zc::none;
+      if (!sawEnumPattern) {
+        sawEnumPattern = true;
+        enumPatternNode = pattern;
+      }
     } else {
       return zc::none;
     }
@@ -484,6 +498,14 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
         if (falseValue != zc::none) return zc::none;
         falseValue = returnValue;
       }
+    } else if (sawEnumPattern) {
+      if (enumThenValue == zc::none) {
+        enumThenValue = returnValue;
+      } else if (enumElseValue == zc::none) {
+        enumElseValue = returnValue;
+      } else {
+        return zc::none;
+      }
     } else {
       defaultValue = returnValue;
     }
@@ -497,6 +519,28 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   shape.matchHasDefaultArm = sawDefault;
   shape.condition = scrutinee;
   shape.matchStatement = statement;
+  if (sawEnumPattern) {
+    // Enum match: two unit-variant pattern arms. The first arm is the "then"
+    // branch and the second is the "else" branch. The HIR builder reads the
+    // variant discriminant from the checker's literal fact on the first
+    // EnumPattern node and synthesizes `scrutinee == discriminant`.
+    if (enumThenValue == zc::none || enumElseValue == zc::none) { return zc::none; }
+    ast::NodeId thenNode;
+    ast::NodeId elseNode;
+    ZC_IF_SOME(value, enumThenValue) { thenNode = value; }
+    ZC_IF_SOME(value, enumElseValue) { elseNode = value; }
+    shape.isMatchEnum = true;
+    shape.isMatchEquality = true;
+    shape.matchEqualityLiteral = enumPatternNode;
+    shape.conditionIsEquality = true;
+    shape.conditionLeft = scrutinee;
+    shape.conditionRight = enumPatternNode;
+    shape.conditionLeftIsLiteral = false;
+    shape.conditionRightIsLiteral = true;
+    shape.thenReturnValue = thenNode;
+    shape.elseReturnValue = elseNode;
+    return shape;
+  }
   if (sawIntLiteral) {
     // Integer match: exactly one literal arm plus one default arm. The literal
     // arm is the "then" branch and the default arm is the "else" branch.

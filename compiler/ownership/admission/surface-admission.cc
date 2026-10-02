@@ -213,6 +213,22 @@ bool hasAdmittedArguments(const ast::Tree& tree, const ast::Node& call,
       // (`cell.echo(cell.value)`) is admitted structurally: the argument is a
       // dot member expression whose object names the same local as the call
       // receiver. The binding match and field type are checker decisions.
+      // A qualified enum variant argument (`matchEnum(Color::Red)`) is
+      // admitted structurally: the argument is a qualified member expression
+      // whose object is an identifier naming the enum. The variant resolution
+      // and type matching are checker decisions.
+      if (tree.contains(argument) &&
+          tree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+          static_cast<ast::MemberAccessKind>(
+              tree.node(argument).payload.words[ast::kMemberExpressionAccessWord]) ==
+              ast::MemberAccessKind::Qualified) {
+        const ast::NodeId qualifiedObject(
+            tree.node(argument).payload.words[ast::kMemberExpressionObjectWord]);
+        if (tree.contains(qualifiedObject) &&
+            tree.node(qualifiedObject).kind == ast::SyntaxKind::IdentExpr) {
+          continue;
+        }
+      }
       if (!hasReceiver || !tree.contains(argument) ||
           tree.node(argument).kind != ast::SyntaxKind::MemberExpression ||
           static_cast<ast::MemberAccessKind>(
@@ -1030,6 +1046,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   bool sawIntLiteral = false;
   bool sawDefault = false;
   bool sawGuard = false;
+  bool sawEnumPattern = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return false;
@@ -1070,6 +1087,12 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     } else if (tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
       if (sawDefault) return false;
       sawDefault = true;
+    } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
+      // A unit enum variant pattern (e.g., `Color.Red`) is admitted when the
+      // scrutinee is an enum type. The variant resolution and type matching
+      // are checker decisions.
+      if (sawIntLiteral || sawTrue || sawFalse || sawDefault) return false;
+      sawEnumPattern = true;
     } else {
       return false;
     }
@@ -1095,7 +1118,9 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     }
   }
   // Bool: two literal arms (true + false), or one literal arm plus one default
-  // arm. Integer: exactly one literal arm plus one default arm.
+  // arm. Integer: exactly one literal arm plus one default arm. Enum: two
+  // unit-variant pattern arms on the same enum type.
+  if (sawEnumPattern) return true;
   if (sawIntLiteral) return sawDefault;
   return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }

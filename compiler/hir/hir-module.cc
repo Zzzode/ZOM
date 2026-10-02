@@ -713,12 +713,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& arm = tree.node(armId);
         if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
         const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
-        if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
-          continue;
-        }
-        const ast::NodeId literal(
-            tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
-        if (tree.contains(literal) && tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
+        if (!tree.contains(pattern)) continue;
+        if (tree.node(pattern).kind == ast::SyntaxKind::LiteralPattern) {
+          const ast::NodeId literal(
+              tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+          if (tree.contains(literal) && tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
+            ++matchEqualityReturnCount;
+            break;
+          }
+        } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
           ++matchEqualityReturnCount;
           break;
         }
@@ -12645,8 +12648,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             tree.contains(argument) && isScalarLiteral(tree.node(argument).kind);
         const bool isParameterArgument =
             tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::IdentExpr;
-        if ((!isLiteralArgument && !isParameterArgument) || argumentTypeIndex == zc::none ||
-            argumentKey == zc::none || argumentSpan == zc::none) {
+        // A qualified enum variant access (`Color::Red`) is a MemberExpression
+        // whose checker-produced Literal fact carries the variant discriminant.
+        // It lowers through the same literal-carrier path as a scalar literal.
+        const bool isEnumVariantArgument =
+            tree.contains(argument) &&
+            tree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+            factIndex(facts.literals(), argument) != zc::none;
+        if ((!isLiteralArgument && !isParameterArgument && !isEnumVariantArgument) ||
+            argumentTypeIndex == zc::none || argumentKey == zc::none || argumentSpan == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
@@ -12669,7 +12679,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        if (isLiteralArgument) {
+        if (isLiteralArgument || isEnumVariantArgument) {
           auto literalIndex = factIndex(facts.literals(), argument);
           if (literalIndex == zc::none || hirArgument.value == zc::none ||
               hirArgument.parameter != zc::none) {

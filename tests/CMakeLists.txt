@@ -227,6 +227,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-discriminants-consumer/Zom.toml::enum_discriminants_consumer::enum_discriminants_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-tuple-variants-consumer/Zom.toml::enum_tuple_variants_consumer::enum_tuple_variants_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -352,6 +354,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-discriminants-consumer/Zom.toml::enum_discriminants_consumer::enum_discriminants_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-tuple-variants-consumer/Zom.toml::enum_tuple_variants_consumer::enum_tuple_variants_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)

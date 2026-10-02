@@ -6235,8 +6235,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 tree.contains(argument) && isScalarLiteral(tree.node(argument).kind);
             const bool isParameterArgument =
                 tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::IdentExpr;
-            if ((!isLiteralArgument && !isParameterArgument) || argumentTypeIndex == zc::none ||
-                argumentKey == zc::none || argumentSpan == zc::none) {
+            // A qualified enum variant access (`Color::Red`) is a MemberExpression
+            // whose checker-produced Literal fact carries the variant discriminant.
+            // It lowers through the same literal-carrier path as a scalar literal.
+            const bool isEnumVariantArgument =
+                tree.contains(argument) &&
+                tree.node(argument).kind == ast::SyntaxKind::MemberExpression &&
+                factIndex(facts.literals(), argument) != zc::none;
+            if ((!isLiteralArgument && !isParameterArgument && !isEnumVariantArgument) ||
+                argumentTypeIndex == zc::none || argumentKey == zc::none ||
+                argumentSpan == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::MissingRequiredFact, module,
                                                    registries, ordinal + 2);
@@ -6258,7 +6266,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            if (isLiteralArgument) {
+            if (isLiteralArgument || isEnumVariantArgument) {
               auto literalIndex = factIndex(facts.literals(), argument);
               if (literalIndex == zc::none) {
                 return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

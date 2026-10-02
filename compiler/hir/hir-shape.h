@@ -312,6 +312,12 @@ struct FunctionReturnShape final {
   // literal node so the builder can read its checked literal fact.
   bool isMatchEquality = false;
   ast::NodeId matchEqualityLiteral{};
+  // True when the match-return shape is an enum match with two unit-variant
+  // pattern arms. The HIR builder lowers this to the equality conditional
+  // path, synthesizing `scrutinee == discriminant` without an AST BinaryExpr
+  // node. `matchEqualityLiteral` carries the first EnumPattern node so the
+  // builder can read its checked literal fact (the variant discriminant).
+  bool isMatchEnum = false;
   // True when the match-return shape has a guard on the literal (then) arm.
   // The guard is a single binary expression whose one operand is a bare
   // identifier (a parameter reference) and whose other operand is a scalar

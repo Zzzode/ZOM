@@ -3445,9 +3445,17 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     const auto& comparison = tempAssign.value.comparisonValue();
     auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
       if (operand.kind() == mir::MirOperandKind::Constant) {
-        return integerCarrierFor(operand.constantValue().type, semanticTypes);
+        auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+        if (carrier == zc::none) {
+          carrier = enumCarrierFor(operand.constantValue().type, semanticTypes);
+        }
+        return carrier;
       }
-      return integerCarrierFor(operand.place().rootType(), semanticTypes);
+      auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
+      if (carrier == zc::none) {
+        carrier = enumCarrierFor(operand.place().rootType(), semanticTypes);
+      }
+      return carrier;
     };
     auto leftCarrier = operandCarrierFor(comparison.left);
     auto rightCarrier = operandCarrierFor(comparison.right);
@@ -3497,6 +3505,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     if (argumentCarrier == zc::none) {
       argumentCarrier = integerCarrierFor(callee.locals[argIndex].type, semanticTypes);
     }
+    if (argumentCarrier == zc::none) {
+      argumentCarrier = enumCarrierFor(callee.locals[argIndex].type, semanticTypes);
+    }
     if (argumentCarrier == zc::none) { return zc::none; }
     auto lowered = lirOperandFor(argument, ZC_REQUIRE_NONNULL(argumentCarrier));
     if (lowered == zc::none) { return zc::none; }
@@ -3523,8 +3534,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   if (callerTrailingCount == 1) {
     const auto& resultLocal = caller.locals[callerParameterCount];
     const auto& returnOperand = ZC_ASSERT_NONNULL(callReturn);
-    if (resultLocal.kind != mir::MirLocalKind::UserLocal || resultLocal.type != caller.resultType ||
-        callerEntry.statements.size() != 1 ||
+    if ((resultLocal.kind != mir::MirLocalKind::UserLocal &&
+         resultLocal.kind != mir::MirLocalKind::FunctionResult) ||
+        resultLocal.type != caller.resultType || callerEntry.statements.size() != 1 ||
         callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         callerEntry.statements[0].storageLocal() != resultLocal.id ||
         call.destination.local() != resultLocal.id || callerContinuation.statements.size() != 0 ||
@@ -3659,6 +3671,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
       const auto& parameterLocal = callee.locals[i];
       zc::Maybe<ValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
       if (carrier == zc::none) { carrier = integerCarrierFor(parameterLocal.type, semanticTypes); }
+      if (carrier == zc::none) { carrier = enumCarrierFor(parameterLocal.type, semanticTypes); }
       if (carrier == zc::none) { return zc::none; }
       parameters.add(Local(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
     }

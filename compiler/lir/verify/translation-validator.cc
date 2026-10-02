@@ -1174,10 +1174,16 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   if (leafCarrier == zc::none) {
                     leafCarrier = boolCarrier(comparison.left.constantValue().type, types);
                   }
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = enumCarrier(comparison.left.constantValue().type, types);
+                  }
                 } else {
                   leafCarrier = integerCarrier(comparison.left.place().resultType(), types);
                   if (leafCarrier == zc::none) {
                     leafCarrier = boolCarrier(comparison.left.place().resultType(), types);
+                  }
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = enumCarrier(comparison.left.place().resultType(), types);
                   }
                 }
                 if (leafCarrier == zc::none) {
@@ -1274,11 +1280,17 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                     if (carrier == zc::none) {
                       carrier = boolCarrier(leaf.constantValue().type, types);
                     }
+                    if (carrier == zc::none) {
+                      carrier = enumCarrier(leaf.constantValue().type, types);
+                    }
                     return carrier;
                   }
                   auto carrier = integerCarrier(leaf.place().resultType(), types);
                   if (carrier == zc::none) {
                     carrier = boolCarrier(leaf.place().resultType(), types);
+                  }
+                  if (carrier == zc::none) {
+                    carrier = enumCarrier(leaf.place().resultType(), types);
                   }
                   return carrier;
                 };
@@ -1628,6 +1640,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   : sourceArgument.place().resultType();
           auto carrier = integerCarrier(sourceType, types);
           if (carrier == zc::none) { carrier = boolCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = enumCarrier(sourceType, types); }
           if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
           if (carrier == zc::none ||
               !sameConstant(arguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {

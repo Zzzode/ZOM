@@ -1129,6 +1129,122 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
                                ZC_ASSERT_NONNULL(variant), discriminant};
 }
 
+/// \brief Resolves a unit enum variant pattern `Enum.Variant` in a match arm.
+/// The ModulePath must have exactly two segments: the enum name and the
+/// variant name. The enum definition is looked up by name in the bound
+/// module's definitions (the binder does not produce node bindings for
+/// ModulePath segments inside patterns); the variant is resolved through the
+/// enum's nominal signature. The discriminant is the variant's explicit
+/// integer discriminant when declared, otherwise its zero-based source index.
+zc::Maybe<EnumVariantValueShape> enumPatternVariantShape(const BodyCheckingInput& input,
+                                                         ast::NodeId patternNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(patternNode) || tree.node(patternNode).kind != ast::SyntaxKind::EnumPattern) {
+    return zc::none;
+  }
+  const ast::NodeId path(tree.node(patternNode).payload.words[ast::kEnumPatternPathWord]);
+  if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::ModulePath) {
+    return zc::none;
+  }
+  const ast::IdentList segments{tree.node(path).payload.words[ast::kModulePathSegmentsFirstWord],
+                                tree.node(path).payload.words[ast::kModulePathSegmentsSizeWord]};
+  if (!tree.contains(segments) || segments.size != 2) { return zc::none; }
+  const auto segmentIds = tree.identList(segments);
+  const auto enumName = tree.ident(segmentIds[0]);
+  const auto variantName = tree.ident(segmentIds[1]);
+  zc::Maybe<identity::DefId> enumDefId;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Enum) continue;
+    if (definition.record.name() != enumName) continue;
+    if (enumDefId != zc::none) return zc::none;
+    enumDefId = definition.definition;
+  }
+  if (enumDefId == zc::none) return zc::none;
+  // Find the variant by name in the enum's nominal signature. The variants
+  // list is sorted by canonical digest, so the discriminant for a unit
+  // variant without an explicit discriminant is its source declaration order,
+  // not its index in the sorted list. Resolve the source order from the enum's
+  // AST node.
+  zc::Maybe<identity::DefId> variant;
+  uint64_t discriminant = 0;
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(enumDefId) ||
+        !signature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominal = signature.payload.variant().get<signature::NominalSignature>();
+    for (const auto candidate : nominal.variants) {
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition != candidate || definition.record.name() != variantName) {
+          continue;
+        }
+        if (definition.record.kind() != identity::DefinitionKind::EnumVariant) return zc::none;
+        if (variant != zc::none) return zc::none;
+        variant = candidate;
+      }
+    }
+  }
+  if (variant == zc::none) return zc::none;
+  // Resolve the source-order discriminant from the enum's AST node.
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(enumDefId)) continue;
+    const auto& enumNode = tree.node(definition.node);
+    if (enumNode.kind != ast::SyntaxKind::EnumDeclaration) return zc::none;
+    const ast::NodeId variantListId(enumNode.payload.words[ast::kEnumDeclarationVariantsIdWord]);
+    if (!tree.contains(variantListId)) return zc::none;
+    const auto& variantList = tree.node(variantListId);
+    if (variantList.kind != ast::SyntaxKind::EnumVariantList) return zc::none;
+    const ast::NodeList variantNodes{
+        variantList.payload.words[ast::kEnumVariantListVariantsFirstWord],
+        variantList.payload.words[ast::kEnumVariantListVariantsSizeWord]};
+    if (!tree.contains(variantNodes)) return zc::none;
+    bool found = false;
+    for (size_t sourceIndex = 0; sourceIndex < variantNodes.size; ++sourceIndex) {
+      const ast::NodeId variantNodeId = tree.list(variantNodes)[sourceIndex];
+      if (!tree.contains(variantNodeId)) continue;
+      const auto& variantNode = tree.node(variantNodeId);
+      if (variantNode.kind != ast::SyntaxKind::UnitVariant &&
+          variantNode.kind != ast::SyntaxKind::TupleVariant) {
+        continue;
+      }
+      const auto variantNodeDef = input.boundModule.definitions().definitionAt(variantNodeId);
+      if (variantNodeDef == zc::none) continue;
+      if (ZC_ASSERT_NONNULL(variantNodeDef) != ZC_ASSERT_NONNULL(variant)) continue;
+      discriminant = static_cast<uint64_t>(sourceIndex);
+      found = true;
+      break;
+    }
+    if (!found) return zc::none;
+    break;
+  }
+  // A unit variant (empty payload) is the only admitted shape in this slice.
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
+        !signature.payload.variant().is<signature::EnumVariantSignature>()) {
+      continue;
+    }
+    const auto& variantSignature =
+        signature.payload.variant().get<signature::EnumVariantSignature>();
+    if (variantSignature.payload.size() != 0) return zc::none;
+    ZC_IF_SOME(explicitDiscriminant, variantSignature.discriminant) {
+      if (explicitDiscriminant.magnitude.size() > 8) return zc::none;
+      uint64_t explicitValue = 0;
+      for (const uint8_t byte : explicitDiscriminant.magnitude.asPtr()) {
+        explicitValue = (explicitValue << 8) | byte;
+      }
+      discriminant = explicitValue;
+    }
+  }
+  auto admitted = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::NominalTypeData{ZC_ASSERT_NONNULL(enumDefId), {}}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return EnumVariantValueShape{interned.get<type::SemanticTypeInterned>().id,
+                               ZC_ASSERT_NONNULL(variant), discriminant};
+}
+
 /// \brief Shape of an enum tuple-variant construction such as `Result::Ok(41)`.
 /// The enum type is the nominal type of the enum definition; the variant is
 /// the resolved tuple-variant definition; the payload carries the variant's
@@ -4545,6 +4661,24 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                                 ordinal, zc::none, node);
       return;
     }
+    // EnumPattern nodes inside match arms are skipped by the bodyNode check
+    // below (match-arm patterns are covered by the arm's exhaustiveness fact),
+    // but the exhaustiveness loop produces NodeType and Literal facts on them
+    // so the HIR builder can synthesize `scrutinee == discriminant`. Add the
+    // requirements here, before the skip, so the count gate admits the facts.
+    if (syntax.kind == ast::SyntaxKind::EnumPattern && isMatchArmPattern(tree, node)) {
+      auto span = parsedModule.spanFor(syntax.range);
+      if (span == zc::none) {
+        failure = rejectInvariant(signature::CheckerInvariantKind::InputReceiptMismatch,
+                                  boundModule.module(), ordinal, zc::none, node);
+        return;
+      }
+      checked::CheckedNodeKey enumKey{static_cast<uint32_t>(syntax.kind), ordinal,
+                                      ZC_ASSERT_NONNULL(span).clone()};
+      addNodeRequirement(nodeRequirements, CheckedFactGroup::NodeType, node, enumKey);
+      addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, enumKey);
+      return;
+    }
     const bool bodyNode = (isExpression(syntax.kind) || isPattern(syntax.kind) ||
                            syntax.kind == ast::SyntaxKind::MatchStmt ||
                            syntax.kind == ast::SyntaxKind::SuspendStatement) &&
@@ -5786,12 +5920,27 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 deferredLocalType = zc::none;
               }
             }
-            const bool hasArgumentType = argumentType != zc::none || deferredLocalType != zc::none;
+            // An enum variant value argument (`Color::Red`) is a
+            // MemberExpression with Qualified access. Its node-type fact may
+            // already exist (stage 0) or be pending (stage 1, processed after
+            // this call site). Resolve its type from the variant shape so the
+            // argument carrier admits it either way.
+            zc::Maybe<identity::SemanticTypeId> enumVariantType;
+            if (input.boundModule.tree().contains(argument) &&
+                input.boundModule.tree().node(argument).kind == ast::SyntaxKind::MemberExpression) {
+              auto variantShape = enumVariantValueShape(input, argument);
+              ZC_IF_SOME(shape, variantShape) { enumVariantType = shape.enumType; }
+            }
+            const bool hasArgumentType = argumentType != zc::none ||
+                                         deferredLocalType != zc::none ||
+                                         enumVariantType != zc::none;
             const auto argumentTypeId =
                 argumentType != zc::none
                     ? ZC_ASSERT_NONNULL(argumentType).value
-                    : (deferredLocalType != zc::none ? ZC_ASSERT_NONNULL(deferredLocalType)
-                                                     : identity::SemanticTypeId{});
+                    : (deferredLocalType != zc::none
+                           ? ZC_ASSERT_NONNULL(deferredLocalType)
+                           : (enumVariantType != zc::none ? ZC_ASSERT_NONNULL(enumVariantType)
+                                                          : identity::SemanticTypeId{}));
             if (isLocalOrGlobalArgument && hasArgumentType &&
                 argumentTypeId == value.parameters[index] &&
                 !isByValueStructLocalArgument(input, argument, argumentTypeId) &&
@@ -5810,7 +5959,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               if (capability != zc::none) { return zc::mv(ZC_ASSERT_NONNULL(capability)); }
             }
             if ((!isLiteralArgument && !isParameterArgument &&
-                 !(isLocalOrGlobalArgument && hasArgumentType)) ||
+                 !(isLocalOrGlobalArgument && hasArgumentType) && enumVariantType == zc::none) ||
                 !hasArgumentType || (isLiteralArgument && literal == zc::none)) {
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
@@ -7049,14 +7198,127 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     identity::SemanticTypeId scrutineeTypeId;
     ZC_IF_SOME(entry, scrutineeType) { scrutineeTypeId = entry.value; }
     auto scrutineeKind = primitiveKindOf(input.semanticTypes, scrutineeTypeId);
+    bool isEnum = false;
     if (scrutineeKind == zc::none) {
-      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                             site.key.schemaPreorder, zc::none, site.node,
-                             site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
+      // A non-primitive scrutinee is admitted only when it is a closed nominal
+      // enum type whose definition is visible in this module.
+      auto lookup = input.semanticTypes.get(scrutineeTypeId);
+      if (lookup.is<type::SemanticTypeLookup>()) {
+        const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+        if (data.is<type::semantic::NominalTypeData>()) {
+          const auto& nominal = data.get<type::semantic::NominalTypeData>();
+          for (const auto& definition : input.boundModule.definitions().definitions()) {
+            if (definition.definition == nominal.definition &&
+                definition.record.kind() == identity::DefinitionKind::Enum) {
+              isEnum = true;
+              break;
+            }
+          }
+        }
+      }
+      if (!isEnum) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, zc::none, site.node,
+                               site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
+      }
     }
     bool isBool = false;
-    ZC_IF_SOME(kind, scrutineeKind) { isBool = kind == type::semantic::PrimitiveKind::Bool; }
-    if (isBool) {
+    if (!isEnum) {
+      ZC_IF_SOME(kind, scrutineeKind) { isBool = kind == type::semantic::PrimitiveKind::Bool; }
+    }
+    if (isEnum) {
+      // Enum scrutinee: resolve each EnumPattern arm to its variant definition
+      // and discriminant, produce NodeType + Literal facts on the pattern node,
+      // and emit a Closed domain with the two EnumVariantPattern constructors.
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!input.boundModule.tree().contains(arms) || arms.size != 2) {
+        return rejectInvariant(
+            signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
+            site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
+      }
+      zc::Vector<checked::PatternConstructor> covered;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = input.boundModule.tree().list(arms)[index];
+        if (!input.boundModule.tree().contains(armId)) continue;
+        const auto& arm = input.boundModule.tree().node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!input.boundModule.tree().contains(pattern) ||
+            input.boundModule.tree().node(pattern).kind != ast::SyntaxKind::EnumPattern) {
+          continue;
+        }
+        auto shape = enumPatternVariantShape(input, pattern);
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, pattern,
+                                 site.key.sourceSpan.clone(),
+                                 factPath(CheckedFactGroup::Exhaustiveness));
+        }
+        ZC_IF_SOME(value, shape) {
+          // Produce the NodeType fact on the EnumPattern node so the HIR
+          // builder and verifier can validate the comparison operand types.
+          nodeTypes.add(checked::NodeTypeMap::Entry{pattern, value.enumType, zc::Array<uint8_t>()});
+          // Produce the Literal fact carrying the variant discriminant as an
+          // integer constant so the HIR builder synthesizes
+          // `scrutinee == discriminant` through the equality path.
+          zc::Vector<uint8_t> bytes;
+          uint64_t remaining = value.discriminant;
+          while (remaining != 0) {
+            bytes.add(static_cast<uint8_t>(remaining & 0xff));
+            remaining >>= 8;
+          }
+          auto magnitude = zc::heapArray<uint8_t>(bytes.size());
+          for (size_t byteIndex = 0; byteIndex < bytes.size(); ++byteIndex) {
+            magnitude[byteIndex] = bytes[bytes.size() - byteIndex - 1];
+          }
+          auto patternSpan = input.boundModule.parsedModule().spanFor(
+              input.boundModule.tree().node(pattern).range);
+          if (patternSpan == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, pattern,
+                                   site.key.sourceSpan.clone(),
+                                   factPath(CheckedFactGroup::Exhaustiveness));
+          }
+          literals.add(checked::LiteralFactMap::Entry{
+              pattern,
+              checked::CheckedLiteralFact{
+                  pattern,
+                  signature::CanonicalConstValue::integer(signature::CanonicalInteger{
+                      signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
+                  value.enumType, ZC_ASSERT_NONNULL(patternSpan).clone()},
+              zc::Array<uint8_t>()});
+          covered.add(checked::PatternConstructor(checked::EnumVariantPattern{value.variant}));
+        }
+      }
+      if (covered.size() != 2) {
+        return rejectInvariant(
+            signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
+            site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
+      }
+      // The canonical codec requires covered constructors in ascending encoded
+      // order. EnumVariantPattern records sort by their variant DefinitionKey,
+      // which may differ from source arm order. Swap the two entries when the
+      // second variant's key sorts before the first's.
+      {
+        const auto& firstVariant = covered[0].variant().get<checked::EnumVariantPattern>().variant;
+        const auto& secondVariant = covered[1].variant().get<checked::EnumVariantPattern>().variant;
+        auto firstEntry = input.identities.definition(firstVariant);
+        auto secondEntry = input.identities.definition(secondVariant);
+        if (firstEntry != zc::none && secondEntry != zc::none &&
+            ZC_ASSERT_NONNULL(secondEntry).key() < ZC_ASSERT_NONNULL(firstEntry).key()) {
+          auto temporary = zc::mv(covered[0]);
+          covered[0] = zc::mv(covered[1]);
+          covered[1] = zc::mv(temporary);
+        }
+      }
+      exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
+          site.node,
+          checked::ExhaustivenessFact{
+              site.node, scrutineeTypeId, checked::ExhaustivenessDomain::Closed, zc::mv(covered),
+              zc::Vector<checked::PatternConstructor>(), zc::Vector<ast::NodeId>()},
+          zc::Array<uint8_t>()});
+    } else if (isBool) {
       zc::Vector<checked::PatternConstructor> covered;
       covered.add(checked::PatternConstructor(
           checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
