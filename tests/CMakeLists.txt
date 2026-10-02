@@ -339,6 +339,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-continue-consumer/Zom.toml::for_loop_continue_consumer::for_loop_continue_consumer::45"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-loops-consumer/Zom.toml::nested_loops_consumer::nested_loops_consumer::9"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"

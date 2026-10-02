@@ -232,12 +232,12 @@ bool isPathWithin(const mir::MirPlace& root, const mir::MirPlace& candidate) {
 }
 
 bool validLocalPlace(const mir::MirFunction& function, const mir::MirPlace& place) {
-  if (!place.hasConsistentTypeChain()) return false;
+  if (!place.hasConsistentTypeChain()) { return false; }
   auto index = localIndex(function, place.local());
-  if (index == zc::none) return false;
+  if (index == zc::none) { return false; }
   ZC_IF_SOME(value, index) {
     const auto& local = function.locals[value];
-    if (place.rootType() != local.type) return false;
+    if (place.rootType() != local.type) { return false; }
     for (const auto& projection : place.projections()) {
       if (!projection.isStructurallyValid()) return false;
       if (projection.kind() != mir::MirProjectionKind::Index) continue;
@@ -392,7 +392,7 @@ bool applyOperand(const mir::MirFunction& function, const MovePathFunction& path
                   const mir::MirOperand& operand, MirEventKey&& event,
                   zc::Vector<InitializationPathState>& states) {
   if (operand.kind() == mir::MirOperandKind::Constant) return true;
-  if (!validLocalPlace(function, operand.place())) return false;
+  if (!validLocalPlace(function, operand.place())) { return false; }
   if (operand.kind() == mir::MirOperandKind::Move) {
     return setUnavailable(paths, states, operand.place(), InitializationLossKind::Moved,
                           zc::mv(event), InitializationState::uninitialized());
@@ -436,7 +436,8 @@ bool initialize(const mir::MirFunction& function, const MovePathFunction& paths,
   if (index == zc::none) { return false; }
   ZC_IF_SOME(value, index) {
     const auto state = states[value].state;
-    if (!state.storageLive || (!overwrite && state.mayBeInitialized)) { return false; }
+    if (!state.storageLive) { return false; }
+    if (!overwrite && state.mayBeInitialized) { return false; }
     return setInitialized(paths, states, place);
   }
   ZC_UNREACHABLE

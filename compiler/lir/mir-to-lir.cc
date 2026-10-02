@@ -1859,6 +1859,577 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified reducible nested for-loop accumulator return shape,
+  // re-checking the structure that mir::validNestedForLoopAccumulatorReturnFunction
+  // validated: a parameter-local prefix, N integer user locals (the
+  // accumulators), an integer outer loop-variable user local, a boolean outer
+  // comparison temporary, an integer inner loop-variable user local, a boolean
+  // inner comparison temporary, and an integer function-result local; a
+  // seven-block nested loop whose outer entry initializes the accumulators and
+  // outer loop variable and computes the first outer comparison, whose outer
+  // header switches on the outer temp, whose inner entry initializes the inner
+  // loop variable and computes the first inner comparison, whose inner header
+  // switches on the inner temp, whose inner body accumulates into the
+  // accumulators, updates the inner loop variable, and re-computes the inner
+  // comparison, whose inner exit (outer continuation) updates the outer loop
+  // variable and re-computes the outer comparison, and whose outer exit copies
+  // the first accumulator into the result and returns it.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 7 || function.locals.size() < 6) {
+    return zc::none;
+  }
+
+  size_t parameterCount = 0;
+  while (parameterCount < function.locals.size() &&
+         function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++parameterCount;
+  }
+  // N accumulators + outer init + outer temp + inner init + inner temp + result
+  // = N + 5 non-parameter locals.
+  const size_t nonParamCount = function.locals.size() - parameterCount;
+  if (nonParamCount < 6) { return zc::none; }
+  const size_t accCount = nonParamCount - 5;
+  const auto& outerInitDecl = function.locals[parameterCount + accCount];
+  const auto& outerTempDecl = function.locals[parameterCount + accCount + 1];
+  const auto& innerInitDecl = function.locals[parameterCount + accCount + 2];
+  const auto& innerTempDecl = function.locals[parameterCount + accCount + 3];
+  const auto& resultDecl = function.locals[parameterCount + accCount + 4];
+  if (outerInitDecl.kind != mir::MirLocalKind::UserLocal ||
+      outerTempDecl.kind != mir::MirLocalKind::Temporary ||
+      innerInitDecl.kind != mir::MirLocalKind::UserLocal ||
+      innerTempDecl.kind != mir::MirLocalKind::Temporary ||
+      resultDecl.kind != mir::MirLocalKind::FunctionResult ||
+      resultDecl.type != function.resultType) {
+    return zc::none;
+  }
+  for (size_t k = 0; k < accCount; ++k) {
+    if (function.locals[parameterCount + k].kind != mir::MirLocalKind::UserLocal) {
+      return zc::none;
+    }
+  }
+
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
+  auto outerTempCarrier = boolCarrierFor(outerTempDecl.type, semanticTypes);
+  if (outerTempCarrier == zc::none) { return zc::none; }
+  const auto outerTempCarrierValue = ZC_REQUIRE_NONNULL(outerTempCarrier);
+  auto innerTempCarrier = boolCarrierFor(innerTempDecl.type, semanticTypes);
+  if (innerTempCarrier == zc::none) { return zc::none; }
+  const auto innerTempCarrierValue = ZC_REQUIRE_NONNULL(innerTempCarrier);
+  for (size_t k = 0; k < accCount; ++k) {
+    auto carrier = integerCarrierFor(function.locals[parameterCount + k].type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+  {
+    auto carrier = integerCarrierFor(outerInitDecl.type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+  {
+    auto carrier = integerCarrierFor(innerInitDecl.type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+  for (size_t i = 0; i < parameterCount; ++i) {
+    auto carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+
+  const auto& entry = function.blocks[0];
+  const auto& outerHeader = function.blocks[1];
+  const auto& innerEntry = function.blocks[2];
+  const auto& innerHeader = function.blocks[3];
+  const auto& innerBody = function.blocks[4];
+  const auto& outerCont = function.blocks[5];
+  const auto& exit = function.blocks[6];
+
+  // Entry: StorageLive(result); StorageLive(acc_k)...; StorageLive(outerInit);
+  // StorageLive(outerTemp); StorageLive(innerInit); StorageLive(innerTemp);
+  // Assign(acc_k = constant, Initialize)...;
+  // Assign(outerInit = constant, Initialize);
+  // Assign(outerTemp = Comparison(op, copy(outerInit), constant), Initialize);
+  // Goto(outerHeader).
+  const size_t expectedEntrySize = 7 + 2 * accCount;
+  if (entry.statements.size() != expectedEntrySize) { return zc::none; }
+  if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultDecl.id) {
+    return zc::none;
+  }
+  for (size_t k = 0; k < accCount; ++k) {
+    if (entry.statements[1 + k].kind() != mir::MirStatementKind::StorageLive ||
+        entry.statements[1 + k].storageLocal() != function.locals[parameterCount + k].id) {
+      return zc::none;
+    }
+  }
+  const size_t outerInitStorageLiveIndex = 1 + accCount;
+  const size_t outerTempStorageLiveIndex = 2 + accCount;
+  const size_t innerInitStorageLiveIndex = 3 + accCount;
+  const size_t innerTempStorageLiveIndex = 4 + accCount;
+  if (entry.statements[outerInitStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[outerInitStorageLiveIndex].storageLocal() != outerInitDecl.id ||
+      entry.statements[outerTempStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[outerTempStorageLiveIndex].storageLocal() != outerTempDecl.id ||
+      entry.statements[innerInitStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[innerInitStorageLiveIndex].storageLocal() != innerInitDecl.id ||
+      entry.statements[innerTempStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[innerTempStorageLiveIndex].storageLocal() != innerTempDecl.id) {
+    return zc::none;
+  }
+  // Entry accumulator inits.
+  zc::Vector<zc::Maybe<Operand>> accInitLowered;
+  for (size_t k = 0; k < accCount; ++k) {
+    const size_t assignIndex = 5 + accCount + k;
+    if (entry.statements[assignIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& accInitAssign = entry.statements[assignIndex].assignmentValue();
+    if (accInitAssign.destination.local() != function.locals[parameterCount + k].id ||
+        accInitAssign.destination.projections().size() != 0 ||
+        accInitAssign.initialization != mir::MirInitializationKind::Initialize ||
+        accInitAssign.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    const auto& accInitOperand = accInitAssign.value.useValue().operand;
+    if (accInitOperand.kind() != mir::MirOperandKind::Constant ||
+        accInitOperand.constantValue().type != function.locals[parameterCount + k].type) {
+      return zc::none;
+    }
+    auto lowered = lirOperandFor(accInitOperand, resultCarrierValue);
+    if (lowered == zc::none) { return zc::none; }
+    accInitLowered.add(zc::mv(lowered));
+  }
+  // Entry outer loop-variable init.
+  const size_t outerInitAssignIndex = 5 + 2 * accCount;
+  if (entry.statements[outerInitAssignIndex].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+  const auto& outerInitAssign = entry.statements[outerInitAssignIndex].assignmentValue();
+  if (outerInitAssign.destination.local() != outerInitDecl.id ||
+      outerInitAssign.destination.projections().size() != 0 ||
+      outerInitAssign.initialization != mir::MirInitializationKind::Initialize ||
+      outerInitAssign.value.kind() != mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& outerInitOperand = outerInitAssign.value.useValue().operand;
+  if (outerInitOperand.kind() != mir::MirOperandKind::Constant ||
+      outerInitOperand.constantValue().type != outerInitDecl.type) {
+    return zc::none;
+  }
+  auto outerInitLowered = lirOperandFor(outerInitOperand, resultCarrierValue);
+  if (outerInitLowered == zc::none) { return zc::none; }
+  // Entry outer condition comparison.
+  const size_t outerCondIndex = 6 + 2 * accCount;
+  if (entry.statements[outerCondIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+  const auto& outerCondAssign = entry.statements[outerCondIndex].assignmentValue();
+  if (outerCondAssign.destination.local() != outerTempDecl.id ||
+      outerCondAssign.destination.projections().size() != 0 ||
+      outerCondAssign.initialization != mir::MirInitializationKind::Initialize ||
+      outerCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+    return zc::none;
+  }
+  const auto& outerComparison = outerCondAssign.value.comparisonValue();
+  auto outerCmpOp = lirComparisonOpFor(outerComparison.op);
+  if (outerComparison.resultType != outerTempDecl.type) { return zc::none; }
+  if (outerComparison.left.kind() != mir::MirOperandKind::Copy ||
+      outerComparison.left.place().local() != outerInitDecl.id ||
+      outerComparison.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (outerComparison.right.kind() != mir::MirOperandKind::Constant ||
+      outerComparison.right.constantValue().type != outerInitDecl.type) {
+    return zc::none;
+  }
+  auto outerCondRightLowered = lirOperandFor(outerComparison.right, resultCarrierValue);
+  if (outerCondRightLowered == zc::none) { return zc::none; }
+  if (entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      entry.terminator.gotoValue().target != outerHeader.id) {
+    return zc::none;
+  }
+
+  // Outer header: SwitchInt(copy(outerTemp)) [true -> innerEntry], default = exit.
+  if (outerHeader.statements.size() != 0 ||
+      outerHeader.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  const auto& outerSwitch = outerHeader.terminator.switchIntValue();
+  if (outerSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
+      outerSwitch.discriminant.place().local() != outerTempDecl.id ||
+      outerSwitch.discriminant.place().projections().size() != 0 || outerSwitch.arms.size() != 1 ||
+      outerSwitch.arms[0].target != innerEntry.id || outerSwitch.defaultTarget != exit.id) {
+    return zc::none;
+  }
+
+  // Inner entry: Assign(innerInit = constant, Overwrite);
+  // Assign(innerTemp = Comparison(op, copy(innerInit), constant), Overwrite);
+  // Goto(innerHeader). Overwrite because the inner entry is inside the outer
+  // loop and re-executed on subsequent outer iterations.
+  if (innerEntry.statements.size() != 2 ||
+      innerEntry.statements[0].kind() != mir::MirStatementKind::Assign ||
+      innerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      innerEntry.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      innerEntry.terminator.gotoValue().target != innerHeader.id) {
+    return zc::none;
+  }
+  const auto& innerInitAssign = innerEntry.statements[0].assignmentValue();
+  if (innerInitAssign.destination.local() != innerInitDecl.id ||
+      innerInitAssign.destination.projections().size() != 0 ||
+      innerInitAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      innerInitAssign.value.kind() != mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& innerInitOperand = innerInitAssign.value.useValue().operand;
+  if (innerInitOperand.kind() != mir::MirOperandKind::Constant ||
+      innerInitOperand.constantValue().type != innerInitDecl.type) {
+    return zc::none;
+  }
+  auto innerInitLowered = lirOperandFor(innerInitOperand, resultCarrierValue);
+  if (innerInitLowered == zc::none) { return zc::none; }
+  const auto& innerCondAssign = innerEntry.statements[1].assignmentValue();
+  if (innerCondAssign.destination.local() != innerTempDecl.id ||
+      innerCondAssign.destination.projections().size() != 0 ||
+      innerCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      innerCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+    return zc::none;
+  }
+  const auto& innerComparison = innerCondAssign.value.comparisonValue();
+  auto innerCmpOp = lirComparisonOpFor(innerComparison.op);
+  if (innerComparison.resultType != innerTempDecl.type) { return zc::none; }
+  if (innerComparison.left.kind() != mir::MirOperandKind::Copy ||
+      innerComparison.left.place().local() != innerInitDecl.id ||
+      innerComparison.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (innerComparison.right.kind() != mir::MirOperandKind::Constant ||
+      innerComparison.right.constantValue().type != innerInitDecl.type) {
+    return zc::none;
+  }
+  auto innerCondRightLowered = lirOperandFor(innerComparison.right, resultCarrierValue);
+  if (innerCondRightLowered == zc::none) { return zc::none; }
+
+  // Inner header: SwitchInt(copy(innerTemp)) [true -> innerBody], default = outerCont.
+  if (innerHeader.statements.size() != 0 ||
+      innerHeader.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  const auto& innerSwitch = innerHeader.terminator.switchIntValue();
+  if (innerSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
+      innerSwitch.discriminant.place().local() != innerTempDecl.id ||
+      innerSwitch.discriminant.place().projections().size() != 0 || innerSwitch.arms.size() != 1 ||
+      innerSwitch.arms[0].target != innerBody.id || innerSwitch.defaultTarget != outerCont.id) {
+    return zc::none;
+  }
+
+  // Inner body: Assign(acc_k = Arithmetic(op, copy(acc_k), copy(innerInit)|constant),
+  // Overwrite)...; Assign(innerInit = Arithmetic(op, copy(innerInit), constant),
+  // Overwrite); Assign(innerTemp = Comparison(op, copy(innerInit), constant),
+  // Overwrite); Goto(innerHeader).
+  const size_t expectedInnerBodySize = 2 + accCount;
+  if (innerBody.statements.size() != expectedInnerBodySize) { return zc::none; }
+  for (size_t k = 0; k < accCount; ++k) {
+    if (innerBody.statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+  }
+  if (innerBody.statements[accCount].kind() != mir::MirStatementKind::Assign ||
+      innerBody.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
+      innerBody.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      innerBody.terminator.gotoValue().target != innerHeader.id) {
+    return zc::none;
+  }
+  // Inner body accumulator arithmetic.
+  zc::Vector<zc::Maybe<ArithmeticOp>> accArithOps;
+  zc::Vector<bool> accArithRhsIsLiteral;
+  zc::Vector<zc::Maybe<Operand>> accArithRhsLowered;
+  for (size_t k = 0; k < accCount; ++k) {
+    const auto& accArithAssign = innerBody.statements[k].assignmentValue();
+    if (accArithAssign.destination.local() != function.locals[parameterCount + k].id ||
+        accArithAssign.destination.projections().size() != 0 ||
+        accArithAssign.initialization != mir::MirInitializationKind::Overwrite ||
+        accArithAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+      return zc::none;
+    }
+    const auto& accArithmetic = accArithAssign.value.arithmeticValue();
+    auto accArithOp = lirArithmeticOpFor(accArithmetic.op);
+    if (accArithOp == zc::none) { return zc::none; }
+    if (accArithmetic.resultType != function.locals[parameterCount + k].type) { return zc::none; }
+    if (accArithmetic.left.kind() != mir::MirOperandKind::Copy ||
+        accArithmetic.left.place().local() != function.locals[parameterCount + k].id ||
+        accArithmetic.left.place().projections().size() != 0) {
+      return zc::none;
+    }
+    const bool rhsIsLiteral = accArithmetic.right.kind() == mir::MirOperandKind::Constant;
+    if (rhsIsLiteral) {
+      if (accArithmetic.right.constantValue().type != function.locals[parameterCount + k].type) {
+        return zc::none;
+      }
+      auto rhsLowered = lirOperandFor(accArithmetic.right, resultCarrierValue);
+      if (rhsLowered == zc::none) { return zc::none; }
+      accArithRhsLowered.add(zc::mv(rhsLowered));
+    } else {
+      if (accArithmetic.right.kind() != mir::MirOperandKind::Copy ||
+          accArithmetic.right.place().local() != innerInitDecl.id ||
+          accArithmetic.right.place().projections().size() != 0) {
+        return zc::none;
+      }
+    }
+    accArithOps.add(zc::mv(accArithOp));
+    accArithRhsIsLiteral.add(rhsIsLiteral);
+  }
+  // Inner body update arithmetic.
+  const auto& innerUpdateAssign = innerBody.statements[accCount].assignmentValue();
+  if (innerUpdateAssign.destination.local() != innerInitDecl.id ||
+      innerUpdateAssign.destination.projections().size() != 0 ||
+      innerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      innerUpdateAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+    return zc::none;
+  }
+  const auto& innerArithmetic = innerUpdateAssign.value.arithmeticValue();
+  auto innerArithOp = lirArithmeticOpFor(innerArithmetic.op);
+  if (innerArithOp == zc::none) { return zc::none; }
+  if (innerArithmetic.resultType != innerInitDecl.type) { return zc::none; }
+  if (innerArithmetic.left.kind() != mir::MirOperandKind::Copy ||
+      innerArithmetic.left.place().local() != innerInitDecl.id ||
+      innerArithmetic.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (innerArithmetic.right.kind() != mir::MirOperandKind::Constant ||
+      innerArithmetic.right.constantValue().type != innerInitDecl.type) {
+    return zc::none;
+  }
+  auto innerArithRightLowered = lirOperandFor(innerArithmetic.right, resultCarrierValue);
+  if (innerArithRightLowered == zc::none) { return zc::none; }
+  // Inner body condition recompute.
+  const auto& innerBodyCondAssign = innerBody.statements[accCount + 1].assignmentValue();
+  if (innerBodyCondAssign.destination.local() != innerTempDecl.id ||
+      innerBodyCondAssign.destination.projections().size() != 0 ||
+      innerBodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      innerBodyCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+    return zc::none;
+  }
+  const auto& innerBodyComparison = innerBodyCondAssign.value.comparisonValue();
+  if (innerBodyComparison.op != innerComparison.op ||
+      innerBodyComparison.resultType != innerTempDecl.type) {
+    return zc::none;
+  }
+  if (innerBodyComparison.left.kind() != mir::MirOperandKind::Copy ||
+      innerBodyComparison.left.place().local() != innerInitDecl.id ||
+      innerBodyComparison.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (innerBodyComparison.right.kind() != mir::MirOperandKind::Constant ||
+      innerBodyComparison.right.constantValue().type != innerInitDecl.type) {
+    return zc::none;
+  }
+
+  // Outer continuation: Assign(outerInit = Arithmetic(op, copy(outerInit), constant),
+  // Overwrite); Assign(outerTemp = Comparison(op, copy(outerInit), constant),
+  // Overwrite); Goto(outerHeader).
+  if (outerCont.statements.size() != 2 ||
+      outerCont.statements[0].kind() != mir::MirStatementKind::Assign ||
+      outerCont.statements[1].kind() != mir::MirStatementKind::Assign ||
+      outerCont.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      outerCont.terminator.gotoValue().target != outerHeader.id) {
+    return zc::none;
+  }
+  const auto& outerUpdateAssign = outerCont.statements[0].assignmentValue();
+  if (outerUpdateAssign.destination.local() != outerInitDecl.id ||
+      outerUpdateAssign.destination.projections().size() != 0 ||
+      outerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      outerUpdateAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+    return zc::none;
+  }
+  const auto& outerArithmetic = outerUpdateAssign.value.arithmeticValue();
+  auto outerArithOp = lirArithmeticOpFor(outerArithmetic.op);
+  if (outerArithOp == zc::none) { return zc::none; }
+  if (outerArithmetic.resultType != outerInitDecl.type) { return zc::none; }
+  if (outerArithmetic.left.kind() != mir::MirOperandKind::Copy ||
+      outerArithmetic.left.place().local() != outerInitDecl.id ||
+      outerArithmetic.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (outerArithmetic.right.kind() != mir::MirOperandKind::Constant ||
+      outerArithmetic.right.constantValue().type != outerInitDecl.type) {
+    return zc::none;
+  }
+  auto outerArithRightLowered = lirOperandFor(outerArithmetic.right, resultCarrierValue);
+  if (outerArithRightLowered == zc::none) { return zc::none; }
+  const auto& outerContCondAssign = outerCont.statements[1].assignmentValue();
+  if (outerContCondAssign.destination.local() != outerTempDecl.id ||
+      outerContCondAssign.destination.projections().size() != 0 ||
+      outerContCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
+      outerContCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+    return zc::none;
+  }
+  const auto& outerContComparison = outerContCondAssign.value.comparisonValue();
+  if (outerContComparison.op != outerComparison.op ||
+      outerContComparison.resultType != outerTempDecl.type) {
+    return zc::none;
+  }
+  if (outerContComparison.left.kind() != mir::MirOperandKind::Copy ||
+      outerContComparison.left.place().local() != outerInitDecl.id ||
+      outerContComparison.left.place().projections().size() != 0) {
+    return zc::none;
+  }
+  if (outerContComparison.right.kind() != mir::MirOperandKind::Constant ||
+      outerContComparison.right.constantValue().type != outerInitDecl.type) {
+    return zc::none;
+  }
+
+  // Exit: Assign(result = copy(acc_0), Initialize); Return(place-use result).
+  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& resultAssign = exit.statements[0].assignmentValue();
+  if (resultAssign.destination.local() != resultDecl.id ||
+      resultAssign.destination.projections().size() != 0 ||
+      resultAssign.initialization != mir::MirInitializationKind::Initialize ||
+      resultAssign.value.kind() != mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& resultOperand = resultAssign.value.useValue().operand;
+  if (resultOperand.kind() != mir::MirOperandKind::Copy ||
+      resultOperand.place().local() != function.locals[parameterCount].id ||
+      resultOperand.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& returnValue = exit.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsResult = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsResult = value.kind() != mir::MirOperandKind::Constant &&
+                    value.place().local() == resultDecl.id &&
+                    value.place().projections().size() == 0;
+  }
+  if (!returnsResult) { return zc::none; }
+
+  zc::Vector<uint32_t> accOrdinals;
+  for (size_t k = 0; k < accCount; ++k) {
+    accOrdinals.add(function.locals[parameterCount + k].id.ordinal());
+  }
+  const uint32_t outerInitOrdinal = outerInitDecl.id.ordinal();
+  const uint32_t outerTempOrdinal = outerTempDecl.id.ordinal();
+  const uint32_t innerInitOrdinal = innerInitDecl.id.ordinal();
+  const uint32_t innerTempOrdinal = innerTempDecl.id.ordinal();
+  const uint32_t resultOrdinal = resultDecl.id.ordinal();
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto outerHeaderId = LirBlockId::fromOrdinal(2);
+  auto innerEntryId = LirBlockId::fromOrdinal(3);
+  auto innerHeaderId = LirBlockId::fromOrdinal(4);
+  auto innerBodyId = LirBlockId::fromOrdinal(5);
+  auto outerContId = LirBlockId::fromOrdinal(6);
+  auto exitId = LirBlockId::fromOrdinal(7);
+  if (entryId == zc::none || outerHeaderId == zc::none || innerEntryId == zc::none ||
+      innerHeaderId == zc::none || innerBodyId == zc::none || outerContId == zc::none ||
+      exitId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<BasicBlock> blocks;
+  // bb1 outer entry.
+  {
+    zc::Vector<Statement> entryStatements;
+    for (size_t k = 0; k < accCount; ++k) {
+      entryStatements.add(Statement::assign(accOrdinals[k], ZC_REQUIRE_NONNULL(accInitLowered[k])));
+    }
+    entryStatements.add(Statement::assign(outerInitOrdinal, ZC_REQUIRE_NONNULL(outerInitLowered)));
+    entryStatements.add(Statement::compare(outerTempOrdinal, outerCmpOp,
+                                           Operand::localUse(outerInitOrdinal),
+                                           ZC_REQUIRE_NONNULL(outerCondRightLowered)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(outerHeaderId))));
+  }
+  // bb2 outer header.
+  {
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(outerHeaderId), zc::Vector<Statement>{},
+                          Terminator::condBranch(outerTempOrdinal, ZC_REQUIRE_NONNULL(innerEntryId),
+                                                 ZC_REQUIRE_NONNULL(exitId))));
+  }
+  // bb3 inner entry.
+  {
+    zc::Vector<Statement> innerEntryStatements;
+    innerEntryStatements.add(
+        Statement::assign(innerInitOrdinal, ZC_REQUIRE_NONNULL(innerInitLowered)));
+    innerEntryStatements.add(Statement::compare(innerTempOrdinal, innerCmpOp,
+                                                Operand::localUse(innerInitOrdinal),
+                                                ZC_REQUIRE_NONNULL(innerCondRightLowered)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerEntryId), zc::mv(innerEntryStatements),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(innerHeaderId))));
+  }
+  // bb4 inner header.
+  {
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerHeaderId), zc::Vector<Statement>{},
+                          Terminator::condBranch(innerTempOrdinal, ZC_REQUIRE_NONNULL(innerBodyId),
+                                                 ZC_REQUIRE_NONNULL(outerContId))));
+  }
+  // bb5 inner body.
+  {
+    zc::Vector<Statement> innerBodyStatements;
+    for (size_t k = 0; k < accCount; ++k) {
+      Operand rhsOperand = accArithRhsIsLiteral[k] ? ZC_REQUIRE_NONNULL(accArithRhsLowered[k])
+                                                   : Operand::localUse(innerInitOrdinal);
+      innerBodyStatements.add(
+          Statement::arithmetic(accOrdinals[k], ZC_REQUIRE_NONNULL(accArithOps[k]),
+                                Operand::localUse(accOrdinals[k]), zc::mv(rhsOperand)));
+    }
+    innerBodyStatements.add(Statement::arithmetic(
+        innerInitOrdinal, ZC_REQUIRE_NONNULL(innerArithOp), Operand::localUse(innerInitOrdinal),
+        ZC_REQUIRE_NONNULL(innerArithRightLowered)));
+    innerBodyStatements.add(Statement::compare(innerTempOrdinal, innerCmpOp,
+                                               Operand::localUse(innerInitOrdinal),
+                                               ZC_REQUIRE_NONNULL(innerCondRightLowered)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerBodyId), zc::mv(innerBodyStatements),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(innerHeaderId))));
+  }
+  // bb6 outer continuation.
+  {
+    zc::Vector<Statement> outerContStatements;
+    outerContStatements.add(Statement::arithmetic(
+        outerInitOrdinal, ZC_REQUIRE_NONNULL(outerArithOp), Operand::localUse(outerInitOrdinal),
+        ZC_REQUIRE_NONNULL(outerArithRightLowered)));
+    outerContStatements.add(Statement::compare(outerTempOrdinal, outerCmpOp,
+                                               Operand::localUse(outerInitOrdinal),
+                                               ZC_REQUIRE_NONNULL(outerCondRightLowered)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(outerContId), zc::mv(outerContStatements),
+                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(outerHeaderId))));
+  }
+  // bb7 outer exit.
+  {
+    zc::Vector<Statement> exitStatements;
+    exitStatements.add(Statement::assign(resultOrdinal, Operand::localUse(accOrdinals[0])));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
+                          Terminator::returnLocal(resultOrdinal)));
+  }
+
+  zc::Vector<Local> parameters;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    parameters.add(Local(function.locals[i].id.ordinal(), resultCarrierValue));
+  }
+  zc::Vector<Local> locals;
+  for (size_t k = 0; k < accCount; ++k) { locals.add(Local(accOrdinals[k], resultCarrierValue)); }
+  locals.add(Local(outerInitOrdinal, resultCarrierValue));
+  locals.add(Local(outerTempOrdinal, outerTempCarrierValue));
+  locals.add(Local(innerInitOrdinal, resultCarrierValue));
+  locals.add(Local(innerTempOrdinal, innerTempCarrierValue));
+  locals.add(Local(resultOrdinal, resultCarrierValue));
+
+  // A parameter-free nested for-loop accumulator folds to the reserved
+  // no-argument `zom.module_init` entry the runtime `_start` calls.
+  zc::String symbol =
+      zc::heapString(parameterCount == 0 ? "zom.module_init" : "zom.nested_for_loop_accumulator");
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::mv(symbol), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified comparison-driven conditional shape, re-checking the

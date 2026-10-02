@@ -78,5 +78,14 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
 /// body-write and update-write node ids as its body.
 void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// Lowers a nested for-loop accumulator return: N leading `mut` accumulator
+/// locals, an outer `for` loop whose sole body statement is an inner `for`
+/// loop that writes each accumulator, and the local-reference return. The
+/// outer loop body lists [inner-loop, outer-update-write]; the inner loop
+/// body lists [accumulator-write..., inner-update-write]. The body block
+/// lists [accumulator-local..., outer-init-local, outer-loop, return].
+void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function,
+                                                 HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

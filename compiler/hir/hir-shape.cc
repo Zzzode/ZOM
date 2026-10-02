@@ -1885,6 +1885,147 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       }
     }
   }
+  // Nested for-loop accumulator shape: N leading scalar `mut` accumulator
+  // locals, an outer C-style `for` loop whose sole body statement is an inner
+  // C-style `for` loop that writes each accumulator, and a trailing
+  // `return <accumulator-local>;`. The outer loop reuses the for-loop fields;
+  // the inner loop nodes are carried in the nested fields. The accumulator
+  // patterns, initializers, and body writes reuse the forLoopAccumulator*
+  // fields. The return names the first accumulator.
+  if (statements.size >= 3) {
+    auto forItem = statementItem(tree, tree.list(statements)[statements.size - 2]);
+    if (forItem != zc::none) {
+      ast::NodeId forStmt;
+      ZC_IF_SOME(item, forItem) { forStmt = item; }
+      if (tree.node(forStmt).kind == ast::SyntaxKind::ForStmt) {
+        const size_t accumulatorCount = statements.size - 2;
+        const auto& loop = tree.node(forStmt);
+        const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
+        const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
+        const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
+        const ast::NodeId forBody(loop.payload.words[ast::kForStmtBodyWord]);
+        if (tree.contains(init) && tree.contains(cond) && tree.contains(update) &&
+            tree.contains(forBody) && tree.node(value).kind == ast::SyntaxKind::IdentExpr) {
+          // Validate the N leading mut declarations.
+          zc::Vector<ast::NodeId> patterns;
+          zc::Vector<ast::NodeId> initializers;
+          bool leadingOk = true;
+          for (size_t i = 0; i < accumulatorCount; ++i) {
+            auto letItem = statementItem(tree, tree.list(statements)[i]);
+            if (letItem == zc::none) {
+              leadingOk = false;
+              break;
+            }
+            ast::NodeId letNode;
+            ZC_IF_SOME(item, letItem) { letNode = item; }
+            if (tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
+                static_cast<ast::BindingDeclarationKind>(
+                    tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+                    ast::BindingDeclarationKind::Mut) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeId declarations(
+                tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
+            if (!tree.contains(declarations) ||
+                tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeList declarators{
+                tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+                tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+            if (!tree.contains(declarators) || declarators.size != 1) {
+              leadingOk = false;
+              break;
+            }
+            const auto declarator = tree.list(declarators)[0];
+            if (!tree.contains(declarator) ||
+                tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeId pattern(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+            const ast::NodeId initializer(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+            if (!tree.contains(pattern) ||
+                tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+                !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind)) {
+              leadingOk = false;
+              break;
+            }
+            patterns.add(pattern);
+            initializers.add(initializer);
+          }
+          if (leadingOk && matchesLocalReference(tree, patterns[0], value)) {
+            // The outer loop body has exactly one statement: the inner for-loop.
+            const auto& outerLoopBlock = tree.node(forBody);
+            const ast::NodeList outerLoopStatements{
+                outerLoopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                outerLoopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (tree.contains(outerLoopStatements) && outerLoopStatements.size == 1) {
+              auto innerForItem = statementItem(tree, tree.list(outerLoopStatements)[0]);
+              if (innerForItem != zc::none) {
+                ast::NodeId innerForStmt;
+                ZC_IF_SOME(item, innerForItem) { innerForStmt = item; }
+                if (tree.node(innerForStmt).kind == ast::SyntaxKind::ForStmt) {
+                  const auto& innerLoop = tree.node(innerForStmt);
+                  const ast::NodeId innerInit(innerLoop.payload.words[ast::kForStmtInitWord]);
+                  const ast::NodeId innerCond(innerLoop.payload.words[ast::kForStmtCondWord]);
+                  const ast::NodeId innerUpdate(innerLoop.payload.words[ast::kForStmtUpdateWord]);
+                  const ast::NodeId innerBody(innerLoop.payload.words[ast::kForStmtBodyWord]);
+                  if (tree.contains(innerInit) && tree.contains(innerCond) &&
+                      tree.contains(innerUpdate) && tree.contains(innerBody)) {
+                    // The inner loop body has N statements: N accumulator
+                    // writes. The update write is in the for-loop header, not
+                    // the body.
+                    const auto& innerLoopBlock = tree.node(innerBody);
+                    const ast::NodeList innerLoopStatements{
+                        innerLoopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                        innerLoopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+                    if (tree.contains(innerLoopStatements) &&
+                        innerLoopStatements.size == accumulatorCount) {
+                      zc::Vector<ast::NodeId> bodyWrites;
+                      bool bodyOk = true;
+                      for (size_t i = 0; i < accumulatorCount; ++i) {
+                        if (!isAccumulatorBodyWrite(tree, tree.list(innerLoopStatements)[i])) {
+                          bodyOk = false;
+                          break;
+                        }
+                        bodyWrites.add(tree.list(innerLoopStatements)[i]);
+                      }
+                      if (bodyOk) {
+                        FunctionReturnShape shape{};
+                        shape.body = body;
+                        shape.returnStatement = returnNode;
+                        shape.value = value;
+                        shape.isNestedForLoopAccumulator = true;
+                        shape.forLoopAccumulatorPatterns = zc::mv(patterns);
+                        shape.forLoopAccumulatorInitializers = zc::mv(initializers);
+                        shape.forLoopBodyWrites = zc::mv(bodyWrites);
+                        shape.forLoopInit = init;
+                        shape.forLoopCond = cond;
+                        shape.forLoopUpdate = update;
+                        shape.forLoopBody = forBody;
+                        shape.forLoopStatement = forStmt;
+                        shape.nestedForLoopInnerInit = innerInit;
+                        shape.nestedForLoopInnerCond = innerCond;
+                        shape.nestedForLoopInnerUpdate = innerUpdate;
+                        shape.nestedForLoopInnerBody = innerBody;
+                        shape.nestedForLoopInnerStatement = innerForStmt;
+                        return shape;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   if (statements.size == 3) {
     // Loop-body composite shape: a leading `mut` local declaration, an admitted
     // `while` whose bare-identifier condition guards a body that writes that

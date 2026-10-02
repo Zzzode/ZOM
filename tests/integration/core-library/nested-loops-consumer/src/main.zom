@@ -1,0 +1,13 @@
+// Nested for-loop accumulator fixture: an outer C-style for loop whose sole
+// body statement is an inner C-style for loop that accumulates into a leading
+// mutable local, exercising the seven-block nested-loop CFG through the full
+// IR pipeline. The sum of 3*3 is 9.
+fun entry() -> i32 {
+  mut sum = 0;
+  for (let i = 0; i < 3; i = i + 1) {
+    for (let j = 0; j < 3; j = j + 1) {
+      sum = sum + 1;
+    }
+  }
+  return sum;
+}

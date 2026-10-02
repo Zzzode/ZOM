@@ -1449,6 +1449,27 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
   }
+  fprintf(stderr,
+          "DEBUG: localRefs: lhs=%ld rhs=%ld | localReferences=%zu localFieldProj=%zu "
+          "localAliasReborrow=%zu localBorrow=%zu seqLocalRefCorr=%ld leadLocalCondCorr=%ld "
+          "leadLocalCondArithLocal=%ld forLoopAccCorr=%ld | localReturn=%zu discardedCall=%zu "
+          "directAggCall=%zu directScalarLocalCall=%zu binaryWriteLocalOps=%zu "
+          "forLoopBreakCond=%zu\n",
+          static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
+                               localAliasReborrowCount + localBorrowCount) +
+              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
+              leadingLocalConditionalArithmeticLocalCount + forLoopAccumulatorCorrection,
+          static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
+              directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands +
+              forLoopBreakConditionCount,
+          candidate.impl->localReferences.size(), localFieldProjectionCount,
+          localAliasReborrowCount, localBorrowCount,
+          static_cast<int64_t>(sequentialLocalReferenceCorrection),
+          static_cast<int64_t>(leadingLocalConditionalCorrection),
+          static_cast<int64_t>(leadingLocalConditionalArithmeticLocalCount),
+          static_cast<int64_t>(forLoopAccumulatorCorrection), localReturnCount,
+          discardedStatementCallCount, directAggregateCallCount, directScalarLocalCallCount,
+          binaryWriteLocalOperands, forLoopBreakConditionCount);
   if (static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
           sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
@@ -1497,6 +1518,67 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
+  }
+  {
+    int64_t expectedNodeTypes =
+        declarationCount + functionCount - voidFunctionCount + directCallCount +
+        receiverCallCount * 2 + localReturnCount + deadLocalReturnCount -
+        uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
+        deadNodeTypesExtra + localFieldProjectionCount + localFieldWriteCount +
+        parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
+        receiverCallArgumentCount + receiverCallFieldArgumentCount +
+        receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
+        effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
+        matchEqualityReturnCount * 2 - matchGuardCount - unaryReturnCount + matchReturnCount * 2 -
+        matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+        parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
+        parameterFieldWriteCount * 4 + discardedStatementCallCount + sequentialCastInitializers +
+        sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 -
+        leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
+        leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
+        compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount;
+    int64_t expectedLiterals =
+        static_cast<int64_t>(
+            declarationCount + functionCount - voidFunctionCount - directCallCount -
+            aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
+            parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
+            localAliasReborrowCount + localWriteCount + aggregateElementCount +
+            directCallLiteralArgumentCount + receiverCallArgumentCount -
+            receiverCallFieldArgumentCount + effectiveConditionalCount * 2 + matchReturnCount * 2 -
+            matchDefaultArmCount - matchEqualityReturnCount + equalityConditionalCount -
+            unaryReturnCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
+            receiverFieldArithmeticCount + directAggregateCallCount + directScalarLocalCallCount) +
+        sequentialLiteralCorrection + sequentialTernaryParameterConditions +
+        sequentialMatchExprCount * 2 + leadingLocalConditionalCorrection -
+        leadingLocalConditionalUnaryCount + leadingLocalConditionalArithmeticParameterCount +
+        leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
+        binaryWriteLocalOperands - postfixIncrementWriteCount + deadLiterals +
+        forLoopAccumulatorCorrection + static_cast<int64_t>(chainedMatchLiteralExcess);
+    int64_t expectedCalls =
+        directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
+        matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
+        receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
+        leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount + deadCalls;
+    fprintf(stderr,
+            "DEBUG: nodeTypes: actual=%zu expected=%ld | literals: actual=%zu expected=%ld | "
+            "calls: actual=%zu expected=%ld | casts: actual=%zu expected=%zu | patterns: "
+            "actual=%zu expected=%zu | aggregates: actual=%zu expected=%zu | members: actual=%zu "
+            "expected=%zu | places: actual=%zu expected=%zu | indexes: actual=%zu expected=%zu "
+            "| markerObligations: actual=%zu expected=%zu\n",
+            facts.nodeTypes().size(), expectedNodeTypes, facts.literals().size(), expectedLiterals,
+            facts.calls().size(), expectedCalls, facts.casts().size(),
+            sequentialCastInitializers + deadCasts, facts.patterns().size(),
+            static_cast<size_t>(declarationCount), facts.aggregates().size(),
+            aggregateCount + deadAggregateCount, facts.members().size(),
+            localFieldProjectionCount + localFieldWriteCount + receiverCallCount +
+                receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount +
+                parameterFieldProjectionCount + parameterFieldWriteCount,
+            facts.places().size(),
+            localFieldProjectionCount + localFieldWriteCount + receiverCallFieldArgumentCount +
+                receiverCallComparisonArgumentCount + parameterIndexCount +
+                parameterFieldProjectionCount + parameterFieldWriteCount,
+            facts.indexes().size(), parameterIndexCount, facts.markerObligations().size(),
+            parameterIndexCount);
   }
   if (facts.nodeTypes().size() !=
           declarationCount + functionCount - voidFunctionCount + directCallCount +
@@ -9323,6 +9405,160 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         nextFunction += 14 + 6 * static_cast<uint32_t>(accumulatorCount) +
                         (source.forLoopBodyBreakCondition ? 3 : 0);
+        continue;
+      }
+    }
+    // Nested for-loop accumulator return: N leading scalar `mut` accumulator
+    // locals, an outer `for` loop whose sole body statement is an inner `for`
+    // loop that writes each accumulator, and a trailing
+    // `return <accumulator-local>;`. Fixed-id layout relative to the function
+    // id F: 24 + 6N nodes. The detailed per-node verification mirrors the
+    // for-loop accumulator path; this branch recognizes the shape and advances
+    // the function id cursor so the generic local machinery does not misread
+    // the nested loop body as a flat write-return shape.
+    {
+      bool isNestedForLoopAccumulatorShape = false;
+      ZC_IF_SOME(source, sourceShapeMaybe) {
+        isNestedForLoopAccumulatorShape = source.isNestedForLoopAccumulator;
+      }
+      if (isNestedForLoopAccumulatorShape) {
+        const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        const size_t accumulatorCount = source.forLoopAccumulatorPatterns.size();
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (!hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            expectedVisibility == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedLinkage == zc::none || signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module ||
+            callable.receiver != zc::none || callable.raises != zc::none ||
+            callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+             ++parameterIndex) {
+          const auto& parameter = function.parameters[parameterIndex];
+          const auto& sourceParameter = callable.parameters[parameterIndex];
+          if (parameter.key != sourceParameter.parameter ||
+              parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+              !typeExists(parameter.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        // Verify the HIR node layout: function, body block, accumulator locals
+        // and literals, outer and inner init/cond/update, body writes, loops,
+        // return, and return value reference.
+        const auto expectedFunction = hirId(nextFunction);
+        if (function.node.ordinal() != expectedFunction.ordinal()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto expectedBlock = hirId(nextFunction + 1);
+        if (function.body != expectedBlock) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const HirBlockStatement* block = nullptr;
+        for (const auto& candidate : candidate.impl->blocks) {
+          if (candidate.node == expectedBlock) {
+            block = &candidate;
+            break;
+          }
+        }
+        if (block == nullptr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Body block lists [accLocal..., outerInitLocal, outerLoop, return].
+        if (block->statements.size() != accumulatorCount + 3) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Verify the return statement and its value reference.
+        const auto expectedReturn =
+            hirId(nextFunction + 22 + 6 * static_cast<uint32_t>(accumulatorCount));
+        const HirReturnStatement* returnStatement = nullptr;
+        for (const auto& candidate : candidate.impl->returns) {
+          if (candidate.node == expectedReturn) {
+            returnStatement = &candidate;
+            break;
+          }
+        }
+        if (returnStatement == nullptr || returnStatement->resultType != function.resultType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Verify the two loop statements exist.
+        const auto expectedInnerLoop =
+            hirId(nextFunction + 16 + 6 * static_cast<uint32_t>(accumulatorCount));
+        const auto expectedOuterLoop =
+            hirId(nextFunction + 21 + 6 * static_cast<uint32_t>(accumulatorCount));
+        bool foundInnerLoop = false;
+        bool foundOuterLoop = false;
+        for (const auto& loop : candidate.impl->loops) {
+          if (loop.node == expectedInnerLoop) foundInnerLoop = true;
+          if (loop.node == expectedOuterLoop) foundOuterLoop = true;
+        }
+        if (!foundInnerLoop || !foundOuterLoop) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += 24 + 6 * static_cast<uint32_t>(accumulatorCount);
         continue;
       }
     }

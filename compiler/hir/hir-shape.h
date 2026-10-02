@@ -273,6 +273,19 @@ struct FunctionReturnShape final {
   // and the MIR builder lowers a guard block. `forLoopBodyWrites` covers only
   // the write suffix, excluding the leading guarded break.
   ast::NodeId forLoopBodyBreakCondition{};
+  // Nested for-loop accumulator shape: N leading scalar `mut` accumulator
+  // locals, an outer C-style `for` loop whose sole body statement is an inner
+  // C-style `for` loop that writes each accumulator, and a trailing
+  // `return <accumulator-local>;`. The outer loop reuses the for-loop fields
+  // (forLoopInit, forLoopCond, forLoopUpdate, forLoopBody, forLoopStatement);
+  // the inner loop nodes are carried here. The accumulator patterns,
+  // initializers, and body writes reuse the forLoopAccumulator* fields.
+  bool isNestedForLoopAccumulator = false;
+  ast::NodeId nestedForLoopInnerInit{};
+  ast::NodeId nestedForLoopInnerCond{};
+  ast::NodeId nestedForLoopInnerUpdate{};
+  ast::NodeId nestedForLoopInnerBody{};
+  ast::NodeId nestedForLoopInnerStatement{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,

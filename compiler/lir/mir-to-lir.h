@@ -221,6 +221,31 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerForLoopAccumulatorReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one reducible seven-block nested for-loop accumulator return to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validNestedForLoopAccumulatorReturnFunction` accepts: a `Function`
+  /// with zero or more integer parameters, N integer accumulator user locals,
+  /// an integer outer loop-variable user local, a boolean outer comparison
+  /// temporary, an integer inner loop-variable user local, a boolean inner
+  /// comparison temporary, and an integer function-result local; a reducible
+  /// seven-block nested loop. The outer entry initializes the accumulators and
+  /// outer loop variable and computes the first outer comparison; the outer
+  /// header switches on the outer temp; the inner entry initializes the inner
+  /// loop variable and computes the first inner comparison; the inner header
+  /// switches on the inner temp; the inner body accumulates into the
+  /// accumulators, updates the inner loop variable, and re-computes the inner
+  /// comparison; the inner exit (outer continuation) updates the outer loop
+  /// variable and re-computes the outer comparison; the outer exit copies the
+  /// first accumulator into the result and returns it. Every shape outside
+  /// this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerNestedForLoopAccumulatorReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one four-block comparison-driven conditional return to LIR.
   ///
   /// Admits the verified Built MIR shape that

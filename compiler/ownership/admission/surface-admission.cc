@@ -896,6 +896,19 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
   if (!tree.contains(statements)) return false;
   if (statements.empty()) return true;
   const auto statementNodes = tree.list(statements);
+  // Nested for-loop: the sole body statement is itself an admitted for-loop.
+  // This admits the outer loop of a nested accumulator shape; the inner loop
+  // is validated recursively by isAdmittedForStatement.
+  if (statements.size == 1) {
+    auto innerItem = statementItem(tree, statementNodes[0]);
+    if (innerItem != zc::none) {
+      ast::NodeId innerStmt;
+      ZC_IF_SOME(item, innerItem) { innerStmt = item; }
+      if (tree.node(innerStmt).kind == ast::SyntaxKind::ForStmt) {
+        return isAdmittedForStatement(tree, innerStmt);
+      }
+    }
+  }
   // If-guarded break leading the body: the remaining statements must all be
   // admitted loop-body writes.
   if (isAdmittedLoopBodyGuardedBreak(tree, statementNodes[0])) {
@@ -1736,8 +1749,10 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       return;
     }
     // An admitted for-loop's init, cond, and update are traversed so their
-    // inner expressions are checked; the body (empty or one admitted loop-body
-    // write) is skipped, matching the while-loop traversal.
+    // inner expressions are checked; the body (empty, one admitted loop-body
+    // write, or one nested admitted for-loop) is skipped, matching the
+    // while-loop traversal. A nested for-loop body has its own init/cond/
+    // update traversed recursively.
     if (syntax.kind == ast::SyntaxKind::ForStmt &&
         isAdmittedForStatement(boundModule.tree(), nodeId)) {
       const ast::NodeId init(syntax.payload.words[ast::kForStmtInitWord]);
@@ -1746,6 +1761,24 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       if (boundModule.tree().contains(init)) { self(init, self); }
       if (boundModule.tree().contains(cond)) { self(cond, self); }
       if (boundModule.tree().contains(update)) { self(update, self); }
+      const ast::NodeId body(syntax.payload.words[ast::kForStmtBodyWord]);
+      if (boundModule.tree().contains(body) &&
+          boundModule.tree().node(body).kind == ast::SyntaxKind::BlockStmt) {
+        const auto& bodyBlock = boundModule.tree().node(body);
+        const ast::NodeList bodyStmts{bodyBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                      bodyBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        if (boundModule.tree().contains(bodyStmts) && bodyStmts.size == 1) {
+          auto innerItem = statementItem(boundModule.tree(), boundModule.tree().list(bodyStmts)[0]);
+          if (innerItem != zc::none) {
+            ast::NodeId innerStmt;
+            ZC_IF_SOME(item, innerItem) { innerStmt = item; }
+            if (boundModule.tree().contains(innerStmt) &&
+                boundModule.tree().node(innerStmt).kind == ast::SyntaxKind::ForStmt) {
+              self(innerStmt, self);
+            }
+          }
+        }
+      }
       return;
     }
     ast::visitChildNodeIds(boundModule.tree(), syntax,

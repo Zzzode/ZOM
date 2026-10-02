@@ -729,5 +729,202 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
       forLoop.returnReference.category, forLoop.returnReference.sourceSpan.clone()});
 }
 
+void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function,
+                                                 HirFnCtx& ctx) {
+  PendingNestedForLoopAccumulatorReturn nested =
+      zc::mv(ZC_ASSERT_NONNULL(function.nestedForLoopAccumulatorReturn));
+  const size_t accumulatorCount = nested.accumulators.size();
+
+  // Fixed-id layout: function, body, then per accumulator (local binding, init
+  // literal), then outer-init (local binding, init literal), outer comparison
+  // (left, right, condition), then inner-init (local binding, init literal),
+  // inner comparison (left, right, condition), then per accumulator body write
+  // (left, right, value, write), then inner update (left, right, value, write),
+  // inner loop, then outer update (left, right, value, write), outer loop,
+  // return, return value reference. Total: 24 + 6N nodes.
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+
+  zc::Vector<HirNodeId> bodyStatements;
+  zc::Vector<HirNodeId> outerLoopStatements;
+  zc::Vector<HirNodeId> innerLoopStatements;
+
+  // Accumulator local bindings: `mut x = 0` with scalar literal initializers.
+  for (size_t k = 0; k < accumulatorCount; ++k) {
+    auto& acc = nested.accumulators[k];
+    const HirNodeId accLocalId = ctx.allocNode();
+    const HirNodeId accInitId = ctx.allocNode();
+    ctx.addExpression(
+        HirScalarLiteralExpression{accInitId, acc.initLiteral.type, zc::mv(acc.initLiteral.value),
+                                   acc.initLiteral.category, acc.initLiteral.sourceSpan.clone()});
+    ctx.addLocal(HirLocalBinding{accLocalId, acc.local.local, acc.local.type, accInitId,
+                                 acc.local.sourceSpan.clone(),
+                                 ZC_ASSERT_NONNULL(acc.local.initializerSpan).clone()});
+    bodyStatements.add(accLocalId);
+  }
+
+  // Outer loop-init local binding: `let i = 0` with scalar literal initializer.
+  const HirNodeId outerLocalId = ctx.allocNode();
+  const HirNodeId outerInitializerId = ctx.allocNode();
+  ctx.addExpression(HirScalarLiteralExpression{
+      outerInitializerId, nested.outerInitLiteral.type, zc::mv(nested.outerInitLiteral.value),
+      nested.outerInitLiteral.category, nested.outerInitLiteral.sourceSpan.clone()});
+  ctx.addLocal(HirLocalBinding{outerLocalId, nested.outerLocal.local, nested.outerLocal.type,
+                               outerInitializerId, nested.outerLocal.sourceSpan.clone(),
+                               ZC_ASSERT_NONNULL(nested.outerLocal.initializerSpan).clone()});
+  bodyStatements.add(outerLocalId);
+
+  // Outer loop condition: `i < 3`, a comparison of the outer init local
+  // against a scalar literal.
+  const HirNodeId outerCmpLeftId = ctx.allocNode();
+  const HirNodeId outerCmpRightId = ctx.allocNode();
+  const HirNodeId outerConditionId = ctx.allocNode();
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      outerCmpLeftId, nested.outerConditionLeft.local, nested.outerConditionLeft.type,
+      nested.outerConditionLeft.category, nested.outerConditionLeft.sourceSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{
+      outerCmpRightId, nested.outerConditionRight.type, zc::mv(nested.outerConditionRight.value),
+      nested.outerConditionRight.category, nested.outerConditionRight.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      outerConditionId, outerCmpLeftId, outerCmpRightId, nested.outerCondition.operandType,
+      nested.outerCondition.type, nested.outerCondition.category, nested.outerCondition.operation,
+      nested.outerCondition.sourceSpan.clone()});
+
+  // Inner loop-init local binding: `let j = 0` with scalar literal initializer.
+  const HirNodeId innerLocalId = ctx.allocNode();
+  const HirNodeId innerInitializerId = ctx.allocNode();
+  ctx.addExpression(HirScalarLiteralExpression{
+      innerInitializerId, nested.innerInitLiteral.type, zc::mv(nested.innerInitLiteral.value),
+      nested.innerInitLiteral.category, nested.innerInitLiteral.sourceSpan.clone()});
+  ctx.addLocal(HirLocalBinding{innerLocalId, nested.innerLocal.local, nested.innerLocal.type,
+                               innerInitializerId, nested.innerLocal.sourceSpan.clone(),
+                               ZC_ASSERT_NONNULL(nested.innerLocal.initializerSpan).clone()});
+
+  // Inner loop condition: `j < 3`, a comparison of the inner init local
+  // against a scalar literal.
+  const HirNodeId innerCmpLeftId = ctx.allocNode();
+  const HirNodeId innerCmpRightId = ctx.allocNode();
+  const HirNodeId innerConditionId = ctx.allocNode();
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      innerCmpLeftId, nested.innerConditionLeft.local, nested.innerConditionLeft.type,
+      nested.innerConditionLeft.category, nested.innerConditionLeft.sourceSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{
+      innerCmpRightId, nested.innerConditionRight.type, zc::mv(nested.innerConditionRight.value),
+      nested.innerConditionRight.category, nested.innerConditionRight.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      innerConditionId, innerCmpLeftId, innerCmpRightId, nested.innerCondition.operandType,
+      nested.innerCondition.type, nested.innerCondition.category, nested.innerCondition.operation,
+      nested.innerCondition.sourceSpan.clone()});
+
+  // Accumulator body writes: `sum = sum + 1`, arithmetic binaries over each
+  // accumulator and the inner init local or a scalar literal. These live in
+  // the inner loop body.
+  for (size_t k = 0; k < accumulatorCount; ++k) {
+    auto& acc = nested.accumulators[k];
+    const HirNodeId bodyWriteLeftId = ctx.allocNode();
+    const HirNodeId bodyWriteRightId = ctx.allocNode();
+    const HirNodeId bodyWriteValueId = ctx.allocNode();
+    const HirNodeId bodyWriteId = ctx.allocNode();
+    ctx.addLocalReference(HirLocalReferenceExpression{
+        bodyWriteLeftId, acc.bodyWriteLeft.local, acc.bodyWriteLeft.type,
+        acc.bodyWriteLeft.category, acc.bodyWriteLeft.sourceSpan.clone()});
+    if (acc.bodyWriteRightIsLiteral) {
+      const auto& lit = ZC_ASSERT_NONNULL(acc.bodyWriteRightLiteral);
+      ctx.addExpression(HirScalarLiteralExpression{bodyWriteRightId, lit.type, lit.value.clone(),
+                                                   lit.category, lit.sourceSpan.clone()});
+    } else {
+      const auto& ref = ZC_ASSERT_NONNULL(acc.bodyWriteRight);
+      ctx.addLocalReference(HirLocalReferenceExpression{bodyWriteRightId, ref.local, ref.type,
+                                                        ref.category, ref.sourceSpan.clone()});
+    }
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        bodyWriteValueId, bodyWriteLeftId, bodyWriteRightId, acc.bodyWriteValue.operandType,
+        acc.bodyWriteValue.type, acc.bodyWriteValue.category, acc.bodyWriteValue.operation,
+        acc.bodyWriteValue.sourceSpan.clone()});
+    ctx.addLocalWrite(HirLocalWriteStatement{
+        bodyWriteId, acc.bodyWrite.local, acc.bodyWrite.field, acc.bodyWrite.type, bodyWriteValueId,
+        acc.bodyWrite.kind, acc.bodyWrite.sourceSpan.clone(), acc.bodyWrite.valueSpan.clone()});
+    innerLoopStatements.add(bodyWriteId);
+  }
+
+  // Inner loop update write: `j = j + 1`, an arithmetic binary over the inner
+  // init local and a scalar literal. This is the inner loop body's last
+  // statement.
+  const HirNodeId innerWriteLeftId = ctx.allocNode();
+  const HirNodeId innerWriteRightId = ctx.allocNode();
+  const HirNodeId innerWriteValueId = ctx.allocNode();
+  const HirNodeId innerWriteId = ctx.allocNode();
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      innerWriteLeftId, nested.innerWriteValueLeft.local, nested.innerWriteValueLeft.type,
+      nested.innerWriteValueLeft.category, nested.innerWriteValueLeft.sourceSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{innerWriteRightId, nested.innerWriteValueRight.type,
+                                               zc::mv(nested.innerWriteValueRight.value),
+                                               nested.innerWriteValueRight.category,
+                                               nested.innerWriteValueRight.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      innerWriteValueId, innerWriteLeftId, innerWriteRightId, nested.innerWriteValue.operandType,
+      nested.innerWriteValue.type, nested.innerWriteValue.category,
+      nested.innerWriteValue.operation, nested.innerWriteValue.sourceSpan.clone()});
+  ctx.addLocalWrite(HirLocalWriteStatement{
+      innerWriteId, nested.innerWrite.local, nested.innerWrite.field, nested.innerWrite.type,
+      innerWriteValueId, nested.innerWrite.kind, nested.innerWrite.sourceSpan.clone(),
+      nested.innerWrite.valueSpan.clone()});
+  innerLoopStatements.add(innerWriteId);
+
+  // Inner loop statement.
+  const HirNodeId innerLoopId = ctx.allocNode();
+  ctx.addLoop(HirLoopStatement{innerLoopId, innerConditionId, zc::mv(innerLoopStatements),
+                               nested.innerCondition.type, HirValueCategory::Place,
+                               zc::mv(nested.innerLoopSpan), zc::none, zc::none});
+  outerLoopStatements.add(innerLocalId);
+  outerLoopStatements.add(innerLoopId);
+
+  // Outer loop update write: `i = i + 1`, an arithmetic binary over the outer
+  // init local and a scalar literal. This is the outer loop body's last
+  // statement, after the inner loop.
+  const HirNodeId outerWriteLeftId = ctx.allocNode();
+  const HirNodeId outerWriteRightId = ctx.allocNode();
+  const HirNodeId outerWriteValueId = ctx.allocNode();
+  const HirNodeId outerWriteId = ctx.allocNode();
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      outerWriteLeftId, nested.outerWriteValueLeft.local, nested.outerWriteValueLeft.type,
+      nested.outerWriteValueLeft.category, nested.outerWriteValueLeft.sourceSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{outerWriteRightId, nested.outerWriteValueRight.type,
+                                               zc::mv(nested.outerWriteValueRight.value),
+                                               nested.outerWriteValueRight.category,
+                                               nested.outerWriteValueRight.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      outerWriteValueId, outerWriteLeftId, outerWriteRightId, nested.outerWriteValue.operandType,
+      nested.outerWriteValue.type, nested.outerWriteValue.category,
+      nested.outerWriteValue.operation, nested.outerWriteValue.sourceSpan.clone()});
+  ctx.addLocalWrite(HirLocalWriteStatement{
+      outerWriteId, nested.outerWrite.local, nested.outerWrite.field, nested.outerWrite.type,
+      outerWriteValueId, nested.outerWrite.kind, nested.outerWrite.sourceSpan.clone(),
+      nested.outerWrite.valueSpan.clone()});
+  outerLoopStatements.add(outerWriteId);
+
+  // Outer loop statement.
+  const HirNodeId outerLoopId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId returnValueId = ctx.allocNode();
+  bodyStatements.add(outerLoopId);
+  bodyStatements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(bodyStatements), function.bodySpan.clone()});
+  ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
+                                   function.returnSpan.clone()});
+  ctx.addLoop(HirLoopStatement{outerLoopId, outerConditionId, zc::mv(outerLoopStatements),
+                               nested.outerCondition.type, HirValueCategory::Place,
+                               zc::mv(nested.outerLoopSpan), zc::none, zc::none});
+  // The return value is a place reference to the first accumulator local.
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      returnValueId, nested.returnReference.local, nested.returnReference.type,
+      nested.returnReference.category, nested.returnReference.sourceSpan.clone()});
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

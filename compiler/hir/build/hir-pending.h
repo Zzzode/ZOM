@@ -449,6 +449,47 @@ struct PendingForLoopAccumulatorReturn final {
   zc::Maybe<HirScalarLiteralExpression> breakConditionRight;
 };
 
+// One admitted nested C-style `for` loop accumulator return: N leading scalar
+// `mut` accumulator locals, an outer `for` loop whose sole body statement is
+// an inner `for` loop that writes each accumulator, and a trailing
+// `return <accumulator-local>;`. The outer and inner loops each carry their
+// own init/cond/update; the accumulator locals, their initializers, and their
+// body writes (which live in the inner loop body) are carried here. Every HIR
+// expression carries an empty HirNodeId; the lowering function allocates the
+// node ids.
+struct PendingNestedForLoopAccumulatorReturn final {
+  // Outer loop condition comparison.
+  HirPrimitiveBinaryExpression outerCondition;
+  HirLocalReferenceExpression outerConditionLeft;
+  HirScalarLiteralExpression outerConditionRight;
+  identity::SourceSpan outerLoopSpan;
+  // Outer loop init local binding and scalar literal initializer.
+  HirLocalBinding outerLocal;
+  HirScalarLiteralExpression outerInitLiteral;
+  // Outer loop update write and its arithmetic binary value.
+  HirLocalWriteStatement outerWrite;
+  HirPrimitiveBinaryExpression outerWriteValue;
+  HirLocalReferenceExpression outerWriteValueLeft;
+  HirScalarLiteralExpression outerWriteValueRight;
+  // Inner loop condition comparison.
+  HirPrimitiveBinaryExpression innerCondition;
+  HirLocalReferenceExpression innerConditionLeft;
+  HirScalarLiteralExpression innerConditionRight;
+  identity::SourceSpan innerLoopSpan;
+  // Inner loop init local binding and scalar literal initializer.
+  HirLocalBinding innerLocal;
+  HirScalarLiteralExpression innerInitLiteral;
+  // Inner loop update write and its arithmetic binary value.
+  HirLocalWriteStatement innerWrite;
+  HirPrimitiveBinaryExpression innerWriteValue;
+  HirLocalReferenceExpression innerWriteValueLeft;
+  HirScalarLiteralExpression innerWriteValueRight;
+  // The N accumulator locals, their initializers, and their body writes.
+  zc::Vector<PendingForLoopAccumulator> accumulators;
+  // The return value: a place reference to the first accumulator local.
+  HirLocalReferenceExpression returnReference;
+};
+
 // One receiver field-arithmetic return: `return this.<field> OP
 // <literal>;`. The left operand is a projection of the implicit receiver
 // parameter, the right operand is a scalar literal, and the primitive binary
@@ -520,6 +561,11 @@ struct PendingFunctionDeclaration final {
   // for-loop init/cond/update, the body write, and the return reference are
   // carried here; there is no return literal.
   zc::Maybe<PendingForLoopAccumulatorReturn> forLoopAccumulatorReturn;
+  // Populated for the nested for-loop accumulator shape: N leading scalar
+  // `mut` accumulator locals, an outer `for` loop whose sole body statement
+  // is an inner `for` loop that writes each accumulator, and a trailing
+  // `return <accumulator-local>;`.
+  zc::Maybe<PendingNestedForLoopAccumulatorReturn> nestedForLoopAccumulatorReturn;
   // Populated for the mutating-receiver write-read body: one Overwrite of a
   // field reached through the mutable receiver, plus its scalar literal value.
   zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
