@@ -323,6 +323,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                      entry.value.sourceSpan.clone());
     }
   }
+  // Enum tuple-variant construction calls (`Result::Ok(41)`) produce no
+  // coercion fact; their dead-erase seeds are identified directly from the
+  // AST. A dead construction binding is filtered before MIR so no aggregate
+  // representation is needed.
+  for (const auto node : enumConstructionInitializerNodes(bound.tree())) {
+    deadEraseInitializers.add(node);
+  }
   // Argument-position concrete-to-dyn erasures ride inside a direct call's
   // CheckedArgumentFact adjustment rather than the top-level coercion map. The
   // argument lowering carrier is not built yet, so a well-formed single
@@ -7490,6 +7497,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               if (binding.ternaryConditionIsLiteral) { ++literalBearingSlots; }
               break;
+            case SequentialInitializerKind::EnumVariantConstruction:
+              // A live construction binding is not lowered yet; the builder
+              // rejects it before the count validation. The case is listed for
+              // switch exhaustiveness only.
+              break;
           }
         }
         // Dead-erase slice: count the dead bindings' fact contributions. The
@@ -7542,6 +7554,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               if (dead.ternaryConditionIsLiteral) { ++literalBearingSlots; }
               break;
+            case SequentialInitializerKind::EnumVariantConstruction: {
+              // The CallExpression node type is counted by the per-binding
+              // localReturnCount; each argument carries an additional node-type
+              // fact, and a literal argument additionally carries a literal
+              // fact.
+              const auto& deadTree = bound.tree();
+              const auto& callSyntax = deadTree.node(dead.initializer);
+              const ast::NodeList args{callSyntax.payload.words[ast::kCallExpressionArgsFirstWord],
+                                       callSyntax.payload.words[ast::kCallExpressionArgsSizeWord]};
+              if (deadTree.contains(args)) {
+                for (const auto arg : deadTree.list(args)) {
+                  ++localReturnCount;
+                  if (isScalarLiteral(deadTree.node(arg).kind)) { ++literalBearingSlots; }
+                }
+              }
+              break;
+            }
           }
         }
         sequentialLiteralAdjustment += literalBearingSlots - 1;

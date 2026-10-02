@@ -514,6 +514,11 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
                                                     binding.initializerSpan.clone()});
         break;
       }
+      case SequentialInitializerKind::EnumVariantConstruction:
+        // A construction binding is dead-erased before lowering; the builder
+        // filters it out of the sequential shape. The case is listed for
+        // switch exhaustiveness only.
+        break;
     }
     ctx.addLocal(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
                                  binding.type, initializerNodeId, binding.patternSpan.clone(),

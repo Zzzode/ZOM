@@ -804,6 +804,25 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         return zc::none;
       }
       kind = SequentialInitializerKind::EnumVariant;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::CallExpression) {
+      // An enum tuple-variant construction `Enum::Variant(args)`. The builder
+      // dead-erases the binding when it is never read, so no aggregate
+      // representation is needed in HIR/MIR/LIR.
+      const ast::NodeId callee(
+          tree.node(initializer).payload.words[ast::kCallExpressionCalleeWord]);
+      if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+        return zc::none;
+      }
+      if (static_cast<ast::MemberAccessKind>(
+              tree.node(callee).payload.words[ast::kMemberExpressionAccessWord]) !=
+          ast::MemberAccessKind::Qualified) {
+        return zc::none;
+      }
+      const ast::NodeId object(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+        return zc::none;
+      }
+      kind = SequentialInitializerKind::EnumVariantConstruction;
     } else {
       return zc::none;
     }

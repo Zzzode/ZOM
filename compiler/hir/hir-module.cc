@@ -602,8 +602,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // Dead-erase slice: the admitted dead-erase initializer nodes, derived from
   // the same checked facts the builder drained. Both the builder and the
   // verifier restrict their dead-binding filter to this erasure cone, so the
-  // two derive one identical filtered shape.
-  const auto deadEraseInitializers = deadEraseInitializerNodes(bound.tree(), definitions, facts);
+  // two derive one identical filtered shape. Enum tuple-variant construction
+  // calls produce no coercion fact; their seeds are identified from the AST.
+  auto deadEraseInitializers = deadEraseInitializerNodes(bound.tree(), definitions, facts);
+  for (const auto node : enumConstructionInitializerNodes(bound.tree())) {
+    deadEraseInitializers.add(node);
+  }
   const auto& signatures = candidate.impl->checkedModule.ownModuleInterface().signatures();
   const auto declarationCount = candidate.impl->declarations.size();
   const auto functionCount = candidate.impl->functions.size();
@@ -908,6 +912,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 ++deadLiterals;
                 if (binding.ternaryConditionIsLiteral) { ++deadLiterals; }
                 break;
+              case SequentialInitializerKind::EnumVariantConstruction: {
+                // The CallExpression node type is counted by deadLocalReturnCount;
+                // each argument carries an additional node-type fact, and a
+                // literal argument additionally carries a literal fact.
+                const auto& callSyntax = tree.node(binding.initializer);
+                const ast::NodeList args{
+                    callSyntax.payload.words[ast::kCallExpressionArgsFirstWord],
+                    callSyntax.payload.words[ast::kCallExpressionArgsSizeWord]};
+                if (tree.contains(args)) {
+                  for (const auto arg : tree.list(args)) {
+                    ++deadNodeTypesExtra;
+                    if (isScalarLiteral(tree.node(arg).kind)) { ++deadLiterals; }
+                  }
+                }
+                break;
+              }
             }
             continue;
           }
@@ -1006,6 +1026,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               if (!binding.ternaryConditionIsLiteral && !binding.ternaryConditionIsLocal) {
                 ++sequentialTernaryParameterConditions;
               }
+              break;
+            case SequentialInitializerKind::EnumVariantConstruction:
+              // A live construction binding is not lowered yet; the builder
+              // rejects it before the verifier runs. The case is listed for
+              // switch exhaustiveness only.
               break;
           }
         }

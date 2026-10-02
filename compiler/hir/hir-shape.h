@@ -25,7 +25,8 @@ enum class SequentialInitializerKind : uint8_t {
   PrimitiveUnary,
   Cast,
   Ternary,
-  EnumVariant
+  EnumVariant,
+  EnumVariantConstruction
 };
 
 // One operand of a sequential primitive-binary initializer. Exactly one payload

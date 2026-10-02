@@ -53,6 +53,7 @@ enum class BodyProductionKind : uint8_t {
   ConditionalExpression = 0x1d,
   PostfixIncrement = 0x1e,
   EnumVariantValue = 0x1f,
+  EnumVariantConstruction = 0x20,
   Unsupported = 0x17
 };
 
@@ -1104,6 +1105,96 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
   if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
   return EnumVariantValueShape{interned.get<type::SemanticTypeInterned>().id,
                                ZC_ASSERT_NONNULL(variant), discriminant};
+}
+
+/// \brief Shape of an enum tuple-variant construction such as `Result::Ok(41)`.
+/// The enum type is the nominal type of the enum definition; the variant is
+/// the resolved tuple-variant definition; the payload carries the variant's
+/// declared field types.
+struct EnumVariantConstructionShape final {
+  identity::SemanticTypeId enumType;
+  identity::DefId variant;
+  zc::Vector<identity::SemanticTypeId> payload;
+};
+
+/// \brief Resolves an enum tuple-variant construction `Enum::Variant(args)`.
+/// The node must be a CallExpression whose callee is a qualified member access
+/// naming a tuple variant (non-empty payload) of an enum definition. The enum
+/// type is interned as a closed nominal type.
+zc::Maybe<EnumVariantConstructionShape> enumVariantConstructionShape(const BodyCheckingInput& input,
+                                                                     ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(node);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Qualified) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const auto baseDefinition = resolvedDefinition(input.boundModule.bindings(), object);
+  if (baseDefinition == zc::none) return zc::none;
+  const auto enumDefId = ZC_ASSERT_NONNULL(baseDefinition);
+  bool baseIsEnum = false;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition == enumDefId) {
+      baseIsEnum = definition.record.kind() == identity::DefinitionKind::Enum;
+      break;
+    }
+  }
+  if (!baseIsEnum) return zc::none;
+  const auto propertyName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> variant;
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != enumDefId ||
+        !signature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominal = signature.payload.variant().get<signature::NominalSignature>();
+    for (const auto candidate : nominal.variants) {
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition != candidate || definition.record.name() != propertyName) {
+          continue;
+        }
+        if (definition.record.kind() != identity::DefinitionKind::EnumVariant) return zc::none;
+        if (variant != zc::none) return zc::none;
+        variant = candidate;
+      }
+    }
+  }
+  if (variant == zc::none) return zc::none;
+  // A tuple variant (non-empty payload) is the admitted shape; a unit variant
+  // has no constructor call and stays on the EnumVariantValue rail.
+  zc::Vector<identity::SemanticTypeId> payload;
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
+        !signature.payload.variant().is<signature::EnumVariantSignature>()) {
+      continue;
+    }
+    const auto& variantSignature =
+        signature.payload.variant().get<signature::EnumVariantSignature>();
+    if (variantSignature.payload.size() == 0) return zc::none;
+    for (const auto field : variantSignature.payload.asPtr()) { payload.add(field); }
+  }
+  if (payload.size() == 0) return zc::none;
+  auto admitted = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::NominalTypeData{enumDefId, {}}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return EnumVariantConstructionShape{interned.get<type::SemanticTypeInterned>().id,
+                                      ZC_ASSERT_NONNULL(variant), zc::mv(payload)};
 }
 
 zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
@@ -3260,6 +3351,14 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
             if (method != zc::none) {
               const auto& parameters = ZC_ASSERT_NONNULL(method).parameters;
               if (index < parameters.size()) argumentHint = parameters[index];
+            } else {
+              // An enum tuple-variant construction argument adopts the
+              // corresponding payload field type.
+              auto construction = enumVariantConstructionShape(input, node);
+              if (construction != zc::none) {
+                const auto& payload = ZC_ASSERT_NONNULL(construction).payload;
+                if (index < payload.size()) argumentHint = payload[index];
+              }
             }
           }
           break;
@@ -4366,6 +4465,55 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       if (tree.contains(discriminant)) { enumDiscriminantNodes.add(discriminant); }
     }
   });
+  // Collect callee MemberExpression nodes of enum tuple-variant construction
+  // calls (`Result::Ok(41)`). The constructor callee is a type-namespace
+  // reference resolved by the binder, not a value reference; the body checker
+  // must not classify it as an EnumVariantValue production site or require
+  // Literal/Member/Place facts for it. The CallExpression itself is classified
+  // as EnumVariantConstruction and carries only a NodeType requirement. A unit
+  // variant is a value, not a callable, so only TupleVariant definitions admit
+  // the construction shape and a call on a unit variant keeps its existing
+  // ConcreteMethodCall rejection.
+  zc::Vector<ast::NodeId> constructionCallees;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::CallExpression) return;
+    const ast::NodeId callee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+    if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+      return;
+    }
+    const auto& member = tree.node(callee);
+    if (static_cast<ast::MemberAccessKind>(
+            member.payload.words[ast::kMemberExpressionAccessWord]) !=
+        ast::MemberAccessKind::Qualified) {
+      return;
+    }
+    const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+    if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) { return; }
+    const auto baseDefinition = resolvedDefinition(boundModule.bindings(), object);
+    if (baseDefinition == zc::none) return;
+    const auto enumDefId = ZC_ASSERT_NONNULL(baseDefinition);
+    bool baseIsEnum = false;
+    for (const auto& definition : boundModule.definitions().definitions()) {
+      if (definition.definition == enumDefId) {
+        baseIsEnum = definition.record.kind() == identity::DefinitionKind::Enum;
+        break;
+      }
+    }
+    if (!baseIsEnum) return;
+    const auto propertyName =
+        tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+    for (const auto& definition : boundModule.definitions().definitions()) {
+      if (definition.record.kind() != identity::DefinitionKind::EnumVariant ||
+          definition.record.name() != propertyName) {
+        continue;
+      }
+      if (tree.contains(definition.node) &&
+          tree.node(definition.node).kind == ast::SyntaxKind::TupleVariant) {
+        constructionCallees.add(callee);
+      }
+      break;
+    }
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -4391,6 +4539,12 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       for (const auto base : qualifiedMemberBases) {
         if (base == node) return;
       }
+    }
+    // Skip the constructor-callee MemberExpression of an enum tuple-variant
+    // construction call; it is a type-namespace reference, not a value
+    // production site, and needs no NodeType/Literal/Member/Place fact.
+    for (const auto callee : constructionCallees) {
+      if (callee == node) return;
     }
     auto span = parsedModule.spanFor(syntax.range);
     if (span == zc::none) {
@@ -4446,7 +4600,22 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Cast, node, key);
       } else if (syntax.kind == ast::SyntaxKind::CallExpression ||
                  syntax.kind == ast::SyntaxKind::ImportCallExpression) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
+        // An enum tuple-variant construction (`Result::Ok(41)`) produces only
+        // a NodeType fact; the constructor call has no Call fact because no
+        // callable is invoked.
+        bool isConstruction = false;
+        if (syntax.kind == ast::SyntaxKind::CallExpression) {
+          const ast::NodeId callCallee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+          for (const auto callee : constructionCallees) {
+            if (callee == callCallee) {
+              isConstruction = true;
+              break;
+            }
+          }
+        }
+        if (!isConstruction) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
+        }
       } else if (syntax.kind == ast::SyntaxKind::MemberExpression) {
         // A qualified enum variant access (`Color::Red`) lowers to an integer
         // constant; it needs a Literal requirement, not Member/Place.
@@ -4533,13 +4702,24 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr:
           production = BodyProductionKind::NoSubstitutionTemplateLiteral;
           break;
-        case ast::SyntaxKind::CallExpression:
-          production =
-              tree.node(ast::NodeId(syntax.payload.words[ast::kCallExpressionCalleeWord])).kind ==
-                      ast::SyntaxKind::MemberExpression
-                  ? BodyProductionKind::ConcreteMethodCall
-                  : BodyProductionKind::DirectCall;
+        case ast::SyntaxKind::CallExpression: {
+          const ast::NodeId callCallee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+          bool isConstruction = false;
+          for (const auto callee : constructionCallees) {
+            if (callee == callCallee) {
+              isConstruction = true;
+              break;
+            }
+          }
+          if (isConstruction) {
+            production = BodyProductionKind::EnumVariantConstruction;
+          } else {
+            production = tree.node(callCallee).kind == ast::SyntaxKind::MemberExpression
+                             ? BodyProductionKind::ConcreteMethodCall
+                             : BodyProductionKind::DirectCall;
+          }
           break;
+        }
         case ast::SyntaxKind::IdentExpr:
           production = BodyProductionKind::IdentifierReference;
           break;
@@ -4914,6 +5094,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool fieldWrite = site.production == BodyProductionKind::OwnerLocalFieldWrite;
       const bool receiverFieldWrite = site.production == BodyProductionKind::ReceiverFieldWrite;
       const bool directCall = site.production == BodyProductionKind::DirectCall;
+      const bool enumConstruction = site.production == BodyProductionKind::EnumVariantConstruction;
       const bool concreteMethodCall = site.production == BodyProductionKind::ConcreteMethodCall;
       const bool errorOperator = site.production == BodyProductionKind::ErrorOperator;
       const bool indexed = site.production == BodyProductionKind::ReadIndex;
@@ -4921,11 +5102,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
       const bool integerCast = site.production == BodyProductionKind::IntegerCast;
       const bool conditionalExpr = site.production == BodyProductionKind::ConditionalExpression;
-      if ((stage == 0 && (structured || projected || fieldWrite || receiverFieldWrite ||
-                          directCall || concreteMethodCall || errorOperator || indexed ||
-                          unsafeBlock || primitiveBinary || integerCast || conditionalExpr)) ||
-          (stage == 1 && (((!structured && !directCall) || errorOperator || indexed) &&
-                          !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr)) ||
+      if ((stage == 0 &&
+           (structured || projected || fieldWrite || receiverFieldWrite || directCall ||
+            enumConstruction || concreteMethodCall || errorOperator || indexed || unsafeBlock ||
+            primitiveBinary || integerCast || conditionalExpr)) ||
+          (stage == 1 &&
+           (((!structured && !directCall && !enumConstruction) || errorOperator || indexed) &&
+            !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 &&
            (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
@@ -6367,6 +6550,69 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                       signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
                   value.enumType, site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
+        }
+      } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
+        // An enum tuple-variant construction `Enum::Variant(args)`. The variant
+        // must carry a non-empty payload; each argument's type must match the
+        // corresponding payload field. The enum type is the produced type. No
+        // Call fact is produced because no callable is invoked.
+        auto shape = enumVariantConstructionShape(input, site.node);
+        if (shape == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) {
+          const auto& callSyntax = input.boundModule.tree().node(site.node);
+          const ast::NodeList arguments{callSyntax.payload.words[ast::kCallExpressionArgsFirstWord],
+                                        callSyntax.payload.words[ast::kCallExpressionArgsSizeWord]};
+          const auto argumentNodes = input.boundModule.tree().list(arguments);
+          if (argumentNodes.size() != value.payload.size()) {
+            auto owner = enclosingBodyOwner(input.boundModule, site.node);
+            if (owner == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            auto ownerPreorder = definitionPreorder(input.boundModule, ZC_ASSERT_NONNULL(owner));
+            if (ownerPreorder == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            return attachRecoveryLedger(
+                rejectCallArgumentCount(site, ZC_ASSERT_NONNULL(ownerPreorder),
+                                        value.payload.size(), argumentNodes.size()),
+                input, factStoreBrands);
+          }
+          for (size_t index = 0; index < argumentNodes.size(); ++index) {
+            auto argumentType = factEntry(nodeTypes.asPtr(), argumentNodes[index]);
+            if (argumentType == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                     site.key.schemaPreorder, zc::none, argumentNodes[index],
+                                     site.key.sourceSpan.clone(),
+                                     factPath(CheckedFactGroup::NodeType));
+            }
+            if (ZC_ASSERT_NONNULL(argumentType).value != value.payload[index]) {
+              auto owner = enclosingBodyOwner(input.boundModule, site.node);
+              if (owner == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              auto ownerPreorder = definitionPreorder(input.boundModule, ZC_ASSERT_NONNULL(owner));
+              if (ownerPreorder == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                       site.key.schemaPreorder, zc::none, site.node,
+                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+              }
+              return attachRecoveryLedger(
+                  rejectTypeMismatch(site, ZC_ASSERT_NONNULL(ownerPreorder), value.payload[index],
+                                     ZC_ASSERT_NONNULL(argumentType).value),
+                  input, factStoreBrands);
+            }
+          }
+          producedType = value.enumType;
         }
       } else {
         auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{

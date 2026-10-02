@@ -1,0 +1,8 @@
+enum Result { Ok(i32), Err(i32) }
+
+fun entry() -> i32 {
+  let r: Result = Result::Ok(41);
+  let a: i32 = 40;
+  let answer: i32 = a + 1;
+  return answer;
+}

@@ -376,6 +376,26 @@ zc::Vector<ast::NodeId> deadEraseInitializerNodes(
   return nodes;
 }
 
+zc::Vector<ast::NodeId> enumConstructionInitializerNodes(const ast::Tree& tree) {
+  zc::Vector<ast::NodeId> nodes;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::CallExpression) return;
+    const ast::NodeId callee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+    if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+      return;
+    }
+    if (static_cast<ast::MemberAccessKind>(
+            tree.node(callee).payload.words[ast::kMemberExpressionAccessWord]) !=
+        ast::MemberAccessKind::Qualified) {
+      return;
+    }
+    const ast::NodeId object(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+    if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) { return; }
+    nodes.add(node);
+  });
+  return nodes;
+}
+
 // Returns the innermost executable definition whose AST subtree contains
 // `node`, or none. Innermost is the definition with the deepest owner chain
 // (nested function declarations nest their ranges), mirroring the body
