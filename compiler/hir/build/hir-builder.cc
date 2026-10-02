@@ -1241,7 +1241,89 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           continue;
         }
         PendingConditionalCondition pendingCondition;
-        if (shape.conditionIsEquality) {
+        if (shape.isMatchEquality) {
+          // Integer match-equality: synthesize `scrutinee == literal` without
+          // an AST BinaryExpr node. The scrutinee resolves to a parameter
+          // reference (left operand); the pattern literal provides the right
+          // operand and its checked literal fact. The comparison has no call
+          // fact or comparison-result node-type fact, so the count equations
+          // subtract the phantom terms.
+          auto scrutineeTypeIndex = factIndex(facts.nodeTypes(), shape.condition);
+          auto literalIndex = factIndex(facts.literals(), shape.matchEqualityLiteral);
+          auto literalSpan =
+              bound.parsedModule().spanFor(tree.node(shape.matchEqualityLiteral).range);
+          if (scrutineeTypeIndex == zc::none || literalIndex == zc::none ||
+              literalSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t scrutineeTypeSlot = 0;
+          size_t literalSlot = 0;
+          ZC_IF_SOME(index, scrutineeTypeIndex) { scrutineeTypeSlot = index; }
+          ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+          const auto operandType = facts.nodeTypes().entries()[scrutineeTypeSlot].value;
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          auto boolCanonical = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+          if (!boolCanonical.is<type::semantic::CanonicalTypeData>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto boolInterned =
+              semanticTypes.intern(zc::mv(boolCanonical).get<type::semantic::CanonicalTypeData>());
+          if (!boolInterned.is<type::SemanticTypeInterned>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto boolType = boolInterned.get<type::SemanticTypeInterned>().id;
+          auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
+          if (conditionParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          identity::CallableParameterId conditionHandle;
+          ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+          auto conditionAuthority = registries.callableParameter(conditionHandle);
+          if (conditionAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          zc::Maybe<PendingConditionalArm> leftOperand;
+          ZC_IF_SOME(entry, conditionAuthority) {
+            bool matches = false;
+            for (const auto& parameterCandidate : parameters) {
+              if (parameterCandidate.key == entry.key() && parameterCandidate.type == operandType) {
+                matches = true;
+              }
+            }
+            if (!matches) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto reference = HirParameterReferenceExpression{
+                HirNodeId(), entry.key().clone(), operandType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(conditionSpan).clone()};
+            leftOperand = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
+                                                ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          }
+          auto rightOperand =
+              PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, operandType,
+                                    ZC_ASSERT_NONNULL(literalSpan).clone()};
+          pendingCondition.equality =
+              PendingEqualityCondition{zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                       zc::mv(rightOperand),
+                                       operandType,
+                                       boolType,
+                                       checker::PrimitiveOperation::Eq,
+                                       ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                       false};
+        } else if (shape.conditionIsEquality) {
           // The comparison condition consumes the checked relational call fact
           // whose two arguments are the left and right operands. Each operand is
           // either a parameter reference or a scalar literal; at least one is a
@@ -1550,7 +1632,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                             zc::mv(ZC_ASSERT_NONNULL(elseArm)),
                                                             valueSpanValue.clone(),
                                                             shape.isMatchReturn,
-                                                            shape.matchHasDefaultArm};
+                                                            shape.matchHasDefaultArm,
+                                                            shape.isMatchEquality};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
                                                           zc::mv(parameters),
@@ -7068,6 +7151,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // match has one pattern literal instead of two, so both the nodeTypes and
   // literals equations subtract one per default arm.
   size_t matchDefaultArmCount = 0;
+  // Match-return shapes that are integer matches with one literal pattern arm
+  // and one default arm. The equality comparison is synthetic (no AST
+  // BinaryExpr node), so the checker produces no call fact or
+  // comparison-result node-type fact for it. The count equations subtract
+  // the phantom call, the phantom comparison-result node-types, and the
+  // double-counted pattern literal.
+  size_t matchEqualityReturnCount = 0;
   // Ternary conditional-expression bindings in sequential local return bodies.
   // Each materializes one HirConditionalExpression (the binding initializer,
   // counted by localReturnCount) plus its condition and two arm-literal
@@ -7369,6 +7459,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (conditional.isMatchReturn) {
           ++matchReturnCount;
           if (conditional.hasDefaultArm) { ++matchDefaultArmCount; }
+          if (conditional.isMatchEquality) { ++matchEqualityReturnCount; }
         }
         ZC_IF_SOME(equality, conditional.condition.equality) {
           ++equalityConditionalCount;
@@ -7697,10 +7788,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       localFieldProjectionCount + localFieldWriteCount + parameterIndexCount * 2 +
       parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
       receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount * 3 + localBorrowCount +
-      unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 +
-      matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
-      unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
+      unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 -
+      matchEqualityReturnCount * 2 + matchReturnCount * 2 - matchDefaultArmCount + loopCount +
+      comparisonReturnCount * 2 - unaryReturnCount + sequentialBinaryCount * 2 +
+      binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
       leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
       leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
@@ -7722,13 +7813,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
           aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
           receiverCallFieldArgumentCount + conditionalLiteralArmCount + matchReturnCount * 2 -
-          matchDefaultArmCount + equalityLiteralOperandCount - conditionalCount +
-          comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
-          binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
-          directScalarLocalCallCount + leadingLocalConditionalBindingCount +
-          leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
-          leadingLocalConditionalBinaryLiteralOperandCount - postfixIncrementWriteCount +
-          static_cast<int64_t>(forLoopReturnCount) * 3 +
+          matchDefaultArmCount - matchEqualityReturnCount + equalityLiteralOperandCount -
+          conditionalCount + comparisonReturnLiteralOperandCount - comparisonReturnCount -
+          unaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
+          directAggregateCallCount + directScalarLocalCallCount +
+          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
+          leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount -
+          postfixIncrementWriteCount + static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +
           static_cast<int64_t>(forLoopAccumulatorCount) +
           static_cast<int64_t>(forLoopAccumulatorLiteralRightCount)) +
@@ -7739,10 +7830,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   const size_t expectedCalls =
       directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
-      equalityConditionalCount + comparisonReturnCount + sequentialBinaryCount +
-      receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-      leadingLocalConditionalBinaryCount + receiverCallComparisonArgumentCount +
-      forLoopReturnCount * 2 + forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount;
+      equalityConditionalCount - matchEqualityReturnCount + comparisonReturnCount +
+      sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
+      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
+      receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
+      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount;
   if (facts.calls().size() != expectedCalls ||
       checkedModule.dispatchFacts().facts().size() != expectedCalls) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

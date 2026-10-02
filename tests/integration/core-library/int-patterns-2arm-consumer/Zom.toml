@@ -1,0 +1,8 @@
+[package]
+name = "int_patterns_2arm_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "int_patterns_2arm_consumer"
+path = "src/main.zom"

@@ -868,14 +868,16 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   return branchReturns(thenStmt) && branchReturns(elseStmt);
 }
 
-// Structurally admits a two-arm boolean match: `match (b) { when true => return
-// <lit>; when false => return <lit>; }` (block-bodied arms are also admitted).
-// The scrutinee is a bare identifier (a bool parameter reference); each arm
-// pattern is a bool literal (one true, one false, no duplicates) or one arm is
-// a `default` (wildcard) arm covering the remaining bool value; guards are not
-// admitted; each arm body tails a scalar-literal return. The HIR builder
-// lowers this to the same conditional path as a bare-parameter `if`, so the
-// admitted surface is exactly the conditional surface.
+// Structurally admits a two-arm match: `match (b) { when true => return <lit>;
+// when false => return <lit>; }` (block-bodied arms are also admitted) or
+// `match (x) { when <int> => return <lit>; default => return <lit>; }`. The
+// scrutinee is a bare identifier (a bool or integer parameter reference); each
+// arm pattern is a bool literal (one true, one false, no duplicates), an
+// integer literal (exactly one, paired with a default arm), or a `default`
+// (wildcard) arm; guards are not admitted; each arm body tails a scalar-literal
+// return. The HIR builder lowers the bool shape to the same conditional path
+// as a bare-parameter `if` and the integer shape to the equality conditional
+// path, so the admitted surface is exactly the conditional surface.
 bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   const auto& matchNode = tree.node(node);
   if (matchNode.kind != ast::SyntaxKind::MatchStmt) return false;
@@ -888,6 +890,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   if (!tree.contains(arms) || arms.size != 2) return false;
   bool sawTrue = false;
   bool sawFalse = false;
+  bool sawIntLiteral = false;
   bool sawDefault = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
@@ -900,16 +903,25 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     if (!tree.contains(pattern)) return false;
     if (tree.node(pattern).kind == ast::SyntaxKind::LiteralPattern) {
       const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
-      if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
-        return false;
-      }
-      const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
-      if (value) {
-        if (sawTrue) return false;
-        sawTrue = true;
+      if (!tree.contains(literal)) return false;
+      if (tree.node(literal).kind == ast::SyntaxKind::BoolLiteral) {
+        if (sawIntLiteral) return false;
+        const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
+        if (value) {
+          if (sawTrue) return false;
+          sawTrue = true;
+        } else {
+          if (sawFalse) return false;
+          sawFalse = true;
+        }
+      } else if (tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
+        // The integer domain is open, so exactly one literal arm paired with a
+        // default arm is admitted; two literal arms without a default stay
+        // fail-closed.
+        if (sawIntLiteral || sawTrue || sawFalse) return false;
+        sawIntLiteral = true;
       } else {
-        if (sawFalse) return false;
-        sawFalse = true;
+        return false;
       }
     } else if (tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
       if (sawDefault) return false;
@@ -938,7 +950,9 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       return false;
     }
   }
-  // Two literal arms (true + false), or one literal arm plus one default arm.
+  // Bool: two literal arms (true + false), or one literal arm plus one default
+  // arm. Integer: exactly one literal arm plus one default arm.
+  if (sawIntLiteral) return sawDefault;
   return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }
 

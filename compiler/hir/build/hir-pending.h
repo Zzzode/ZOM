@@ -201,6 +201,13 @@ struct PendingConditionalReturn final {
   // second literal arm. The default arm produces one fewer pattern-literal
   // fact, which the count equations must subtract.
   bool hasDefaultArm = false;
+  // True when the match-return is an integer match with one literal pattern
+  // arm and one default arm. The equality comparison is synthetic (no AST
+  // BinaryExpr node), so the checker produces no call fact or
+  // comparison-result node-type fact for it. The count equations subtract
+  // the phantom call, the phantom comparison-result node-types, and the
+  // double-counted pattern literal.
+  bool isMatchEquality = false;
 };
 
 // One comparison-condition operand in a leading-local conditional body: a

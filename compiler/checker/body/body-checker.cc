@@ -6658,9 +6658,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     }
   }
 
-  // Produce exhaustiveness facts for admitted two-arm boolean matches. The
-  // scrutinee type is already in nodeTypes from the main production loop; the
-  // two bool literal constructors cover the closed bool domain.
+  // Produce exhaustiveness facts for admitted two-arm matches. The scrutinee
+  // type is already in nodeTypes from the main production loop. A bool
+  // scrutinee produces a Closed domain with the two bool literal constructors;
+  // an integer scrutinee produces an OpenRequiresCatchAll domain with the
+  // single integer literal constructor read from the literal arm's pattern.
   for (const auto& site : input.requirements.impl->productionSiteValues) {
     if (site.primaryGroup != CheckedFactGroup::Exhaustiveness) continue;
     const auto& matchNode = input.boundModule.tree().node(site.node);
@@ -6671,19 +6673,80 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                              site.key.schemaPreorder, zc::none, site.node,
                              site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
     }
-    identity::SemanticTypeId boolType;
-    ZC_IF_SOME(entry, scrutineeType) { boolType = entry.value; }
-    zc::Vector<checked::PatternConstructor> covered;
-    covered.add(checked::PatternConstructor(
-        checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
-    covered.add(checked::PatternConstructor(
-        checked::LiteralPattern{checked::CanonicalLiteral::boolean(true)}));
-    exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
-        site.node,
-        checked::ExhaustivenessFact{site.node, boolType, checked::ExhaustivenessDomain::Closed,
-                                    zc::mv(covered), zc::Vector<checked::PatternConstructor>(),
-                                    zc::Vector<ast::NodeId>()},
-        zc::Array<uint8_t>()});
+    identity::SemanticTypeId scrutineeTypeId;
+    ZC_IF_SOME(entry, scrutineeType) { scrutineeTypeId = entry.value; }
+    auto scrutineeKind = primitiveKindOf(input.semanticTypes, scrutineeTypeId);
+    if (scrutineeKind == zc::none) {
+      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
+    }
+    bool isBool = false;
+    ZC_IF_SOME(kind, scrutineeKind) { isBool = kind == type::semantic::PrimitiveKind::Bool; }
+    if (isBool) {
+      zc::Vector<checked::PatternConstructor> covered;
+      covered.add(checked::PatternConstructor(
+          checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
+      covered.add(checked::PatternConstructor(
+          checked::LiteralPattern{checked::CanonicalLiteral::boolean(true)}));
+      exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
+          site.node,
+          checked::ExhaustivenessFact{
+              site.node, scrutineeTypeId, checked::ExhaustivenessDomain::Closed, zc::mv(covered),
+              zc::Vector<checked::PatternConstructor>(), zc::Vector<ast::NodeId>()},
+          zc::Array<uint8_t>()});
+    } else {
+      // Integer scrutinee: find the literal arm's pattern and read its checked
+      // literal fact. The open integer domain requires the default arm.
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!input.boundModule.tree().contains(arms) || arms.size != 2) {
+        return rejectInvariant(
+            signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
+            site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
+      }
+      zc::Maybe<checked::CanonicalLiteral> integerLiteral;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = input.boundModule.tree().list(arms)[index];
+        if (!input.boundModule.tree().contains(armId)) continue;
+        const auto& arm = input.boundModule.tree().node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!input.boundModule.tree().contains(pattern) ||
+            input.boundModule.tree().node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+          continue;
+        }
+        const ast::NodeId literal(
+            input.boundModule.tree().node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+        if (!input.boundModule.tree().contains(literal) ||
+            input.boundModule.tree().node(literal).kind != ast::SyntaxKind::IntLiteral) {
+          continue;
+        }
+        auto literalFact = factEntry(literals.asPtr(), literal);
+        if (literalFact == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, literal,
+                                 site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Literal));
+        }
+        ZC_IF_SOME(fact, literalFact) { integerLiteral = fact.value.literal.clone(); }
+      }
+      if (integerLiteral == zc::none) {
+        return rejectInvariant(
+            signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
+            site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
+      }
+      zc::Vector<checked::PatternConstructor> covered;
+      ZC_IF_SOME(value, integerLiteral) {
+        covered.add(checked::PatternConstructor(checked::LiteralPattern{zc::mv(value)}));
+      }
+      exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
+          site.node,
+          checked::ExhaustivenessFact{site.node, scrutineeTypeId,
+                                      checked::ExhaustivenessDomain::OpenRequiresCatchAll,
+                                      zc::mv(covered), zc::Vector<checked::PatternConstructor>(),
+                                      zc::Vector<ast::NodeId>()},
+          zc::Array<uint8_t>()});
+    }
   }
 
   for (const auto& requirement : input.requirements.nodeRequirements()) {

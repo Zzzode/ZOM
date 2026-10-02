@@ -686,6 +686,41 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // A match-return that is an integer match with one literal pattern arm and
+  // one default arm. The equality comparison is synthetic (no AST BinaryExpr
+  // node), so the checker produces no call fact or comparison-result
+  // node-type fact for it. The count equations subtract the phantom call,
+  // the phantom comparison-result node-types, and the double-counted pattern
+  // literal. Derive the count from the same exhaustiveness facts that give
+  // matchReturnCount, inspecting each match's arms in the AST for an integer
+  // literal pattern.
+  size_t matchEqualityReturnCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.exhaustiveness().entries()) {
+      if (!tree.contains(entry.value.node)) continue;
+      const auto& matchNode = tree.node(entry.value.node);
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!tree.contains(arms)) continue;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = tree.list(arms)[index];
+        if (!tree.contains(armId)) continue;
+        const auto& arm = tree.node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+          continue;
+        }
+        const ast::NodeId literal(
+            tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+        if (tree.contains(literal) && tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
+          ++matchEqualityReturnCount;
+          break;
+        }
+      }
+    }
+  }
   // equalityConditionalCount is derived below, after the sequential-binary tally,
   // because the primitiveBinaryOperations vector pools conditional/comparison
   // binaries with sequential-local binary initializers.
@@ -1272,8 +1307,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       candidate.impl->checkedModule.borrowEvidenceLease().key().revision.digest() !=
           candidate.impl->checkedModule.borrowEvidenceRevision().digest() ||
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
-          directCallCount + receiverCallCount + equalityConditionalCount + sequentialBinaryCount +
-              receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
+          directCallCount + receiverCallCount + equalityConditionalCount -
+              matchEqualityReturnCount + sequentialBinaryCount + receiverFieldArithmeticCount +
+              binaryWriteCount - compoundAssignmentWriteCount +
               leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
@@ -1344,14 +1380,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
               receiverCallArgumentCount + receiverCallFieldArgumentCount +
               receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
-              effectiveConditionalCount * 2 + equalityConditionalCount * 2 - unaryReturnCount +
-              matchReturnCount * 2 - matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 +
-              binaryWriteCount * 2 + parameterFieldProjectionCount +
-              receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
-              discardedStatementCallCount + sequentialCastInitializers +
-              sequentialTernaryCount * 3 - leadingLocalConditionalUnaryCount -
-              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
-              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 ||
+              effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
+              matchEqualityReturnCount * 2 - unaryReturnCount + matchReturnCount * 2 -
+              matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+              parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
+              parameterFieldWriteCount * 4 + discardedStatementCallCount +
+              sequentialCastInitializers + sequentialTernaryCount * 3 -
+              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
+              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
+              compoundAssignmentWriteCount * 2 ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1360,9 +1397,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               localAliasReborrowCount + localWriteCount + aggregateElementCount +
               directCallLiteralArgumentCount + receiverCallArgumentCount -
               receiverCallFieldArgumentCount + effectiveConditionalCount * 2 +
-              matchReturnCount * 2 - matchDefaultArmCount + equalityConditionalCount -
-              unaryReturnCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-              receiverFieldArithmeticCount + directAggregateCallCount +
+              matchReturnCount * 2 - matchDefaultArmCount - matchEqualityReturnCount +
+              equalityConditionalCount - unaryReturnCount + loopCount + binaryWriteCount +
+              parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
@@ -1370,11 +1407,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection ||
-      facts.calls().size() !=
-          directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount +
-              sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
-              compoundAssignmentWriteCount + leadingLocalConditionalArithmeticCount +
-              receiverCallComparisonArgumentCount + deadCalls ||
+      facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
+                                  equalityConditionalCount - matchEqualityReturnCount +
+                                  sequentialBinaryCount + receiverFieldArithmeticCount +
+                                  binaryWriteCount - compoundAssignmentWriteCount +
+                                  leadingLocalConditionalArithmeticCount +
+                                  receiverCallComparisonArgumentCount + deadCalls ||
       facts.casts().size() != sequentialCastInitializers + deadCasts ||
       facts.patterns().size() != declarationCount ||
       facts.aggregates().size() != aggregateCount + deadAggregateCount ||
@@ -4262,6 +4300,33 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             // The HIR materialization desugars `!x` to `x == false`.
             hirOperation = checker::PrimitiveOperation::Eq;
+          } else if (source.isMatchEquality) {
+            // Match-equality: the comparison `scrutinee == literal` is
+            // synthesized by the HIR builder without an AST BinaryExpr node, so
+            // the checker produces no call fact. Validate only the operand
+            // node types and spans.
+            auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
+            auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
+            leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
+            rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
+            if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || leftSpan == zc::none ||
+                rightSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t leftTypeSlot = 0;
+            size_t rightTypeSlot = 0;
+            ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+            ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+            operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+            const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+            if (operandType != rightType) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            hirOperation = checker::PrimitiveOperation::Eq;
           } else {
             // Equality comparison call fact.
             auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
@@ -4761,45 +4826,73 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // or a scalar literal; the shared operand type comes from the fact.
           auto leftTypeIndex = factIndex(facts.nodeTypes(), source.conditionLeft);
           auto rightTypeIndex = factIndex(facts.nodeTypes(), source.conditionRight);
-          auto callIndex = factIndex(facts.calls(), source.condition);
           auto leftSpan = bound.parsedModule().spanFor(tree.node(source.conditionLeft).range);
           auto rightSpan = bound.parsedModule().spanFor(tree.node(source.conditionRight).range);
-          if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
-              leftSpan == zc::none || rightSpan == zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::MissingRequiredFact, module,
-                                                registries, index + 1);
-          }
-          size_t leftTypeSlot = 0;
-          size_t rightTypeSlot = 0;
-          size_t callSlot = 0;
-          ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
-          ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
-          ZC_IF_SOME(value, callIndex) { callSlot = value; }
-          const auto operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
-          const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
-          const auto& callFact = facts.calls().entries()[callSlot].value;
-          const auto& call = callFact.invocation;
-          const auto& selected = call.selected.variant();
-          if (operandType != rightType || callFact.node != source.condition ||
-              !selected.is<checker::checked::PrimitiveCallable>() ||
-              !(isScalarComparisonOperation(
-                    selected.get<checker::checked::PrimitiveCallable>().operation) ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalAnd ||
-                selected.get<checker::checked::PrimitiveCallable>().operation ==
-                    checker::PrimitiveOperation::LogicalOr) ||
-              call.calleeType != operandType || call.receiver != zc::none ||
-              call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
-              call.arguments.size() != 2 || call.arguments[0].sourceNode != source.conditionLeft ||
-              call.arguments[0].sourceType != operandType ||
-              call.arguments[1].sourceNode != source.conditionRight ||
-              call.arguments[1].sourceType != operandType || call.successType != conditionType ||
-              call.resultType != conditionType || call.substitutions != zc::none ||
-              call.witnesses != zc::none || call.raises != zc::none) {
-            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                ir::IrFailureKind::InvalidFact, module, registries,
-                                                index + 1);
+          identity::SemanticTypeId operandType;
+          checker::PrimitiveOperation expectedOperation;
+          if (source.isMatchEquality) {
+            // Match-equality: the comparison is synthesized by the HIR builder
+            // without an AST BinaryExpr node, so the checker produces no call
+            // fact. Validate only the operand node types and spans.
+            if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || leftSpan == zc::none ||
+                rightSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t leftTypeSlot = 0;
+            size_t rightTypeSlot = 0;
+            ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+            ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+            operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+            const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+            if (operandType != rightType) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            expectedOperation = checker::PrimitiveOperation::Eq;
+          } else {
+            auto callIndex = factIndex(facts.calls(), source.condition);
+            if (leftTypeIndex == zc::none || rightTypeIndex == zc::none || callIndex == zc::none ||
+                leftSpan == zc::none || rightSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t leftTypeSlot = 0;
+            size_t rightTypeSlot = 0;
+            size_t callSlot = 0;
+            ZC_IF_SOME(value, leftTypeIndex) { leftTypeSlot = value; }
+            ZC_IF_SOME(value, rightTypeIndex) { rightTypeSlot = value; }
+            ZC_IF_SOME(value, callIndex) { callSlot = value; }
+            operandType = facts.nodeTypes().entries()[leftTypeSlot].value;
+            const auto rightType = facts.nodeTypes().entries()[rightTypeSlot].value;
+            const auto& callFact = facts.calls().entries()[callSlot].value;
+            const auto& call = callFact.invocation;
+            const auto& selected = call.selected.variant();
+            if (operandType != rightType || callFact.node != source.condition ||
+                !selected.is<checker::checked::PrimitiveCallable>() ||
+                !(isScalarComparisonOperation(
+                      selected.get<checker::checked::PrimitiveCallable>().operation) ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalAnd ||
+                  selected.get<checker::checked::PrimitiveCallable>().operation ==
+                      checker::PrimitiveOperation::LogicalOr) ||
+                call.calleeType != operandType || call.receiver != zc::none ||
+                call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+                call.arguments.size() != 2 ||
+                call.arguments[0].sourceNode != source.conditionLeft ||
+                call.arguments[0].sourceType != operandType ||
+                call.arguments[1].sourceNode != source.conditionRight ||
+                call.arguments[1].sourceType != operandType || call.successType != conditionType ||
+                call.resultType != conditionType || call.substitutions != zc::none ||
+                call.witnesses != zc::none || call.raises != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            expectedOperation = selected.get<checker::checked::PrimitiveCallable>().operation;
           }
           // Verify one comparison operand: a parameter operand resolves to a
           // parameter reference at the fixed node id; a literal operand resolves
@@ -4878,15 +4971,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           bool equalityOk = false;
           ZC_IF_SOME(equality, equalityValue) {
             ZC_IF_SOME(conditional, conditionalValue) {
-              equalityOk = equality.left == hirId(expectedFunction + 2) &&
-                           equality.right == hirId(expectedFunction + 3) &&
-                           equality.operandType == operandType && equality.type == conditionType &&
-                           equality.category == HirValueCategory::Value &&
-                           equality.operation ==
-                               selected.get<checker::checked::PrimitiveCallable>().operation &&
-                           sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
-                           conditional.condition == equality.node &&
-                           typeExists(operandType, semanticTypes);
+              equalityOk =
+                  equality.left == hirId(expectedFunction + 2) &&
+                  equality.right == hirId(expectedFunction + 3) &&
+                  equality.operandType == operandType &&
+                  (source.isMatchEquality ? isBoolSemanticType(semanticTypes, equality.type)
+                                          : equality.type == conditionType) &&
+                  equality.category == HirValueCategory::Value &&
+                  equality.operation == expectedOperation &&
+                  sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+                  conditional.condition == equality.node && typeExists(operandType, semanticTypes);
             }
           }
           if (!equalityOk) {

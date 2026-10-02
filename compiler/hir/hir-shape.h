@@ -297,6 +297,13 @@ struct FunctionReturnShape final {
   // a second literal arm. The default arm produces one fewer pattern-literal
   // fact, which the count equations must subtract.
   bool matchHasDefaultArm = false;
+  // True when the match-return shape is an integer match with one literal
+  // pattern arm and one default arm. The HIR builder lowers this to the
+  // equality conditional path, synthesizing `scrutinee == literal` without
+  // an AST BinaryExpr node. `matchEqualityLiteral` carries the pattern
+  // literal node so the builder can read its checked literal fact.
+  bool isMatchEquality = false;
+  ast::NodeId matchEqualityLiteral{};
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);

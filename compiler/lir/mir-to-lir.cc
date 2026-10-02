@@ -3133,14 +3133,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
 zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
-  // Callee: the four-block boolean-conditional return shape (same structure as
-  // lowerConditionalReturn, but emitted as the second function in a
-  // caller+callee module).
+  // Callee: the four-block conditional return shape, either the boolean-
+  // conditional stride (2 locals: one parameter, one result; entry is
+  // StorageLive(result) + SwitchInt on the parameter) or the equality-
+  // conditional stride (3 locals: one parameter, one result, one bool
+  // temporary; entry is StorageLive(result) + StorageLive(temp) +
+  // Assign(temp = Comparison) + SwitchInt on the temp).
   if (callee.kind != mir::MirFunctionKind::Function || callee.sourceScopes.size() != 1 ||
-      callee.locals.size() != 2 || callee.blocks.size() != 4) {
+      (callee.locals.size() != 2 && callee.locals.size() != 3) || callee.blocks.size() != 4) {
     return zc::none;
   }
-  const size_t calleeParameterCount = callee.locals.size() - 1;
+  const bool isEqualityStride = callee.locals.size() == 3;
+  const size_t calleeParameterCount = isEqualityStride ? 1 : callee.locals.size() - 1;
   const auto& calleeResult = callee.locals[calleeParameterCount];
   if (calleeResult.kind != mir::MirLocalKind::FunctionResult ||
       calleeResult.type != callee.resultType) {
@@ -3148,6 +3152,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   }
   for (size_t i = 0; i < calleeParameterCount; ++i) {
     if (callee.locals[i].kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  }
+  const mir::MirLocalDeclaration* calleeTemp = nullptr;
+  if (isEqualityStride) {
+    calleeTemp = &callee.locals[2];
+    if (calleeTemp->kind != mir::MirLocalKind::Temporary) { return zc::none; }
   }
   auto calleeResultCarrier = integerCarrierFor(callee.resultType, semanticTypes);
   if (calleeResultCarrier == zc::none) { return zc::none; }
@@ -3159,11 +3168,31 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   const auto& calleeElse = callee.blocks[2];
   const auto& calleeJoin = callee.blocks[3];
 
-  if (calleeEntry.statements.size() != 1 ||
-      calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      calleeEntry.statements[0].storageLocal() != calleeResult.id ||
-      calleeEntry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
-    return zc::none;
+  if (isEqualityStride) {
+    // Equality stride: StorageLive(result), StorageLive(temp), Assign(temp = Comparison).
+    if (calleeEntry.statements.size() != 3 ||
+        calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        calleeEntry.statements[0].storageLocal() != calleeResult.id ||
+        calleeEntry.statements[1].kind() != mir::MirStatementKind::StorageLive ||
+        calleeEntry.statements[1].storageLocal() != calleeTemp->id ||
+        calleeEntry.statements[2].kind() != mir::MirStatementKind::Assign ||
+        calleeEntry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+      return zc::none;
+    }
+    const auto& tempAssign = calleeEntry.statements[2].assignmentValue();
+    if (tempAssign.destination.local() != calleeTemp->id ||
+        tempAssign.destination.projections().size() != 0 ||
+        tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      return zc::none;
+    }
+  } else {
+    // Boolean stride: StorageLive(result) only.
+    if (calleeEntry.statements.size() != 1 ||
+        calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        calleeEntry.statements[0].storageLocal() != calleeResult.id ||
+        calleeEntry.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+      return zc::none;
+    }
   }
   const auto& calleeSwitch = calleeEntry.terminator.switchIntValue();
   if (calleeSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
@@ -3171,15 +3200,21 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
       calleeSwitch.arms.size() != 2) {
     return zc::none;
   }
-  const uint32_t calleeConditionOrdinal = calleeSwitch.discriminant.place().local().ordinal();
-  bool calleeConditionIsParameter = false;
-  for (size_t i = 0; i < calleeParameterCount; ++i) {
-    if (callee.locals[i].id == calleeSwitch.discriminant.place().local()) {
-      calleeConditionIsParameter = true;
-      if (boolCarrierFor(callee.locals[i].type, semanticTypes) == zc::none) { return zc::none; }
+  if (isEqualityStride) {
+    // The discriminant must be the comparison temp.
+    if (calleeSwitch.discriminant.place().local() != calleeTemp->id) { return zc::none; }
+  } else {
+    // The discriminant must be the bool parameter.
+    bool calleeConditionIsParameter = false;
+    for (size_t i = 0; i < calleeParameterCount; ++i) {
+      if (callee.locals[i].id == calleeSwitch.discriminant.place().local()) {
+        calleeConditionIsParameter = true;
+        if (boolCarrierFor(callee.locals[i].type, semanticTypes) == zc::none) { return zc::none; }
+      }
     }
+    if (!calleeConditionIsParameter) { return zc::none; }
   }
-  if (!calleeConditionIsParameter) { return zc::none; }
+  const uint32_t calleeConditionOrdinal = calleeSwitch.discriminant.place().local().ordinal();
   const auto calleeTrueTarget = calleeSwitch.arms[0].target.ordinal();
   const auto calleeFalseTarget = calleeSwitch.arms[1].target.ordinal();
   if (calleeTrueTarget != calleeThen.id.ordinal() || calleeFalseTarget != calleeElse.id.ordinal() ||
@@ -3236,6 +3271,31 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
                           value.place().projections().size() == 0;
   }
   if (!calleeReturnsResult) { return zc::none; }
+
+  // Equality stride: lower the comparison rvalue from the entry block's Assign
+  // statement so the LIR entry block can compute the temp before branching.
+  zc::Maybe<ComparisonOp> equalityOp;
+  zc::Maybe<Operand> equalityLeft;
+  zc::Maybe<Operand> equalityRight;
+  if (isEqualityStride) {
+    const auto& tempAssign = calleeEntry.statements[2].assignmentValue();
+    const auto& comparison = tempAssign.value.comparisonValue();
+    auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
+      if (operand.kind() == mir::MirOperandKind::Constant) {
+        return integerCarrierFor(operand.constantValue().type, semanticTypes);
+      }
+      return integerCarrierFor(operand.place().rootType(), semanticTypes);
+    };
+    auto leftCarrier = operandCarrierFor(comparison.left);
+    auto rightCarrier = operandCarrierFor(comparison.right);
+    if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
+    auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
+    auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
+    if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+    equalityOp = lirComparisonOpFor(comparison.op);
+    equalityLeft = zc::mv(lirLeft);
+    equalityRight = zc::mv(lirRight);
+  }
 
   // Caller: the two-block call+return shape with a single constant argument
   // (same structure as lowerCallModuleWithArgument).
@@ -3396,13 +3456,19 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
                            zc::mv(callerBlocks)));
   }
 
-  // Function 1: the callee, a four-block boolean-conditional return.
+  // Function 1: the callee, a four-block conditional return (boolean or
+  // equality stride).
   {
     zc::Vector<BasicBlock> calleeBlocks;
     {
-      zc::Vector<Statement> none;
+      zc::Vector<Statement> entryStatements;
+      if (isEqualityStride) {
+        entryStatements.add(Statement::compare(
+            calleeConditionOrdinal, ZC_REQUIRE_NONNULL(equalityOp),
+            ZC_REQUIRE_NONNULL(equalityLeft), ZC_REQUIRE_NONNULL(equalityRight)));
+      }
       calleeBlocks.add(BasicBlock(
-          ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
+          ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(entryStatements),
           Terminator::condBranch(calleeConditionOrdinal, ZC_REQUIRE_NONNULL(calleeThenId),
                                  ZC_REQUIRE_NONNULL(calleeElseId))));
     }
@@ -3425,6 +3491,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     }
     zc::Vector<Local> locals;
     locals.add(Local(calleeResultOrdinal, calleeResultCarrierValue));
+    if (isEqualityStride) {
+      auto tempCarrier = boolCarrierFor(calleeTemp->type, semanticTypes);
+      if (tempCarrier == zc::none) { return zc::none; }
+      locals.add(Local(calleeTemp->id.ordinal(), ZC_REQUIRE_NONNULL(tempCarrier)));
+    }
     functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeResultCarrierValue,
                            zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
