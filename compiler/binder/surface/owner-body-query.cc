@@ -331,6 +331,10 @@ zc::Maybe<ScopeKind> providerScopeKind(ast::SyntaxKind kind) {
       return ScopeKind::Match;
     case ast::SyntaxKind::MatchArmStmt:
       return ScopeKind::MatchArm;
+    case ast::SyntaxKind::MatchExpr:
+      return ScopeKind::Match;
+    case ast::SyntaxKind::MatchArmExpr:
+      return ScopeKind::MatchArm;
     case ast::SyntaxKind::UnsafeBlockExpr:
       return ScopeKind::UnsafeBlock;
     default:
@@ -368,6 +372,10 @@ zc::Maybe<ScopeKind> verifierScopeKind(ast::SyntaxKind kind) {
     case ast::SyntaxKind::MatchStmt:
       return ScopeKind::Match;
     case ast::SyntaxKind::MatchArmStmt:
+      return ScopeKind::MatchArm;
+    case ast::SyntaxKind::MatchExpr:
+      return ScopeKind::Match;
+    case ast::SyntaxKind::MatchArmExpr:
       return ScopeKind::MatchArm;
     case ast::SyntaxKind::UnsafeBlockExpr:
       return ScopeKind::UnsafeBlock;

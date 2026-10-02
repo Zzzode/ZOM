@@ -1,0 +1,7 @@
+fun f(b: bool) -> i32 {
+    let x = match (b) {
+        when true => 41;
+        when false => 7;
+    };
+    return x;
+}

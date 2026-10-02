@@ -1069,6 +1069,10 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
     return {parseTemplateLiteralExpression(builder, start, end), end};
   }
 
+  if (kindAt(start) == ast::SyntaxKind::MatchKeyword) {
+    return parseMatchExpression(builder, start, limit);
+  }
+
   if (kindAt(start) == ast::SyntaxKind::SpawnKeyword) {
     return {parseSpawnExpression(builder, start, limit), limit};
   }
@@ -1172,6 +1176,95 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
   }
 
   return ExpressionParseResult();
+}
+
+// RFC 0002: findMatchingRight* calls within this function are boundary detection
+// only. The production (match expression) is already identified by the start
+// token; scans locate closing delimiters for the parenthesized scrutinee and
+// the braced arm body.
+Parser::Impl::ExpressionParseResult Parser::Impl::parseMatchExpression(ParserSyntaxFactory& builder,
+                                                                       size_t start,
+                                                                       size_t limit) const {
+  const MatchStatementParts parts = parseMatchStatementParts(start, limit);
+
+  zc::Vector<ast::NodeId> arms;
+  if (parts.bodyOpen < limit && kindAt(parts.bodyOpen) == ast::SyntaxKind::LeftBrace) {
+    const size_t bodyEnd = parts.bodyClose;
+    size_t cursor = parts.bodyOpen + 1;
+    while (cursor < bodyEnd) {
+      if (kindAt(cursor) == ast::SyntaxKind::WhenKeyword) {
+        TokenCursor armCursor = tokenCursorAt(cursor + 1);
+        const size_t arrow =
+            consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
+        if (arrow >= bodyEnd) {
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "=>"_zc);
+          }
+          return ExpressionParseResult();
+        }
+
+        TokenCursor guardCursor = tokenCursorAt(cursor + 1);
+        const size_t guard = consumeBalancedUntil(guardCursor, arrow, ast::SyntaxKind::IfKeyword);
+        const size_t patternEnd = guard < arrow ? guard : arrow;
+        const size_t expressionStart = arrow + 1;
+        // An arm body is an expression terminated by a semicolon. Scan for the
+        // semicolon with balanced delimiter tracking so nested groups do not
+        // truncate the body.
+        TokenCursor bodyCursor = tokenCursorAt(expressionStart);
+        const size_t semicolon =
+            consumeBalancedUntil(bodyCursor, bodyEnd, ast::SyntaxKind::Semicolon);
+        const size_t expressionEnd = semicolon < bodyEnd ? semicolon : bodyEnd;
+
+        ast::NodeId guardExpr;
+        if (guard < arrow) { guardExpr = parseRequiredExpression(builder, guard + 1, arrow); }
+        arms.add(builder.makeMatchArmExpr(
+            rangeFor(cursor, expressionEnd), parsePatternRange(builder, cursor + 1, patternEnd),
+            guardExpr, parseExpressionRange(builder, expressionStart, expressionEnd)));
+        cursor = expressionEnd < bodyEnd ? expressionEnd + 1 : cursor + 1;
+        continue;
+      }
+
+      if (kindAt(cursor) == ast::SyntaxKind::DefaultKeyword) {
+        TokenCursor armCursor = tokenCursorAt(cursor + 1);
+        const size_t arrow =
+            consumeBalancedUntil(armCursor, bodyEnd, ast::SyntaxKind::EqualsGreaterThan);
+        if (arrow >= bodyEnd) {
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "=>"_zc);
+          }
+          return ExpressionParseResult();
+        }
+
+        const size_t expressionStart = arrow + 1;
+        TokenCursor bodyCursor = tokenCursorAt(expressionStart);
+        const size_t semicolon =
+            consumeBalancedUntil(bodyCursor, bodyEnd, ast::SyntaxKind::Semicolon);
+        const size_t expressionEnd = semicolon < bodyEnd ? semicolon : bodyEnd;
+
+        arms.add(builder.makeMatchArmExpr(
+            rangeFor(cursor, expressionEnd),
+            builder.makeWildcardPattern(rangeFor(cursor, cursor + 1), ast::NodeId()), ast::NodeId(),
+            parseExpressionRange(builder, expressionStart, expressionEnd)));
+        cursor = expressionEnd < bodyEnd ? expressionEnd + 1 : cursor + 1;
+        continue;
+      }
+
+      if (!shouldSuppressDiagnostic(cursor)) {
+        diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(cursor).getLocation(),
+                                                                    "when"_zc);
+      }
+      return ExpressionParseResult();
+    }
+  }
+
+  const ast::NodeId scrutinee =
+      parseExpressionRange(builder, parts.scrutineeStart, parts.scrutineeEnd);
+  if (!scrutinee) { return ExpressionParseResult(); }
+  return {
+      builder.makeMatchExpr(rangeFor(start, parts.end), scrutinee, builder.makeList(arms.asPtr())),
+      parts.end};
 }
 
 ast::NodeId Parser::Impl::parseExpressionRange(ParserSyntaxFactory& builder, size_t start,

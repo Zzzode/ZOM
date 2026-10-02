@@ -173,6 +173,8 @@ constexpr bool isKnownAstKind(SyntaxKind kind) noexcept {
     case SyntaxKind::CaptureItem: return true;
     case SyntaxKind::SuperExpr: return true;
     case SyntaxKind::CaptureList: return true;
+    case SyntaxKind::MatchExpr: return true;
+    case SyntaxKind::MatchArmExpr: return true;
     case SyntaxKind::DynTypeExpr: return true;
     case SyntaxKind::FixedArrayTypeExpr: return true;
     case SyntaxKind::SliceArrayTypeExpr: return true;
@@ -312,6 +314,8 @@ constexpr const char* nodeKindName(SyntaxKind kind) noexcept {
     case SyntaxKind::CaptureItem: return "CaptureItem";
     case SyntaxKind::SuperExpr: return "SuperExpr";
     case SyntaxKind::CaptureList: return "CaptureList";
+    case SyntaxKind::MatchExpr: return "MatchExpr";
+    case SyntaxKind::MatchArmExpr: return "MatchArmExpr";
     case SyntaxKind::DynTypeExpr: return "DynTypeExpr";
     case SyntaxKind::FixedArrayTypeExpr: return "FixedArrayTypeExpr";
     case SyntaxKind::SliceArrayTypeExpr: return "SliceArrayTypeExpr";

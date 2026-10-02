@@ -610,6 +610,21 @@ variants:
       - {name: n_captures, type: uint16}
       - {name: captures, type: NodeList, cast: CaptureItem}
 
+  - id: 0x09B
+    name: MatchExpr
+    doc:  "match (scrutinee) { when p => e ... } expression form"
+    fields:
+      - {name: scrutinee, type: NodeId, cast: Expression}
+      - {name: arms, type: NodeList, cast: MatchArmExpr}
+
+  - id: 0x09C
+    name: MatchArmExpr
+    doc:  "when pattern guard? => body (match arm expression)"
+    fields:
+      - {name: pattern, type: NodeId, cast: Pattern}
+      - {name: guard, type: NodeId, cast: Expression, optional: true}
+      - {name: body, type: NodeId, cast: Expression}
+
 # 0xC0..0xDF Type Expressions (25)
   - id: 0x0C0
     name: DynTypeExpr

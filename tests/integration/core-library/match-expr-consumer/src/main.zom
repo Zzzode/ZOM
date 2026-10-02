@@ -1,0 +1,12 @@
+// Match-expression backend-lowering fixture: a two-arm boolean match in
+// let-initializer position that normalizes to the conditional-select path
+// and lowers through the verified LLVM backend to a native executable.
+// The scrutinee is a constant `true`, so the match evaluates to the true
+// arm's value (41) and `zomc run` exits 41.
+fun entry() -> i32 {
+    let x = match (true) {
+        when true => 41;
+        when false => 7;
+    };
+    return x;
+}

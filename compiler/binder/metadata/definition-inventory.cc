@@ -413,6 +413,13 @@ struct DefinitionInventory::Impl final {
         visitChildren(node, DefinitionPlacement::Lexical);
         return;
       }
+      case ast::SyntaxKind::MatchArmExpr: {
+        zc::Vector<uint32_t> path;
+        collectPatternBindings(ast::NodeId(syntax.payload.words[ast::kMatchArmExprPatternWord]),
+                               node, path, identity::DefinitionKind::PatternBinding);
+        visitChildren(node, DefinitionPlacement::Lexical);
+        return;
+      }
       case ast::SyntaxKind::FunctionExpression:
         visitClosure(node, AnonymousSyntaxRole::FunctionExpression);
         return;

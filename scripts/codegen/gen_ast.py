@@ -339,9 +339,7 @@ BODY_CHECKER_SOURCE = os.path.join(
 # disagree.
 CHECKER_UNSUPPORTED_EXPRESSIONS = frozenset({
     "ArrayLiteral",
-    "CastExpression",
     "CommaExpr",
-    "ConditionalExpr",
     "ErrorDefaultExpr",
     "FunctionExpression",
     "ImportCallExpression",

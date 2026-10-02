@@ -54,6 +54,7 @@ enum class BodyProductionKind : uint8_t {
   PostfixIncrement = 0x1e,
   EnumVariantValue = 0x1f,
   EnumVariantConstruction = 0x20,
+  MatchExpression = 0x21,
   Unsupported = 0x17
 };
 
@@ -143,8 +144,10 @@ bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target
 bool isMatchArmPattern(const ast::Tree& tree, ast::NodeId node) {
   bool found = false;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
-    if (syntax.kind == ast::SyntaxKind::MatchArmStmt &&
-        ast::NodeId(syntax.payload.words[ast::kMatchArmStmtPatternWord]) == node) {
+    if ((syntax.kind == ast::SyntaxKind::MatchArmStmt &&
+         ast::NodeId(syntax.payload.words[ast::kMatchArmStmtPatternWord]) == node) ||
+        (syntax.kind == ast::SyntaxKind::MatchArmExpr &&
+         ast::NodeId(syntax.payload.words[ast::kMatchArmExprPatternWord]) == node)) {
       found = true;
     }
   });
@@ -486,6 +489,25 @@ bool dependsOnDirectCallLocalInitializer(const BodyCheckingInput& input, ast::No
       const auto& tree = input.boundModule.tree();
       return tree.contains(initializerNode) &&
              tree.node(initializerNode).kind == ast::SyntaxKind::CallExpression;
+    }
+  }
+  return false;
+}
+
+// Returns true when `node` is an IdentifierReference whose binding's
+// initializer is a conditional or match expression.  These initializers
+// produce their NodeType fact in stage 1, so the referencing site must be
+// deferred to stage 2 alongside structured and call initializers.
+bool dependsOnTernaryLocalInitializer(const BodyCheckingInput& input, ast::NodeId node) {
+  const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), node);
+  if (binding == zc::none) return false;
+  ZC_IF_SOME(value, binding) {
+    auto initializer = ownerLocalInitializer(input.boundModule, value);
+    ZC_IF_SOME(initializerNode, initializer) {
+      const auto& tree = input.boundModule.tree();
+      if (!tree.contains(initializerNode)) return false;
+      const auto kind = tree.node(initializerNode).kind;
+      return kind == ast::SyntaxKind::ConditionalExpr || kind == ast::SyntaxKind::MatchExpr;
     }
   }
   return false;
@@ -4099,6 +4121,7 @@ bool isExpression(ast::SyntaxKind kind) noexcept {
     case ast::SyntaxKind::SpawnExpression:
     case ast::SyntaxKind::StructLiteralExpr:
     case ast::SyntaxKind::SuperExpr:
+    case ast::SyntaxKind::MatchExpr:
       return true;
     default:
       return false;
@@ -4927,6 +4950,66 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           production = BodyProductionKind::ConditionalExpression;
           break;
         }
+        case ast::SyntaxKind::MatchExpr: {
+          // Admit a two-arm boolean match expression whose scrutinee is a bool
+          // literal or reference and whose arms each carry a bool literal
+          // pattern (true/false) and a scalar-literal body. The HIR shape layer
+          // normalizes this to the ternary conditional-select path. Every
+          // other match-expr shape stays unsupported so its existing rejection
+          // stands.
+          const ast::NodeId scrutinee(syntax.payload.words[ast::kMatchExprScrutineeWord]);
+          const ast::NodeList arms{syntax.payload.words[ast::kMatchExprArmsFirstWord],
+                                   syntax.payload.words[ast::kMatchExprArmsSizeWord]};
+          if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { break; }
+          const auto& scrutineeSyntax = tree.node(scrutinee);
+          if (scrutineeSyntax.kind != ast::SyntaxKind::IdentExpr &&
+              scrutineeSyntax.kind != ast::SyntaxKind::BoolLiteral) {
+            break;
+          }
+          bool sawTrue = false;
+          bool sawFalse = false;
+          bool armsAdmitted = true;
+          for (size_t index = 0; index < arms.size; ++index) {
+            const ast::NodeId armId = tree.list(arms)[index];
+            if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
+              armsAdmitted = false;
+              break;
+            }
+            const auto& arm = tree.node(armId);
+            const ast::NodeId guard(arm.payload.words[ast::kMatchArmExprGuardWord]);
+            if (tree.contains(guard)) {
+              armsAdmitted = false;
+              break;
+            }
+            const ast::NodeId pattern(arm.payload.words[ast::kMatchArmExprPatternWord]);
+            if (!tree.contains(pattern) ||
+                tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+              armsAdmitted = false;
+              break;
+            }
+            const ast::NodeId literal(
+                tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+            if (!tree.contains(literal) ||
+                tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+              armsAdmitted = false;
+              break;
+            }
+            if (tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0) {
+              sawTrue = true;
+            } else {
+              sawFalse = true;
+            }
+            const ast::NodeId body(arm.payload.words[ast::kMatchArmExprBodyWord]);
+            if (!tree.contains(body) || !isScalarLiteral(tree.node(body).kind)) {
+              armsAdmitted = false;
+              break;
+            }
+          }
+          if (armsAdmitted && sawTrue && sawFalse) {
+            production = BodyProductionKind::MatchExpression;
+          }
+          break;
+        }
         default:
           break;
       }
@@ -5084,7 +5167,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       bool deferredLocalReference = false;
       if (site.production == BodyProductionKind::IdentifierReference) {
         deferredLocalReference = dependsOnStructuredLocalInitializer(input, site.node) ||
-                                 dependsOnDirectCallLocalInitializer(input, site.node);
+                                 dependsOnDirectCallLocalInitializer(input, site.node) ||
+                                 dependsOnTernaryLocalInitializer(input, site.node);
       }
       const bool structured = site.production == BodyProductionKind::StructLiteral;
       const bool projected = site.production == BodyProductionKind::OwnerLocalFieldReference ||
@@ -5102,13 +5186,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool primitiveBinary = site.production == BodyProductionKind::PrimitiveBinaryOperation;
       const bool integerCast = site.production == BodyProductionKind::IntegerCast;
       const bool conditionalExpr = site.production == BodyProductionKind::ConditionalExpression;
+      const bool matchExpr = site.production == BodyProductionKind::MatchExpression;
       if ((stage == 0 &&
            (structured || projected || fieldWrite || receiverFieldWrite || directCall ||
             enumConstruction || concreteMethodCall || errorOperator || indexed || unsafeBlock ||
-            primitiveBinary || integerCast || conditionalExpr)) ||
+            primitiveBinary || integerCast || conditionalExpr || matchExpr)) ||
           (stage == 1 &&
            (((!structured && !directCall && !enumConstruction) || errorOperator || indexed) &&
-            !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr)) ||
+            !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr && !matchExpr)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 &&
            (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
@@ -6154,6 +6239,48 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
         producedType = then;
+      } else if (site.production == BodyProductionKind::MatchExpression) {
+        // A two-arm boolean match expression. The scrutinee is bool; both arm
+        // bodies are scalar literals of the same type. The result type is the
+        // arm body type.
+        const auto& matchNode = input.boundModule.tree().node(site.node);
+        const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchExprScrutineeWord]);
+        const ast::NodeList arms{matchNode.payload.words[ast::kMatchExprArmsFirstWord],
+                                 matchNode.payload.words[ast::kMatchExprArmsSizeWord]};
+        auto scrutineeType = factEntry(nodeTypes.asPtr(), scrutinee);
+        if (scrutineeType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto scrutineeKind =
+            primitiveKindOf(input.semanticTypes, ZC_ASSERT_NONNULL(scrutineeType).value);
+        if (scrutineeKind == zc::none ||
+            ZC_ASSERT_NONNULL(scrutineeKind) != type::semantic::PrimitiveKind::Bool) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        zc::Maybe<identity::SemanticTypeId> firstArmType;
+        for (size_t index = 0; index < arms.size; ++index) {
+          const ast::NodeId armId = input.boundModule.tree().list(arms)[index];
+          const auto& arm = input.boundModule.tree().node(armId);
+          const ast::NodeId body(arm.payload.words[ast::kMatchArmExprBodyWord]);
+          auto bodyType = factEntry(nodeTypes.asPtr(), body);
+          if (bodyType == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          if (firstArmType == zc::none) {
+            firstArmType = ZC_ASSERT_NONNULL(bodyType).value;
+          } else if (ZC_ASSERT_NONNULL(firstArmType) != ZC_ASSERT_NONNULL(bodyType).value) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+        }
+        producedType = ZC_ASSERT_NONNULL(firstArmType);
       } else if (site.production == BodyProductionKind::LocalWrite) {
         const auto& assignment = input.boundModule.tree().node(site.node);
         const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);

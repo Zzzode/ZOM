@@ -236,6 +236,8 @@ match (point) {
 
 The scrutinee expression (in parentheses after `match`) is evaluated once, then matched against each `when` clause in order. The first clause whose pattern matches (and whose guard evaluates to `true`, if present) is executed. If no clause matches, the `default` clause runs; if there is no `default`, a compile-time exhaustiveness error is reported.
 
+A `match` can also appear in expression position, where each arm body is an expression and the match yields the selected arm's value. See [Ch.04 Match Expressions](04-expressions.md#match-expressions).
+
 See [Ch.07 Patterns](07-patterns.md) for the full pattern syntax.
 
 ### `when` Statements

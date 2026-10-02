@@ -579,6 +579,9 @@ struct Parser::Impl {
   ExpressionParseResult parsePrimaryExpressionAt(ParserSyntaxFactory& builder, size_t start,
                                                  size_t limit) const;
 
+  ExpressionParseResult parseMatchExpression(ParserSyntaxFactory& builder, size_t start,
+                                             size_t limit) const;
+
   ast::NodeId parseExpressionRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   ast::NodeId parsePatternRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;

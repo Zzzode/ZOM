@@ -1377,6 +1377,14 @@ matchStatement
 matchClause : WHEN pattern (IF expression)? ROCKET statement ;
 
 
+matchExpression
+    : MATCH parenExpression LBRACE matchExprClause* ( DEFAULT ROCKET expression SEMICOLON )? RBRACE
+    ;
+
+
+matchExprClause : WHEN pattern (IF expression)? ROCKET expression SEMICOLON ;
+
+
 whenStatement
     : WHEN parenExpression LBRACE whenClause* ( DEFAULT COLON statementList )? RBRACE
     ;
@@ -1692,6 +1700,8 @@ primaryExpr
 
 
     | unsafeBlockExpr                                                                     # exprUnsafeBlock
+
+    | matchExpression                                                                     # exprMatch
 
     | predefinedType                                                                      # exprPredefinedType
     ;

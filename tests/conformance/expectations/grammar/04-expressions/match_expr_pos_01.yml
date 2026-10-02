@@ -1,0 +1,5 @@
+section: "04-expressions match expression"
+covers_rule: "matchExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a two-arm boolean match in let-initializer position is accepted by the parser and pipeline."

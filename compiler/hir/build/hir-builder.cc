@@ -3891,30 +3891,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             bindingParameter = zc::mv(resolvedKey);
           }
-          pendingBindings.add(PendingSequentialBinding{bindingType,
-                                                       ZC_ASSERT_NONNULL(patternSpan).clone(),
-                                                       ZC_ASSERT_NONNULL(initializerSpan).clone(),
-                                                       binding.initializerKind,
-                                                       zc::mv(bindingLiteral),
-                                                       zc::mv(bindingAggregate),
-                                                       zc::mv(bindingParameter),
-                                                       binding.referencedLocal,
-                                                       zc::mv(bindingOperation),
-                                                       bindingOperandType,
-                                                       zc::mv(bindingLeftOperand),
-                                                       zc::mv(bindingRightOperand),
-                                                       bindingIsUnaryDesugar,
-                                                       zc::mv(bindingTernaryConditionParameter),
-                                                       bindingTernaryConditionIsLocal,
-                                                       bindingTernaryConditionLocal,
-                                                       bindingTernaryConditionIsLiteral,
-                                                       bindingTernaryConditionType,
-                                                       zc::mv(bindingTernaryConditionLiteral),
-                                                       zc::mv(bindingTernaryThenLiteral),
-                                                       zc::mv(bindingTernaryElseLiteral),
-                                                       zc::mv(bindingTernaryConditionSpan),
-                                                       zc::mv(bindingTernaryThenSpan),
-                                                       zc::mv(bindingTernaryElseSpan)});
+          pendingBindings.add(PendingSequentialBinding{
+              bindingType,
+              ZC_ASSERT_NONNULL(patternSpan).clone(),
+              ZC_ASSERT_NONNULL(initializerSpan).clone(),
+              binding.initializerKind,
+              zc::mv(bindingLiteral),
+              zc::mv(bindingAggregate),
+              zc::mv(bindingParameter),
+              binding.referencedLocal,
+              zc::mv(bindingOperation),
+              bindingOperandType,
+              zc::mv(bindingLeftOperand),
+              zc::mv(bindingRightOperand),
+              bindingIsUnaryDesugar,
+              zc::mv(bindingTernaryConditionParameter),
+              bindingTernaryConditionIsLocal,
+              bindingTernaryConditionLocal,
+              bindingTernaryConditionIsLiteral,
+              bindingTernaryConditionType,
+              zc::mv(bindingTernaryConditionLiteral),
+              zc::mv(bindingTernaryThenLiteral),
+              zc::mv(bindingTernaryElseLiteral),
+              zc::mv(bindingTernaryConditionSpan),
+              zc::mv(bindingTernaryThenSpan),
+              zc::mv(bindingTernaryElseSpan),
+              tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr});
         }
         if (rejected) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7467,6 +7469,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // expressions, contributing three node-type facts and two literal facts
   // beyond the per-binding local node type.
   size_t sequentialTernaryCount = 0;
+  // Match-expression bindings normalized to the ternary path. Each carries two
+  // extra pattern literals (the true/false BoolLiterals in the arm patterns)
+  // that the checker produces node-type and literal facts for, mirroring the
+  // match-return correction.
+  size_t sequentialMatchExprCount = 0;
   // Leading scalar-local bindings that precede a comparison conditional in the
   // same body (`let a: i32 = 1; if (a < 5) { .. } else { .. }`). Each binding
   // materializes one local plus one initializer, and each comparison operand
@@ -7668,6 +7675,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               ++literalBearingSlots;
               if (binding.ternaryConditionIsLiteral) { ++literalBearingSlots; }
+              // A match expression normalized to the ternary path carries two
+              // extra pattern literals (true/false) with node-type and literal
+              // facts.
+              if (binding.isMatchExpr) {
+                ++sequentialMatchExprCount;
+                ++literalBearingSlots;
+                ++literalBearingSlots;
+              }
               break;
             case SequentialInitializerKind::EnumVariantConstruction:
               // A live construction binding is not lowered yet; the builder
@@ -7725,6 +7740,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               ++literalBearingSlots;
               if (dead.ternaryConditionIsLiteral) { ++literalBearingSlots; }
+              if (bound.tree().node(dead.initializer).kind == ast::SyntaxKind::MatchExpr) {
+                ++sequentialMatchExprCount;
+                ++literalBearingSlots;
+                ++literalBearingSlots;
+              }
               break;
             case SequentialInitializerKind::EnumVariantConstruction: {
               // The CallExpression node type is counted by the per-binding
@@ -8133,9 +8153,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      sequentialTernaryCount * 3 + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
-      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3;
   if (facts.nodeTypes().size() != expectedNodeTypes) {

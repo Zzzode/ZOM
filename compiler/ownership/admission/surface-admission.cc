@@ -449,6 +449,53 @@ bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(thenExpr).kind) && isScalarLiteral(tree.node(elseExpr).kind);
 }
 
+// A two-arm boolean match expression `match (scrutinee) { when true => e1;
+// when false => e2; }` normalizes to the ternary conditional-select path. The
+// scrutinee must be a bool literal or bare identifier; both arm bodies must be
+// scalar literals. Every other match-expr shape stays rejected by its existing
+// drain.
+bool isAdmittedMatchExpression(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::MatchExpr) {
+    return false;
+  }
+  const auto& matchNode = tree.node(value);
+  const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchExprScrutineeWord]);
+  const ast::NodeList arms{matchNode.payload.words[ast::kMatchExprArmsFirstWord],
+                           matchNode.payload.words[ast::kMatchExprArmsSizeWord]};
+  if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { return false; }
+  if (tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr &&
+      tree.node(scrutinee).kind != ast::SyntaxKind::BoolLiteral) {
+    return false;
+  }
+  bool sawTrue = false;
+  bool sawFalse = false;
+  for (size_t index = 0; index < arms.size; ++index) {
+    const ast::NodeId armId = tree.list(arms)[index];
+    if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
+      return false;
+    }
+    const auto& arm = tree.node(armId);
+    const ast::NodeId guard(arm.payload.words[ast::kMatchArmExprGuardWord]);
+    if (tree.contains(guard)) return false;
+    const ast::NodeId pattern(arm.payload.words[ast::kMatchArmExprPatternWord]);
+    if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+      return false;
+    }
+    const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+    if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+      return false;
+    }
+    if (tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0) {
+      sawTrue = true;
+    } else {
+      sawFalse = true;
+    }
+    const ast::NodeId body(arm.payload.words[ast::kMatchArmExprBodyWord]);
+    if (!tree.contains(body) || !isScalarLiteral(tree.node(body).kind)) { return false; }
+  }
+  return sawTrue && sawFalse;
+}
+
 // A qualified enum variant access (`Color::Red`) lowers to an integer constant
 // (the variant discriminant). The base must be a bare identifier naming the
 // enum type; the checker verifies the binding and discriminant.
@@ -554,7 +601,8 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
          isAdmittedAggregateInitializer(tree, initializer) ||
          isAdmittedPrimitiveBinary(tree, initializer) ||
          isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
-         isAdmittedTernary(tree, initializer) || isAdmittedEnumVariant(tree, initializer) ||
+         isAdmittedTernary(tree, initializer) || isAdmittedMatchExpression(tree, initializer) ||
+         isAdmittedEnumVariant(tree, initializer) ||
          isAdmittedEnumVariantConstruction(tree, initializer);
 }
 
@@ -1268,7 +1316,8 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
           (tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::CastExpression ||
-           tree.node(soleInitializer).kind == ast::SyntaxKind::ConditionalExpr)) {
+           tree.node(soleInitializer).kind == ast::SyntaxKind::ConditionalExpr ||
+           tree.node(soleInitializer).kind == ast::SyntaxKind::MatchExpr)) {
         sequentialLocalShape = true;
       }
     }

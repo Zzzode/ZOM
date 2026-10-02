@@ -820,6 +820,64 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
           }
         }
       }
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::MatchExpr) {
+      // A two-arm boolean match expression `match (scrutinee) { when true => e1;
+      // when false => e2; }`. This normalizes to the ternary conditional-select
+      // path: the scrutinee becomes the condition, the true-arm body becomes
+      // the then-branch, and the false-arm body becomes the else-branch.
+      const ast::NodeId scrutinee(
+          tree.node(initializer).payload.words[ast::kMatchExprScrutineeWord]);
+      const ast::NodeList arms{tree.node(initializer).payload.words[ast::kMatchExprArmsFirstWord],
+                               tree.node(initializer).payload.words[ast::kMatchExprArmsSizeWord]};
+      if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { return zc::none; }
+      const bool conditionIsLiteral = tree.node(scrutinee).kind == ast::SyntaxKind::BoolLiteral;
+      if (tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr && !conditionIsLiteral) {
+        return zc::none;
+      }
+      zc::Maybe<ast::NodeId> trueArmBody;
+      zc::Maybe<ast::NodeId> falseArmBody;
+      for (size_t armIndex = 0; armIndex < arms.size; ++armIndex) {
+        const ast::NodeId armId = tree.list(arms)[armIndex];
+        if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
+          return zc::none;
+        }
+        const auto& arm = tree.node(armId);
+        const ast::NodeId guard(arm.payload.words[ast::kMatchArmExprGuardWord]);
+        if (tree.contains(guard)) return zc::none;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmExprPatternWord]);
+        if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+          return zc::none;
+        }
+        const ast::NodeId literal(
+            tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+        if (!tree.contains(literal) || tree.node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+          return zc::none;
+        }
+        const ast::NodeId body(arm.payload.words[ast::kMatchArmExprBodyWord]);
+        if (!tree.contains(body) || !isScalarLiteral(tree.node(body).kind)) { return zc::none; }
+        if (tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0) {
+          if (trueArmBody != zc::none) return zc::none;
+          trueArmBody = body;
+        } else {
+          if (falseArmBody != zc::none) return zc::none;
+          falseArmBody = body;
+        }
+      }
+      if (trueArmBody == zc::none || falseArmBody == zc::none) { return zc::none; }
+      kind = SequentialInitializerKind::Ternary;
+      ternaryCondNode = scrutinee;
+      ZC_IF_SOME(value, trueArmBody) { ternaryThenNode = value; }
+      ZC_IF_SOME(value, falseArmBody) { ternaryElseNode = value; }
+      if (conditionIsLiteral) {
+        ternaryConditionIsLiteral = true;
+      } else {
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, scrutinee)) {
+            ternaryConditionIsLocal = true;
+            break;
+          }
+        }
+      }
     } else if (tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
                static_cast<ast::MemberAccessKind>(
                    tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==

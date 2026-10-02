@@ -500,6 +500,22 @@ public:
     return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::CaptureList, zc::mv(range), payload);
   }
 
+  NodeId makeMatchExpr(source::SourceRange range, NodeId scrutinee, NodeList arms) {
+    NodePayload payload;
+    payload.words[kMatchExprScrutineeWord] = scrutinee.value;
+    payload.words[kMatchExprArmsFirstWord] = arms.first;
+    payload.words[kMatchExprArmsSizeWord] = arms.size;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MatchExpr, zc::mv(range), payload);
+  }
+
+  NodeId makeMatchArmExpr(source::SourceRange range, NodeId pattern, NodeId guard, NodeId body) {
+    NodePayload payload;
+    payload.words[kMatchArmExprPatternWord] = pattern.value;
+    payload.words[kMatchArmExprGuardWord] = guard.value;
+    payload.words[kMatchArmExprBodyWord] = body.value;
+    return static_cast<Derived*>(this)->makeTypedNode(SyntaxKind::MatchArmExpr, zc::mv(range), payload);
+  }
+
   NodeId makeDynTypeExpr(source::SourceRange range, NodeId principal, NodeId markers_id, NodeId assoc_bindings_id) {
     NodePayload payload;
     payload.words[kDynTypeExprPrincipalWord] = principal.value;

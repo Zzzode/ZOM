@@ -92,6 +92,10 @@ struct PendingSequentialBinding final {
   zc::Maybe<identity::SourceSpan> ternaryConditionSpan;
   zc::Maybe<identity::SourceSpan> ternaryThenSpan;
   zc::Maybe<identity::SourceSpan> ternaryElseSpan;
+  // True when this Ternary binding is normalized from a match expression. The
+  // match carries two extra pattern literals (true/false) with node-type and
+  // literal facts that the count equations must account for.
+  bool isMatchExpr = false;
 };
 
 struct PendingSequentialLocalReturn final {

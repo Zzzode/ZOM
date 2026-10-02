@@ -350,6 +350,28 @@ let status = isLoggedIn ? "Welcome" : "Please log in";
 let grade = score >= 90 ? "A" : score >= 80 ? "B" : score >= 70 ? "C" : "F";
 ```
 
+## Match Expressions
+
+A `match` expression selects a value by matching a scrutinee against a set of
+pattern arms. Each arm is `when pattern => expression;`; an optional
+`default => expression;` arm catches every value not covered by the preceding
+arms. The arms are evaluated in order; the first arm whose pattern matches the
+scrutinee supplies the result.
+
+```zom
+let label = match (code) {
+    when 0 => "off";
+    when 1 => "on";
+    default => "unknown";
+};
+```
+
+The scrutinee is evaluated once. Every arm body must be an expression; the
+match expression yields the value of the selected arm's body. All arms must
+yield values of the same type. A `match` expression is exhaustive when the
+arms cover every possible scrutinee value; a `default` arm makes any match
+exhaustive.
+
 ## Assignment Expressions
 
 ### Simple Assignment

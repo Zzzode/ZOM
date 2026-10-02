@@ -6444,7 +6444,8 @@ MaterializedOwnerBody::materializeOwnerLocalBindingFacts(
         const auto& ancestor = entries[ancestorIndex];
         if (ancestor.syntaxKind == expectedKind ||
             (fact.kind() == binder::OwnerLocalBindingKind::PatternBinding &&
-             ancestor.syntaxKind == ast::SyntaxKind::MatchArmStmt)) {
+             (ancestor.syntaxKind == ast::SyntaxKind::MatchArmStmt ||
+              ancestor.syntaxKind == ast::SyntaxKind::MatchArmExpr))) {
           introducerIndex = ancestorIndex;
           break;
         }
@@ -7591,7 +7592,8 @@ bool validMaterializedOwnerBodyFacts(const MaterializedModuleSkeleton& skeleton,
          introducerKind != ast::SyntaxKind::VariableDeclarator) ||
         (materialized.kind == binder::OwnerLocalBindingKind::PatternBinding &&
          introducerKind != ast::SyntaxKind::ForInStatement &&
-         introducerKind != ast::SyntaxKind::MatchArmStmt)) {
+         introducerKind != ast::SyntaxKind::MatchArmStmt &&
+         introducerKind != ast::SyntaxKind::MatchArmExpr)) {
       return false;
     }
     zc::Maybe<const binder::ModuleBodyProvenanceEntry&> introducer;

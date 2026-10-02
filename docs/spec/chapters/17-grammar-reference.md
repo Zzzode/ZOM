@@ -457,6 +457,10 @@ IfStatement ::= 'if' '(' Expression ')' Statement ('else' Statement)?
 MatchStatement ::= 'match' '(' Expression ')' MatchBlock
 MatchBlock ::= '{' MatchClause* DefaultClause? '}'
 MatchClause ::= 'when' Pattern GuardClause? '=>' Statement
+MatchExpression ::= 'match' '(' Expression ')' MatchExprBlock
+MatchExprBlock ::= '{' MatchExprClause* DefaultExprClause? '}'
+MatchExprClause ::= 'when' Pattern GuardClause? '=>' Expression ';'
+DefaultExprClause ::= 'default' '=>' Expression ';'
 DefaultClause ::= 'default' '=>' StatementList
 GuardClause ::= 'if' Expression
 
@@ -583,12 +587,14 @@ PrimaryExpression ::= 'this'
                    | FunctionExpression
                    | SpawnExpression
                    | UnsafeBlockExpression
+                   | MatchExpression
                    | '(' Expression ')'
 
 UnsafeBlockExpression ::= 'unsafe' BlockStatement
     (* Grants the capability required by raw-pointer operations.
        See Ch.03 §Unsafe Safety Model and Ch.05. *)
-(* Statement forms are not alternatives of PrimaryExpression. *)
+(* Statement forms other than MatchExpression are not alternatives of
+   PrimaryExpression. *)
 
 ArrayLiteral ::= '[' (ElementList)? ']'
 ElementList ::= (AssignmentExpression | '...' AssignmentExpression)

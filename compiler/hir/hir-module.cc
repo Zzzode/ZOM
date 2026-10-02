@@ -847,6 +847,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // sequentialLiteralCorrection does not compensate for them. Tracked to add
   // them back.
   size_t sequentialTernaryParameterConditions = 0;
+  // Match-expression bindings normalized to the ternary path. Each carries two
+  // extra pattern literals (the true/false BoolLiterals in the arm patterns)
+  // that the checker produces node-type and literal facts for, mirroring the
+  // match-return correction.
+  size_t sequentialMatchExprCount = 0;
   // Dead-erase slice: bindings skipped by the builder's dead-binding filter.
   // The checker produces facts for every binding, so the HIR-node-based counts
   // (localReturnCount, aggregateCount, aggregateElementCount) must add the dead
@@ -944,6 +949,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 ++deadLiterals;
                 ++deadLiterals;
                 if (binding.ternaryConditionIsLiteral) { ++deadLiterals; }
+                // A match expression normalized to the ternary path carries
+                // two extra pattern literals (true/false) with node-type and
+                // literal facts.
+                if (tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr) {
+                  deadNodeTypesExtra += 2;
+                  ++deadLiterals;
+                  ++deadLiterals;
+                }
                 break;
               case SequentialInitializerKind::EnumVariantConstruction: {
                 // The CallExpression node type is counted by deadLocalReturnCount;
@@ -1058,6 +1071,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               if (binding.ternaryConditionIsLocal) { ++sequentialTernaryLocalConditions; }
               if (!binding.ternaryConditionIsLiteral && !binding.ternaryConditionIsLocal) {
                 ++sequentialTernaryParameterConditions;
+              }
+              // A match expression normalized to the ternary path carries two
+              // extra pattern literals (true/false) that the checker produces
+              // node-type and literal facts for.
+              if (tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr) {
+                ++sequentialMatchExprCount;
               }
               break;
             case SequentialInitializerKind::EnumVariantConstruction:
@@ -1455,10 +1474,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               binaryWriteCount * 2 + parameterFieldProjectionCount +
               receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
               discardedStatementCallCount + sequentialCastInitializers +
-              sequentialTernaryCount * 3 - leadingLocalConditionalUnaryCount -
-              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
-              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
-              forLoopBreakConditionCount ||
+              sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 -
+              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
+              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
+              compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1472,8 +1491,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
               directScalarLocalCallCount) +
               sequentialLiteralCorrection + sequentialTernaryParameterConditions +
-              leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
-              leadingLocalConditionalArithmeticParameterCount +
+              sequentialMatchExprCount * 2 + leadingLocalConditionalCorrection -
+              leadingLocalConditionalUnaryCount + leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection ||

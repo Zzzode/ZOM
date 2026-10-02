@@ -597,6 +597,36 @@ void visitCaptureListChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
 }
 
 template <typename Fn>
+void visitMatchExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMatchExprScrutineeWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    NodeList list;
+    list.first = node.payload.words[kMatchExprArmsFirstWord];
+    list.size = node.payload.words[kMatchExprArmsSizeWord];
+    for (NodeId child : tree.list(list)) { fn(child); }
+  }
+}
+
+template <typename Fn>
+void visitMatchArmExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
+  {
+    const NodeId child(node.payload.words[kMatchArmExprPatternWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMatchArmExprGuardWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+  {
+    const NodeId child(node.payload.words[kMatchArmExprBodyWord]);
+    if (tree.contains(child)) { fn(child); }
+  }
+}
+
+template <typename Fn>
 void visitDynTypeExprChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
   {
     const NodeId child(node.payload.words[kDynTypeExprPrincipalWord]);
@@ -1517,6 +1547,12 @@ void visitChildNodeIds(const Tree& tree, const Node& node, Fn&& fn) {
       return;
     case SyntaxKind::CaptureList:
       visitCaptureListChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::MatchExpr:
+      visitMatchExprChildNodeIds(tree, node, fn);
+      return;
+    case SyntaxKind::MatchArmExpr:
+      visitMatchArmExprChildNodeIds(tree, node, fn);
       return;
     case SyntaxKind::DynTypeExpr:
       visitDynTypeExprChildNodeIds(tree, node, fn);

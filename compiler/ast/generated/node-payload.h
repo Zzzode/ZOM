@@ -356,6 +356,16 @@ constexpr uint32_t kCaptureListNCapturesWord = 0;
 constexpr uint32_t kCaptureListCapturesFirstWord = 1;
 constexpr uint32_t kCaptureListCapturesSizeWord = 2;
 
+constexpr uint32_t kMatchExprPayloadWordCount = 3;
+constexpr uint32_t kMatchExprScrutineeWord = 0;
+constexpr uint32_t kMatchExprArmsFirstWord = 1;
+constexpr uint32_t kMatchExprArmsSizeWord = 2;
+
+constexpr uint32_t kMatchArmExprPayloadWordCount = 3;
+constexpr uint32_t kMatchArmExprPatternWord = 0;
+constexpr uint32_t kMatchArmExprGuardWord = 1;
+constexpr uint32_t kMatchArmExprBodyWord = 2;
+
 constexpr uint32_t kDynTypeExprPayloadWordCount = 3;
 constexpr uint32_t kDynTypeExprPrincipalWord = 0;
 constexpr uint32_t kDynTypeExprMarkersIdWord = 1;
