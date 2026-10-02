@@ -1,0 +1,13 @@
+// For-loop multi-write fixture: a C-style for loop with a non-empty body that
+// accumulates into two leading mutable locals, exercising the reducible
+// four-block loop CFG with N accumulator writes through the full IR pipeline.
+// Both x and y count 0..9, so x is 10 at the return.
+fun entry() -> i32 {
+  mut x = 0;
+  mut y = 0;
+  for (let i = 0; i < 10; i = i + 1) {
+    x = x + 1;
+    y = y + 1;
+  }
+  return x;
+}

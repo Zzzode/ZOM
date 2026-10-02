@@ -1147,6 +1147,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // call, their call node is not covered by the per-function baseline, so each
   // contributes one extra node-type fact.
   size_t discardedStatementCallCount = 0;
+  // For-loop accumulator functions with N > 1 accumulators: the count equations
+  // were derived for the N=1 shape. Each additional accumulator contributes one
+  // extra local reference (body-write left), two extra literal expressions
+  // (init + body-write right), and five extra node-type facts, while the
+  // baseline terms only absorb one of each. Sum the (N-1) surplus across all
+  // accumulator functions so the localReferences, expressions, literals, and
+  // nodeTypes equations balance.
+  int64_t forLoopAccumulatorCorrection = 0;
   {
     const auto& tree = bound.tree();
     for (const auto& functionDeclaration : candidate.impl->functions) {
@@ -1160,6 +1168,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, shape) {
         if (value.isVoidBody) ++voidFunctionCount;
         if (value.hasDiscardedReceiverCallStatement) ++discardedStatementCallCount;
+        if (value.isForLoopAccumulator && value.forLoopAccumulatorPatterns.size() > 1) {
+          forLoopAccumulatorCorrection +=
+              static_cast<int64_t>(value.forLoopAccumulatorPatterns.size()) - 1;
+        }
       }
     }
   }
@@ -1280,7 +1292,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   if (static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
           sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
-          leadingLocalConditionalArithmeticLocalCount !=
+          leadingLocalConditionalArithmeticLocalCount + forLoopAccumulatorCorrection !=
       static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
           directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -1313,7 +1325,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           sequentialLiteralCorrection + sequentialTernaryParameterConditions +
           leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
           leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
-          binaryWriteLocalOperands) {
+          binaryWriteLocalOperands + forLoopAccumulatorCorrection) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
@@ -1357,7 +1369,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
-              postfixIncrementWriteCount + deadLiterals ||
+              postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount +
               sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
@@ -2800,8 +2812,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
       // Unsafe-block boundary sits immediately after the return value node.
-      FunctionReturnShape returnShape{};
-      ZC_IF_SOME(value, functionShape) { returnShape = value; }
+      FunctionReturnShape returnShape = zc::mv(functionShape).orDefault(FunctionReturnShape{});
       if ((returnShape.unsafeBlock != zc::none) != (function.unsafeBlock != zc::none)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
@@ -3827,8 +3838,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       if (source.isConditional) {
         if (source.isLeadingLocalConditional) {
           // K leading scalar-local bindings followed by one comparison
@@ -5126,8 +5136,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       if (source.returnsComparison) {
         const bool comparisonIsMethod = function.receiver != zc::none;
         auto signaturePosition =
@@ -5766,7 +5775,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           auto sourceShapeMaybe = functionReturnShape(tree, tree.node(sourceDefinition.node));
           if (sourceShapeMaybe != zc::none &&
               ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsReceiverFieldArithmetic) {
-            const FunctionReturnShape source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+            FunctionReturnShape source = zc::mv(sourceShapeMaybe).orDefault(FunctionReturnShape{});
             const bool fieldIsLeft = !source.comparisonLeftIsLiteral;
             if (source.comparisonLeftIsLiteral == source.comparisonRightIsLiteral) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -6076,8 +6085,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       if (source.isLoop) {
         auto signaturePosition =
             signatureIndex(signatures.definitions.asPtr(), function.definition);
@@ -6294,8 +6302,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        FunctionReturnShape source{};
-        ZC_IF_SOME(value, sourceShapeMaybe) { source = value; }
+        FunctionReturnShape source = zc::mv(sourceShapeMaybe).orDefault(FunctionReturnShape{});
         const size_t writeCount = source.localWrites.size;
         if (writeCount == 0) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -7359,18 +7366,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         continue;
       }
     }
-    // C-style for-loop accumulator return: a leading scalar `let` accumulator
-    // local, a `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>)
-    // { <accumulator> = <accumulator> <bin> <ident>; }` loop, and a trailing
-    // `return <accumulator-local>;`. Fixed-id layout relative to the function
-    // id F:
-    //   F+0 function, F+1 body block, F+2 accumulator local, F+3 accumulator
-    //   init literal, F+4 loop-init local, F+5 loop-init literal, F+6 condition
-    //   left ref, F+7 condition right literal, F+8 condition binary, F+9
-    //   body-write left ref, F+10 body-write right ref, F+11 body-write binary,
-    //   F+12 body write, F+13 update left ref, F+14 update right literal,
-    //   F+15 update binary, F+16 update write, F+17 loop, F+18 return,
-    //   F+19 return value reference.
+    // C-style for-loop accumulator return: N leading scalar `mut` accumulator
+    // locals, a `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>)
+    // { <accumulator> = <accumulator> <bin> <ident|lit>; ... }` loop, and a
+    // trailing `return <accumulator-local>;`. Fixed-id layout relative to the
+    // function id F:
+    //   F+0 function, F+1 body block,
+    //   per accumulator k: F+2+2k local, F+3+2k init literal,
+    //   F+2+2N loop-init local, F+3+2N loop-init literal,
+    //   F+4+2N cond left ref, F+5+2N cond right literal, F+6+2N cond binary,
+    //   per accumulator k: F+7+2N+4k bw left, F+8+2N+4k bw right,
+    //     F+9+2N+4k bw binary, F+10+2N+4k bw write,
+    //   F+7+2N+4N update left, F+8+2N+4N update right,
+    //   F+9+2N+4N update binary, F+10+2N+4N update write,
+    //   F+11+2N+4N loop, F+12+2N+4N return, F+13+2N+4N return value ref.
+    // Total: 14 + 6N nodes.
     {
       bool isForLoopAccumulatorShape = false;
       ZC_IF_SOME(source, sourceShapeMaybe) {
@@ -7378,6 +7388,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       if (isForLoopAccumulatorShape) {
         const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        const size_t accumulatorCount = source.forLoopAccumulatorPatterns.size();
         auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
         if (sourceDefinitionIndex == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -7448,21 +7459,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 index + 1);
           }
         }
-        // Resolve the accumulator let declarator pattern and initializer.
-        const ast::NodeId accPattern = source.localPattern;
-        if (source.localInitializer == zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::MissingRequiredFact, module,
-                                              registries, index + 1);
-        }
-        ast::NodeId accInitializer;
-        ZC_IF_SOME(value, source.localInitializer) { accInitializer = value; }
-        if (!tree.contains(accPattern) ||
-            tree.node(accPattern).kind != ast::SyntaxKind::IdentifierPattern ||
-            !tree.contains(accInitializer) || !isScalarLiteral(tree.node(accInitializer).kind)) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        // Resolve the N accumulator let declarator patterns and initializers.
+        zc::Vector<ast::NodeId> accPatterns;
+        zc::Vector<ast::NodeId> accInitializers;
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          const ast::NodeId accPattern = source.forLoopAccumulatorPatterns[k];
+          const ast::NodeId accInitializer = source.forLoopAccumulatorInitializers[k];
+          if (!tree.contains(accPattern) ||
+              tree.node(accPattern).kind != ast::SyntaxKind::IdentifierPattern ||
+              !tree.contains(accInitializer) || !isScalarLiteral(tree.node(accInitializer).kind)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          accPatterns.add(accPattern);
+          accInitializers.add(accInitializer);
         }
         // Resolve the for-loop init let declarator, pattern, and initializer.
         const auto& loopInitLetNode = tree.node(source.forLoopInit);
@@ -7524,58 +7535,95 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        // Resolve the body-write assignment and its binary value operands. The
-        // body write is `<accumulator> = <accumulator> <bin> <ident>;`.
-        auto bodyWriteItem = statementItem(tree, source.forLoopBodyWrite);
-        if (bodyWriteItem == zc::none) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::MissingRequiredFact, module,
-                                              registries, index + 1);
-        }
-        ast::NodeId bodyWriteStmt;
-        ZC_IF_SOME(value, bodyWriteItem) { bodyWriteStmt = value; }
-        if (!tree.contains(bodyWriteStmt) ||
-            tree.node(bodyWriteStmt).kind != ast::SyntaxKind::ExpressionStatement) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
-        }
-        const ast::NodeId bodyWriteAssign(
-            tree.node(bodyWriteStmt).payload.words[ast::kExpressionStatementExpressionWord]);
-        if (!tree.contains(bodyWriteAssign) ||
-            tree.node(bodyWriteAssign).kind != ast::SyntaxKind::AssignmentExpr) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
-        }
-        const ast::NodeId bodyWriteTarget(
-            tree.node(bodyWriteAssign).payload.words[ast::kAssignmentExprLhsWord]);
-        const ast::NodeId bodyWriteValueNode(
-            tree.node(bodyWriteAssign).payload.words[ast::kAssignmentExprRhsWord]);
-        if (!tree.contains(bodyWriteTarget) ||
-            tree.node(bodyWriteTarget).kind != ast::SyntaxKind::IdentExpr ||
-            !tree.contains(bodyWriteValueNode) ||
-            tree.node(bodyWriteValueNode).kind != ast::SyntaxKind::BinaryExpr) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
-        }
-        const auto& bodyWriteValueBin = tree.node(bodyWriteValueNode);
-        const ast::NodeId bodyWriteLhs(bodyWriteValueBin.payload.words[ast::kBinaryExprLhsWord]);
-        const ast::NodeId bodyWriteRhs(bodyWriteValueBin.payload.words[ast::kBinaryExprRhsWord]);
-        if (!tree.contains(bodyWriteLhs) ||
-            tree.node(bodyWriteLhs).kind != ast::SyntaxKind::IdentExpr ||
-            !tree.contains(bodyWriteRhs) ||
-            tree.node(bodyWriteRhs).kind != ast::SyntaxKind::IdentExpr) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        // Resolve the N body-write assignments and their binary value operands.
+        // Each body write is `<accumulator> = <accumulator> <bin> <ident|lit>;`.
+        zc::Vector<ast::NodeId> bodyWriteAssigns;
+        zc::Vector<ast::NodeId> bodyWriteValueNodes;
+        zc::Vector<ast::NodeId> bodyWriteLhss;
+        zc::Vector<ast::NodeId> bodyWriteRhss;
+        zc::Vector<bool> bodyWriteRhsIsLiteral;
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          auto bodyWriteItem = statementItem(tree, source.forLoopBodyWrites[k]);
+          if (bodyWriteItem == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          ast::NodeId bodyWriteStmt;
+          ZC_IF_SOME(value, bodyWriteItem) { bodyWriteStmt = value; }
+          if (!tree.contains(bodyWriteStmt) ||
+              tree.node(bodyWriteStmt).kind != ast::SyntaxKind::ExpressionStatement) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeId bodyWriteAssign(
+              tree.node(bodyWriteStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+          if (!tree.contains(bodyWriteAssign) ||
+              tree.node(bodyWriteAssign).kind != ast::SyntaxKind::AssignmentExpr) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeId bodyWriteTarget(
+              tree.node(bodyWriteAssign).payload.words[ast::kAssignmentExprLhsWord]);
+          const ast::NodeId bodyWriteValueNode(
+              tree.node(bodyWriteAssign).payload.words[ast::kAssignmentExprRhsWord]);
+          if (!tree.contains(bodyWriteTarget) ||
+              tree.node(bodyWriteTarget).kind != ast::SyntaxKind::IdentExpr ||
+              !tree.contains(bodyWriteValueNode) ||
+              tree.node(bodyWriteValueNode).kind != ast::SyntaxKind::BinaryExpr) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& bodyWriteValueBin = tree.node(bodyWriteValueNode);
+          const ast::NodeId bodyWriteLhs(bodyWriteValueBin.payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId bodyWriteRhs(bodyWriteValueBin.payload.words[ast::kBinaryExprRhsWord]);
+          const bool rhsIsLiteral = isScalarLiteral(tree.node(bodyWriteRhs).kind);
+          if (!tree.contains(bodyWriteLhs) ||
+              tree.node(bodyWriteLhs).kind != ast::SyntaxKind::IdentExpr ||
+              !tree.contains(bodyWriteRhs) ||
+              (tree.node(bodyWriteRhs).kind != ast::SyntaxKind::IdentExpr && !rhsIsLiteral)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          bodyWriteAssigns.add(bodyWriteAssign);
+          bodyWriteValueNodes.add(bodyWriteValueNode);
+          bodyWriteLhss.add(bodyWriteLhs);
+          bodyWriteRhss.add(bodyWriteRhs);
+          bodyWriteRhsIsLiteral.add(rhsIsLiteral);
         }
         // Spans for every source node that materializes a HIR node.
         auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
         auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
-        auto accPatternSpan = bound.parsedModule().spanFor(tree.node(accPattern).range);
-        auto accInitializerSpan = bound.parsedModule().spanFor(tree.node(accInitializer).range);
+        zc::Vector<identity::SourceSpan> accPatternSpans;
+        zc::Vector<identity::SourceSpan> accInitializerSpans;
+        zc::Vector<identity::SourceSpan> bodyWriteSpans;
+        zc::Vector<identity::SourceSpan> bodyWriteValueSpans;
+        zc::Vector<identity::SourceSpan> bodyWriteLhsSpans;
+        zc::Vector<identity::SourceSpan> bodyWriteRhsSpans;
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          auto ps = bound.parsedModule().spanFor(tree.node(accPatterns[k]).range);
+          auto is_ = bound.parsedModule().spanFor(tree.node(accInitializers[k]).range);
+          auto bws = bound.parsedModule().spanFor(tree.node(bodyWriteAssigns[k]).range);
+          auto bwvs = bound.parsedModule().spanFor(tree.node(bodyWriteValueNodes[k]).range);
+          auto bwls = bound.parsedModule().spanFor(tree.node(bodyWriteLhss[k]).range);
+          auto bwrs = bound.parsedModule().spanFor(tree.node(bodyWriteRhss[k]).range);
+          if (ps == zc::none || is_ == zc::none || bws == zc::none || bwvs == zc::none ||
+              bwls == zc::none || bwrs == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          accPatternSpans.add(zc::mv(ZC_ASSERT_NONNULL(ps)));
+          accInitializerSpans.add(zc::mv(ZC_ASSERT_NONNULL(is_)));
+          bodyWriteSpans.add(zc::mv(ZC_ASSERT_NONNULL(bws)));
+          bodyWriteValueSpans.add(zc::mv(ZC_ASSERT_NONNULL(bwvs)));
+          bodyWriteLhsSpans.add(zc::mv(ZC_ASSERT_NONNULL(bwls)));
+          bodyWriteRhsSpans.add(zc::mv(ZC_ASSERT_NONNULL(bwrs)));
+        }
         auto loopInitPatternSpan = bound.parsedModule().spanFor(tree.node(loopInitPattern).range);
         auto loopInitInitializerSpan =
             bound.parsedModule().spanFor(tree.node(loopInitInitializer).range);
@@ -7586,10 +7634,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto updateValueSpan = bound.parsedModule().spanFor(updateValueBin.range);
         auto updateLhsSpan = bound.parsedModule().spanFor(tree.node(updateLhs).range);
         auto updateRhsSpan = bound.parsedModule().spanFor(tree.node(updateRhs).range);
-        auto bodyWriteSpan = bound.parsedModule().spanFor(tree.node(bodyWriteAssign).range);
-        auto bodyWriteValueSpan = bound.parsedModule().spanFor(bodyWriteValueBin.range);
-        auto bodyWriteLhsSpan = bound.parsedModule().spanFor(tree.node(bodyWriteLhs).range);
-        auto bodyWriteRhsSpan = bound.parsedModule().spanFor(tree.node(bodyWriteRhs).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(source.forLoopStatement).range);
         auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
         zc::Maybe<identity::SourceSpan> sourceBreakSpan;
@@ -7601,14 +7645,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           sourceContinueSpan =
               bound.parsedModule().spanFor(tree.node(source.forLoopBodyContinue).range);
         }
-        if (bodySpan == zc::none || returnSpan == zc::none || accPatternSpan == zc::none ||
-            accInitializerSpan == zc::none || loopInitPatternSpan == zc::none ||
+        if (bodySpan == zc::none || returnSpan == zc::none || loopInitPatternSpan == zc::none ||
             loopInitInitializerSpan == zc::none || condSpan == zc::none ||
             condLhsSpan == zc::none || condRhsSpan == zc::none || updateSpan == zc::none ||
             updateValueSpan == zc::none || updateLhsSpan == zc::none || updateRhsSpan == zc::none ||
-            bodyWriteSpan == zc::none || bodyWriteValueSpan == zc::none ||
-            bodyWriteLhsSpan == zc::none || bodyWriteRhsSpan == zc::none || loopSpan == zc::none ||
-            returnValueSpan == zc::none ||
+            loopSpan == zc::none || returnValueSpan == zc::none ||
             (source.forLoopBodyBreak && sourceBreakSpan == zc::none) ||
             (source.forLoopBodyContinue && sourceContinueSpan == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -7616,7 +7657,89 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               registries, index + 1);
         }
         // Node-type and literal facts for every typed source node.
-        auto accInitTypeIndex = factIndex(facts.nodeTypes(), accInitializer);
+        zc::Vector<identity::SemanticTypeId> accInitTypes;
+        zc::Vector<checker::checked::CanonicalConstValue> accInitLiterals;
+        zc::Vector<identity::SemanticTypeId> bodyWriteValueTypes;
+        zc::Vector<identity::SemanticTypeId> bodyWriteLhsTypes;
+        zc::Vector<identity::SemanticTypeId> bodyWriteRhsTypes;
+        zc::Vector<checker::PrimitiveOperation> bodyWriteOperations;
+        zc::Vector<zc::Maybe<checker::checked::CanonicalConstValue>> bodyWriteRhsLiterals;
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          auto accInitTypeIndex = factIndex(facts.nodeTypes(), accInitializers[k]);
+          auto accInitLiteralIndex = factIndex(facts.literals(), accInitializers[k]);
+          auto bodyWriteValueTypeIndex = factIndex(facts.nodeTypes(), bodyWriteValueNodes[k]);
+          auto bodyWriteLhsTypeIndex = factIndex(facts.nodeTypes(), bodyWriteLhss[k]);
+          auto bodyWriteRhsTypeIndex = factIndex(facts.nodeTypes(), bodyWriteRhss[k]);
+          auto bodyWriteCallIndex = factIndex(facts.calls(), bodyWriteValueNodes[k]);
+          if (accInitTypeIndex == zc::none || accInitLiteralIndex == zc::none ||
+              bodyWriteValueTypeIndex == zc::none || bodyWriteLhsTypeIndex == zc::none ||
+              bodyWriteRhsTypeIndex == zc::none || bodyWriteCallIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t accInitTypeSlot = 0;
+          size_t accInitLiteralSlot = 0;
+          size_t bodyWriteValueTypeSlot = 0;
+          size_t bodyWriteLhsTypeSlot = 0;
+          size_t bodyWriteRhsTypeSlot = 0;
+          size_t bodyWriteCallSlot = 0;
+          ZC_IF_SOME(v, accInitTypeIndex) { accInitTypeSlot = v; }
+          ZC_IF_SOME(v, accInitLiteralIndex) { accInitLiteralSlot = v; }
+          ZC_IF_SOME(v, bodyWriteValueTypeIndex) { bodyWriteValueTypeSlot = v; }
+          ZC_IF_SOME(v, bodyWriteLhsTypeIndex) { bodyWriteLhsTypeSlot = v; }
+          ZC_IF_SOME(v, bodyWriteRhsTypeIndex) { bodyWriteRhsTypeSlot = v; }
+          ZC_IF_SOME(v, bodyWriteCallIndex) { bodyWriteCallSlot = v; }
+          const auto accInitType = facts.nodeTypes().entries()[accInitTypeSlot].value;
+          const auto& accInitLiteralFact = facts.literals().entries()[accInitLiteralSlot].value;
+          const auto bodyWriteValueType = facts.nodeTypes().entries()[bodyWriteValueTypeSlot].value;
+          const auto bodyWriteLhsType = facts.nodeTypes().entries()[bodyWriteLhsTypeSlot].value;
+          const auto bodyWriteRhsType = facts.nodeTypes().entries()[bodyWriteRhsTypeSlot].value;
+          const auto& bodyWriteCallFact = facts.calls().entries()[bodyWriteCallSlot].value;
+          const auto& bodyWriteSelected = bodyWriteCallFact.invocation.selected.variant();
+          if (!bodyWriteSelected.is<checker::checked::PrimitiveCallable>()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto bodyWriteOperation =
+              bodyWriteSelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (!isScalarArithmeticOperation(bodyWriteOperation)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          if (accInitLiteralFact.type != accInitType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          zc::Maybe<checker::checked::CanonicalConstValue> bwRhsLiteral;
+          if (bodyWriteRhsIsLiteral[k]) {
+            auto bwRhsLiteralIndex = factIndex(facts.literals(), bodyWriteRhss[k]);
+            if (bwRhsLiteralIndex == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t bwRhsLiteralSlot = 0;
+            ZC_IF_SOME(v, bwRhsLiteralIndex) { bwRhsLiteralSlot = v; }
+            const auto& bwRhsLiteralFact = facts.literals().entries()[bwRhsLiteralSlot].value;
+            if (bwRhsLiteralFact.type != bodyWriteRhsType) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            bwRhsLiteral = bwRhsLiteralFact.literal.clone();
+          }
+          accInitTypes.add(accInitType);
+          accInitLiterals.add(accInitLiteralFact.literal.clone());
+          bodyWriteValueTypes.add(bodyWriteValueType);
+          bodyWriteLhsTypes.add(bodyWriteLhsType);
+          bodyWriteRhsTypes.add(bodyWriteRhsType);
+          bodyWriteOperations.add(bodyWriteOperation);
+          bodyWriteRhsLiterals.add(zc::mv(bwRhsLiteral));
+        }
         auto loopInitTypeIndex = factIndex(facts.nodeTypes(), loopInitInitializer);
         auto condResultTypeIndex = factIndex(facts.nodeTypes(), source.forLoopCond);
         auto condLhsTypeIndex = factIndex(facts.nodeTypes(), condLhs);
@@ -7624,32 +7747,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         auto updateValueTypeIndex = factIndex(facts.nodeTypes(), updateValueNode);
         auto updateLhsTypeIndex = factIndex(facts.nodeTypes(), updateLhs);
         auto updateRhsTypeIndex = factIndex(facts.nodeTypes(), updateRhs);
-        auto bodyWriteValueTypeIndex = factIndex(facts.nodeTypes(), bodyWriteValueNode);
-        auto bodyWriteLhsTypeIndex = factIndex(facts.nodeTypes(), bodyWriteLhs);
-        auto bodyWriteRhsTypeIndex = factIndex(facts.nodeTypes(), bodyWriteRhs);
         auto returnTypeIndex = factIndex(facts.nodeTypes(), source.value);
-        auto accInitLiteralIndex = factIndex(facts.literals(), accInitializer);
         auto loopInitLiteralIndex = factIndex(facts.literals(), loopInitInitializer);
         auto condRhsLiteralIndex = factIndex(facts.literals(), condRhs);
         auto updateRhsLiteralIndex = factIndex(facts.literals(), updateRhs);
         auto condCallIndex = factIndex(facts.calls(), source.forLoopCond);
         auto updateCallIndex = factIndex(facts.calls(), updateValueNode);
-        auto bodyWriteCallIndex = factIndex(facts.calls(), bodyWriteValueNode);
-        if (accInitTypeIndex == zc::none || loopInitTypeIndex == zc::none ||
-            condResultTypeIndex == zc::none || condLhsTypeIndex == zc::none ||
-            condRhsTypeIndex == zc::none || updateValueTypeIndex == zc::none ||
-            updateLhsTypeIndex == zc::none || updateRhsTypeIndex == zc::none ||
-            bodyWriteValueTypeIndex == zc::none || bodyWriteLhsTypeIndex == zc::none ||
-            bodyWriteRhsTypeIndex == zc::none || returnTypeIndex == zc::none ||
-            accInitLiteralIndex == zc::none || loopInitLiteralIndex == zc::none ||
-            condRhsLiteralIndex == zc::none || updateRhsLiteralIndex == zc::none ||
-            condCallIndex == zc::none || updateCallIndex == zc::none ||
-            bodyWriteCallIndex == zc::none) {
+        if (loopInitTypeIndex == zc::none || condResultTypeIndex == zc::none ||
+            condLhsTypeIndex == zc::none || condRhsTypeIndex == zc::none ||
+            updateValueTypeIndex == zc::none || updateLhsTypeIndex == zc::none ||
+            updateRhsTypeIndex == zc::none || returnTypeIndex == zc::none ||
+            loopInitLiteralIndex == zc::none || condRhsLiteralIndex == zc::none ||
+            updateRhsLiteralIndex == zc::none || condCallIndex == zc::none ||
+            updateCallIndex == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        size_t accInitTypeSlot = 0;
         size_t loopInitTypeSlot = 0;
         size_t condResultTypeSlot = 0;
         size_t condLhsTypeSlot = 0;
@@ -7657,37 +7771,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         size_t updateValueTypeSlot = 0;
         size_t updateLhsTypeSlot = 0;
         size_t updateRhsTypeSlot = 0;
-        size_t bodyWriteValueTypeSlot = 0;
-        size_t bodyWriteLhsTypeSlot = 0;
-        size_t bodyWriteRhsTypeSlot = 0;
         size_t returnTypeSlot = 0;
-        size_t accInitLiteralSlot = 0;
         size_t loopInitLiteralSlot = 0;
         size_t condRhsLiteralSlot = 0;
         size_t updateRhsLiteralSlot = 0;
         size_t condCallSlot = 0;
         size_t updateCallSlot = 0;
-        size_t bodyWriteCallSlot = 0;
-        ZC_IF_SOME(value, accInitTypeIndex) { accInitTypeSlot = value; }
-        ZC_IF_SOME(value, loopInitTypeIndex) { loopInitTypeSlot = value; }
-        ZC_IF_SOME(value, condResultTypeIndex) { condResultTypeSlot = value; }
-        ZC_IF_SOME(value, condLhsTypeIndex) { condLhsTypeSlot = value; }
-        ZC_IF_SOME(value, condRhsTypeIndex) { condRhsTypeSlot = value; }
-        ZC_IF_SOME(value, updateValueTypeIndex) { updateValueTypeSlot = value; }
-        ZC_IF_SOME(value, updateLhsTypeIndex) { updateLhsTypeSlot = value; }
-        ZC_IF_SOME(value, updateRhsTypeIndex) { updateRhsTypeSlot = value; }
-        ZC_IF_SOME(value, bodyWriteValueTypeIndex) { bodyWriteValueTypeSlot = value; }
-        ZC_IF_SOME(value, bodyWriteLhsTypeIndex) { bodyWriteLhsTypeSlot = value; }
-        ZC_IF_SOME(value, bodyWriteRhsTypeIndex) { bodyWriteRhsTypeSlot = value; }
-        ZC_IF_SOME(value, returnTypeIndex) { returnTypeSlot = value; }
-        ZC_IF_SOME(value, accInitLiteralIndex) { accInitLiteralSlot = value; }
-        ZC_IF_SOME(value, loopInitLiteralIndex) { loopInitLiteralSlot = value; }
-        ZC_IF_SOME(value, condRhsLiteralIndex) { condRhsLiteralSlot = value; }
-        ZC_IF_SOME(value, updateRhsLiteralIndex) { updateRhsLiteralSlot = value; }
-        ZC_IF_SOME(value, condCallIndex) { condCallSlot = value; }
-        ZC_IF_SOME(value, updateCallIndex) { updateCallSlot = value; }
-        ZC_IF_SOME(value, bodyWriteCallIndex) { bodyWriteCallSlot = value; }
-        const auto accInitType = facts.nodeTypes().entries()[accInitTypeSlot].value;
+        ZC_IF_SOME(v, loopInitTypeIndex) { loopInitTypeSlot = v; }
+        ZC_IF_SOME(v, condResultTypeIndex) { condResultTypeSlot = v; }
+        ZC_IF_SOME(v, condLhsTypeIndex) { condLhsTypeSlot = v; }
+        ZC_IF_SOME(v, condRhsTypeIndex) { condRhsTypeSlot = v; }
+        ZC_IF_SOME(v, updateValueTypeIndex) { updateValueTypeSlot = v; }
+        ZC_IF_SOME(v, updateLhsTypeIndex) { updateLhsTypeSlot = v; }
+        ZC_IF_SOME(v, updateRhsTypeIndex) { updateRhsTypeSlot = v; }
+        ZC_IF_SOME(v, returnTypeIndex) { returnTypeSlot = v; }
+        ZC_IF_SOME(v, loopInitLiteralIndex) { loopInitLiteralSlot = v; }
+        ZC_IF_SOME(v, condRhsLiteralIndex) { condRhsLiteralSlot = v; }
+        ZC_IF_SOME(v, updateRhsLiteralIndex) { updateRhsLiteralSlot = v; }
+        ZC_IF_SOME(v, condCallIndex) { condCallSlot = v; }
+        ZC_IF_SOME(v, updateCallIndex) { updateCallSlot = v; }
         const auto loopInitType = facts.nodeTypes().entries()[loopInitTypeSlot].value;
         const auto condResultType = facts.nodeTypes().entries()[condResultTypeSlot].value;
         const auto condLhsType = facts.nodeTypes().entries()[condLhsTypeSlot].value;
@@ -7695,30 +7797,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto updateValueType = facts.nodeTypes().entries()[updateValueTypeSlot].value;
         const auto updateLhsType = facts.nodeTypes().entries()[updateLhsTypeSlot].value;
         const auto updateRhsType = facts.nodeTypes().entries()[updateRhsTypeSlot].value;
-        const auto bodyWriteValueType = facts.nodeTypes().entries()[bodyWriteValueTypeSlot].value;
-        const auto bodyWriteLhsType = facts.nodeTypes().entries()[bodyWriteLhsTypeSlot].value;
-        const auto bodyWriteRhsType = facts.nodeTypes().entries()[bodyWriteRhsTypeSlot].value;
         const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
-        const auto& accInitLiteralFact = facts.literals().entries()[accInitLiteralSlot].value;
         const auto& loopInitLiteralFact = facts.literals().entries()[loopInitLiteralSlot].value;
         const auto& condRhsLiteralFact = facts.literals().entries()[condRhsLiteralSlot].value;
         const auto& updateRhsLiteralFact = facts.literals().entries()[updateRhsLiteralSlot].value;
         const auto& condCallFact = facts.calls().entries()[condCallSlot].value;
         const auto& updateCallFact = facts.calls().entries()[updateCallSlot].value;
-        const auto& bodyWriteCallFact = facts.calls().entries()[bodyWriteCallSlot].value;
         const auto& condSelected = condCallFact.invocation.selected.variant();
         const auto& updateSelected = updateCallFact.invocation.selected.variant();
-        const auto& bodyWriteSelected = bodyWriteCallFact.invocation.selected.variant();
         if (!condSelected.is<checker::checked::PrimitiveCallable>() ||
             !updateSelected.is<checker::checked::PrimitiveCallable>() ||
-            !bodyWriteSelected.is<checker::checked::PrimitiveCallable>() ||
             !isBoolSemanticType(semanticTypes, condResultType) ||
-            accInitType != function.resultType || returnType != function.resultType ||
+            accInitTypes[0] != function.resultType || returnType != function.resultType ||
             loopInitType != condLhsType || loopInitType != condRhsType ||
             updateLhsType != updateRhsType || updateLhsType != loopInitType ||
-            updateValueType != loopInitType || bodyWriteLhsType != accInitType ||
-            bodyWriteRhsType != loopInitType || bodyWriteValueType != accInitType ||
-            accInitLiteralFact.type != accInitType || loopInitLiteralFact.type != loopInitType ||
+            updateValueType != loopInitType || loopInitLiteralFact.type != loopInitType ||
             condRhsLiteralFact.type != condRhsType || updateRhsLiteralFact.type != updateRhsType) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -7728,52 +7821,98 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             condSelected.get<checker::checked::PrimitiveCallable>().operation;
         const auto updateOperation =
             updateSelected.get<checker::checked::PrimitiveCallable>().operation;
-        const auto bodyWriteOperation =
-            bodyWriteSelected.get<checker::checked::PrimitiveCallable>().operation;
         if (!isScalarComparisonOperation(condOperation) ||
-            !isScalarArithmeticOperation(updateOperation) ||
-            !isScalarArithmeticOperation(bodyWriteOperation)) {
+            !isScalarArithmeticOperation(updateOperation)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        // Resolve both owner-local bindings through the definition inventory.
-        auto accBinding = ownerLocalBindingForPattern(bound.definitions(), accPattern, tree);
+        // Per-accumulator type validation: each accumulator's init type matches
+        // the loop init type, the body write lhs/rhs/result types match, and
+        // the init literal type matches the accumulator type.
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          if (accInitTypes[k] != loopInitType || bodyWriteLhsTypes[k] != accInitTypes[k] ||
+              bodyWriteRhsTypes[k] != accInitTypes[k] ||
+              bodyWriteValueTypes[k] != accInitTypes[k]) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        // Resolve owner-local bindings through the definition inventory.
+        zc::Vector<binder::OwnerLocalBindingId> accBindings;
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          auto accBinding = ownerLocalBindingForPattern(bound.definitions(), accPatterns[k], tree);
+          if (accBinding == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          accBindings.add(ZC_ASSERT_NONNULL(accBinding));
+        }
         auto loopInitBinding =
             ownerLocalBindingForPattern(bound.definitions(), loopInitPattern, tree);
-        if (accBinding == zc::none || loopInitBinding == zc::none) {
+        if (loopInitBinding == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        // Look up every HIR node by its expected fixed id.
-        zc::Maybe<const HirLocalBinding&> accLocalRecord;
+        // Look up every HIR node by its expected fixed id. The layout is
+        // computed from N: accumulator k occupies F+2+2k (local) and F+3+2k
+        // (init literal); the loop init occupies F+2+2N and F+3+2N; the
+        // comparison occupies F+4+2N through F+6+2N; body write k occupies
+        // F+7+2N+4k through F+10+2N+4k; the update occupies F+7+2N+4N through
+        // F+10+2N+4N; the loop, return, and return value occupy F+11+2N+4N,
+        // F+12+2N+4N, and F+13+2N+4N.
+        const uint32_t accLocalBase = 2;
+        const uint32_t loopInitLocalOff = 2 + 2 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t condLeftOff = 4 + 2 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t bodyWriteBase = 7 + 2 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t updateOff = 7 + 6 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t loopOff = 11 + 6 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t returnOff = 12 + 6 * static_cast<uint32_t>(accumulatorCount);
+        const uint32_t returnValueOff = 13 + 6 * static_cast<uint32_t>(accumulatorCount);
+
+        // Collect HIR nodes by scanning the candidate's collections.
+        zc::Vector<zc::Maybe<const HirLocalBinding&>> accLocalRecords;
+        zc::Vector<zc::Maybe<const HirScalarLiteralExpression&>> accInitLiteralRecords;
+        accLocalRecords.resize(accumulatorCount);
+        accInitLiteralRecords.resize(accumulatorCount);
         zc::Maybe<const HirLocalBinding&> loopInitLocalRecord;
-        zc::Maybe<const HirScalarLiteralExpression&> accInitLiteralRecord;
         zc::Maybe<const HirScalarLiteralExpression&> loopInitLiteralRecord;
         zc::Maybe<const HirLocalReferenceExpression&> condLhsRecord;
         zc::Maybe<const HirScalarLiteralExpression&> condRhsRecord;
         zc::Maybe<const HirPrimitiveBinaryExpression&> condBinaryRecord;
-        zc::Maybe<const HirLocalReferenceExpression&> bodyWriteLhsRecord;
-        zc::Maybe<const HirLocalReferenceExpression&> bodyWriteRhsRecord;
-        zc::Maybe<const HirPrimitiveBinaryExpression&> bodyWriteBinaryRecord;
-        zc::Maybe<const HirLocalWriteStatement&> bodyWriteRecord;
+        zc::Vector<zc::Maybe<const HirLocalReferenceExpression&>> bodyWriteLhsRecords;
+        zc::Vector<zc::Maybe<const HirLocalReferenceExpression&>> bodyWriteRhsRefRecords;
+        zc::Vector<zc::Maybe<const HirScalarLiteralExpression&>> bodyWriteRhsLitRecords;
+        zc::Vector<zc::Maybe<const HirPrimitiveBinaryExpression&>> bodyWriteBinaryRecords;
+        zc::Vector<zc::Maybe<const HirLocalWriteStatement&>> bodyWriteRecords;
+        bodyWriteLhsRecords.resize(accumulatorCount);
+        bodyWriteRhsRefRecords.resize(accumulatorCount);
+        bodyWriteRhsLitRecords.resize(accumulatorCount);
+        bodyWriteBinaryRecords.resize(accumulatorCount);
+        bodyWriteRecords.resize(accumulatorCount);
         zc::Maybe<const HirLocalReferenceExpression&> updateLhsRecord;
         zc::Maybe<const HirScalarLiteralExpression&> updateRhsRecord;
         zc::Maybe<const HirPrimitiveBinaryExpression&> updateBinaryRecord;
         zc::Maybe<const HirLocalWriteStatement&> updateWriteRecord;
         zc::Maybe<const HirLoopStatement&> loopRecord;
         zc::Maybe<const HirLocalReferenceExpression&> returnValueRecord;
+
         for (const auto& local : candidate.impl->locals) {
-          if (local.node == hirId(expectedFunction + 2)) {
-            if (accLocalRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (local.node ==
+                hirId(expectedFunction + accLocalBase + 2 * static_cast<uint32_t>(k))) {
+              if (accLocalRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              accLocalRecords[k] = local;
             }
-            accLocalRecord = local;
           }
-          if (local.node == hirId(expectedFunction + 4)) {
+          if (local.node == hirId(expectedFunction + loopInitLocalOff)) {
             if (loopInitLocalRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7783,15 +7922,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         for (const auto& expression : candidate.impl->expressions) {
-          if (expression.node == hirId(expectedFunction + 3)) {
-            if (accInitLiteralRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (expression.node ==
+                hirId(expectedFunction + accLocalBase + 1 + 2 * static_cast<uint32_t>(k))) {
+              if (accInitLiteralRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              accInitLiteralRecords[k] = expression;
             }
-            accInitLiteralRecord = expression;
           }
-          if (expression.node == hirId(expectedFunction + 5)) {
+          if (expression.node == hirId(expectedFunction + loopInitLocalOff + 1)) {
             if (loopInitLiteralRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7799,7 +7941,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             loopInitLiteralRecord = expression;
           }
-          if (expression.node == hirId(expectedFunction + 7)) {
+          if (expression.node == hirId(expectedFunction + condLeftOff + 1)) {
             if (condRhsRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7807,7 +7949,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             condRhsRecord = expression;
           }
-          if (expression.node == hirId(expectedFunction + 14)) {
+          if (expression.node == hirId(expectedFunction + updateOff + 1)) {
             if (updateRhsRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7815,9 +7957,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             updateRhsRecord = expression;
           }
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (bodyWriteRhsIsLiteral[k] &&
+                expression.node ==
+                    hirId(expectedFunction + bodyWriteBase + 1 + 4 * static_cast<uint32_t>(k))) {
+              if (bodyWriteRhsLitRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              bodyWriteRhsLitRecords[k] = expression;
+            }
+          }
         }
         for (const auto& reference : candidate.impl->localReferences) {
-          if (reference.node == hirId(expectedFunction + 6)) {
+          if (reference.node == hirId(expectedFunction + condLeftOff)) {
             if (condLhsRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7825,23 +7979,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             condLhsRecord = reference;
           }
-          if (reference.node == hirId(expectedFunction + 9)) {
-            if (bodyWriteLhsRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
-            }
-            bodyWriteLhsRecord = reference;
-          }
-          if (reference.node == hirId(expectedFunction + 10)) {
-            if (bodyWriteRhsRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
-            }
-            bodyWriteRhsRecord = reference;
-          }
-          if (reference.node == hirId(expectedFunction + 13)) {
+          if (reference.node == hirId(expectedFunction + updateOff)) {
             if (updateLhsRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7849,7 +7987,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             updateLhsRecord = reference;
           }
-          if (reference.node == hirId(expectedFunction + 19)) {
+          if (reference.node == hirId(expectedFunction + returnValueOff)) {
             if (returnValueRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7857,9 +7995,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             returnValueRecord = reference;
           }
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (reference.node ==
+                hirId(expectedFunction + bodyWriteBase + 4 * static_cast<uint32_t>(k))) {
+              if (bodyWriteLhsRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              bodyWriteLhsRecords[k] = reference;
+            }
+            if (!bodyWriteRhsIsLiteral[k] &&
+                reference.node ==
+                    hirId(expectedFunction + bodyWriteBase + 1 + 4 * static_cast<uint32_t>(k))) {
+              if (bodyWriteRhsRefRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              bodyWriteRhsRefRecords[k] = reference;
+            }
+          }
         }
         for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
-          if (binary.node == hirId(expectedFunction + 8)) {
+          if (binary.node == hirId(expectedFunction + condLeftOff + 2)) {
             if (condBinaryRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7867,15 +8026,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             condBinaryRecord = binary;
           }
-          if (binary.node == hirId(expectedFunction + 11)) {
-            if (bodyWriteBinaryRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
-            }
-            bodyWriteBinaryRecord = binary;
-          }
-          if (binary.node == hirId(expectedFunction + 15)) {
+          if (binary.node == hirId(expectedFunction + updateOff + 2)) {
             if (updateBinaryRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7883,17 +8034,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             updateBinaryRecord = binary;
           }
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (binary.node ==
+                hirId(expectedFunction + bodyWriteBase + 2 + 4 * static_cast<uint32_t>(k))) {
+              if (bodyWriteBinaryRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              bodyWriteBinaryRecords[k] = binary;
+            }
+          }
         }
         for (const auto& write : candidate.impl->localWrites) {
-          if (write.node == hirId(expectedFunction + 12)) {
-            if (bodyWriteRecord != zc::none) {
-              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::AdditionalFact, module,
-                                                  registries, index + 1);
-            }
-            bodyWriteRecord = write;
-          }
-          if (write.node == hirId(expectedFunction + 16)) {
+          if (write.node == hirId(expectedFunction + updateOff + 3)) {
             if (updateWriteRecord != zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::AdditionalFact, module,
@@ -7901,9 +8055,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             updateWriteRecord = write;
           }
+          for (size_t k = 0; k < accumulatorCount; ++k) {
+            if (write.node ==
+                hirId(expectedFunction + bodyWriteBase + 3 + 4 * static_cast<uint32_t>(k))) {
+              if (bodyWriteRecords[k] != zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
+              }
+              bodyWriteRecords[k] = write;
+            }
+          }
         }
         for (const auto& candidateLoop : candidate.impl->loops) {
-          if (candidateLoop.node != hirId(expectedFunction + 17)) continue;
+          if (candidateLoop.node != hirId(expectedFunction + loopOff)) continue;
           if (loopRecord != zc::none) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::AdditionalFact, module,
@@ -7911,12 +8076,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           loopRecord = candidateLoop;
         }
-        if (accLocalRecord == zc::none || loopInitLocalRecord == zc::none ||
-            accInitLiteralRecord == zc::none || loopInitLiteralRecord == zc::none ||
+        // Verify all required records were found.
+        if (loopInitLocalRecord == zc::none || loopInitLiteralRecord == zc::none ||
             condLhsRecord == zc::none || condRhsRecord == zc::none ||
-            condBinaryRecord == zc::none || bodyWriteLhsRecord == zc::none ||
-            bodyWriteRhsRecord == zc::none || bodyWriteBinaryRecord == zc::none ||
-            bodyWriteRecord == zc::none || updateLhsRecord == zc::none ||
+            condBinaryRecord == zc::none || updateLhsRecord == zc::none ||
             updateRhsRecord == zc::none || updateBinaryRecord == zc::none ||
             updateWriteRecord == zc::none || loopRecord == zc::none ||
             returnValueRecord == zc::none) {
@@ -7924,194 +8087,267 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        ZC_IF_SOME(accLocal, accLocalRecord) {
-          ZC_IF_SOME(loopInitLocal, loopInitLocalRecord) {
-            ZC_IF_SOME(accInitLit, accInitLiteralRecord) {
-              ZC_IF_SOME(loopInitLit, loopInitLiteralRecord) {
-                ZC_IF_SOME(condLhs, condLhsRecord) {
-                  ZC_IF_SOME(condRhs, condRhsRecord) {
-                    ZC_IF_SOME(condBin, condBinaryRecord) {
-                      ZC_IF_SOME(bwLhs, bodyWriteLhsRecord) {
-                        ZC_IF_SOME(bwRhs, bodyWriteRhsRecord) {
-                          ZC_IF_SOME(bwBin, bodyWriteBinaryRecord) {
-                            ZC_IF_SOME(bw, bodyWriteRecord) {
-                              ZC_IF_SOME(updLhs, updateLhsRecord) {
-                                ZC_IF_SOME(updRhs, updateRhsRecord) {
-                                  ZC_IF_SOME(updBin, updateBinaryRecord) {
-                                    ZC_IF_SOME(updWrite, updateWriteRecord) {
-                                      ZC_IF_SOME(loop, loopRecord) {
-                                        ZC_IF_SOME(retVal, returnValueRecord) {
-                                          if (function.node != hirId(expectedFunction) ||
-                                              block.node != hirId(expectedFunction + 1) ||
-                                              function.body != block.node ||
-                                              block.statements.size() != 4 ||
-                                              block.statements[0] != accLocal.node ||
-                                              block.statements[1] != loopInitLocal.node ||
-                                              block.statements[2] != loop.node ||
-                                              block.statements[3] != returnStatement.node ||
-                                              returnStatement.node !=
-                                                  hirId(expectedFunction + 18) ||
-                                              returnStatement.value != retVal.node ||
-                                              returnStatement.resultType != function.resultType ||
-                                              accLocal.local != hirLocalId(1) ||
-                                              accLocal.type != accInitType ||
+        for (size_t k = 0; k < accumulatorCount; ++k) {
+          if (accLocalRecords[k] == zc::none || accInitLiteralRecords[k] == zc::none ||
+              bodyWriteLhsRecords[k] == zc::none || bodyWriteBinaryRecords[k] == zc::none ||
+              bodyWriteRecords[k] == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          if (bodyWriteRhsIsLiteral[k]) {
+            if (bodyWriteRhsLitRecords[k] == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+          } else {
+            if (bodyWriteRhsRefRecords[k] == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+          }
+        }
+        // Verify the function, body block, return, and common HIR nodes.
+        ZC_IF_SOME(loopInitLocal, loopInitLocalRecord) {
+          ZC_IF_SOME(loopInitLit, loopInitLiteralRecord) {
+            ZC_IF_SOME(condLhs, condLhsRecord) {
+              ZC_IF_SOME(condRhs, condRhsRecord) {
+                ZC_IF_SOME(condBin, condBinaryRecord) {
+                  ZC_IF_SOME(updLhs, updateLhsRecord) {
+                    ZC_IF_SOME(updRhs, updateRhsRecord) {
+                      ZC_IF_SOME(updBin, updateBinaryRecord) {
+                        ZC_IF_SOME(updWrite, updateWriteRecord) {
+                          ZC_IF_SOME(loop, loopRecord) {
+                            ZC_IF_SOME(retVal, returnValueRecord) {
+                              if (function.node != hirId(expectedFunction) ||
+                                  block.node != hirId(expectedFunction + 1) ||
+                                  function.body != block.node ||
+                                  block.statements.size() != accumulatorCount + 3 ||
+                                  returnStatement.node != hirId(expectedFunction + returnOff) ||
+                                  returnStatement.value != retVal.node ||
+                                  returnStatement.resultType != function.resultType ||
+                                  loopInitLocal.local !=
+                                      hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)) ||
+                                  loopInitLocal.type != loopInitType ||
+                                  loopInitLocal.initializer != loopInitLit.node ||
+                                  loopInitLit.type != loopInitType ||
+                                  loopInitLit.category != HirValueCategory::Value ||
+                                  !sameConstant(loopInitLit.value, loopInitLiteralFact.literal,
+                                                module, registries, semanticTypes) ||
+                                  !sameSpan(loopInitLit.sourceSpan,
+                                            ZC_ASSERT_NONNULL(loopInitInitializerSpan)) ||
+                                  !sameSpan(loopInitLocal.sourceSpan,
+                                            ZC_ASSERT_NONNULL(loopInitPatternSpan)) ||
+                                  condLhs.local !=
+                                      hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)) ||
+                                  condLhs.type != condLhsType ||
+                                  condLhs.category != HirValueCategory::Place ||
+                                  !sameSpan(condLhs.sourceSpan, ZC_ASSERT_NONNULL(condLhsSpan)) ||
+                                  condRhs.type != condRhsType ||
+                                  condRhs.category != HirValueCategory::Value ||
+                                  !sameConstant(condRhs.value, condRhsLiteralFact.literal, module,
+                                                registries, semanticTypes) ||
+                                  !sameSpan(condRhs.sourceSpan, ZC_ASSERT_NONNULL(condRhsSpan)) ||
+                                  condBin.left != condLhs.node || condBin.right != condRhs.node ||
+                                  condBin.operandType != condLhsType ||
+                                  condBin.type != condResultType ||
+                                  condBin.category != HirValueCategory::Value ||
+                                  condBin.operation != condOperation ||
+                                  !sameSpan(condBin.sourceSpan, ZC_ASSERT_NONNULL(condSpan)) ||
+                                  updLhs.local !=
+                                      hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)) ||
+                                  updLhs.type != updateLhsType ||
+                                  updLhs.category != HirValueCategory::Place ||
+                                  !sameSpan(updLhs.sourceSpan, ZC_ASSERT_NONNULL(updateLhsSpan)) ||
+                                  updRhs.type != updateRhsType ||
+                                  updRhs.category != HirValueCategory::Value ||
+                                  !sameConstant(updRhs.value, updateRhsLiteralFact.literal, module,
+                                                registries, semanticTypes) ||
+                                  !sameSpan(updRhs.sourceSpan, ZC_ASSERT_NONNULL(updateRhsSpan)) ||
+                                  updBin.left != updLhs.node || updBin.right != updRhs.node ||
+                                  updBin.operandType != updateLhsType ||
+                                  updBin.type != updateValueType ||
+                                  updBin.category != HirValueCategory::Value ||
+                                  updBin.operation != updateOperation ||
+                                  !sameSpan(updBin.sourceSpan,
+                                            ZC_ASSERT_NONNULL(updateValueSpan)) ||
+                                  updWrite.local !=
+                                      hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)) ||
+                                  updWrite.field != zc::none || updWrite.type != updateValueType ||
+                                  updWrite.value != updBin.node ||
+                                  updWrite.kind != HirLocalWriteKind::Overwrite ||
+                                  !sameSpan(updWrite.sourceSpan, ZC_ASSERT_NONNULL(updateSpan)) ||
+                                  !sameSpan(updWrite.valueSpan,
+                                            ZC_ASSERT_NONNULL(updateValueSpan)) ||
+                                  loop.condition != condBin.node ||
+                                  loop.body.size() != accumulatorCount + 1 ||
+                                  loop.type != condResultType ||
+                                  loop.category != HirValueCategory::Place ||
+                                  !sameSpan(loop.sourceSpan, ZC_ASSERT_NONNULL(loopSpan)) ||
+                                  (loop.breakSpan != zc::none) !=
+                                      static_cast<bool>(source.forLoopBodyBreak) ||
+                                  (loop.continueSpan != zc::none) !=
+                                      static_cast<bool>(source.forLoopBodyContinue) ||
+                                  retVal.local != hirLocalId(1) || retVal.type != returnType ||
+                                  retVal.category != HirValueCategory::Place ||
+                                  !sameSpan(retVal.sourceSpan,
+                                            ZC_ASSERT_NONNULL(returnValueSpan)) ||
+                                  !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+                                  !sameSpan(returnStatement.sourceSpan,
+                                            ZC_ASSERT_NONNULL(returnSpan)) ||
+                                  !typeExists(function.resultType, semanticTypes) ||
+                                  !typeExists(loopInitType, semanticTypes) ||
+                                  !typeExists(condResultType, semanticTypes) ||
+                                  !ownerLocalMatches(bound.definitions(),
+                                                     ZC_ASSERT_NONNULL(loopInitBinding),
+                                                     loopInitPattern, tree)) {
+                                return rejectHir<VerifiedHirModule>(
+                                    ir::IrFailurePhase::HirVerification,
+                                    ir::IrFailureKind::InvalidFact, module, registries, index + 1);
+                              }
+                              // Verify body block statement order: accumulator
+                              // locals, loop-init local, loop, return.
+                              for (size_t k = 0; k < accumulatorCount; ++k) {
+                                ZC_IF_SOME(accLocal, accLocalRecords[k]) {
+                                  if (block.statements[k] != accLocal.node) {
+                                    return rejectHir<VerifiedHirModule>(
+                                        ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InvalidFact, module, registries,
+                                        index + 1);
+                                  }
+                                }
+                              }
+                              if (block.statements[accumulatorCount] != loopInitLocal.node ||
+                                  block.statements[accumulatorCount + 1] != loop.node ||
+                                  block.statements[accumulatorCount + 2] != returnStatement.node) {
+                                return rejectHir<VerifiedHirModule>(
+                                    ir::IrFailurePhase::HirVerification,
+                                    ir::IrFailureKind::InvalidFact, module, registries, index + 1);
+                              }
+                              // Verify loop body statement order: body writes,
+                              // update write.
+                              for (size_t k = 0; k < accumulatorCount; ++k) {
+                                ZC_IF_SOME(bw, bodyWriteRecords[k]) {
+                                  if (loop.body[k] != bw.node) {
+                                    return rejectHir<VerifiedHirModule>(
+                                        ir::IrFailurePhase::HirVerification,
+                                        ir::IrFailureKind::InvalidFact, module, registries,
+                                        index + 1);
+                                  }
+                                }
+                              }
+                              if (loop.body[accumulatorCount] != updWrite.node) {
+                                return rejectHir<VerifiedHirModule>(
+                                    ir::IrFailurePhase::HirVerification,
+                                    ir::IrFailureKind::InvalidFact, module, registries, index + 1);
+                              }
+                              // Verify per-accumulator HIR nodes.
+                              for (size_t k = 0; k < accumulatorCount; ++k) {
+                                ZC_IF_SOME(accLocal, accLocalRecords[k]) {
+                                  ZC_IF_SOME(accInitLit, accInitLiteralRecords[k]) {
+                                    ZC_IF_SOME(bwLhs, bodyWriteLhsRecords[k]) {
+                                      ZC_IF_SOME(bwBin, bodyWriteBinaryRecords[k]) {
+                                        ZC_IF_SOME(bw, bodyWriteRecords[k]) {
+                                          if (accLocal.local !=
+                                                  hirLocalId(static_cast<uint32_t>(k + 1)) ||
+                                              accLocal.type != accInitTypes[k] ||
                                               accLocal.initializer != accInitLit.node ||
-                                              accInitLit.type != accInitType ||
+                                              accInitLit.type != accInitTypes[k] ||
                                               accInitLit.category != HirValueCategory::Value ||
-                                              !sameConstant(accInitLit.value,
-                                                            accInitLiteralFact.literal, module,
-                                                            registries, semanticTypes) ||
+                                              !sameConstant(accInitLit.value, accInitLiterals[k],
+                                                            module, registries, semanticTypes) ||
                                               !sameSpan(accInitLit.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(accInitializerSpan)) ||
-                                              !sameSpan(accLocal.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(accPatternSpan)) ||
-                                              loopInitLocal.local != hirLocalId(2) ||
-                                              loopInitLocal.type != loopInitType ||
-                                              loopInitLocal.initializer != loopInitLit.node ||
-                                              loopInitLit.type != loopInitType ||
-                                              loopInitLit.category != HirValueCategory::Value ||
-                                              !sameConstant(loopInitLit.value,
-                                                            loopInitLiteralFact.literal, module,
-                                                            registries, semanticTypes) ||
-                                              !sameSpan(
-                                                  loopInitLit.sourceSpan,
-                                                  ZC_ASSERT_NONNULL(loopInitInitializerSpan)) ||
-                                              !sameSpan(loopInitLocal.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(loopInitPatternSpan)) ||
-                                              condLhs.local != hirLocalId(2) ||
-                                              condLhs.type != condLhsType ||
-                                              condLhs.category != HirValueCategory::Place ||
-                                              !sameSpan(condLhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(condLhsSpan)) ||
-                                              condRhs.type != condRhsType ||
-                                              condRhs.category != HirValueCategory::Value ||
-                                              !sameConstant(condRhs.value,
-                                                            condRhsLiteralFact.literal, module,
-                                                            registries, semanticTypes) ||
-                                              !sameSpan(condRhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(condRhsSpan)) ||
-                                              condBin.left != condLhs.node ||
-                                              condBin.right != condRhs.node ||
-                                              condBin.operandType != condLhsType ||
-                                              condBin.type != condResultType ||
-                                              condBin.category != HirValueCategory::Value ||
-                                              condBin.operation != condOperation ||
-                                              !sameSpan(condBin.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(condSpan)) ||
-                                              bwLhs.local != hirLocalId(1) ||
-                                              bwLhs.type != bodyWriteLhsType ||
+                                                        accInitializerSpans[k]) ||
+                                              !sameSpan(accLocal.sourceSpan, accPatternSpans[k]) ||
+                                              bwLhs.local !=
+                                                  hirLocalId(static_cast<uint32_t>(k + 1)) ||
+                                              bwLhs.type != bodyWriteLhsTypes[k] ||
                                               bwLhs.category != HirValueCategory::Place ||
-                                              !sameSpan(bwLhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(bodyWriteLhsSpan)) ||
-                                              bwRhs.local != hirLocalId(2) ||
-                                              bwRhs.type != bodyWriteRhsType ||
-                                              bwRhs.category != HirValueCategory::Place ||
-                                              !sameSpan(bwRhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(bodyWriteRhsSpan)) ||
+                                              !sameSpan(bwLhs.sourceSpan, bodyWriteLhsSpans[k]) ||
                                               bwBin.left != bwLhs.node ||
-                                              bwBin.right != bwRhs.node ||
-                                              bwBin.operandType != bodyWriteLhsType ||
-                                              bwBin.type != bodyWriteValueType ||
+                                              bwBin.operandType != bodyWriteLhsTypes[k] ||
+                                              bwBin.type != bodyWriteValueTypes[k] ||
                                               bwBin.category != HirValueCategory::Value ||
-                                              bwBin.operation != bodyWriteOperation ||
-                                              !sameSpan(bwBin.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(bodyWriteValueSpan)) ||
-                                              bw.local != hirLocalId(1) || bw.field != zc::none ||
-                                              bw.type != bodyWriteValueType ||
+                                              bwBin.operation != bodyWriteOperations[k] ||
+                                              !sameSpan(bwBin.sourceSpan, bodyWriteValueSpans[k]) ||
+                                              bw.local !=
+                                                  hirLocalId(static_cast<uint32_t>(k + 1)) ||
+                                              bw.field != zc::none ||
+                                              bw.type != bodyWriteValueTypes[k] ||
                                               bw.value != bwBin.node ||
                                               bw.kind != HirLocalWriteKind::Overwrite ||
-                                              !sameSpan(bw.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(bodyWriteSpan)) ||
-                                              !sameSpan(bw.valueSpan,
-                                                        ZC_ASSERT_NONNULL(bodyWriteValueSpan)) ||
-                                              updLhs.local != hirLocalId(2) ||
-                                              updLhs.type != updateLhsType ||
-                                              updLhs.category != HirValueCategory::Place ||
-                                              !sameSpan(updLhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(updateLhsSpan)) ||
-                                              updRhs.type != updateRhsType ||
-                                              updRhs.category != HirValueCategory::Value ||
-                                              !sameConstant(updRhs.value,
-                                                            updateRhsLiteralFact.literal, module,
-                                                            registries, semanticTypes) ||
-                                              !sameSpan(updRhs.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(updateRhsSpan)) ||
-                                              updBin.left != updLhs.node ||
-                                              updBin.right != updRhs.node ||
-                                              updBin.operandType != updateLhsType ||
-                                              updBin.type != updateValueType ||
-                                              updBin.category != HirValueCategory::Value ||
-                                              updBin.operation != updateOperation ||
-                                              !sameSpan(updBin.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(updateValueSpan)) ||
-                                              updWrite.local != hirLocalId(2) ||
-                                              updWrite.field != zc::none ||
-                                              updWrite.type != updateValueType ||
-                                              updWrite.value != updBin.node ||
-                                              updWrite.kind != HirLocalWriteKind::Overwrite ||
-                                              !sameSpan(updWrite.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(updateSpan)) ||
-                                              !sameSpan(updWrite.valueSpan,
-                                                        ZC_ASSERT_NONNULL(updateValueSpan)) ||
-                                              loop.condition != condBin.node ||
-                                              loop.body.size() != 2 || loop.body[0] != bw.node ||
-                                              loop.body[1] != updWrite.node ||
-                                              loop.type != condResultType ||
-                                              loop.category != HirValueCategory::Place ||
-                                              !sameSpan(loop.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(loopSpan)) ||
-                                              (loop.breakSpan != zc::none) !=
-                                                  static_cast<bool>(source.forLoopBodyBreak) ||
-                                              (loop.continueSpan != zc::none) !=
-                                                  static_cast<bool>(source.forLoopBodyContinue) ||
-                                              retVal.local != hirLocalId(1) ||
-                                              retVal.type != returnType ||
-                                              retVal.category != HirValueCategory::Place ||
-                                              !sameSpan(retVal.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(returnValueSpan)) ||
-                                              !sameSpan(block.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(bodySpan)) ||
-                                              !sameSpan(returnStatement.sourceSpan,
-                                                        ZC_ASSERT_NONNULL(returnSpan)) ||
-                                              !typeExists(function.resultType, semanticTypes) ||
-                                              !typeExists(accInitType, semanticTypes) ||
-                                              !typeExists(loopInitType, semanticTypes) ||
-                                              !typeExists(condResultType, semanticTypes) ||
+                                              !sameSpan(bw.sourceSpan, bodyWriteSpans[k]) ||
+                                              !sameSpan(bw.valueSpan, bodyWriteValueSpans[k]) ||
                                               !ownerLocalMatches(bound.definitions(),
-                                                                 ZC_ASSERT_NONNULL(accBinding),
-                                                                 accPattern, tree) ||
-                                              !ownerLocalMatches(bound.definitions(),
-                                                                 ZC_ASSERT_NONNULL(loopInitBinding),
-                                                                 loopInitPattern, tree)) {
+                                                                 accBindings[k], accPatterns[k],
+                                                                 tree)) {
                                             return rejectHir<VerifiedHirModule>(
                                                 ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
                                           }
-                                          // Break and continue spans are optional;
-                                          // verify them only when present.
-                                          ZC_IF_SOME(breakSpan, loop.breakSpan) {
-                                            if (!sameSpan(breakSpan,
-                                                          ZC_ASSERT_NONNULL(sourceBreakSpan))) {
-                                              return rejectHir<VerifiedHirModule>(
-                                                  ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::InvalidFact, module,
-                                                  registries, index + 1);
+                                          // Verify the body write right operand:
+                                          // a local reference to the init local
+                                          // or a scalar literal.
+                                          if (bodyWriteRhsIsLiteral[k]) {
+                                            ZC_IF_SOME(bwRhsLit, bodyWriteRhsLitRecords[k]) {
+                                              if (bwRhsLit.type != bodyWriteRhsTypes[k] ||
+                                                  bwRhsLit.category != HirValueCategory::Value ||
+                                                  !sameConstant(
+                                                      bwRhsLit.value,
+                                                      ZC_ASSERT_NONNULL(bodyWriteRhsLiterals[k]),
+                                                      module, registries, semanticTypes) ||
+                                                  !sameSpan(bwRhsLit.sourceSpan,
+                                                            bodyWriteRhsSpans[k]) ||
+                                                  bwBin.right != bwRhsLit.node) {
+                                                return rejectHir<VerifiedHirModule>(
+                                                    ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+                                              }
                                             }
-                                          }
-                                          ZC_IF_SOME(continueSpan, loop.continueSpan) {
-                                            if (!sameSpan(continueSpan,
-                                                          ZC_ASSERT_NONNULL(sourceContinueSpan))) {
-                                              return rejectHir<VerifiedHirModule>(
-                                                  ir::IrFailurePhase::HirVerification,
-                                                  ir::IrFailureKind::InvalidFact, module,
-                                                  registries, index + 1);
+                                          } else {
+                                            ZC_IF_SOME(bwRhsRef, bodyWriteRhsRefRecords[k]) {
+                                              if (bwRhsRef.local !=
+                                                      hirLocalId(static_cast<uint32_t>(
+                                                          accumulatorCount + 1)) ||
+                                                  bwRhsRef.type != bodyWriteRhsTypes[k] ||
+                                                  bwRhsRef.category != HirValueCategory::Place ||
+                                                  !sameSpan(bwRhsRef.sourceSpan,
+                                                            bodyWriteRhsSpans[k]) ||
+                                                  bwBin.right != bwRhsRef.node) {
+                                                return rejectHir<VerifiedHirModule>(
+                                                    ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+                                              }
                                             }
                                           }
                                         }
                                       }
                                     }
                                   }
+                                }
+                              }
+                              // Break and continue spans are optional; verify
+                              // them only when present.
+                              ZC_IF_SOME(breakSpan, loop.breakSpan) {
+                                if (!sameSpan(breakSpan, ZC_ASSERT_NONNULL(sourceBreakSpan))) {
+                                  return rejectHir<VerifiedHirModule>(
+                                      ir::IrFailurePhase::HirVerification,
+                                      ir::IrFailureKind::InvalidFact, module, registries,
+                                      index + 1);
+                                }
+                              }
+                              ZC_IF_SOME(continueSpan, loop.continueSpan) {
+                                if (!sameSpan(continueSpan,
+                                              ZC_ASSERT_NONNULL(sourceContinueSpan))) {
+                                  return rejectHir<VerifiedHirModule>(
+                                      ir::IrFailurePhase::HirVerification,
+                                      ir::IrFailureKind::InvalidFact, module, registries,
+                                      index + 1);
                                 }
                               }
                             }
@@ -8125,7 +8361,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
         }
-        nextFunction += 20;
+        nextFunction += 14 + 6 * static_cast<uint32_t>(accumulatorCount);
         continue;
       }
     }
@@ -9315,8 +9551,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       if (!source.returnsLocal || !source.returnsReceiverCall ||
           source.localInitializer == zc::none || source.localWrites.size != 0 ||
           !tree.contains(source.value) ||
@@ -9740,8 +9975,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       auto ownerBinding = resolvedOwnerLocal(bound.bindings(), source.localReference);
       auto memberIndex = factIndex(facts.members(), source.value);
       auto placeIndex = factIndex(facts.places(), source.value);
@@ -9951,8 +10185,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       ast::NodeId initializer;
       ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
       auto ownerBinding = resolvedOwnerLocal(bound.bindings(), source.localReference);
@@ -10089,8 +10322,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
       }
-      FunctionReturnShape source{};
-      ZC_IF_SOME(value, sourceShape) { source = value; }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
       ast::NodeId initializer;
       ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
       auto ownerBinding = resolvedOwnerLocal(bound.bindings(), source.localReference);
@@ -10396,8 +10628,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                           ir::IrFailureKind::MissingRequiredFact, module,
                                           registries, index + 1);
     }
-    FunctionReturnShape source{};
-    ZC_IF_SOME(value, sourceShape) { source = value; }
+    FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
     auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
     auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
     if (bodySpan == zc::none || returnSpan == zc::none || source.returnsLocal != returnsLocal) {

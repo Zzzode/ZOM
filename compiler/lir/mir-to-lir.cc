@@ -1395,13 +1395,14 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   // Admit only the verified reducible four-block for-loop accumulator return
   // shape, re-checking the structure that
   // mir::validForLoopAccumulatorReturnFunction validated: a parameter-local
-  // prefix, two integer user locals (the accumulator and the loop variable),
-  // a boolean temporary (the comparison result), and an integer
-  // function-result local; a four-block loop whose entry initializes the
-  // accumulator and loop variable and computes the first comparison, whose
-  // header switches on the temp, whose body accumulates into the accumulator,
-  // updates the loop variable, and re-computes the comparison, and whose exit
-  // copies the accumulator into the result and returns it.
+  // prefix, N integer user locals (the accumulators), one integer user local
+  // (the loop variable), a boolean temporary (the comparison result), and an
+  // integer function-result local; a four-block loop whose entry initializes
+  // the accumulators and loop variable and computes the first comparison,
+  // whose header switches on the temp, whose body accumulates into the
+  // accumulators, updates the loop variable, and re-computes the comparison,
+  // and whose exit copies the first accumulator into the result and returns
+  // it.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 4 || function.locals.size() < 4) {
     return zc::none;
@@ -1412,17 +1413,24 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
          function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
     ++parameterCount;
   }
-  if (function.locals.size() - parameterCount != 4) { return zc::none; }
-  const auto& accDecl = function.locals[parameterCount];
-  const auto& localDecl = function.locals[parameterCount + 1];
-  const auto& tempDecl = function.locals[parameterCount + 2];
-  const auto& resultDecl = function.locals[parameterCount + 3];
-  if (accDecl.kind != mir::MirLocalKind::UserLocal ||
-      localDecl.kind != mir::MirLocalKind::UserLocal ||
+  // N accumulators + init + temp + result = N + 3 non-parameter locals.
+  const size_t nonParamCount = function.locals.size() - parameterCount;
+  if (nonParamCount < 4) { return zc::none; }
+  const size_t accCount = nonParamCount - 3;
+  const auto& localDecl = function.locals[parameterCount + accCount];
+  const auto& tempDecl = function.locals[parameterCount + accCount + 1];
+  const auto& resultDecl = function.locals[parameterCount + accCount + 2];
+  if (localDecl.kind != mir::MirLocalKind::UserLocal ||
       tempDecl.kind != mir::MirLocalKind::Temporary ||
       resultDecl.kind != mir::MirLocalKind::FunctionResult ||
       resultDecl.type != function.resultType) {
     return zc::none;
+  }
+  // Validate all accumulator locals.
+  for (size_t k = 0; k < accCount; ++k) {
+    if (function.locals[parameterCount + k].kind != mir::MirLocalKind::UserLocal) {
+      return zc::none;
+    }
   }
 
   auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
@@ -1432,8 +1440,8 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto tempCarrier = boolCarrierFor(tempDecl.type, semanticTypes);
   if (tempCarrier == zc::none) { return zc::none; }
   const auto tempCarrierValue = ZC_REQUIRE_NONNULL(tempCarrier);
-  {
-    auto carrier = integerCarrierFor(accDecl.type, semanticTypes);
+  for (size_t k = 0; k < accCount; ++k) {
+    auto carrier = integerCarrierFor(function.locals[parameterCount + k].type, semanticTypes);
     if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
       return zc::none;
     }
@@ -1456,44 +1464,58 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   const auto& body = function.blocks[2];
   const auto& exit = function.blocks[3];
 
-  // Entry: StorageLive(result); StorageLive(acc); StorageLive(local);
-  // StorageLive(temp); Assign(acc = constant, Initialize);
+  // Entry: StorageLive(result); StorageLive(acc_k)...; StorageLive(local);
+  // StorageLive(temp); Assign(acc_k = constant, Initialize)...;
   // Assign(local = constant, Initialize);
   // Assign(temp = Comparison(op, copy(local), constant), Initialize);
   // Goto(header).
-  if (entry.statements.size() != 7 ||
-      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      entry.statements[0].storageLocal() != resultDecl.id ||
-      entry.statements[1].kind() != mir::MirStatementKind::StorageLive ||
-      entry.statements[1].storageLocal() != accDecl.id ||
-      entry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
-      entry.statements[2].storageLocal() != localDecl.id ||
-      entry.statements[3].kind() != mir::MirStatementKind::StorageLive ||
-      entry.statements[3].storageLocal() != tempDecl.id ||
-      entry.statements[4].kind() != mir::MirStatementKind::Assign ||
-      entry.statements[5].kind() != mir::MirStatementKind::Assign ||
-      entry.statements[6].kind() != mir::MirStatementKind::Assign ||
-      entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != header.id) {
+  const size_t expectedEntrySize = 5 + 2 * accCount;
+  if (entry.statements.size() != expectedEntrySize) { return zc::none; }
+  if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultDecl.id) {
     return zc::none;
   }
-  // Entry accumulator init.
-  const auto& accInitAssign = entry.statements[4].assignmentValue();
-  if (accInitAssign.destination.local() != accDecl.id ||
-      accInitAssign.destination.projections().size() != 0 ||
-      accInitAssign.initialization != mir::MirInitializationKind::Initialize ||
-      accInitAssign.value.kind() != mir::MirRvalueKind::Use) {
+  for (size_t k = 0; k < accCount; ++k) {
+    if (entry.statements[1 + k].kind() != mir::MirStatementKind::StorageLive ||
+        entry.statements[1 + k].storageLocal() != function.locals[parameterCount + k].id) {
+      return zc::none;
+    }
+  }
+  const size_t initStorageLiveIndex = 1 + accCount;
+  const size_t tempStorageLiveIndex = 2 + accCount;
+  if (entry.statements[initStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[initStorageLiveIndex].storageLocal() != localDecl.id ||
+      entry.statements[tempStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[tempStorageLiveIndex].storageLocal() != tempDecl.id) {
     return zc::none;
   }
-  const auto& accInitOperand = accInitAssign.value.useValue().operand;
-  if (accInitOperand.kind() != mir::MirOperandKind::Constant ||
-      accInitOperand.constantValue().type != accDecl.type) {
-    return zc::none;
+  // Entry accumulator inits.
+  zc::Vector<zc::Maybe<Operand>> accInitLowered;
+  for (size_t k = 0; k < accCount; ++k) {
+    const size_t assignIndex = 3 + accCount + k;
+    if (entry.statements[assignIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& accInitAssign = entry.statements[assignIndex].assignmentValue();
+    if (accInitAssign.destination.local() != function.locals[parameterCount + k].id ||
+        accInitAssign.destination.projections().size() != 0 ||
+        accInitAssign.initialization != mir::MirInitializationKind::Initialize ||
+        accInitAssign.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    const auto& accInitOperand = accInitAssign.value.useValue().operand;
+    if (accInitOperand.kind() != mir::MirOperandKind::Constant ||
+        accInitOperand.constantValue().type != function.locals[parameterCount + k].type) {
+      return zc::none;
+    }
+    auto lowered = lirOperandFor(accInitOperand, resultCarrierValue);
+    if (lowered == zc::none) { return zc::none; }
+    accInitLowered.add(zc::mv(lowered));
   }
-  auto accInitLowered = lirOperandFor(accInitOperand, resultCarrierValue);
-  if (accInitLowered == zc::none) { return zc::none; }
   // Entry loop-variable init.
-  const auto& initAssign = entry.statements[5].assignmentValue();
+  const size_t initAssignIndex = 3 + 2 * accCount;
+  if (entry.statements[initAssignIndex].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+  const auto& initAssign = entry.statements[initAssignIndex].assignmentValue();
   if (initAssign.destination.local() != localDecl.id ||
       initAssign.destination.projections().size() != 0 ||
       initAssign.initialization != mir::MirInitializationKind::Initialize ||
@@ -1508,7 +1530,9 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto initLowered = lirOperandFor(initOperand, resultCarrierValue);
   if (initLowered == zc::none) { return zc::none; }
   // Entry condition comparison.
-  const auto& entryCondAssign = entry.statements[6].assignmentValue();
+  const size_t entryCondIndex = 4 + 2 * accCount;
+  if (entry.statements[entryCondIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+  const auto& entryCondAssign = entry.statements[entryCondIndex].assignmentValue();
   if (entryCondAssign.destination.local() != tempDecl.id ||
       entryCondAssign.destination.projections().size() != 0 ||
       entryCondAssign.initialization != mir::MirInitializationKind::Initialize ||
@@ -1529,6 +1553,10 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
   auto condRightLowered = lirOperandFor(entryComparison.right, resultCarrierValue);
   if (condRightLowered == zc::none) { return zc::none; }
+  if (entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
+      entry.terminator.gotoValue().target != header.id) {
+    return zc::none;
+  }
 
   // Header: SwitchInt(copy(temp)) [true -> body], default = exit.
   if (header.statements.size() != 0 ||
@@ -1543,43 +1571,65 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     return zc::none;
   }
 
-  // Body: Assign(acc = Arithmetic(op, copy(acc), copy(local)), Overwrite);
-  // Assign(local = Arithmetic(op, copy(local), constant), Overwrite);
-  // Assign(temp = Comparison(op, copy(local), constant), Overwrite);
-  // Goto(exit) for a trailing break or Goto(header) back-edge for
+  // Body: Assign(acc_k = Arithmetic(op, copy(acc_k), copy(local)|constant),
+  // Overwrite)...; Assign(local = Arithmetic(op, copy(local), constant),
+  // Overwrite); Assign(temp = Comparison(op, copy(local), constant),
+  // Overwrite); Goto(exit) for a trailing break or Goto(header) back-edge for
   // continue/fallthrough.
-  if (body.statements.size() != 3 || body.statements[0].kind() != mir::MirStatementKind::Assign ||
-      body.statements[1].kind() != mir::MirStatementKind::Assign ||
-      body.statements[2].kind() != mir::MirStatementKind::Assign ||
+  const size_t expectedBodySize = 2 + accCount;
+  if (body.statements.size() != expectedBodySize) { return zc::none; }
+  for (size_t k = 0; k < accCount; ++k) {
+    if (body.statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+  }
+  if (body.statements[accCount].kind() != mir::MirStatementKind::Assign ||
+      body.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
       body.terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
   const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
   if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
   // Body accumulator arithmetic.
-  const auto& accArithAssign = body.statements[0].assignmentValue();
-  if (accArithAssign.destination.local() != accDecl.id ||
-      accArithAssign.destination.projections().size() != 0 ||
-      accArithAssign.initialization != mir::MirInitializationKind::Overwrite ||
-      accArithAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
-    return zc::none;
-  }
-  const auto& accArithmetic = accArithAssign.value.arithmeticValue();
-  auto accArithOp = lirArithmeticOpFor(accArithmetic.op);
-  if (accArithOp == zc::none) { return zc::none; }
-  if (accArithmetic.resultType != accDecl.type) { return zc::none; }
-  if (accArithmetic.left.kind() != mir::MirOperandKind::Copy ||
-      accArithmetic.left.place().local() != accDecl.id ||
-      accArithmetic.left.place().projections().size() != 0) {
-    return zc::none;
-  }
-  if (accArithmetic.right.kind() != mir::MirOperandKind::Copy ||
-      accArithmetic.right.place().local() != localDecl.id ||
-      accArithmetic.right.place().projections().size() != 0) {
-    return zc::none;
+  zc::Vector<zc::Maybe<ArithmeticOp>> accArithOps;
+  zc::Vector<bool> accArithRhsIsLiteral;
+  zc::Vector<zc::Maybe<Operand>> accArithRhsLowered;
+  for (size_t k = 0; k < accCount; ++k) {
+    const auto& accArithAssign = body.statements[k].assignmentValue();
+    if (accArithAssign.destination.local() != function.locals[parameterCount + k].id ||
+        accArithAssign.destination.projections().size() != 0 ||
+        accArithAssign.initialization != mir::MirInitializationKind::Overwrite ||
+        accArithAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+      return zc::none;
+    }
+    const auto& accArithmetic = accArithAssign.value.arithmeticValue();
+    auto accArithOp = lirArithmeticOpFor(accArithmetic.op);
+    if (accArithOp == zc::none) { return zc::none; }
+    if (accArithmetic.resultType != function.locals[parameterCount + k].type) { return zc::none; }
+    if (accArithmetic.left.kind() != mir::MirOperandKind::Copy ||
+        accArithmetic.left.place().local() != function.locals[parameterCount + k].id ||
+        accArithmetic.left.place().projections().size() != 0) {
+      return zc::none;
+    }
+    // The right operand is either a copy of the init local or a constant.
+    const bool rhsIsLiteral = accArithmetic.right.kind() == mir::MirOperandKind::Constant;
+    if (rhsIsLiteral) {
+      if (accArithmetic.right.constantValue().type != function.locals[parameterCount + k].type) {
+        return zc::none;
+      }
+      auto rhsLowered = lirOperandFor(accArithmetic.right, resultCarrierValue);
+      if (rhsLowered == zc::none) { return zc::none; }
+      accArithRhsLowered.add(zc::mv(rhsLowered));
+    } else {
+      if (accArithmetic.right.kind() != mir::MirOperandKind::Copy ||
+          accArithmetic.right.place().local() != localDecl.id ||
+          accArithmetic.right.place().projections().size() != 0) {
+        return zc::none;
+      }
+    }
+    accArithOps.add(zc::mv(accArithOp));
+    accArithRhsIsLiteral.add(rhsIsLiteral);
   }
   // Body update arithmetic.
-  const auto& updateAssign = body.statements[1].assignmentValue();
+  const auto& updateAssign = body.statements[accCount].assignmentValue();
   if (updateAssign.destination.local() != localDecl.id ||
       updateAssign.destination.projections().size() != 0 ||
       updateAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -1602,7 +1652,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto arithRightLowered = lirOperandFor(arithmetic.right, resultCarrierValue);
   if (arithRightLowered == zc::none) { return zc::none; }
   // Body condition recompute.
-  const auto& bodyCondAssign = body.statements[2].assignmentValue();
+  const auto& bodyCondAssign = body.statements[accCount + 1].assignmentValue();
   if (bodyCondAssign.destination.local() != tempDecl.id ||
       bodyCondAssign.destination.projections().size() != 0 ||
       bodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -1623,7 +1673,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     return zc::none;
   }
 
-  // Exit: Assign(result = copy(acc), Initialize); Return(place-use result).
+  // Exit: Assign(result = copy(acc_0), Initialize); Return(place-use result).
   if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
       exit.terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
@@ -1637,7 +1687,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
   const auto& resultOperand = resultAssign.value.useValue().operand;
   if (resultOperand.kind() != mir::MirOperandKind::Copy ||
-      resultOperand.place().local() != accDecl.id ||
+      resultOperand.place().local() != function.locals[parameterCount].id ||
       resultOperand.place().projections().size() != 0) {
     return zc::none;
   }
@@ -1651,7 +1701,10 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
   if (!returnsResult) { return zc::none; }
 
-  const uint32_t accOrdinal = accDecl.id.ordinal();
+  zc::Vector<uint32_t> accOrdinals;
+  for (size_t k = 0; k < accCount; ++k) {
+    accOrdinals.add(function.locals[parameterCount + k].id.ordinal());
+  }
   const uint32_t localOrdinal = localDecl.id.ordinal();
   const uint32_t tempOrdinal = tempDecl.id.ordinal();
   const uint32_t resultOrdinal = resultDecl.id.ordinal();
@@ -1667,7 +1720,9 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> entryStatements;
-    entryStatements.add(Statement::assign(accOrdinal, ZC_REQUIRE_NONNULL(accInitLowered)));
+    for (size_t k = 0; k < accCount; ++k) {
+      entryStatements.add(Statement::assign(accOrdinals[k], ZC_REQUIRE_NONNULL(accInitLowered[k])));
+    }
     entryStatements.add(Statement::assign(localOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
     entryStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
                                            ZC_REQUIRE_NONNULL(condRightLowered)));
@@ -1681,9 +1736,13 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
   {
     zc::Vector<Statement> bodyStatements;
-    bodyStatements.add(Statement::arithmetic(accOrdinal, ZC_REQUIRE_NONNULL(accArithOp),
-                                             Operand::localUse(accOrdinal),
-                                             Operand::localUse(localOrdinal)));
+    for (size_t k = 0; k < accCount; ++k) {
+      Operand rhsOperand = accArithRhsIsLiteral[k] ? ZC_REQUIRE_NONNULL(accArithRhsLowered[k])
+                                                   : Operand::localUse(localOrdinal);
+      bodyStatements.add(Statement::arithmetic(accOrdinals[k], ZC_REQUIRE_NONNULL(accArithOps[k]),
+                                               Operand::localUse(accOrdinals[k]),
+                                               zc::mv(rhsOperand)));
+    }
     bodyStatements.add(Statement::arithmetic(localOrdinal, ZC_REQUIRE_NONNULL(arithOp),
                                              Operand::localUse(localOrdinal),
                                              ZC_REQUIRE_NONNULL(arithRightLowered)));
@@ -1695,7 +1754,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
   {
     zc::Vector<Statement> exitStatements;
-    exitStatements.add(Statement::assign(resultOrdinal, Operand::localUse(accOrdinal)));
+    exitStatements.add(Statement::assign(resultOrdinal, Operand::localUse(accOrdinals[0])));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
                           Terminator::returnLocal(resultOrdinal)));
   }
@@ -1705,7 +1764,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     parameters.add(Local(function.locals[i].id.ordinal(), resultCarrierValue));
   }
   zc::Vector<Local> locals;
-  locals.add(Local(accOrdinal, resultCarrierValue));
+  for (size_t k = 0; k < accCount; ++k) { locals.add(Local(accOrdinals[k], resultCarrierValue)); }
   locals.add(Local(localOrdinal, resultCarrierValue));
   locals.add(Local(tempOrdinal, tempCarrierValue));
   locals.add(Local(resultOrdinal, resultCarrierValue));

@@ -472,69 +472,56 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
 void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingForLoopAccumulatorReturn forLoop =
       zc::mv(ZC_ASSERT_NONNULL(function.forLoopAccumulatorReturn));
+  const size_t accumulatorCount = forLoop.accumulators.size();
 
-  // Fixed-id layout: function, body, accumulator local, accumulator init
-  // literal, loop-init local, loop-init literal, comparison left, comparison
-  // right, comparison condition, body-write left, body-write right, body-write
-  // binary, body write, update left, update right, update binary, update write,
-  // loop, return, return value reference. The body block lists [accumulator
-  // local, loop-init local, loop, return]; the loop statement carries the
+  // Fixed-id layout: function, body, then per accumulator (local binding, init
+  // literal), then loop-init (local binding, init literal), comparison (left,
+  // right, condition), then per accumulator body write (left, right, value,
+  // write), then update (left, right, value, write), loop, return, return
+  // value reference. Total: 14 + 6N nodes. The body block lists [accumulator
+  // locals..., loop-init local, loop, return]; the loop statement carries the
   // body-write and update-write node ids as its body.
   const HirNodeId functionId = ctx.allocNode();
   const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId accumulatorLocalId = ctx.allocNode();
-  const HirNodeId accumulatorInitId = ctx.allocNode();
-  const HirNodeId localId = ctx.allocNode();
-  const HirNodeId initializerId = ctx.allocNode();
-  const HirNodeId comparisonLeftId = ctx.allocNode();
-  const HirNodeId comparisonRightId = ctx.allocNode();
-  const HirNodeId conditionId = ctx.allocNode();
-  const HirNodeId bodyWriteLeftId = ctx.allocNode();
-  const HirNodeId bodyWriteRightId = ctx.allocNode();
-  const HirNodeId bodyWriteValueId = ctx.allocNode();
-  const HirNodeId bodyWriteId = ctx.allocNode();
-  const HirNodeId writeValueLeftId = ctx.allocNode();
-  const HirNodeId writeValueRightId = ctx.allocNode();
-  const HirNodeId writeValueId = ctx.allocNode();
-  const HirNodeId writeId = ctx.allocNode();
-  const HirNodeId loopId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId returnValueId = ctx.allocNode();
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
                                          function.visibility.clone(), function.linkage,
                                          function.declarationSpan.clone(), bodyId, zc::none});
-  zc::Vector<HirNodeId> statements;
-  statements.add(accumulatorLocalId);
-  statements.add(localId);
-  statements.add(loopId);
-  statements.add(returnId);
-  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
-  ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
-                                   function.returnSpan.clone()});
 
-  // Accumulator local binding: `let sum = 0` with its scalar literal
-  // initializer.
-  ctx.addExpression(HirScalarLiteralExpression{
-      accumulatorInitId, forLoop.accumulatorInitLiteral.type,
-      zc::mv(forLoop.accumulatorInitLiteral.value), forLoop.accumulatorInitLiteral.category,
-      forLoop.accumulatorInitLiteral.sourceSpan.clone()});
-  ctx.addLocal(HirLocalBinding{
-      accumulatorLocalId, forLoop.accumulatorLocal.local, forLoop.accumulatorLocal.type,
-      accumulatorInitId, forLoop.accumulatorLocal.sourceSpan.clone(),
-      ZC_ASSERT_NONNULL(forLoop.accumulatorLocal.initializerSpan).clone()});
+  zc::Vector<HirNodeId> bodyStatements;
+  zc::Vector<HirNodeId> loopStatements;
+
+  // Accumulator local bindings: `mut x = 0` with scalar literal initializers.
+  for (size_t k = 0; k < accumulatorCount; ++k) {
+    auto& acc = forLoop.accumulators[k];
+    const HirNodeId accLocalId = ctx.allocNode();
+    const HirNodeId accInitId = ctx.allocNode();
+    ctx.addExpression(
+        HirScalarLiteralExpression{accInitId, acc.initLiteral.type, zc::mv(acc.initLiteral.value),
+                                   acc.initLiteral.category, acc.initLiteral.sourceSpan.clone()});
+    ctx.addLocal(HirLocalBinding{accLocalId, acc.local.local, acc.local.type, accInitId,
+                                 acc.local.sourceSpan.clone(),
+                                 ZC_ASSERT_NONNULL(acc.local.initializerSpan).clone()});
+    bodyStatements.add(accLocalId);
+  }
 
   // Loop-init local binding: `let i = 0` with its scalar literal initializer.
+  const HirNodeId localId = ctx.allocNode();
+  const HirNodeId initializerId = ctx.allocNode();
   ctx.addExpression(HirScalarLiteralExpression{
       initializerId, forLoop.initLiteral.type, zc::mv(forLoop.initLiteral.value),
       forLoop.initLiteral.category, forLoop.initLiteral.sourceSpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, forLoop.local.local, forLoop.local.type, initializerId,
                                forLoop.local.sourceSpan.clone(),
                                ZC_ASSERT_NONNULL(forLoop.local.initializerSpan).clone()});
+  bodyStatements.add(localId);
 
   // Loop condition: `i < 10`, a comparison of the init local against a scalar
   // literal. The bool result drives the loop header's SwitchInt terminator.
+  const HirNodeId comparisonLeftId = ctx.allocNode();
+  const HirNodeId comparisonRightId = ctx.allocNode();
+  const HirNodeId conditionId = ctx.allocNode();
   ctx.addLocalReference(HirLocalReferenceExpression{
       comparisonLeftId, forLoop.conditionLeft.local, forLoop.conditionLeft.type,
       forLoop.conditionLeft.category, forLoop.conditionLeft.sourceSpan.clone()});
@@ -546,25 +533,42 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
       forLoop.condition.type, forLoop.condition.category, forLoop.condition.operation,
       forLoop.condition.sourceSpan.clone()});
 
-  // Body write: `sum = sum + i`, an arithmetic binary over the accumulator
-  // and the loop init local, materialized as the loop body's first statement.
-  ctx.addLocalReference(HirLocalReferenceExpression{
-      bodyWriteLeftId, forLoop.bodyWriteLeft.local, forLoop.bodyWriteLeft.type,
-      forLoop.bodyWriteLeft.category, forLoop.bodyWriteLeft.sourceSpan.clone()});
-  ctx.addLocalReference(HirLocalReferenceExpression{
-      bodyWriteRightId, forLoop.bodyWriteRight.local, forLoop.bodyWriteRight.type,
-      forLoop.bodyWriteRight.category, forLoop.bodyWriteRight.sourceSpan.clone()});
-  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
-      bodyWriteValueId, bodyWriteLeftId, bodyWriteRightId, forLoop.bodyWriteValue.operandType,
-      forLoop.bodyWriteValue.type, forLoop.bodyWriteValue.category,
-      forLoop.bodyWriteValue.operation, forLoop.bodyWriteValue.sourceSpan.clone()});
-  ctx.addLocalWrite(HirLocalWriteStatement{
-      bodyWriteId, forLoop.bodyWrite.local, forLoop.bodyWrite.field, forLoop.bodyWrite.type,
-      bodyWriteValueId, forLoop.bodyWrite.kind, forLoop.bodyWrite.sourceSpan.clone(),
-      forLoop.bodyWrite.valueSpan.clone()});
+  // Body writes: `x = x + i` or `x = x + 1`, arithmetic binaries over each
+  // accumulator and the loop init local or a scalar literal.
+  for (size_t k = 0; k < accumulatorCount; ++k) {
+    auto& acc = forLoop.accumulators[k];
+    const HirNodeId bodyWriteLeftId = ctx.allocNode();
+    const HirNodeId bodyWriteRightId = ctx.allocNode();
+    const HirNodeId bodyWriteValueId = ctx.allocNode();
+    const HirNodeId bodyWriteId = ctx.allocNode();
+    ctx.addLocalReference(HirLocalReferenceExpression{
+        bodyWriteLeftId, acc.bodyWriteLeft.local, acc.bodyWriteLeft.type,
+        acc.bodyWriteLeft.category, acc.bodyWriteLeft.sourceSpan.clone()});
+    if (acc.bodyWriteRightIsLiteral) {
+      const auto& lit = ZC_ASSERT_NONNULL(acc.bodyWriteRightLiteral);
+      ctx.addExpression(HirScalarLiteralExpression{bodyWriteRightId, lit.type, lit.value.clone(),
+                                                   lit.category, lit.sourceSpan.clone()});
+    } else {
+      const auto& ref = ZC_ASSERT_NONNULL(acc.bodyWriteRight);
+      ctx.addLocalReference(HirLocalReferenceExpression{bodyWriteRightId, ref.local, ref.type,
+                                                        ref.category, ref.sourceSpan.clone()});
+    }
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        bodyWriteValueId, bodyWriteLeftId, bodyWriteRightId, acc.bodyWriteValue.operandType,
+        acc.bodyWriteValue.type, acc.bodyWriteValue.category, acc.bodyWriteValue.operation,
+        acc.bodyWriteValue.sourceSpan.clone()});
+    ctx.addLocalWrite(HirLocalWriteStatement{
+        bodyWriteId, acc.bodyWrite.local, acc.bodyWrite.field, acc.bodyWrite.type, bodyWriteValueId,
+        acc.bodyWrite.kind, acc.bodyWrite.sourceSpan.clone(), acc.bodyWrite.valueSpan.clone()});
+    loopStatements.add(bodyWriteId);
+  }
 
   // Update write: `i = i + 1`, an arithmetic binary over the init local and a
-  // scalar literal, materialized as the loop body's second statement.
+  // scalar literal, materialized as the loop body's last statement.
+  const HirNodeId writeValueLeftId = ctx.allocNode();
+  const HirNodeId writeValueRightId = ctx.allocNode();
+  const HirNodeId writeValueId = ctx.allocNode();
+  const HirNodeId writeId = ctx.allocNode();
   ctx.addLocalReference(HirLocalReferenceExpression{
       writeValueLeftId, forLoop.writeValueLeft.local, forLoop.writeValueLeft.type,
       forLoop.writeValueLeft.category, forLoop.writeValueLeft.sourceSpan.clone()});
@@ -578,14 +582,20 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
   ctx.addLocalWrite(HirLocalWriteStatement{
       writeId, forLoop.write.local, forLoop.write.field, forLoop.write.type, writeValueId,
       forLoop.write.kind, forLoop.write.sourceSpan.clone(), forLoop.write.valueSpan.clone()});
-
-  zc::Vector<HirNodeId> loopStatements;
-  loopStatements.add(bodyWriteId);
   loopStatements.add(writeId);
+
+  const HirNodeId loopId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId returnValueId = ctx.allocNode();
+  bodyStatements.add(loopId);
+  bodyStatements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(bodyStatements), function.bodySpan.clone()});
+  ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
+                                   function.returnSpan.clone()});
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), forLoop.condition.type,
                                HirValueCategory::Place, zc::mv(forLoop.loopSpan),
                                zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan)});
-  // The return value is a place reference to the accumulator local.
+  // The return value is a place reference to the first accumulator local.
   ctx.addLocalReference(HirLocalReferenceExpression{
       returnValueId, forLoop.returnReference.local, forLoop.returnReference.type,
       forLoop.returnReference.category, forLoop.returnReference.sourceSpan.clone()});

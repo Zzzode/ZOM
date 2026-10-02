@@ -249,17 +249,19 @@ struct FunctionReturnShape final {
   ast::NodeId forLoopBody{};
   // The ForStmt node itself, carried for the loop source span.
   ast::NodeId forLoopStatement{};
-  // For-loop accumulator shape: a leading scalar `let` accumulator local, a
-  // C-style `for` loop whose body writes that accumulator, and a trailing
-  // `return <accumulator-local>;`. Reuses the for-loop fields and the
-  // accumulator local fields (localPattern, localInitializer). The body write
-  // AST node is carried for the builder.
+  // For-loop accumulator shape: N leading scalar `mut` accumulator locals, a
+  // C-style `for` loop whose body writes each accumulator, and a trailing
+  // `return <accumulator-local>;`. Reuses the for-loop fields. The accumulator
+  // patterns, their scalar-literal initializers, and the body write AST nodes
+  // are carried for the builder. The return names the first accumulator.
   bool isForLoopAccumulator = false;
-  ast::NodeId forLoopBodyWrite{};
+  zc::Vector<ast::NodeId> forLoopAccumulatorPatterns;
+  zc::Vector<ast::NodeId> forLoopAccumulatorInitializers;
+  zc::Vector<ast::NodeId> forLoopBodyWrites;
   // For-loop accumulator composite: when the loop body's trailing statement is
   // an unlabeled `break;` or `continue;`, these record its AST node (empty
   // otherwise). At most one is set; both are empty when the body ends with a
-  // write, so the back-edge falls through to the header. `forLoopBodyWrite`
+  // write, so the back-edge falls through to the header. `forLoopBodyWrites`
   // covers only the write prefix, excluding the trailing break/continue.
   ast::NodeId forLoopBodyBreak{};
   ast::NodeId forLoopBodyContinue{};

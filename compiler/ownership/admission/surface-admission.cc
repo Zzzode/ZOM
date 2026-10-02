@@ -761,9 +761,9 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
       !tree.contains(updateValue) || !isAdmittedPrimitiveBinary(tree, updateValue)) {
     return false;
   }
-  // Body: an empty block, or exactly one admitted loop-body write optionally
-  // followed by one trailing unlabeled break/continue. The write accumulates
-  // into a local declared outside the loop; its structure is validated by
+  // Body: an empty block, or N admitted loop-body writes optionally followed
+  // by one trailing unlabeled break/continue. Each write accumulates into a
+  // local declared outside the loop; its structure is validated by
   // isAdmittedLoopBodyWrite. A break/continue is admitted only as the trailing
   // body statement, matching the while-loop body slice.
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
@@ -772,10 +772,14 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return false;
   if (statements.empty()) return true;
-  if (statements.size > 2) return false;
-  if (!isAdmittedLoopBodyWrite(tree, tree.list(statements)[0])) return false;
-  if (statements.size == 1) return true;
-  return isAdmittedLoopBodyControlFlow(tree, tree.list(statements)[1]);
+  // Every statement except the last must be an admitted loop-body write.
+  for (size_t i = 0; i + 1 < statements.size; ++i) {
+    if (!isAdmittedLoopBodyWrite(tree, tree.list(statements)[i])) return false;
+  }
+  // The last statement is either an admitted loop-body write or a trailing
+  // break/continue.
+  const auto lastStmt = tree.list(statements)[statements.size - 1];
+  return isAdmittedLoopBodyWrite(tree, lastStmt) || isAdmittedLoopBodyControlFlow(tree, lastStmt);
 }
 
 // A nested arithmetic operand is a one-level binary whose own operands are

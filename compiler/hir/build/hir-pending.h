@@ -322,14 +322,43 @@ struct PendingForLoopReturn final {
   zc::Maybe<identity::SourceSpan> continueSpan;
 };
 
-// One admitted C-style `for` loop accumulator return: a leading scalar `let`
-// accumulator local, a `for (let id = <lit>; <ident> <cmp> <lit>;
-// <ident> = <binary>) { <accumulator> = <accumulator> <bin> <ident>; }` loop,
-// and a trailing `return <accumulator-local>;`. The for-loop init/cond/update
-// mirror PendingForLoopReturn; the accumulator local, its initializer, the body
-// write (an arithmetic binary over the accumulator and the loop local), and the
-// return reference are carried here. Every HIR expression carries an empty
-// HirNodeId; the lowering function allocates the node ids.
+// One accumulator in a for-loop multi-write body: the local binding, its
+// scalar-literal initializer, the body write assignment and its arithmetic
+// binary value, the left operand (a place reference to the accumulator), and
+// the right operand (a place reference to the loop init local or a scalar
+// literal). Every HIR expression carries an empty HirNodeId; the lowering
+// function allocates the node ids.
+struct PendingForLoopAccumulator final {
+  // The accumulator local binding (the leading `mut x = <lit>` declaration).
+  HirLocalBinding local;
+  // The accumulator local's scalar literal initializer.
+  HirScalarLiteralExpression initLiteral;
+  // The body write (`x = x + i` or `x = x + 1`), an arithmetic binary over
+  // the accumulator and the loop init local or a scalar literal.
+  HirLocalWriteStatement bodyWrite;
+  // The body write's arithmetic binary value.
+  HirPrimitiveBinaryExpression bodyWriteValue;
+  // The body arithmetic's left operand: a place reference to the accumulator.
+  HirLocalReferenceExpression bodyWriteLeft;
+  // True when the body arithmetic's right operand is a scalar literal; false
+  // when it is a place reference to the loop init local.
+  bool bodyWriteRightIsLiteral = false;
+  // The body arithmetic's right operand as a place reference to the init
+  // local (populated when bodyWriteRightIsLiteral is false).
+  zc::Maybe<HirLocalReferenceExpression> bodyWriteRight;
+  // The body arithmetic's right operand as a scalar literal (populated when
+  // bodyWriteRightIsLiteral is true).
+  zc::Maybe<HirScalarLiteralExpression> bodyWriteRightLiteral;
+};
+
+// One admitted C-style `for` loop accumulator return: N leading scalar `mut`
+// accumulator locals, a `for (let id = <lit>; <ident> <cmp> <lit>;
+// <ident> = <binary>) { <accumulator> = <accumulator> <bin> <ident|lit>; ...
+// }` loop, and a trailing `return <accumulator-local>;`. The for-loop
+// init/cond/update mirror PendingForLoopReturn; the accumulator locals, their
+// initializers, the body writes, and the return reference are carried here.
+// Every HIR expression carries an empty HirNodeId; the lowering function
+// allocates the node ids.
 struct PendingForLoopAccumulatorReturn final {
   // The loop condition comparison, resolved to a primitive binary expression.
   // The left operand is a reference to the init local; the right operand is a
@@ -353,20 +382,9 @@ struct PendingForLoopAccumulatorReturn final {
   HirLocalReferenceExpression writeValueLeft;
   // The arithmetic's right operand: a scalar literal.
   HirScalarLiteralExpression writeValueRight;
-  // The accumulator local binding (the leading `let sum = <lit>` declaration).
-  HirLocalBinding accumulatorLocal;
-  // The accumulator local's scalar literal initializer.
-  HirScalarLiteralExpression accumulatorInitLiteral;
-  // The body write (`sum = sum + i`), an arithmetic binary over the
-  // accumulator and the loop local.
-  HirLocalWriteStatement bodyWrite;
-  // The body write's arithmetic binary value.
-  HirPrimitiveBinaryExpression bodyWriteValue;
-  // The body arithmetic's left operand: a place reference to the accumulator.
-  HirLocalReferenceExpression bodyWriteLeft;
-  // The body arithmetic's right operand: a place reference to the init local.
-  HirLocalReferenceExpression bodyWriteRight;
-  // The return value: a place reference to the accumulator local.
+  // The N accumulator locals, their initializers, and their body writes.
+  zc::Vector<PendingForLoopAccumulator> accumulators;
+  // The return value: a place reference to the first accumulator local.
   HirLocalReferenceExpression returnReference;
   // A trailing unlabeled `break;` or `continue;` source span, carried so the
   // materialized `HirLoopStatement` can select the body block terminator (exit

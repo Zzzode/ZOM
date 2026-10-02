@@ -1248,7 +1248,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             tree.node(conditional.condition).kind == ast::SyntaxKind::IdentExpr &&
             isScalarLiteral(tree.node(conditional.thenReturnValue).kind) &&
             isScalarLiteral(tree.node(conditional.elseReturnValue).kind)) {
-          return conditional;
+          return zc::mv(methodConditional).orDefault(FunctionReturnShape{});
         }
       }
       return zc::none;
@@ -1488,6 +1488,149 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       }
     }
   }
+  // For-loop accumulator shape: N leading scalar `mut` accumulator locals, a
+  // C-style `for` loop whose body writes each accumulator, and a trailing
+  // `return <accumulator-local>;`. The for-loop is the second-to-last
+  // statement; N = statements.size - 2 >= 1. The return names the first
+  // accumulator. The for-loop init/cond/update reuse the for-loop fields; the
+  // accumulator patterns, initializers, and body writes are carried for the
+  // builder.
+  if (statements.size >= 3) {
+    auto forItem = statementItem(tree, tree.list(statements)[statements.size - 2]);
+    if (forItem != zc::none) {
+      ast::NodeId forStmt;
+      ZC_IF_SOME(item, forItem) { forStmt = item; }
+      if (tree.node(forStmt).kind == ast::SyntaxKind::ForStmt) {
+        const size_t accumulatorCount = statements.size - 2;
+        const auto& loop = tree.node(forStmt);
+        const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
+        const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
+        const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
+        const ast::NodeId forBody(loop.payload.words[ast::kForStmtBodyWord]);
+        if (tree.contains(init) && tree.contains(cond) && tree.contains(update) &&
+            tree.contains(forBody) && tree.node(value).kind == ast::SyntaxKind::IdentExpr) {
+          // Validate the N leading mut declarations.
+          zc::Vector<ast::NodeId> patterns;
+          zc::Vector<ast::NodeId> initializers;
+          bool leadingOk = true;
+          for (size_t i = 0; i < accumulatorCount; ++i) {
+            auto letItem = statementItem(tree, tree.list(statements)[i]);
+            if (letItem == zc::none) {
+              leadingOk = false;
+              break;
+            }
+            ast::NodeId letNode;
+            ZC_IF_SOME(item, letItem) { letNode = item; }
+            if (tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
+                static_cast<ast::BindingDeclarationKind>(
+                    tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+                    ast::BindingDeclarationKind::Mut) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeId declarations(
+                tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
+            if (!tree.contains(declarations) ||
+                tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeList declarators{
+                tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+                tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+            if (!tree.contains(declarators) || declarators.size != 1) {
+              leadingOk = false;
+              break;
+            }
+            const auto declarator = tree.list(declarators)[0];
+            if (!tree.contains(declarator) ||
+                tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+              leadingOk = false;
+              break;
+            }
+            const ast::NodeId pattern(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+            const ast::NodeId initializer(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+            if (!tree.contains(pattern) ||
+                tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+                !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind)) {
+              leadingOk = false;
+              break;
+            }
+            patterns.add(pattern);
+            initializers.add(initializer);
+          }
+          if (leadingOk && matchesLocalReference(tree, patterns[0], value)) {
+            // The loop body is N admitted accumulator writes optionally
+            // followed by one trailing unlabeled `break;` or `continue;`.
+            const auto& loopBlock = tree.node(forBody);
+            const ast::NodeList loopStatements{
+                loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (tree.contains(loopStatements) && loopStatements.size >= accumulatorCount &&
+                loopStatements.size <= accumulatorCount + 1) {
+              zc::Vector<ast::NodeId> bodyWrites;
+              bool bodyOk = true;
+              for (size_t i = 0; i < accumulatorCount; ++i) {
+                if (!isAccumulatorBodyWrite(tree, tree.list(loopStatements)[i])) {
+                  bodyOk = false;
+                  break;
+                }
+                bodyWrites.add(tree.list(loopStatements)[i]);
+              }
+              ast::NodeId trailingBreak{};
+              ast::NodeId trailingContinue{};
+              if (bodyOk && loopStatements.size == accumulatorCount + 1) {
+                auto trailingItem =
+                    statementItem(tree, tree.list(loopStatements)[accumulatorCount]);
+                if (trailingItem == zc::none) {
+                  bodyOk = false;
+                } else {
+                  ast::NodeId trailingStmt;
+                  ZC_IF_SOME(item, trailingItem) { trailingStmt = item; }
+                  const auto trailingKind = tree.node(trailingStmt).kind;
+                  if (trailingKind != ast::SyntaxKind::BreakStmt &&
+                      trailingKind != ast::SyntaxKind::ContinueStatement) {
+                    bodyOk = false;
+                  } else {
+                    const auto labelWord = trailingKind == ast::SyntaxKind::BreakStmt
+                                               ? ast::kBreakStmtLabelWord
+                                               : ast::kContinueStatementLabelWord;
+                    if (tree.node(trailingStmt).payload.words[labelWord] != 0) {
+                      bodyOk = false;
+                    } else if (trailingKind == ast::SyntaxKind::BreakStmt) {
+                      trailingBreak = trailingStmt;
+                    } else {
+                      trailingContinue = trailingStmt;
+                    }
+                  }
+                }
+              }
+              if (bodyOk) {
+                FunctionReturnShape shape{};
+                shape.body = body;
+                shape.returnStatement = returnNode;
+                shape.value = value;
+                shape.isForLoopAccumulator = true;
+                shape.forLoopAccumulatorPatterns = zc::mv(patterns);
+                shape.forLoopAccumulatorInitializers = zc::mv(initializers);
+                shape.forLoopBodyWrites = zc::mv(bodyWrites);
+                shape.forLoopInit = init;
+                shape.forLoopCond = cond;
+                shape.forLoopUpdate = update;
+                shape.forLoopBody = forBody;
+                shape.forLoopStatement = forStmt;
+                shape.forLoopBodyBreak = trailingBreak;
+                shape.forLoopBodyContinue = trailingContinue;
+                return shape;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
   if (statements.size == 3) {
     // Loop-body composite shape: a leading `mut` local declaration, an admitted
     // `while` whose bare-identifier condition guards a body that writes that
@@ -1496,105 +1639,6 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     auto middleItem = statementItem(tree, tree.list(statements)[1]);
     ast::NodeId middleStmt;
     ZC_IF_SOME(item, middleItem) { middleStmt = item; }
-    // For-loop accumulator shape: a leading scalar `let` accumulator local, a
-    // C-style `for` loop whose body writes that accumulator, and a trailing
-    // `return <accumulator-local>;`. The for-loop init/cond/update reuse the
-    // for-loop fields; the accumulator local and the body write are carried for
-    // the builder.
-    if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::ForStmt) {
-      auto leadingItem = statementItem(tree, tree.list(statements)[0]);
-      ast::NodeId letNode;
-      ZC_IF_SOME(item, leadingItem) { letNode = item; }
-      const auto& loop = tree.node(middleStmt);
-      const ast::NodeId init(loop.payload.words[ast::kForStmtInitWord]);
-      const ast::NodeId cond(loop.payload.words[ast::kForStmtCondWord]);
-      const ast::NodeId update(loop.payload.words[ast::kForStmtUpdateWord]);
-      const ast::NodeId forBody(loop.payload.words[ast::kForStmtBodyWord]);
-      if (leadingItem == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
-          static_cast<ast::BindingDeclarationKind>(
-              tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
-              ast::BindingDeclarationKind::Mut ||
-          !tree.contains(init) || !tree.contains(cond) || !tree.contains(update) ||
-          !tree.contains(forBody) || tree.node(value).kind != ast::SyntaxKind::IdentExpr) {
-        return zc::none;
-      }
-      const ast::NodeId declarations(
-          tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
-      if (!tree.contains(declarations) ||
-          tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
-        return zc::none;
-      }
-      const ast::NodeList declarators{
-          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
-          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
-      if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
-      const auto declarator = tree.list(declarators)[0];
-      if (!tree.contains(declarator) ||
-          tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
-        return zc::none;
-      }
-      const ast::NodeId pattern(
-          tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
-      const ast::NodeId initializer(
-          tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      if (!tree.contains(pattern) ||
-          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
-          !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind) ||
-          !matchesLocalReference(tree, pattern, value)) {
-        return zc::none;
-      }
-      // The loop body is one admitted accumulator write optionally followed
-      // by one trailing unlabeled `break;` or `continue;` (the bounded slice
-      // admits a break/continue only as the final statement). The write feeds
-      // `forLoopBodyWrite`; the trailing break/continue node is recorded
-      // separately.
-      const auto& loopBlock = tree.node(forBody);
-      const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
-                                         loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
-      if (!tree.contains(loopStatements) || loopStatements.size < 1 || loopStatements.size > 2) {
-        return zc::none;
-      }
-      const auto bodyWriteNode = tree.list(loopStatements)[0];
-      if (!isAccumulatorBodyWrite(tree, bodyWriteNode)) return zc::none;
-      ast::NodeId trailingBreak{};
-      ast::NodeId trailingContinue{};
-      if (loopStatements.size == 2) {
-        auto trailingItem = statementItem(tree, tree.list(loopStatements)[1]);
-        if (trailingItem == zc::none) return zc::none;
-        ast::NodeId trailingStmt;
-        ZC_IF_SOME(item, trailingItem) { trailingStmt = item; }
-        const auto trailingKind = tree.node(trailingStmt).kind;
-        if (trailingKind != ast::SyntaxKind::BreakStmt &&
-            trailingKind != ast::SyntaxKind::ContinueStatement) {
-          return zc::none;
-        }
-        const auto labelWord = trailingKind == ast::SyntaxKind::BreakStmt
-                                   ? ast::kBreakStmtLabelWord
-                                   : ast::kContinueStatementLabelWord;
-        if (tree.node(trailingStmt).payload.words[labelWord] != 0) return zc::none;
-        if (trailingKind == ast::SyntaxKind::BreakStmt) {
-          trailingBreak = trailingStmt;
-        } else {
-          trailingContinue = trailingStmt;
-        }
-      }
-      FunctionReturnShape shape{};
-      shape.body = body;
-      shape.returnStatement = returnNode;
-      shape.value = value;
-      shape.localPattern = pattern;
-      shape.localInitializer = initializer;
-      shape.isForLoopAccumulator = true;
-      shape.forLoopInit = init;
-      shape.forLoopCond = cond;
-      shape.forLoopUpdate = update;
-      shape.forLoopBody = forBody;
-      shape.forLoopStatement = middleStmt;
-      shape.forLoopBodyWrite = bodyWriteNode;
-      shape.forLoopBodyBreak = trailingBreak;
-      shape.forLoopBodyContinue = trailingContinue;
-      return shape;
-    }
     if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt) {
       auto leadingItem = statementItem(tree, tree.list(statements)[0]);
       ast::NodeId letNode;
