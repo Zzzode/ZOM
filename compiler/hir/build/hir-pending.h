@@ -399,6 +399,15 @@ struct PendingForLoopAccumulatorReturn final {
   // both are none when the body ends with a write.
   zc::Maybe<identity::SourceSpan> breakSpan;
   zc::Maybe<identity::SourceSpan> continueSpan;
+  // The if-guarded break condition comparison, populated when the loop body
+  // starts with `if (<cond>) { break; }`. The left operand is a place
+  // reference to the init local; the right operand is a scalar literal. The
+  // MIR builder lowers a guard block that evaluates this comparison and exits
+  // the loop on true, before the accumulator writes. All three are empty when
+  // the body has no guarded break.
+  zc::Maybe<HirPrimitiveBinaryExpression> breakCondition;
+  zc::Maybe<HirLocalReferenceExpression> breakConditionLeft;
+  zc::Maybe<HirScalarLiteralExpression> breakConditionRight;
 };
 
 // One receiver field-arithmetic return: `return this.<field> OP

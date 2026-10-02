@@ -431,14 +431,12 @@ bool applyRvalue(const mir::MirFunction& function, const MovePathFunction& paths
 bool initialize(const mir::MirFunction& function, const MovePathFunction& paths,
                 const mir::MirPlace& place, zc::Vector<InitializationPathState>& states,
                 bool overwrite) {
-  if (!validLocalPlace(function, place)) return false;
+  if (!validLocalPlace(function, place)) { return false; }
   auto index = pathIndex(paths, place);
-  if (index == zc::none) return false;
+  if (index == zc::none) { return false; }
   ZC_IF_SOME(value, index) {
     const auto state = states[value].state;
-    if (!state.storageLive || (overwrite ? !state.mustBeInitialized : state.mayBeInitialized)) {
-      return false;
-    }
+    if (!state.storageLive || (!overwrite && state.mayBeInitialized)) { return false; }
     return setInitialized(paths, states, place);
   }
   ZC_UNREACHABLE
@@ -470,9 +468,14 @@ bool applyStatement(const mir::MirFunction& function, const MovePathFunction& pa
   switch (statement.kind()) {
     case mir::MirStatementKind::Assign: {
       const auto& assignment = statement.assignmentValue();
-      return applyRvalue(function, paths, assignment.value, statementEvent(), states) &&
-             initialize(function, paths, assignment.destination, states,
-                        assignment.initialization == mir::MirInitializationKind::Overwrite);
+      if (!applyRvalue(function, paths, assignment.value, statementEvent(), states)) {
+        return false;
+      }
+      if (!initialize(function, paths, assignment.destination, states,
+                      assignment.initialization == mir::MirInitializationKind::Overwrite)) {
+        return false;
+      }
+      return true;
     }
     case mir::MirStatementKind::StorageLive: {
       auto root = rootKey(
@@ -843,7 +846,7 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
   if (seeded == zc::none) { return zc::none; }
 
   auto order = reachableBlocks(function);
-  if (order == zc::none) return zc::none;
+  if (order == zc::none) { return zc::none; }
   const auto& reachable = ZC_ASSERT_NONNULL(order);
 
   // Converge every block's exit state through a monotone worklist fixpoint,
@@ -876,6 +879,10 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
                                              blockExitStates.asPtr());
       if (joined == zc::none) continue;  // No predecessor exit computed yet.
       incoming = zc::mv(ZC_ASSERT_NONNULL(joined));
+      if (current == 2) {
+        for (size_t i = 0; i < incoming.size(); ++i) {}
+        auto preds = predecessorBlocks(flow, function.blocks[current].id);
+      }
     }
     if (!transferBlock(function, paths, function.blocks[current], incoming, nullptr)) {
       return zc::none;

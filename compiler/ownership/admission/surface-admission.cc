@@ -632,6 +632,45 @@ bool isAdmittedLoopBodyControlFlow(const ast::Tree& tree, ast::NodeId statement)
   return tree.node(stmt).payload.words[labelWord] == 0;
 }
 
+/// \brief Structurally admits one if-guarded `break;` loop-body statement.
+///
+/// The statement is `if (<ident|lit> <cmp> <ident|lit>) { break; }`: an `if`
+/// with no `else` whose condition is a binary comparison over an identifier and
+/// a scalar literal and whose body is a block holding exactly one unlabeled
+/// `break;`. The guard evaluates before the accumulator writes in source order,
+/// so the loop body splits into a guard block and a continuation block
+/// downstream. Structure only; the checker/HIR decide the comparison operator
+/// and the loop-exit lowering.
+bool isAdmittedLoopBodyGuardedBreak(const ast::Tree& tree, ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return false;
+  ast::NodeId stmt;
+  ZC_IF_SOME(value, item) { stmt = value; }
+  if (tree.node(stmt).kind != ast::SyntaxKind::IfStmt) return false;
+  const auto& ifNode = tree.node(stmt);
+  // No else branch in this slice.
+  if (ifNode.payload.words[ast::kIfStmtElseStmtWord] != 0) return false;
+  const ast::NodeId cond(ifNode.payload.words[ast::kIfStmtCondWord]);
+  const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+  if (!tree.contains(cond) || tree.node(cond).kind != ast::SyntaxKind::BinaryExpr ||
+      !tree.contains(thenStmt) || tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt) {
+    return false;
+  }
+  const ast::NodeId condLeft(tree.node(cond).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId condRight(tree.node(cond).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(condLeft) || !tree.contains(condRight)) return false;
+  const bool condLeftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+  const bool condRightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+  const bool condLeftOk = condLeftIdent || isScalarLiteral(tree.node(condLeft).kind);
+  const bool condRightOk = condRightIdent || isScalarLiteral(tree.node(condRight).kind);
+  if (!condLeftOk || !condRightOk || (!condLeftIdent && !condRightIdent)) return false;
+  const auto& thenBlock = tree.node(thenStmt);
+  const ast::NodeList thenStmts{thenBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                thenBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(thenStmts) || thenStmts.size != 1) return false;
+  return isAdmittedLoopBodyControlFlow(tree, tree.list(thenStmts)[0]);
+}
+
 /// \brief Shape-matches a `while` loop that has an admitted semantic contract.
 ///
 /// The admitted loop condition is a bare identifier (resolved to a bool
@@ -761,24 +800,33 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
       !tree.contains(updateValue) || !isAdmittedPrimitiveBinary(tree, updateValue)) {
     return false;
   }
-  // Body: an empty block, or N admitted loop-body writes optionally followed
-  // by one trailing unlabeled break/continue. Each write accumulates into a
-  // local declared outside the loop; its structure is validated by
-  // isAdmittedLoopBodyWrite. A break/continue is admitted only as the trailing
-  // body statement, matching the while-loop body slice.
+  // Body: an empty block, N admitted loop-body writes optionally followed by
+  // one trailing unlabeled break/continue, or one if-guarded break followed by
+  // N admitted loop-body writes. The guarded break evaluates before the writes
+  // in source order, so it must lead the body. A break/continue is admitted
+  // only as the trailing body statement, matching the while-loop body slice.
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return false;
   if (statements.empty()) return true;
+  const auto statementNodes = tree.list(statements);
+  // If-guarded break leading the body: the remaining statements must all be
+  // admitted loop-body writes.
+  if (isAdmittedLoopBodyGuardedBreak(tree, statementNodes[0])) {
+    for (size_t i = 1; i < statements.size; ++i) {
+      if (!isAdmittedLoopBodyWrite(tree, statementNodes[i])) return false;
+    }
+    return true;
+  }
   // Every statement except the last must be an admitted loop-body write.
   for (size_t i = 0; i + 1 < statements.size; ++i) {
-    if (!isAdmittedLoopBodyWrite(tree, tree.list(statements)[i])) return false;
+    if (!isAdmittedLoopBodyWrite(tree, statementNodes[i])) return false;
   }
   // The last statement is either an admitted loop-body write or a trailing
   // break/continue.
-  const auto lastStmt = tree.list(statements)[statements.size - 1];
+  const auto lastStmt = statementNodes[statements.size - 1];
   return isAdmittedLoopBodyWrite(tree, lastStmt) || isAdmittedLoopBodyControlFlow(tree, lastStmt);
 }
 

@@ -321,6 +321,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-accumulator-consumer/Zom.toml::for_loop_accumulator_consumer::for_loop_accumulator_consumer::45"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/if-guarded-break-consumer/Zom.toml::if_guarded_break_consumer::if_guarded_break_consumer::10"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-multi-write-consumer/Zom.toml::for_loop_multi_write_consumer::for_loop_multi_write_consumer::10"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-break-consumer/Zom.toml::for_loop_break_consumer::for_loop_break_consumer::0"

@@ -265,6 +265,13 @@ struct FunctionReturnShape final {
   // covers only the write prefix, excluding the trailing break/continue.
   ast::NodeId forLoopBodyBreak{};
   ast::NodeId forLoopBodyContinue{};
+  // For-loop accumulator if-guarded break: when the loop body's first statement
+  // is `if (<cond>) { break; }`, this records the condition comparison AST node
+  // (empty otherwise). The guard evaluates before the accumulator writes in
+  // source order, so the builder resolves it to a break-condition comparison
+  // and the MIR builder lowers a guard block. `forLoopBodyWrites` covers only
+  // the write suffix, excluding the leading guarded break.
+  ast::NodeId forLoopBodyBreakCondition{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,

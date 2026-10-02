@@ -1392,39 +1392,47 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified reducible four-block for-loop accumulator return
-  // shape, re-checking the structure that
-  // mir::validForLoopAccumulatorReturnFunction validated: a parameter-local
-  // prefix, N integer user locals (the accumulators), one integer user local
-  // (the loop variable), a boolean temporary (the comparison result), and an
-  // integer function-result local; a four-block loop whose entry initializes
-  // the accumulators and loop variable and computes the first comparison,
-  // whose header switches on the temp, whose body accumulates into the
-  // accumulators, updates the loop variable, and re-computes the comparison,
-  // and whose exit copies the first accumulator into the result and returns
-  // it.
+  // Admit only the verified reducible for-loop accumulator return shape,
+  // re-checking the structure that mir::validForLoopAccumulatorReturnFunction
+  // validated: a parameter-local prefix, N integer user locals (the
+  // accumulators), one integer user local (the loop variable), a boolean
+  // temporary (the comparison result), and an integer function-result local;
+  // a four-block loop (or five-block when an if-guarded break is present)
+  // whose entry initializes the accumulators and loop variable and computes
+  // the first comparison, whose header switches on the temp, whose optional
+  // guard block evaluates the break condition, whose body accumulates into
+  // the accumulators, updates the loop variable, and re-computes the
+  // comparison, and whose exit copies the first accumulator into the result
+  // and returns it.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
-      function.blocks.size() != 4 || function.locals.size() < 4) {
+      (function.blocks.size() != 4 && function.blocks.size() != 5) || function.locals.size() < 4) {
     return zc::none;
   }
+  const bool hasGuard = function.blocks.size() == 5;
 
   size_t parameterCount = 0;
   while (parameterCount < function.locals.size() &&
          function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
     ++parameterCount;
   }
-  // N accumulators + init + temp + result = N + 3 non-parameter locals.
+  // N accumulators + init + temp + [breakTemp] + result = N + 3 (or N + 4
+  // with a guard block) non-parameter locals.
   const size_t nonParamCount = function.locals.size() - parameterCount;
-  if (nonParamCount < 4) { return zc::none; }
-  const size_t accCount = nonParamCount - 3;
+  const size_t expectedNonParam = hasGuard ? 5 : 4;
+  if (nonParamCount < expectedNonParam) { return zc::none; }
+  const size_t accCount = nonParamCount - (hasGuard ? 4 : 3);
   const auto& localDecl = function.locals[parameterCount + accCount];
   const auto& tempDecl = function.locals[parameterCount + accCount + 1];
-  const auto& resultDecl = function.locals[parameterCount + accCount + 2];
+  const auto& resultDecl = function.locals[parameterCount + accCount + (hasGuard ? 3 : 2)];
   if (localDecl.kind != mir::MirLocalKind::UserLocal ||
       tempDecl.kind != mir::MirLocalKind::Temporary ||
       resultDecl.kind != mir::MirLocalKind::FunctionResult ||
       resultDecl.type != function.resultType) {
     return zc::none;
+  }
+  if (hasGuard) {
+    const auto& breakTempDecl = function.locals[parameterCount + accCount + 2];
+    if (breakTempDecl.kind != mir::MirLocalKind::Temporary) { return zc::none; }
   }
   // Validate all accumulator locals.
   for (size_t k = 0; k < accCount; ++k) {
@@ -1461,15 +1469,16 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
 
   const auto& entry = function.blocks[0];
   const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  const auto& body = function.blocks[hasGuard ? 3 : 2];
+  const auto& exit = function.blocks[hasGuard ? 4 : 3];
 
   // Entry: StorageLive(result); StorageLive(acc_k)...; StorageLive(local);
-  // StorageLive(temp); Assign(acc_k = constant, Initialize)...;
+  // StorageLive(temp); [StorageLive(breakTemp);]
+  // Assign(acc_k = constant, Initialize)...;
   // Assign(local = constant, Initialize);
   // Assign(temp = Comparison(op, copy(local), constant), Initialize);
   // Goto(header).
-  const size_t expectedEntrySize = 5 + 2 * accCount;
+  const size_t expectedEntrySize = (hasGuard ? 6 : 5) + 2 * accCount;
   if (entry.statements.size() != expectedEntrySize) { return zc::none; }
   if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultDecl.id) {
@@ -1489,10 +1498,20 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
       entry.statements[tempStorageLiveIndex].storageLocal() != tempDecl.id) {
     return zc::none;
   }
+  if (hasGuard) {
+    const size_t breakStorageLiveIndex = 3 + accCount;
+    const auto& breakTempDecl = function.locals[parameterCount + accCount + 2];
+    if (entry.statements[breakStorageLiveIndex].kind() != mir::MirStatementKind::StorageLive ||
+        entry.statements[breakStorageLiveIndex].storageLocal() != breakTempDecl.id) {
+      return zc::none;
+    }
+  }
+  // The break-condition StorageLive shifts all subsequent entry statements.
+  const size_t entryOffset = hasGuard ? 1 : 0;
   // Entry accumulator inits.
   zc::Vector<zc::Maybe<Operand>> accInitLowered;
   for (size_t k = 0; k < accCount; ++k) {
-    const size_t assignIndex = 3 + accCount + k;
+    const size_t assignIndex = 3 + accCount + entryOffset + k;
     if (entry.statements[assignIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
     const auto& accInitAssign = entry.statements[assignIndex].assignmentValue();
     if (accInitAssign.destination.local() != function.locals[parameterCount + k].id ||
@@ -1511,7 +1530,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     accInitLowered.add(zc::mv(lowered));
   }
   // Entry loop-variable init.
-  const size_t initAssignIndex = 3 + 2 * accCount;
+  const size_t initAssignIndex = 3 + 2 * accCount + entryOffset;
   if (entry.statements[initAssignIndex].kind() != mir::MirStatementKind::Assign) {
     return zc::none;
   }
@@ -1530,7 +1549,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto initLowered = lirOperandFor(initOperand, resultCarrierValue);
   if (initLowered == zc::none) { return zc::none; }
   // Entry condition comparison.
-  const size_t entryCondIndex = 4 + 2 * accCount;
+  const size_t entryCondIndex = 4 + 2 * accCount + entryOffset;
   if (entry.statements[entryCondIndex].kind() != mir::MirStatementKind::Assign) { return zc::none; }
   const auto& entryCondAssign = entry.statements[entryCondIndex].assignmentValue();
   if (entryCondAssign.destination.local() != tempDecl.id ||
@@ -1558,17 +1577,64 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     return zc::none;
   }
 
-  // Header: SwitchInt(copy(temp)) [true -> body], default = exit.
+  // Header: SwitchInt(copy(temp)) [true -> guard-or-body], default = exit.
   if (header.statements.size() != 0 ||
       header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
   const auto& switchInt = header.terminator.switchIntValue();
+  const auto headerTrueTarget = hasGuard ? function.blocks[2].id : body.id;
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != headerTrueTarget || switchInt.defaultTarget != exit.id) {
     return zc::none;
+  }
+
+  // Guard: Assign(breakTemp = Comparison(op, copy(local), constant),
+  // Overwrite); SwitchInt(copy(breakTemp)) [true -> exit], default = body.
+  ComparisonOp breakCmpOp = ComparisonOp::Eq;
+  zc::Maybe<Operand> breakCondRightLowered;
+  uint32_t breakTempOrdinal = 0;
+  if (hasGuard) {
+    const auto& guard = function.blocks[2];
+    if (guard.statements.size() != 1 ||
+        guard.statements[0].kind() != mir::MirStatementKind::Assign ||
+        guard.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+      return zc::none;
+    }
+    const auto& breakTempDecl = function.locals[parameterCount + accCount + 2];
+    const auto& guardAssign = guard.statements[0].assignmentValue();
+    if (guardAssign.destination.local() != breakTempDecl.id ||
+        guardAssign.destination.projections().size() != 0 ||
+        guardAssign.initialization != mir::MirInitializationKind::Overwrite ||
+        guardAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      return zc::none;
+    }
+    const auto& guardComparison = guardAssign.value.comparisonValue();
+    breakCmpOp = lirComparisonOpFor(guardComparison.op);
+    if (guardComparison.resultType != breakTempDecl.type) { return zc::none; }
+    if (guardComparison.left.kind() != mir::MirOperandKind::Copy ||
+        guardComparison.left.place().local() != localDecl.id ||
+        guardComparison.left.place().projections().size() != 0) {
+      return zc::none;
+    }
+    if (guardComparison.right.kind() != mir::MirOperandKind::Constant ||
+        guardComparison.right.constantValue().type != localDecl.type) {
+      return zc::none;
+    }
+    auto guardRightLowered = lirOperandFor(guardComparison.right, resultCarrierValue);
+    if (guardRightLowered == zc::none) { return zc::none; }
+    const auto& guardSwitch = guard.terminator.switchIntValue();
+    if (guardSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
+        guardSwitch.discriminant.place().local() != breakTempDecl.id ||
+        guardSwitch.discriminant.place().projections().size() != 0 ||
+        guardSwitch.arms.size() != 1 || guardSwitch.arms[0].target != exit.id ||
+        guardSwitch.defaultTarget != body.id) {
+      return zc::none;
+    }
+    breakCondRightLowered = zc::mv(guardRightLowered);
+    breakTempOrdinal = breakTempDecl.id.ordinal();
   }
 
   // Body: Assign(acc_k = Arithmetic(op, copy(acc_k), copy(local)|constant),
@@ -1711,9 +1777,11 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
 
   auto entryId = LirBlockId::fromOrdinal(1);
   auto headerId = LirBlockId::fromOrdinal(2);
-  auto bodyId = LirBlockId::fromOrdinal(3);
-  auto exitId = LirBlockId::fromOrdinal(4);
-  if (entryId == zc::none || headerId == zc::none || bodyId == zc::none || exitId == zc::none) {
+  auto guardId = LirBlockId::fromOrdinal(3);
+  auto bodyId = LirBlockId::fromOrdinal(hasGuard ? 4 : 3);
+  auto exitId = LirBlockId::fromOrdinal(hasGuard ? 5 : 4);
+  if (entryId == zc::none || headerId == zc::none || bodyId == zc::none || exitId == zc::none ||
+      (hasGuard && guardId == zc::none)) {
     return zc::none;
   }
 
@@ -1730,9 +1798,19 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
   {
-    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(headerId), zc::Vector<Statement>{},
-                          Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(bodyId),
-                                                 ZC_REQUIRE_NONNULL(exitId))));
+    const auto headerTrueId = hasGuard ? ZC_REQUIRE_NONNULL(guardId) : ZC_REQUIRE_NONNULL(bodyId);
+    blocks.add(
+        BasicBlock(ZC_REQUIRE_NONNULL(headerId), zc::Vector<Statement>{},
+                   Terminator::condBranch(tempOrdinal, headerTrueId, ZC_REQUIRE_NONNULL(exitId))));
+  }
+  if (hasGuard) {
+    zc::Vector<Statement> guardStatements;
+    guardStatements.add(Statement::compare(breakTempOrdinal, breakCmpOp,
+                                           Operand::localUse(localOrdinal),
+                                           ZC_REQUIRE_NONNULL(breakCondRightLowered)));
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(guardId), zc::mv(guardStatements),
+                          Terminator::condBranch(breakTempOrdinal, ZC_REQUIRE_NONNULL(exitId),
+                                                 ZC_REQUIRE_NONNULL(bodyId))));
   }
   {
     zc::Vector<Statement> bodyStatements;
@@ -1767,6 +1845,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   for (size_t k = 0; k < accCount; ++k) { locals.add(Local(accOrdinals[k], resultCarrierValue)); }
   locals.add(Local(localOrdinal, resultCarrierValue));
   locals.add(Local(tempOrdinal, tempCarrierValue));
+  if (hasGuard) { locals.add(Local(breakTempOrdinal, tempCarrierValue)); }
   locals.add(Local(resultOrdinal, resultCarrierValue));
 
   // A parameter-free for-loop accumulator folds to the reserved no-argument

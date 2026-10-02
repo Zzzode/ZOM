@@ -3778,10 +3778,19 @@ bool validForLoopAccumulatorReturnFunction(
     const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  const bool hasBreakCondition = loop.breakCondition.isValid();
   // The source block has N+3 statements: N accumulator locals, the loop-init
   // local, the loop, and the return. N = statements.size() - 3.
   const size_t accumulatorCount = sourceBlock.statements.size() - 3;
   if (accumulatorCount == 0) return false;
+  // The loop body has N+1 statements: N accumulator writes and the update
+  // write. The if-guarded break condition is wired to the loop statement's
+  // breakCondition field, not listed as a body statement.
+  const size_t expectedBodyCount = accumulatorCount + 1;
+  // The guarded-break CFG has one extra local (break temp) and one extra
+  // block (guard).
+  const size_t expectedLocalCount = parameterCount + accumulatorCount + (hasBreakCondition ? 4 : 3);
+  const size_t expectedBlockCount = hasBreakCondition ? 5 : 4;
   // Resolve the N accumulator locals and the init local from the source block.
   zc::Vector<const hir::HirLocalBinding*> accLocals;
   for (size_t k = 0; k < accumulatorCount; ++k) {
@@ -3797,15 +3806,15 @@ bool validForLoopAccumulatorReturnFunction(
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
       !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
-      function.locals.size() != parameterCount + accumulatorCount + 3 ||
-      function.blocks.size() != 4 || declaration.body != sourceBlock.node ||
+      function.locals.size() != expectedLocalCount ||
+      function.blocks.size() != expectedBlockCount || declaration.body != sourceBlock.node ||
       sourceBlock.statements.size() != accumulatorCount + 3 ||
       sourceBlock.statements[accumulatorCount] != initLocal.node ||
       sourceBlock.statements[accumulatorCount + 1] != loop.node ||
       sourceBlock.statements[accumulatorCount + 2] != sourceReturn.node ||
       sourceReturn.value != returnRef.node || sourceReturn.resultType != declaration.resultType ||
       loop.condition != condition.node || loop.type != condition.type ||
-      loop.body.size() != accumulatorCount + 1 || initLocal.initializer == zc::none ||
+      loop.body.size() != expectedBodyCount || initLocal.initializer == zc::none ||
       initLocal.local.ordinal() != static_cast<uint32_t>(accumulatorCount + 1) ||
       initLocal.type != condition.operandType || returnRef.local != accLocal.local ||
       returnRef.type != accLocal.type) {
@@ -3900,9 +3909,11 @@ bool validForLoopAccumulatorReturnFunction(
       if (bwRhs.local != initLocal.local || bwRhs.type != initLocal.type) return false;
     }
   }
-  const auto resultLocal = localId(parameterCount + static_cast<uint32_t>(accumulatorCount) + 3);
+  const auto resultLocal = localId(parameterCount + static_cast<uint32_t>(accumulatorCount) +
+                                   (hasBreakCondition ? 4 : 3));
   const auto initMirLocal = localId(parameterCount + static_cast<uint32_t>(accumulatorCount) + 1);
   const auto conditionTemp = localId(parameterCount + static_cast<uint32_t>(accumulatorCount) + 2);
+  const auto breakTemp = localId(parameterCount + static_cast<uint32_t>(accumulatorCount) + 3);
   const auto& scope = function.sourceScopes[0];
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
@@ -3926,9 +3937,25 @@ bool validForLoopAccumulatorReturnFunction(
       return false;
     }
   }
+  // Resolve the if-guarded break condition when present.
+  zc::Maybe<const hir::HirPrimitiveBinaryExpression&> breakBinary;
+  zc::Maybe<const hir::HirLocalReferenceExpression&> breakLeft;
+  zc::Maybe<const hir::HirScalarLiteralExpression&> breakRight;
+  zc::Maybe<MirComparisonOperator> breakOp;
+  if (hasBreakCondition) {
+    breakBinary = primitiveBinaryFor(hirModule, loop.breakCondition);
+    if (breakBinary == zc::none) return false;
+    breakLeft = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(breakBinary).left);
+    breakRight = expressionFor(hirModule, ZC_ASSERT_NONNULL(breakBinary).right);
+    breakOp = mirComparisonOperatorFor(ZC_ASSERT_NONNULL(breakBinary).operation);
+    if (breakLeft == zc::none || breakRight == zc::none || breakOp == zc::none) return false;
+    const auto& bl = ZC_ASSERT_NONNULL(breakLeft);
+    if (bl.local != initLocal.local || bl.type != initLocal.type) return false;
+  }
   const auto& init = function.locals[parameterCount + accumulatorCount];
   const auto& temp = function.locals[parameterCount + accumulatorCount + 1];
-  const auto& result = function.locals[parameterCount + accumulatorCount + 2];
+  const auto& result =
+      function.locals[parameterCount + accumulatorCount + (hasBreakCondition ? 3 : 2)];
   if (init.id != initMirLocal || init.kind != MirLocalKind::UserLocal ||
       init.type != initLocal.type || init.sourceScope != scopeId(1) ||
       !sameSpan(init.sourceSpan, initLocal.sourceSpan) || temp.id != conditionTemp ||
@@ -3939,40 +3966,102 @@ bool validForLoopAccumulatorReturnFunction(
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
     return false;
   }
+  if (hasBreakCondition) {
+    const auto& breakTempLocal = function.locals[parameterCount + accumulatorCount + 2];
+    const auto& bb = ZC_ASSERT_NONNULL(breakBinary);
+    if (breakTempLocal.id != breakTemp || breakTempLocal.kind != MirLocalKind::Temporary ||
+        breakTempLocal.type != bb.type || breakTempLocal.sourceScope != scopeId(1) ||
+        !sameSpan(breakTempLocal.sourceSpan, bb.sourceSpan)) {
+      return false;
+    }
+  }
   const auto& entry = function.blocks[0];
   const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
-  // A trailing break exits the body to the loop exit (bb4); a trailing
+  const auto& body = function.blocks[hasBreakCondition ? 3 : 2];
+  const auto& exit = function.blocks[hasBreakCondition ? 4 : 3];
+  // A trailing break exits the body to the loop exit; a trailing
   // continue or a write-only body jumps back to the header (bb2).
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
-  // Reducible four-block loop CFG:
+  const auto exitBlockId = hasBreakCondition ? blockId(5) : blockId(4);
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? exitBlockId : blockId(2);
+  // Reducible loop CFG. Without a guarded break: entry/header/body/exit.
+  // With a guarded break: entry/header/guard/continuation/exit, where the
+  // guard block evaluates the break condition and routes to the exit (break
+  // taken) or the continuation (break not taken).
   //   bb1 entry:  StorageLive(result) ; StorageLive(acc_k)... ; StorageLive(i) ;
-  //               StorageLive(temp) ; Assign(acc_k = accInit_k, Initialize)... ;
+  //               StorageLive(temp) ; [StorageLive(breakTemp) ;]
+  //               Assign(acc_k = accInit_k, Initialize)... ;
   //               Assign(i = init, Initialize) ;
   //               Assign(temp = Comparison(op, copy(i), <lit>), Initialize) ; Goto(bb2)
-  //   bb2 header: SwitchInt(copy(temp), [true -> bb3], default = bb4)
-  //   bb3 body:   Assign(acc_k = Arithmetic(op, copy(acc_k), copy(i)|<lit>), Overwrite)... ;
+  //   bb2 header: SwitchInt(copy(temp), [true -> bb3], default = exit)
+  //   [bb3 guard: Assign(breakTemp = Comparison(op, copy(i), <lit>), Overwrite) ;
+  //               SwitchInt(copy(breakTemp), [true -> exit], default = bb4)]
+  //   bbN body:   Assign(acc_k = Arithmetic(op, copy(acc_k), copy(i)|<lit>), Overwrite)... ;
   //               Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite) ;
   //               Assign(temp = Comparison(op, copy(i), <lit>), Overwrite) ; Goto(bb2)
-  //   bb4 exit:   Assign(result = copy(acc_0), Initialize) ; Return(placeUse(result))
-  const size_t expectedEntrySize = 5 + 2 * accumulatorCount;
+  //   bbX exit:   Assign(result = copy(acc_0), Initialize) ; Return(placeUse(result))
+  const size_t expectedEntrySize = (hasBreakCondition ? 6 : 5) + 2 * accumulatorCount;
   const size_t expectedBodySize = 2 + accumulatorCount;
+  const auto bodyBlockId = hasBreakCondition ? blockId(4) : blockId(3);
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) ||
       entry.statements.size() != expectedEntrySize ||
       entry.terminator.kind() != MirTerminatorKind::Goto ||
       entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
       header.sourceScope != scopeId(1) || header.statements.size() != 0 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
+      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != bodyBlockId ||
       body.sourceScope != scopeId(1) || body.statements.size() != expectedBodySize ||
       body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
+      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != exitBlockId ||
       exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
       exit.terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
+  // Validate the guard block when present.
+  if (hasBreakCondition) {
+    const auto& guard = function.blocks[2];
+    if (guard.id != blockId(3) || guard.sourceScope != scopeId(1) || guard.statements.size() != 1 ||
+        guard.terminator.kind() != MirTerminatorKind::SwitchInt) {
+      return false;
+    }
+    const auto& guardAssign = guard.statements[0].assignmentValue();
+    const auto& bb = ZC_ASSERT_NONNULL(breakBinary);
+    const auto& br = ZC_ASSERT_NONNULL(breakRight);
+    if (guardAssign.initialization != MirInitializationKind::Overwrite ||
+        guardAssign.destination.local() != breakTemp ||
+        guardAssign.destination.rootType() != bb.type ||
+        guardAssign.destination.resultType() != bb.type ||
+        guardAssign.destination.projections().size() != 0 ||
+        guardAssign.value.kind() != MirRvalueKind::Comparison) {
+      return false;
+    }
+    const auto& guardComparison = guardAssign.value.comparisonValue();
+    if (guardComparison.op != ZC_ASSERT_NONNULL(breakOp) || guardComparison.resultType != bb.type ||
+        guardComparison.left.kind() != MirOperandKind::Copy ||
+        guardComparison.left.place().local() != initMirLocal ||
+        guardComparison.left.place().rootType() != initLocal.type ||
+        guardComparison.left.place().resultType() != initLocal.type ||
+        guardComparison.left.place().projections().size() != 0 ||
+        guardComparison.right.kind() != MirOperandKind::Constant ||
+        guardComparison.right.constantValue().type != br.type ||
+        !sameConstant(guardComparison.right.constantValue().value, br.value, module, identities,
+                      semanticTypes)) {
+      return false;
+    }
+    const auto& guardSwitch = guard.terminator.switchIntValue();
+    if (guardSwitch.arms.size() != 1 || guardSwitch.defaultTarget != bodyBlockId) return false;
+    const auto& guardTrueArm = guardSwitch.arms[0];
+    if (guardTrueArm.target != exitBlockId) return false;
+    auto guardTrueValue = guardTrueArm.value.booleanValue();
+    if (guardTrueValue == zc::none || !ZC_ASSERT_NONNULL(guardTrueValue)) return false;
+    if (guardSwitch.discriminant.kind() != MirOperandKind::Copy ||
+        guardSwitch.discriminant.place().local() != breakTemp ||
+        guardSwitch.discriminant.place().rootType() != bb.type ||
+        guardSwitch.discriminant.place().resultType() != bb.type ||
+        guardSwitch.discriminant.place().projections().size() != 0) {
+      return false;
+    }
+  }
   // Entry: StorageLive(result), StorageLive(acc_k)..., StorageLive(i),
-  // StorageLive(temp).
+  // StorageLive(temp), [StorageLive(breakTemp)].
   if (entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal ||
       !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan)) {
@@ -3996,10 +4085,22 @@ bool validForLoopAccumulatorReturnFunction(
       !sameSpan(entry.statements[tempStorageLiveIndex].sourceSpan(), condition.sourceSpan)) {
     return false;
   }
+  if (hasBreakCondition) {
+    const size_t breakStorageLiveIndex = 3 + accumulatorCount;
+    const auto& bb = ZC_ASSERT_NONNULL(breakBinary);
+    if (entry.statements[breakStorageLiveIndex].kind() != MirStatementKind::StorageLive ||
+        entry.statements[breakStorageLiveIndex].storageLocal() != breakTemp ||
+        !sameSpan(entry.statements[breakStorageLiveIndex].sourceSpan(), bb.sourceSpan)) {
+      return false;
+    }
+  }
+  // The break-condition StorageLive shifts all subsequent entry statements by
+  // one when present.
+  const size_t entryOffset = hasBreakCondition ? 1 : 0;
   // Entry: Assign(acc_k = accInit_k, Initialize)...
   for (size_t k = 0; k < accumulatorCount; ++k) {
     const auto accMirLocal = localId(parameterCount + static_cast<uint32_t>(k) + 1);
-    const size_t assignIndex = 3 + accumulatorCount + k;
+    const size_t assignIndex = 3 + accumulatorCount + entryOffset + k;
     if (entry.statements[assignIndex].kind() != MirStatementKind::Assign) return false;
     const auto& accInitAssign = entry.statements[assignIndex].assignmentValue();
     hir::HirNodeId accInitializerNode;
@@ -4021,7 +4122,7 @@ bool validForLoopAccumulatorReturnFunction(
     }
   }
   // Entry: Assign(i = init, Initialize).
-  const size_t initAssignIndex = 3 + 2 * accumulatorCount;
+  const size_t initAssignIndex = 3 + 2 * accumulatorCount + entryOffset;
   if (entry.statements[initAssignIndex].kind() != MirStatementKind::Assign) return false;
   const auto& initAssign = entry.statements[initAssignIndex].assignmentValue();
   hir::HirNodeId initInitializerNode;
@@ -4041,7 +4142,7 @@ bool validForLoopAccumulatorReturnFunction(
     return false;
   }
   // Entry: Assign(temp = Comparison(op, copy(i), <lit>), Initialize).
-  const size_t entryCondIndex = 4 + 2 * accumulatorCount;
+  const size_t entryCondIndex = 4 + 2 * accumulatorCount + entryOffset;
   if (entry.statements[entryCondIndex].kind() != MirStatementKind::Assign) return false;
   const auto& entryCondAssign = entry.statements[entryCondIndex].assignmentValue();
   if (entryCondAssign.initialization != MirInitializationKind::Initialize ||
@@ -4066,9 +4167,9 @@ bool validForLoopAccumulatorReturnFunction(
                     identities, semanticTypes)) {
     return false;
   }
-  // Header SwitchInt: [true -> bb3], default = bb4.
+  // Header SwitchInt: [true -> bb3], default = exit.
   const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != exitBlockId) return false;
   const auto& trueArm = switchInt.arms[0];
   if (trueArm.target != blockId(3)) return false;
   auto trueValue = trueArm.value.booleanValue();
@@ -9060,12 +9161,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               ZC_IF_SOME(returnStatement, sourceReturn) {
                 const uint32_t parameterCount =
                     static_cast<uint32_t>(declaration.parameters.size());
+                const bool hasBreakCondition = loopValue.breakCondition.isValid();
                 const auto initLocalId =
                     localId(parameterCount + static_cast<uint32_t>(accCount) + 1);
                 const auto conditionTempId =
                     localId(parameterCount + static_cast<uint32_t>(accCount) + 2);
-                const auto resultLocalId =
+                const auto breakTempId =
                     localId(parameterCount + static_cast<uint32_t>(accCount) + 3);
+                const auto resultLocalId = localId(
+                    parameterCount + static_cast<uint32_t>(accCount) + (hasBreakCondition ? 4 : 3));
                 // Resolve accumulator initializers and validate shape.
                 zc::Vector<zc::Maybe<const hir::HirScalarLiteralExpression&>> accInitializers;
                 zc::Vector<MirLocalId> accMirLocalIds;
@@ -9088,8 +9192,25 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 auto initInitializer = expressionFor(hirModule, initInitializerNode);
                 auto conditionBinary = primitiveBinaryFor(hirModule, loopValue.condition);
                 auto returnReference = localReferenceFor(hirModule, returnStatement.value);
+                // Resolve the if-guarded break condition when present.
+                zc::Maybe<const hir::HirPrimitiveBinaryExpression&> breakConditionBinary;
+                zc::Maybe<const hir::HirLocalReferenceExpression&> breakConditionLeft;
+                zc::Maybe<const hir::HirScalarLiteralExpression&> breakConditionRight;
+                zc::Maybe<MirComparisonOperator> breakComparisonOperator;
+                if (hasBreakCondition) {
+                  breakConditionBinary = primitiveBinaryFor(hirModule, loopValue.breakCondition);
+                  ZC_IF_SOME(breakBinary, breakConditionBinary) {
+                    breakConditionLeft = localReferenceFor(hirModule, breakBinary.left);
+                    breakConditionRight = expressionFor(hirModule, breakBinary.right);
+                    breakComparisonOperator = mirComparisonOperatorFor(breakBinary.operation);
+                  }
+                }
+                const bool breakConditionOk =
+                    !hasBreakCondition ||
+                    (breakConditionBinary != zc::none && breakConditionLeft != zc::none &&
+                     breakConditionRight != zc::none && breakComparisonOperator != zc::none);
                 if (shapeOk && initInitializer != zc::none && conditionBinary != zc::none &&
-                    returnReference != zc::none) {
+                    returnReference != zc::none && breakConditionOk) {
                   ZC_IF_SOME(initValue, initInitializer) {
                     ZC_IF_SOME(condition, conditionBinary) {
                       ZC_IF_SOME(returnRef, returnReference) {
@@ -9218,9 +9339,20 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                         uwRight != zc::none) {
                                       ZC_IF_SOME(uwLhs, uwLeft) {
                                         ZC_IF_SOME(uwRhs, uwRight) {
+                                          const bool breakConditionValid =
+                                              !hasBreakCondition ||
+                                              (ZC_ASSERT_NONNULL(breakConditionLeft).local ==
+                                                   initLocal.local &&
+                                               ZC_ASSERT_NONNULL(breakConditionLeft).type ==
+                                                   initLocal.type &&
+                                               ZC_ASSERT_NONNULL(breakConditionRight).type ==
+                                                   initLocal.type &&
+                                               ZC_ASSERT_NONNULL(breakConditionBinary)
+                                                       .operandType == initLocal.type);
                                           if (uwLhs.local != initLocal.local ||
                                               uwLhs.type != initLocal.type ||
-                                              uwRhs.type != initLocal.type) {
+                                              uwRhs.type != initLocal.type ||
+                                              !breakConditionValid) {
                                             // Not an accumulator shape;
                                             // fall through.
                                           } else {
@@ -9254,6 +9386,14 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                 conditionTempId, MirLocalKind::Temporary,
                                                 condition.type, scopeId(1),
                                                 condition.sourceSpan.clone()});
+                                            if (hasBreakCondition) {
+                                              const auto& breakBinary =
+                                                  ZC_ASSERT_NONNULL(breakConditionBinary);
+                                              locals.add(MirLocalDeclaration{
+                                                  breakTempId, MirLocalKind::Temporary,
+                                                  breakBinary.type, scopeId(1),
+                                                  breakBinary.sourceSpan.clone()});
+                                            }
                                             locals.add(MirLocalDeclaration{
                                                 resultLocalId, MirLocalKind::FunctionResult,
                                                 declaration.resultType, scopeId(1),
@@ -9280,6 +9420,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                 initLocalId, initLocal.sourceSpan.clone()));
                                             entryStatements.add(MirStatement::storageLive(
                                                 conditionTempId, condition.sourceSpan.clone()));
+                                            if (hasBreakCondition) {
+                                              const auto& breakBinary =
+                                                  ZC_ASSERT_NONNULL(breakConditionBinary);
+                                              entryStatements.add(MirStatement::storageLive(
+                                                  breakTempId, breakBinary.sourceSpan.clone()));
+                                            }
                                             for (size_t k = 0; k < accCount; ++k) {
                                               const auto& accLocal =
                                                   ZC_ASSERT_NONNULL(sourceAccLocals[k]);
@@ -9512,14 +9658,29 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                     zc::mv(ZC_ASSERT_NONNULL(exitCopyOperand))),
                                                 MirInitializationKind::Initialize,
                                                 returnRef.sourceSpan.clone()));
+                                            // Block layout: the four-block
+                                            // CFG is entry/header/body/exit.
+                                            // When an if-guarded break is
+                                            // present, a guard block is
+                                            // inserted between the header and
+                                            // the body: entry/header/guard/
+                                            // continuation/exit. The guard
+                                            // block evaluates the break
+                                            // condition and routes to the
+                                            // exit (break taken) or the
+                                            // continuation (break not taken).
+                                            const auto exitBlockId =
+                                                hasBreakCondition ? blockId(5) : blockId(4);
+                                            const auto bodyBlockId =
+                                                hasBreakCondition ? blockId(4) : blockId(3);
                                             // A trailing break exits the
-                                            // body to the loop exit (bb4);
-                                            // a trailing continue or a
+                                            // body to the loop exit; a
+                                            // trailing continue or a
                                             // write-only body jumps back
                                             // to the header (bb2, the
                                             // reducible back-edge).
                                             const auto bodyTerminatorTarget =
-                                                loopValue.breakSpan != zc::none ? blockId(4)
+                                                loopValue.breakSpan != zc::none ? exitBlockId
                                                                                 : blockId(2);
                                             const auto& bodyTerminatorSpan =
                                                 loopValue.breakSpan != zc::none
@@ -9528,6 +9689,59 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                            ? ZC_ASSERT_NONNULL(
                                                                  loopValue.continueSpan)
                                                            : loopValue.sourceSpan);
+                                            // Guard block: Assign(breakTemp =
+                                            // Comparison(op, copy(i), <lit>),
+                                            // Initialize), SwitchInt(copy(
+                                            // breakTemp), [true -> exit],
+                                            // default = body).
+                                            zc::Vector<MirStatement> guardStatements;
+                                            zc::Maybe<MirOperand> guardDiscriminant;
+                                            if (hasBreakCondition) {
+                                              const auto& breakBinary =
+                                                  ZC_ASSERT_NONNULL(breakConditionBinary);
+                                              const auto& breakRight =
+                                                  ZC_ASSERT_NONNULL(breakConditionRight);
+                                              zc::Vector<MirProjection> guardLeftProjections;
+                                              auto guardLeftOperand =
+                                                  placeUse(proofs, copy,
+                                                           MirPlace(initLocalId, initLocal.type,
+                                                                    zc::mv(guardLeftProjections),
+                                                                    initLocal.type));
+                                              if (guardLeftOperand == zc::none) {
+                                                return rejectMir<BuiltMirCandidate>(
+                                                    ir::IrFailurePhase::MirConstruction,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    declaration.definition, identities,
+                                                    static_cast<uint32_t>(pending.size() + 1));
+                                              }
+                                              zc::Vector<MirProjection> guardTempProjections;
+                                              guardStatements.add(MirStatement::assign(
+                                                  MirPlace(breakTempId, breakBinary.type,
+                                                           zc::mv(guardTempProjections),
+                                                           breakBinary.type),
+                                                  MirRvalue::comparison(
+                                                      ZC_ASSERT_NONNULL(breakComparisonOperator),
+                                                      zc::mv(ZC_ASSERT_NONNULL(guardLeftOperand)),
+                                                      MirOperand::constant(
+                                                          breakRight.type,
+                                                          breakRight.value.clone()),
+                                                      breakBinary.type),
+                                                  MirInitializationKind::Overwrite,
+                                                  breakBinary.sourceSpan.clone()));
+                                              zc::Vector<MirProjection> guardDiscProjections;
+                                              guardDiscriminant =
+                                                  placeUse(proofs, copy,
+                                                           MirPlace(breakTempId, breakBinary.type,
+                                                                    zc::mv(guardDiscProjections),
+                                                                    breakBinary.type));
+                                              if (guardDiscriminant == zc::none) {
+                                                return rejectMir<BuiltMirCandidate>(
+                                                    ir::IrFailurePhase::MirConstruction,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    declaration.definition, identities,
+                                                    static_cast<uint32_t>(pending.size() + 1));
+                                              }
+                                            }
                                             zc::Vector<MirBasicBlock> blocks;
                                             blocks.add(MirBasicBlock{
                                                 blockId(1), scopeId(1), zc::mv(entryStatements),
@@ -9537,15 +9751,29 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                 blockId(2), scopeId(1), zc::Vector<MirStatement>{},
                                                 MirTerminator::switchInt(
                                                     zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                    zc::mv(arms), blockId(4),
+                                                    zc::mv(arms), exitBlockId,
                                                     loopValue.sourceSpan.clone())});
+                                            if (hasBreakCondition) {
+                                              zc::Vector<MirSwitchIntArm> guardArms;
+                                              guardArms.add(MirSwitchIntArm{
+                                                  checker::checked::CanonicalConstValue::boolean(
+                                                      true),
+                                                  exitBlockId});
+                                              blocks.add(MirBasicBlock{
+                                                  blockId(3), scopeId(1), zc::mv(guardStatements),
+                                                  MirTerminator::switchInt(
+                                                      zc::mv(ZC_ASSERT_NONNULL(guardDiscriminant)),
+                                                      zc::mv(guardArms), bodyBlockId,
+                                                      ZC_ASSERT_NONNULL(breakConditionBinary)
+                                                          .sourceSpan.clone())});
+                                            }
                                             blocks.add(MirBasicBlock{
-                                                blockId(3), scopeId(1), zc::mv(bodyStatements),
+                                                bodyBlockId, scopeId(1), zc::mv(bodyStatements),
                                                 MirTerminator::gotoTarget(
                                                     bodyTerminatorTarget,
                                                     bodyTerminatorSpan.clone())});
                                             blocks.add(MirBasicBlock{
-                                                blockId(4), scopeId(1), zc::mv(exitStatements),
+                                                exitBlockId, scopeId(1), zc::mv(exitStatements),
                                                 MirTerminator::returnValue(
                                                     zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                                     returnStatement.sourceSpan.clone())});
@@ -12883,6 +13111,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                   valid = validForLoopAccumulatorReturnFunction(
                       function, sourceDeclaration, block, loopValue, returnStatement, condition,
                       returnRef, hirModule, proofs, copy, module, identities, semanticTypes);
+                  if (!valid) {}
                 }
               }
             }

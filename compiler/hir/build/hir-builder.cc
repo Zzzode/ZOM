@@ -6598,6 +6598,46 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  registries, ordinal + 2);
           }
         }
+        // Resolve the if-guarded break condition (`if (i == <lit>) { break; }`):
+        // a binary comparison whose left operand is the loop init local and
+        // whose right operand is a scalar literal. The guard block evaluates
+        // this comparison before the accumulator writes and exits the loop on
+        // true.
+        zc::Maybe<size_t> breakCondResultTypeIndex;
+        zc::Maybe<size_t> breakCondCallIndex;
+        zc::Maybe<size_t> breakCondLhsTypeIndex;
+        zc::Maybe<size_t> breakCondRhsTypeIndex;
+        zc::Maybe<binder::OwnerLocalBindingId> breakCondLhsBinding;
+        zc::Maybe<size_t> breakCondRhsLiteralIndex;
+        zc::Maybe<identity::SourceSpan> breakCondSpan;
+        zc::Maybe<identity::SourceSpan> breakCondLhsSpan;
+        zc::Maybe<identity::SourceSpan> breakCondRhsSpan;
+        if (shape.forLoopBodyBreakCondition) {
+          const auto& breakCondNode = tree.node(shape.forLoopBodyBreakCondition);
+          if (breakCondNode.kind != ast::SyntaxKind::BinaryExpr) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const ast::NodeId breakCondLhs(breakCondNode.payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId breakCondRhs(breakCondNode.payload.words[ast::kBinaryExprRhsWord]);
+          if (!tree.contains(breakCondLhs) ||
+              tree.node(breakCondLhs).kind != ast::SyntaxKind::IdentExpr ||
+              !tree.contains(breakCondRhs) || !isScalarLiteral(tree.node(breakCondRhs).kind)) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          breakCondResultTypeIndex = factIndex(facts.nodeTypes(), shape.forLoopBodyBreakCondition);
+          breakCondCallIndex = factIndex(facts.calls(), shape.forLoopBodyBreakCondition);
+          breakCondLhsTypeIndex = factIndex(facts.nodeTypes(), breakCondLhs);
+          breakCondRhsTypeIndex = factIndex(facts.nodeTypes(), breakCondRhs);
+          breakCondLhsBinding = resolvedOwnerLocal(bound.bindings(), breakCondLhs);
+          breakCondRhsLiteralIndex = factIndex(facts.literals(), breakCondRhs);
+          breakCondSpan = bound.parsedModule().spanFor(breakCondNode.range);
+          breakCondLhsSpan = bound.parsedModule().spanFor(tree.node(breakCondLhs).range);
+          breakCondRhsSpan = bound.parsedModule().spanFor(tree.node(breakCondRhs).range);
+        }
         // Resolve each accumulator: its pattern/initializer, body write, and
         // facts. The body write right operand is either the loop init local
         // (IdentExpr) or a scalar literal.
@@ -6820,7 +6860,70 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
+        // Resolve the init type early so the break condition validation can
+        // compare against it.
         size_t initTypeSlot = 0;
+        ZC_IF_SOME(index, initTypeIndex) { initTypeSlot = index; }
+        const auto initType = facts.nodeTypes().entries()[initTypeSlot].value;
+        // Resolve the break condition comparison facts when a guarded break is
+        // present. The left operand must resolve to the loop init local and the
+        // operation must be a scalar comparison.
+        checker::PrimitiveOperation breakCondOperation = checker::PrimitiveOperation::Eq;
+        identity::SemanticTypeId breakCondResultType{};
+        identity::SemanticTypeId breakCondLhsType{};
+        identity::SemanticTypeId breakCondRhsType{};
+        zc::Maybe<checker::checked::CanonicalConstValue> breakCondRhsLiteral;
+        bool breakCondResolved = false;
+        if (shape.forLoopBodyBreakCondition) {
+          if (breakCondResultTypeIndex == zc::none || breakCondCallIndex == zc::none ||
+              breakCondLhsTypeIndex == zc::none || breakCondRhsTypeIndex == zc::none ||
+              breakCondLhsBinding == zc::none || breakCondRhsLiteralIndex == zc::none ||
+              breakCondSpan == zc::none || breakCondLhsSpan == zc::none ||
+              breakCondRhsSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          if (ZC_ASSERT_NONNULL(initBinding) != ZC_ASSERT_NONNULL(breakCondLhsBinding)) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          size_t breakCondResultTypeSlot = 0;
+          size_t breakCondCallSlot = 0;
+          size_t breakCondLhsTypeSlot = 0;
+          size_t breakCondRhsTypeSlot = 0;
+          size_t breakCondRhsLiteralSlot = 0;
+          ZC_IF_SOME(index, breakCondResultTypeIndex) { breakCondResultTypeSlot = index; }
+          ZC_IF_SOME(index, breakCondCallIndex) { breakCondCallSlot = index; }
+          ZC_IF_SOME(index, breakCondLhsTypeIndex) { breakCondLhsTypeSlot = index; }
+          ZC_IF_SOME(index, breakCondRhsTypeIndex) { breakCondRhsTypeSlot = index; }
+          ZC_IF_SOME(index, breakCondRhsLiteralIndex) { breakCondRhsLiteralSlot = index; }
+          breakCondResultType = facts.nodeTypes().entries()[breakCondResultTypeSlot].value;
+          breakCondLhsType = facts.nodeTypes().entries()[breakCondLhsTypeSlot].value;
+          breakCondRhsType = facts.nodeTypes().entries()[breakCondRhsTypeSlot].value;
+          const auto& breakCondRhsLiteralFact =
+              facts.literals().entries()[breakCondRhsLiteralSlot].value;
+          breakCondRhsLiteral = breakCondRhsLiteralFact.literal.clone();
+          const auto& breakCondCallFact = facts.calls().entries()[breakCondCallSlot].value;
+          const auto& breakCondSelected = breakCondCallFact.invocation.selected.variant();
+          if (!breakCondSelected.is<checker::checked::PrimitiveCallable>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          breakCondOperation =
+              breakCondSelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (!isScalarComparisonOperation(breakCondOperation) ||
+              !isBoolSemanticType(checkedModule.semanticTypes(), breakCondResultType) ||
+              breakCondLhsType != breakCondRhsType || breakCondLhsType != initType ||
+              breakCondRhsLiteralFact.type != breakCondRhsType) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          breakCondResolved = true;
+        }
         size_t initLiteralSlot = 0;
         size_t condResultTypeSlot = 0;
         size_t condCallSlot = 0;
@@ -6833,7 +6936,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         size_t updateRhsTypeSlot = 0;
         size_t updateRhsLiteralSlot = 0;
         size_t returnTypeSlot = 0;
-        ZC_IF_SOME(index, initTypeIndex) { initTypeSlot = index; }
         ZC_IF_SOME(index, initLiteralIndex) { initLiteralSlot = index; }
         ZC_IF_SOME(index, condResultTypeIndex) { condResultTypeSlot = index; }
         ZC_IF_SOME(index, condCallIndex) { condCallSlot = index; }
@@ -6846,7 +6948,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         ZC_IF_SOME(index, updateRhsTypeIndex) { updateRhsTypeSlot = index; }
         ZC_IF_SOME(index, updateRhsLiteralIndex) { updateRhsLiteralSlot = index; }
         ZC_IF_SOME(index, returnTypeIndex) { returnTypeSlot = index; }
-        const auto initType = facts.nodeTypes().entries()[initTypeSlot].value;
         const auto& initLiteralFact = facts.literals().entries()[initLiteralSlot].value;
         const auto condResultType = facts.nodeTypes().entries()[condResultTypeSlot].value;
         const auto condLhsType = facts.nodeTypes().entries()[condLhsTypeSlot].value;
@@ -6884,6 +6985,26 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
+        // Build the if-guarded break condition comparison when present. The
+        // left operand is a place reference to the loop init local; the right
+        // operand is the scalar literal. The lowering function materializes the
+        // nodes and wires them to the loop statement's breakCondition field.
+        zc::Maybe<HirPrimitiveBinaryExpression> breakCondition;
+        zc::Maybe<HirLocalReferenceExpression> breakConditionLeft;
+        zc::Maybe<HirScalarLiteralExpression> breakConditionRight;
+        if (breakCondResolved) {
+          breakCondition = zc::some(HirPrimitiveBinaryExpression{
+              HirNodeId(), HirNodeId(), HirNodeId(), breakCondLhsType, breakCondResultType,
+              HirValueCategory::Value, breakCondOperation,
+              ZC_ASSERT_NONNULL(breakCondSpan).clone()});
+          breakConditionLeft = zc::some(HirLocalReferenceExpression{
+              HirNodeId(), hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)),
+              breakCondLhsType, HirValueCategory::Place,
+              ZC_ASSERT_NONNULL(breakCondLhsSpan).clone()});
+          breakConditionRight = zc::some(HirScalarLiteralExpression{
+              HirNodeId(), breakCondRhsType, zc::mv(ZC_ASSERT_NONNULL(breakCondRhsLiteral)),
+              HirValueCategory::Value, ZC_ASSERT_NONNULL(breakCondRhsSpan).clone()});
+        }
         forLoopAccumulatorReturn = PendingForLoopAccumulatorReturn{
             HirPrimitiveBinaryExpression{HirNodeId(), HirNodeId(), HirNodeId(), condLhsType,
                                          condResultType, HirValueCategory::Value, condOperation,
@@ -6919,7 +7040,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                         HirValueCategory::Place,
                                         ZC_ASSERT_NONNULL(returnSpan).clone()},
             zc::mv(breakSpan),
-            zc::mv(continueSpan)};
+            zc::mv(continueSpan),
+            zc::mv(breakCondition),
+            zc::mv(breakConditionLeft),
+            zc::mv(breakConditionRight)};
       }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       callable.success,
@@ -7280,6 +7404,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // (rather than a place reference to the loop init local).
   size_t forLoopAccumulatorCount = 0;
   size_t forLoopAccumulatorLiteralRightCount = 0;
+  // Subset of for-loop accumulator functions whose body starts with an
+  // if-guarded break. Each carries one extra comparison (three node-type
+  // facts, one literal fact, one call fact) for the break condition.
+  size_t forLoopAccumulatorGuardedBreakCount = 0;
   for (const auto& function : pendingFunctions) {
     if (function.voidBody) ++voidFunctionCount;
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
@@ -7513,6 +7641,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         for (const auto& accumulator : acc.accumulators) {
           if (accumulator.bodyWriteRightIsLiteral) ++forLoopAccumulatorLiteralRightCount;
         }
+        if (acc.breakCondition != zc::none) ++forLoopAccumulatorGuardedBreakCount;
       }
       continue;
     }
@@ -7796,7 +7925,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
       leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
       postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
-      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6;
+      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
+      forLoopAccumulatorGuardedBreakCount * 3;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -7822,7 +7952,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           postfixIncrementWriteCount + static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +
           static_cast<int64_t>(forLoopAccumulatorCount) +
-          static_cast<int64_t>(forLoopAccumulatorLiteralRightCount)) +
+          static_cast<int64_t>(forLoopAccumulatorLiteralRightCount) +
+          static_cast<int64_t>(forLoopAccumulatorGuardedBreakCount)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7834,7 +7965,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
       compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
       receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
-      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount;
+      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
+      forLoopAccumulatorGuardedBreakCount;
   if (facts.calls().size() != expectedCalls ||
       checkedModule.dispatchFacts().facts().size() != expectedCalls) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

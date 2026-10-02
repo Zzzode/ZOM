@@ -584,6 +584,29 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
       forLoop.write.kind, forLoop.write.sourceSpan.clone(), forLoop.write.valueSpan.clone()});
   loopStatements.add(writeId);
 
+  // If-guarded break condition: `if (i == <lit>) { break; }`. Materialize the
+  // comparison (left local-ref, right literal, binary) and wire the binary node
+  // id to the loop statement's breakCondition field. The MIR builder lowers a
+  // guard block that evaluates this comparison before the accumulator writes.
+  HirNodeId breakConditionId{};
+  if (forLoop.breakCondition != zc::none) {
+    const HirNodeId breakCondLeftId = ctx.allocNode();
+    const HirNodeId breakCondRightId = ctx.allocNode();
+    breakConditionId = ctx.allocNode();
+    const auto& breakCondLeft = ZC_ASSERT_NONNULL(forLoop.breakConditionLeft);
+    const auto& breakCondRight = ZC_ASSERT_NONNULL(forLoop.breakConditionRight);
+    const auto& breakCond = ZC_ASSERT_NONNULL(forLoop.breakCondition);
+    ctx.addLocalReference(HirLocalReferenceExpression{breakCondLeftId, breakCondLeft.local,
+                                                      breakCondLeft.type, breakCondLeft.category,
+                                                      breakCondLeft.sourceSpan.clone()});
+    ctx.addExpression(HirScalarLiteralExpression{
+        breakCondRightId, breakCondRight.type, breakCondRight.value.clone(),
+        breakCondRight.category, breakCondRight.sourceSpan.clone()});
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        breakConditionId, breakCondLeftId, breakCondRightId, breakCond.operandType, breakCond.type,
+        breakCond.category, breakCond.operation, breakCond.sourceSpan.clone()});
+  }
+
   const HirNodeId loopId = ctx.allocNode();
   const HirNodeId returnId = ctx.allocNode();
   const HirNodeId returnValueId = ctx.allocNode();
@@ -594,7 +617,8 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
                                    function.returnSpan.clone()});
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), forLoop.condition.type,
                                HirValueCategory::Place, zc::mv(forLoop.loopSpan),
-                               zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan)});
+                               zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan),
+                               breakConditionId});
   // The return value is a place reference to the first accumulator local.
   ctx.addLocalReference(HirLocalReferenceExpression{
       returnValueId, forLoop.returnReference.local, forLoop.returnReference.type,

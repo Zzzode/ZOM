@@ -376,6 +376,14 @@ struct HirConditionalExpression final {
 /// for a trailing continue: the body block jumps back to the header, the same
 /// terminator as a write-only fallthrough body (the span is retained for source
 /// fidelity). At most one is set; both are none for a write-only body.
+///
+/// A loop-body composite may instead begin with one if-guarded break
+/// (`if (<cond>) { break; }`). `breakCondition` is the condition comparison
+/// node id in that case: the MIR builder lowers a guard block that evaluates
+/// the comparison before the accumulator writes and exits the loop on true,
+/// splitting the body into a guard block and a continuation block. Invalid
+/// when the body has no guarded break. `breakSpan`/`continueSpan` stay empty
+/// for a guarded-break body (the guard block owns the exit terminator).
 struct HirLoopStatement final {
   HirNodeId node;
   HirNodeId condition;
@@ -385,6 +393,7 @@ struct HirLoopStatement final {
   identity::SourceSpan sourceSpan;
   zc::Maybe<identity::SourceSpan> breakSpan;
   zc::Maybe<identity::SourceSpan> continueSpan;
+  HirNodeId breakCondition{};
 };
 
 /// \brief One scalar return statement in immutable semantic HIR.

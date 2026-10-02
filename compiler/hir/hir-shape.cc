@@ -111,6 +111,45 @@ bool isAccumulatorBodyWrite(const ast::Tree& tree, ast::NodeId statement) {
   return isLeaf(left) && isLeaf(right) && (leftIdent || rightIdent);
 }
 
+// One if-guarded `break;` loop-body statement: `if (<cond>) { break; }` with no
+// else branch. Returns the condition comparison AST node when the statement
+// matches, so the caller can carry it for the builder.
+zc::Maybe<ast::NodeId> accumulatorGuardedBreakCondition(const ast::Tree& tree,
+                                                        ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return zc::none;
+  ast::NodeId stmt;
+  ZC_IF_SOME(value, item) { stmt = value; }
+  if (tree.node(stmt).kind != ast::SyntaxKind::IfStmt) return zc::none;
+  const auto& ifNode = tree.node(stmt);
+  if (ifNode.payload.words[ast::kIfStmtElseStmtWord] != 0) return zc::none;
+  const ast::NodeId cond(ifNode.payload.words[ast::kIfStmtCondWord]);
+  const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+  if (!tree.contains(cond) || tree.node(cond).kind != ast::SyntaxKind::BinaryExpr ||
+      !tree.contains(thenStmt) || tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt) {
+    return zc::none;
+  }
+  const ast::NodeId condLeft(tree.node(cond).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId condRight(tree.node(cond).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(condLeft) || !tree.contains(condRight)) return zc::none;
+  const bool condLeftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+  const bool condRightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+  const bool condLeftOk = condLeftIdent || isScalarLiteral(tree.node(condLeft).kind);
+  const bool condRightOk = condRightIdent || isScalarLiteral(tree.node(condRight).kind);
+  if (!condLeftOk || !condRightOk || (!condLeftIdent && !condRightIdent)) return zc::none;
+  const auto& thenBlock = tree.node(thenStmt);
+  const ast::NodeList thenStmts{thenBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                thenBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(thenStmts) || thenStmts.size != 1) return zc::none;
+  auto breakItem = statementItem(tree, tree.list(thenStmts)[0]);
+  if (breakItem == zc::none) return zc::none;
+  ast::NodeId breakStmt;
+  ZC_IF_SOME(value, breakItem) { breakStmt = value; }
+  if (tree.node(breakStmt).kind != ast::SyntaxKind::BreakStmt) return zc::none;
+  if (tree.node(breakStmt).payload.words[ast::kBreakStmtLabelWord] != 0) return zc::none;
+  return cond;
+}
+
 // One method parameter-list classification: whether the leading declared
 // parameter is the implicit `this` receiver and the count of ordinary declared
 // parameters after it.
@@ -1606,19 +1645,30 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                 loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
                 loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
             if (tree.contains(loopStatements) && loopStatements.size >= accumulatorCount &&
-                loopStatements.size <= accumulatorCount + 1) {
+                loopStatements.size <= accumulatorCount + 2) {
               zc::Vector<ast::NodeId> bodyWrites;
               bool bodyOk = true;
-              for (size_t i = 0; i < accumulatorCount; ++i) {
-                if (!isAccumulatorBodyWrite(tree, tree.list(loopStatements)[i])) {
+              // An if-guarded break leads the body: `if (<cond>) { break; }`
+              // followed by the N accumulator writes. The guard evaluates
+              // before the writes in source order, so the write suffix starts
+              // at index 1 and the body size is N+1.
+              auto guardedBreak =
+                  accumulatorGuardedBreakCondition(tree, tree.list(loopStatements)[0]);
+              const bool hasGuardedBreak = guardedBreak != zc::none;
+              const size_t writeOffset = hasGuardedBreak ? 1 : 0;
+              if (hasGuardedBreak && loopStatements.size != accumulatorCount + 1) {
+                bodyOk = false;
+              }
+              for (size_t i = 0; bodyOk && i < accumulatorCount; ++i) {
+                if (!isAccumulatorBodyWrite(tree, tree.list(loopStatements)[writeOffset + i])) {
                   bodyOk = false;
                   break;
                 }
-                bodyWrites.add(tree.list(loopStatements)[i]);
+                bodyWrites.add(tree.list(loopStatements)[writeOffset + i]);
               }
               ast::NodeId trailingBreak{};
               ast::NodeId trailingContinue{};
-              if (bodyOk && loopStatements.size == accumulatorCount + 1) {
+              if (bodyOk && !hasGuardedBreak && loopStatements.size == accumulatorCount + 1) {
                 auto trailingItem =
                     statementItem(tree, tree.list(loopStatements)[accumulatorCount]);
                 if (trailingItem == zc::none) {
@@ -1660,6 +1710,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                 shape.forLoopStatement = forStmt;
                 shape.forLoopBodyBreak = trailingBreak;
                 shape.forLoopBodyContinue = trailingContinue;
+                if (hasGuardedBreak) {
+                  ZC_IF_SOME(breakCond, guardedBreak) {
+                    shape.forLoopBodyBreakCondition = breakCond;
+                  }
+                }
                 return shape;
               }
             }
