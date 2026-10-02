@@ -1,13 +1,7 @@
-// RUN: cd %corpus && ! %zomc compile --check 08-adt/enum_explicit_discriminant_capability_neg_24.zom > %t 2>&1
+// RUN: cd %corpus && %zomc compile --check 08-adt/enum_explicit_discriminant_capability_neg_24.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// Explicit enum discriminants are grammar-accepted but outside the implemented
-// enum surface; each annotated variant drains on the declaration as ZOM4128,
-// never as an internal compiler error.
+// Integer-literal explicit discriminants are admitted by the enum surface;
+// no diagnostics are emitted.
 
-// CHECK-LITERAL: Error [ZOM4128]: explicit enum discriminants are not supported yet
-// CHECK-LITERAL:   --> conformance/08-adt/enum_explicit_discriminant_capability_neg_24.zom:3:5
-// CHECK-LITERAL: 3 |     B = 2,
-// CHECK-LITERAL: Error [ZOM4128]: explicit enum discriminants are not supported yet
-// CHECK-LITERAL:   --> conformance/08-adt/enum_explicit_discriminant_capability_neg_24.zom:2:5
-// CHECK-LITERAL: 2 |     A = 1,
+// CHECK-NOT: ZOM4128

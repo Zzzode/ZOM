@@ -315,6 +315,25 @@ zc::Maybe<uint32_t> singleUtf8Scalar(zc::StringPtr text) noexcept {
 
 }  // namespace
 
+zc::Maybe<signature::CanonicalInteger> integerLiteralNodeValue(const ast::Tree& tree,
+                                                               ast::NodeId node) {
+  if (!tree.contains(node)) return zc::none;
+  const auto& syntax = tree.node(node);
+  if (syntax.kind != ast::SyntaxKind::IntLiteral) return zc::none;
+  if (!payloadHasOnlyWords(syntax, ast::kIntLiteralPayloadWordCount)) return zc::none;
+  const uint32_t rawBase = syntax.payload.words[ast::kIntLiteralBaseWord];
+  if (rawBase > 0xff) return zc::none;
+  const auto base = static_cast<uint8_t>(rawBase);
+  zc::Maybe<signature::CanonicalInteger> result;
+  ZC_IF_SOME(text, bigIntText(tree, syntax.payload.words[ast::kIntLiteralValueWord])) {
+    auto parsed = parseIntegerLiteral(text, base, false);
+    if (parsed.is<ParsedIntegerLiteral>()) {
+      result = zc::mv(parsed).get<ParsedIntegerLiteral>().value;
+    }
+  }
+  return result;
+}
+
 bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept {
   switch (kind) {
     case ast::SyntaxKind::NullLiteral:

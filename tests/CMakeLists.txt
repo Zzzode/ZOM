@@ -217,6 +217,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-discriminants-consumer/Zom.toml::enum_discriminants_consumer::enum_discriminants_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -328,6 +330,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-default-consumer/Zom.toml::match_default_consumer::match_default_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-discriminants-consumer/Zom.toml::enum_discriminants_consumer::enum_discriminants_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)

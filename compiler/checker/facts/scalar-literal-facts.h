@@ -64,6 +64,16 @@ ZC_NODISCARD bool isEmittableScalarLiteral(ast::SyntaxKind kind) noexcept;
 ZC_NODISCARD zc::Maybe<type::semantic::PrimitiveKind> scalarLiteralPrimitiveKind(
     ast::SyntaxKind kind) noexcept;
 
+/// \brief Parses the integer value of an integer-literal AST node.
+///
+/// Returns the canonical integer value when `node` is an `IntLiteral` whose
+/// text parses and whose magnitude fits the fixed-width integer range the
+/// literal parser admits (up to u64); returns none for a non-integer node, a
+/// malformed literal, or an out-of-range magnitude. Callers that need a
+/// source diagnostic on none keep their own fail-closed drain.
+ZC_NODISCARD zc::Maybe<signature::CanonicalInteger> integerLiteralNodeValue(const ast::Tree& tree,
+                                                                            ast::NodeId node);
+
 /// \brief Produces canonical scalar-literal facts for signature and body checking.
 class FactEmitter final {
 public:

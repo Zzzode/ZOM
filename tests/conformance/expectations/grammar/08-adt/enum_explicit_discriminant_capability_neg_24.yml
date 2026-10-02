@@ -2,4 +2,4 @@ section: "08-adt explicit enum discriminant"
 covers_rule: "enumVariant (ASSIGN expression alt)"
 expected: "ACCEPT"
 notes:
-  - "The grammar admits explicit discriminants; the enum surface does not implement them, so each annotated variant drains with ZOM4128."
+  - "The grammar admits explicit discriminants; the checker admits integer-literal discriminants and drains non-integer-literal const expressions with ZOM4128."

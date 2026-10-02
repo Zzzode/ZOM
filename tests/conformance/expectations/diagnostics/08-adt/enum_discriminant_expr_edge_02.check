@@ -1,0 +1,16 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/enum_discriminant_expr_edge_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Non-integer-literal discriminants (const expressions) are grammar-accepted
+// but outside the implemented enum surface; each annotated variant drains on
+// the declaration as ZOM4128, never as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4128]: explicit enum discriminants are not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/enum_discriminant_expr_edge_02.zom:4:5
+// CHECK-LITERAL: 4 |     C = 1 + 2,
+// CHECK-LITERAL: Error [ZOM4128]: explicit enum discriminants are not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/enum_discriminant_expr_edge_02.zom:3:5
+// CHECK-LITERAL: 3 |     B = 1 << 1,
+// CHECK-LITERAL: Error [ZOM4128]: explicit enum discriminants are not supported yet
+// CHECK-LITERAL:   --> conformance/08-adt/enum_discriminant_expr_edge_02.zom:2:5
+// CHECK-LITERAL: 2 |     A = 1 << 0,

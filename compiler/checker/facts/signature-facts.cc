@@ -8529,23 +8529,24 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
         if (variantTypeRejected) { continue; }
-        if (tree.contains(discriminantNode)) {
-          // Explicit enum discriminants (`A = 1`) are grammar the parser and
-          // binder accept, but the enum surface does not implement them yet.
-          // Drain the annotated variant as ZOM4128 on its declaration rather
-          // than encoding the discriminant and reaching a downstream IR
-          // invariant.
-          auto failure = signatureSourceFailure(
-              SignatureSourceDiagnostic::EnumDiscriminantSemanticsUnavailable, input.boundModule,
-              definition.node, definition.node);
-          if (failure == zc::none) {
-            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
-                                                definition.node.value));
-          }
-          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
-          continue;
-        }
         zc::Maybe<CanonicalInteger> discriminant;
+        if (tree.contains(discriminantNode)) {
+          // Only integer-literal discriminants (`A = 10`) are admitted; a
+          // general const expression keeps the ZOM4128 drain until the enum
+          // surface evaluates them.
+          discriminant = scalar_literal::integerLiteralNodeValue(tree, discriminantNode);
+          if (discriminant == zc::none) {
+            auto failure = signatureSourceFailure(
+                SignatureSourceDiagnostic::EnumDiscriminantSemanticsUnavailable, input.boundModule,
+                definition.node, definition.node);
+            if (failure == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                  module, definition.node.value));
+            }
+            ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+            continue;
+          }
+        }
         SignatureScope variantScope(EnclosedSignatureScope{ownerDefinition});
         built.add(
             BuiltSignature{SemanticSignature{definition.definition, definitionKind,

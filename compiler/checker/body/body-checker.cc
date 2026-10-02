@@ -1013,8 +1013,9 @@ zc::Maybe<NominalFieldShape> nominalFieldShape(const BodyCheckingInput& input,
 
 /// \brief Shape of a qualified enum variant access such as `Color::Red`. The
 /// enum type is the nominal type of the enum definition; the variant is the
-/// resolved enum variant definition; the discriminant is the zero-based index
-/// of the variant within the enum's variant list.
+/// resolved enum variant definition; the discriminant is the variant's
+/// explicit integer discriminant when the variant declares one (`Red = 10`),
+/// otherwise its zero-based index within the enum's variant list.
 struct EnumVariantValueShape final {
   identity::SemanticTypeId enumType;
   identity::DefId variant;
@@ -1084,6 +1085,16 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
     const auto& variantSignature =
         signature.payload.variant().get<signature::EnumVariantSignature>();
     if (variantSignature.payload.size() != 0) return zc::none;
+    ZC_IF_SOME(explicitDiscriminant, variantSignature.discriminant) {
+      // An explicit discriminant (`Red = 10`) overrides the zero-based index.
+      // The magnitude is big-endian and bounded to u64 by the literal parser.
+      if (explicitDiscriminant.magnitude.size() > 8) return zc::none;
+      uint64_t explicitValue = 0;
+      for (const uint8_t byte : explicitDiscriminant.magnitude.asPtr()) {
+        explicitValue = (explicitValue << 8) | byte;
+      }
+      discriminant = explicitValue;
+    }
   }
   auto admitted = input.semanticTypes.canonicalizeClosed(
       type::semantic::TypeData(type::semantic::NominalTypeData{enumDefId, {}}));
@@ -4339,6 +4350,22 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       qualifiedMemberBases.add(object);
     }
   });
+  // Collect discriminant expression nodes of enum variants with explicit
+  // discriminants (`Red = 10`). These are part of the variant signature, not
+  // the function body; the signature facts builder encodes them in the variant
+  // signature. The body checker must not produce node-type or literal facts
+  // for them, since the HIR count equations only cover function bodies and
+  // value-declaration initializers.
+  zc::Vector<ast::NodeId> enumDiscriminantNodes;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (syntax.kind == ast::SyntaxKind::UnitVariant) {
+      const ast::NodeId discriminant(syntax.payload.words[ast::kUnitVariantDiscriminantWord]);
+      if (tree.contains(discriminant)) { enumDiscriminantNodes.add(discriminant); }
+    } else if (syntax.kind == ast::SyntaxKind::TupleVariant) {
+      const ast::NodeId discriminant(syntax.payload.words[ast::kTupleVariantDiscriminantWord]);
+      if (tree.contains(discriminant)) { enumDiscriminantNodes.add(discriminant); }
+    }
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -4352,6 +4379,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                            syntax.kind == ast::SyntaxKind::SuspendStatement) &&
                           !(isPattern(syntax.kind) && isMatchArmPattern(tree, node));
     if (!bodyNode) return;
+    // Skip enum variant discriminant expressions; they belong to the variant
+    // signature, not the body.
+    for (const auto discriminant : enumDiscriminantNodes) {
+      if (discriminant == node) return;
+    }
     // Skip the base identifier of a qualified member access; it is a
     // type-namespace reference, not a value production site, and needs no
     // NodeType fact or production site.
