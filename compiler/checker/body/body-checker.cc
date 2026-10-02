@@ -7180,11 +7180,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     }
   }
 
-  // Produce exhaustiveness facts for admitted two-arm matches. The scrutinee
-  // type is already in nodeTypes from the main production loop. A bool
-  // scrutinee produces a Closed domain with the two bool literal constructors;
-  // an integer scrutinee produces an OpenRequiresCatchAll domain with the
-  // single integer literal constructor read from the literal arm's pattern.
+  // Produce exhaustiveness facts for admitted matches. The scrutinee type is
+  // already in nodeTypes from the main production loop. A bool scrutinee
+  // produces a Closed domain with the two bool literal constructors; an
+  // integer scrutinee produces an OpenRequiresCatchAll domain with the
+  // integer literal constructors read from each literal arm's pattern.
   for (const auto& site : input.requirements.impl->productionSiteValues) {
     if (site.primaryGroup != CheckedFactGroup::Exhaustiveness) continue;
     const auto& matchNode = input.boundModule.tree().node(site.node);
@@ -7331,16 +7331,16 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Vector<checked::PatternConstructor>(), zc::Vector<ast::NodeId>()},
           zc::Array<uint8_t>()});
     } else {
-      // Integer scrutinee: find the literal arm's pattern and read its checked
+      // Integer scrutinee: find each literal arm's pattern and read its checked
       // literal fact. The open integer domain requires the default arm.
       const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                                matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
-      if (!input.boundModule.tree().contains(arms) || arms.size != 2) {
+      if (!input.boundModule.tree().contains(arms) || arms.size < 2) {
         return rejectInvariant(
             signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
             site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
       }
-      zc::Maybe<checked::CanonicalLiteral> integerLiteral;
+      zc::Vector<checked::CanonicalLiteral> integerLiterals;
       for (size_t index = 0; index < arms.size; ++index) {
         const ast::NodeId armId = input.boundModule.tree().list(arms)[index];
         if (!input.boundModule.tree().contains(armId)) continue;
@@ -7363,16 +7363,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.schemaPreorder, zc::none, literal,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Literal));
         }
-        ZC_IF_SOME(fact, literalFact) { integerLiteral = fact.value.literal.clone(); }
+        ZC_IF_SOME(fact, literalFact) { integerLiterals.add(fact.value.literal.clone()); }
       }
-      if (integerLiteral == zc::none) {
+      if (integerLiterals.size() == 0) {
         return rejectInvariant(
             signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
             site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
       }
       zc::Vector<checked::PatternConstructor> covered;
-      ZC_IF_SOME(value, integerLiteral) {
-        covered.add(checked::PatternConstructor(checked::LiteralPattern{zc::mv(value)}));
+      for (size_t literalIndex = 0; literalIndex < integerLiterals.size(); ++literalIndex) {
+        covered.add(checked::PatternConstructor(
+            checked::LiteralPattern{zc::mv(integerLiterals[literalIndex])}));
       }
       exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
           site.node,

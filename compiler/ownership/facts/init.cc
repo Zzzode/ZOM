@@ -879,10 +879,6 @@ zc::Maybe<InitializationFunction> deriveFunction(const mir::MirFunction& functio
                                              blockExitStates.asPtr());
       if (joined == zc::none) continue;  // No predecessor exit computed yet.
       incoming = zc::mv(ZC_ASSERT_NONNULL(joined));
-      if (current == 2) {
-        for (size_t i = 0; i < incoming.size(); ++i) {}
-        auto preds = predecessorBlocks(flow, function.blocks[current].id);
-      }
     }
     if (!transferBlock(function, paths, function.blocks[current], incoming, nullptr)) {
       return zc::none;

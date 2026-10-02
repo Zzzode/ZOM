@@ -385,6 +385,27 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a same-module direct call to a chained-conditional callee
+  /// to a two-function LIR module.
+  ///
+  /// Admits the caller shape lowered by `lowerCallModuleWithArgument` (two
+  /// blocks: entry Call, continuation Return; one result local) and a callee
+  /// with 2N+2 blocks (N >= 2) matching the verified chained-conditional
+  /// return shape: N comparison/switch entry blocks, N then-arm blocks, one
+  /// else-arm block, and one join block that returns the result. Each entry
+  /// block lowers one equality comparison (parameter == literal) into a LIR
+  /// Compare + CondBranch; each arm block assigns a literal and branches to
+  /// the join. The call argument must be an integer constant of the callee
+  /// parameter type, and the call must target the identified callee.
+  ///
+  /// \param caller Verified caller MIR function (two-block Call+Return, one arg).
+  /// \param callee Verified callee MIR function (2N+2-block chained conditional).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithChainedConditionalCallee(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a same-module direct call passing two integer-constant
   /// arguments to a two-function LIR module.
   ///

@@ -374,10 +374,13 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
 // arm covering the remaining bool value; it reuses the conditional fields
 // (`condition`, `thenReturnValue`, `elseReturnValue`) so the HIR builder
 // lowers it through the bare-parameter conditional path. An integer match has
-// one integer-literal arm plus a `default` arm covering the open integer
-// domain; it sets `isMatchEquality` and carries the pattern literal node so
-// the HIR builder synthesizes `scrutinee == literal` through the equality
-// conditional path. Returns none for every other statement.
+// one or more integer-literal arms plus a `default` arm covering the open
+// integer domain; a single literal arm sets `isMatchEquality` and carries the
+// pattern literal node so the HIR builder synthesizes
+// `scrutinee == literal` through the equality conditional path, while two or
+// more literal arms set `isMatchChainedEquality` and carry all literal nodes
+// and return values for a chained conditional. Returns none for every other
+// statement.
 zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::NodeId body,
                                                 ast::NodeId statement) {
   if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::MatchStmt) {
@@ -390,14 +393,13 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   }
   const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                            matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
-  if (!tree.contains(arms) || arms.size != 2) return zc::none;
+  if (!tree.contains(arms) || arms.size < 2) return zc::none;
   zc::Maybe<ast::NodeId> trueValue;
   zc::Maybe<ast::NodeId> falseValue;
   zc::Maybe<ast::NodeId> defaultValue;
   bool sawDefault = false;
-  bool sawIntLiteral = false;
-  ast::NodeId intLiteralNode{};
-  zc::Maybe<ast::NodeId> intLiteralValue;
+  zc::Vector<ast::NodeId> intLiteralNodes;
+  zc::Vector<ast::NodeId> intLiteralValues;
   zc::Maybe<ast::NodeId> guardNode;
   bool sawEnumPattern = false;
   ast::NodeId enumPatternNode{};
@@ -422,14 +424,13 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
       if (!tree.contains(literal)) return zc::none;
       if (tree.node(literal).kind == ast::SyntaxKind::BoolLiteral) {
-        if (sawIntLiteral) return zc::none;
+        if (intLiteralNodes.size() > 0) return zc::none;
         isLiteral = true;
         literalValue = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
       } else if (tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
-        if (sawIntLiteral || sawDefault) return zc::none;
-        sawIntLiteral = true;
+        if (sawDefault) return zc::none;
         isIntLiteral = true;
-        intLiteralNode = literal;
+        intLiteralNodes.add(literal);
       } else {
         return zc::none;
       }
@@ -441,7 +442,7 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       // same scrutinee lower to the equality conditional path; the first arm
       // is the "then" branch and the second is the "else" branch. The variant
       // discriminant is read from the checker's literal fact by the builder.
-      if (sawIntLiteral || sawDefault) return zc::none;
+      if (intLiteralNodes.size() > 0 || sawDefault) return zc::none;
       if (!sawEnumPattern) {
         sawEnumPattern = true;
         enumPatternNode = pattern;
@@ -488,8 +489,7 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       return zc::none;
     }
     if (isIntLiteral) {
-      if (intLiteralValue != zc::none) return zc::none;
-      intLiteralValue = returnValue;
+      intLiteralValues.add(returnValue);
     } else if (isLiteral) {
       if (literalValue) {
         if (trueValue != zc::none) return zc::none;
@@ -541,22 +541,34 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
     shape.elseReturnValue = elseNode;
     return shape;
   }
-  if (sawIntLiteral) {
-    // Integer match: exactly one literal arm plus one default arm. The literal
-    // arm is the "then" branch and the default arm is the "else" branch.
-    if (!sawDefault || intLiteralValue == zc::none || defaultValue == zc::none) { return zc::none; }
-    ast::NodeId thenNode;
+  if (intLiteralNodes.size() > 0) {
+    if (!sawDefault || intLiteralValues.size() != intLiteralNodes.size() ||
+        defaultValue == zc::none) {
+      return zc::none;
+    }
     ast::NodeId elseNode;
-    ZC_IF_SOME(value, intLiteralValue) { thenNode = value; }
     ZC_IF_SOME(value, defaultValue) { elseNode = value; }
-    shape.isMatchEquality = true;
-    shape.matchEqualityLiteral = intLiteralNode;
-    shape.conditionIsEquality = true;
-    shape.conditionLeft = scrutinee;
-    shape.conditionRight = intLiteralNode;
-    shape.conditionLeftIsLiteral = false;
-    shape.conditionRightIsLiteral = true;
-    shape.thenReturnValue = thenNode;
+    if (intLiteralNodes.size() == 1) {
+      // Single literal arm plus default: equality conditional path.
+      shape.isMatchEquality = true;
+      shape.matchEqualityLiteral = intLiteralNodes[0];
+      shape.conditionIsEquality = true;
+      shape.conditionLeft = scrutinee;
+      shape.conditionRight = intLiteralNodes[0];
+      shape.conditionLeftIsLiteral = false;
+      shape.conditionRightIsLiteral = true;
+      shape.thenReturnValue = intLiteralValues[0];
+      shape.elseReturnValue = elseNode;
+      return shape;
+    }
+    // Two or more literal arms plus default: chained conditional path.
+    shape.isMatchChainedEquality = true;
+    shape.matchChainedLiterals = zc::mv(intLiteralNodes);
+    shape.matchChainedThenValues = zc::mv(intLiteralValues);
+    shape.matchChainedElseValue = elseNode;
+    // Populate the shared then/else slots so the conditional setup code can
+    // resolve the return type; all arms share the function's return type.
+    shape.thenReturnValue = shape.matchChainedThenValues[0];
     shape.elseReturnValue = elseNode;
     return shape;
   }

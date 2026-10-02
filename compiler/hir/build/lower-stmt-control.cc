@@ -124,6 +124,64 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
                                               conditional.conditionalSpan.clone()});
 }
 
+void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  PendingChainedConditionalReturn chained =
+      zc::mv(ZC_ASSERT_NONNULL(function.chainedConditionalReturn));
+
+  const HirNodeId functionId = ctx.allocNode();
+  const HirNodeId bodyId = ctx.allocNode();
+  const size_t armCount = chained.entries.size();
+
+  // Per-arm node IDs: left operand, right operand, equality, then value.
+  zc::Vector<HirNodeId> leftIds;
+  zc::Vector<HirNodeId> rightIds;
+  zc::Vector<HirNodeId> equalityIds;
+  zc::Vector<HirNodeId> thenIds;
+  for (size_t i = 0; i < armCount; ++i) {
+    leftIds.add(ctx.allocNode());
+    rightIds.add(ctx.allocNode());
+    equalityIds.add(ctx.allocNode());
+    thenIds.add(ctx.allocNode());
+  }
+  const HirNodeId elseId = ctx.allocNode();
+  // Conditional IDs: innermost first, outermost last.
+  zc::Vector<HirNodeId> conditionalIds;
+  for (size_t i = armCount; i-- > 0;) { conditionalIds.add(ctx.allocNode()); }
+  const HirNodeId returnId = ctx.allocNode();
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(HirReturnStatement{returnId, function.resultType, conditionalIds[armCount - 1],
+                                   function.returnSpan.clone()});
+
+  for (size_t i = 0; i < armCount; ++i) {
+    const auto& entry = chained.entries[i];
+    ctx.lowerArmLeaf(leftIds[i], entry.condition.left);
+    ctx.lowerArmLeaf(rightIds[i], entry.condition.right);
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        equalityIds[i], leftIds[i], rightIds[i], entry.condition.operandType, entry.condition.type,
+        HirValueCategory::Value, entry.condition.operation, entry.condition.sourceSpan.clone(),
+        entry.condition.isUnaryDesugar});
+    ctx.lowerArmLeaf(thenIds[i], entry.thenArm);
+  }
+  ctx.lowerArmLeaf(elseId, chained.elseArm);
+
+  // Build conditionals from inner to outer. conditionalIds[0] is the
+  // innermost (last arm); conditionalIds[armCount-1] is the outermost.
+  for (size_t i = 0; i < armCount; ++i) {
+    const size_t armIndex = armCount - 1 - i;
+    const HirNodeId elseTarget = (i == 0) ? elseId : conditionalIds[i - 1];
+    ctx.addConditional(HirConditionalExpression{
+        conditionalIds[i], equalityIds[armIndex], thenIds[armIndex], elseTarget,
+        function.resultType, HirValueCategory::Value, chained.matchSpan.clone()});
+  }
+}
+
 void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& function,
                                                 HirFnCtx& ctx) {
   PendingLeadingLocalConditionalReturn leading =

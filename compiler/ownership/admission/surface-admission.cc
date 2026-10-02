@@ -1040,10 +1040,10 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   }
   const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                            matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
-  if (!tree.contains(arms) || arms.size != 2) return false;
+  if (!tree.contains(arms) || arms.size < 2) return false;
   bool sawTrue = false;
   bool sawFalse = false;
-  bool sawIntLiteral = false;
+  size_t intLiteralCount = 0;
   bool sawDefault = false;
   bool sawGuard = false;
   bool sawEnumPattern = false;
@@ -1066,7 +1066,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
       if (!tree.contains(literal)) return false;
       if (tree.node(literal).kind == ast::SyntaxKind::BoolLiteral) {
-        if (sawIntLiteral) return false;
+        if (intLiteralCount > 0) return false;
         const bool value = tree.node(literal).payload.words[ast::kBoolLiteralValueWord] != 0;
         if (value) {
           if (sawTrue) return false;
@@ -1076,11 +1076,11 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
           sawFalse = true;
         }
       } else if (tree.node(literal).kind == ast::SyntaxKind::IntLiteral) {
-        // The integer domain is open, so exactly one literal arm paired with a
-        // default arm is admitted; two literal arms without a default stay
+        // The integer domain is open, so N literal arms paired with a single
+        // default arm are admitted; literal arms without a default stay
         // fail-closed.
-        if (sawIntLiteral || sawTrue || sawFalse) return false;
-        sawIntLiteral = true;
+        if (sawTrue || sawFalse || sawEnumPattern) return false;
+        ++intLiteralCount;
       } else {
         return false;
       }
@@ -1091,7 +1091,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       // A unit enum variant pattern (e.g., `Color.Red`) is admitted when the
       // scrutinee is an enum type. The variant resolution and type matching
       // are checker decisions.
-      if (sawIntLiteral || sawTrue || sawFalse || sawDefault) return false;
+      if (intLiteralCount > 0 || sawTrue || sawFalse || sawDefault) return false;
       sawEnumPattern = true;
     } else {
       return false;
@@ -1118,10 +1118,11 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     }
   }
   // Bool: two literal arms (true + false), or one literal arm plus one default
-  // arm. Integer: exactly one literal arm plus one default arm. Enum: two
+  // arm. Integer: N literal arms plus one default arm. Enum: two
   // unit-variant pattern arms on the same enum type.
+  if (intLiteralCount > 0) { return sawDefault && arms.size == intLiteralCount + 1; }
+  if (arms.size != 2) return false;
   if (sawEnumPattern) return true;
-  if (sawIntLiteral) return sawDefault;
   return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }
 

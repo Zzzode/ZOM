@@ -2326,6 +2326,192 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// Chained conditional return: a free function whose sole statement is a
+/// return of a chain of nested conditionals. Each conditional has an equality
+/// comparison (parameter == literal) as its condition, a scalar literal as its
+/// then-value, and either another conditional (the inner chain) or a scalar
+/// literal (the final else) as its else-value. Lowers to a 2N+2 block CFG:
+/// N comparison/switch blocks, N then-arm blocks, one else-arm block, and one
+/// join block that returns the result.
+zc::Maybe<RecursiveFunctionProduct> buildChainedConditionalReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.unsafeBlock != zc::none || declaration.receiver != zc::none) return zc::none;
+  if (block.statements.size() != 1) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  auto sourceReturn = returnFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none) return zc::none;
+
+  // Walk the nested conditional chain to extract N entries (equality + then
+  // literal) and one else literal.
+  struct ChainedEntry {
+    const hir::HirPrimitiveBinaryExpression* equality;
+    const hir::HirScalarLiteralExpression* thenLiteral;
+  };
+  zc::Vector<ChainedEntry> entries;
+  const hir::HirScalarLiteralExpression* elseLiteral = nullptr;
+  hir::HirNodeId currentNode = ZC_ASSERT_NONNULL(sourceReturn).value;
+  while (true) {
+    auto conditional = conditionalFor(hirModule, currentNode);
+    if (conditional == zc::none) return zc::none;
+    const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
+    if (conditionalValue.type != declaration.resultType ||
+        conditionalValue.category != hir::HirValueCategory::Value) {
+      return zc::none;
+    }
+    auto equality = primitiveBinaryFor(hirModule, conditionalValue.condition);
+    if (equality == zc::none) return zc::none;
+    const auto& comparisonValue = ZC_ASSERT_NONNULL(equality);
+    auto comparison = comparisonOperatorFor(comparisonValue.operation);
+    if (comparison == zc::none || ZC_ASSERT_NONNULL(comparison) != MirComparisonOperator::Eq) {
+      return zc::none;
+    }
+    auto thenLiteral = expressionFor(hirModule, conditionalValue.thenReturnValue);
+    if (thenLiteral == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(thenLiteral).type != declaration.resultType) return zc::none;
+    entries.add(ChainedEntry{&comparisonValue, &ZC_ASSERT_NONNULL(thenLiteral)});
+    // The else branch is either another conditional (inner chain) or a literal
+    // (final else).
+    auto elseExpr = expressionFor(hirModule, conditionalValue.elseReturnValue);
+    if (elseExpr != zc::none) {
+      if (ZC_ASSERT_NONNULL(elseExpr).type != declaration.resultType) return zc::none;
+      elseLiteral = &ZC_ASSERT_NONNULL(elseExpr);
+      break;
+    }
+    currentNode = conditionalValue.elseReturnValue;
+  }
+  if (entries.size() < 2 || elseLiteral == nullptr) return zc::none;
+
+  const size_t armCount = entries.size();
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
+                       ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
+  if (resultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 1)) {
+    return zc::none;
+  }
+  zc::Vector<MirLocalId> conditionTemps;
+  for (size_t i = 0; i < armCount; ++i) {
+    conditionTemps.add(ctx.declareLocal(MirLocalKind::Temporary, entries[i].equality->type, scope,
+                                        entries[i].equality->sourceSpan.clone()));
+    if (conditionTemps[i].ordinal() !=
+        static_cast<uint32_t>(declaration.parameters.size() + 2 + i)) {
+      return zc::none;
+    }
+  }
+
+  // Block layout (1-indexed ordinals):
+  // Block 2k+1 (k=0..N-1): entry k — k=0 has StorageLive(result) plus
+  //   StorageLive for every condition temp, then Assign(temp_k = Comparison);
+  //   k>0 has just Assign(temp_k = Comparison). All entries end in SwitchInt.
+  // Block 2k+2 (k=0..N-1): then arm k — Initialize resultLocal = literal_k,
+  //   Goto 2N+2
+  // Block 2N+1: else arm — Initialize resultLocal = else_literal, Goto 2N+2
+  // Block 2N+2: join — Return resultLocal
+  const uint32_t joinBlockOrdinal = static_cast<uint32_t>(2 * armCount + 2);
+
+  for (size_t k = 0; k < armCount; ++k) {
+    const auto& entry = entries[k];
+    // Block 2k+1: entry k.
+    (void)ctx.beginBlock(scope);
+    if (k == 0) {
+      ctx.appendStatement(MirStatement::storageLive(
+          resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+      // StorageLive every condition temp in the entry block so that all temps
+      // are live on every CFG path. Without this, a temp declared in a later
+      // entry block is dead on paths that branch to the join before reaching
+      // that block, producing an invalid join state (dead but may-be-initialized).
+      for (size_t t = 0; t < armCount; ++t) {
+        ctx.appendStatement(
+            MirStatement::storageLive(conditionTemps[t], entries[t].equality->sourceSpan.clone()));
+      }
+    }
+
+    auto leftOperand = binaryLeafOperand(hirModule, declaration, entry.equality->left,
+                                         parameterLocals, zc::ArrayPtr<MirLocalId>{}, 0,
+                                         entry.equality->operandType, proofs, copyMarker);
+    auto rightOperand = binaryLeafOperand(hirModule, declaration, entry.equality->right,
+                                          parameterLocals, zc::ArrayPtr<MirLocalId>{}, 0,
+                                          entry.equality->operandType, proofs, copyMarker);
+    if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(conditionTemps[k], entry.equality->type, zc::mv(tempProjections),
+                 entry.equality->type),
+        MirRvalue::comparison(MirComparisonOperator::Eq, zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                              zc::mv(ZC_ASSERT_NONNULL(rightOperand)), entry.equality->type),
+        MirInitializationKind::Initialize, entry.equality->sourceSpan.clone()));
+
+    zc::Vector<MirProjection> discriminantProjections;
+    auto discriminant = placeUse(proofs, copyMarker,
+                                 MirPlace(conditionTemps[k], entry.equality->type,
+                                          zc::mv(discriminantProjections), entry.equality->type));
+    if (discriminant == zc::none) return zc::none;
+
+    const uint32_t thenBlockOrdinal = static_cast<uint32_t>(2 * k + 2);
+    const uint32_t elseBlockOrdinal = (k + 1 < armCount) ? static_cast<uint32_t>(2 * (k + 1) + 1)
+                                                         : static_cast<uint32_t>(2 * armCount + 1);
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
+                             blockId(thenBlockOrdinal)});
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false),
+                             blockId(elseBlockOrdinal)});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), blockId(elseBlockOrdinal),
+                                                entry.equality->sourceSpan.clone()));
+
+    // Block 2k+2: then arm k.
+    (void)ctx.beginBlock(scope);
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
+        MirRvalue::use(
+            MirOperand::constant(entry.thenLiteral->type, entry.thenLiteral->value.clone())),
+        MirInitializationKind::Initialize, entry.thenLiteral->sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(joinBlockOrdinal),
+                                                 entry.thenLiteral->sourceSpan.clone()));
+  }
+
+  // Block 2N+1: else arm.
+  (void)ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
+        MirRvalue::use(MirOperand::constant(elseLiteral->type, elseLiteral->value.clone())),
+        MirInitializationKind::Initialize, elseLiteral->sourceSpan.clone()));
+    ctx.terminateBlock(
+        MirTerminator::gotoTarget(blockId(joinBlockOrdinal), elseLiteral->sourceSpan.clone()));
+  }
+
+  // Block 2N+2: join.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// Match-guard conjunctive conditional return: a free function whose sole
 /// statement is a return of a conditional whose condition is a conjunction
 /// (LogicalAnd/BitAnd) of a bool parameter reference and a guard comparison.
@@ -2562,6 +2748,16 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       declaration.unsafeBlock == zc::none) {
     auto product = buildLeadingLocalConditionalReturn(declaration, block, hirModule, identities,
                                                       proofs, copyMarker);
+    if (product != zc::none) return product;
+  }
+
+  // Chained conditional return: a single-statement body whose return value is
+  // a chain of nested equality conditionals with literal arms. The arm
+  // self-gates on the HIR shape and rejects every other body.
+  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto product = buildChainedConditionalReturn(declaration, block, hirModule, identities, proofs,
+                                                 copyMarker);
     if (product != zc::none) return product;
   }
 

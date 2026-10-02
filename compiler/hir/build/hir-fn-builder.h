@@ -143,6 +143,13 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
 /// comparison condition.
 void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers a chained integer match return (N literal arms plus one
+/// default arm) through the recursive destination-driven driver. Each literal
+/// arm synthesizes an equality comparison (scrutinee == literal) without an
+/// AST BinaryExpr node; the arms nest as a chain of conditional expressions.
+/// Node stride is 4 + 5N.
+void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one empty-body `while` loop followed by a scalar return
 /// through the recursive driver. Node stride: function, body, condition
 /// parameter reference, return literal, loop, return (six ids).

@@ -1242,9 +1242,177 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          zc::none,
                                                           false,
                                                           false,
                                                           zc::mv(leadingPending)});
+          continue;
+        }
+        if (shape.isMatchChainedEquality) {
+          // Chained integer match: N literal arms plus one default arm. Build N
+          // synthetic equality conditions (scrutinee == literal_i) and N+1
+          // arms, then create a PendingChainedConditionalReturn for the
+          // lowering pass to materialize as a nested conditional chain.
+          auto scrutineeTypeIndex = factIndex(facts.nodeTypes(), shape.condition);
+          if (scrutineeTypeIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t scrutineeTypeSlot = 0;
+          ZC_IF_SOME(index, scrutineeTypeIndex) { scrutineeTypeSlot = index; }
+          const auto operandType = facts.nodeTypes().entries()[scrutineeTypeSlot].value;
+          auto boolCanonical = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+              type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+          if (!boolCanonical.is<type::semantic::CanonicalTypeData>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto boolInterned =
+              semanticTypes.intern(zc::mv(boolCanonical).get<type::semantic::CanonicalTypeData>());
+          if (!boolInterned.is<type::SemanticTypeInterned>()) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto boolType = boolInterned.get<type::SemanticTypeInterned>().id;
+          auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
+          if (conditionParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          identity::CallableParameterId conditionHandle;
+          ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+          auto conditionAuthority = registries.callableParameter(conditionHandle);
+          if (conditionAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          zc::Maybe<identity::CallableParameterKey> parameterKey;
+          bool parameterMatches = false;
+          ZC_IF_SOME(entry, conditionAuthority) {
+            for (const auto& candidate : parameters) {
+              if (candidate.key == entry.key() && candidate.type == operandType) {
+                parameterMatches = true;
+                parameterKey = entry.key().clone();
+                break;
+              }
+            }
+          }
+          if (!parameterMatches) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          zc::Vector<PendingChainedConditionalReturn::Entry> entries;
+          for (size_t armIndex = 0; armIndex < shape.matchChainedLiterals.size(); ++armIndex) {
+            const auto literalNode = shape.matchChainedLiterals[armIndex];
+            const auto thenValueNode = shape.matchChainedThenValues[armIndex];
+            auto literalIndex = factIndex(facts.literals(), literalNode);
+            auto literalSpan = bound.parsedModule().spanFor(tree.node(literalNode).range);
+            if (literalIndex == zc::none || literalSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            auto leftReference = HirParameterReferenceExpression{
+                HirNodeId(), ZC_ASSERT_NONNULL(parameterKey).clone(), operandType,
+                HirValueCategory::Place, ZC_ASSERT_NONNULL(conditionSpan).clone()};
+            auto leftOperand =
+                PendingConditionalArm{zc::none, zc::mv(leftReference), zc::none, operandType,
+                                      ZC_ASSERT_NONNULL(conditionSpan).clone()};
+            auto rightOperand =
+                PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, operandType,
+                                      ZC_ASSERT_NONNULL(literalSpan).clone()};
+            auto equalityCondition =
+                PendingEqualityCondition{zc::mv(leftOperand),
+                                         zc::mv(rightOperand),
+                                         operandType,
+                                         boolType,
+                                         checker::PrimitiveOperation::Eq,
+                                         ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                         false};
+            auto thenLiteralIndex = factIndex(facts.literals(), thenValueNode);
+            auto thenSpan = bound.parsedModule().spanFor(tree.node(thenValueNode).range);
+            if (thenLiteralIndex == zc::none || thenSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t thenLiteralSlot = 0;
+            ZC_IF_SOME(index, thenLiteralIndex) { thenLiteralSlot = index; }
+            const auto& thenLiteralFact = facts.literals().entries()[thenLiteralSlot].value;
+            auto thenArm =
+                PendingConditionalArm{thenLiteralFact.literal.clone(), zc::none, zc::none, thenType,
+                                      ZC_ASSERT_NONNULL(thenSpan).clone()};
+            entries.add(
+                PendingChainedConditionalReturn::Entry{zc::mv(equalityCondition), zc::mv(thenArm)});
+          }
+          auto elseLiteralIndex = factIndex(facts.literals(), shape.matchChainedElseValue);
+          auto elseSpan =
+              bound.parsedModule().spanFor(tree.node(shape.matchChainedElseValue).range);
+          if (elseLiteralIndex == zc::none || elseSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t elseLiteralSlot = 0;
+          ZC_IF_SOME(index, elseLiteralIndex) { elseLiteralSlot = index; }
+          const auto& elseLiteralFact = facts.literals().entries()[elseLiteralSlot].value;
+          auto elseArm = PendingConditionalArm{elseLiteralFact.literal.clone(), zc::none, zc::none,
+                                               elseType, ZC_ASSERT_NONNULL(elseSpan).clone()};
+          auto chainedReturn = PendingChainedConditionalReturn{zc::mv(entries), zc::mv(elseArm),
+                                                               valueSpanValue.clone()};
+          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
+                                                          callable.success,
+                                                          zc::mv(parameters),
+                                                          zc::mv(conditionalReceiver),
+                                                          zc::mv(visibilityValue),
+                                                          linkageValue,
+                                                          definition.source.clone(),
+                                                          bodySpanValue.clone(),
+                                                          returnSpanValue.clone(),
+                                                          valueSpanValue.clone(),
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          {},
+                                                          {},
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::mv(orderingKey),
+                                                          zc::none,
+                                                          zc::mv(chainedReturn),
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          zc::none,
+                                                          false,
+                                                          false,
+                                                          zc::none});
           continue;
         }
         PendingConditionalCondition pendingCondition;
@@ -1845,6 +2013,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          zc::none,
                                                           false,
                                                           false,
                                                           zc::none});
@@ -2011,6 +2180,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::mv(orderingKey),
+                                                          zc::none,
                                                           zc::none,
                                                           zc::mv(loopReturn),
                                                           zc::none,
@@ -2334,6 +2504,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(orderingKey),
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(comparisonReturn),
@@ -2720,6 +2891,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::mv(orderingKey),
                                                         zc::none,
                                                         zc::none,
+                                                        zc::none,
                                                         zc::mv(comparisonReturn),
                                                         zc::none,
                                                         zc::none,
@@ -3086,6 +3258,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::mv(orderingKey),
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -3991,6 +4164,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::mv(sequential),
                                                         zc::mv(unsafeBlockSpan),
                                                         zc::mv(orderingKey),
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -7256,6 +7430,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
+                                                      zc::none,
                                                       zc::mv(loopBodyReturn),
                                                       zc::mv(forLoopReturn),
                                                       zc::mv(forLoopAccumulatorReturn),
@@ -7508,6 +7683,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // parameter references. Each such operand adds one scalar-literal expression
   // and one literal fact beyond the arm literals.
   size_t equalityLiteralOperandCount = 0;
+  // Chained match-return shapes (N literal arms + 1 default, N >= 2). The
+  // shared literals equation grants exactly two match-arm literals per match
+  // statement (one pattern + one then), but a chained match carries 2N + 1
+  // (N pattern + N then + 1 else). This tallies the per-match excess
+  // 2 * (N - 1) so the literals equation stays balanced.
+  size_t chainedMatchLiteralExcess = 0;
   size_t loopCount = 0;
   // Per-function excess of literal facts a sequential N-local body carries over
   // the single-literal baseline the shared literal equation grants each
@@ -7837,6 +8018,28 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
         }
+      }
+      continue;
+    }
+    if (function.chainedConditionalReturn != zc::none) {
+      ZC_IF_SOME(chained, function.chainedConditionalReturn) {
+        ++matchReturnCount;
+        ++matchDefaultArmCount;
+        for (const auto& entry : chained.entries) {
+          ++conditionalCount;
+          ++matchEqualityReturnCount;
+          ++equalityConditionalCount;
+          if (entry.condition.right.literal != zc::none) { ++equalityLiteralOperandCount; }
+          if (entry.thenArm.literal != zc::none) { ++conditionalLiteralArmCount; }
+        }
+        if (chained.elseArm.literal != zc::none) { ++conditionalLiteralArmCount; }
+        // The shared literals equation credits two match-arm literals per match
+        // (one pattern + one then); a chained match carries 2N + 1, so add the
+        // per-match excess 2 * (N - 1). The builder does not count the N
+        // parameter references the lowering materializes (the pending function
+        // carries no parameterReference for this shape), so the excess is
+        // twice the verifier's N - 1.
+        chainedMatchLiteralExcess += (chained.entries.size() - 1) * 2;
       }
       continue;
     }
@@ -8192,7 +8395,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +
           static_cast<int64_t>(forLoopAccumulatorCount) +
           static_cast<int64_t>(forLoopAccumulatorLiteralRightCount) +
-          static_cast<int64_t>(forLoopAccumulatorGuardedBreakCount)) +
+          static_cast<int64_t>(forLoopAccumulatorGuardedBreakCount) +
+          static_cast<int64_t>(chainedMatchLiteralExcess)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -8749,6 +8953,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerConditionalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
+    if (value.chainedConditionalReturn != zc::none && controlFieldsClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops);
+      lowerChainedConditionalReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     if (value.leadingLocalConditionalReturn != zc::none && controlFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -9155,7 +9368,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 borrow.sourceSpan.clone()});
     }
   }
-
   auto impl = zc::heap<HirModuleCandidate::Impl>(
       zc::mv(checkedModule), zc::mv(declarations), zc::mv(functions), zc::mv(blocks),
       zc::mv(returns), zc::mv(patterns), zc::mv(expressions), zc::mv(aggregates), zc::mv(locals),

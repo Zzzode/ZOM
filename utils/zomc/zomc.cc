@@ -1471,7 +1471,8 @@ private:
         };
         auto isCallee = [](const mir::MirFunction& fn) {
           return fn.kind == mir::MirFunctionKind::Function &&
-                 (fn.blocks.size() == 1 || fn.blocks.size() == 4);
+                 (fn.blocks.size() == 1 || fn.blocks.size() == 4 ||
+                  (fn.blocks.size() >= 6 && fn.blocks.size() % 2 == 0));
         };
         zc::Maybe<size_t> callerIndex;
         zc::Maybe<size_t> calleeIndex;
@@ -1500,6 +1501,10 @@ private:
             }
             if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerCallModuleWithConditionalCallee(
+                  functions[caller], functions[callee], types);
+            }
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
                   functions[caller], functions[callee], types);
             }
             if (lir == zc::none) {

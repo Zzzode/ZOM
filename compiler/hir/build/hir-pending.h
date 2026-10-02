@@ -233,6 +233,22 @@ struct PendingConditionalReturn final {
   bool hasMatchGuard = false;
 };
 
+// A chained conditional return lowers a match with two or more integer literal
+// arms and one default arm to a nested conditional chain:
+// `if scrutinee == lit0 then val0 else if scrutinee == lit1 then val1 ... else
+// defaultValue`. Each entry pairs a synthetic equality condition (scrutinee ==
+// literal, no AST BinaryExpr node) with that arm's return value. The else arm
+// carries the default arm's return value.
+struct PendingChainedConditionalReturn final {
+  struct Entry final {
+    PendingEqualityCondition condition;
+    PendingConditionalArm thenArm;
+  };
+  zc::Vector<Entry> entries;
+  PendingConditionalArm elseArm;
+  identity::SourceSpan matchSpan;
+};
+
 // One comparison-condition operand in a leading-local conditional body: a
 // scalar literal, a parameter place reference, or a reference to one of the
 // leading locals (`referencedLocal` is its zero-based binding index when
@@ -482,6 +498,7 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
   zc::Array<uint8_t> orderingKey;
   zc::Maybe<PendingConditionalReturn> conditionalReturn;
+  zc::Maybe<PendingChainedConditionalReturn> chainedConditionalReturn;
   zc::Maybe<PendingLoopReturn> loopReturn;
   // Populated when the body is `return <a CMP b>`: the comparison result flows
   // straight into the Return terminator (no conditional). Reuses the equality

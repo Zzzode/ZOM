@@ -312,6 +312,18 @@ struct FunctionReturnShape final {
   // literal node so the builder can read its checked literal fact.
   bool isMatchEquality = false;
   ast::NodeId matchEqualityLiteral{};
+  // True when the match-return shape is an integer match with two or more
+  // literal pattern arms and one default arm. The HIR builder lowers this to
+  // a chained conditional: `if scrutinee == lit0 then val0 else if scrutinee
+  // == lit1 then val1 ... else defaultValue`. Each entry in
+  // `matchChainedLiterals` carries the pattern literal node (for the builder
+  // to read its checked literal fact) and the corresponding entry in
+  // `matchChainedThenValues` carries that arm's return value.
+  // `matchChainedElseValue` carries the default arm's return value.
+  bool isMatchChainedEquality = false;
+  zc::Vector<ast::NodeId> matchChainedLiterals;
+  zc::Vector<ast::NodeId> matchChainedThenValues;
+  ast::NodeId matchChainedElseValue{};
   // True when the match-return shape is an enum match with two unit-variant
   // pattern arms. The HIR builder lowers this to the equality conditional
   // path, synthesizing `scrutinee == discriminant` without an AST BinaryExpr

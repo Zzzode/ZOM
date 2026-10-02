@@ -20,6 +20,15 @@ namespace detail {
 /// comparison condition (plus left, right, equality before the arms).
 void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers a chained integer match return (N literal arms plus one
+/// default arm) through the recursive destination-driven driver. Each literal
+/// arm synthesizes an equality comparison (scrutinee == literal) without an
+/// AST BinaryExpr node; the arms nest as a chain of conditional expressions.
+/// Node stride is 4 + 5N: function, body, then per arm (left operand, right
+/// operand, equality, then value), else value, N-1 inner conditionals, outer
+/// conditional, return. The body block lists the return statement.
+void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers K leading scalar-local bindings followed by one comparison
 /// conditional return. Node stride is 9 + 2K: function, body, then per binding
 /// one local and one initializer id, then the two comparison operands, the
