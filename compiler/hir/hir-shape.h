@@ -312,6 +312,15 @@ struct FunctionReturnShape final {
   // literal node so the builder can read its checked literal fact.
   bool isMatchEquality = false;
   ast::NodeId matchEqualityLiteral{};
+  // True when the match-return shape has a guard on the literal (then) arm.
+  // The guard is a single binary expression whose one operand is a bare
+  // identifier (a parameter reference) and whose other operand is a scalar
+  // literal. The HIR builder lowers the match to a conjunctive condition
+  // (scrutinee AND guard) keeping the four-block diamond CFG, so the guard
+  // node is carried for the builder to read its checked call and node-type
+  // facts. Only bool-literal matches admit a guard; integer matches do not.
+  bool hasMatchGuard = false;
+  ast::NodeId matchGuard{};
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);

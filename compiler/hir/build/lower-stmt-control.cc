@@ -50,6 +50,51 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     return;
   }
 
+  ZC_IF_SOME(conjunctive, conditional.condition.conjunctive) {
+    // Conjunctive-condition stride (11 nodes): function, body, scrutinee
+    // parameter reference, guard left operand, guard right operand, guard
+    // comparison, conjunction (BitAnd), then value, else value, conditional,
+    // return. The conditional takes the conjunction node as its condition.
+    const HirNodeId conditionId = ctx.allocNode();
+    const HirNodeId guardLeftId = ctx.allocNode();
+    const HirNodeId guardRightId = ctx.allocNode();
+    const HirNodeId guardComparisonId = ctx.allocNode();
+    const HirNodeId conjunctionId = ctx.allocNode();
+    const HirNodeId thenValueId = ctx.allocNode();
+    const HirNodeId elseValueId = ctx.allocNode();
+    const HirNodeId conditionalId = ctx.allocNode();
+    const HirNodeId returnId = ctx.allocNode();
+
+    ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                           zc::mv(function.parameters), zc::mv(function.receiver),
+                                           function.visibility.clone(), function.linkage,
+                                           function.declarationSpan.clone(), bodyId, zc::none});
+    zc::Vector<HirNodeId> statements;
+    statements.add(returnId);
+    ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+    ctx.addReturn(HirReturnStatement{returnId, function.resultType, conditionalId,
+                                     function.returnSpan.clone()});
+    ctx.addParameterReference(HirParameterReferenceExpression{
+        conditionId, conjunctive.parameter.parameter.clone(), conjunctive.parameter.type,
+        conjunctive.parameter.category, conjunctive.parameter.sourceSpan.clone()});
+    ctx.lowerArmLeaf(guardLeftId, conjunctive.guard.left);
+    ctx.lowerArmLeaf(guardRightId, conjunctive.guard.right);
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        guardComparisonId, guardLeftId, guardRightId, conjunctive.guard.operandType,
+        conjunctive.guard.type, HirValueCategory::Value, conjunctive.guard.operation,
+        conjunctive.guard.sourceSpan.clone(), conjunctive.guard.isUnaryDesugar});
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        conjunctionId, conditionId, guardComparisonId, conjunctive.parameter.type,
+        conjunctive.parameter.type, HirValueCategory::Value,
+        checker::PrimitiveOperation::LogicalAnd, conjunctive.sourceSpan.clone(), false});
+    ctx.lowerArmLeaf(thenValueId, conditional.thenArm);
+    ctx.lowerArmLeaf(elseValueId, conditional.elseArm);
+    ctx.addConditional(HirConditionalExpression{
+        conditionalId, conjunctionId, thenValueId, elseValueId, function.resultType,
+        HirValueCategory::Value, conditional.conditionalSpan.clone()});
+    return;
+  }
+
   // Parameter-condition stride (7 nodes): function, body, condition parameter
   // reference, then value, else value, conditional, return.
   const HirNodeId conditionId = ctx.allocNode();

@@ -1554,6 +1554,169 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                        checker::PrimitiveOperation::Eq,
                                        ZC_ASSERT_NONNULL(conditionSpan).clone(),
                                        true};
+        } else if (shape.hasMatchGuard) {
+          // Match-guard: the condition is a conjunction of the scrutinee bool
+          // parameter and the guard comparison. The scrutinee resolves to a
+          // parameter reference (the bare-parameter path); the guard resolves
+          // to an equality condition whose operands are a parameter reference
+          // and a scalar literal. The HIR builder materializes the guard
+          // comparison and the conjunction (BitAnd) as two primitive binaries,
+          // keeping the four-block diamond CFG.
+          auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
+          if (conditionParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          identity::CallableParameterId conditionHandle;
+          ZC_IF_SOME(value, conditionParameter) { conditionHandle = value; }
+          auto conditionAuthority = registries.callableParameter(conditionHandle);
+          if (conditionAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          zc::Maybe<HirParameterReferenceExpression> scrutineeRef;
+          ZC_IF_SOME(entry, conditionAuthority) {
+            scrutineeRef = HirParameterReferenceExpression{
+                HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          }
+          if (scrutineeRef == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // The guard is a BinaryExpr whose one operand is a bare identifier
+          // (parameter reference) and whose other operand is a scalar literal.
+          const ast::NodeId guardLeft(
+              tree.node(shape.matchGuard).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId guardRight(
+              tree.node(shape.matchGuard).payload.words[ast::kBinaryExprRhsWord]);
+          const bool guardLeftIsIdent =
+              tree.contains(guardLeft) && tree.node(guardLeft).kind == ast::SyntaxKind::IdentExpr;
+          const bool guardRightIsIdent =
+              tree.contains(guardRight) && tree.node(guardRight).kind == ast::SyntaxKind::IdentExpr;
+          if (guardLeftIsIdent == guardRightIsIdent) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const ast::NodeId guardParamNode = guardLeftIsIdent ? guardLeft : guardRight;
+          const ast::NodeId guardLiteralNode = guardLeftIsIdent ? guardRight : guardLeft;
+          auto guardLeftTypeIndex = factIndex(facts.nodeTypes(), guardLeft);
+          auto guardRightTypeIndex = factIndex(facts.nodeTypes(), guardRight);
+          auto guardCallIndex = factIndex(facts.calls(), shape.matchGuard);
+          auto guardLeftSpan = bound.parsedModule().spanFor(tree.node(guardLeft).range);
+          auto guardRightSpan = bound.parsedModule().spanFor(tree.node(guardRight).range);
+          if (guardLeftTypeIndex == zc::none || guardRightTypeIndex == zc::none ||
+              guardCallIndex == zc::none || guardLeftSpan == zc::none ||
+              guardRightSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t guardLeftTypeSlot = 0;
+          size_t guardRightTypeSlot = 0;
+          size_t guardCallSlot = 0;
+          ZC_IF_SOME(index, guardLeftTypeIndex) { guardLeftTypeSlot = index; }
+          ZC_IF_SOME(index, guardRightTypeIndex) { guardRightTypeSlot = index; }
+          ZC_IF_SOME(index, guardCallIndex) { guardCallSlot = index; }
+          const auto guardOperandType = facts.nodeTypes().entries()[guardLeftTypeSlot].value;
+          const auto guardRightType = facts.nodeTypes().entries()[guardRightTypeSlot].value;
+          const auto& guardCallFact = facts.calls().entries()[guardCallSlot].value;
+          const auto& guardCall = guardCallFact.invocation;
+          const auto& guardSelected = guardCall.selected.variant();
+          const auto guardOp = guardSelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (guardOperandType != guardRightType || guardCallFact.node != shape.matchGuard ||
+              !guardSelected.is<checker::checked::PrimitiveCallable>() ||
+              !isScalarComparisonOperation(guardOp) || guardCall.calleeType != guardOperandType ||
+              guardCall.receiver != zc::none || guardCall.receiverMode != zc::none ||
+              guardCall.receiverAdjustment != zc::none || guardCall.arguments.size() != 2 ||
+              guardCall.arguments[0].sourceNode != guardLeft ||
+              guardCall.arguments[0].sourceType != guardOperandType ||
+              guardCall.arguments[1].sourceNode != guardRight ||
+              guardCall.arguments[1].sourceType != guardOperandType ||
+              guardCall.successType != conditionType || guardCall.resultType != conditionType ||
+              guardCall.substitutions != zc::none || guardCall.witnesses != zc::none ||
+              guardCall.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Build the guard parameter operand.
+          auto guardParameter = resolvedCallableParameter(bound.bindings(), guardParamNode);
+          if (guardParameter == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          identity::CallableParameterId guardParamHandle;
+          ZC_IF_SOME(value, guardParameter) { guardParamHandle = value; }
+          auto guardParamAuthority = registries.callableParameter(guardParamHandle);
+          if (guardParamAuthority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          zc::Maybe<PendingConditionalArm> guardParamArm;
+          ZC_IF_SOME(entry, guardParamAuthority) {
+            bool matches = false;
+            for (const auto& parameterCandidate : parameters) {
+              if (parameterCandidate.key == entry.key() &&
+                  parameterCandidate.type == guardOperandType) {
+                matches = true;
+              }
+            }
+            if (!matches) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto reference = HirParameterReferenceExpression{
+                HirNodeId(), entry.key().clone(), guardOperandType, HirValueCategory::Place,
+                (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardLeftSpan)
+                                  : ZC_ASSERT_NONNULL(guardRightSpan))
+                    .clone()};
+            guardParamArm =
+                PendingConditionalArm{zc::none, zc::mv(reference), zc::none, guardOperandType,
+                                      (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardLeftSpan)
+                                                        : ZC_ASSERT_NONNULL(guardRightSpan))
+                                          .clone()};
+          }
+          if (guardParamArm == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Build the guard literal operand.
+          auto guardLiteralIndex = factIndex(facts.literals(), guardLiteralNode);
+          if (guardLiteralIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t guardLiteralSlot = 0;
+          ZC_IF_SOME(index, guardLiteralIndex) { guardLiteralSlot = index; }
+          const auto& guardLiteralFact = facts.literals().entries()[guardLiteralSlot].value;
+          auto guardLiteralArm = PendingConditionalArm{
+              guardLiteralFact.literal.clone(), zc::none, zc::none, guardOperandType,
+              (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardRightSpan)
+                                : ZC_ASSERT_NONNULL(guardLeftSpan))
+                  .clone()};
+          // The guard comparison condition. The left operand is the parameter
+          // and the right operand is the literal when the guard source is
+          // `param <op> literal`; the roles swap for `literal <op> param`.
+          auto guardEquality = PendingEqualityCondition{
+              guardLeftIsIdent ? zc::mv(ZC_ASSERT_NONNULL(guardParamArm)) : zc::mv(guardLiteralArm),
+              guardLeftIsIdent ? zc::mv(guardLiteralArm) : zc::mv(ZC_ASSERT_NONNULL(guardParamArm)),
+              guardOperandType,
+              conditionType,
+              guardOp,
+              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+          pendingCondition.conjunctive = PendingConjunctiveCondition{
+              zc::mv(ZC_ASSERT_NONNULL(scrutineeRef)), zc::mv(guardEquality),
+              ZC_ASSERT_NONNULL(conditionSpan).clone()};
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
           if (conditionParameter == zc::none) {
@@ -1640,7 +1803,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                             valueSpanValue.clone(),
                                                             shape.isMatchReturn,
                                                             shape.matchHasDefaultArm,
-                                                            shape.isMatchEquality};
+                                                            shape.isMatchEquality,
+                                                            shape.hasMatchGuard};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           callable.success,
                                                           zc::mv(parameters),
@@ -7289,6 +7453,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // the phantom call, the phantom comparison-result node-types, and the
   // double-counted pattern literal.
   size_t matchEqualityReturnCount = 0;
+  // Match-return shapes whose literal arm carries a guard condition. The guard
+  // comparison is a real AST BinaryExpr with checker facts (3 node-types, 1
+  // literal, 1 call). The conjunction (BitAnd) that combines the scrutinee
+  // with the guard result is synthetic (no AST node, no checker facts). Both
+  // materialize as primitive binaries, so equalityConditionalCount counts 2
+  // per guard, but the nodeTypes and calls equations must each subtract 1 for
+  // the phantom conjunction's missing leaf operand and missing call fact.
+  size_t matchGuardPhantomCount = 0;
   // Ternary conditional-expression bindings in sequential local return bodies.
   // Each materializes one HirConditionalExpression (the binding initializer,
   // counted by localReturnCount) plus its condition and two arm-literal
@@ -7625,6 +7797,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             if (operand->literal != zc::none) { ++equalityLiteralOperandCount; }
           }
         }
+        ZC_IF_SOME(conjunctive, conditional.condition.conjunctive) {
+          // Two primitive binaries: the guard comparison (real AST BinaryExpr
+          // with checker facts) and the conjunction (synthetic, no AST node).
+          equalityConditionalCount += 2;
+          for (const auto* operand : {&conjunctive.guard.left, &conjunctive.guard.right}) {
+            if (operand->literal != zc::none) { ++equalityLiteralOperandCount; }
+          }
+          ++matchGuardPhantomCount;
+        }
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
         }
@@ -7947,13 +8128,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
       receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount * 3 + localBorrowCount +
       unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 -
-      matchEqualityReturnCount * 2 + matchReturnCount * 2 - matchDefaultArmCount + loopCount +
-      comparisonReturnCount * 2 - unaryReturnCount + sequentialBinaryCount * 2 +
-      binaryWriteCount * 2 + parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
-      parameterFieldWriteCount * 4 + discardedStatementCallCount +
-      leadingLocalConditionalBindingCount + castCount + sequentialTernaryCount * 3 +
-      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
-      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      matchEqualityReturnCount * 2 - matchGuardPhantomCount + matchReturnCount * 2 -
+      matchDefaultArmCount + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
+      sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
+      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
+      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
+      sequentialTernaryCount * 3 + leadingLocalConditionalBinaryCount * 2 -
+      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
+      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
@@ -7990,9 +8172,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   const size_t expectedCalls =
       directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
-      equalityConditionalCount - matchEqualityReturnCount + comparisonReturnCount +
-      sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount -
-      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
+      equalityConditionalCount - matchEqualityReturnCount - matchGuardPhantomCount +
+      comparisonReturnCount + sequentialBinaryCount + receiverFieldArithmeticCount +
+      binaryWriteCount - compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
       receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
       forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
       forLoopAccumulatorGuardedBreakCount;

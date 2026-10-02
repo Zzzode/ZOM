@@ -936,13 +936,34 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   return branchReturns(thenStmt) && branchReturns(elseStmt);
 }
 
+// Structurally admits a match-arm guard: a single binary expression whose one
+// operand is a bare identifier (a parameter reference resolved downstream) and
+// whose other operand is a scalar literal. The operator and type support are
+// checker decisions kept out of surface admission. A guard on the default
+// (wildcard) arm is not admitted because the default covers the remaining
+// domain unconditionally.
+bool isAdmittedMatchGuard(const ast::Tree& tree, ast::NodeId guard) {
+  if (!tree.contains(guard) || tree.node(guard).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  const ast::NodeId left(tree.node(guard).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(guard).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return false;
+  const bool leftIdent = tree.node(left).kind == ast::SyntaxKind::IdentExpr;
+  const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
+  if (leftIdent == rightIdent) return false;
+  const ast::NodeId literalOperand = leftIdent ? right : left;
+  return isScalarLiteral(tree.node(literalOperand).kind);
+}
+
 // Structurally admits a two-arm match: `match (b) { when true => return <lit>;
 // when false => return <lit>; }` (block-bodied arms are also admitted) or
 // `match (x) { when <int> => return <lit>; default => return <lit>; }`. The
 // scrutinee is a bare identifier (a bool or integer parameter reference); each
 // arm pattern is a bool literal (one true, one false, no duplicates), an
 // integer literal (exactly one, paired with a default arm), or a `default`
-// (wildcard) arm; guards are not admitted; each arm body tails a scalar-literal
+// (wildcard) arm; the literal arm may carry a guard that is a single
+// identifier-vs-scalar-literal binary; each arm body tails a scalar-literal
 // return. The HIR builder lowers the bool shape to the same conditional path
 // as a bare-parameter `if` and the integer shape to the equality conditional
 // path, so the admitted surface is exactly the conditional surface.
@@ -960,15 +981,22 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   bool sawFalse = false;
   bool sawIntLiteral = false;
   bool sawDefault = false;
+  bool sawGuard = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return false;
     const auto& arm = tree.node(armId);
     if (arm.kind != ast::SyntaxKind::MatchArmStmt) return false;
     const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
-    if (tree.contains(guard)) return false;
+    const bool hasGuard = tree.contains(guard);
     const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
     if (!tree.contains(pattern)) return false;
+    const bool isDefault = tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern;
+    if (hasGuard) {
+      if (isDefault || sawGuard) return false;
+      if (!isAdmittedMatchGuard(tree, guard)) return false;
+      sawGuard = true;
+    }
     if (tree.node(pattern).kind == ast::SyntaxKind::LiteralPattern) {
       const ast::NodeId literal(tree.node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
       if (!tree.contains(literal)) return false;

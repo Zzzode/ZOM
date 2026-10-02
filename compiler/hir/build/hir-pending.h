@@ -180,12 +180,25 @@ struct PendingEqualityCondition final {
   bool isUnaryDesugar = false;
 };
 
-// One conditional condition is either a bare bool parameter reference or an
-// `a == b` equality comparison of two parameter references. Exactly one of the
-// two Maybe fields is populated; the condition kind is discriminated by which.
+// One conjunctive condition: a bare bool parameter ANDed with a relational
+// comparison. The match-guard shape lowers to this: the scrutinee is the bool
+// parameter and the guard is the comparison. The HIR builder materializes the
+// comparison as a primitive binary and the conjunction as a second primitive
+// binary (BitAnd), keeping the four-block diamond CFG.
+struct PendingConjunctiveCondition final {
+  HirParameterReferenceExpression parameter;
+  PendingEqualityCondition guard;
+  identity::SourceSpan sourceSpan;
+};
+
+// One conditional condition is either a bare bool parameter reference, an
+// `a == b` equality comparison of two parameter references, or a conjunctive
+// condition (bool parameter AND comparison). Exactly one of the three Maybe
+// fields is populated; the condition kind is discriminated by which.
 struct PendingConditionalCondition final {
   zc::Maybe<HirParameterReferenceExpression> parameter;
   zc::Maybe<PendingEqualityCondition> equality;
+  zc::Maybe<PendingConjunctiveCondition> conjunctive;
 };
 
 struct PendingConditionalReturn final {
@@ -208,6 +221,12 @@ struct PendingConditionalReturn final {
   // the phantom call, the phantom comparison-result node-types, and the
   // double-counted pattern literal.
   bool isMatchEquality = false;
+  // True when the match-return has a guard on the literal (then) arm. The
+  // guard is a real AST BinaryExpr with checker-produced call, node-type, and
+  // literal facts; the conjunction (BitAnd) is synthetic (no AST node). The
+  // count equations credit the guard facts and subtract the phantom
+  // conjunction call and comparison-result node-types.
+  bool hasMatchGuard = false;
 };
 
 // One comparison-condition operand in a leading-local conditional body: a

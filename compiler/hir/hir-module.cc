@@ -725,6 +725,39 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // A match-return whose literal arm carries a guard condition. The guard
+  // comparison is a real AST BinaryExpr with checker facts, but the conjunction
+  // (BitAnd) that combines the scrutinee with the guard result is synthetic.
+  // The count equations subtract one phantom call, one phantom node-type (the
+  // scrutinee double-counted as a binary operand), and one phantom literal per
+  // guard. Derive the count from the same exhaustiveness facts that give
+  // matchReturnCount, inspecting each match's arms in the AST for a guard.
+  size_t matchGuardCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.exhaustiveness().entries()) {
+      if (!tree.contains(entry.value.node)) continue;
+      const auto& matchNode = tree.node(entry.value.node);
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!tree.contains(arms)) continue;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = tree.list(arms)[index];
+        if (!tree.contains(armId)) continue;
+        const auto& arm = tree.node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+          continue;
+        }
+        const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
+        if (tree.contains(guard)) {
+          ++matchGuardCount;
+          break;
+        }
+      }
+    }
+  }
   // equalityConditionalCount is derived below, after the sequential-binary tally,
   // because the primitiveBinaryOperations vector pools conditional/comparison
   // binaries with sequential-local binary initializers.
@@ -1342,8 +1375,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           candidate.impl->checkedModule.borrowEvidenceRevision().digest() ||
       candidate.impl->checkedModule.dispatchFacts().facts().size() !=
           directCallCount + receiverCallCount + equalityConditionalCount -
-              matchEqualityReturnCount + sequentialBinaryCount + receiverFieldArithmeticCount +
-              binaryWriteCount - compoundAssignmentWriteCount +
+              matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
+              receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
               leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
@@ -1388,11 +1421,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   if (static_cast<int64_t>(candidate.impl->expressions.size()) !=
       static_cast<int64_t>(
           declarationCount + functionCount - voidFunctionCount - directCallCount - aggregateCount -
-          receiverSelfCallCount - uninitializedLocalReturnCount - parameterReferenceCount -
-          parameterReborrowCount - parameterFieldProjectionCount + localAliasReborrowCount +
-          localWriteCount + effectiveConditionalCount * 2 + equalityConditionalCount + loopCount +
-          binaryWriteCount + parameterFieldWriteCount + receiverFieldArithmeticCount +
-          directAggregateCallCount + directScalarLocalCallCount) +
+          receiverSelfCallCount - uninitializedLocalReturnCount - parameterReferenceCount +
+          matchGuardCount - parameterReborrowCount - parameterFieldProjectionCount +
+          localAliasReborrowCount + localWriteCount + effectiveConditionalCount * 2 +
+          equalityConditionalCount - matchGuardCount + loopCount + binaryWriteCount +
+          parameterFieldWriteCount + receiverFieldArithmeticCount + directAggregateCallCount +
+          directScalarLocalCallCount) +
           sequentialLiteralCorrection + sequentialTernaryParameterConditions +
           leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
           leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
@@ -1416,14 +1450,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverCallArgumentCount + receiverCallFieldArgumentCount +
               receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
               effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
-              matchEqualityReturnCount * 2 - unaryReturnCount + matchReturnCount * 2 -
-              matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-              parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
-              parameterFieldWriteCount * 4 + discardedStatementCallCount +
-              sequentialCastInitializers + sequentialTernaryCount * 3 -
-              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
-              compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount ||
+              matchEqualityReturnCount * 2 - matchGuardCount - unaryReturnCount +
+              matchReturnCount * 2 - matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 +
+              binaryWriteCount * 2 + parameterFieldProjectionCount +
+              receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
+              discardedStatementCallCount + sequentialCastInitializers +
+              sequentialTernaryCount * 3 - leadingLocalConditionalUnaryCount -
+              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
+              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
+              forLoopBreakConditionCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1442,12 +1477,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection ||
-      facts.calls().size() != directCallCount + receiverCallCount + parameterIndexCount +
-                                  equalityConditionalCount - matchEqualityReturnCount +
-                                  sequentialBinaryCount + receiverFieldArithmeticCount +
-                                  binaryWriteCount - compoundAssignmentWriteCount +
-                                  leadingLocalConditionalArithmeticCount +
-                                  receiverCallComparisonArgumentCount + deadCalls ||
+      facts.calls().size() !=
+          directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
+              matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
+              receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
+              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount +
+              deadCalls ||
       facts.casts().size() != sequentialCastInitializers + deadCasts ||
       facts.patterns().size() != declarationCount ||
       facts.aggregates().size() != aggregateCount + deadAggregateCount ||
@@ -4745,17 +4780,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         // The condition is either a bare bool parameter reference, an `a == b`
-        // equality comparison of two same-typed scalar parameters, or a unary
-        // `!x` desugared to `x == false`. The comparison and unary forms
-        // materialize the same 9-node stride; the bare-parameter form uses 7.
+        // equality comparison of two same-typed scalar parameters, a unary
+        // `!x` desugared to `x == false`, or a match-guard conjunction
+        // (LogicalAnd) of a bool parameter and a guard comparison. The
+        // comparison and unary forms materialize the same 9-node stride; the
+        // bare-parameter form uses 7; the conjunctive form uses 11.
         const bool conditionIsEquality = source.conditionIsEquality;
         const bool conditionIsUnary = source.conditionIsUnary;
+        const bool conditionHasConjunctiveStride = source.hasMatchGuard;
         const bool conditionHasEqualityStride = conditionIsEquality || conditionIsUnary;
-        const uint32_t thenOffset = conditionHasEqualityStride ? 5 : 3;
-        const uint32_t elseOffset = conditionHasEqualityStride ? 6 : 4;
-        const uint32_t conditionalOffset = conditionHasEqualityStride ? 7 : 5;
-        const uint32_t returnOffset = conditionHasEqualityStride ? 8 : 6;
-        const uint32_t functionNodeCount = conditionHasEqualityStride ? 9 : 7;
+        const uint32_t thenOffset =
+            conditionHasConjunctiveStride ? 7 : (conditionHasEqualityStride ? 5 : 3);
+        const uint32_t elseOffset =
+            conditionHasConjunctiveStride ? 8 : (conditionHasEqualityStride ? 6 : 4);
+        const uint32_t conditionalOffset =
+            conditionHasConjunctiveStride ? 9 : (conditionHasEqualityStride ? 7 : 5);
+        const uint32_t returnOffset =
+            conditionHasConjunctiveStride ? 10 : (conditionHasEqualityStride ? 8 : 6);
+        const uint32_t functionNodeCount =
+            conditionHasConjunctiveStride ? 11 : (conditionHasEqualityStride ? 9 : 7);
         // Common arm verification: each arm value node resolves to a
         // scalar-literal expression or a parameter reference depending on its AST
         // kind. Locate the matching materialized node and cross-check it.
@@ -5177,6 +5220,274 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
           if (!equalityOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else if (conditionHasConjunctiveStride) {  // Match-guard conjunctive condition: the HIR
+                                                     // materializes an 11-node
+          // stride: function, body, scrutinee parameter reference, guard left
+          // operand, guard right operand, guard comparison, conjunction
+          // (BitAnd), then arm, else arm, conditional, return. The conjunction
+          // is the conditional's condition; the guard comparison is the
+          // conjunction's right operand.
+          const ast::NodeId guardLeft(
+              tree.node(source.matchGuard).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId guardRight(
+              tree.node(source.matchGuard).payload.words[ast::kBinaryExprRhsWord]);
+          const bool guardLeftIsIdent =
+              tree.contains(guardLeft) && tree.node(guardLeft).kind == ast::SyntaxKind::IdentExpr;
+          const bool guardRightIsIdent =
+              tree.contains(guardRight) && tree.node(guardRight).kind == ast::SyntaxKind::IdentExpr;
+          if (guardLeftIsIdent == guardRightIsIdent) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const ast::NodeId guardParamNode = guardLeftIsIdent ? guardLeft : guardRight;
+          const ast::NodeId guardLiteralNode = guardLeftIsIdent ? guardRight : guardLeft;
+          auto guardLeftSpan = bound.parsedModule().spanFor(tree.node(guardLeft).range);
+          auto guardRightSpan = bound.parsedModule().spanFor(tree.node(guardRight).range);
+          if (guardLeftSpan == zc::none || guardRightSpan == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          auto guardLeftTypeIndex = factIndex(facts.nodeTypes(), guardLeft);
+          auto guardRightTypeIndex = factIndex(facts.nodeTypes(), guardRight);
+          auto guardCallIndex = factIndex(facts.calls(), source.matchGuard);
+          auto guardLiteralIndex = factIndex(facts.literals(), guardLiteralNode);
+          if (guardLeftTypeIndex == zc::none || guardRightTypeIndex == zc::none ||
+              guardCallIndex == zc::none || guardLiteralIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t guardLeftTypeSlot = 0;
+          size_t guardRightTypeSlot = 0;
+          size_t guardCallSlot = 0;
+          size_t guardLiteralSlot = 0;
+          ZC_IF_SOME(value, guardLeftTypeIndex) { guardLeftTypeSlot = value; }
+          ZC_IF_SOME(value, guardRightTypeIndex) { guardRightTypeSlot = value; }
+          ZC_IF_SOME(value, guardCallIndex) { guardCallSlot = value; }
+          ZC_IF_SOME(value, guardLiteralIndex) { guardLiteralSlot = value; }
+          const auto guardOperandType = facts.nodeTypes().entries()[guardLeftTypeSlot].value;
+          const auto guardRightType = facts.nodeTypes().entries()[guardRightTypeSlot].value;
+          if (guardOperandType != guardRightType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& guardCallFact = facts.calls().entries()[guardCallSlot].value;
+          const auto& guardCall = guardCallFact.invocation;
+          const auto& guardSelected = guardCall.selected.variant();
+          if (guardCallFact.node != source.matchGuard ||
+              !guardSelected.is<checker::checked::PrimitiveCallable>() ||
+              !isScalarComparisonOperation(
+                  guardSelected.get<checker::checked::PrimitiveCallable>().operation) ||
+              guardCall.calleeType != guardOperandType || guardCall.receiver != zc::none ||
+              guardCall.receiverMode != zc::none || guardCall.receiverAdjustment != zc::none ||
+              guardCall.arguments.size() != 2 || guardCall.arguments[0].sourceNode != guardLeft ||
+              guardCall.arguments[0].sourceType != guardOperandType ||
+              guardCall.arguments[1].sourceNode != guardRight ||
+              guardCall.arguments[1].sourceType != guardOperandType ||
+              guardCall.successType != conditionType || guardCall.resultType != conditionType ||
+              guardCall.substitutions != zc::none || guardCall.witnesses != zc::none ||
+              guardCall.raises != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto guardOperation =
+              guardSelected.get<checker::checked::PrimitiveCallable>().operation;
+          // Verify the scrutinee parameter reference at offset 2.
+          auto scrutineeParameter = resolvedCallableParameter(bound.bindings(), source.condition);
+          if (scrutineeParameter == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          identity::CallableParameterId scrutineeHandle;
+          ZC_IF_SOME(value, scrutineeParameter) { scrutineeHandle = value; }
+          auto scrutineeAuthority = registries.callableParameter(scrutineeHandle);
+          if (scrutineeAuthority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          zc::Maybe<const HirParameterReferenceExpression&> scrutineeRef;
+          for (const auto& reference : candidate.impl->parameterReferences) {
+            if (reference.node != hirId(expectedFunction + 2)) continue;
+            if (scrutineeRef != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            scrutineeRef = reference;
+          }
+          if (scrutineeRef == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool scrutineeOk = false;
+          ZC_IF_SOME(reference, scrutineeRef) {
+            ZC_IF_SOME(authority, scrutineeAuthority) {
+              scrutineeOk = reference.parameter == authority.key() &&
+                            reference.type == conditionType &&
+                            reference.category == HirValueCategory::Place &&
+                            sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan));
+            }
+          }
+          if (!scrutineeOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify the guard parameter operand at offset 3 or 4.
+          auto guardParameter = resolvedCallableParameter(bound.bindings(), guardParamNode);
+          if (guardParameter == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          identity::CallableParameterId guardParamHandle;
+          ZC_IF_SOME(value, guardParameter) { guardParamHandle = value; }
+          auto guardParamAuthority = registries.callableParameter(guardParamHandle);
+          if (guardParamAuthority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          const HirNodeId guardParamId =
+              guardLeftIsIdent ? hirId(expectedFunction + 3) : hirId(expectedFunction + 4);
+          const HirNodeId guardLiteralId =
+              guardLeftIsIdent ? hirId(expectedFunction + 4) : hirId(expectedFunction + 3);
+          zc::Maybe<const HirParameterReferenceExpression&> guardParamRef;
+          for (const auto& reference : candidate.impl->parameterReferences) {
+            if (reference.node != guardParamId) continue;
+            if (guardParamRef != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            guardParamRef = reference;
+          }
+          if (guardParamRef == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool guardParamOk = false;
+          ZC_IF_SOME(reference, guardParamRef) {
+            ZC_IF_SOME(authority, guardParamAuthority) {
+              guardParamOk =
+                  reference.parameter == authority.key() && reference.type == guardOperandType &&
+                  reference.category == HirValueCategory::Place &&
+                  sameSpan(reference.sourceSpan, guardLeftIsIdent
+                                                     ? ZC_ASSERT_NONNULL(guardLeftSpan)
+                                                     : ZC_ASSERT_NONNULL(guardRightSpan));
+            }
+          }
+          if (!guardParamOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify the guard literal operand at offset 3 or 4.
+          const auto& guardLiteralFact = facts.literals().entries()[guardLiteralSlot].value;
+          zc::Maybe<const HirScalarLiteralExpression&> guardLiteralExpr;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != guardLiteralId) continue;
+            if (guardLiteralExpr != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            guardLiteralExpr = expression;
+          }
+          if (guardLiteralExpr == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool guardLiteralOk = false;
+          ZC_IF_SOME(expression, guardLiteralExpr) {
+            guardLiteralOk = expression.type == guardOperandType &&
+                             expression.category == HirValueCategory::Value &&
+                             sameConstant(expression.value, guardLiteralFact.literal, module,
+                                          registries, semanticTypes) &&
+                             sameSpan(expression.sourceSpan,
+                                      guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardRightSpan)
+                                                       : ZC_ASSERT_NONNULL(guardLeftSpan));
+          }
+          if (!guardLiteralOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify the guard comparison at offset 5.
+          zc::Maybe<const HirPrimitiveBinaryExpression&> guardComparisonValue;
+          for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+            if (binary.node != hirId(expectedFunction + 5)) continue;
+            if (guardComparisonValue != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            guardComparisonValue = binary;
+          }
+          if (guardComparisonValue == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool guardComparisonOk = false;
+          ZC_IF_SOME(comparison, guardComparisonValue) {
+            guardComparisonOk = comparison.left == hirId(expectedFunction + 3) &&
+                                comparison.right == hirId(expectedFunction + 4) &&
+                                comparison.operandType == guardOperandType &&
+                                comparison.type == conditionType &&
+                                comparison.category == HirValueCategory::Value &&
+                                comparison.operation == guardOperation &&
+                                sameSpan(comparison.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan));
+          }
+          if (!guardComparisonOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Verify the conjunction at offset 6.
+          zc::Maybe<const HirPrimitiveBinaryExpression&> conjunctionValue;
+          for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+            if (binary.node != hirId(expectedFunction + 6)) continue;
+            if (conjunctionValue != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            conjunctionValue = binary;
+          }
+          if (conjunctionValue == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          bool conjunctionOk = false;
+          ZC_IF_SOME(conjunction, conjunctionValue) {
+            ZC_IF_SOME(conditional, conditionalValue) {
+              conjunctionOk = conjunction.left == hirId(expectedFunction + 2) &&
+                              conjunction.right == hirId(expectedFunction + 5) &&
+                              conjunction.operandType == conditionType &&
+                              conjunction.type == conditionType &&
+                              conjunction.category == HirValueCategory::Value &&
+                              conjunction.operation == checker::PrimitiveOperation::LogicalAnd &&
+                              sameSpan(conjunction.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
+                              conditional.condition == conjunction.node &&
+                              typeExists(guardOperandType, semanticTypes);
+            }
+          }
+          if (!conjunctionOk) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);

@@ -2580,6 +2580,335 @@ bool validEqualityConditionalReturnFunction(
   return false;
 }
 
+// Verifies a match-guard conditional return: the condition is a LogicalAnd
+// conjunction of the scrutinee bool parameter and a guard comparison
+// (one parameter reference and one scalar literal). The entry block evaluates
+// the guard comparison into a temporary, conjuncts it with the scrutinee into
+// a second temporary, and switches on the conjunction. The local count is
+// parameters + 3 (result + guardTemp + conjTemp).
+bool validConjunctiveConditionalReturnFunction(
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirConditionalExpression& conditional,
+    const hir::HirPrimitiveBinaryExpression& conjunction, const ConditionalArmView& thenArm,
+    const ConditionalArmView& elseArm, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  if (conjunction.operation != checker::PrimitiveOperation::LogicalAnd) return false;
+
+  auto armNode = [](const ConditionalArmView& arm) -> zc::Maybe<hir::HirNodeId> {
+    ZC_IF_SOME(value, arm.literal) { return value.node; }
+    ZC_IF_SOME(value, arm.parameter) { return value.node; }
+    return zc::none;
+  };
+  auto armType = [](const ConditionalArmView& arm) -> zc::Maybe<identity::SemanticTypeId> {
+    ZC_IF_SOME(value, arm.literal) { return value.type; }
+    ZC_IF_SOME(value, arm.parameter) { return value.type; }
+    return zc::none;
+  };
+  auto thenNode = armNode(thenArm);
+  auto elseNode = armNode(elseArm);
+  auto thenTypeValue = armType(thenArm);
+  auto elseTypeValue = armType(elseArm);
+  if (thenNode == zc::none || elseNode == zc::none || thenTypeValue == zc::none ||
+      elseTypeValue == zc::none) {
+    return false;
+  }
+
+  // The conjunctive condition allocates two extra bool temporaries after the
+  // function result local, so the local count is parameters + 3.
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != declaration.parameters.size() + 3 || function.blocks.size() != 4 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != conditional.node ||
+      sourceReturn.resultType != declaration.resultType ||
+      conditional.condition != conjunction.node ||
+      conditional.thenReturnValue != ZC_ASSERT_NONNULL(thenNode) ||
+      conditional.elseReturnValue != ZC_ASSERT_NONNULL(elseNode) ||
+      conditional.type != declaration.resultType ||
+      ZC_ASSERT_NONNULL(thenTypeValue) != declaration.resultType ||
+      ZC_ASSERT_NONNULL(elseTypeValue) != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& local = function.locals[i];
+    if (local.id != localId(static_cast<uint32_t>(i + 1)) ||
+        local.kind != MirLocalKind::Parameter || local.type != declaration.parameters[i].type ||
+        local.sourceScope != scopeId(1) ||
+        !sameSpan(local.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto resultLocal = localId(static_cast<uint32_t>(declaration.parameters.size() + 1));
+  const auto guardTemp = localId(static_cast<uint32_t>(declaration.parameters.size() + 2));
+  const auto conjTemp = localId(static_cast<uint32_t>(declaration.parameters.size() + 3));
+  const auto& result = function.locals[declaration.parameters.size()];
+  const auto& guard = function.locals[declaration.parameters.size() + 1];
+  const auto& conj = function.locals[declaration.parameters.size() + 2];
+  if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, sourceReturn.sourceSpan) || guard.id != guardTemp ||
+      guard.kind != MirLocalKind::Temporary || guard.type != conjunction.type ||
+      guard.sourceScope != scopeId(1) || !sameSpan(guard.sourceSpan, conjunction.sourceSpan) ||
+      conj.id != conjTemp || conj.kind != MirLocalKind::Temporary ||
+      conj.type != conjunction.type || conj.sourceScope != scopeId(1) ||
+      !sameSpan(conj.sourceSpan, conjunction.sourceSpan)) {
+    return false;
+  }
+
+  // The conjunction's left operand is the scrutinee bool parameter reference.
+  auto scrutineeRef = parameterReferenceFor(hirModule, conjunction.left);
+  if (scrutineeRef == zc::none) return false;
+  const auto& scrutinee = ZC_ASSERT_NONNULL(scrutineeRef);
+  size_t scrutineeIndex = 0;
+  {
+    bool found = false;
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == scrutinee.parameter) {
+        scrutineeIndex = i;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  if (scrutinee.type != declaration.parameters[scrutineeIndex].type) return false;
+
+  // The conjunction's right operand is the guard comparison: one parameter
+  // reference and one scalar literal.
+  auto guardComparison = primitiveBinaryFor(hirModule, conjunction.right);
+  if (guardComparison == zc::none) return false;
+  const auto& guardValue = ZC_ASSERT_NONNULL(guardComparison);
+  auto guardComparisonOp = mirComparisonOperatorFor(guardValue.operation);
+  if (guardComparisonOp == zc::none) return false;
+  if (guardValue.type != conjunction.type) return false;
+
+  auto guardLeftParam = parameterReferenceFor(hirModule, guardValue.left);
+  auto guardRightParam = parameterReferenceFor(hirModule, guardValue.right);
+  auto guardLeftLiteral = expressionFor(hirModule, guardValue.left);
+  auto guardRightLiteral = expressionFor(hirModule, guardValue.right);
+  const bool guardLeftIsParam = guardLeftParam != zc::none;
+  const bool guardRightIsParam = guardRightParam != zc::none;
+  if (guardLeftIsParam == guardRightIsParam) return false;
+  const bool guardLeftIsLiteral = guardLeftLiteral != zc::none;
+  const bool guardRightIsLiteral = guardRightLiteral != zc::none;
+  if (guardLeftIsLiteral == guardRightIsLiteral) return false;
+  if (guardLeftIsParam != guardRightIsLiteral) return false;
+
+  const auto& guardParam =
+      guardLeftIsParam ? ZC_ASSERT_NONNULL(guardLeftParam) : ZC_ASSERT_NONNULL(guardRightParam);
+  const auto& guardLiteral = guardLeftIsLiteral ? ZC_ASSERT_NONNULL(guardLeftLiteral)
+                                                : ZC_ASSERT_NONNULL(guardRightLiteral);
+  size_t guardParamIndex = 0;
+  {
+    bool found = false;
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == guardParam.parameter) {
+        guardParamIndex = i;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  if (guardParam.type != guardValue.operandType) return false;
+  if (guardLiteral.type != guardValue.operandType) return false;
+
+  const auto& entry = function.blocks[0];
+  const auto& thenBlock = function.blocks[1];
+  const auto& elseBlock = function.blocks[2];
+  const auto& joinBlock = function.blocks[3];
+  // Entry block layout: StorageLive(result), StorageLive(guardTemp),
+  // Assign(guardTemp = Comparison{op, copy(param), const(lit)}),
+  // StorageLive(conjTemp), Assign(conjTemp = BitAnd(copy(scrutinee),
+  // copy(guardTemp))), then SwitchInt(copy(conjTemp)).
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 5 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::StorageLive ||
+      entry.statements[1].storageLocal() != guardTemp ||
+      !sameSpan(entry.statements[1].sourceSpan(), guardValue.sourceSpan) ||
+      entry.statements[2].kind() != MirStatementKind::Assign ||
+      !sameSpan(entry.statements[2].sourceSpan(), guardValue.sourceSpan) ||
+      entry.statements[3].kind() != MirStatementKind::StorageLive ||
+      entry.statements[3].storageLocal() != conjTemp ||
+      !sameSpan(entry.statements[3].sourceSpan(), conjunction.sourceSpan) ||
+      entry.statements[4].kind() != MirStatementKind::Assign ||
+      !sameSpan(entry.statements[4].sourceSpan(), conjunction.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
+      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
+      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
+      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
+      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
+      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
+      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
+      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+
+  // Guard comparison assignment.
+  const auto& guardAssign = entry.statements[2].assignmentValue();
+  if (guardAssign.initialization != MirInitializationKind::Initialize ||
+      guardAssign.destination.local() != guardTemp ||
+      guardAssign.destination.rootType() != guardValue.type ||
+      guardAssign.destination.resultType() != guardValue.type ||
+      guardAssign.destination.projections().size() != 0 ||
+      guardAssign.value.kind() != MirRvalueKind::Comparison) {
+    return false;
+  }
+  const auto& guardCmp = guardAssign.value.comparisonValue();
+  if (guardCmp.op != ZC_ASSERT_NONNULL(guardComparisonOp) ||
+      guardCmp.resultType != guardValue.type) {
+    return false;
+  }
+  // Guard comparison operands: parameter place-use and scalar constant.
+  auto operandMatches = [&](const MirOperand& operand,
+                            zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                            size_t parameterIndex) -> bool {
+    ZC_IF_SOME(value, literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == guardValue.operandType &&
+             sameConstant(operand.constantValue().value, value.value, module, identities,
+                          semanticTypes);
+    }
+    const auto local = localId(static_cast<uint32_t>(parameterIndex + 1));
+    return matchesPlaceUse(operand, proofs, copy, guardValue.operandType) &&
+           operand.place().local() == local &&
+           operand.place().rootType() == guardValue.operandType &&
+           operand.place().resultType() == guardValue.operandType &&
+           operand.place().projections().size() == 0;
+  };
+  const MirOperand& guardLeft = guardLeftIsParam ? guardCmp.left : guardCmp.right;
+  const MirOperand& guardRight = guardLeftIsParam ? guardCmp.right : guardCmp.left;
+  if (!operandMatches(guardLeft, guardLeftIsLiteral ? guardLeftLiteral : zc::none,
+                      guardLeftIsParam ? guardParamIndex : 0) ||
+      !operandMatches(guardRight, guardRightIsLiteral ? guardRightLiteral : zc::none,
+                      guardRightIsParam ? guardParamIndex : 0)) {
+    return false;
+  }
+
+  // Conjunction assignment: BitAnd(copy(scrutinee), copy(guardTemp)).
+  const auto& conjAssign = entry.statements[4].assignmentValue();
+  if (conjAssign.initialization != MirInitializationKind::Initialize ||
+      conjAssign.destination.local() != conjTemp ||
+      conjAssign.destination.rootType() != conjunction.type ||
+      conjAssign.destination.resultType() != conjunction.type ||
+      conjAssign.destination.projections().size() != 0 ||
+      conjAssign.value.kind() != MirRvalueKind::Arithmetic) {
+    return false;
+  }
+  const auto& conjArith = conjAssign.value.arithmeticValue();
+  if (conjArith.op != MirArithmeticOperator::BitAnd || conjArith.resultType != conjunction.type) {
+    return false;
+  }
+  // Left: scrutinee parameter copy.
+  {
+    const auto local = localId(static_cast<uint32_t>(scrutineeIndex + 1));
+    if (!matchesPlaceUse(conjArith.left, proofs, copy, scrutinee.type) ||
+        conjArith.left.place().local() != local ||
+        conjArith.left.place().rootType() != scrutinee.type ||
+        conjArith.left.place().resultType() != scrutinee.type ||
+        conjArith.left.place().projections().size() != 0) {
+      return false;
+    }
+  }
+  // Right: guardTemp copy.
+  if (!matchesPlaceUse(conjArith.right, proofs, copy, conjunction.type) ||
+      conjArith.right.kind() != MirOperandKind::Copy ||
+      conjArith.right.place().local() != guardTemp ||
+      conjArith.right.place().rootType() != conjunction.type ||
+      conjArith.right.place().resultType() != conjunction.type ||
+      conjArith.right.place().projections().size() != 0) {
+    return false;
+  }
+
+  // SwitchInt on the conjunction temporary.
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
+  const auto& trueArm = switchInt.arms[0];
+  const auto& falseArm = switchInt.arms[1];
+  if (trueArm.target != blockId(2) || falseArm.target != blockId(3)) { return false; }
+  auto trueValue = trueArm.value.booleanValue();
+  auto falseValue = falseArm.value.booleanValue();
+  if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
+      ZC_ASSERT_NONNULL(falseValue)) {
+    return false;
+  }
+  if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != conjTemp ||
+      switchInt.discriminant.place().rootType() != conjunction.type ||
+      switchInt.discriminant.place().resultType() != conjunction.type ||
+      switchInt.discriminant.place().projections().size() != 0) {
+    return false;
+  }
+
+  // Branch blocks: each initializes the result local from the arm literal or
+  // parameter.
+  auto parameterLocalIndex = [&](const hir::HirParameterReferenceExpression& reference,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == reference.parameter) {
+        outIndex = i;
+        return true;
+      }
+    }
+    return false;
+  };
+  auto branchInitializesResult = [&](const MirBasicBlock& branch,
+                                     const ConditionalArmView& arm) -> bool {
+    if (branch.statements[0].kind() != MirStatementKind::Assign) { return false; }
+    const auto& assignment = branch.statements[0].assignmentValue();
+    if (assignment.initialization != MirInitializationKind::Initialize ||
+        assignment.destination.local() != resultLocal ||
+        assignment.destination.rootType() != declaration.resultType ||
+        assignment.destination.resultType() != declaration.resultType ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != MirRvalueKind::Use) {
+      return false;
+    }
+    const auto& operand = assignment.value.useValue().operand;
+    ZC_IF_SOME(literal, arm.literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == literal.type &&
+             sameConstant(operand.constantValue().value, literal.value, module, identities,
+                          semanticTypes);
+    }
+    ZC_IF_SOME(parameter, arm.parameter) {
+      size_t parameterIndex = 0;
+      if (!parameterLocalIndex(parameter, parameterIndex)) return false;
+      return matchesPlaceUse(operand, proofs, copy, parameter.type) &&
+             operand.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
+             operand.place().rootType() == parameter.type &&
+             operand.place().resultType() == parameter.type &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
+  };
+  if (!branchInitializesResult(thenBlock, thenArm) ||
+      !branchInitializesResult(elseBlock, elseArm)) {
+    return false;
+  }
+  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 // Verifies a function with K leading scalar user locals followed by one
 // comparison conditional whose arms return constants. Mirrors
 // validEqualityConditionalReturnFunction with a dense K UserLocal run between
@@ -14000,7 +14329,13 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               }
             }
             ZC_IF_SOME(equalityValue, equality) {
-              if (!isLeadingLocalConditional && thenOk && elseOk) {
+              if (equalityValue.operation == checker::PrimitiveOperation::LogicalAnd &&
+                  !isLeadingLocalConditional && thenOk && elseOk) {
+                valid = validConjunctiveConditionalReturnFunction(
+                    function, hirModule, sourceDeclaration, block, returnStatement,
+                    sourceConditional, equalityValue, thenArm, elseArm, proofs, copy, module,
+                    identities, semanticTypes);
+              } else if (!isLeadingLocalConditional && thenOk && elseOk) {
                 valid = validEqualityConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
                     sourceConditional, equalityValue, thenArm, elseArm, proofs, copy, module,

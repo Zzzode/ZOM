@@ -559,7 +559,7 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
     }
     const int present = (literal != zc::none ? 1 : 0) + (localReference != zc::none ? 1 : 0) +
                         (parameterReference != zc::none ? 1 : 0);
-    if (present != 1) return zc::none;
+    if (present != 1) { return zc::none; }
 
     zc::Maybe<MirRvalue> rvalue;
     identity::SourceSpan assignSpan = binding.sourceSpan.clone();
@@ -2326,6 +2326,205 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// Match-guard conjunctive conditional return: a free function whose sole
+/// statement is a return of a conditional whose condition is a conjunction
+/// (LogicalAnd/BitAnd) of a bool parameter reference and a guard comparison.
+/// The guard comparison has one parameter-reference operand and one
+/// scalar-literal operand. The arms are scalar literals. Lowers to a
+/// four-block diamond: the entry block evaluates the guard comparison into a
+/// temporary, conjuncts it with the scrutinee into a second temporary, and
+/// switches on the conjunction; the two arm blocks assign the branch literals
+/// and the join block returns the result.
+zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 1) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  auto sourceReturn = returnFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none) return zc::none;
+
+  auto conditional = conditionalFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (conditional == zc::none) return zc::none;
+  const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
+  if (conditionalValue.type != declaration.resultType ||
+      conditionalValue.category != hir::HirValueCategory::Value) {
+    return zc::none;
+  }
+
+  // The condition must be a conjunction (LogicalAnd lowered to BitAnd).
+  auto conjunction = primitiveBinaryFor(hirModule, conditionalValue.condition);
+  if (conjunction == zc::none) return zc::none;
+  const auto& conjunctionValue = ZC_ASSERT_NONNULL(conjunction);
+  if (conjunctionValue.operation != checker::PrimitiveOperation::LogicalAnd) return zc::none;
+
+  // The left operand is the scrutinee bool parameter reference.
+  auto scrutineeRef = parameterReferenceFor(hirModule, conjunctionValue.left);
+  if (scrutineeRef == zc::none) return zc::none;
+  const auto& scrutinee = ZC_ASSERT_NONNULL(scrutineeRef);
+  auto scrutineeIndex = parameterIndexFor(declaration, scrutinee.parameter);
+  if (scrutineeIndex == zc::none) return zc::none;
+  if (scrutinee.type != declaration.parameters[ZC_ASSERT_NONNULL(scrutineeIndex)].type) {
+    return zc::none;
+  }
+
+  // The right operand is the guard comparison: one parameter reference and one
+  // scalar literal.
+  auto guardComparison = primitiveBinaryFor(hirModule, conjunctionValue.right);
+  if (guardComparison == zc::none) return zc::none;
+  const auto& guardValue = ZC_ASSERT_NONNULL(guardComparison);
+  auto guardComparisonOp = comparisonOperatorFor(guardValue.operation);
+  if (guardComparisonOp == zc::none) return zc::none;
+  if (guardValue.type != scrutinee.type) return zc::none;
+
+  auto guardLeftParam = parameterReferenceFor(hirModule, guardValue.left);
+  auto guardRightParam = parameterReferenceFor(hirModule, guardValue.right);
+  auto guardLeftLiteral = expressionFor(hirModule, guardValue.left);
+  auto guardRightLiteral = expressionFor(hirModule, guardValue.right);
+  const bool guardLeftIsParam = guardLeftParam != zc::none;
+  const bool guardRightIsParam = guardRightParam != zc::none;
+  if (guardLeftIsParam == guardRightIsParam) return zc::none;
+  const bool guardLeftIsLiteral = guardLeftLiteral != zc::none;
+  const bool guardRightIsLiteral = guardRightLiteral != zc::none;
+  if (guardLeftIsLiteral == guardRightIsLiteral) return zc::none;
+  if (guardLeftIsParam != guardRightIsLiteral) return zc::none;
+
+  const auto& guardParam =
+      guardLeftIsParam ? ZC_ASSERT_NONNULL(guardLeftParam) : ZC_ASSERT_NONNULL(guardRightParam);
+  const auto& guardLiteral = guardLeftIsLiteral ? ZC_ASSERT_NONNULL(guardLeftLiteral)
+                                                : ZC_ASSERT_NONNULL(guardRightLiteral);
+  auto guardParamIndex = parameterIndexFor(declaration, guardParam.parameter);
+  if (guardParamIndex == zc::none) return zc::none;
+  if (guardParam.type != guardValue.operandType) return zc::none;
+  if (guardLiteral.type != guardValue.operandType) return zc::none;
+
+  // The arms are scalar literals.
+  auto thenLiteral = expressionFor(hirModule, conditionalValue.thenReturnValue);
+  auto elseLiteral = expressionFor(hirModule, conditionalValue.elseReturnValue);
+  if (thenLiteral == zc::none || elseLiteral == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(thenLiteral).type != declaration.resultType ||
+      ZC_ASSERT_NONNULL(elseLiteral).type != declaration.resultType) {
+    return zc::none;
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
+                       ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
+  if (resultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 1)) {
+    return zc::none;
+  }
+  const MirLocalId guardTemp = ctx.declareLocal(MirLocalKind::Temporary, guardValue.type, scope,
+                                                guardValue.sourceSpan.clone());
+  if (guardTemp.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 2)) {
+    return zc::none;
+  }
+  const MirLocalId conjTemp = ctx.declareLocal(MirLocalKind::Temporary, conjunctionValue.type,
+                                               scope, conjunctionValue.sourceSpan.clone());
+  if (conjTemp.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 3)) {
+    return zc::none;
+  }
+
+  // Block 1: StorageLive(result); StorageLive(guardTemp);
+  // Assign(guardTemp = guardCmp(param, lit)); StorageLive(conjTemp);
+  // Assign(conjTemp = BitAnd(scrutinee, guardTemp));
+  // SwitchInt(conjTemp) { true -> 2, false -> 3 }, default 3.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(guardTemp, guardValue.sourceSpan.clone()));
+
+  // Guard comparison operands: parameter place-use and scalar constant.
+  zc::Vector<MirProjection> guardParamProjections;
+  auto guardParamOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(parameterLocals[ZC_ASSERT_NONNULL(guardParamIndex)], guardParam.type,
+                        zc::mv(guardParamProjections), guardParam.type));
+  if (guardParamOperand == zc::none) return zc::none;
+  auto guardLiteralOperand = MirOperand::constant(guardLiteral.type, guardLiteral.value.clone());
+  MirOperand guardLeft =
+      guardLeftIsParam ? zc::mv(ZC_ASSERT_NONNULL(guardParamOperand)) : zc::mv(guardLiteralOperand);
+  MirOperand guardRight =
+      guardLeftIsParam ? zc::mv(guardLiteralOperand) : zc::mv(ZC_ASSERT_NONNULL(guardParamOperand));
+  zc::Vector<MirProjection> guardTempProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(guardTemp, guardValue.type, zc::mv(guardTempProjections), guardValue.type),
+      MirRvalue::comparison(ZC_ASSERT_NONNULL(guardComparisonOp), zc::mv(guardLeft),
+                            zc::mv(guardRight), guardValue.type),
+      MirInitializationKind::Initialize, guardValue.sourceSpan.clone()));
+
+  // Conjunction: BitAnd(scrutinee, guardTemp).
+  ctx.appendStatement(MirStatement::storageLive(conjTemp, conjunctionValue.sourceSpan.clone()));
+  zc::Vector<MirProjection> scrutineeProjections;
+  auto scrutineeOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(parameterLocals[ZC_ASSERT_NONNULL(scrutineeIndex)], scrutinee.type,
+                        zc::mv(scrutineeProjections), scrutinee.type));
+  if (scrutineeOperand == zc::none) return zc::none;
+  zc::Vector<MirProjection> guardTempUseProjections;
+  auto guardTempUse = placeUse(
+      proofs, copyMarker,
+      MirPlace(guardTemp, guardValue.type, zc::mv(guardTempUseProjections), guardValue.type));
+  if (guardTempUse == zc::none) return zc::none;
+  zc::Vector<MirProjection> conjTempProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(conjTemp, conjunctionValue.type, zc::mv(conjTempProjections), conjunctionValue.type),
+      MirRvalue::arithmetic(MirArithmeticOperator::BitAnd,
+                            zc::mv(ZC_ASSERT_NONNULL(scrutineeOperand)),
+                            zc::mv(ZC_ASSERT_NONNULL(guardTempUse)), conjunctionValue.type),
+      MirInitializationKind::Initialize, conjunctionValue.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> discriminantProjections;
+  auto discriminant = placeUse(proofs, copyMarker,
+                               MirPlace(conjTemp, conjunctionValue.type,
+                                        zc::mv(discriminantProjections), conjunctionValue.type));
+  if (discriminant == zc::none) return zc::none;
+  zc::Vector<MirSwitchIntArm> arms;
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
+                                              blockId(3), conditionalValue.sourceSpan.clone()));
+
+  // Blocks 2 and 3: Initialize Assign of the arm constant then Goto block 4.
+  const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
+    (void)ctx.beginBlock(scope);
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
+        MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
+        MirInitializationKind::Initialize, literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+  };
+  armBlock(ZC_ASSERT_NONNULL(thenLiteral));
+  armBlock(ZC_ASSERT_NONNULL(elseLiteral));
+
+  // Block 4: Return(result).
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -2363,6 +2562,16 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       declaration.unsafeBlock == zc::none) {
     auto product = buildLeadingLocalConditionalReturn(declaration, block, hirModule, identities,
                                                       proofs, copyMarker);
+    if (product != zc::none) return product;
+  }
+
+  // Match-guard conjunctive conditional return: a single-statement body whose
+  // return value is a conditional with a conjunction (LogicalAnd) condition.
+  // The arm self-gates on the HIR shape and rejects every other body.
+  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto product = buildConjunctiveConditionalReturn(declaration, block, hirModule, identities,
+                                                     proofs, copyMarker);
     if (product != zc::none) return product;
   }
 

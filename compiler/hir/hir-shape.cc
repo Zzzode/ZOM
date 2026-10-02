@@ -398,13 +398,14 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   bool sawIntLiteral = false;
   ast::NodeId intLiteralNode{};
   zc::Maybe<ast::NodeId> intLiteralValue;
+  zc::Maybe<ast::NodeId> guardNode;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
     const auto& arm = tree.node(armId);
     if (arm.kind != ast::SyntaxKind::MatchArmStmt) return zc::none;
     const ast::NodeId guard(arm.payload.words[ast::kMatchArmStmtGuardWord]);
-    if (tree.contains(guard)) return zc::none;
+    const bool hasGuard = tree.contains(guard);
     const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
     if (!tree.contains(pattern)) return zc::none;
     // A literal pattern carries its bool value explicitly or its integer
@@ -433,6 +434,24 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       sawDefault = true;
     } else {
       return zc::none;
+    }
+    // A guard is admitted only on the true arm of a bool match. The guard must
+    // be a single binary expression whose one operand is a bare identifier and
+    // whose other operand is a scalar literal. The HIR builder lowers the
+    // match to a conjunctive condition (scrutinee AND guard) keeping the
+    // four-block diamond CFG.
+    if (hasGuard) {
+      if (isIntLiteral || !isLiteral || !literalValue || guardNode != zc::none) { return zc::none; }
+      if (tree.node(guard).kind != ast::SyntaxKind::BinaryExpr) return zc::none;
+      const ast::NodeId guardLeft(tree.node(guard).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId guardRight(tree.node(guard).payload.words[ast::kBinaryExprRhsWord]);
+      if (!tree.contains(guardLeft) || !tree.contains(guardRight)) return zc::none;
+      const bool leftIdent = tree.node(guardLeft).kind == ast::SyntaxKind::IdentExpr;
+      const bool rightIdent = tree.node(guardRight).kind == ast::SyntaxKind::IdentExpr;
+      if (leftIdent == rightIdent) return zc::none;
+      const ast::NodeId guardLiteral = leftIdent ? guardRight : guardLeft;
+      if (!isScalarLiteral(tree.node(guardLiteral).kind)) return zc::none;
+      guardNode = guard;
     }
     const ast::NodeId armBody(arm.payload.words[ast::kMatchArmStmtBodyWord]);
     if (!tree.contains(armBody)) return zc::none;
@@ -509,12 +528,22 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   } else if (trueValue == zc::none || falseValue == zc::none) {
     return zc::none;
   }
+  // A guard is admitted only when the default arm covers the remaining bool
+  // domain, so the conjunctive condition (scrutinee AND guard) is semantically
+  // exact: the false arm is the default, and the guard further constrains the
+  // true arm. A guard without a default arm would leave the guard-false case
+  // uncovered and is rejected here.
+  if (guardNode != zc::none && !sawDefault) return zc::none;
   ast::NodeId trueNode;
   ast::NodeId falseNode;
   ZC_IF_SOME(value, trueValue) { trueNode = value; }
   ZC_IF_SOME(value, falseValue) { falseNode = value; }
   shape.thenReturnValue = trueNode;
   shape.elseReturnValue = falseNode;
+  ZC_IF_SOME(guard, guardNode) {
+    shape.hasMatchGuard = true;
+    shape.matchGuard = guard;
+  }
   return shape;
 }
 
