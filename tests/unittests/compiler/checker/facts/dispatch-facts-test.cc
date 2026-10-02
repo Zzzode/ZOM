@@ -860,14 +860,15 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
       session.boundModule(), requirements.get<body::VerifiedBodyFactRequirementInventory>());
   ZC_REQUIRE(inventory.is<VerifiedDispatchSiteInventory>());
   const auto& verified = inventory.get<VerifiedDispatchSiteInventory>();
-  // A struct literal is not a dispatch site, so the seven requirements are the
-  // free call, the member call, and the five operator forms.
-  ZC_REQUIRE(verified.requirements().size() == 7);
-  ZC_REQUIRE(verified.nodeProjections().size() >= 8);
+  // A struct literal is not a dispatch site, and a compound assignment desugars
+  // to a binary write in the HIR builder, so the six requirements are the free
+  // call, the member call, and the four operator forms (binary, unary, index,
+  // null-coalescing).
+  ZC_REQUIRE(verified.requirements().size() == 6);
+  ZC_REQUIRE(verified.nodeProjections().size() >= 7);
   bool call = false;
   bool memberCall = false;
   bool binary = false;
-  bool compound = false;
   bool index = false;
   bool nullCoalesce = false;
   bool unary = false;
@@ -878,10 +879,6 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
     } else if (requirement.siteKind == DispatchSiteKind::BinaryOperator) {
       binary = requirement.operation == PrimitiveOperation::Add &&
                requirement.receiverRole == DispatchReceiverRole::OperatorLeftHandSide;
-    } else if (requirement.siteKind == DispatchSiteKind::CompoundAssignment) {
-      compound = requirement.operation == PrimitiveOperation::Add &&
-                 requirement.compoundOperation == CompoundAssignmentOperation::AddAssign &&
-                 requirement.receiverRole == DispatchReceiverRole::OperatorLeftHandSide;
     } else if (requirement.siteKind == DispatchSiteKind::UnaryOperator) {
       unary = requirement.operation == PrimitiveOperation::Neg &&
               requirement.receiverRole == DispatchReceiverRole::OperatorOperand;
@@ -895,7 +892,6 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
   ZC_EXPECT(call);
   ZC_EXPECT(memberCall);
   ZC_EXPECT(binary);
-  ZC_EXPECT(compound);
   ZC_EXPECT(unary);
   ZC_EXPECT(index);
   ZC_EXPECT(nullCoalesce);

@@ -1,6 +1,9 @@
 # RFC 0016 -- LLVM discovery gate configure-negative/positive fixture harness.
 #
-# This project intentionally contains no compiler target. It includes the real
+# This project intentionally contains no compiler target. It enables C and CXX
+# because LLVM 22's FindFFI/FindLibEdit modules run check_cxx_source_compiles and
+# check_include_file during find_package(LLVM), which require the languages to be
+# enabled under CMake 4.x. It includes the real
 # repository gate module (cmake/utils/llvm.cmake) so that every fixture exercises
 # the exact top-level fail-closed contract and fails BEFORE any compiler target
 # could be generated. The Python driver
@@ -10,7 +13,7 @@
 
 cmake_minimum_required(VERSION 3.25.0)
 
-project(zom-llvm-discovery-gate NONE)
+project(zom-llvm-discovery-gate C CXX)
 
 if(NOT DEFINED ZOM_GATE_MODULE OR "${ZOM_GATE_MODULE}" STREQUAL "")
   message(FATAL_ERROR "Fixture harness requires -DZOM_GATE_MODULE=<path to cmake/utils/llvm.cmake>")

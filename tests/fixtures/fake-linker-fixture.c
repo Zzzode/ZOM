@@ -29,7 +29,7 @@
  *
  * It does three things the test relies on:
  *   1. Verifies the invocation shape it received: argv must be
- *        argv[0] <driver> -o <out> -e <entry> <inputs...>
+ *        argv[0] <driver> [-no-pie] -o <out> -e <entry> <inputs...>
  *      and the environment must be empty (the Empty env policy). A structural
  *      violation exits with a distinct code so the test proves argv/env, not
  *      merely "a file was written".
@@ -201,14 +201,21 @@ static void recordInput(FILE* dump, int index, const char* path) {
 }
 
 int main(int argc, char** argv) {
-  /* Only the minimal check needed to obtain the output path (argv[2]) runs before
-   * the ".started" marker: a valid production invocation always has at least
-   * argv[0] -o <out>, so once the process is entered with that shape the marker
-   * is always created. Environment/flag/entry regressions are validated AFTER the
-   * marker, so they can never manufacture a false "never spawned" reading. */
+  /* Only the minimal check needed to obtain the output path runs before the
+   * ".started" marker: a valid production invocation always has at least
+   * argv[0] [-no-pie] -o <out>, so once the process is entered with that shape
+   * the marker is always created. Environment/flag/entry regressions are
+   * validated AFTER the marker, so they can never manufacture a false "never
+   * spawned" reading. */
   if (argc < 3) { return kExitBadArgc; }
-  if (strcmp(argv[1], "-o") != 0) { return kExitBadOutputFlag; }
-  const char* outputPath = argv[2];
+  /* The object-emission slice may pass -no-pie (R_X86_64_32 absolute
+   * relocations cannot link into a PIE executable). Skip it when present so the
+   * -o/-e/entry validation below uses the correct offsets. */
+  int flagOffset = 0;
+  if (strcmp(argv[1], "-no-pie") == 0) { flagOffset = 1; }
+  if (argc < 3 + flagOffset) { return kExitBadArgc; }
+  if (strcmp(argv[1 + flagOffset], "-o") != 0) { return kExitBadOutputFlag; }
+  const char* outputPath = argv[2 + flagOffset];
 
   /* Earliest spawn evidence available once the output path is known: create
    * "<out>.started". The test asserts this marker's absence to prove the driver
@@ -218,15 +225,15 @@ int main(int argc, char** argv) {
 
   /* Now the full structural validation, after the marker exists. */
   if (environ != NULL && environ[0] != NULL) { return kExitEnvNotEmpty; }
-  if (argc < 5) { return kExitBadArgc; }
-  if (strcmp(argv[3], "-e") != 0) { return kExitBadEntryFlag; }
+  if (argc < 5 + flagOffset) { return kExitBadArgc; }
+  if (strcmp(argv[3 + flagOffset], "-e") != 0) { return kExitBadEntryFlag; }
 
-  const char* entrySymbol = argv[4];
+  const char* entrySymbol = argv[4 + flagOffset];
 
   /* Record the full invocation the driver saw, for the test to verify the exact
    * argv. Every token is recorded by index (arg[0]..arg[argc-1]); the input path
-   * arguments (argv[5..]) additionally get an "input[<i>]" line carrying the byte
-   * count observed at exec time. Written as a sibling of the output. */
+   * arguments additionally get an "input[<i>]" line carrying the byte count
+   * observed at exec time. Written as a sibling of the output. */
   char argsPath[4096];
   int n = snprintf(argsPath, sizeof(argsPath), "%s.args", outputPath);
   if (n <= 0 || (size_t)n >= sizeof(argsPath)) { return kExitArgsOpenFailed; }
@@ -234,7 +241,7 @@ int main(int argc, char** argv) {
   if (dump == NULL) { return kExitArgsOpenFailed; }
   fprintf(dump, "argc=%d\n", argc);
   for (int i = 0; i < argc; ++i) { recordToken(dump, i, argv[i]); }
-  for (int i = 5; i < argc; ++i) { recordInput(dump, i - 5, argv[i]); }
+  for (int i = 5 + flagOffset; i < argc; ++i) { recordInput(dump, i - 5 - flagOffset, argv[i]); }
   fclose(dump);
 
   (void)entrySymbol;

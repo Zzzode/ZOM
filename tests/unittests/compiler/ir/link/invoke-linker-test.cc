@@ -1361,10 +1361,11 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
   //      is fed in reverse order, plan.objectRecords()/runtimeRecords() come out
   //      sorted by canonical key (role, then path). This proves the ordering is
   //      the verifier's, not the test's input order.
-  //   2. linkExecutable expands that plan into the exact 11-token argv
-  //        <tree>/driver -o <tree>/output-candidate -e zom <tree>/crt-0 obj-0 obj-1 rt-0 rt-1 lib-0
+  //   2. linkExecutable expands that plan into the exact 12-token argv
+  //        <tree>/driver -no-pie -o <tree>/output-candidate -e zom <tree>/crt-0 obj-0 obj-1 rt-0
+  //        rt-1 lib-0
   //      which the driver records token by index; the test rebuilds the full
-  //      vector and compares every token (argc == 11, full equality). argv[2] is
+  //      vector and compares every token (argc == 12, full equality). argv[3] is
   //      the transaction-root output candidate, never the final path.
   auto fs = zc::newDiskFilesystem();
   zc::String base = tempDirPath();
@@ -1389,10 +1390,10 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
   auto tree = dir->openSubdir(zc::Path(zc::heapString(treeName)));
 
   auto argsText = tree->openFile(zc::Path("output-candidate.args"_zc))->readAllText();
-  // Authority 2: the recorded argv is exactly 11 tokens.
-  ZC_ASSERT(recordedArgc(argsText) == 11u);
+  // Authority 2: the recorded argv is exactly 12 tokens.
+  ZC_ASSERT(recordedArgc(argsText) == 12u);
   zc::Array<zc::String> argvLines = recordedArgv(argsText);
-  ZC_ASSERT(argvLines.size() == 11u);
+  ZC_ASSERT(argvLines.size() == 12u);
 
   // Derive the transaction tree prefix from argv[0] (the driver snapshot path):
   // everything up to and including the last '/'.
@@ -1405,26 +1406,27 @@ ZC_TEST("linkExecutable rewrites argv to the exact canonical snapshot order for 
   ZC_EXPECT(zc::StringPtr(treePrefix).find(".zomlink-"_zc) != zc::none);
   ZC_EXPECT(zc::StringPtr(treePrefix).startsWith(zc::str(base, "/")));
 
-  // Build the full expected 11-token vector and compare index by index.
-  auto expected = zc::heapArrayBuilder<zc::String>(11);
+  // Build the full expected 12-token vector and compare index by index.
+  auto expected = zc::heapArrayBuilder<zc::String>(12);
   expected.add(zc::str(treePrefix, "driver"));            // argv[0]: driver snapshot
-  expected.add(zc::str("-o"));                            // argv[1]
-  expected.add(zc::str(treePrefix, "output-candidate"));  // argv[2]: tree output candidate
-  expected.add(zc::str("-e"));                            // argv[3]
-  expected.add(zc::str("zom"));                           // argv[4]: entry symbol
-  expected.add(zc::str(treePrefix, "crt-0"));             // argv[5]
-  expected.add(zc::str(treePrefix, "obj-0"));             // argv[6]
-  expected.add(zc::str(treePrefix, "obj-1"));             // argv[7]
-  expected.add(zc::str(treePrefix, "rt-0"));              // argv[8]
-  expected.add(zc::str(treePrefix, "rt-1"));              // argv[9]
-  expected.add(zc::str(treePrefix, "lib-0"));             // argv[10]
+  expected.add(zc::str("-no-pie"));                       // argv[1]: non-PIE flag
+  expected.add(zc::str("-o"));                            // argv[2]
+  expected.add(zc::str(treePrefix, "output-candidate"));  // argv[3]: tree output candidate
+  expected.add(zc::str("-e"));                            // argv[4]
+  expected.add(zc::str("zom"));                           // argv[5]: entry symbol
+  expected.add(zc::str(treePrefix, "crt-0"));             // argv[6]
+  expected.add(zc::str(treePrefix, "obj-0"));             // argv[7]
+  expected.add(zc::str(treePrefix, "obj-1"));             // argv[8]
+  expected.add(zc::str(treePrefix, "rt-0"));              // argv[9]
+  expected.add(zc::str(treePrefix, "rt-1"));              // argv[10]
+  expected.add(zc::str(treePrefix, "lib-0"));             // argv[11]
   zc::Array<zc::String> expectedArgv = expected.finish();
 
   for (size_t i = 0; i < expectedArgv.size(); ++i) {
     ZC_EXPECT(argvToken(argvLines, i) == expectedArgv[i]);
   }
-  // The candidate's recorded output path equals argv[2].
-  ZC_EXPECT(candidate.outputCandidatePath() == expectedArgv[2]);
+  // The candidate's recorded output path equals argv[3].
+  ZC_EXPECT(candidate.outputCandidatePath() == expectedArgv[3]);
 
   ZC_EXPECT(zc::mv(candidate).discardAndCleanup().isClean());
   fs->getRoot().remove(zc::Path::parse(base.slice(1)));

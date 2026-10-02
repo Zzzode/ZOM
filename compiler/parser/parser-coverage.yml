@@ -72,6 +72,7 @@ productions:
   DeclaredDefinitionName: {status: inlined, parser: parsePostfixExpressionAt, parent: MemberExpression}
   Declaration: {status: inlined, parser: parseSourceElement, parent: ModuleItemDeclaration}
   DefaultClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
+  DefaultExprClause: {status: inlined, parser: parseMatchExpression, parent: MatchExprBlock, ast: [MatchArmExpr]}
   DeinitDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [DestructorDecl]}
   DoWhileStatement: {status: direct, parser: parseDoWhileStatement, delegates: [parseDoWhileStatementParts], ast: [DoWhileStatement]}
   DoubleStringCharacter: {status: lexical}
@@ -161,6 +162,9 @@ productions:
   MarkerPath: {status: inlined, parser: parseSourceElement, parent: Declaration}
   MatchBlock: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
   MatchClause: {status: inlined, parser: parseMatchStatement, parent: MatchStatement}
+  MatchExprBlock: {status: inlined, parser: parseMatchExpression, parent: MatchExpression}
+  MatchExprClause: {status: inlined, parser: parseMatchExpression, parent: MatchExprBlock, ast: [MatchArmExpr]}
+  MatchExpression: {status: direct, parser: parseMatchExpression, delegates: [parseMatchStatementParts], ast: [MatchExpr]}
   MatchStatement: {status: direct, parser: parseMatchStatement, delegates: [parseMatchStatementParts], ast: [MatchStmt]}
   MemberExpression: {status: inlined, parser: parseExpressionRange, parent: Expression}
   MethodDeclaration: {status: inlined, parser: parseNamedTypeDeclaration, parent: ClassElement, ast: [MethodDecl]}

@@ -14329,8 +14329,14 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               }
             }
             ZC_IF_SOME(equalityValue, equality) {
+              // A LogicalAnd condition is either a match-guard conjunction
+              // (parameters + 3 locals: result + guardTemp + conjTemp) or a
+              // bare `&&` operator in condition position (parameters + 2
+              // locals: result + temp). Dispatch on the local count so the
+              // `&&` operator path reaches the equality verifier.
               if (equalityValue.operation == checker::PrimitiveOperation::LogicalAnd &&
-                  !isLeadingLocalConditional && thenOk && elseOk) {
+                  !isLeadingLocalConditional && thenOk && elseOk &&
+                  function.locals.size() == sourceDeclaration.parameters.size() + 3) {
                 valid = validConjunctiveConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
                     sourceConditional, equalityValue, thenArm, elseArm, proofs, copy, module,
