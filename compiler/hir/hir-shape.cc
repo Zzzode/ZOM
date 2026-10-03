@@ -2552,7 +2552,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   if (tree.contains(initializer) && !isScalarLiteral(tree.node(initializer).kind) &&
       tree.node(initializer).kind != ast::SyntaxKind::CallExpression &&
       tree.node(initializer).kind != ast::SyntaxKind::IdentExpr &&
-      tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
+      tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr &&
+      !(returnsReceiverCall && tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
+        static_cast<ast::MemberAccessKind>(
+            tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
+            ast::MemberAccessKind::Qualified)) {
     return zc::none;
   }
   // Split the sole-local direct-call carrier by initializer kind. A struct

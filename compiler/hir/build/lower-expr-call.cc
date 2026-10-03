@@ -150,7 +150,6 @@ void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, H
 
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
-  HirNominalAggregateExpression aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
   const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
   const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
@@ -159,9 +158,12 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   const HirValueCategory receiverCategory = ZC_ASSERT_NONNULL(function.localReference).category;
   const identity::SourceSpan receiverSpan =
       ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+  // The receiver-call initializer is either a closed nominal aggregate (struct
+  // literal) or a scalar literal (enum variant discriminant). The builder
+  // populates exactly one.
 
   // Fixed source-preorder stride matching the generic materializer: function F,
-  // body F+1, local F+2, aggregate initializer F+3, return F+4, receiver
+  // body F+1, local F+2, initializer F+3, return F+4, receiver
   // reference F+5, receiver call F+6. The receiver call is the return value.
   const HirNodeId functionId = ctx.allocNode();
   const HirNodeId bodyId = ctx.allocNode();
@@ -181,9 +183,16 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  ctx.addAggregate(HirNominalAggregateExpression{initializerId, aggregate.definition,
-                                                 aggregate.type, zc::mv(aggregate.elements),
-                                                 aggregate.category, aggregate.sourceSpan.clone()});
+  if (function.aggregate != zc::none) {
+    auto aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
+    ctx.addAggregate(HirNominalAggregateExpression{
+        initializerId, aggregate.definition, aggregate.type, zc::mv(aggregate.elements),
+        aggregate.category, aggregate.sourceSpan.clone()});
+  } else {
+    auto literalValue = zc::mv(ZC_ASSERT_NONNULL(function.literal));
+    ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, zc::mv(literalValue),
+                                                 HirValueCategory::Value, initializerSpan.clone()});
+  }
   ctx.addLocalReference(HirLocalReferenceExpression{receiverId, hirLocalId(1), receiverType,
                                                     receiverCategory, receiverSpan.clone()});
   ctx.addReturn(

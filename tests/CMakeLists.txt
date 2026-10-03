@@ -237,6 +237,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirtualization-consumer/Zom.toml::devirtualization_consumer::devirtualization_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-methods-consumer/Zom.toml::enum_methods_consumer::enum_methods_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -374,6 +376,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirtualization-consumer/Zom.toml::devirtualization_consumer::devirtualization_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-methods-consumer/Zom.toml::enum_methods_consumer::enum_methods_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)

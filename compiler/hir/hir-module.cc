@@ -878,7 +878,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
     }
-    if (call.receiver == HirNodeId()) ++receiverSelfCallCount;
+    if (call.receiver == HirNodeId()) { ++receiverSelfCallCount; }
   }
   size_t uninitializedLocalReturnCount = 0;
   for (const auto& local : candidate.impl->locals) {
@@ -10636,6 +10636,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         receiverAggregate = aggregate;
       }
+      // The receiver-call initializer is either a nominal aggregate (struct
+      // literal) or a scalar literal (enum variant discriminant) at F+3. The
+      // literal expression lookup above already found the scalar case; exactly
+      // one of the two must be present.
+      const bool receiverInitializerIsLiteral =
+          literalExpression != zc::none && receiverAggregate == zc::none;
+      if (!receiverInitializerIsLiteral && receiverAggregate == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
       // A devirtualized-erase local carries the concrete type as its binding
       // type, while the receiver reference and receiver call carry the erased
       // `dyn Interface` type. The type-identity checks below verify
@@ -10672,16 +10683,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ? type::semantic::Mutability::Const
                                                   : type::semantic::Mutability::Mutable;
       if (!returnsLocal || !localHasInitializer || hasLocalWrite || directCall != zc::none ||
-          localBinding == zc::none || localReference == zc::none || literalExpression != zc::none ||
-          receiverAggregate == zc::none || function.node != hirId(expectedFunction) ||
-          block.node != hirId(expectedFunction + 1) ||
+          localBinding == zc::none || localReference == zc::none ||
+          (!receiverInitializerIsLiteral && literalExpression != zc::none) ||
+          (!receiverInitializerIsLiteral && receiverAggregate == zc::none) ||
+          function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           ZC_ASSERT_NONNULL(localBinding).node != hirId(expectedFunction + 2) ||
           ZC_ASSERT_NONNULL(localBinding).initializer != hirId(expectedFunction + 3) ||
           ZC_ASSERT_NONNULL(localBinding).initializerSpan == zc::none ||
-          ZC_ASSERT_NONNULL(receiverAggregate).node != hirId(expectedFunction + 3) ||
-          (!devirtualizedErase &&
-           ZC_ASSERT_NONNULL(receiverAggregate).type != ZC_ASSERT_NONNULL(localBinding).type) ||
-          ZC_ASSERT_NONNULL(receiverAggregate).category != HirValueCategory::Value ||
+          (!receiverInitializerIsLiteral &&
+           (ZC_ASSERT_NONNULL(receiverAggregate).node != hirId(expectedFunction + 3) ||
+            (!devirtualizedErase &&
+             ZC_ASSERT_NONNULL(receiverAggregate).type != ZC_ASSERT_NONNULL(localBinding).type) ||
+            ZC_ASSERT_NONNULL(receiverAggregate).category != HirValueCategory::Value)) ||
+          (receiverInitializerIsLiteral &&
+           (ZC_ASSERT_NONNULL(literalExpression).node != hirId(expectedFunction + 3) ||
+            (!devirtualizedErase &&
+             ZC_ASSERT_NONNULL(literalExpression).type != ZC_ASSERT_NONNULL(localBinding).type) ||
+            ZC_ASSERT_NONNULL(literalExpression).category != HirValueCategory::Value)) ||
           returnStatement.node != hirId(expectedFunction + 4) ||
           ZC_ASSERT_NONNULL(localReference).node != receiverReferenceNode ||
           returnStatement.value != ZC_ASSERT_NONNULL(receiverCall).node ||
@@ -10782,6 +10800,150 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
                                             registries, index + 1);
+      }
+      // Literal-initialized receiver call (enum variant discriminant). The
+      // initializer is a qualified enum variant access (Color::Red), not a
+      // struct literal. Verify the source shape and checked facts for the
+      // devirtualized erase path, then continue to the next function.
+      if (receiverInitializerIsLiteral) {
+        ast::NodeId initializer;
+        ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
+        const auto& sourceCall = tree.node(source.value);
+        const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+        const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                      sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+        if (!tree.contains(initializer) ||
+            tree.node(initializer).kind != ast::SyntaxKind::MemberExpression ||
+            static_cast<ast::MemberAccessKind>(
+                tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Qualified ||
+            !tree.contains(calleeNode) ||
+            tree.node(calleeNode).kind != ast::SyntaxKind::MemberExpression ||
+            static_cast<ast::MemberAccessKind>(
+                tree.node(calleeNode).payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Dot ||
+            !tree.contains(arguments)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const ast::NodeId receiverNode(
+            tree.node(calleeNode).payload.words[ast::kMemberExpressionObjectWord]);
+        auto ownerBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
+        auto receiverBinding = resolvedOwnerLocal(bound.bindings(), receiverNode);
+        auto receiverTypeIndex = factIndex(facts.nodeTypes(), receiverNode);
+        auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+        auto memberIndex = factIndex(facts.members(), calleeNode);
+        auto checkedCallIndex = factIndex(facts.calls(), source.value);
+        auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+        auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+        auto receiverSpan = bound.parsedModule().spanFor(tree.node(receiverNode).range);
+        if (!tree.contains(receiverNode) ||
+            tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+            ownerBinding == zc::none || receiverBinding == zc::none ||
+            ownerBinding != receiverBinding || receiverTypeIndex == zc::none ||
+            calleeTypeIndex == zc::none || memberIndex == zc::none ||
+            checkedCallIndex == zc::none || callKey == zc::none || callSpan == zc::none ||
+            receiverSpan == zc::none ||
+            !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
+                               tree)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        auto dispatchIndex = dispatchFactIndex(
+            candidate.impl->checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(callKey));
+        if (dispatchIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t calleeTypeSlot = 0;
+        size_t memberSlot = 0;
+        size_t checkedCallSlot = 0;
+        size_t dispatchSlot = 0;
+        ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+        ZC_IF_SOME(value, memberIndex) { memberSlot = value; }
+        ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+        ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+        const auto& member = facts.members().entries()[memberSlot].value;
+        const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+        const auto& selected = invocation.selected.variant();
+        const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+        const auto& target = dispatch.fact.target.variant();
+        const auto& transform = dispatch.fact.resultTransform.variant();
+        bool dispatchOwnerMatches = false;
+        ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+        const auto litSelectedMethod = [&]() -> identity::DefId {
+          if (selected.is<checker::checked::ConcreteMethodCallable>()) {
+            return selected.get<checker::checked::ConcreteMethodCallable>().method;
+          }
+          return selected.get<checker::checked::ImplMethodCallable>().method;
+        };
+        const auto litTargetMethod = [&]() -> identity::DefId {
+          if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
+            return target.get<checker::dispatch::ConcreteMethodTarget>().method;
+          }
+          return target.get<checker::dispatch::ImplMethodTarget>().method;
+        };
+        if (!(selected.is<checker::checked::ConcreteMethodCallable>() ||
+              selected.is<checker::checked::ImplMethodCallable>()) ||
+            !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
+              target.is<checker::dispatch::ImplMethodTarget>()) ||
+            !transform.is<checker::dispatch::IdentityResultTransform>() ||
+            litSelectedMethod() != member.member || litTargetMethod() != member.member ||
+            member.node != calleeNode ||
+            member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+            member.adjustment != zc::none ||
+            ZC_ASSERT_NONNULL(receiverCall).callee != member.member ||
+            ZC_ASSERT_NONNULL(receiverCall).calleeType != member.memberType ||
+            invocation.calleeType != ZC_ASSERT_NONNULL(receiverCall).calleeType ||
+            invocation.successType != function.resultType ||
+            invocation.resultType != function.resultType || invocation.receiver == zc::none ||
+            invocation.receiverMode == zc::none || invocation.receiverAdjustment == zc::none ||
+            invocation.arguments.size() != arguments.size || invocation.substitutions != zc::none ||
+            invocation.witnesses != zc::none || invocation.raises != zc::none ||
+            !dispatchOwnerMatches || dispatch.fact.receiver == zc::none ||
+            dispatch.fact.arguments.size() != arguments.size ||
+            dispatch.fact.successType != function.resultType ||
+            dispatch.fact.resultType != function.resultType ||
+            dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+            dispatch.fact.raises != zc::none ||
+            !sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan,
+                      ZC_ASSERT_NONNULL(callSpan)) ||
+            !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
+            !sameSpan(ZC_ASSERT_NONNULL(receiverCall).sourceSpan, ZC_ASSERT_NONNULL(callSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        ZC_IF_SOME(receiver, invocation.receiver) {
+          ZC_IF_SOME(mode, invocation.receiverMode) {
+            ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
+              if (receiver.sourceNode != receiverNode ||
+                  receiver.sourceType != ZC_ASSERT_NONNULL(receiverCall).receiverSourceType ||
+                  receiver.parameterType != ZC_ASSERT_NONNULL(receiverCall).receiverType ||
+                  receiver.adjustment != zc::none ||
+                  mode != ZC_ASSERT_NONNULL(receiverCall).receiverMode ||
+                  adjustment.source != ZC_ASSERT_NONNULL(receiverCall).receiverSourceType ||
+                  adjustment.destination != ZC_ASSERT_NONNULL(receiverCall).receiverType ||
+                  adjustment.steps.size() != 1 || adjustment.steps[0] != expectedReceiverStep) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            }
+          }
+        }
+        const auto baseIncrement = static_cast<uint32_t>(7);
+        auto unsafeExtra = verifyUnsafeBlock(source, baseIncrement, receiverCallNode);
+        if (unsafeExtra == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
+        continue;
       }
       ast::NodeId initializer;
       ZC_IF_SOME(value, source.localInitializer) { initializer = value; }

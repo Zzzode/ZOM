@@ -5805,24 +5805,38 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       entry.statements[4].storageLocal() != resultTemporary.id) {
     return zc::none;
   }
-  // The owner initializer is a one-element nominal aggregate of a scalar
-  // constant; its value folds into the owner slot, so no struct is materialized.
+  // The owner initializer is either a one-element nominal aggregate of a scalar
+  // constant (struct literal) or a scalar constant directly (enum variant
+  // discriminant). Its value folds into the owner slot either way.
   const auto& initialization = entry.statements[1].assignmentValue();
   if (initialization.initialization != mir::MirInitializationKind::Initialize ||
       initialization.destination.local() != ownerLocal.id ||
       initialization.destination.projections().size() != 0 ||
-      initialization.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+      (initialization.value.kind() != mir::MirRvalueKind::NominalAggregate &&
+       initialization.value.kind() != mir::MirRvalueKind::Use)) {
     return zc::none;
   }
-  const auto& aggregate = initialization.value.nominalAggregateValue();
-  if (aggregate.type != ownerLocal.type || aggregate.elements.size() != 1) { return zc::none; }
-  const auto& elementOperand = aggregate.elements[0].operand;
-  if (elementOperand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
-  // The one-field owner struct folds to the scalar carrier of its element.
-  auto ownerCarrier = integerCarrierFor(elementOperand.constantValue().type, semanticTypes);
-  if (ownerCarrier == zc::none) { return zc::none; }
-  const auto ownerCarrierValue = ZC_REQUIRE_NONNULL(ownerCarrier);
-  auto ownerConstant = lirOperandFor(elementOperand, ownerCarrierValue);
+  zc::Maybe<Operand> ownerConstant;
+  zc::Maybe<ValueType> ownerCarrierValue;
+  if (initialization.value.kind() == mir::MirRvalueKind::NominalAggregate) {
+    const auto& aggregate = initialization.value.nominalAggregateValue();
+    if (aggregate.type != ownerLocal.type || aggregate.elements.size() != 1) { return zc::none; }
+    const auto& elementOperand = aggregate.elements[0].operand;
+    if (elementOperand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    // The one-field owner struct folds to the scalar carrier of its element.
+    auto ownerCarrier = integerCarrierFor(elementOperand.constantValue().type, semanticTypes);
+    if (ownerCarrier == zc::none) { return zc::none; }
+    ownerCarrierValue = ZC_REQUIRE_NONNULL(ownerCarrier);
+    ownerConstant = lirOperandFor(elementOperand, ZC_REQUIRE_NONNULL(ownerCarrierValue));
+  } else {
+    // A scalar enum variant discriminant folds directly to the enum carrier.
+    const auto& useValue = initialization.value.useValue();
+    if (useValue.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    auto ownerCarrier = enumCarrierFor(useValue.operand.constantValue().type, semanticTypes);
+    if (ownerCarrier == zc::none) { return zc::none; }
+    ownerCarrierValue = ZC_REQUIRE_NONNULL(ownerCarrier);
+    ownerConstant = lirOperandFor(useValue.operand, ZC_REQUIRE_NONNULL(ownerCarrierValue));
+  }
   if (ownerConstant == zc::none) { return zc::none; }
 
   const auto& borrow = entry.statements[3].borrowCreationValue();
@@ -5908,7 +5922,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
                                 Terminator::returnLocal(resultTemporary.id.ordinal())));
     zc::Vector<Local> noParameters;
     zc::Vector<Local> locals;
-    locals.add(Local(ownerLocal.id.ordinal(), ownerCarrierValue));
+    locals.add(Local(ownerLocal.id.ordinal(), ZC_REQUIRE_NONNULL(ownerCarrierValue)));
     locals.add(Local(borrowTemporary.id.ordinal(), receiverCarrierValue));
     locals.add(Local(resultTemporary.id.ordinal(), callerCarrierValue));
     // The zero-parameter entry folds to the reserved module-initializer symbol

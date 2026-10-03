@@ -1,0 +1,22 @@
+// Enum method fixture: a trait impl on an enum type whose method is called
+// through a devirtualized dyn-trait local. The erased local `c` is initialized
+// with the enum unit variant Color::Red; the devirtualized call `c.isRed()`
+// resolves to the direct impl method `Color::isRed` and returns 41.
+interface RedCheck {
+  fun isRed(this) -> i32;
+}
+
+enum Color {
+  Red,
+  Green,
+  Blue,
+}
+
+impl RedCheck for Color {
+  fun isRed(this) -> i32 { return 41; }
+}
+
+fun entry() -> i32 {
+  let c: dyn RedCheck = Color::Red;
+  return c.isRed();
+}

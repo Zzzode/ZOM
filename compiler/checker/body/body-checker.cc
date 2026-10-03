@@ -5047,6 +5047,18 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         }
         if (isEnumVariant) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+          // A qualified enum variant access used as an initializer whose
+          // annotation is an erasable dyn existential drives a
+          // concrete-to-dyn coercion, mirroring the struct-literal path so
+          // `let c: dyn RedCheck = Color::Red;` records both the literal and
+          // the erase.
+          auto declaredType = ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
+                                                                buildInput.semanticTypes, node);
+          ZC_IF_SOME(declared, declaredType) {
+            if (erasableExistentialType(buildInput.semanticTypes, declared) != zc::none) {
+              addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+            }
+          }
         } else {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Member, node, key);
           if (!isMethodCallCallee(tree, node)) {
@@ -7176,6 +7188,56 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                       signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
                   value.enumType, site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
+          // A concrete enum variant value assigned to an annotated dyn
+          // existential is a concrete-to-dyn coercion, not a mismatch, when a
+          // unique applicable impl exists. Mirrors the struct-literal and
+          // identifier-reference erasure decisions so
+          // `let c: dyn RedCheck = Color::Red;` records the erase.
+          ZC_IF_SOME(produced, producedType) {
+            ZC_IF_SOME(declared,
+                       ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                         input.semanticTypes, site.node)) {
+              if (declared != produced) {
+                auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
+                bool erased = false;
+                ZC_IF_SOME(existential, existentialRef) {
+                  ZC_IF_SOME(impl, selectDynEraseImpl(input, produced, existential)) {
+                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                    for (const auto& binding : existential.associatedBindings) {
+                      bindings.add(
+                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                    }
+                    dynErases.add(SelectedDynErase{
+                        site.node, produced, declared, existential.principal.definition, impl,
+                        zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
+                    erased = true;
+                  }
+                }
+                if (!erased) {
+                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                      if (existentialRef != zc::none) {
+                        const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
+                        if (hasImplForErasureOutsideSlice(input, produced, existentialValue)) {
+                          return attachRecoveryLedger(rejectGenericErasureUnsupported(
+                                                          site, ownerOrdinal, produced,
+                                                          existentialValue.principal.definition),
+                                                      input, factStoreBrands);
+                        }
+                        return attachRecoveryLedger(
+                            rejectTraitNotImplemented(site, ownerOrdinal, produced,
+                                                      existentialValue.principal.definition),
+                            input, factStoreBrands);
+                      }
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                          factStoreBrands);
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
         // An enum tuple-variant construction `Enum::Variant(args)`. The variant
@@ -7322,7 +7384,6 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       ZC_IF_SOME(value, producedType) {
         nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value, zc::Array<uint8_t>()});
       }
-      if (site.production == BodyProductionKind::EnumVariantValue) {}
     }
   }
 

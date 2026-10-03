@@ -7754,12 +7754,26 @@ bool validLocalCallReturnFunction(
 bool validReceiverCallReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirNominalAggregateExpression& aggregate,
+    zc::Maybe<const hir::HirNominalAggregateExpression&> aggregate,
+    zc::Maybe<const hir::HirScalarLiteralExpression&> scalarInitializer,
     const hir::HirReturnStatement& sourceReturn, const hir::HirLocalReferenceExpression& receiver,
     const hir::HirReceiverCallExpression& call, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copy, identity::ModuleId module,
     const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
+  const bool hasAggregate = aggregate != zc::none;
+  const bool hasScalar = !hasAggregate && scalarInitializer != zc::none;
+  if (!hasAggregate && !hasScalar) return false;
+  const hir::HirNodeId initializerNode =
+      hasAggregate ? ZC_ASSERT_NONNULL(aggregate).node : ZC_ASSERT_NONNULL(scalarInitializer).node;
+  const identity::SemanticTypeId initializerType =
+      hasAggregate ? ZC_ASSERT_NONNULL(aggregate).type : ZC_ASSERT_NONNULL(scalarInitializer).type;
+  const hir::HirValueCategory initializerCategory =
+      hasAggregate ? ZC_ASSERT_NONNULL(aggregate).category
+                   : ZC_ASSERT_NONNULL(scalarInitializer).category;
+  const identity::SourceSpan& initializerSourceSpan =
+      hasAggregate ? ZC_ASSERT_NONNULL(aggregate).sourceSpan
+                   : ZC_ASSERT_NONNULL(scalarInitializer).sourceSpan;
   const bool sharedCall = call.receiverMode == checker::checked::ReceiverMode::Shared;
   const auto expectedReceiverMode =
       sharedCall ? checker::checked::ReceiverMode::Shared : checker::checked::ReceiverMode::Mutable;
@@ -7785,11 +7799,12 @@ bool validReceiverCallReturnFunction(
       function.locals.size() != expectedLocalCount || function.blocks.size() != 2 ||
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
       sourceBlock.statements[0] != sourceLocal.node ||
-      sourceBlock.statements[1] != sourceReturn.node || sourceLocal.initializer != aggregate.node ||
-      sourceReturn.value != call.node || call.receiver != receiver.node ||
-      sourceLocal.local != receiver.local || sourceLocal.type != aggregate.type ||
-      sourceLocal.type != receiver.type || sourceLocal.type != call.receiverSourceType ||
-      aggregate.category != hir::HirValueCategory::Value ||
+      sourceBlock.statements[1] != sourceReturn.node ||
+      sourceLocal.initializer != initializerNode || sourceReturn.value != call.node ||
+      call.receiver != receiver.node || sourceLocal.local != receiver.local ||
+      sourceLocal.type != initializerType || sourceLocal.type != receiver.type ||
+      sourceLocal.type != call.receiverSourceType ||
+      initializerCategory != hir::HirValueCategory::Value ||
       receiver.category != hir::HirValueCategory::Place ||
       call.resultType != declaration.resultType || call.receiverMode != expectedReceiverMode ||
       call.receiverAdjustments.size() != 1 || call.receiverAdjustments[0] != expectedReceiverStep) {
@@ -7865,22 +7880,36 @@ bool validReceiverCallReturnFunction(
       initialization.destination.rootType() != local.type ||
       initialization.destination.resultType() != local.type ||
       initialization.destination.projections().size() != 0 ||
-      initialization.value.kind() != MirRvalueKind::NominalAggregate ||
-      !sameSpan(entry.statements[1].sourceSpan(), aggregate.sourceSpan)) {
+      (hasAggregate ? initialization.value.kind() != MirRvalueKind::NominalAggregate
+                    : initialization.value.kind() != MirRvalueKind::Use) ||
+      !sameSpan(entry.statements[1].sourceSpan(), initializerSourceSpan)) {
     return false;
   }
-  const auto& loweredAggregate = initialization.value.nominalAggregateValue();
-  if (loweredAggregate.definition != aggregate.definition ||
-      loweredAggregate.type != aggregate.type ||
-      loweredAggregate.elements.size() != aggregate.elements.size()) {
-    return false;
-  }
-  for (size_t index = 0; index < aggregate.elements.size(); ++index) {
-    const auto& actual = loweredAggregate.elements[index];
-    const auto& expected = aggregate.elements[index];
-    if (actual.field != expected.field || actual.operand.kind() != MirOperandKind::Constant ||
-        actual.operand.constantValue().type != expected.type ||
-        !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+  if (hasAggregate) {
+    const auto& loweredAggregate = initialization.value.nominalAggregateValue();
+    if (loweredAggregate.definition != ZC_ASSERT_NONNULL(aggregate).definition ||
+        loweredAggregate.type != ZC_ASSERT_NONNULL(aggregate).type ||
+        loweredAggregate.elements.size() != ZC_ASSERT_NONNULL(aggregate).elements.size()) {
+      return false;
+    }
+    for (size_t index = 0; index < ZC_ASSERT_NONNULL(aggregate).elements.size(); ++index) {
+      const auto& actual = loweredAggregate.elements[index];
+      const auto& expected = ZC_ASSERT_NONNULL(aggregate).elements[index];
+      if (actual.field != expected.field || actual.operand.kind() != MirOperandKind::Constant ||
+          actual.operand.constantValue().type != expected.type ||
+          !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+                        semanticTypes)) {
+        return false;
+      }
+    }
+  } else {
+    // A scalar literal initializer (enum variant discriminant) lowers to a
+    // constant-use rvalue whose type and value match the HIR literal.
+    const auto& useValue = initialization.value.useValue();
+    if (useValue.operand.kind() != MirOperandKind::Constant ||
+        useValue.operand.constantValue().type != initializerType ||
+        !sameConstant(useValue.operand.constantValue().value,
+                      ZC_ASSERT_NONNULL(scalarInitializer).value, module, identities,
                       semanticTypes)) {
       return false;
     }
@@ -9192,12 +9221,22 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             hir::HirNodeId initializerNode;
             ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
             auto aggregate = aggregateFor(hirModule, initializerNode);
+            auto scalarInitializer = expressionFor(hirModule, initializerNode);
             ZC_IF_SOME(call, receiverCall) {
-              ZC_IF_SOME(initializer, aggregate) {
+              // The receiver-call initializer is either a nominal aggregate
+              // (struct literal) or a scalar literal (enum variant discriminant).
+              // Exactly one is present at the initializer node.
+              const bool hasAggregateInitializer = aggregate != zc::none;
+              const bool hasScalarInitializer =
+                  !hasAggregateInitializer && scalarInitializer != zc::none;
+              if (hasAggregateInitializer || hasScalarInitializer) {
                 auto receiver = localReferenceFor(hirModule, call.receiver);
                 ZC_IF_SOME(reference, receiver) {
-                  if (local.initializer != initializer.node || local.local != reference.local ||
-                      local.type != initializer.type || local.type != call.receiverSourceType ||
+                  const identity::SemanticTypeId initializerType =
+                      hasAggregateInitializer ? ZC_ASSERT_NONNULL(aggregate).type
+                                              : ZC_ASSERT_NONNULL(scalarInitializer).type;
+                  if (local.initializer != initializerNode || local.local != reference.local ||
+                      local.type != initializerType || local.type != call.receiverSourceType ||
                       reference.type != call.receiverSourceType ||
                       reference.category != hir::HirValueCategory::Place ||
                       call.resultType != declaration.resultType ||
@@ -9247,17 +9286,29 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                   zc::Vector<MirStatement> entryStatements;
                   entryStatements.add(
                       MirStatement::storageLive(localId(1), local.sourceSpan.clone()));
-                  zc::Vector<MirNominalAggregateElement> elements;
-                  for (const auto& element : initializer.elements) {
-                    elements.add(MirNominalAggregateElement{
-                        element.field, MirOperand::constant(element.type, element.value.clone())});
-                  }
                   zc::Vector<MirProjection> initializerProjections;
+                  MirRvalue initializerRvalue = [&]() {
+                    if (hasAggregateInitializer) {
+                      zc::Vector<MirNominalAggregateElement> elements;
+                      for (const auto& element : ZC_ASSERT_NONNULL(aggregate).elements) {
+                        elements.add(MirNominalAggregateElement{
+                            element.field,
+                            MirOperand::constant(element.type, element.value.clone())});
+                      }
+                      return MirRvalue::nominalAggregate(ZC_ASSERT_NONNULL(aggregate).definition,
+                                                         ZC_ASSERT_NONNULL(aggregate).type,
+                                                         zc::mv(elements));
+                    }
+                    const auto& lit = ZC_ASSERT_NONNULL(scalarInitializer);
+                    return MirRvalue::use(MirOperand::constant(lit.type, lit.value.clone()));
+                  }();
+                  const identity::SourceSpan& initializerSourceSpan =
+                      hasAggregateInitializer ? ZC_ASSERT_NONNULL(aggregate).sourceSpan
+                                              : ZC_ASSERT_NONNULL(scalarInitializer).sourceSpan;
                   entryStatements.add(MirStatement::assign(
                       MirPlace(localId(1), local.type, zc::mv(initializerProjections), local.type),
-                      MirRvalue::nominalAggregate(initializer.definition, initializer.type,
-                                                  zc::mv(elements)),
-                      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
+                      zc::mv(initializerRvalue), MirInitializationKind::Initialize,
+                      initializerSourceSpan.clone()));
                   entryStatements.add(
                       MirStatement::storageLive(localId(2), reference.sourceSpan.clone()));
                   const bool sharedCall =
@@ -15476,13 +15527,15 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               hir::HirNodeId initializerNode;
               ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
               auto aggregate = aggregateFor(hirModule, initializerNode);
+              auto scalarInitializer = expressionFor(hirModule, initializerNode);
               ZC_IF_SOME(call, receiverCall) {
                 auto receiver = localReferenceFor(hirModule, call.receiver);
                 ZC_IF_SOME(reference, receiver) {
-                  ZC_IF_SOME(initializer, aggregate) {
-                    if (!validReceiverCallReturnFunction(
-                            function, sourceDeclaration, block, local, initializer, returnStatement,
-                            reference, call, proofs, copy, module, identities, semanticTypes)) {
+                  if (aggregate != zc::none || scalarInitializer != zc::none) {
+                    if (!validReceiverCallReturnFunction(function, sourceDeclaration, block, local,
+                                                         aggregate, scalarInitializer,
+                                                         returnStatement, reference, call, proofs,
+                                                         copy, module, identities, semanticTypes)) {
                       return rejectMir<VerifiedBuiltMir>(
                           ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidFact,
                           module, function.owner, identities, static_cast<uint32_t>(index + 1));

@@ -4382,6 +4382,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    registries, ordinal + 2);
             }
             literal = sourceLiteral.literal.clone();
+          } else if (tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
+                     static_cast<ast::MemberAccessKind>(
+                         tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
+                         ast::MemberAccessKind::Qualified) {
+            // A qualified enum variant access (`Color::Red`) produces a scalar
+            // literal fact (the discriminant) in the body checker, so the
+            // receiver-call path lowers it exactly like a scalar literal.
+            auto literalIndex = factIndex(facts.literals(), initializer);
+            if (literalIndex == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
+            if (sourceLiteral.type != initializerType ||
+                !sameSpan(sourceLiteral.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            literal = sourceLiteral.literal.clone();
           } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
             auto aggregateIndex = factIndex(facts.aggregates(), initializer);
             if (aggregateIndex == zc::none) {
@@ -8841,8 +8864,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
       }
       if (function.local == zc::none || function.localReference == zc::none ||
-          function.call != zc::none || function.literal != zc::none ||
-          function.aggregate == zc::none ||
+          function.call != zc::none ||
+          (function.aggregate != zc::none) == (function.literal != zc::none) ||
           (call.receiverMode != checker::checked::ReceiverMode::Mutable &&
            call.receiverMode != checker::checked::ReceiverMode::Shared) ||
           call.receiverAdjustments.size() != 1 ||
@@ -9532,10 +9555,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
     if (value.receiverCall != zc::none && value.local != zc::none &&
         ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference != zc::none && value.aggregate != zc::none && value.call == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        callFieldsClear) {
+        value.localReference != zc::none &&
+        (value.aggregate != zc::none) != (value.literal != zc::none) && value.call == zc::none &&
+        value.parameterReference == zc::none && value.statementReceiverCall == zc::none &&
+        value.statementReceiverReference == zc::none && callFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
