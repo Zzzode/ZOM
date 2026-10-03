@@ -624,6 +624,20 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerReceiverVoidThenValueCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& voidCallee,
       const mir::MirFunction& valueCallee, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers the shared-value-call-twice receiver module.
+  ///
+  /// Admits a two-function module: a Function-sourced caller with one
+  /// aggregate-initialized owner local, two shared borrow temporaries, a dead
+  /// call-result temporary, and a live call-result temporary across three
+  /// blocks (a shared zero-argument value call whose result is discarded, then
+  /// a second shared zero-argument value call, then the value return); and a
+  /// shared Method (`callee`) returning a scalar constant. Both calls target
+  /// the same callee. The caller folds to `zom.module_init` and the method to
+  /// `zom.leaf`. Every other shape returns none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverCallTwiceModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

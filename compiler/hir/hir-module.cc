@@ -9663,6 +9663,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       if (isDiscardedShape) {
         const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        // A devirtualized-erase local carries the concrete type as its binding
+        // type while the receiver calls carry the erased `dyn Interface` type.
+        // The type-identity checks below skip the receiver-type comparison for
+        // devirtualized erases where the two types differ by design.
+        bool discardedDevirtualizedErase = false;
+        {
+          ast::NodeId discardedInitializer;
+          ZC_IF_SOME(value, source.localInitializer) { discardedInitializer = value; }
+          if (bound.tree().contains(discardedInitializer)) {
+            discardedDevirtualizedErase = isDevirtualizedEraseInitializer(
+                bound.tree(), definitions, facts, discardedInitializer);
+          }
+        }
         const auto localNodeId = hirId(expectedFunction + 2);
         const auto aggregateNodeId = hirId(expectedFunction + 3);
         const auto setReceiverNodeId = hirId(expectedFunction + 4);
@@ -9770,11 +9783,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             setCall.receiver != setReceiverNodeId || getCall.receiver != getReceiverNodeId ||
             discardedReturn.value != getCallNodeId ||
             discardedReturn.resultType != function.resultType ||
-            setCall.receiverMode != checker::checked::ReceiverMode::Mutable ||
+            setCall.receiverMode != (discardedDevirtualizedErase
+                                         ? checker::checked::ReceiverMode::Shared
+                                         : checker::checked::ReceiverMode::Mutable) ||
             setCall.receiverAdjustments.size() != 1 ||
             setCall.receiverAdjustments[0] !=
-                checker::checked::ReceiverAdjustmentStep::BorrowMutable ||
-            setCall.arguments.size() != 1 ||
+                (discardedDevirtualizedErase
+                     ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                     : checker::checked::ReceiverAdjustmentStep::BorrowMutable) ||
+            setCall.arguments.size() != (discardedDevirtualizedErase ? 0 : 1) ||
             getCall.receiverMode != checker::checked::ReceiverMode::Shared ||
             getCall.receiverAdjustments.size() != 1 ||
             getCall.receiverAdjustments[0] !=
@@ -9785,9 +9802,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto setResultLookup = semanticTypes.get(setCall.resultType);
         if (!setResultLookup.is<type::SemanticTypeLookup>() ||
             setResultLookup.get<type::SemanticTypeLookup>().data().primitiveKind() == zc::none ||
-            ZC_ASSERT_NONNULL(
-                setResultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) !=
-                type::semantic::PrimitiveKind::Unit ||
+            (!discardedDevirtualizedErase &&
+             ZC_ASSERT_NONNULL(
+                 setResultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) !=
+                 type::semantic::PrimitiveKind::Unit) ||
             getCall.resultType != function.resultType) {
           return rejectDiscarded();
         }
@@ -9853,13 +9871,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           return rejectDiscarded();
         }
         // Validates one receiver call's member, invocation, dispatch, receiver
-        // adjustment, and literal arguments against the checked facts.
-        auto validateCallFact =
-            [&](ast::NodeId sourceCallNode, const HirReceiverCallExpression& hirCall,
-                checker::checked::ReceiverMode expectedMode,
-                checker::checked::ReceiverAdjustmentStep expectedStep,
-                type::semantic::Mutability expectedMutability,
-                identity::SemanticTypeId expectedResultType, bool expectedUnitResult) -> bool {
+        // adjustment, and literal arguments against the checked facts. The
+        // devirtualizedErase flag skips receiver-type identity checks where the
+        // erased `dyn Interface` type differs from the concrete initializer
+        // type by design.
+        auto validateCallFact = [&](ast::NodeId sourceCallNode,
+                                    const HirReceiverCallExpression& hirCall,
+                                    checker::checked::ReceiverMode expectedMode,
+                                    checker::checked::ReceiverAdjustmentStep expectedStep,
+                                    type::semantic::Mutability expectedMutability,
+                                    identity::SemanticTypeId expectedResultType,
+                                    bool expectedUnitResult, bool devirtualizedErase) -> bool {
           const auto& sourceCallNodeRef = tree.node(sourceCallNode);
           const ast::NodeId calleeNode(
               sourceCallNodeRef.payload.words[ast::kCallExpressionCalleeWord]);
@@ -9947,7 +9969,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               !transform.is<checker::dispatch::IdentityResultTransform>() ||
               selectedMethod() != member.member || targetMethod() != member.member ||
               member.node != calleeNode ||
-              member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+              (!devirtualizedErase &&
+               member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
               member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
               member.adjustment != zc::none || hirCall.callee != member.member ||
               hirCall.calleeType != member.memberType ||
@@ -9979,7 +10002,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           if (!resultMatches) return false;
           const auto& checkedReceiver = ZC_ASSERT_NONNULL(invocation.receiver);
           if (checkedReceiver.sourceNode != receiverNode ||
-              checkedReceiver.sourceType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+              (!devirtualizedErase &&
+               checkedReceiver.sourceType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
               hirCall.receiverSourceType != checkedReceiver.sourceType ||
               invocation.receiverMode == zc::none ||
               ZC_ASSERT_NONNULL(invocation.receiverMode) != expectedMode ||
@@ -10001,10 +10025,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                       .data()
                       .get<type::semantic::ReferenceTypeData>()
                       .mutability != expectedMutability ||
-              receiverParameter.get<type::SemanticTypeLookup>()
-                      .data()
-                      .get<type::semantic::ReferenceTypeData>()
-                      .referent != checkedReceiver.sourceType ||
+              (!devirtualizedErase && receiverParameter.get<type::SemanticTypeLookup>()
+                                              .data()
+                                              .get<type::semantic::ReferenceTypeData>()
+                                              .referent != checkedReceiver.sourceType) ||
               hirCall.receiverType != checkedReceiver.parameterType) {
             return false;
           }
@@ -10046,12 +10070,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           return true;
         };
-        if (!validateCallFact(setSourceCall, setCall, checker::checked::ReceiverMode::Mutable,
-                              checker::checked::ReceiverAdjustmentStep::BorrowMutable,
-                              type::semantic::Mutability::Mutable, setCall.resultType, true) ||
+        if (!validateCallFact(setSourceCall, setCall,
+                              discardedDevirtualizedErase ? checker::checked::ReceiverMode::Shared
+                                                          : checker::checked::ReceiverMode::Mutable,
+                              discardedDevirtualizedErase
+                                  ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                                  : checker::checked::ReceiverAdjustmentStep::BorrowMutable,
+                              discardedDevirtualizedErase ? type::semantic::Mutability::Const
+                                                          : type::semantic::Mutability::Mutable,
+                              setCall.resultType, !discardedDevirtualizedErase,
+                              discardedDevirtualizedErase) ||
             !validateCallFact(getSourceCall, getCall, checker::checked::ReceiverMode::Shared,
                               checker::checked::ReceiverAdjustmentStep::BorrowShared,
-                              type::semantic::Mutability::Const, function.resultType, false)) {
+                              type::semantic::Mutability::Const, function.resultType, false,
+                              discardedDevirtualizedErase)) {
           return rejectDiscarded();
         }
         const ast::NodeId setCalleeSource(

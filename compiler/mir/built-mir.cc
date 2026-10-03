@@ -8014,12 +8014,15 @@ bool validVoidCallThenReceiverCallReturnFunction(
     const hir::HirReceiverCallExpression& trailingCall, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copy, identity::ModuleId module,
     const checker::CheckerIdentityAuthority& identities,
-    const type::SemanticTypeStore& semanticTypes) {
-  auto unitLookup = semanticTypes.get(discardedCall.resultType);
-  if (!unitLookup.is<type::SemanticTypeLookup>()) return false;
-  auto unitKind = unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind();
-  if (unitKind == zc::none || ZC_ASSERT_NONNULL(unitKind) != type::semantic::PrimitiveKind::Unit) {
-    return false;
+    const type::SemanticTypeStore& semanticTypes, bool sharedDevirt) {
+  if (!sharedDevirt) {
+    auto unitLookup = semanticTypes.get(discardedCall.resultType);
+    if (!unitLookup.is<type::SemanticTypeLookup>()) return false;
+    auto unitKind = unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind();
+    if (unitKind == zc::none ||
+        ZC_ASSERT_NONNULL(unitKind) != type::semantic::PrimitiveKind::Unit) {
+      return false;
+    }
   }
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
@@ -8037,11 +8040,14 @@ bool validVoidCallThenReceiverCallReturnFunction(
       aggregate.category != hir::HirValueCategory::Value ||
       setReceiver.category != hir::HirValueCategory::Place ||
       getReceiver.category != hir::HirValueCategory::Place ||
-      discardedCall.receiverMode != checker::checked::ReceiverMode::Mutable ||
+      discardedCall.receiverMode != (sharedDevirt ? checker::checked::ReceiverMode::Shared
+                                                  : checker::checked::ReceiverMode::Mutable) ||
       discardedCall.receiverAdjustments.size() != 1 ||
       discardedCall.receiverAdjustments[0] !=
-          checker::checked::ReceiverAdjustmentStep::BorrowMutable ||
-      discardedCall.arguments.size() != 1 || discardedCall.arguments[0].value == zc::none ||
+          (sharedDevirt ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                        : checker::checked::ReceiverAdjustmentStep::BorrowMutable) ||
+      discardedCall.arguments.size() != (sharedDevirt ? 0 : 1) ||
+      (!sharedDevirt && discardedCall.arguments[0].value == zc::none) ||
       trailingCall.receiverMode != checker::checked::ReceiverMode::Shared ||
       trailingCall.receiverAdjustments.size() != 1 ||
       trailingCall.receiverAdjustments[0] !=
@@ -8135,7 +8141,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
     }
   }
   const auto& mutableBorrow = entry.statements[3].borrowCreationValue();
-  if (mutableBorrow.kind != MirBorrowKind::Mutable ||
+  if (mutableBorrow.kind != (sharedDevirt ? MirBorrowKind::Shared : MirBorrowKind::Mutable) ||
       mutableBorrow.destination.local() != setterBorrow.id ||
       mutableBorrow.destination.rootType() != setterBorrow.type ||
       mutableBorrow.destination.resultType() != setterBorrow.type ||
@@ -8147,13 +8153,16 @@ bool validVoidCallThenReceiverCallReturnFunction(
   }
   const auto& setterCall = entry.terminator.callValue();
   auto setterActivation = setterCall.effect.activatedMutableReceiver();
-  if (setterCall.callee != discardedCall.callee || setterCall.arguments.size() != 2 ||
+  if (setterCall.callee != discardedCall.callee ||
+      setterCall.arguments.size() != (sharedDevirt ? 1 : 2) ||
       setterCall.destination.local() != unitResult.id ||
       setterCall.destination.rootType() != unitResult.type ||
       setterCall.destination.resultType() != unitResult.type ||
       setterCall.destination.projections().size() != 0 ||
-      setterCall.effect.kind() != MirCallEffectKind::ActivateMutableReceiver ||
-      setterActivation == zc::none || ZC_ASSERT_NONNULL(setterActivation) != setterBorrow.id ||
+      (!sharedDevirt &&
+       (setterCall.effect.kind() != MirCallEffectKind::ActivateMutableReceiver ||
+        setterActivation == zc::none || ZC_ASSERT_NONNULL(setterActivation) != setterBorrow.id)) ||
+      (sharedDevirt && setterCall.effect.kind() != MirCallEffectKind::NoActivation) ||
       setterCall.normalTarget != setterContinuation.id || setterCall.unwindTarget != zc::none ||
       !matchesPlaceUse(setterCall.arguments[0], proofs, copy, setterBorrow.type)) {
     return false;
@@ -8165,13 +8174,15 @@ bool validVoidCallThenReceiverCallReturnFunction(
       setterReceiverOperand.projections().size() != 0) {
     return false;
   }
-  const auto& setterConstant = setterCall.arguments[1];
-  ZC_IF_SOME(expectedSetterConstant, discardedCall.arguments[0].value) {
-    if (setterConstant.kind() != MirOperandKind::Constant ||
-        setterConstant.constantValue().type != discardedCall.arguments[0].type ||
-        !sameConstant(setterConstant.constantValue().value, expectedSetterConstant, module,
-                      identities, semanticTypes)) {
-      return false;
+  if (!sharedDevirt) {
+    const auto& setterConstant = setterCall.arguments[1];
+    ZC_IF_SOME(expectedSetterConstant, discardedCall.arguments[0].value) {
+      if (setterConstant.kind() != MirOperandKind::Constant ||
+          setterConstant.constantValue().type != discardedCall.arguments[0].type ||
+          !sameConstant(setterConstant.constantValue().value, expectedSetterConstant, module,
+                        identities, semanticTypes)) {
+        return false;
+      }
     }
   }
   const auto& sharedBorrow = setterContinuation.statements[1].borrowCreationValue();
@@ -15152,6 +15163,19 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                   ZC_IF_SOME(setReceiver, setReceiverRecord) {
                     auto getReceiverRecord = localReferenceFor(hirModule, trailingCall.receiver);
                     ZC_IF_SOME(getReceiver, getReceiverRecord) {
+                      const bool discardedMutableUnit =
+                          discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
+                          discardedCall.receiverAdjustments.size() == 1 &&
+                          discardedCall.receiverAdjustments[0] ==
+                              checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
+                          discardedCall.arguments.size() == 1 &&
+                          discardedCall.arguments[0].value != zc::none;
+                      const bool discardedSharedValue =
+                          discardedCall.receiverMode == checker::checked::ReceiverMode::Shared &&
+                          discardedCall.receiverAdjustments.size() == 1 &&
+                          discardedCall.receiverAdjustments[0] ==
+                              checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+                          discardedCall.arguments.size() == 0;
                       const bool gate =
                           binding.local.ordinal() == 1 && binding.initializer == aggregate.node &&
                           binding.type == aggregate.type &&
@@ -15164,12 +15188,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                           getReceiver.local == binding.local &&
                           setReceiver.category == hir::HirValueCategory::Place &&
                           getReceiver.category == hir::HirValueCategory::Place &&
-                          discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
-                          discardedCall.receiverAdjustments.size() == 1 &&
-                          discardedCall.receiverAdjustments[0] ==
-                              checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
-                          discardedCall.arguments.size() == 1 &&
-                          discardedCall.arguments[0].value != zc::none &&
+                          (discardedMutableUnit || discardedSharedValue) &&
                           trailingCall.receiverMode == checker::checked::ReceiverMode::Shared &&
                           trailingCall.receiverAdjustments.size() == 1 &&
                           trailingCall.receiverAdjustments[0] ==
@@ -15181,7 +15200,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                         valid = validVoidCallThenReceiverCallReturnFunction(
                             function, sourceDeclaration, callerBlock, binding, aggregate,
                             sourceReturn, setReceiver, discardedCall, getReceiver, trailingCall,
-                            proofs, copy, module, identities, semanticTypes);
+                            proofs, copy, module, identities, semanticTypes, discardedSharedValue);
                       }
                       if (!valid) {
                         return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,

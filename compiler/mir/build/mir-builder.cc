@@ -1821,7 +1821,7 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
     const hir::HirLocalReferenceExpression& getReceiver,
     const hir::HirReceiverCallExpression& trailingCall,
     const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    identity::DefId copyMarker, bool sharedDevirt) {
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -1838,8 +1838,11 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   const MirLocalId getResult = ctx.declareLocal(MirLocalKind::Temporary, trailingCall.resultType,
                                                 scope, trailingCall.sourceSpan.clone());
 
-  // Block 1: initialize the owner, create the mutable borrow, then call the
-  // setter with the borrow as its receiver argument and the literal argument.
+  // Block 1: initialize the owner, create the discarded-call borrow, then call
+  // the discarded method with the borrow as its receiver argument. A mutable
+  // one-argument Unit call activates the receiver borrow and passes one literal
+  // argument; a shared zero-argument value call leaves the borrow unactivated
+  // and passes no arguments, with the result discarded into a dead temporary.
   (void)ctx.beginBlock(scope);
   ctx.appendStatement(MirStatement::storageLive(owner, binding.sourceSpan.clone()));
   zc::Vector<MirNominalAggregateElement> elements;
@@ -1858,7 +1861,7 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   ctx.appendStatement(MirStatement::borrowCreation(
       MirPlace(borrowMutable, discardedCall.receiverType, zc::mv(borrowMutableDest),
                discardedCall.receiverType),
-      MirBorrowKind::Mutable,
+      sharedDevirt ? MirBorrowKind::Shared : MirBorrowKind::Mutable,
       MirPlace(owner, binding.type, zc::mv(borrowMutableSource), binding.type),
       setReceiver.sourceSpan.clone()));
   ctx.appendStatement(MirStatement::storageLive(unitTemp, discardedCall.sourceSpan.clone()));
@@ -1870,14 +1873,17 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   if (receiverArgument == zc::none) return zc::none;
   zc::Vector<MirOperand> setArguments;
   setArguments.add(zc::mv(ZC_ASSERT_NONNULL(receiverArgument)));
-  setArguments.add(
-      MirOperand::constant(discardedCall.arguments[0].type,
-                           ZC_ASSERT_NONNULL(discardedCall.arguments[0].value).clone()));
+  if (!sharedDevirt) {
+    setArguments.add(
+        MirOperand::constant(discardedCall.arguments[0].type,
+                             ZC_ASSERT_NONNULL(discardedCall.arguments[0].value).clone()));
+  }
   zc::Maybe<MirBlockId> noUnwindSet;
   zc::Vector<MirProjection> unitDestProjections;
   ctx.terminateBlock(
       MirTerminator::call(discardedCall.callee, zc::mv(setArguments),
-                          MirCallEffect::activateMutableReceiver(borrowMutable),
+                          sharedDevirt ? MirCallEffect::noActivation()
+                                       : MirCallEffect::activateMutableReceiver(borrowMutable),
                           MirPlace(unitTemp, discardedCall.resultType, zc::mv(unitDestProjections),
                                    discardedCall.resultType),
                           blockId(2), zc::mv(noUnwindSet), discardedCall.sourceSpan.clone()));
@@ -2917,11 +2923,13 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     }
   }
 
-  // Discarded mutable receiver call followed by a shared trailing receiver call:
+  // Discarded receiver call followed by a shared trailing receiver call:
   // `fun f() -> T { let o = S{..constants..}; o.set(c); return o.get(); }`. The
-  // statement-position setter targets an unread Unit temporary; the trailing
-  // getter returns the owner field. This arm must precede the size-3 overwrite
-  // and sequential-local arms below.
+  // statement-position call targets an unread temporary; the trailing getter
+  // returns the owner field. Two shapes are admitted: a mutable
+  // one-literal-argument Unit call, or a shared zero-argument value-returning
+  // devirtualized-erase call. This arm must precede the size-3 overwrite and
+  // sequential-local arms below.
   if (block.statements.size() == 3 && declaration.receiver == zc::none &&
       declaration.unsafeBlock == zc::none) {
     auto bindingRecord = localFor(hirModule, block.statements[0]);
@@ -2942,6 +2950,19 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         auto getReceiverRecord = localReferenceFor(hirModule, trailingCall.receiver);
         if (getReceiverRecord != zc::none) {
           const auto& getReceiver = ZC_ASSERT_NONNULL(getReceiverRecord);
+          const bool discardedMutableUnit =
+              discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
+              discardedCall.receiverAdjustments.size() == 1 &&
+              discardedCall.receiverAdjustments[0] ==
+                  checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
+              isUnitSemanticType(semanticTypes, discardedCall.resultType) &&
+              discardedCall.arguments.size() == 1 && discardedCall.arguments[0].value != zc::none;
+          const bool discardedSharedValue =
+              discardedCall.receiverMode == checker::checked::ReceiverMode::Shared &&
+              discardedCall.receiverAdjustments.size() == 1 &&
+              discardedCall.receiverAdjustments[0] ==
+                  checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+              discardedCall.arguments.size() == 0;
           if (binding.local.ordinal() == 1 && binding.initializer == aggregate.node &&
               binding.type == aggregate.type && binding.type == discardedCall.receiverSourceType &&
               binding.type == trailingCall.receiverSourceType &&
@@ -2951,12 +2972,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
               getReceiver.local == binding.local &&
               setReceiver.category == hir::HirValueCategory::Place &&
               getReceiver.category == hir::HirValueCategory::Place &&
-              discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
-              discardedCall.receiverAdjustments.size() == 1 &&
-              discardedCall.receiverAdjustments[0] ==
-                  checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
-              isUnitSemanticType(semanticTypes, discardedCall.resultType) &&
-              discardedCall.arguments.size() == 1 && discardedCall.arguments[0].value != zc::none &&
+              (discardedMutableUnit || discardedSharedValue) &&
               trailingCall.receiverMode == checker::checked::ReceiverMode::Shared &&
               trailingCall.receiverAdjustments.size() == 1 &&
               trailingCall.receiverAdjustments[0] ==
@@ -2965,7 +2981,8 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
               trailingCall.resultType == declaration.resultType) {
             auto product = buildVoidCallThenReceiverCallReturn(
                 declaration, binding, aggregate, ZC_ASSERT_NONNULL(sourceReturn), setReceiver,
-                discardedCall, getReceiver, trailingCall, identities, proofs, copyMarker);
+                discardedCall, getReceiver, trailingCall, identities, proofs, copyMarker,
+                discardedSharedValue);
             if (product != zc::none) return product;
           }
         }

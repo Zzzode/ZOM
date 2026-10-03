@@ -6277,6 +6277,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     ? zc::none
                     : dispatchFactIndex(checkedModule.dispatchFacts().facts(),
                                         ZC_ASSERT_NONNULL(statementCallKey));
+            // A devirtualized-erase local carries the concrete type as its
+            // initializer type, while the statement receiver IdentExpr reads
+            // the erased `dyn Interface` type. The type-match guard below
+            // verifies local-vs-receiver type identity for ordinary receiver
+            // calls; skip it for devirtualized erases where the two types
+            // differ by design.
+            bool stmtDevirtualizedErase = false;
+            ZC_IF_SOME(initializer, shape.localInitializer) {
+              for (const auto& erased : devirtualizedEraseInitializers) {
+                if (erased == initializer) {
+                  stmtDevirtualizedErase = true;
+                  break;
+                }
+              }
+            }
             if (!tree.contains(statementReceiverNode) ||
                 tree.node(statementReceiverNode).kind != ast::SyntaxKind::IdentExpr ||
                 statementReceiverTypeIndex == zc::none || statementCalleeTypeIndex == zc::none ||
@@ -6287,10 +6302,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     ZC_ASSERT_NONNULL(trailingReceiverBinding) ||
                 !ownerLocalMatches(bound.definitions(), ZC_ASSERT_NONNULL(statementReceiverBinding),
                                    shape.localPattern, tree) ||
-                ZC_ASSERT_NONNULL(local).type !=
-                    facts.nodeTypes()
-                        .entries()[ZC_ASSERT_NONNULL(statementReceiverTypeIndex)]
-                        .value) {
+                (!stmtDevirtualizedErase &&
+                 ZC_ASSERT_NONNULL(local).type !=
+                     facts.nodeTypes()
+                         .entries()[ZC_ASSERT_NONNULL(statementReceiverTypeIndex)]
+                         .value)) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::MissingRequiredFact, module,
                                                    registries, ordinal + 2);
@@ -6314,15 +6330,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             const auto& statementTarget = statementDispatch.fact.target.variant();
             const auto& statementTransform = statementDispatch.fact.resultTransform.variant();
             // Slice capability gate: a discarded statement-position receiver
-            // call is lowered only as a one-literal-argument mutable call whose
-            // result is Unit. Every other well-formed discarded call (a
-            // non-Unit result such as a value-returning method, a shared
-            // receiver, a different arity, or a non-literal argument) is valid
-            // source outside this slice, so it drains as the user-facing
-            // capability code instead of an invalid-fact invariant. The checker
-            // already drains arity, identifier-argument, and argument-type
-            // errors earlier; this guards the result kind and receiver mode that
-            // a discarded-call position otherwise lets through.
+            // call is lowered in one of two shapes. The first is a
+            // one-literal-argument mutable call whose result is Unit. The
+            // second is a devirtualized-erase shared, zero-argument,
+            // value-returning call whose result is discarded into a dead
+            // temporary. Every other well-formed discarded call (a non-Unit
+            // result on a concrete receiver, a shared receiver with arguments,
+            // a different arity, or a non-literal argument) is valid source
+            // outside this slice, so it drains as the user-facing capability
+            // code instead of an invalid-fact invariant. The checker already
+            // drains arity, identifier-argument, and argument-type errors
+            // earlier; this guards the result kind and receiver mode that a
+            // discarded-call position otherwise lets through.
             bool statementArgumentAdmitted = statementArguments.size == 1;
             if (statementArgumentAdmitted) {
               const ast::NodeId onlyArgument = tree.list(statementArguments)[0];
@@ -6340,7 +6359,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                    statementDispatch.fact.successType) &&
                 isUnitSemanticType(checkedModule.semanticTypes(),
                                    statementDispatch.fact.resultType);
-            if (!statementArgumentAdmitted || !statementModeMutable || !statementResultUnit) {
+            const bool statementSharedDevirt =
+                stmtDevirtualizedErase && statementInvocation.receiverMode != zc::none &&
+                ZC_ASSERT_NONNULL(statementInvocation.receiverMode) ==
+                    checker::checked::ReceiverMode::Shared &&
+                statementArguments.size == 0 && !statementResultUnit;
+            if ((!statementArgumentAdmitted || !statementModeMutable || !statementResultUnit) &&
+                !statementSharedDevirt) {
               return rejectHirCapability<HirModuleCandidate>(
                   definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                   ZC_ASSERT_NONNULL(statementCallSpan).clone());
@@ -6372,30 +6397,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 stmtSelectedMethod() != statementMember.member ||
                 stmtTargetMethod() != statementMember.member ||
                 statementMember.node != statementCallee ||
-                statementMember.receiverType !=
-                    facts.nodeTypes().entries()[statementReceiverTypeSlot].value ||
+                (!stmtDevirtualizedErase &&
+                 statementMember.receiverType !=
+                     facts.nodeTypes().entries()[statementReceiverTypeSlot].value) ||
                 statementMember.memberType !=
                     facts.nodeTypes().entries()[statementCalleeTypeSlot].value ||
                 statementMember.adjustment != zc::none ||
                 statementInvocation.calleeType != statementMember.memberType ||
-                !isUnitSemanticType(checkedModule.semanticTypes(),
-                                    statementInvocation.successType) ||
-                !isUnitSemanticType(checkedModule.semanticTypes(),
-                                    statementInvocation.resultType) ||
+                (!statementSharedDevirt && (!isUnitSemanticType(checkedModule.semanticTypes(),
+                                                                statementInvocation.successType) ||
+                                            !isUnitSemanticType(checkedModule.semanticTypes(),
+                                                                statementInvocation.resultType) ||
+                                            statementInvocation.arguments.size() != 1)) ||
                 statementInvocation.receiver == zc::none ||
                 statementInvocation.receiverMode == zc::none ||
                 statementInvocation.receiverAdjustment == zc::none ||
                 statementInvocation.arguments.size() != statementArguments.size ||
-                statementInvocation.arguments.size() != 1 ||
                 statementInvocation.substitutions != zc::none ||
                 statementInvocation.witnesses != zc::none ||
                 statementInvocation.raises != zc::none || !statementDispatchOwnerMatches ||
                 statementDispatch.fact.receiver == zc::none ||
                 statementDispatch.fact.arguments.size() != statementArguments.size ||
-                !isUnitSemanticType(checkedModule.semanticTypes(),
-                                    statementDispatch.fact.successType) ||
-                !isUnitSemanticType(checkedModule.semanticTypes(),
-                                    statementDispatch.fact.resultType) ||
+                (!statementSharedDevirt &&
+                 (!isUnitSemanticType(checkedModule.semanticTypes(),
+                                      statementDispatch.fact.successType) ||
+                  !isUnitSemanticType(checkedModule.semanticTypes(),
+                                      statementDispatch.fact.resultType))) ||
                 statementDispatch.fact.substitutions != zc::none ||
                 statementDispatch.fact.witnesses != zc::none ||
                 statementDispatch.fact.raises != zc::none ||
@@ -6408,13 +6435,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    registries, ordinal + 2);
             }
             const auto& statementCheckedReceiver = ZC_ASSERT_NONNULL(statementInvocation.receiver);
+            const auto stmtExpectedMode = statementSharedDevirt
+                                              ? checker::checked::ReceiverMode::Shared
+                                              : checker::checked::ReceiverMode::Mutable;
+            const auto stmtExpectedStep =
+                statementSharedDevirt ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                                      : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
             if (statementCheckedReceiver.sourceNode != statementReceiverNode ||
-                statementCheckedReceiver.sourceType !=
-                    facts.nodeTypes().entries()[statementReceiverTypeSlot].value ||
+                (!stmtDevirtualizedErase &&
+                 statementCheckedReceiver.sourceType !=
+                     facts.nodeTypes().entries()[statementReceiverTypeSlot].value) ||
                 statementCheckedReceiver.adjustment != zc::none ||
                 statementInvocation.receiverMode == zc::none ||
-                ZC_ASSERT_NONNULL(statementInvocation.receiverMode) !=
-                    checker::checked::ReceiverMode::Mutable ||
+                ZC_ASSERT_NONNULL(statementInvocation.receiverMode) != stmtExpectedMode ||
                 statementInvocation.receiverAdjustment == zc::none ||
                 ZC_ASSERT_NONNULL(statementInvocation.receiverAdjustment).source !=
                     statementCheckedReceiver.sourceType ||
@@ -6422,13 +6455,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     statementCheckedReceiver.parameterType ||
                 ZC_ASSERT_NONNULL(statementInvocation.receiverAdjustment).steps.size() != 1 ||
                 ZC_ASSERT_NONNULL(statementInvocation.receiverAdjustment).steps[0] !=
-                    checker::checked::ReceiverAdjustmentStep::BorrowMutable) {
+                    stmtExpectedStep) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
             auto statementReceiverParameter =
                 checkedModule.semanticTypes().get(statementCheckedReceiver.parameterType);
+            const auto stmtExpectedMutability = statementSharedDevirt
+                                                    ? type::semantic::Mutability::Const
+                                                    : type::semantic::Mutability::Mutable;
             if (!statementReceiverParameter.is<type::SemanticTypeLookup>() ||
                 !statementReceiverParameter.get<type::SemanticTypeLookup>()
                      .data()
@@ -6436,11 +6472,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 statementReceiverParameter.get<type::SemanticTypeLookup>()
                         .data()
                         .get<type::semantic::ReferenceTypeData>()
-                        .mutability != type::semantic::Mutability::Mutable ||
-                statementReceiverParameter.get<type::SemanticTypeLookup>()
-                        .data()
-                        .get<type::semantic::ReferenceTypeData>()
-                        .referent != statementCheckedReceiver.sourceType) {
+                        .mutability != stmtExpectedMutability ||
+                (!stmtDevirtualizedErase &&
+                 statementReceiverParameter.get<type::SemanticTypeLookup>()
+                         .data()
+                         .get<type::semantic::ReferenceTypeData>()
+                         .referent != statementCheckedReceiver.sourceType)) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
@@ -6456,7 +6493,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 HirNodeId(), HirLocalId(), ZC_ASSERT_NONNULL(local).type, HirValueCategory::Place,
                 ZC_ASSERT_NONNULL(statementReceiverSpan).clone()};
             zc::Vector<checker::checked::ReceiverAdjustmentStep> statementSteps;
-            statementSteps.add(checker::checked::ReceiverAdjustmentStep::BorrowMutable);
+            statementSteps.add(stmtExpectedStep);
             zc::Vector<HirDirectCallArgument> statementCallArguments;
             for (size_t argumentIndex = 0; argumentIndex < statementArguments.size;
                  ++argumentIndex) {
@@ -6500,7 +6537,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                           statementInvocation.calleeType,
                                           statementCheckedReceiver.sourceType,
                                           statementCheckedReceiver.parameterType,
-                                          checker::checked::ReceiverMode::Mutable,
+                                          stmtExpectedMode,
                                           zc::mv(statementSteps),
                                           statementInvocation.resultType,
                                           zc::mv(statementCallArguments),
@@ -8955,13 +8992,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ++receiverCallCount;
       ++discardedStatementCallCount;
       receiverCallArgumentCount += call.arguments.size();
+      // A statement-position receiver call lowers in one of two shapes: a
+      // mutable one-literal-argument Unit call or a shared zero-argument
+      // value-returning devirtualized-erase call whose result is discarded.
+      const bool stmtMutableUnit =
+          call.receiverMode == checker::checked::ReceiverMode::Mutable &&
+          call.receiverAdjustments.size() == 1 &&
+          call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
+          isUnitSemanticType(checkedModule.semanticTypes(), call.resultType);
+      const bool stmtSharedValue =
+          call.receiverMode == checker::checked::ReceiverMode::Shared &&
+          call.receiverAdjustments.size() == 1 &&
+          call.receiverAdjustments[0] == checker::checked::ReceiverAdjustmentStep::BorrowShared;
       if (function.local == zc::none || function.aggregate == zc::none ||
           function.statementReceiverReference == zc::none || function.receiverCall == zc::none ||
           function.call != zc::none || function.literal != zc::none ||
-          call.receiverMode != checker::checked::ReceiverMode::Mutable ||
-          call.receiverAdjustments.size() != 1 ||
-          call.receiverAdjustments[0] != checker::checked::ReceiverAdjustmentStep::BorrowMutable ||
-          !isUnitSemanticType(checkedModule.semanticTypes(), call.resultType)) {
+          (!stmtMutableUnit && !stmtSharedValue)) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries, 1);
       }

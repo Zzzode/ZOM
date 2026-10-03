@@ -1476,7 +1476,8 @@ private:
         // identified callee) select at most one; any ambiguity (same-shape
         // pair, missing role) or residual mismatch leaves `lir` as none.
         auto isCaller = [](const mir::MirFunction& fn) {
-          return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
+          return fn.kind == mir::MirFunctionKind::Function &&
+                 (fn.blocks.size() == 2 || fn.blocks.size() == 3);
         };
         auto isCallee = [](const mir::MirFunction& fn) {
           return fn.kind == mir::MirFunctionKind::Function &&
@@ -1531,6 +1532,10 @@ private:
             if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerReceiverCallModule(functions[caller],
                                                                    functions[callee], types);
+            }
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerReceiverCallTwiceModule(functions[caller],
+                                                                        functions[callee], types);
             }
           }
         }
