@@ -2314,8 +2314,15 @@ ZC_TEST("concurrent recovery cannot sweep a claimed but unverified competitor ex
   zc::String rootLeaf = soleSnapshotTreeName(*dir);
   zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
 
-  ZC_REQUIRE(dir->tryRemove(zc::Path("app"_zc)));
-  dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+  // Overwrite the public entry in place so its journal-recorded stable identity
+  // (dev + ino) is retained while its bytes drift from the owner proof. A
+  // remove-and-recreate allocates a fresh inode, so recovery's entryMatches()
+  // gate then fails nondeterministically (inode reuse is not guaranteed under
+  // parallel suite load) and the checkpoint child exits without signalling
+  // readiness.
+  zc::Own<const zc::File> competitor = dir->openFile(zc::Path("app"_zc), zc::WriteMode::MODIFY);
+  competitor->truncate(0);
+  competitor->writeAll("competitor-app"_zc);
   dir->sync();
 
   int readyPipe[2];
@@ -2407,8 +2414,15 @@ ZC_TEST("source absence cannot authorize sweeping another recovery's unverified 
   zc::String rootLeaf = soleSnapshotTreeName(*dir);
   zc::String quarantineRoot = zc::str(rootLeaf, ".cleanup");
 
-  ZC_REQUIRE(dir->tryRemove(zc::Path("app"_zc)));
-  dir->openFile(zc::Path("app"_zc), zc::WriteMode::CREATE)->writeAll("competitor-app"_zc);
+  // Overwrite the public entry in place so its journal-recorded stable identity
+  // (dev + ino) is retained while its bytes drift from the owner proof. A
+  // remove-and-recreate allocates a fresh inode, so recovery's entryMatches()
+  // gate then fails nondeterministically (inode reuse is not guaranteed under
+  // parallel suite load) and the checkpoint child exits without signalling
+  // readiness.
+  zc::Own<const zc::File> competitor = dir->openFile(zc::Path("app"_zc), zc::WriteMode::MODIFY);
+  competitor->truncate(0);
+  competitor->writeAll("competitor-app"_zc);
   dir->sync();
 
   // Pin recovery B after it has observed the public app and decided that it
