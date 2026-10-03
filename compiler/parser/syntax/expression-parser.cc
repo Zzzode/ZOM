@@ -490,9 +490,20 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
     const size_t itemStart = cursor.position();
     const size_t itemEnd = consumeCommaDelimitedItem(cursor, end);
     if (itemStart < itemEnd) {
+      bool skipProperty = false;
       if (kindAt(itemStart) == ast::SyntaxKind::DotDotDot) {
         properties.add(builder.makeObjectSpread(
             rangeFor(itemStart, itemEnd), parseExpressionRange(builder, itemStart + 1, itemEnd)));
+      } else if (kindAt(itemStart) == ast::SyntaxKind::Period && itemStart + 1 < itemEnd &&
+                 kindAt(itemStart + 1) == ast::SyntaxKind::Period) {
+        // Struct update syntax `..expr` is not supported. The lexer tokenizes
+        // `..` as two Period tokens; reject it with a clean diagnostic instead
+        // of interning a "." identifier that crashes downstream.
+        if (!shouldSuppressDiagnostic(itemStart)) {
+          diagnosticEngine.report<diagnostics::DiagID::ObjectLiteralPropertyNameExpected>(
+              diagnosticLoc(itemStart));
+        }
+        skipProperty = true;
       } else {
         // RFC 0002: Cursor-driven boundary detection for object property key/value separation.
         // Instead of range-scanning the entire item for a colon at depth 0
@@ -518,7 +529,6 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
         // depth-0 colon.
         size_t colon = itemEnd;  // sentinel: no colon found
         const ast::SyntaxKind firstKind = kindAt(itemStart);
-        bool skipProperty = false;
 
         if (firstKind == ast::SyntaxKind::LeftBracket) {
           // Computed key: invalid syntax in ZOM object literals.
@@ -1218,9 +1228,17 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parseMatchExpression(ParserSyn
 
         ast::NodeId guardExpr;
         if (guard < arrow) { guardExpr = parseRequiredExpression(builder, guard + 1, arrow); }
+        const ast::NodeId pattern = parsePatternRange(builder, cursor + 1, patternEnd);
+        if (!pattern) {
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "pattern"_zc);
+          }
+          return ExpressionParseResult();
+        }
         arms.add(builder.makeMatchArmExpr(
-            rangeFor(cursor, expressionEnd), parsePatternRange(builder, cursor + 1, patternEnd),
-            guardExpr, parseExpressionRange(builder, expressionStart, expressionEnd)));
+            rangeFor(cursor, expressionEnd), pattern, guardExpr,
+            parseExpressionRange(builder, expressionStart, expressionEnd)));
         cursor = expressionEnd < bodyEnd ? expressionEnd + 1 : cursor + 1;
         continue;
       }

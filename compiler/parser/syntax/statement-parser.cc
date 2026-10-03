@@ -692,9 +692,17 @@ ast::NodeId Parser::Impl::parseMatchStatement(ParserSyntaxFactory& builder, size
 
         ast::NodeId guardExpr;
         if (guard < arrow) { guardExpr = parseRequiredExpression(builder, guard + 1, arrow); }
-        arms.add(builder.makeMatchArmStmt(
-            rangeFor(cursor, statementEnd), parsePatternRange(builder, cursor + 1, patternEnd),
-            guardExpr, parseStatementBody(builder, statementStart, statementEnd)));
+        const ast::NodeId pattern = parsePatternRange(builder, cursor + 1, patternEnd);
+        if (!pattern) {
+          if (!shouldSuppressDiagnostic(cursor + 1)) {
+            diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(diagnosticLoc(cursor + 1),
+                                                                        "pattern"_zc);
+          }
+          return ast::NodeId();
+        }
+        arms.add(
+            builder.makeMatchArmStmt(rangeFor(cursor, statementEnd), pattern, guardExpr,
+                                     parseStatementBody(builder, statementStart, statementEnd)));
         cursor = statementEnd > cursor ? statementEnd : cursor + 1;
         continue;
       }

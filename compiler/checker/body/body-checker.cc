@@ -5553,20 +5553,16 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                      operation == ast::UnaryOperatorKind::BitNot) {
             // Admit the four primitive unary operators (`+` `-` `~` `!`) where
             // the operand is a scalar value reference (a parameter or an owner
-            // local) or a scalar literal and at least the operand is a
-            // reference; every other unary shape stays unsupported so its
-            // existing rejection stands. A literal-only unary has no place to
-            // lower and is left unsupported.
+            // local). A literal-only unary has no reference to anchor the
+            // operand type and no place to lower, so it stays unsupported and
+            // its existing rejection stands.
             const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
             if (tree.contains(operand)) {
               const bool operandIsReference =
                   tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
                   (resolvedCallableParameter(boundModule.bindings(), operand) != zc::none ||
                    resolvedOwnerLocal(boundModule.bindings(), operand) != zc::none);
-              const bool operandIsLiteral = isScalarLiteral(tree.node(operand).kind);
-              if (operandIsReference || operandIsLiteral) {
-                production = BodyProductionKind::PrimitiveUnaryOperation;
-              }
+              if (operandIsReference) { production = BodyProductionKind::PrimitiveUnaryOperation; }
             }
           }
           break;

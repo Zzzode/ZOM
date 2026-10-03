@@ -1,0 +1,4 @@
+// Fail-closed fixture: a unary operator on a bare literal (`-42`) has no
+// reference to anchor the operand type and no place to lower, so the body
+// checker rejects it with ZOM4099 instead of crashing in the IR pipeline.
+fun entry() -> i32 { let x = -42; return x; }

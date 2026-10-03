@@ -269,6 +269,16 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-nonexhaustive-consumer/Zom.toml::enum_match_nonexhaustive_consumer::enum_match_nonexhaustive_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/bool-match-nonexhaustive-consumer/Zom.toml::bool_match_nonexhaustive_consumer::bool_match_nonexhaustive_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-unary-literal-consumer/Zom.toml::reject_unary_literal_consumer::reject_unary_literal_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-match-pattern-consumer/Zom.toml::reject_match_pattern_consumer::reject_match_pattern_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-number-dot-consumer/Zom.toml::reject_number_dot_consumer::reject_number_dot_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-struct-update-consumer/Zom.toml::reject_struct_update_consumer::reject_struct_update_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-for-break-only-consumer/Zom.toml::reject_for_break_only_consumer::reject_for_break_only_consumer"
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
       --string-case

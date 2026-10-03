@@ -1,0 +1,13 @@
+// Fail-closed fixture: struct update syntax `..expr` is not supported. The
+// lexer tokenizes `..` as two Period tokens; the parser rejects it with
+// ZOM2059 instead of interning a "." identifier that crashes downstream.
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fun entry() -> i32 {
+    let p1 = Point { x: 1, y: 2 };
+    let p2 = Point { x: 3, ..p1 };
+    return p2.x;
+}

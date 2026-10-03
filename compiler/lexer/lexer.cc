@@ -1000,7 +1000,11 @@ void Lexer::Impl::lexNumber() {
   zc::StringPtr exponentPart = ""_zc;
   zc::StringPtr exponentPreamble = ""_zc;
 
-  if (ch() == '.') {
+  if (ch() == '.' && isDigit(charAt(1))) {
+    // A '.' immediately followed by a digit starts a fractional part. A '.'
+    // not followed by a digit (member access, range, or syntax error) is left
+    // for the next lexing pass so the parser rejects the malformed construct
+    // with a clean syntax error instead of crashing on "1.".
     state.curPtr++;
     fractionalPart = lexNumberFragment();
   }

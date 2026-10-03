@@ -1,0 +1,5 @@
+// Fail-closed fixture: a numeric literal immediately followed by a dot not
+// followed by a digit (`1.`) is not a valid float literal. The lexer leaves
+// the dot for the parser, which rejects the malformed construct with a clean
+// syntax error instead of crashing on an empty fractional part.
+fun entry() -> i32 { let x = 1.; return x; }

@@ -1,0 +1,9 @@
+// Fail-closed fixture: a for-loop body containing only an if-guarded break
+// has no accumulator to lower. Surface admission rejects it with ZOM4096
+// instead of crashing in the HIR shape layer.
+fun entry() -> i32 {
+    for (let i = 0; i < 10; i = i + 1) {
+        if (i == 5) { break; }
+    }
+    return 41;
+}

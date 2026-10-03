@@ -1010,8 +1010,11 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
     }
   }
   // If-guarded break leading the body: the remaining statements must all be
-  // admitted loop-body writes.
+  // admitted loop-body writes, and at least one write must follow the break.
+  // A body with only a guarded break has no accumulator to lower and fails
+  // closed here.
   if (isAdmittedLoopBodyGuardedBreak(tree, statementNodes[0])) {
+    if (statements.size < 2) return false;
     for (size_t i = 1; i < statements.size; ++i) {
       if (!isAdmittedLoopBodyWrite(tree, statementNodes[i])) return false;
     }
