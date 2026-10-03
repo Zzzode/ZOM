@@ -148,3 +148,30 @@ match (event) {
     when PageLoad => { print("Page loaded"); }
 }
 ```
+
+## Admitted Pattern Surface
+
+The parser accepts the full pattern grammar above. The ownership surface
+admits only the following bounded pattern forms through the semantic pipeline
+today:
+
+- **Bool and integer literal patterns** (`when true =>`, `when 42 =>`) in a
+  `match` statement, subject to the admitted match shapes in
+  [Ch.05 §Admitted match shapes](05-statements.md#admitted-match-shapes).
+- **The wildcard pattern** as the `default =>` arm of an admitted `match`
+  statement.
+- **Qualified unit enum patterns** (`when Color.Red =>`) as the two arms of an
+  admitted enum `match` statement.
+- **The bounded match guard** — a single binary expression whose one operand is
+  a bare identifier and whose other operand is a scalar literal — on the
+  `when true` arm of a bool-with-default `match` statement.
+
+Every other pattern form — identifier patterns in `match` position, tuple,
+array, object, and type patterns, string-literal patterns, and tuple-variant
+destructuring (`when Success(value) =>`) — parses but has no admitted semantic
+contract yet and is rejected with `ZOM4096` (control-flow syntax has no
+admitted semantic contract). Tuple-variant destructuring in particular requires
+aggregate-value infrastructure the pipeline does not have yet; the
+`Result::Ok(41)` construction form is admitted as a dead-erased binding (see
+[Ch.10 §Tuple Variant Construction](10-enumerations.md#tuple-variant-construction)),
+but destructuring a tuple variant in a `match` arm is not.

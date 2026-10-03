@@ -509,6 +509,46 @@ fun dispatch(h: &(dyn RpcHandler + Sendable + Shared), req: Request) -> Response
 }
 ```
 
+### 9.6.11 dyn Method Calls (Devirtualization)
+
+A method call on a `dyn I` value is admitted when the concrete type is
+statically known at the erasure site. Today that means the receiver is an
+owner local initialized with an aggregate literal of a concrete type that
+implements `I`:
+
+```zom
+interface Animal {
+    fun speak(this) -> i32;
+}
+
+struct Dog {
+    tag: i32,
+}
+
+impl Animal for Dog {
+    fun speak(this) -> i32 { return 41; }
+}
+
+fun entry() -> i32 {
+    let a: dyn Animal = Dog { tag: 0 };
+    return a.speak();
+}
+```
+
+The checker resolves the concrete type from the local's initializer, selects
+the unique `impl I for ConcreteType` for the existential's principal
+interface, and devirtualizes the call to the direct impl method. The HIR
+builder then lowers a regular receiver call with the concrete receiver source
+type, so no existential carrier, vtable, or indirect call is needed in MIR,
+LIR, or LLVM.
+
+General dynamic dispatch through an erased value whose concrete type is not
+statically known — a `dyn I` parameter, a `dyn I` returned from another
+function, or a `dyn I` stored in a struct field — is not admitted yet. A
+`dyn I` binding that is never read is admitted as a dead-erase: the erased
+local and its transitively-dead concrete source are skipped during lowering,
+so only scalar locals reach MIR/LIR.
+
 ## 9.7 Interfaces as Generic Bounds
 
 Interface names and marker names both participate in the same `BoundList` syntax, shared with [Ch.12 §Generics](12-generics.md). The full `BoundList` grammar (normative in Ch.12) is:

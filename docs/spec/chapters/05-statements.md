@@ -240,6 +240,35 @@ A `match` can also appear in expression position, where each arm body is an expr
 
 See [Ch.07 Patterns](07-patterns.md) for the full pattern syntax.
 
+#### Admitted match shapes
+
+The parser accepts the full `MatchStatement` grammar above. The ownership
+surface admits only the following bounded match shapes for semantic lowering
+today. The scrutinee must be a bare identifier (a parameter or local resolved
+downstream), and every arm body must tail a scalar-literal `return` — either
+`return <literal>;` directly or a block holding exactly that statement:
+
+- **Bool scrutinee.** Two literal-pattern arms, one `when true =>` and one
+  `when false =>`; or one literal-pattern arm plus one `default =>` arm.
+- **Integer scrutinee.** One or more integer literal-pattern arms plus exactly
+  one `default =>` arm covering the open integer domain.
+- **Enum scrutinee.** Two qualified unit-variant pattern arms
+  (`when Color.Red =>`, `when Color.Green =>`) on the same enum type.
+- **Guard.** A guard is admitted only on the `when true` arm of a
+  bool-with-default match, and must be a single binary expression whose one
+  operand is a bare identifier and whose other operand is a scalar literal
+  (`when true if (x > 0) =>`). The guard conjuncts the scrutinee condition,
+  keeping the four-block diamond CFG.
+
+Every other pattern form — identifier patterns, tuple, array, object, and type
+patterns, string-literal patterns, and tuple-variant destructuring
+(`when Success(value) =>`) — parses but has no admitted semantic contract yet
+and is rejected with `ZOM4096` (control-flow syntax has no admitted semantic
+contract). The bool shape lowers to the same conditional path as a bare-
+parameter `if`, the integer shape to the equality conditional path, and the
+enum shape to the equality conditional path with the variant discriminant as
+the comparison literal.
+
 ### `when` Statements
 
 The `when` statement provides Kotlin-style branching where each clause matches an *expression value* (not a pattern) against the scrutinee using `==`. It is distinct from `match`: `when` uses `:` separators and expression-based clauses, while `match` uses `=>` and pattern-based clauses.
@@ -301,25 +330,35 @@ while (true) {
 
 The condition is evaluated before each iteration. If it is `false`, the loop terminates.
 
-#### Admitted ownership-surface loop shape
+#### Admitted ownership-surface while-loop shape
 
 The parser accepts the full `while` grammar above. The ownership surface admits
 only one narrow `while` shape for semantic lowering today: a `while` whose
-condition is a bare parameter identifier of type `bool` and whose body is an
-empty block, appearing as the first statement of a function body that ends in a
-scalar `return`. For example:
+condition is a bare identifier (a `bool` parameter or local resolved
+downstream) and whose body is a block of one or more admitted loop-body writes,
+optionally followed by one trailing unlabeled `break;` or `continue;`. A
+loop-body write is an assignment `<ident> = <scalar-literal | identifier |
+admitted primitive binary>;` targeting a local binding. For example:
 
 ```zom
-fun spin(cond: bool) -> i32 { while (cond) { } return 0; }
+fun spin(cond: bool) -> i32 {
+    mut x = 0;
+    while (cond) {
+        x = x + 1;
+    }
+    return x;
+}
 ```
 
 This shape lowers end-to-end through semantic HIR into a reducible four-block
 Built MIR loop: a header block whose `SwitchInt` branches into the loop body on
-a true condition and to the exit otherwise, and a body block that jumps back to
-the header (a reducible back-edge). Every other `while` form, along with all
-`do-while`, C-style `for`, and `for-in` loops, has no admitted semantic contract
-yet and is rejected with `ZOM4096` (control-flow syntax has no admitted semantic
-contract).
+a true condition and to the exit otherwise, a body block that carries the write
+assignments before the back-edge Goto, and a trailing `break;` exits to the
+loop exit instead of taking the back-edge. Every other `while` form — a
+non-identifier condition, an empty body, a body containing anything other than
+writes plus an optional trailing unlabeled `break;`/`continue;`, or a labeled
+`break`/`continue` — has no admitted semantic contract yet and is rejected with
+`ZOM4096` (control-flow syntax has no admitted semantic contract).
 
 ### `do-while` Loops
 
@@ -372,6 +411,46 @@ for (;;) {
 ```
 
 The `init` part is executed once before the loop begins. The `condition` is evaluated before each iteration; if `false`, the loop terminates. The `update` part is evaluated after each iteration.
+
+#### Admitted ownership-surface for-loop shape
+
+The parser accepts the full `for` grammar above. The ownership surface admits
+only one bounded C-style `for` shape for semantic lowering today:
+
+```zom
+for (let id = <scalar-literal>; <ident> <cmp> <ident|literal>; <ident> = <primitive-binary>) { ... }
+```
+
+- The `init` is a `let` declaration with exactly one declarator whose pattern
+  is a bare identifier and whose initializer is a scalar literal.
+- The `cond` is a binary comparison whose operands are each an identifier or a
+  scalar literal, with at least one identifier operand.
+- The `update` is an assignment (`=`) whose target is a bare identifier and
+  whose value is an admitted primitive binary expression.
+- The `body` is one of: an empty block; zero or more admitted loop-body writes
+  (`<ident> = <scalar-literal | identifier | admitted primitive binary>;`)
+  optionally followed by one trailing unlabeled `break;` or `continue;`; one
+  leading if-guarded break `if (<ident|lit> <cmp> <ident|lit>) { break; }`
+  followed by zero or more admitted loop-body writes; or a sole nested admitted
+  `for` loop.
+
+For example:
+
+```zom
+mut sum = 0;
+for (let i = 0; i < 10; i = i + 1) {
+    sum = sum + i;
+}
+```
+
+The loop desugars downstream to `let id = <literal>; while (<ident> <cmp>
+<literal>) { <body> <ident> = <binary>; }` and lowers to a reducible four-block
+Built MIR CFG — a five-block CFG when the body leads with an if-guarded break,
+and a seven-block CFG for the nested-loop shape. Every other `for` form — a
+`mut` or expression initializer, a missing or non-comparison condition, a
+non-assignment update, or a body statement outside the list above — has no
+admitted semantic contract yet and is rejected with `ZOM4096`. `do-while` and
+`for-in` loops likewise remain unadmitted and are rejected with `ZOM4096`.
 
 ### `for-in` Loops
 
@@ -447,6 +526,17 @@ consider forward labels, siblings, completed labels, or labels outside the
 current labeled statement subtree. A failed explicit lookup does not fall back
 to an unlabeled loop or `match` target.
 
+#### Admitted break shape
+
+The admitted slice is an unlabeled `break;` appearing as the trailing statement
+of an admitted `while` or `for` loop body, or as the sole statement of the
+`if` guard in an admitted if-guarded break. A `break;` outside an admitted loop
+body, and every labeled `break <ident>;`, parses but has no admitted semantic
+contract through the ownership surface yet and is rejected with `ZOM4096`
+(control-flow syntax has no admitted semantic contract). The labeled-lookup
+semantics above describes the intended contract, not the currently admitted
+slice.
+
 ### `continue` Statement
 
 Skips the rest of the current loop iteration and proceeds to the next iteration check.
@@ -477,6 +567,16 @@ the selected active label ultimately prefixes a `while`, `do-while`, `for`, or
 `for-in` statement. A label that ultimately prefixes a block is not a valid
 `continue` target. Explicit lookup uses the same active-ancestor rules and
 callable boundaries as `break` and never falls back to an unlabeled loop.
+
+#### Admitted continue shape
+
+The admitted slice is an unlabeled `continue;` appearing as the trailing
+statement of an admitted `while` or `for` loop body. A `continue;` outside an
+admitted loop body, and every labeled `continue <ident>;`, parses but has no
+admitted semantic contract through the ownership surface yet and is rejected
+with `ZOM4096` (control-flow syntax has no admitted semantic contract). The
+labeled-lookup semantics above describes the intended contract, not the
+currently admitted slice.
 
 ### `return` Statement
 

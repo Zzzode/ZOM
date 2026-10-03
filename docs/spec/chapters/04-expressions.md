@@ -372,6 +372,21 @@ yield values of the same type. A `match` expression is exhaustive when the
 arms cover every possible scrutinee value; a `default` arm makes any match
 exhaustive.
 
+### Admitted match-expression shape
+
+The parser accepts the full `MatchExpression` grammar above, including guards
+and `default` arms. Semantic lowering currently admits only one bounded shape:
+a two-arm boolean match whose scrutinee is a `bool` literal or a bare
+identifier, whose two arms are `when true => <scalar-literal>;` and
+`when false => <scalar-literal>;` (in either order), and which appears as a
+local initializer (`let x = match (b) { ... };`). The match normalizes to the
+ternary conditional-select path and lowers through the same four-block diamond
+CFG. Every other match-expression shape — a non-boolean scrutinee, a `default`
+arm, any guard, non-literal arm bodies, or a match expression in any other
+syntactic position — parses but has no admitted semantic contract yet and is
+rejected with `ZOM4099` (this function body uses a construct the compiler
+cannot generate code for yet).
+
 ## Assignment Expressions
 
 ### Simple Assignment
