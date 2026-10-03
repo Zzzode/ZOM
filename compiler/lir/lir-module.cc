@@ -21,6 +21,11 @@ zc::Maybe<IntegerConstant> IntegerConstant::from(ValueType carrier, uint64_t bit
   return IntegerConstant(carrier, bits);
 }
 
+zc::Maybe<FloatConstant> FloatConstant::from(ValueType carrier, uint64_t bits) noexcept {
+  if (carrier.kind() != ValueTypeKind::Float) { return zc::none; }
+  return FloatConstant(carrier, bits);
+}
+
 zc::Maybe<StringConstant> StringConstant::from(ValueType carrier,
                                                zc::Vector<uint8_t>&& bytes) noexcept {
   if (carrier.kind() != ValueTypeKind::Pointer) { return zc::none; }
@@ -28,6 +33,7 @@ zc::Maybe<StringConstant> StringConstant::from(ValueType carrier,
 }
 
 Operand Operand::constant(IntegerConstant value) noexcept { return Operand(value); }
+Operand Operand::constant(FloatConstant value) noexcept { return Operand(zc::mv(value)); }
 Operand Operand::localUse(uint32_t localOrdinal) noexcept { return Operand(localOrdinal); }
 
 // A never-read placeholder constant for a localUse operand, which carries no

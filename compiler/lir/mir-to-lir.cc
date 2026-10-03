@@ -111,6 +111,26 @@ zc::Maybe<ValueType> integerCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Resolves the float carrier for a semantic type owned by the store.
+///
+/// F32 lowers to Binary32 and F64 to Binary64. Every non-float primitive
+/// fails closed.
+zc::Maybe<ValueType> floatCarrierFor(identity::SemanticTypeId type,
+                                     const type::SemanticTypeStore& semanticTypes) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  ZC_IF_SOME(primitive, data.primitiveKind()) {
+    if (primitive == type::semantic::PrimitiveKind::F32) {
+      return ValueType::floating(FloatFormat::Binary32);
+    }
+    if (primitive == type::semantic::PrimitiveKind::F64) {
+      return ValueType::floating(FloatFormat::Binary64);
+    }
+  }
+  return zc::none;
+}
+
 /// \brief Resolves the i1 carrier for a Bool semantic type owned by the store.
 ///
 /// The boolean discriminant of the conditional lowers to a one-bit integer
@@ -254,9 +274,10 @@ zc::Maybe<ArithmeticOp> lirArithmeticOpFor(mir::MirArithmeticOperator op) noexce
   return zc::none;
 }
 
-/// \brief Lowers a MIR operand (integer constant or parameter place-use) to a
-/// LIR operand of the given integer carrier.
-/// \return The operand, or none for a non-integer constant or a projected place.
+/// \brief Lowers a MIR operand (integer, boolean, or float constant, or a
+/// parameter/body-local place-use) to a LIR operand of the given carrier.
+/// \return The operand, or none for a constant whose kind does not match the
+/// carrier, or a projected place.
 zc::Maybe<Operand> lirOperandFor(const mir::MirOperand& operand, ValueType carrier) {
   if (operand.kind() == mir::MirOperandKind::Constant) {
     const auto boolean = operand.constantValue().value.booleanValue();
@@ -270,18 +291,27 @@ zc::Maybe<Operand> lirOperandFor(const mir::MirOperand& operand, ValueType carri
       return Operand::constant(ZC_REQUIRE_NONNULL(constant));
     }
     const auto integer = operand.constantValue().value.integerValue();
-    if (integer == zc::none) { return zc::none; }
-    // Prefer zero extension for non-negative values; fall back to two's
-    // complement sign extension for negative constants such as the -1 used
-    // by bitwise-not desugaring.
-    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
-    if (bits == zc::none) {
-      bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
+    if (integer != zc::none) {
+      // Prefer zero extension for non-negative values; fall back to two's
+      // complement sign extension for negative constants such as the -1 used
+      // by bitwise-not desugaring.
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
+      if (bits == zc::none) {
+        bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), carrier.integerWidth());
+      }
+      if (bits == zc::none) { return zc::none; }
+      auto constant = IntegerConstant::from(carrier, ZC_REQUIRE_NONNULL(bits));
+      if (constant == zc::none) { return zc::none; }
+      return Operand::constant(ZC_REQUIRE_NONNULL(constant));
     }
-    if (bits == zc::none) { return zc::none; }
-    auto constant = IntegerConstant::from(carrier, ZC_REQUIRE_NONNULL(bits));
-    if (constant == zc::none) { return zc::none; }
-    return Operand::constant(ZC_REQUIRE_NONNULL(constant));
+    const auto floatValue = operand.constantValue().value.floatValue();
+    if (floatValue != zc::none) {
+      if (carrier.kind() != ValueTypeKind::Float) { return zc::none; }
+      auto constant = FloatConstant::from(carrier, ZC_REQUIRE_NONNULL(floatValue).bits);
+      if (constant == zc::none) { return zc::none; }
+      return Operand::constant(ZC_REQUIRE_NONNULL(constant));
+    }
+    return zc::none;
   }
   if (operand.place().projections().size() != 0) { return zc::none; }
   return Operand::localUse(operand.place().local().ordinal());
@@ -2750,7 +2780,14 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   for (size_t i = 0; i < function.locals.size(); ++i) {
     if (i >= parameterCount && i < parameterCount + leadingLocalCount + 1) {
       auto carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
-      if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      if (carrier == zc::none) {
+        carrier = floatCarrierFor(function.locals[i].type, semanticTypes);
+      }
+      if (carrier == zc::none) { return zc::none; }
+      // The result local must match the integer result carrier; leading
+      // locals may differ (e.g. float comparison operands).
+      if (i == parameterCount + leadingLocalCount &&
+          ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
         return zc::none;
       }
     }
@@ -2789,19 +2826,27 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
         assignment.destination.projections().size() != 0) {
       return zc::none;
     }
+    // Resolve this leading local's own carrier. Integer locals share the
+    // result carrier; float locals carry their own float format.
+    auto localCarrier = integerCarrierFor(localDecl.type, semanticTypes);
+    if (localCarrier == zc::none) { localCarrier = floatCarrierFor(localDecl.type, semanticTypes); }
+    if (localCarrier == zc::none) { return zc::none; }
+    const auto localCarrierValue = ZC_REQUIRE_NONNULL(localCarrier);
     if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      // Float arithmetic is outside this slice; fail closed.
+      if (localCarrierValue.kind() == ValueTypeKind::Float) { return zc::none; }
       const auto& arithmetic = assignment.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
       if (op == zc::none) { return zc::none; }
-      auto lirLeft = lirOperandFor(arithmetic.left, resultCarrierValue);
-      auto lirRight = lirOperandFor(arithmetic.right, resultCarrierValue);
+      auto lirLeft = lirOperandFor(arithmetic.left, localCarrierValue);
+      auto lirRight = lirOperandFor(arithmetic.right, localCarrierValue);
       if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
       leadingInitializers.add(Statement::arithmetic(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(op),
                                                     ZC_REQUIRE_NONNULL(lirLeft),
                                                     ZC_REQUIRE_NONNULL(lirRight)));
     } else {
       if (assignment.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
-      auto lowered = lirOperandFor(assignment.value.useValue().operand, resultCarrierValue);
+      auto lowered = lirOperandFor(assignment.value.useValue().operand, localCarrierValue);
       if (lowered == zc::none) { return zc::none; }
       leadingInitializers.add(
           Statement::assign(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(lowered)));
@@ -2823,9 +2868,13 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   const auto& comparison = tempAssign.value.comparisonValue();
   auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
-      return integerCarrierFor(operand.constantValue().type, semanticTypes);
+      auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+      if (carrier != zc::none) { return carrier; }
+      return floatCarrierFor(operand.constantValue().type, semanticTypes);
     }
-    return integerCarrierFor(operand.place().rootType(), semanticTypes);
+    auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
+    if (carrier != zc::none) { return carrier; }
+    return floatCarrierFor(operand.place().rootType(), semanticTypes);
   };
   auto leftCarrier = operandCarrierFor(comparison.left);
   auto rightCarrier = operandCarrierFor(comparison.right);
@@ -2925,7 +2974,12 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   }
   zc::Vector<Local> locals;
   for (size_t i = 0; i < leadingLocalCount; ++i) {
-    locals.add(Local(function.locals[parameterCount + i].id.ordinal(), resultCarrierValue));
+    auto carrier = integerCarrierFor(function.locals[parameterCount + i].type, semanticTypes);
+    if (carrier == zc::none) {
+      carrier = floatCarrierFor(function.locals[parameterCount + i].type, semanticTypes);
+    }
+    locals.add(
+        Local(function.locals[parameterCount + i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }
   locals.add(Local(resultOrdinal, resultCarrierValue));
   locals.add(Local(tempOrdinal, tempCarrierValue));

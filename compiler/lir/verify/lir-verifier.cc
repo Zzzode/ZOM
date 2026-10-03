@@ -223,7 +223,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           }
           const Operand& stored = statement.storedValue();
           if (stored.isConstant()) {
-            if (stored.constantValue().carrier().kind() != ValueTypeKind::Integer) {
+            if (stored.constantCarrier().kind() != ValueTypeKind::Integer) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
                            statementIndex);
             }
@@ -249,9 +249,8 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           case StatementKind::Assign: {
             const Operand& value = statement.value();
             if (value.isConstant()) {
-              auto carrierFinding =
-                  requireCarrier(value.constantValue().carrier(), destinationCarrier, blockOrdinal,
-                                 statementIndex);
+              auto carrierFinding = requireCarrier(value.constantCarrier(), destinationCarrier,
+                                                   blockOrdinal, statementIndex);
               if (carrierFinding != zc::none) return carrierFinding;
             } else {
               auto slotFinding = requireSlot(value.localOrdinal(), blockOrdinal, statementIndex);
@@ -275,14 +274,14 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             const ValueType* leftCarrier = nullptr;
             const ValueType* rightCarrier = nullptr;
             if (left.isConstant()) {
-              leftCarrier = &left.constantValue().carrier();
+              leftCarrier = &left.constantCarrier();
             } else {
               auto slotFinding = requireSlot(left.localOrdinal(), blockOrdinal, statementIndex);
               if (slotFinding != zc::none) return slotFinding;
               leftCarrier = operandSlotCarrier(function, left);
             }
             if (right.isConstant()) {
-              rightCarrier = &right.constantValue().carrier();
+              rightCarrier = &right.constantCarrier();
             } else {
               auto slotFinding = requireSlot(right.localOrdinal(), blockOrdinal, statementIndex);
               if (slotFinding != zc::none) return slotFinding;
@@ -313,14 +312,14 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             const ValueType* leftCarrier = nullptr;
             const ValueType* rightCarrier = nullptr;
             if (left.isConstant()) {
-              leftCarrier = &left.constantValue().carrier();
+              leftCarrier = &left.constantCarrier();
             } else {
               auto slotFinding = requireSlot(left.localOrdinal(), blockOrdinal, statementIndex);
               if (slotFinding != zc::none) return slotFinding;
               leftCarrier = operandSlotCarrier(function, left);
             }
             if (right.isConstant()) {
-              rightCarrier = &right.constantValue().carrier();
+              rightCarrier = &right.constantCarrier();
             } else {
               auto slotFinding = requireSlot(right.localOrdinal(), blockOrdinal, statementIndex);
               if (slotFinding != zc::none) return slotFinding;
@@ -475,7 +474,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
               }
               continue;
             }
-            if (argument.constantValue().carrier() != expectedCarrier) {
+            if (argument.constantCarrier() != expectedCarrier) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
             }
           }

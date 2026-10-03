@@ -20,6 +20,7 @@
 #include "compiler/ir/ir-identity.h"
 #include "compiler/lir/lir-store.h"
 #include "zc/core/debug.h"
+#include "zc/core/one-of.h"
 #include "zc/core/string.h"
 #include "zc/core/vector.h"
 
@@ -56,6 +57,30 @@ public:
 
 private:
   IntegerConstant(ValueType carrier, uint64_t bits) noexcept
+      : carrierValue(carrier), bitsValue(bits) {}
+
+  ValueType carrierValue;
+  uint64_t bitsValue = 0;
+};
+
+/// \brief One immutable floating-point constant carried by a LIR float type.
+///
+/// The bit pattern is the IEEE-754 encoding of the constant in its carrier
+/// format (Binary32 or Binary64). The carrier records the format; the pattern
+/// alone is the value.
+class FloatConstant final {
+public:
+  /// \brief Builds a float constant for a floating-point carrier.
+  /// \param carrier Float SSA carrier occupying the value.
+  /// \param bits IEEE-754 bit pattern of the constant.
+  /// \return The constant, or none when the carrier is not a float.
+  ZC_NODISCARD static zc::Maybe<FloatConstant> from(ValueType carrier, uint64_t bits) noexcept;
+
+  ZC_NODISCARD const ValueType& carrier() const noexcept { return carrierValue; }
+  ZC_NODISCARD uint64_t bits() const noexcept { return bitsValue; }
+
+private:
+  FloatConstant(ValueType carrier, uint64_t bits) noexcept
       : carrierValue(carrier), bitsValue(bits) {}
 
   ValueType carrierValue;
@@ -149,7 +174,8 @@ enum class ArithmeticOp : uint8_t {
   BitXor = 0x0c,
 };
 
-/// \brief A LIR operand: an integer constant or a use of a local slot.
+/// \brief A LIR operand: an integer or float constant, or a use of a local
+/// slot.
 ///
 /// A `localUse` names a one-based local ordinal (a parameter or body local); the
 /// renderer loads that local's storage slot. This is the minimal operand model
@@ -158,22 +184,42 @@ class Operand final {
 public:
   /// \brief An integer-constant operand.
   ZC_NODISCARD static Operand constant(IntegerConstant value) noexcept;
+  /// \brief A floating-point constant operand.
+  ZC_NODISCARD static Operand constant(FloatConstant value) noexcept;
   /// \brief A use of the local slot with the given one-based ordinal.
   ZC_NODISCARD static Operand localUse(uint32_t localOrdinal) noexcept;
 
   ZC_NODISCARD bool isConstant() const noexcept { return isConstantValue; }
-  ZC_NODISCARD const IntegerConstant& constantValue() const noexcept { return constantSlot; }
+  /// \brief Whether this constant operand carries a floating-point value.
+  /// Only valid when `isConstant()` is true.
+  ZC_NODISCARD bool isFloatConstant() const noexcept {
+    return isConstantValue && constantSlot.is<FloatConstant>();
+  }
+  ZC_NODISCARD const IntegerConstant& constantValue() const noexcept {
+    return constantSlot.get<IntegerConstant>();
+  }
+  ZC_NODISCARD const FloatConstant& floatConstantValue() const noexcept {
+    return constantSlot.get<FloatConstant>();
+  }
+  /// \brief The carrier of a constant operand, regardless of whether it is an
+  /// integer or float constant. Only valid when `isConstant()` is true.
+  ZC_NODISCARD const ValueType& constantCarrier() const noexcept {
+    if (constantSlot.is<FloatConstant>()) { return constantSlot.get<FloatConstant>().carrier(); }
+    return constantSlot.get<IntegerConstant>().carrier();
+  }
   ZC_NODISCARD uint32_t localOrdinal() const noexcept { return localSlot; }
 
 private:
   explicit Operand(IntegerConstant value) noexcept : isConstantValue(true), constantSlot(value) {}
+  explicit Operand(FloatConstant value) noexcept
+      : isConstantValue(true), constantSlot(zc::mv(value)) {}
   explicit Operand(uint32_t localOrdinal) noexcept
       : isConstantValue(false), constantSlot(fallbackConstant()), localSlot(localOrdinal) {}
 
   ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
 
   bool isConstantValue;
-  IntegerConstant constantSlot;
+  zc::OneOf<IntegerConstant, FloatConstant> constantSlot;
   uint32_t localSlot = 0;
 };
 

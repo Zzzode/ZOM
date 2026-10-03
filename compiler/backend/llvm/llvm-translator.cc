@@ -171,12 +171,19 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   };
   // Maps one LIR SSA carrier to its LLVM representation. An opaque pointer
   // carrier is a target pointer in its declared address space (opaque-pointer
-  // LLVM, no pointee type); every other carrier is an integer today.
+  // LLVM, no pointee type); a float carrier maps to its IEEE-754 LLVM type;
+  // every other carrier is an integer today.
   auto llvmType = [&](const lir::ValueType& carrier) -> ::llvm::Type* {
     if (carrier.kind() == lir::ValueTypeKind::Pointer) {
       return ::llvm::PointerType::get(*context, carrier.pointerAddressSpace());
     }
     if (carrier.kind() == lir::ValueTypeKind::Unit) { return ::llvm::Type::getVoidTy(*context); }
+    if (carrier.kind() == lir::ValueTypeKind::Float) {
+      if (carrier.floatFormat() == lir::FloatFormat::Binary32) {
+        return ::llvm::Type::getFloatTy(*context);
+      }
+      return ::llvm::Type::getDoubleTy(*context);
+    }
     return integerType(carrier.integerWidth());
   };
   // The LLVM return type of one LIR function. A single-block ReturnAggregate
@@ -340,6 +347,15 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     auto loadOperand = [&](const lir::Operand& operand,
                            ::llvm::BasicBlock* target) -> ::llvm::Value* {
       if (operand.isConstant()) {
+        if (operand.isFloatConstant()) {
+          const auto& floatConstant = operand.floatConstantValue();
+          const bool isBinary32 =
+              floatConstant.carrier().floatFormat() == lir::FloatFormat::Binary32;
+          ::llvm::APFloat apf(
+              isBinary32 ? ::llvm::APFloat::IEEEsingle() : ::llvm::APFloat::IEEEdouble(),
+              ::llvm::APInt(isBinary32 ? 32 : 64, floatConstant.bits()));
+          return ::llvm::ConstantFP::get(*context, apf);
+        }
         auto* type = integerType(operand.constantValue().carrier().integerWidth());
         return ::llvm::ConstantInt::get(type, operand.constantValue().bits(), /*IsSigned=*/false);
       }
@@ -379,29 +395,57 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
         if (statement.kind() == lir::StatementKind::Compare) {
           ::llvm::Value* left = loadOperand(statement.left(), target);
           ::llvm::Value* right = loadOperand(statement.right(), target);
-          ::llvm::CmpInst::Predicate predicate = ::llvm::CmpInst::ICMP_EQ;
-          switch (statement.comparisonOp()) {
-            case lir::ComparisonOp::Eq:
-              predicate = ::llvm::CmpInst::ICMP_EQ;
-              break;
-            case lir::ComparisonOp::Ne:
-              predicate = ::llvm::CmpInst::ICMP_NE;
-              break;
-            case lir::ComparisonOp::Lt:
-              predicate = ::llvm::CmpInst::ICMP_SLT;
-              break;
-            case lir::ComparisonOp::Le:
-              predicate = ::llvm::CmpInst::ICMP_SLE;
-              break;
-            case lir::ComparisonOp::Gt:
-              predicate = ::llvm::CmpInst::ICMP_SGT;
-              break;
-            case lir::ComparisonOp::Ge:
-              predicate = ::llvm::CmpInst::ICMP_SGE;
-              break;
+          // Float operands select ordered FCmp predicates (ZOM float
+          // comparisons are total-order); integer operands use signed ICmp.
+          if (left->getType()->isFloatingPointTy()) {
+            ::llvm::CmpInst::Predicate predicate = ::llvm::CmpInst::FCMP_OEQ;
+            switch (statement.comparisonOp()) {
+              case lir::ComparisonOp::Eq:
+                predicate = ::llvm::CmpInst::FCMP_OEQ;
+                break;
+              case lir::ComparisonOp::Ne:
+                predicate = ::llvm::CmpInst::FCMP_ONE;
+                break;
+              case lir::ComparisonOp::Lt:
+                predicate = ::llvm::CmpInst::FCMP_OLT;
+                break;
+              case lir::ComparisonOp::Le:
+                predicate = ::llvm::CmpInst::FCMP_OLE;
+                break;
+              case lir::ComparisonOp::Gt:
+                predicate = ::llvm::CmpInst::FCMP_OGT;
+                break;
+              case lir::ComparisonOp::Ge:
+                predicate = ::llvm::CmpInst::FCMP_OGE;
+                break;
+            }
+            stored = ::llvm::CmpInst::Create(::llvm::Instruction::FCmp, predicate, left, right,
+                                             "cmp", target);
+          } else {
+            ::llvm::CmpInst::Predicate predicate = ::llvm::CmpInst::ICMP_EQ;
+            switch (statement.comparisonOp()) {
+              case lir::ComparisonOp::Eq:
+                predicate = ::llvm::CmpInst::ICMP_EQ;
+                break;
+              case lir::ComparisonOp::Ne:
+                predicate = ::llvm::CmpInst::ICMP_NE;
+                break;
+              case lir::ComparisonOp::Lt:
+                predicate = ::llvm::CmpInst::ICMP_SLT;
+                break;
+              case lir::ComparisonOp::Le:
+                predicate = ::llvm::CmpInst::ICMP_SLE;
+                break;
+              case lir::ComparisonOp::Gt:
+                predicate = ::llvm::CmpInst::ICMP_SGT;
+                break;
+              case lir::ComparisonOp::Ge:
+                predicate = ::llvm::CmpInst::ICMP_SGE;
+                break;
+            }
+            stored = ::llvm::CmpInst::Create(::llvm::Instruction::ICmp, predicate, left, right,
+                                             "cmp", target);
           }
-          stored = ::llvm::CmpInst::Create(::llvm::Instruction::ICmp, predicate, left, right, "cmp",
-                                           target);
         } else if (statement.kind() == lir::StatementKind::Arithmetic) {
           ::llvm::Value* left = loadOperand(statement.left(), target);
           ::llvm::Value* right = loadOperand(statement.right(), target);

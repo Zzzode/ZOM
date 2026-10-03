@@ -76,6 +76,28 @@ zc::Maybe<ValueType> boolCarrier(identity::SemanticTypeId type,
   return zc::none;
 }
 
+// Independently derived float carrier for a MIR semantic type. This
+// duplicates the producer derivation on purpose: the validator must not call
+// any mir-to-lir helper. F32 lowers to Binary32 and F64 to Binary64; every
+// non-float primitive fails closed.
+zc::Maybe<ValueType> floatCarrier(identity::SemanticTypeId type,
+                                  const type::SemanticTypeStore& types) noexcept {
+  auto lookup = types.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  zc::Maybe<type::semantic::PrimitiveKind> kind;
+  ZC_IF_SOME(primitive, data.primitiveKind()) { kind = primitive; }
+  if (kind == zc::none) return zc::none;
+  switch (ZC_ASSERT_NONNULL(kind)) {
+    case type::semantic::PrimitiveKind::F32:
+      return ValueType::floating(FloatFormat::Binary32);
+    case type::semantic::PrimitiveKind::F64:
+      return ValueType::floating(FloatFormat::Binary64);
+    default:
+      return zc::none;
+  }
+}
+
 // Independently derived opaque-pointer carrier for a shared const reference
 // (the implicit `this` receiver). Mutable references and non-references fail.
 zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
@@ -130,15 +152,17 @@ zc::Maybe<ValueType> enumCarrier(identity::SemanticTypeId type,
 }
 
 // Independently resolves the carrier of one materialized MIR local. Beyond the
-// integer and boolean carriers, a shared- or mutable-reference parameter or
-// temporary carries an opaque pointer, and a one-field aggregate-initialized
-// owner local folds to its single constant element's integer carrier (the
-// receiver-call owner slot). Every other local returns none.
+// integer, boolean, and float carriers, a shared- or mutable-reference
+// parameter or temporary carries an opaque pointer, and a one-field
+// aggregate-initialized owner local folds to its single constant element's
+// integer carrier (the receiver-call owner slot). Every other local returns
+// none.
 zc::Maybe<ValueType> localCarrier(const mir::MirLocalDeclaration& source,
                                   const MirFunction& function,
                                   const type::SemanticTypeStore& types) noexcept {
   ZC_IF_SOME(carrier, integerCarrier(source.type, types)) { return carrier; }
   ZC_IF_SOME(carrier, boolCarrier(source.type, types)) { return carrier; }
+  ZC_IF_SOME(carrier, floatCarrier(source.type, types)) { return carrier; }
   ZC_IF_SOME(carrier, enumCarrier(source.type, types)) { return carrier; }
   ZC_IF_SOME(carrier, pointerCarrier(source.type, types)) { return carrier; }
   for (const auto& block : function.blocks) {
@@ -198,7 +222,7 @@ zc::Maybe<uint64_t> signExtendedBits(const checker::signature::CanonicalInteger&
   return bits;
 }
 
-zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType carrier) noexcept {
+zc::Maybe<Operand> constantFor(const mir::MirOperand& operand, ValueType carrier) noexcept {
   if (operand.kind() != mir::MirOperandKind::Constant) return zc::none;
   const auto boolean = operand.constantValue().value.booleanValue();
   if (boolean != zc::none) {
@@ -206,20 +230,34 @@ zc::Maybe<IntegerConstant> constantFor(const mir::MirOperand& operand, ValueType
         carrier.integerWidth() != IntegerBitWidth::Bit1) {
       return zc::none;
     }
-    return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+    auto constant = IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+    if (constant == zc::none) return zc::none;
+    return Operand::constant(ZC_ASSERT_NONNULL(constant));
   }
   const auto integer = operand.constantValue().value.integerValue();
-  if (integer == zc::none) return zc::none;
-  if (carrier.integerWidth() == IntegerBitWidth::Bit1) return zc::none;
-  // Prefer zero extension for non-negative values; fall back to two's complement
-  // sign extension for negative constants such as the -1 used by bitwise-not
-  // desugaring.
-  auto bits = zeroExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
-  if (bits == zc::none) {
-    bits = signExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
+  if (integer != zc::none) {
+    if (carrier.kind() != ValueTypeKind::Integer) return zc::none;
+    if (carrier.integerWidth() == IntegerBitWidth::Bit1) return zc::none;
+    // Prefer zero extension for non-negative values; fall back to two's
+    // complement sign extension for negative constants such as the -1 used
+    // by bitwise-not desugaring.
+    auto bits = zeroExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
+    if (bits == zc::none) {
+      bits = signExtendedBits(ZC_ASSERT_NONNULL(integer), carrier.integerWidth());
+    }
+    if (bits == zc::none) return zc::none;
+    auto constant = IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(bits));
+    if (constant == zc::none) return zc::none;
+    return Operand::constant(ZC_ASSERT_NONNULL(constant));
   }
-  if (bits == zc::none) return zc::none;
-  return IntegerConstant::from(carrier, ZC_ASSERT_NONNULL(bits));
+  const auto floatValue = operand.constantValue().value.floatValue();
+  if (floatValue != zc::none) {
+    if (carrier.kind() != ValueTypeKind::Float) return zc::none;
+    auto constant = FloatConstant::from(carrier, ZC_ASSERT_NONNULL(floatValue).bits);
+    if (constant == zc::none) return zc::none;
+    return Operand::constant(ZC_ASSERT_NONNULL(constant));
+  }
+  return zc::none;
 }
 
 /// \brief Read a constant operand's semantic type without an unguarded OneOf
@@ -281,11 +319,7 @@ ArithmeticOp arithmeticOp(mir::MirArithmeticOperator op) noexcept {
 // Maps a MIR operand used in an expression position to the expected LIR
 // operand: a constant of the given carrier, or a bare local use.
 zc::Maybe<Operand> expectedOperand(const mir::MirOperand& operand, ValueType carrier) noexcept {
-  if (operand.kind() == mir::MirOperandKind::Constant) {
-    auto value = constantFor(operand, carrier);
-    if (value == zc::none) return zc::none;
-    return Operand::constant(ZC_ASSERT_NONNULL(value));
-  }
+  if (operand.kind() == mir::MirOperandKind::Constant) { return constantFor(operand, carrier); }
   if (operand.place().projections().size() != 0) return zc::none;
   return Operand::localUse(operand.place().local().ordinal());
 }
@@ -297,6 +331,12 @@ bool sameConstant(const Operand& actual, const mir::MirOperand& expected,
     return false;
   }
   if (actual.isConstant()) {
+    if (actual.isFloatConstant() != ZC_ASSERT_NONNULL(wanted).isFloatConstant()) { return false; }
+    if (actual.isFloatConstant()) {
+      return actual.floatConstantValue().bits() ==
+                 ZC_ASSERT_NONNULL(wanted).floatConstantValue().bits() &&
+             actual.floatConstantValue().carrier() == carrier;
+    }
     return actual.constantValue().bits() == ZC_ASSERT_NONNULL(wanted).constantValue().bits() &&
            actual.constantValue().carrier() == carrier;
   }
@@ -1135,9 +1175,16 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);
             }
-            const ValueType* destinationCarrier = actual.value().isConstant()
-                                                      ? &actual.value().constantValue().carrier()
-                                                      : lirSlotCarrier(lir, destinationOrdinal);
+            const ValueType* destinationCarrier = nullptr;
+            if (actual.value().isConstant()) {
+              if (actual.value().isFloatConstant()) {
+                destinationCarrier = &actual.value().floatConstantValue().carrier();
+              } else {
+                destinationCarrier = &actual.value().constantValue().carrier();
+              }
+            } else {
+              destinationCarrier = lirSlotCarrier(lir, destinationOrdinal);
+            }
             if (destinationCarrier == nullptr) {
               return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);
@@ -1166,13 +1213,17 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                                statementIndex);
                 }
                 // Comparison operands share one operand carrier, resolved from
-                // the MIR constant type or place result type (integer in the
-                // admitted subset), distinct from the one-bit result slot.
+                // the MIR constant type or place result type (integer, bool,
+                // float, or enum in the admitted subset), distinct from the
+                // one-bit result slot.
                 zc::Maybe<ValueType> leafCarrier;
                 if (comparison.left.kind() == mir::MirOperandKind::Constant) {
                   leafCarrier = integerCarrier(comparison.left.constantValue().type, types);
                   if (leafCarrier == zc::none) {
                     leafCarrier = boolCarrier(comparison.left.constantValue().type, types);
+                  }
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = floatCarrier(comparison.left.constantValue().type, types);
                   }
                   if (leafCarrier == zc::none) {
                     leafCarrier = enumCarrier(comparison.left.constantValue().type, types);
@@ -1181,6 +1232,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   leafCarrier = integerCarrier(comparison.left.place().resultType(), types);
                   if (leafCarrier == zc::none) {
                     leafCarrier = boolCarrier(comparison.left.place().resultType(), types);
+                  }
+                  if (leafCarrier == zc::none) {
+                    leafCarrier = floatCarrier(comparison.left.place().resultType(), types);
                   }
                   if (leafCarrier == zc::none) {
                     leafCarrier = enumCarrier(comparison.left.place().resultType(), types);
@@ -1281,6 +1335,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                       carrier = boolCarrier(leaf.constantValue().type, types);
                     }
                     if (carrier == zc::none) {
+                      carrier = floatCarrier(leaf.constantValue().type, types);
+                    }
+                    if (carrier == zc::none) {
                       carrier = enumCarrier(leaf.constantValue().type, types);
                     }
                     return carrier;
@@ -1288,6 +1345,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   auto carrier = integerCarrier(leaf.place().resultType(), types);
                   if (carrier == zc::none) {
                     carrier = boolCarrier(leaf.place().resultType(), types);
+                  }
+                  if (carrier == zc::none) {
+                    carrier = floatCarrier(leaf.place().resultType(), types);
                   }
                   if (carrier == zc::none) {
                     carrier = enumCarrier(leaf.place().resultType(), types);
