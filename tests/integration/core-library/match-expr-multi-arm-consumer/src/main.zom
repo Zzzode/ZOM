@@ -1,0 +1,15 @@
+// Match-expression backend-lowering fixture: a three-arm boolean match
+// (true/false/default) in let-initializer position that normalizes to the
+// conditional-select path and lowers through the verified LLVM backend to a
+// native executable. The default arm is semantically unreachable for bool
+// (true+false cover all bool values) and is dropped during HIR shape
+// normalization. The scrutinee is a constant `true`, so the match evaluates
+// to the true arm's value (41) and `zomc run` exits 41.
+fun entry() -> i32 {
+    let x = match (true) {
+        when true => 41;
+        when false => 7;
+        default => 0;
+    };
+    return x;
+}

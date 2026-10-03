@@ -96,6 +96,11 @@ struct PendingSequentialBinding final {
   // match carries two extra pattern literals (true/false) with node-type and
   // literal facts that the count equations must account for.
   bool isMatchExpr = false;
+  // True when the match expression additionally carries a default (wildcard)
+  // arm. The default arm body is dropped during normalization, but the
+  // checker still produces node-type and literal facts for it, which the
+  // count equations must credit.
+  bool matchHasDefaultArm = false;
 };
 
 struct PendingSequentialLocalReturn final {

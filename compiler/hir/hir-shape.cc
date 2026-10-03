@@ -695,6 +695,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     ast::NodeId ternaryElseNode;
     bool ternaryConditionIsLocal = false;
     bool ternaryConditionIsLiteral = false;
+    bool matchHasDefaultArm = false;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
@@ -885,22 +886,47 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         }
       }
     } else if (tree.node(initializer).kind == ast::SyntaxKind::MatchExpr) {
-      // A two-arm boolean match expression `match (scrutinee) { when true => e1;
-      // when false => e2; }`. This normalizes to the ternary conditional-select
-      // path: the scrutinee becomes the condition, the true-arm body becomes
-      // the then-branch, and the false-arm body becomes the else-branch.
+      // A boolean match expression `match (scrutinee) { when true => e1;
+      // when false => e2; [default => e3;] }`. This normalizes to the ternary
+      // conditional-select path: the scrutinee becomes the condition, the
+      // true-arm body becomes the then-branch, and the false-arm body becomes
+      // the else-branch. An optional third default (wildcard) arm is
+      // semantically unreachable for bool (true+false cover all bool values)
+      // and is dropped; the count equations credit its checker-produced facts.
       const ast::NodeId scrutinee(
           tree.node(initializer).payload.words[ast::kMatchExprScrutineeWord]);
       const ast::NodeList arms{tree.node(initializer).payload.words[ast::kMatchExprArmsFirstWord],
                                tree.node(initializer).payload.words[ast::kMatchExprArmsSizeWord]};
-      if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { return zc::none; }
+      if (!tree.contains(scrutinee) || !tree.contains(arms) || (arms.size != 2 && arms.size != 3)) {
+        return zc::none;
+      }
       const bool conditionIsLiteral = tree.node(scrutinee).kind == ast::SyntaxKind::BoolLiteral;
       if (tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr && !conditionIsLiteral) {
         return zc::none;
       }
+      if (arms.size == 3) {
+        const ast::NodeId defaultArmId = tree.list(arms)[2];
+        if (!tree.contains(defaultArmId) ||
+            tree.node(defaultArmId).kind != ast::SyntaxKind::MatchArmExpr) {
+          return zc::none;
+        }
+        const auto& defaultArm = tree.node(defaultArmId);
+        const ast::NodeId defaultGuard(defaultArm.payload.words[ast::kMatchArmExprGuardWord]);
+        if (tree.contains(defaultGuard)) return zc::none;
+        const ast::NodeId defaultPattern(defaultArm.payload.words[ast::kMatchArmExprPatternWord]);
+        if (!tree.contains(defaultPattern) ||
+            tree.node(defaultPattern).kind != ast::SyntaxKind::WildcardPattern) {
+          return zc::none;
+        }
+        const ast::NodeId defaultBody(defaultArm.payload.words[ast::kMatchArmExprBodyWord]);
+        if (!tree.contains(defaultBody) || !isScalarLiteral(tree.node(defaultBody).kind)) {
+          return zc::none;
+        }
+        matchHasDefaultArm = true;
+      }
       zc::Maybe<ast::NodeId> trueArmBody;
       zc::Maybe<ast::NodeId> falseArmBody;
-      for (size_t armIndex = 0; armIndex < arms.size; ++armIndex) {
+      for (size_t armIndex = 0; armIndex < 2; ++armIndex) {
         const ast::NodeId armId = tree.list(arms)[armIndex];
         if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
           return zc::none;
@@ -981,7 +1007,7 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
         zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand), castInnerNode,
         ternaryCondNode, ternaryThenNode, ternaryElseNode, ternaryConditionIsLocal,
-        ternaryConditionIsLiteral});
+        ternaryConditionIsLiteral, matchHasDefaultArm});
   }
   auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnItem == zc::none) return zc::none;

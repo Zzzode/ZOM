@@ -465,10 +465,13 @@ bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value) {
   return isScalarLiteral(tree.node(thenExpr).kind) && isScalarLiteral(tree.node(elseExpr).kind);
 }
 
-// A two-arm boolean match expression `match (scrutinee) { when true => e1;
-// when false => e2; }` normalizes to the ternary conditional-select path. The
-// scrutinee must be a bool literal or bare identifier; both arm bodies must be
-// scalar literals. Every other match-expr shape stays rejected by its existing
+// A boolean match expression `match (scrutinee) { when true => e1;
+// when false => e2; [default => e3;] }` normalizes to the ternary
+// conditional-select path. The scrutinee must be a bool literal or bare
+// identifier; the two literal arms carry bool patterns (true/false) and
+// scalar-literal bodies. An optional third default (wildcard) arm is
+// semantically unreachable for bool and is dropped during HIR shape
+// normalization. Every other match-expr shape stays rejected by its existing
 // drain.
 bool isAdmittedMatchExpression(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::MatchExpr) {
@@ -478,14 +481,37 @@ bool isAdmittedMatchExpression(const ast::Tree& tree, ast::NodeId value) {
   const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchExprScrutineeWord]);
   const ast::NodeList arms{matchNode.payload.words[ast::kMatchExprArmsFirstWord],
                            matchNode.payload.words[ast::kMatchExprArmsSizeWord]};
-  if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { return false; }
+  if (!tree.contains(scrutinee) || !tree.contains(arms) || (arms.size != 2 && arms.size != 3)) {
+    return false;
+  }
   if (tree.node(scrutinee).kind != ast::SyntaxKind::IdentExpr &&
       tree.node(scrutinee).kind != ast::SyntaxKind::BoolLiteral) {
     return false;
   }
+  // An optional third arm is a `default` (wildcard) arm whose body is a
+  // scalar literal. It is dropped during HIR shape normalization.
+  if (arms.size == 3) {
+    const ast::NodeId defaultArmId = tree.list(arms)[2];
+    if (!tree.contains(defaultArmId) ||
+        tree.node(defaultArmId).kind != ast::SyntaxKind::MatchArmExpr) {
+      return false;
+    }
+    const auto& defaultArm = tree.node(defaultArmId);
+    const ast::NodeId defaultGuard(defaultArm.payload.words[ast::kMatchArmExprGuardWord]);
+    if (tree.contains(defaultGuard)) return false;
+    const ast::NodeId defaultPattern(defaultArm.payload.words[ast::kMatchArmExprPatternWord]);
+    if (!tree.contains(defaultPattern) ||
+        tree.node(defaultPattern).kind != ast::SyntaxKind::WildcardPattern) {
+      return false;
+    }
+    const ast::NodeId defaultBody(defaultArm.payload.words[ast::kMatchArmExprBodyWord]);
+    if (!tree.contains(defaultBody) || !isScalarLiteral(tree.node(defaultBody).kind)) {
+      return false;
+    }
+  }
   bool sawTrue = false;
   bool sawFalse = false;
-  for (size_t index = 0; index < arms.size; ++index) {
+  for (size_t index = 0; index < 2; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
       return false;

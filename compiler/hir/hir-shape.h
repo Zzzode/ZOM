@@ -93,6 +93,12 @@ struct SequentialLocalBinding final {
   ast::NodeId ternaryElseNode;
   bool ternaryConditionIsLocal = false;
   bool ternaryConditionIsLiteral = false;
+  // True when this Ternary binding is normalized from a boolean match
+  // expression that carries a default (wildcard) arm. The default arm body is
+  // semantically unreachable for bool (true+false cover all bool values) and is
+  // dropped during normalization, but the checker still produces node-type and
+  // literal facts for it, which the count equations must credit.
+  bool matchHasDefaultArm = false;
 };
 
 struct SequentialLocalShape final {

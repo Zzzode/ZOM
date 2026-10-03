@@ -1,0 +1,8 @@
+[package]
+name = "match_expr_multi_arm_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "match_expr_multi_arm_consumer"
+path = "src/main.zom"

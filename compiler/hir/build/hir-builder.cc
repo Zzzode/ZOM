@@ -4136,7 +4136,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               zc::mv(bindingTernaryConditionSpan),
               zc::mv(bindingTernaryThenSpan),
               zc::mv(bindingTernaryElseSpan),
-              tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr});
+              tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr,
+              binding.matchHasDefaultArm});
         }
         if (rejected) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -8230,6 +8231,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // that the checker produces node-type and literal facts for, mirroring the
   // match-return correction.
   size_t sequentialMatchExprCount = 0;
+  // Match-expression bindings that additionally carry a default (wildcard)
+  // arm. The default arm body is dropped during normalization, but the
+  // checker produces one extra node-type and one extra literal fact for it
+  // that the count equations must credit.
+  size_t sequentialMatchExprDefaultArmCount = 0;
   // Leading scalar-local bindings that precede a comparison conditional in the
   // same body (`let a: i32 = 1; if (a < 5) { .. } else { .. }`). Each binding
   // materializes one local plus one initializer, and each comparison operand
@@ -8446,11 +8452,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               if (binding.ternaryConditionIsLiteral) { ++literalBearingSlots; }
               // A match expression normalized to the ternary path carries two
               // extra pattern literals (true/false) with node-type and literal
-              // facts.
+              // facts. A default (wildcard) arm additionally carries one
+              // dropped body literal with node-type and literal facts.
               if (binding.isMatchExpr) {
                 ++sequentialMatchExprCount;
                 ++literalBearingSlots;
                 ++literalBearingSlots;
+                if (binding.matchHasDefaultArm) {
+                  ++sequentialMatchExprDefaultArmCount;
+                  ++literalBearingSlots;
+                }
               }
               break;
             case SequentialInitializerKind::EnumVariantConstruction:
@@ -8513,6 +8524,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 ++sequentialMatchExprCount;
                 ++literalBearingSlots;
                 ++literalBearingSlots;
+                if (dead.matchHasDefaultArm) {
+                  ++sequentialMatchExprDefaultArmCount;
+                  ++literalBearingSlots;
+                }
               }
               break;
             case SequentialInitializerKind::EnumVariantConstruction: {
@@ -8980,8 +8995,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
       sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
-      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
+      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
+      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {

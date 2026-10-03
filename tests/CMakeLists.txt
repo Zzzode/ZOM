@@ -150,6 +150,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-expr-consumer/Zom.toml::match_expr_consumer::match_expr_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-expr-multi-arm-consumer/Zom.toml::match_expr_multi_arm_consumer::match_expr_multi_arm_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-default-consumer/Zom.toml::match_default_consumer::match_default_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/int-patterns-2arm-consumer/Zom.toml::int_patterns_2arm_consumer::int_patterns_2arm_consumer"
@@ -350,6 +352,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-expr-consumer/Zom.toml::match_expr_consumer::match_expr_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-expr-multi-arm-consumer/Zom.toml::match_expr_multi_arm_consumer::match_expr_multi_arm_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-default-consumer/Zom.toml::match_default_consumer::match_default_consumer::41"
       --run-case

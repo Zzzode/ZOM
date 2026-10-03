@@ -5336,25 +5336,50 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           break;
         }
         case ast::SyntaxKind::MatchExpr: {
-          // Admit a two-arm boolean match expression whose scrutinee is a bool
-          // literal or reference and whose arms each carry a bool literal
-          // pattern (true/false) and a scalar-literal body. The HIR shape layer
-          // normalizes this to the ternary conditional-select path. Every
-          // other match-expr shape stays unsupported so its existing rejection
-          // stands.
+          // Admit a boolean match expression whose scrutinee is a bool
+          // literal or reference and whose two literal arms carry bool
+          // patterns (true/false) and scalar-literal bodies. An optional
+          // third default (wildcard) arm is semantically unreachable for
+          // bool and is dropped during HIR shape normalization. The HIR
+          // shape layer normalizes this to the ternary conditional-select
+          // path. Every other match-expr shape stays unsupported so its
+          // existing rejection stands.
           const ast::NodeId scrutinee(syntax.payload.words[ast::kMatchExprScrutineeWord]);
           const ast::NodeList arms{syntax.payload.words[ast::kMatchExprArmsFirstWord],
                                    syntax.payload.words[ast::kMatchExprArmsSizeWord]};
-          if (!tree.contains(scrutinee) || !tree.contains(arms) || arms.size != 2) { break; }
+          if (!tree.contains(scrutinee) || !tree.contains(arms) ||
+              (arms.size != 2 && arms.size != 3)) {
+            break;
+          }
           const auto& scrutineeSyntax = tree.node(scrutinee);
           if (scrutineeSyntax.kind != ast::SyntaxKind::IdentExpr &&
               scrutineeSyntax.kind != ast::SyntaxKind::BoolLiteral) {
             break;
           }
+          if (arms.size == 3) {
+            const ast::NodeId defaultArmId = tree.list(arms)[2];
+            if (!tree.contains(defaultArmId) ||
+                tree.node(defaultArmId).kind != ast::SyntaxKind::MatchArmExpr) {
+              break;
+            }
+            const auto& defaultArm = tree.node(defaultArmId);
+            const ast::NodeId defaultGuard(defaultArm.payload.words[ast::kMatchArmExprGuardWord]);
+            if (tree.contains(defaultGuard)) break;
+            const ast::NodeId defaultPattern(
+                defaultArm.payload.words[ast::kMatchArmExprPatternWord]);
+            if (!tree.contains(defaultPattern) ||
+                tree.node(defaultPattern).kind != ast::SyntaxKind::WildcardPattern) {
+              break;
+            }
+            const ast::NodeId defaultBody(defaultArm.payload.words[ast::kMatchArmExprBodyWord]);
+            if (!tree.contains(defaultBody) || !isScalarLiteral(tree.node(defaultBody).kind)) {
+              break;
+            }
+          }
           bool sawTrue = false;
           bool sawFalse = false;
           bool armsAdmitted = true;
-          for (size_t index = 0; index < arms.size; ++index) {
+          for (size_t index = 0; index < 2; ++index) {
             const ast::NodeId armId = tree.list(arms)[index];
             if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmExpr) {
               armsAdmitted = false;
@@ -6662,9 +6687,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         producedType = then;
       } else if (site.production == BodyProductionKind::MatchExpression) {
-        // A two-arm boolean match expression. The scrutinee is bool; both arm
-        // bodies are scalar literals of the same type. The result type is the
-        // arm body type.
+        // A boolean match expression. The scrutinee is bool; all arm bodies
+        // are scalar literals of the same type. The result type is the arm
+        // body type.
         const auto& matchNode = input.boundModule.tree().node(site.node);
         const ast::NodeId scrutinee(matchNode.payload.words[ast::kMatchExprScrutineeWord]);
         const ast::NodeList arms{matchNode.payload.words[ast::kMatchExprArmsFirstWord],
