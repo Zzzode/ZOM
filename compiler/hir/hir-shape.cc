@@ -793,17 +793,10 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       auto left = classifyOperand(binaryLeft);
       auto right = classifyOperand(binaryRight);
       if (left == zc::none || right == zc::none) return zc::none;
-      bool leftIsLiteral = false;
-      bool rightIsLiteral = false;
-      ZC_IF_SOME(value, left) {
-        leftIsLiteral = value.kind == SequentialBinaryOperandKind::Literal;
-      }
-      ZC_IF_SOME(value, right) {
-        rightIsLiteral = value.kind == SequentialBinaryOperandKind::Literal;
-      }
-      // At least one operand must be a reference or a nested binary; a
-      // literal-vs-literal operation has no place to lower.
-      if (leftIsLiteral && rightIsLiteral) return zc::none;
+      // A literal-vs-literal binary is admitted structurally; the body checker
+      // anchors the operand type from the enclosing annotation, and the
+      // dead-erase filter removes a dead literal-vs-literal binding before
+      // LIR lowering.
       kind = SequentialInitializerKind::PrimitiveBinary;
       leftOperand = zc::mv(left);
       rightOperand = zc::mv(right);

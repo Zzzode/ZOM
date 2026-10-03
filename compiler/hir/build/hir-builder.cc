@@ -3366,6 +3366,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // initializer to lower and is rejected.
         {
           const auto dead = deadSequentialBindings(tree, sequentialShape);
+          // A dead literal-vs-literal arithmetic binding has no reference
+          // operand to anchor a carrier in the LIR slice. Filter it before
+          // lowering so only reference-anchored scalar locals reach
+          // MIR/LIR.
+          for (size_t i = 0; i < sequentialShape.bindings.size(); ++i) {
+            if (!dead[i]) continue;
+            const auto& binding = sequentialShape.bindings[i];
+            if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary) continue;
+            bool leftIsLiteral = false;
+            bool rightIsLiteral = false;
+            ZC_IF_SOME(left, binding.leftOperand) {
+              leftIsLiteral = left.kind == SequentialBinaryOperandKind::Literal;
+            }
+            ZC_IF_SOME(right, binding.rightOperand) {
+              rightIsLiteral = right.kind == SequentialBinaryOperandKind::Literal;
+            }
+            if (leftIsLiteral && rightIsLiteral) { deadEraseInitializers.add(binding.initializer); }
+          }
           const auto removed =
               erasureRelatedDeadBindings(tree, sequentialShape, dead, deadEraseInitializers);
           bool anyRemoved = false;

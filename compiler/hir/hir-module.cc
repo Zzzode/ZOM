@@ -968,6 +968,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         // removed ones); the removed bindings' fact contributions are tracked
         // separately and added to the expected counts in the equations below.
         const auto dead = deadSequentialBindings(tree, value);
+        // A dead literal-vs-literal arithmetic binding has no reference
+        // operand to anchor a carrier in the LIR slice. The builder filters
+        // it before lowering; the verifier must seed the same initializer
+        // list so its filtered shape matches.
+        for (size_t i = 0; i < value.bindings.size(); ++i) {
+          if (!dead[i]) continue;
+          const auto& binding = value.bindings[i];
+          if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary) continue;
+          bool leftIsLiteral = false;
+          bool rightIsLiteral = false;
+          ZC_IF_SOME(left, binding.leftOperand) {
+            leftIsLiteral = left.kind == SequentialBinaryOperandKind::Literal;
+          }
+          ZC_IF_SOME(right, binding.rightOperand) {
+            rightIsLiteral = right.kind == SequentialBinaryOperandKind::Literal;
+          }
+          if (leftIsLiteral && rightIsLiteral) { deadEraseInitializers.add(binding.initializer); }
+        }
         const auto removed = erasureRelatedDeadBindings(tree, value, dead, deadEraseInitializers);
         ++sequentialFunctionCount;
         for (size_t bindingIndex = 0; bindingIndex < value.bindings.size(); ++bindingIndex) {
@@ -1491,7 +1509,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           directCallCount + receiverCallCount + equalityConditionalCount -
               matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
               receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount) {
+              leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount +
+              deadCalls) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
@@ -2139,6 +2158,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // verifier would expect HIR nodes for bindings the builder skipped.
       {
         const auto dead = deadSequentialBindings(tree, source);
+        // Seed the same literal-vs-literal dead bindings the builder filters.
+        for (size_t i = 0; i < source.bindings.size(); ++i) {
+          if (!dead[i]) continue;
+          const auto& binding = source.bindings[i];
+          if (binding.initializerKind != SequentialInitializerKind::PrimitiveBinary) continue;
+          bool leftIsLiteral = false;
+          bool rightIsLiteral = false;
+          ZC_IF_SOME(left, binding.leftOperand) {
+            leftIsLiteral = left.kind == SequentialBinaryOperandKind::Literal;
+          }
+          ZC_IF_SOME(right, binding.rightOperand) {
+            rightIsLiteral = right.kind == SequentialBinaryOperandKind::Literal;
+          }
+          if (leftIsLiteral && rightIsLiteral) { deadEraseInitializers.add(binding.initializer); }
+        }
         const auto removed = erasureRelatedDeadBindings(tree, source, dead, deadEraseInitializers);
         bool anyRemoved = false;
         for (const bool isRemoved : removed) {

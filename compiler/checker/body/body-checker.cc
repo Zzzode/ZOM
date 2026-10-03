@@ -2747,15 +2747,18 @@ bool primitiveBinaryLacksReferenceOperand(
   const ast::NodeId left(tree.node(node).payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(tree.node(node).payload.words[ast::kBinaryExprRhsWord]);
   bool hasReference = false;
+  bool allLiterals = true;
   for (const ast::NodeId operand : {left, right}) {
     if (!tree.contains(operand)) return false;
     const auto kind = tree.node(operand).kind;
     if (kind == ast::SyntaxKind::IdentExpr) {
+      allLiterals = false;
       if (callableParameterReferenceType(input, operand) != zc::none ||
           ownerLocalReferenceType(input, operand, nodeTypes) != zc::none) {
         hasReference = true;
       }
     } else if (kind == ast::SyntaxKind::BinaryExpr) {
+      allLiterals = false;
       if (unannotatedBinaryInitializerType(input, operand, nodeTypes, 0) != zc::none) {
         hasReference = true;
       }
@@ -2766,7 +2769,16 @@ bool primitiveBinaryLacksReferenceOperand(
       return false;
     }
   }
-  return !hasReference;
+  if (hasReference) return false;
+  // A literal-vs-literal binary has no reference operand to anchor the operand
+  // type. When the binary is the initializer of an annotated let binding, the
+  // annotation supplies the closed primitive type, so the shape validator can
+  // resolve it.
+  if (allLiterals && ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                       input.semanticTypes, node) != zc::none) {
+    return false;
+  }
+  return true;
 }
 
 // Structural test for a `this.<field>` read operand: a dot member expression
@@ -2946,10 +2958,18 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   if (leftIsNested && leftNestedType == zc::none) return zc::none;
   if (rightIsNested && rightNestedType == zc::none) return zc::none;
   if ((!leftIsReference && !leftIsLiteral && !leftIsNested && !leftIsReceiverField) ||
-      (!rightIsReference && !rightIsLiteral && !rightIsNested && !rightIsReceiverField) ||
-      (!leftIsReference && !rightIsReference && !leftIsNested && !rightIsNested &&
-       !leftIsReceiverField && !rightIsReceiverField)) {
+      (!rightIsReference && !rightIsLiteral && !rightIsNested && !rightIsReceiverField)) {
     return zc::none;
+  }
+  // A literal-vs-literal binary has no reference operand to anchor the operand
+  // type. When the binary is the initializer of an annotated let binding, the
+  // annotation supplies the closed primitive type, and the fallback below
+  // resolves it.
+  if (!leftIsReference && !rightIsReference && !leftIsNested && !rightIsNested &&
+      !leftIsReceiverField && !rightIsReceiverField) {
+    auto declaredType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                          input.semanticTypes, node);
+    if (declaredType == zc::none) return zc::none;
   }
   // Derive the shared operand type from a reference operand, then from a
   // receiver-field operand, or from a nested operand's result type when no
@@ -2968,6 +2988,13 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     operandType = leftNestedType;
   } else if (rightIsNested) {
     operandType = rightNestedType;
+  }
+  if (operandType == zc::none) {
+    // A literal-vs-literal binary has no reference operand to anchor the
+    // operand type. When the binary is the initializer of an annotated let
+    // binding, the annotation supplies the closed primitive type.
+    operandType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                    input.semanticTypes, node);
   }
   if (operandType == zc::none) return zc::none;
   identity::SemanticTypeId operand;
@@ -3726,6 +3753,13 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
         auto arithmetic = scalarArithmeticOperation(binaryOperator);
         if (comparison != zc::none || arithmetic != zc::none) {
           auto otherType = referenceOperandType(otherNode);
+          if (otherType == zc::none) {
+            // A literal-vs-literal binary has no typed operand to anchor the
+            // literal. When the binary is the initializer of an annotated
+            // let binding, the annotation supplies the expected type.
+            otherType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                          input.semanticTypes, node);
+          }
           ZC_IF_SOME(type, otherType) {
             auto kind = primitiveKindOf(input.semanticTypes, type);
             ZC_IF_SOME(kindValue, kind) {
@@ -5236,7 +5270,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           // reference (a parameter or an owner local) or a scalar literal and
           // at least one operand is a reference; every other binary shape stays
           // unsupported so its existing rejection stands. A literal-vs-literal
-          // operation has no place to lower and is left unsupported.
+          // binary is admitted only when it is the initializer of an annotated
+          // let binding, so the annotation anchors the operand type.
           const auto operation =
               static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
           const bool isComparison = scalarComparisonOperation(operation) != zc::none;
@@ -5278,9 +5313,20 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                                 leftIsNested || leftIsReceiverField;
             const bool rightOk = rightIsReference || isScalarLiteral(tree.node(right).kind) ||
                                  rightIsNested || rightIsReceiverField;
+            // A literal-vs-literal binary has no reference operand to anchor
+            // the operand type. When the binary is the initializer of an
+            // annotated let binding, the annotation supplies the closed
+            // primitive type and the shape validator resolves it.
+            bool literalVsLiteralAnnotated = false;
+            if (leftOk && rightOk && !leftIsReference && !rightIsReference && !leftIsNested &&
+                !rightIsNested && !leftIsReceiverField && !rightIsReceiverField) {
+              literalVsLiteralAnnotated =
+                  ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
+                                                    buildInput.semanticTypes, node) != zc::none;
+            }
             if (leftOk && rightOk &&
                 (leftIsReference || rightIsReference || leftIsNested || rightIsNested ||
-                 leftIsReceiverField || rightIsReceiverField)) {
+                 leftIsReceiverField || rightIsReceiverField || literalVsLiteralAnnotated)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
             }
           }

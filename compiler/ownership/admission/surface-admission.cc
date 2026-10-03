@@ -654,22 +654,39 @@ bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializ
 // Structurally admits a local initializer. A primitive-binary initializer is
 // admitted on its structural shape alone: the checker derives the result type
 // from the operand leaves (arithmetic yields the operand type, comparison
-// yields bool), so no binding annotation is required. Literal-literal binaries
-// have no typed operand to anchor inference and stay rejected by
-// isAdmittedPrimitiveBinary.
+// yields bool), so no binding annotation is required. A literal-vs-literal
+// binary has no typed operand to anchor inference, but when the binding
+// declares an annotation the checker anchors the operand type from it, so
+// the annotated literal-vs-literal form is admitted here.
 bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
                                 ast::NodeId initializer) {
-  (void)declarator;
   if (!tree.contains(initializer)) return true;
-  return isScalarLiteral(tree.node(initializer).kind) ||
-         tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
-         isAdmittedDirectCall(tree, initializer) ||
-         isAdmittedAggregateInitializer(tree, initializer) ||
-         isAdmittedPrimitiveBinary(tree, initializer) ||
-         isAdmittedPrimitiveUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
-         isAdmittedTernary(tree, initializer) || isAdmittedMatchExpression(tree, initializer) ||
-         isAdmittedEnumVariant(tree, initializer) ||
-         isAdmittedEnumVariantConstruction(tree, initializer);
+  if (isScalarLiteral(tree.node(initializer).kind) ||
+      tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
+      isAdmittedDirectCall(tree, initializer) ||
+      isAdmittedAggregateInitializer(tree, initializer) ||
+      isAdmittedPrimitiveBinary(tree, initializer) || isAdmittedPrimitiveUnary(tree, initializer) ||
+      isAdmittedCast(tree, initializer) || isAdmittedTernary(tree, initializer) ||
+      isAdmittedMatchExpression(tree, initializer) || isAdmittedEnumVariant(tree, initializer) ||
+      isAdmittedEnumVariantConstruction(tree, initializer)) {
+    return true;
+  }
+  // A literal-vs-literal binary is admitted only when the binding declares a
+  // type annotation; the checker resolves the operand type from it.
+  if (tree.node(initializer).kind == ast::SyntaxKind::BinaryExpr && tree.contains(declarator) &&
+      tree.node(declarator).kind == ast::SyntaxKind::VariableDeclarator) {
+    const ast::NodeId annotation(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
+    if (tree.contains(annotation)) {
+      const ast::NodeId left(tree.node(initializer).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId right(tree.node(initializer).payload.words[ast::kBinaryExprRhsWord]);
+      if (tree.contains(left) && tree.contains(right) && isScalarLiteral(tree.node(left).kind) &&
+          isScalarLiteral(tree.node(right).kind)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 bool matchesLocalReference(const ast::Tree& tree, ast::NodeId pattern, ast::NodeId reference) {
