@@ -242,6 +242,27 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
                              const binder::ImmutableDefinitionInventory& definitions,
                              ast::NodeId initializerNode);
 
+/// \brief Resolves the concrete self-type DefId for an impl method by matching
+/// the method's enclosing impl authority against the verified impl heads.
+/// Returns none when the method is not enclosed by an impl, the impl
+/// authority cannot be resolved, or the impl head's self type is not a
+/// nominal type.
+zc::Maybe<identity::DefId> implMethodOwner(
+    const binder::MaterializedDefinitionInventoryEntry& definition,
+    const checker::CheckerIdentityAuthority& identities,
+    const checker::signature::VerifiedSignatureFacts& localSignatures);
+
+/// \brief Reports whether an annotated-initializer erasure is admitted because
+/// every read of the erased local is a receiver of a devirtualized method call
+/// (an ImplMethodCallable). The devirtualized call resolves to a direct impl
+/// method, so no existential carrier is needed. A read in any other position
+/// (return, argument, field access, standalone expression) rejects the
+/// erasure.
+bool isDevirtualizedEraseInitializer(const ast::Tree& tree,
+                                     const binder::ImmutableDefinitionInventory& definitions,
+                                     const checker::checked::VerifiedCheckedFacts& facts,
+                                     ast::NodeId initializerNode);
+
 /// Collects the initializer nodes of admitted dead-erase coercions:
 /// AnnotatedInitializer, single-step DynErase sites whose erased local is never
 /// read in its enclosing body. The builder drains these coercions instead of

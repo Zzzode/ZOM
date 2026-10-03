@@ -333,6 +333,7 @@ struct VerifiedCheckedModule::Impl final {
        driver::borrow_evidence::VerifiedBorrowEvidenceLease&& borrowEvidenceLease,
        const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepository,
        checker::CheckerIdentityAuthority&& identities, const type::SemanticTypeStore& semanticTypes,
+       const checker::signature::VerifiedSignatureFacts& localSignatureFacts,
        ModuleInterfaceLineage&& ownInterface,
        zc::Vector<ModuleInterfaceLineage>&& visibleImportedInterfaces) noexcept
       : boundModuleValue(zc::mv(boundModule)),
@@ -346,6 +347,7 @@ struct VerifiedCheckedModule::Impl final {
         borrowEvidenceRepositoryValue(borrowEvidenceRepository),
         identitiesValue(zc::mv(identities)),
         semanticTypesValue(semanticTypes),
+        localSignatureFactsValue(localSignatureFacts),
         ownInterfaceValue(zc::mv(ownInterface)),
         visibleImportedInterfaceValues(zc::mv(visibleImportedInterfaces)) {}
 
@@ -360,6 +362,7 @@ struct VerifiedCheckedModule::Impl final {
   const driver::borrow_evidence::BorrowEvidenceRepository& borrowEvidenceRepositoryValue;
   checker::CheckerIdentityAuthority identitiesValue;
   const type::SemanticTypeStore& semanticTypesValue;
+  const checker::signature::VerifiedSignatureFacts& localSignatureFactsValue;
   ModuleInterfaceLineage ownInterfaceValue;
   zc::Vector<ModuleInterfaceLineage> visibleImportedInterfaceValues;
 };
@@ -460,6 +463,11 @@ checker::CheckerIdentityAuthority VerifiedCheckedModule::retainIdentityAuthority
 
 const driver::VerifiedModuleInterface& VerifiedCheckedModule::ownModuleInterface() const noexcept {
   return impl->ownModuleInterfaceValue;
+}
+
+const checker::signature::VerifiedSignatureFacts& VerifiedCheckedModule::localSignatureFacts()
+    const noexcept {
+  return impl->localSignatureFactsValue;
 }
 
 const type::SemanticTypeStore& VerifiedCheckedModule::semanticTypes() const noexcept {
@@ -580,6 +588,7 @@ ir::IrOperationResult<VerifiedCheckedModule> CheckedModuleBuilder::build(
           input.boundModule.retain(), input.moduleInterface, input.checkedRepository, facts,
           zc::mv(lease), input.dispatchFacts, evidenceRevision, zc::mv(borrowLease),
           input.borrowEvidenceRepository, input.identities.clone(), input.semanticTypes,
+          input.localSignatureFacts,
           ModuleInterfaceLineage{module, module_interface::ImportedInterfaceRevision(
                                              module_interface::UserImportedInterfaceRevision{
                                                  ownInterface.revision()})},

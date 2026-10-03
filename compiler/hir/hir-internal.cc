@@ -362,6 +362,121 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
   return false;
 }
 
+zc::Maybe<identity::DefId> implMethodOwner(
+    const binder::MaterializedDefinitionInventoryEntry& definition,
+    const checker::CheckerIdentityAuthority& identities,
+    const checker::signature::VerifiedSignatureFacts& localSignatures) {
+  for (const auto& owner : definition.record.owners()) {
+    if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) continue;
+    ZC_IF_SOME(key, owner.implKey()) {
+      ZC_IF_SOME(entry, identities.implementation(key)) {
+        const auto implId = entry.handle();
+        for (const auto& head : localSignatures.implHeads()) {
+          if (head.impl != implId) continue;
+          if (!head.head.variant().is<checker::signature::NominalTypeHead>()) return zc::none;
+          return head.head.variant().get<checker::signature::NominalTypeHead>().definition;
+        }
+      }
+    }
+    return zc::none;
+  }
+  return zc::none;
+}
+
+bool isDevirtualizedEraseInitializer(const ast::Tree& tree,
+                                     const binder::ImmutableDefinitionInventory& definitions,
+                                     const checker::checked::VerifiedCheckedFacts& facts,
+                                     ast::NodeId initializerNode) {
+  if (!tree.contains(initializerNode)) return false;
+  // Find the VariableDeclarator whose init word is the initializer, then read
+  // its identifier pattern name. Mirrors isDeadErasedInitializer.
+  zc::Maybe<ast::NodeId> pattern;
+  for (const auto& local : definitions.ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& site = local.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    const auto& declarator = tree.node(site.introducer);
+    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) !=
+        initializerNode) {
+      continue;
+    }
+    pattern = ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+    break;
+  }
+  if (pattern == zc::none) return false;
+  ast::NodeId patternNode;
+  ZC_IF_SOME(value, pattern) { patternNode = value; }
+  if (!tree.contains(patternNode) ||
+      tree.node(patternNode).kind != ast::SyntaxKind::IdentifierPattern) {
+    return false;
+  }
+  const auto name = tree.node(patternNode).payload.words[ast::kIdentifierPatternNameWord];
+  const auto owner = enclosingExecutableDefinition(tree, definitions, initializerNode);
+  if (owner == zc::none) return false;
+  for (const auto& definition : definitions.definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(owner)) continue;
+    if (!tree.contains(definition.node) ||
+        tree.node(definition.node).kind != ast::SyntaxKind::FunctionDecl) {
+      continue;
+    }
+    const ast::NodeId body(tree.node(definition.node).payload.words[ast::kFunctionDeclBodyWord]);
+    if (!tree.contains(body)) return false;
+    // Collect the IdentExpr nodes that are receivers of devirtualized calls.
+    // A receiver is the object of a dot-access MemberExpression that is the
+    // callee of a CallExpression whose call fact selects an ImplMethodCallable.
+    zc::Vector<ast::NodeId> devirtualizedReceivers;
+    ast::visitTreePreOrder(tree, body, [&](ast::NodeId node, const ast::Node& syntax) {
+      if (syntax.kind != ast::SyntaxKind::CallExpression) return;
+      const ast::NodeId callee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+      if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+        return;
+      }
+      const auto& member = tree.node(callee);
+      if (static_cast<ast::MemberAccessKind>(
+              member.payload.words[ast::kMemberExpressionAccessWord]) !=
+          ast::MemberAccessKind::Dot) {
+        return;
+      }
+      const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+      if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr ||
+          tree.node(object).payload.words[ast::kIdentExprNameWord] != name) {
+        return;
+      }
+      for (const auto& entry : facts.calls().entries()) {
+        if (entry.key != node) continue;
+        if (entry.value.invocation.selected.variant().is<checker::checked::ImplMethodCallable>()) {
+          devirtualizedReceivers.add(object);
+        }
+        break;
+      }
+    });
+    // Every IdentExpr in the body that matches the binding name must be a
+    // receiver of a devirtualized call. A read in any other position (return,
+    // argument, field access, standalone) rejects the erasure.
+    bool allDevirtualized = true;
+    ast::visitTreePreOrder(tree, body, [&](ast::NodeId node, const ast::Node& syntax) {
+      if (!allDevirtualized) return;
+      if (syntax.kind != ast::SyntaxKind::IdentExpr ||
+          syntax.payload.words[ast::kIdentExprNameWord] != name) {
+        return;
+      }
+      bool found = false;
+      for (const auto& receiver : devirtualizedReceivers) {
+        if (receiver == node) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) { allDevirtualized = false; }
+    });
+    return allDevirtualized;
+  }
+  return false;
+}
+
 zc::Vector<ast::NodeId> deadEraseInitializerNodes(
     const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
     const checker::checked::VerifiedCheckedFacts& facts) {

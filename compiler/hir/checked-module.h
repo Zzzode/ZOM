@@ -89,6 +89,8 @@ private:
   borrowEvidenceCapability() const noexcept;
   ZC_NODISCARD checker::CheckerIdentityAuthority retainIdentityAuthority() const;
   ZC_NODISCARD const driver::VerifiedModuleInterface& ownModuleInterface() const noexcept;
+  ZC_NODISCARD const checker::signature::VerifiedSignatureFacts& localSignatureFacts()
+      const noexcept;
   ZC_NODISCARD const type::SemanticTypeStore& semanticTypes() const noexcept;
 
   zc::Own<Impl> impl;

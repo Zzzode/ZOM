@@ -272,6 +272,23 @@ bool providedByImplWithBody(const driver::module_graph_query::CheckerBoundModule
   return false;
 }
 
+/// \brief True when an impl method's signature declares a shared or mutable
+/// borrowed receiver with no raises or ABI suffix. Mirrors the HIR builder's
+/// `methodReceiverIsBorrowed` admission predicate so the two gates agree.
+bool implMethodReceiverIsBorrowed(const BodyCheckingInput& input, identity::DefId method) {
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != method) { continue; }
+    if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) { return false; }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.receiver == zc::none || callable.raises != zc::none || callable.abi != zc::none) {
+      return false;
+    }
+    const auto mode = ZC_ASSERT_NONNULL(callable.receiver).mode;
+    return mode == signature::ReceiverMode::Shared || mode == signature::ReceiverMode::Mutable;
+  }
+  return false;
+}
+
 zc::Maybe<identity::DefId> returnValueOwner(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule, ast::NodeId value) {
   const auto& tree = boundModule.tree();
@@ -3216,6 +3233,9 @@ struct ConcreteMethodCallShape final {
   identity::SemanticTypeId success;
   signature::ReceiverMode receiverMode;
   zc::Vector<identity::SemanticTypeId> parameters;
+  /// \brief The selected impl when this shape devirtualizes a dyn-trait call,
+  /// or none for a direct concrete-method call.
+  zc::Maybe<identity::ImplId> devirtualizedImpl;
 };
 
 zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
@@ -3377,9 +3397,182 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
                                    interned.get<type::SemanticTypeInterned>().id,
                                    ZC_ASSERT_NONNULL(success),
                                    ZC_ASSERT_NONNULL(receiverMode),
-                                   zc::mv(parameters)};
+                                   zc::mv(parameters),
+                                   zc::Maybe<identity::ImplId>()};
   }
   ZC_UNREACHABLE
+}
+
+/// \brief Resolves a dot-method call on a dyn-trait owner local whose concrete
+/// type is statically known from its initializer, devirtualizing the call to
+/// the impl method.
+///
+/// The receiver local's declared type is an erasable existential (`dyn I`);
+/// its initializer's node type is the concrete nominal. A unique impl of the
+/// existential's principal interface for the concrete type selects the impl,
+/// and the impl method matching the trait method name supplies the callable
+/// signature. The returned shape mirrors `ConcreteMethodCallShape` with the
+/// concrete receiver source type so the HIR builder can lower a regular
+/// receiver call without an existential carrier.
+zc::Maybe<ConcreteMethodCallShape> devirtualizedMethodCallShape(
+    const BodyCheckingInput& input, ast::NodeId callNode,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments)) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
+    return zc::none;
+  }
+  const auto receiverBinding = resolvedOwnerLocal(input.boundModule.bindings(), receiverNode);
+  const auto declaredType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  if (declaredType == zc::none) { return zc::none; }
+  auto existentialRef =
+      erasableExistentialType(input.semanticTypes, ZC_ASSERT_NONNULL(declaredType));
+  if (existentialRef == zc::none) { return zc::none; }
+  const auto& existential = ZC_ASSERT_NONNULL(existentialRef);
+  // The concrete type is the initializer's node type, not the declared
+  // existential. The initializer must be a non-generic nominal.
+  const auto initializer =
+      ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(receiverBinding));
+  if (initializer == zc::none) { return zc::none; }
+  const auto initializerType = factEntry(nodeTypes, ZC_ASSERT_NONNULL(initializer));
+  if (initializerType == zc::none) { return zc::none; }
+  const auto concreteType = ZC_ASSERT_NONNULL(initializerType).value;
+  auto concreteLookup = input.semanticTypes.get(concreteType);
+  if (!concreteLookup.is<type::SemanticTypeLookup>() ||
+      !concreteLookup.get<type::SemanticTypeLookup>()
+           .data()
+           .is<type::semantic::NominalTypeData>()) {
+    return zc::none;
+  }
+  const auto& concreteNominal =
+      concreteLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
+  if (!concreteNominal.arguments.empty()) { return zc::none; }
+  ZC_IF_SOME(impl, selectDynEraseImpl(input, concreteType, existential)) {
+    // Resolve the impl key so the impl's methods can be matched by owner.
+    auto implEntry = input.identities.implementation(impl);
+    if (implEntry == zc::none) { return zc::none; }
+    const auto& implKey = ZC_ASSERT_NONNULL(implEntry).key();
+    const auto memberName =
+        tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+    zc::Maybe<identity::DefId> selectedMethod;
+    for (const auto& definition : input.boundModule.definitions().definitions()) {
+      if (definition.record.kind() != identity::DefinitionKind::Method ||
+          definition.record.name() != memberName) {
+        continue;
+      }
+      bool ownedByImpl = false;
+      for (const auto& owner : definition.record.owners()) {
+        if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) {
+          ZC_IF_SOME(ownerImplKey, owner.implKey()) {
+            if (ownerImplKey == implKey) { ownedByImpl = true; }
+          }
+        }
+      }
+      if (!ownedByImpl) { continue; }
+      if (selectedMethod != zc::none) { return zc::none; }
+      selectedMethod = definition.definition;
+    }
+    if (selectedMethod == zc::none) { return zc::none; }
+    // Resolve the impl method's callable signature. Impl methods are scoped
+    // as module-level definitions, so the scope is not a MemberSignatureScope;
+    // only the CallableSignature payload is needed.
+    zc::Maybe<signature::ReceiverMode> receiverMode;
+    zc::Maybe<identity::SemanticTypeId> success;
+    zc::Vector<identity::SemanticTypeId> parameters;
+    for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+      if (semanticSignature.definition != ZC_ASSERT_NONNULL(selectedMethod) ||
+          !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+        continue;
+      }
+      const auto& callable =
+          semanticSignature.payload.variant().get<signature::CallableSignature>();
+      if (callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
+          callable.raises != zc::none || callable.abi != zc::none) {
+        return zc::none;
+      }
+      const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
+      if (receiverSignature.mode != signature::ReceiverMode::Shared &&
+          receiverSignature.mode != signature::ReceiverMode::Mutable) {
+        return zc::none;
+      }
+      receiverMode = receiverSignature.mode;
+      for (const auto& parameter : callable.parameters) {
+        if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
+          return zc::none;
+        }
+        parameters.add(parameter.type);
+      }
+      success = callable.success;
+    }
+    if (receiverMode == zc::none || success == zc::none || arguments.size != parameters.size()) {
+      return zc::none;
+    }
+    // The binder records a deferred member for a dot-method call on a
+    // receiver whose type is not known at bind time. A devirtualized call
+    // must have one, matching the concrete-method-call shape.
+    bool deferredMember = false;
+    for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+      if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+          fact.expectedNamespaces.size() != 1 ||
+          fact.expectedNamespaces[0] != binder::Namespace::Value ||
+          fact.genericArguments.size() != 0 || deferredMember) {
+        continue;
+      }
+      deferredMember = true;
+    }
+    if (!deferredMember) { return zc::none; }
+
+    const auto receiverMutability =
+        ZC_ASSERT_NONNULL(receiverMode) == signature::ReceiverMode::Mutable
+            ? type::semantic::Mutability::Mutable
+            : type::semantic::Mutability::Const;
+    auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+        type::semantic::ReferenceTypeData{receiverMutability, concreteType}));
+    if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto receiverParameter = input.semanticTypes.intern(
+        zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
+    if (!receiverParameter.is<type::SemanticTypeInterned>()) { return zc::none; }
+
+    zc::Vector<identity::SemanticTypeId> canonicalParameters;
+    for (const auto parameter : parameters) { canonicalParameters.add(parameter); }
+    zc::Maybe<identity::SemanticTypeId> noRaises;
+    auto canonical = input.semanticTypes.canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::FunctionTypeData{
+            zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+    if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto interned =
+        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+    return ConcreteMethodCallShape{receiverNode,
+                                   ZC_ASSERT_NONNULL(selectedMethod),
+                                   concreteType,
+                                   receiverParameter.get<type::SemanticTypeInterned>().id,
+                                   interned.get<type::SemanticTypeInterned>().id,
+                                   ZC_ASSERT_NONNULL(success),
+                                   ZC_ASSERT_NONNULL(receiverMode),
+                                   zc::mv(parameters),
+                                   zc::Maybe<identity::ImplId>(impl)};
+  }
+  return zc::none;
 }
 
 /// \brief Structurally derives the closed expected type of a numeric literal at
@@ -3651,7 +3844,8 @@ zc::Maybe<ConcreteMethodCallShape> thisReceiverMethodCallShape(const BodyCheckin
                                    interned.get<type::SemanticTypeInterned>().id,
                                    ZC_ASSERT_NONNULL(success),
                                    signature::ReceiverMode::Shared,
-                                   zc::Vector<identity::SemanticTypeId>{}};
+                                   zc::Vector<identity::SemanticTypeId>{},
+                                   zc::Maybe<identity::ImplId>()};
   }
   ZC_UNREACHABLE
 }
@@ -4731,6 +4925,21 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
         }
       }
+      // A struct literal initializer whose annotation is an erasable dyn
+      // existential drives a concrete-to-dyn coercion. The literal always
+      // carries a concrete nominal type, so no identity-existential test is
+      // needed (unlike the identifier-reference path).
+      if (syntax.kind == ast::SyntaxKind::StructLiteralExpr ||
+          syntax.kind == ast::SyntaxKind::ObjectLiteralExpr ||
+          syntax.kind == ast::SyntaxKind::NewExpression) {
+        auto declaredType = ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
+                                                              buildInput.semanticTypes, node);
+        ZC_IF_SOME(declared, declaredType) {
+          if (erasableExistentialType(buildInput.semanticTypes, declared) != zc::none) {
+            addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+          }
+        }
+      }
       // A return expression whose enclosing function returns an erasable dyn
       // existential drives a concrete-to-dyn coercion, except when the return
       // expression already carries that exact existential type: a dyn-to-dyn
@@ -5245,13 +5454,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
 
   // Capability gate for concrete methods supplied by a standalone `impl`
   // block. Their signatures are published upstream so coherence observes the
-  // complete impl, but neither receiverless nor `this`-bearing impl method
-  // bodies lower yet. Reject the whole definition once as ZOM4099 before any
-  // production site is analyzed, so an unsupported `this` receiver/field can
-  // never reach a per-expression capability code or an invariant. Inherent
-  // struct/class methods are owned by their nominal and stay unaffected.
+  // complete impl, but an impl method body lowers only when it declares a
+  // shared/mutable borrowed receiver (the same admission predicate as the HIR
+  // builder). Every other impl method body -- receiverless, move, by-value,
+  // raising, or ABI -- is rejected once as ZOM4099 before any production site
+  // is analyzed. Inherent struct/class methods are owned by their nominal and
+  // stay unaffected.
   for (const auto& definition : input.boundModule.definitions().definitions()) {
     if (!providedByImplWithBody(input.boundModule, definition)) { continue; }
+    if (implMethodReceiverIsBorrowed(input, definition.definition)) { continue; }
     const auto& tree = input.boundModule.tree();
     auto span = parsedModule.spanFor(tree.node(definition.node).range);
     auto ordinal = definitionPreorder(input.boundModule, definition.definition);
@@ -5618,6 +5829,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           shape = thisReceiverMethodCallShape(input, site.node);
         }
         if (shape == zc::none) {
+          // A dot-method call on a dyn-trait local whose concrete type is
+          // statically known from its initializer devirtualizes to the impl
+          // method.
+          shape = devirtualizedMethodCallShape(input, site.node, nodeTypes.asPtr());
+        }
+        if (shape == zc::none) {
           // A mutable-receiver method invoked on an immutable `let` local is a
           // genuine mutability error (ZOM4024), distinct from a method the
           // lowering does not implement yet (ZOM4125).
@@ -5817,15 +6034,21 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
           zc::Maybe<identity::SemanticTypeId> noRaises;
           producedType = value.success;
+          // A devirtualized dyn-trait call selects the impl method; a direct
+          // concrete-method call selects the inherent method.
+          checked::SelectedCallable selectedCallable =
+              value.devirtualizedImpl != zc::none
+                  ? checked::SelectedCallable(checked::ImplMethodCallable{
+                        ZC_ASSERT_NONNULL(value.devirtualizedImpl), value.method})
+                  : checked::SelectedCallable(checked::ConcreteMethodCallable{value.method});
           calls.add(checked::CallFactMap::Entry{
               site.node,
               checked::TypedCallFact{
                   site.node,
                   checked::CheckedCallEnvelope{
-                      checked::SelectedCallable(checked::ConcreteMethodCallable{value.method}),
-                      value.calleeType, zc::mv(receiver), zc::mv(receiverMode),
-                      zc::mv(receiverAdjustment), zc::mv(checkedArguments), value.success,
-                      value.success, zc::mv(noSubstitutions), zc::mv(noWitnesses),
+                      zc::mv(selectedCallable), value.calleeType, zc::mv(receiver),
+                      zc::mv(receiverMode), zc::mv(receiverAdjustment), zc::mv(checkedArguments),
+                      value.success, value.success, zc::mv(noSubstitutions), zc::mv(noWitnesses),
                       zc::mv(noRaises)},
                   site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
@@ -6603,6 +6826,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             concreteMethodCallShape(input, callNode, nodeTypes.asPtr(), &immutableReceiver);
         if (shape == zc::none) { shape = thisReceiverMethodCallShape(input, callNode); }
         if (shape == zc::none) {
+          shape = devirtualizedMethodCallShape(input, callNode, nodeTypes.asPtr());
+        }
+        if (shape == zc::none) {
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
@@ -6762,6 +6988,55 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   site.node, checked::AggregateKind(checked::NominalAggregate{value.definition}),
                   value.type, zc::mv(value.elements), site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
+          // A concrete struct literal assigned to an annotated dyn existential
+          // is a concrete-to-dyn coercion, not a mismatch, when a unique
+          // applicable impl exists. Mirrors the identifier-reference erasure
+          // decision so `let a: dyn Animal = Dog { ... }` records the erase.
+          ZC_IF_SOME(produced, producedType) {
+            ZC_IF_SOME(declared,
+                       ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                         input.semanticTypes, site.node)) {
+              if (declared != produced) {
+                auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
+                bool erased = false;
+                ZC_IF_SOME(existential, existentialRef) {
+                  ZC_IF_SOME(impl, selectDynEraseImpl(input, produced, existential)) {
+                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                    for (const auto& binding : existential.associatedBindings) {
+                      bindings.add(
+                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                    }
+                    dynErases.add(SelectedDynErase{
+                        site.node, produced, declared, existential.principal.definition, impl,
+                        zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
+                    erased = true;
+                  }
+                }
+                if (!erased) {
+                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                      if (existentialRef != zc::none) {
+                        const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
+                        if (hasImplForErasureOutsideSlice(input, produced, existentialValue)) {
+                          return attachRecoveryLedger(rejectGenericErasureUnsupported(
+                                                          site, ownerOrdinal, produced,
+                                                          existentialValue.principal.definition),
+                                                      input, factStoreBrands);
+                        }
+                        return attachRecoveryLedger(
+                            rejectTraitNotImplemented(site, ownerOrdinal, produced,
+                                                      existentialValue.principal.definition),
+                            input, factStoreBrands);
+                      }
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                          factStoreBrands);
+                    }
+                  }
+                }
+              }
+            }
+          }
         }
       } else if (site.production == BodyProductionKind::ErrorOperator) {
         const auto& postfix = input.boundModule.tree().node(site.node);

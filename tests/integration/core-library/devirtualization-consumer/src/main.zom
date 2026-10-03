@@ -1,0 +1,19 @@
+// Devirtualization fixture: a dyn-trait local whose concrete type is
+// statically known at the erasure site. The method call `a.speak()`
+// resolves to the direct impl method `Dog::speak` and returns 41.
+interface Animal {
+  fun speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fun speak(this) -> i32 { return 41; }
+}
+
+fun entry() -> i32 {
+  let a: dyn Animal = Dog { tag: 0 };
+  return a.speak();
+}

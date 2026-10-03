@@ -1449,27 +1449,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
   }
-  fprintf(stderr,
-          "DEBUG: localRefs: lhs=%ld rhs=%ld | localReferences=%zu localFieldProj=%zu "
-          "localAliasReborrow=%zu localBorrow=%zu seqLocalRefCorr=%ld leadLocalCondCorr=%ld "
-          "leadLocalCondArithLocal=%ld forLoopAccCorr=%ld | localReturn=%zu discardedCall=%zu "
-          "directAggCall=%zu directScalarLocalCall=%zu binaryWriteLocalOps=%zu "
-          "forLoopBreakCond=%zu\n",
-          static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
-                               localAliasReborrowCount + localBorrowCount) +
-              sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
-              leadingLocalConditionalArithmeticLocalCount + forLoopAccumulatorCorrection,
-          static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
-              directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands +
-              forLoopBreakConditionCount,
-          candidate.impl->localReferences.size(), localFieldProjectionCount,
-          localAliasReborrowCount, localBorrowCount,
-          static_cast<int64_t>(sequentialLocalReferenceCorrection),
-          static_cast<int64_t>(leadingLocalConditionalCorrection),
-          static_cast<int64_t>(leadingLocalConditionalArithmeticLocalCount),
-          static_cast<int64_t>(forLoopAccumulatorCorrection), localReturnCount,
-          discardedStatementCallCount, directAggregateCallCount, directScalarLocalCallCount,
-          binaryWriteLocalOperands, forLoopBreakConditionCount);
   if (static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
           sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
@@ -1518,67 +1497,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
-  }
-  {
-    int64_t expectedNodeTypes =
-        declarationCount + functionCount - voidFunctionCount + directCallCount +
-        receiverCallCount * 2 + localReturnCount + deadLocalReturnCount -
-        uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
-        deadNodeTypesExtra + localFieldProjectionCount + localFieldWriteCount +
-        parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
-        receiverCallArgumentCount + receiverCallFieldArgumentCount +
-        receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
-        effectiveConditionalCount * 2 + equalityConditionalCount * 2 -
-        matchEqualityReturnCount * 2 - matchGuardCount - unaryReturnCount + matchReturnCount * 2 -
-        matchDefaultArmCount + loopCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-        parameterFieldProjectionCount + receiverFieldArithmeticCount * 2 +
-        parameterFieldWriteCount * 4 + discardedStatementCallCount + sequentialCastInitializers +
-        sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 -
-        leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-        leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
-        compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount;
-    int64_t expectedLiterals =
-        static_cast<int64_t>(
-            declarationCount + functionCount - voidFunctionCount - directCallCount -
-            aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-            parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-            localAliasReborrowCount + localWriteCount + aggregateElementCount +
-            directCallLiteralArgumentCount + receiverCallArgumentCount -
-            receiverCallFieldArgumentCount + effectiveConditionalCount * 2 + matchReturnCount * 2 -
-            matchDefaultArmCount - matchEqualityReturnCount + equalityConditionalCount -
-            unaryReturnCount + loopCount + binaryWriteCount + parameterFieldWriteCount +
-            receiverFieldArithmeticCount + directAggregateCallCount + directScalarLocalCallCount) +
-        sequentialLiteralCorrection + sequentialTernaryParameterConditions +
-        sequentialMatchExprCount * 2 + leadingLocalConditionalCorrection -
-        leadingLocalConditionalUnaryCount + leadingLocalConditionalArithmeticParameterCount +
-        leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
-        binaryWriteLocalOperands - postfixIncrementWriteCount + deadLiterals +
-        forLoopAccumulatorCorrection + static_cast<int64_t>(chainedMatchLiteralExcess);
-    int64_t expectedCalls =
-        directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
-        matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
-        receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-        leadingLocalConditionalArithmeticCount + receiverCallComparisonArgumentCount + deadCalls;
-    fprintf(stderr,
-            "DEBUG: nodeTypes: actual=%zu expected=%ld | literals: actual=%zu expected=%ld | "
-            "calls: actual=%zu expected=%ld | casts: actual=%zu expected=%zu | patterns: "
-            "actual=%zu expected=%zu | aggregates: actual=%zu expected=%zu | members: actual=%zu "
-            "expected=%zu | places: actual=%zu expected=%zu | indexes: actual=%zu expected=%zu "
-            "| markerObligations: actual=%zu expected=%zu\n",
-            facts.nodeTypes().size(), expectedNodeTypes, facts.literals().size(), expectedLiterals,
-            facts.calls().size(), expectedCalls, facts.casts().size(),
-            sequentialCastInitializers + deadCasts, facts.patterns().size(),
-            static_cast<size_t>(declarationCount), facts.aggregates().size(),
-            aggregateCount + deadAggregateCount, facts.members().size(),
-            localFieldProjectionCount + localFieldWriteCount + receiverCallCount +
-                receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount +
-                parameterFieldProjectionCount + parameterFieldWriteCount,
-            facts.places().size(),
-            localFieldProjectionCount + localFieldWriteCount + receiverCallFieldArgumentCount +
-                receiverCallComparisonArgumentCount + parameterIndexCount +
-                parameterFieldProjectionCount + parameterFieldWriteCount,
-            facts.indexes().size(), parameterIndexCount, facts.markerObligations().size(),
-            parameterIndexCount);
   }
   if (facts.nodeTypes().size() !=
           declarationCount + functionCount - voidFunctionCount + directCallCount +
@@ -3934,6 +3852,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& transform = dispatch.fact.resultTransform.variant();
         bool dispatchOwnerMatches = false;
         ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+        // A self-call resolves to either a concrete method or a devirtualized
+        // impl method; both lower through the same direct-call carrier.
+        const auto selfSelectedMethod = [&]() -> identity::DefId {
+          if (selected.is<checker::checked::ConcreteMethodCallable>()) {
+            return selected.get<checker::checked::ConcreteMethodCallable>().method;
+          }
+          return selected.get<checker::checked::ImplMethodCallable>().method;
+        };
+        const auto selfTargetMethod = [&]() -> identity::DefId {
+          if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
+            return target.get<checker::dispatch::ConcreteMethodTarget>().method;
+          }
+          return target.get<checker::dispatch::ImplMethodTarget>().method;
+        };
         // The member fact records the receiver *source* type, which is the
         // shared reference `&Owner` for a self-call (the checker types `this`
         // with the reference, not the owner nominal).
@@ -3942,10 +3874,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             memberFact.member != selfCall.callee ||
             memberFact.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
             memberFact.adjustment != zc::none || selfCall.calleeType != memberFact.memberType ||
-            !selected.is<checker::checked::ConcreteMethodCallable>() ||
-            selected.get<checker::checked::ConcreteMethodCallable>().method != selfCall.callee ||
-            !target.is<checker::dispatch::ConcreteMethodTarget>() ||
-            target.get<checker::dispatch::ConcreteMethodTarget>().method != selfCall.callee ||
+            !(selected.is<checker::checked::ConcreteMethodCallable>() ||
+              selected.is<checker::checked::ImplMethodCallable>()) ||
+            selfSelectedMethod() != selfCall.callee ||
+            !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
+              target.is<checker::dispatch::ImplMethodTarget>()) ||
+            selfTargetMethod() != selfCall.callee ||
             !transform.is<checker::dispatch::IdentityResultTransform>() ||
             invocation.calleeType != selfCall.calleeType ||
             invocation.successType != function.resultType ||
@@ -9826,6 +9760,22 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& transform = dispatch.fact.resultTransform.variant();
           bool dispatchOwnerMatches = false;
           ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+          // A receiver call resolves to either a concrete method
+          // (ConcreteMethodCallable) or a devirtualized impl method
+          // (ImplMethodCallable). Both lower through the same direct-call
+          // carrier, so the verifier admits either variant.
+          const auto selectedMethod = [&]() -> identity::DefId {
+            if (selected.is<checker::checked::ConcreteMethodCallable>()) {
+              return selected.get<checker::checked::ConcreteMethodCallable>().method;
+            }
+            return selected.get<checker::checked::ImplMethodCallable>().method;
+          };
+          const auto targetMethod = [&]() -> identity::DefId {
+            if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
+              return target.get<checker::dispatch::ConcreteMethodTarget>().method;
+            }
+            return target.get<checker::dispatch::ImplMethodTarget>().method;
+          };
           const auto expectedResultIsUnit = [&](identity::SemanticTypeId id) {
             auto lookup = semanticTypes.get(id);
             return lookup.is<type::SemanticTypeLookup>() &&
@@ -9834,11 +9784,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        lookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
                        type::semantic::PrimitiveKind::Unit;
           };
-          if (!selected.is<checker::checked::ConcreteMethodCallable>() ||
-              !target.is<checker::dispatch::ConcreteMethodTarget>() ||
+          if (!(selected.is<checker::checked::ConcreteMethodCallable>() ||
+                selected.is<checker::checked::ImplMethodCallable>()) ||
+              !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
+                target.is<checker::dispatch::ImplMethodTarget>()) ||
               !transform.is<checker::dispatch::IdentityResultTransform>() ||
-              selected.get<checker::checked::ConcreteMethodCallable>().method != member.member ||
-              target.get<checker::dispatch::ConcreteMethodTarget>().method != member.member ||
+              selectedMethod() != member.member || targetMethod() != member.member ||
               member.node != calleeNode ||
               member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
               member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
@@ -10636,6 +10587,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         receiverAggregate = aggregate;
       }
+      // A devirtualized-erase local carries the concrete type as its binding
+      // type, while the receiver reference and receiver call carry the erased
+      // `dyn Interface` type. The type-identity checks below verify
+      // local-vs-receiver type identity for ordinary receiver calls; skip them
+      // for devirtualized erases where the two types differ by design.
+      bool devirtualizedErase = false;
+      {
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex != zc::none) {
+          size_t definitionSlot = 0;
+          ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+          const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+          const auto& tree = bound.tree();
+          if (tree.contains(sourceDefinition.node)) {
+            auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+            if (sourceShape != zc::none) {
+              ZC_IF_SOME(initializer, ZC_ASSERT_NONNULL(sourceShape).localInitializer) {
+                devirtualizedErase =
+                    isDevirtualizedEraseInitializer(tree, definitions, facts, initializer);
+              }
+            }
+          }
+        }
+      }
       const bool sharedReceiverCall =
           ZC_ASSERT_NONNULL(receiverCall).receiverMode == checker::checked::ReceiverMode::Shared;
       const auto expectedReceiverMode = sharedReceiverCall
@@ -10655,7 +10630,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_ASSERT_NONNULL(localBinding).initializer != hirId(expectedFunction + 3) ||
           ZC_ASSERT_NONNULL(localBinding).initializerSpan == zc::none ||
           ZC_ASSERT_NONNULL(receiverAggregate).node != hirId(expectedFunction + 3) ||
-          ZC_ASSERT_NONNULL(receiverAggregate).type != ZC_ASSERT_NONNULL(localBinding).type ||
+          (!devirtualizedErase &&
+           ZC_ASSERT_NONNULL(receiverAggregate).type != ZC_ASSERT_NONNULL(localBinding).type) ||
           ZC_ASSERT_NONNULL(receiverAggregate).category != HirValueCategory::Value ||
           returnStatement.node != hirId(expectedFunction + 4) ||
           ZC_ASSERT_NONNULL(localReference).node != receiverReferenceNode ||
@@ -10665,10 +10641,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           block.statements[0] != ZC_ASSERT_NONNULL(localBinding).node ||
           block.statements[1] != returnStatement.node ||
           ZC_ASSERT_NONNULL(localReference).local != ZC_ASSERT_NONNULL(localBinding).local ||
-          ZC_ASSERT_NONNULL(localReference).type != ZC_ASSERT_NONNULL(localBinding).type ||
+          (!devirtualizedErase &&
+           ZC_ASSERT_NONNULL(localReference).type != ZC_ASSERT_NONNULL(localBinding).type) ||
           ZC_ASSERT_NONNULL(localReference).category != HirValueCategory::Place ||
-          ZC_ASSERT_NONNULL(receiverCall).receiverSourceType !=
-              ZC_ASSERT_NONNULL(localBinding).type ||
+          (!devirtualizedErase && ZC_ASSERT_NONNULL(receiverCall).receiverSourceType !=
+                                      ZC_ASSERT_NONNULL(localBinding).type) ||
           ZC_ASSERT_NONNULL(receiverCall).resultType != function.resultType ||
           ZC_ASSERT_NONNULL(receiverCall).receiverMode != expectedReceiverMode ||
           ZC_ASSERT_NONNULL(receiverCall).receiverAdjustments.size() != 1 ||
@@ -10688,15 +10665,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                   .data()
                   .get<type::semantic::ReferenceTypeData>()
                   .mutability != expectedReceiverMutability ||
-          receiverParameter.get<type::SemanticTypeLookup>()
-                  .data()
-                  .get<type::semantic::ReferenceTypeData>()
-                  .referent != ZC_ASSERT_NONNULL(receiverCall).receiverSourceType) {
+          (!devirtualizedErase &&
+           receiverParameter.get<type::SemanticTypeLookup>()
+                   .data()
+                   .get<type::semantic::ReferenceTypeData>()
+                   .referent != ZC_ASSERT_NONNULL(receiverCall).receiverSourceType)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-
       auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
       auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
       auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
@@ -10832,6 +10809,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& transform = dispatch.fact.resultTransform.variant();
       bool dispatchOwnerMatches = false;
       ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+      // A receiver call on an aggregate-initialized local resolves to either a
+      // concrete method or a devirtualized impl method; both lower through the
+      // same direct-call carrier.
+      const auto aggSelectedMethod = [&]() -> identity::DefId {
+        if (selected.is<checker::checked::ConcreteMethodCallable>()) {
+          return selected.get<checker::checked::ConcreteMethodCallable>().method;
+        }
+        return selected.get<checker::checked::ImplMethodCallable>().method;
+      };
+      const auto aggTargetMethod = [&]() -> identity::DefId {
+        if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
+          return target.get<checker::dispatch::ConcreteMethodTarget>().method;
+        }
+        return target.get<checker::dispatch::ImplMethodTarget>().method;
+      };
       if (ZC_ASSERT_NONNULL(receiverAggregate).type !=
               facts.nodeTypes().entries()[initializerTypeSlot].value ||
           checkedInitializer.node != initializer ||
@@ -10844,13 +10836,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     ZC_ASSERT_NONNULL(initializerSpan)) ||
           !sameSpan(ZC_ASSERT_NONNULL(localReference).sourceSpan,
                     ZC_ASSERT_NONNULL(receiverSpan)) ||
-          !selected.is<checker::checked::ConcreteMethodCallable>() ||
-          !target.is<checker::dispatch::ConcreteMethodTarget>() ||
+          !(selected.is<checker::checked::ConcreteMethodCallable>() ||
+            selected.is<checker::checked::ImplMethodCallable>()) ||
+          !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
+            target.is<checker::dispatch::ImplMethodTarget>()) ||
           !transform.is<checker::dispatch::IdentityResultTransform>() ||
-          selected.get<checker::checked::ConcreteMethodCallable>().method != member.member ||
-          target.get<checker::dispatch::ConcreteMethodTarget>().method != member.member ||
+          aggSelectedMethod() != member.member || aggTargetMethod() != member.member ||
           member.node != calleeNode ||
-          member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+          (!devirtualizedErase &&
+           member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
           member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
           member.adjustment != zc::none ||
           ZC_ASSERT_NONNULL(receiverCall).callee != member.member ||
@@ -11783,15 +11777,31 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
 
     auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
     auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
-    if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none) {
+    // Impl methods are not in the module interface's signature definitions;
+    // fall back to the local signature facts which carry all signatures
+    // including impl methods.
+    const checker::signature::SemanticSignature* signaturePtr = nullptr;
+    if (signaturePosition != zc::none) {
+      size_t slot = 0;
+      ZC_IF_SOME(value, signaturePosition) { slot = value; }
+      signaturePtr = &signatures.definitions[slot];
+    } else {
+      const auto& localSignatures =
+          candidate.impl->checkedModule.localSignatureFacts().signatures();
+      for (const auto& sig : localSignatures) {
+        if (sig.definition == function.definition) {
+          signaturePtr = &sig;
+          break;
+        }
+      }
+    }
+    if (sourceDefinitionIndex == zc::none || signaturePtr == nullptr) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::MissingRequiredFact, module,
                                           registries, index + 1);
     }
     size_t definitionSlot = 0;
-    size_t signatureSlot = 0;
     ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
-    ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
     const auto& sourceDefinition = definitions.definitions()[definitionSlot];
     const auto& tree = bound.tree();
     const bool isMethod = sourceDefinition.record.kind() == identity::DefinitionKind::Method;
@@ -12398,16 +12408,35 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
-    const auto& signature = signatures.definitions[signatureSlot];
+    const auto& signature = *signaturePtr;
     zc::Maybe<checker::signature::MemberSignatureScope> memberScope;
+    // Impl methods in standalone impl blocks get a
+    // ModuleDefinitionSignatureScope from the signature facts because their
+    // enclosing owner is an impl, not a definition. Resolve the concrete
+    // self-type DefId from the verified impl heads.
+    zc::Maybe<identity::DefId> implOwner;
     if (isMethod) {
-      if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
-          !signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+      if (!signature.payload.variant().is<checker::signature::CallableSignature>()) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+      if (signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+        memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+      } else if (signature.scope.variant()
+                     .is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        implOwner = implMethodOwner(sourceDefinition, registries,
+                                    candidate.impl->checkedModule.localSignatureFacts());
+        if (implOwner == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
     } else if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
                !signature.scope.variant()
                     .is<checker::signature::ModuleDefinitionSignatureScope>()) {
@@ -12429,6 +12458,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(scope, memberScope) {
         expectedVisibility = memberVisibility(scope.visibility, module);
       }
+      // Impl methods in standalone impl blocks have no member scope; their
+      // visibility is external.
+      if (implOwner != zc::none) { expectedVisibility = HirVisibility::external(); }
     } else {
       expectedVisibility = visibility(signatures.roots[rootSlot].visibility);
     }
@@ -12492,6 +12524,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     if (referentData.is<type::semantic::NominalTypeData>() &&
                         referentData.get<type::semantic::NominalTypeData>().definition ==
                             scope.owner) {
+                      receiverMatches = true;
+                    }
+                  }
+                  // For impl methods in standalone impl blocks, the receiver
+                  // referent is the concrete self-type resolved from the impl
+                  // heads.
+                  ZC_IF_SOME(owner, implOwner) {
+                    if (referentData.is<type::semantic::NominalTypeData>() &&
+                        referentData.get<type::semantic::NominalTypeData>().definition == owner) {
                       receiverMatches = true;
                     }
                   }
@@ -12572,7 +12613,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
     }
-
     if (returnsLocalAliasReborrow) {
       ast::NodeId initializer;
       ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
@@ -13062,7 +13102,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         continue;
       }
     }
-
     ZC_IF_SOME(expression, literalExpression) {
       auto literalIndex = factIndex(facts.literals(), sourceValueNode);
       bool valueSpanMatches = false;
@@ -13336,7 +13375,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
     nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
   }
-
   auto retainedBoundModule = candidate.impl->checkedModule.retainAdmittedBoundModule();
   auto retainedIdentities = candidate.impl->checkedModule.retainIdentityAuthority();
   const auto& checkedRepository = candidate.impl->checkedModule.checkedRepository();
