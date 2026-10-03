@@ -229,6 +229,12 @@ struct FunctionReturnShape final {
   // literal fact and lowers the return to a scalar literal, reusing the
   // string-literal-return path.
   bool returnsFoldedStringConcat = false;
+  // When the body is a single `return <float-literal> as <integer-primitive>;`,
+  // the body checker folds the cast to an integer constant at compile time.
+  // `shape.value` is the CastExpression node; the builder looks up its checked
+  // literal fact and lowers the return to a scalar literal, reusing the
+  // literal-return path.
+  bool returnsFoldedFloatCast = false;
   // Single-statement shared-receiver method shape:
   // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
   // reading the field through the implicit receiver with one field projection.

@@ -390,11 +390,13 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
 
 zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified scalar string-return shape: a standalone function
-  // with no locals, one block, no statements, and a Return of a string constant.
-  // This mirrors the structural facts that mir::validScalarReturnFunction
-  // checked; we re-check them here so lowering is total over its declared input
-  // and fail-closed on anything else.
+  // Admit the verified scalar literal-return shape: a standalone function with
+  // no locals, one block, no statements, and a Return of a constant. The
+  // constant is either a string (string literal return) or an integer (scalar
+  // literal return, including compile-time-folded float-to-int casts). This
+  // mirrors the structural facts that mir::validScalarReturnFunction checked;
+  // we re-check them here so lowering is total over its declared input and
+  // fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() != 0 || function.blocks.size() != 1) {
     return zc::none;
@@ -408,41 +410,55 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
   const auto& returnValue = block.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
 
-  zc::Maybe<zc::ArrayPtr<const uint8_t>> stringBytes;
+  const mir::MirConstantOperand* constant = nullptr;
   ZC_IF_SOME(value, returnValue) {
     if (value.kind() != mir::MirOperandKind::Constant) { return zc::none; }
-    const auto& constant = value.constantValue();
-    if (constant.type != function.resultType) { return zc::none; }
-    stringBytes = constant.value.stringValue();
+    constant = &value.constantValue();
+    if (constant->type != function.resultType) { return zc::none; }
   }
-  if (stringBytes == zc::none) { return zc::none; }
+  if (constant == nullptr) { return zc::none; }
 
-  // Resolve the opaque-pointer carrier for the Str result type.
-  auto carrier = stringCarrierFor(function.resultType, semanticTypes);
-  if (carrier == zc::none) { return zc::none; }
-  const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
-
-  // Copy the canonical UTF-8 bytes into the LIR string constant.
-  const auto bytes = ZC_REQUIRE_NONNULL(stringBytes);
-  zc::Vector<uint8_t> lirBytes;
-  lirBytes.reserve(bytes.size());
-  for (const auto byte : bytes) { lirBytes.add(byte); }
-
-  auto lirConstant = StringConstant::from(carrierValue, zc::mv(lirBytes));
-  if (lirConstant == zc::none) { return zc::none; }
-
-  // Build the single entry block returning the string constant.
+  // Build the single entry block returning the constant. The carrier and
+  // terminator kind depend on the constant's value type.
   auto entryId = LirBlockId::fromOrdinal(1);
   if (entryId == zc::none) { return zc::none; }
   zc::Vector<BasicBlock> blocks;
-  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
-                        Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
 
-  // A zero-parameter caller folds to the reserved no-argument `zom.module_init`
-  // entry the runtime `_start` calls, so the module runs natively.
-  zc::Vector<Function> functions;
-  functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
-  return Module(zc::mv(functions));
+  auto stringBytes = constant->value.stringValue();
+  if (stringBytes != zc::none) {
+    auto carrier = stringCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    const auto bytes = ZC_REQUIRE_NONNULL(stringBytes);
+    zc::Vector<uint8_t> lirBytes;
+    lirBytes.reserve(bytes.size());
+    for (const auto byte : bytes) { lirBytes.add(byte); }
+    auto lirConstant = StringConstant::from(carrierValue, zc::mv(lirBytes));
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+    zc::Vector<Function> functions;
+    functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
+  auto integer = constant->value.integerValue();
+  if (integer != zc::none) {
+    auto carrier = integerCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnInteger(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+    zc::Vector<Function> functions;
+    functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
+  return zc::none;
 }
 
 zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(

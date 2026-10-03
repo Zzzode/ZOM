@@ -54,11 +54,15 @@ public:
   /// Admits exactly the verified Built MIR shape that
   /// `mir::validScalarReturnFunction` accepts for a standalone function: a
   /// `Function` with no locals, one block with no statements, and a `Return` of
-  /// a string constant. It resolves the opaque-pointer carrier from the `Str`
-  /// result type through the semantic type store, copies the canonical UTF-8
-  /// bytes into a `StringConstant`, and emits a `ReturnString` terminator. The
-  /// function folds to the reserved no-argument `zom.module_init` entry so the
-  /// runtime `_start` runs it. Every shape outside this slice returns `none`.
+  /// a constant. The constant is either a string (string literal return) or an
+  /// integer (scalar literal return, including compile-time-folded
+  /// float-to-int casts). For strings, it resolves the opaque-pointer carrier
+  /// from the `Str` result type through the semantic type store, copies the
+  /// canonical UTF-8 bytes into a `StringConstant`, and emits a `ReturnString`
+  /// terminator. For integers, it resolves the integer carrier and emits a
+  /// `ReturnInteger` terminator. The function folds to the reserved
+  /// no-argument `zom.module_init` entry so the runtime `_start` runs it.
+  /// Every shape outside this slice returns `none`.
   ///
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns `function.resultType`.

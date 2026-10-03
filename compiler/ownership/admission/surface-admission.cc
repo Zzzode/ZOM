@@ -618,9 +618,20 @@ bool isAdmittedStringConcatFold(const ast::Tree& tree, ast::NodeId value) {
          tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
 }
 
+bool isAdmittedFloatCastFold(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::CastExpression) {
+    return false;
+  }
+  // Only the `as` mode is admitted; `as?` and `as!` stay unsupported.
+  if (tree.node(value).payload.words[ast::kCastExpressionModeWord] != 0) { return false; }
+  const ast::NodeId inner(tree.node(value).payload.words[ast::kCastExpressionExprWord]);
+  return tree.contains(inner) && tree.node(inner).kind == ast::SyntaxKind::FloatLiteralExpr;
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) || isAdmittedStringConcatFold(tree, value) ||
+         isAdmittedFloatCastFold(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||

@@ -1382,6 +1382,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // Folded float-to-int-cast returns (`return 1.5 as i32`) emit an integer-
+  // literal fact for the cast node, but the inner FloatLiteralExpr node carries
+  // an extra node-type and literal fact beyond the per-function baseline.
+  // Counted to add one per function to the nodeTypes and literals equations.
+  size_t foldedFloatCastCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& functionDeclaration : candidate.impl->functions) {
+      auto sourceDefinitionIndex = definitionIndex(definitions, functionDeclaration.definition);
+      if (sourceDefinitionIndex == zc::none) continue;
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      if (!tree.contains(sourceDefinition.node)) continue;
+      auto shape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      ZC_IF_SOME(value, shape) {
+        if (value.returnsFoldedFloatCast) ++foldedFloatCastCount;
+      }
+    }
+  }
   // Void mutating methods (`this.<field> = <parameter>;`, Unit result) derived
   // from the source shapes. Each owns a function and a body block but no return
   // record or return value node, so the returns identity and the per-function
@@ -1609,7 +1629,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
               discardedStatementCallCount + sequentialCastInitializers +
               sequentialFoldedStringLengthCount + foldedStringConcatCount * 2 +
-              sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+              foldedFloatCastCount + sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
               sequentialMatchExprDefaultArmCount - leadingLocalConditionalUnaryCount -
               leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
               postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
@@ -1635,7 +1655,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection +
               static_cast<int64_t>(chainedMatchLiteralExcess) +
               static_cast<int64_t>(chainedEnumMatchLiteralExcess) +
-              static_cast<int64_t>(foldedStringConcatCount) * 2 ||
+              static_cast<int64_t>(foldedStringConcatCount) * 2 +
+              static_cast<int64_t>(foldedFloatCastCount) ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
               matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
@@ -13388,8 +13409,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, sourceValueSpan) {
         valueSpanMatches = sameSpan(expression.sourceSpan, value);
       }
-      if ((!isScalarLiteral(tree.node(sourceValueNode).kind) &&
-           !source.returnsFoldedStringConcat) ||
+      if ((!isScalarLiteral(tree.node(sourceValueNode).kind) && !source.returnsFoldedStringConcat &&
+           !source.returnsFoldedFloatCast) ||
           literalIndex == zc::none || expression.type != function.resultType ||
           expression.category != HirValueCategory::Value || !valueSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,

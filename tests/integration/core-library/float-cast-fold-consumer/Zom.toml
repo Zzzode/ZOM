@@ -1,0 +1,8 @@
+[package]
+name = "float_cast_fold_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "float_cast_fold_consumer"
+path = "src/main.zom"

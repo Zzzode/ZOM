@@ -57,6 +57,7 @@ enum class BodyProductionKind : uint8_t {
   MatchExpression = 0x21,
   StringLengthFold = 0x22,
   StringConcatFold = 0x23,
+  FloatToIntCastFold = 0x24,
   Unsupported = 0x17
 };
 
@@ -2159,6 +2160,139 @@ bool isStringConcatFoldSite(const ast::Tree& tree, ast::NodeId node) {
          tree.node(left).kind == ast::SyntaxKind::StringLiteralExpr &&
          tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
 }
+
+// Whether a cast node is a float-literal-to-integer cast fold candidate: the
+// inner expression is a float literal. The target type is validated
+// semantically by the production classifier; this predicate is shared with the
+// HIR shape layer, which only sees the syntax tree.
+bool isFloatToIntLiteralCastSite(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::CastExpression) {
+    return false;
+  }
+  const ast::NodeId castExpr(tree.node(node).payload.words[ast::kCastExpressionExprWord]);
+  return tree.contains(castExpr) && tree.node(castExpr).kind == ast::SyntaxKind::FloatLiteralExpr;
+}
+
+namespace {
+
+// Builds the big-endian magnitude bytes of a non-negative integer, stripping
+// leading zero bytes so zero is an empty magnitude (matching the canonical
+// integer representation used by the literal facts).
+zc::Array<uint8_t> magnitudeBytes(uint64_t magnitude) {
+  zc::Vector<uint8_t> bytes;
+  uint64_t remaining = magnitude;
+  while (remaining != 0) {
+    bytes.add(static_cast<uint8_t>(remaining & 0xff));
+    remaining >>= 8;
+  }
+  auto result = zc::heapArray<uint8_t>(bytes.size());
+  for (size_t index = 0; index < bytes.size(); ++index) {
+    result[index] = bytes[bytes.size() - index - 1];
+  }
+  return result;
+}
+
+// Saturating float-to-integer magnitude for the `as` cast fold. Truncates
+// toward zero (Rust `as` semantics); NaN maps to zero and out-of-range values
+// saturate to the target kind's minimum or maximum. Returns none when the
+// target kind is not an integer primitive.
+zc::Maybe<signature::CanonicalInteger> floatToIntMagnitude(double value,
+                                                           type::semantic::PrimitiveKind kind) {
+  using type::semantic::PrimitiveKind;
+  const bool isSigned = kind == PrimitiveKind::I8 || kind == PrimitiveKind::I16 ||
+                        kind == PrimitiveKind::I32 || kind == PrimitiveKind::I64 ||
+                        kind == PrimitiveKind::Isize;
+  const bool isUnsigned = kind == PrimitiveKind::U8 || kind == PrimitiveKind::U16 ||
+                          kind == PrimitiveKind::U32 || kind == PrimitiveKind::U64 ||
+                          kind == PrimitiveKind::Usize;
+  if (!isSigned && !isUnsigned) return zc::none;
+  // Maximum magnitude for the target kind. For signed kinds the minimum
+  // magnitude is maxMagnitude, except I64/Isize whose minimum is 2^63.
+  uint64_t maxMagnitude = 0;
+  switch (kind) {
+    case PrimitiveKind::I8:
+      maxMagnitude = 127ull;
+      break;
+    case PrimitiveKind::I16:
+      maxMagnitude = 32767ull;
+      break;
+    case PrimitiveKind::I32:
+      maxMagnitude = 2147483647ull;
+      break;
+    case PrimitiveKind::I64:
+      maxMagnitude = 9223372036854775807ull;
+      break;
+    case PrimitiveKind::Isize:
+      maxMagnitude = 9223372036854775807ull;
+      break;
+    case PrimitiveKind::U8:
+      maxMagnitude = 255ull;
+      break;
+    case PrimitiveKind::U16:
+      maxMagnitude = 65535ull;
+      break;
+    case PrimitiveKind::U32:
+      maxMagnitude = 4294967295ull;
+      break;
+    case PrimitiveKind::U64:
+      maxMagnitude = 18446744073709551615ull;
+      break;
+    case PrimitiveKind::Usize:
+      maxMagnitude = 18446744073709551615ull;
+      break;
+    default:
+      return zc::none;
+  }
+  const auto zero = [] {
+    return signature::CanonicalInteger{signature::IntegerSign::NonNegative, zc::Array<uint8_t>()};
+  };
+  if (zc::isNaN(value)) return zero();
+  // Infinity saturates to the extreme value.
+  if (value == zc::inf()) {
+    return signature::CanonicalInteger{signature::IntegerSign::NonNegative,
+                                       magnitudeBytes(maxMagnitude)};
+  }
+  if (value == -zc::inf()) {
+    if (!isSigned) return zero();
+    const uint64_t minMagnitude = (kind == PrimitiveKind::I64 || kind == PrimitiveKind::Isize)
+                                      ? maxMagnitude + 1
+                                      : maxMagnitude;
+    return signature::CanonicalInteger{signature::IntegerSign::Negative,
+                                       magnitudeBytes(minMagnitude)};
+  }
+  // Clamp to the int64 range before truncating so the cast is never undefined.
+  constexpr double kInt64Max = 9223372036854775807.0;
+  constexpr double kInt64MinAsDouble = -9223372036854775808.0;
+  if (value >= kInt64Max) {
+    return signature::CanonicalInteger{signature::IntegerSign::NonNegative,
+                                       magnitudeBytes(maxMagnitude)};
+  }
+  if (value <= kInt64MinAsDouble) {
+    if (!isSigned) return zero();
+    const uint64_t minMagnitude = (kind == PrimitiveKind::I64 || kind == PrimitiveKind::Isize)
+                                      ? maxMagnitude + 1
+                                      : maxMagnitude;
+    return signature::CanonicalInteger{signature::IntegerSign::Negative,
+                                       magnitudeBytes(minMagnitude)};
+  }
+  const int64_t truncated = static_cast<int64_t>(value);
+  if (truncated < 0) {
+    if (!isSigned) return zero();
+    // Avoid negating INT64_MIN, which overflows.
+    const uint64_t magnitude = truncated == INT64_MIN ? static_cast<uint64_t>(INT64_MAX) + 1
+                                                      : static_cast<uint64_t>(-truncated);
+    const uint64_t minMagnitude = (kind == PrimitiveKind::I64 || kind == PrimitiveKind::Isize)
+                                      ? maxMagnitude + 1
+                                      : maxMagnitude;
+    const uint64_t clamped = magnitude > minMagnitude ? minMagnitude : magnitude;
+    return signature::CanonicalInteger{signature::IntegerSign::Negative, magnitudeBytes(clamped)};
+  }
+  const uint64_t magnitude = static_cast<uint64_t>(truncated);
+  const uint64_t clamped = magnitude > maxMagnitude ? maxMagnitude : magnitude;
+  return signature::CanonicalInteger{signature::IntegerSign::NonNegative, magnitudeBytes(clamped)};
+}
+
+}  // namespace
 
 namespace {
 // Bound on how deep an unannotated local initializer chain may recurse while
@@ -5120,7 +5254,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                  syntax.kind == ast::SyntaxKind::NewExpression) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Aggregate, node, key);
       } else if (syntax.kind == ast::SyntaxKind::CastExpression) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Cast, node, key);
+        // A float-to-int cast fold emits a Literal fact, not a Cast fact, so it
+        // needs only a Literal requirement and skips the Cast requirement.
+        if (isFloatToIntLiteralCastSite(tree, node)) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Cast, node, key);
+        }
       } else if (syntax.kind == ast::SyntaxKind::CallExpression ||
                  syntax.kind == ast::SyntaxKind::ImportCallExpression) {
         // An enum tuple-variant construction (`Result::Ok(41)`) produces only
@@ -5456,18 +5596,22 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::CastExpression: {
           // Admit an integer `as` cast whose inner expression is a scalar
           // literal and whose target type resolves to a closed integer
-          // primitive. Every other cast shape stays unsupported so its
-          // existing rejection stands.
+          // primitive. A float-literal inner folds to an integer literal at
+          // compile time (FloatToIntCastFold). Every other cast shape stays
+          // unsupported so its existing rejection stands.
           const ast::NodeId castExpr(syntax.payload.words[ast::kCastExpressionExprWord]);
           const ast::NodeId castTy(syntax.payload.words[ast::kCastExpressionTyWord]);
-          if (tree.contains(castExpr) && isScalarLiteral(tree.node(castExpr).kind) &&
-              tree.contains(castTy)) {
+          if (tree.contains(castExpr) && tree.contains(castTy)) {
             auto targetType = signature::resolveClosedSourceType(boundModule, buildInput.identities,
                                                                  buildInput.semanticTypes, castTy);
             if (targetType != zc::none &&
                 integerPrimitiveKind(buildInput.semanticTypes, ZC_ASSERT_NONNULL(targetType)) !=
                     zc::none) {
-              production = BodyProductionKind::IntegerCast;
+              if (isFloatToIntLiteralCastSite(tree, node)) {
+                production = BodyProductionKind::FloatToIntCastFold;
+              } else if (isScalarLiteral(tree.node(castExpr).kind)) {
+                production = BodyProductionKind::IntegerCast;
+              }
             }
           }
           break;
@@ -7502,6 +7646,69 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             checked::CheckedLiteralFact{site.node,
                                         signature::CanonicalConstValue::string(zc::mv(bytes)),
                                         ZC_ASSERT_NONNULL(strType), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::FloatToIntCastFold) {
+        // A `1.5 as i32` cast folds to the truncated integer at compile time.
+        // The classification precondition (inner is a float literal, target is
+        // an integer primitive) guarantees the fold is well-defined. The
+        // folded value is emitted as an integer literal fact so the HIR
+        // builder lowers it to a scalar constant, reusing the literal-return
+        // path. The conversion truncates toward zero with saturation, matching
+        // Rust's `as` cast semantics.
+        const auto& tree = input.boundModule.tree();
+        const auto& castNode = tree.node(site.node);
+        const ast::NodeId castExpr(castNode.payload.words[ast::kCastExpressionExprWord]);
+        const ast::NodeId castTy(castNode.payload.words[ast::kCastExpressionTyWord]);
+        auto targetType = signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                                             input.semanticTypes, castTy);
+        if (targetType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto target = ZC_ASSERT_NONNULL(targetType);
+        auto targetKind = integerPrimitiveKind(input.semanticTypes, target);
+        if (targetKind == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        if (!tree.contains(castExpr) ||
+            tree.node(castExpr).kind != ast::SyntaxKind::FloatLiteralExpr) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        zc::Maybe<zc::StringPtr> text;
+        try {
+          text = tree.floatLiteral(
+              ast::FloatId(tree.node(castExpr).payload.words[ast::kFloatLiteralExprValueWord]));
+        } catch (const zc::Exception&) { text = zc::none; }
+        if (text == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto parsed = ZC_ASSERT_NONNULL(text).tryParseAs<double>();
+        if (parsed == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto magnitude =
+            floatToIntMagnitude(ZC_ASSERT_NONNULL(parsed), ZC_ASSERT_NONNULL(targetKind));
+        if (magnitude == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = target;
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{
+                site.node,
+                signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(magnitude))),
+                target, site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
         // An enum tuple-variant construction `Enum::Variant(args)`. The variant

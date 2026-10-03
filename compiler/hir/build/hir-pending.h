@@ -612,6 +612,11 @@ struct PendingFunctionDeclaration final {
   // binary node; the two operand StringLiteralExpr nodes each carry an extra
   // node-type fact beyond the per-function baseline.
   bool returnsFoldedStringConcat = false;
+  // True when the return value is a compile-time-folded float-to-integer cast
+  // (`return 1.5 as i32`). The body checker emits an integer-literal fact for
+  // the cast node; the inner FloatLiteralExpr node carries an extra node-type
+  // and literal fact beyond the per-function baseline.
+  bool returnsFoldedFloatCast = false;
 };
 
 }  // namespace detail

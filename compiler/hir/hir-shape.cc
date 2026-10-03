@@ -2395,6 +2395,25 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
+    // A single `return <float-literal> as <integer-primitive>;` folds the cast
+    // to an integer constant at compile time. The body checker emits an
+    // integer-literal fact for the cast node; the builder lowers it to a
+    // scalar literal return, reusing the literal-return path. The shape only
+    // requires the float-literal inner structure; the target type is a
+    // checker decision.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::CastExpression) {
+      const ast::NodeId castExpr(tree.node(value).payload.words[ast::kCastExpressionExprWord]);
+      if (tree.contains(castExpr) &&
+          tree.node(castExpr).kind == ast::SyntaxKind::FloatLiteralExpr) {
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.returnsFoldedFloatCast = true;
+        shape.unsafeBlock = zc::mv(unsafeBlock);
+        return shape;
+      }
+    }
     // A single `return <BinaryExpr>` returns the operation result directly. The
     // BinaryExpr is one of the six relational comparisons (result bool) or one of
     // the twelve arithmetic/bitwise operators (result operand type) over two
