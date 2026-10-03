@@ -605,10 +605,18 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveOrderingCallFactForScalarParamet
 }
 
 ZC_TEST("PrimitiveBinaryOperation.RejectsNonComparisonScalarBinaryOperation") {
+  // An arithmetic result is not bool, so it cannot drive an `if` discriminant.
+  // The arithmetic operator stays unsupported in condition position; the body
+  // checker drains the free function body as ZOM4099 rather than a
+  // missing-fact invariant.
   PrimitiveBinaryFixture fixture(
       "fun add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedScalarOperandTypes") {
@@ -810,11 +818,15 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveBitwiseCallFactWithOperandResult
 ZC_TEST("PrimitiveBinaryOperation.RejectsArithmeticConditionAsNonBool") {
   // An arithmetic result is not bool, so it cannot drive an `if` discriminant;
   // the arithmetic operator stays unsupported in condition position and the body
-  // is rejected exactly as `if (a + b)` was before arithmetic returns landed.
+  // is rejected as an unsupported function body construct (ZOM4099).
   PrimitiveBinaryFixture fixture(
       "fun add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalShortCircuitBinaryOperation") {

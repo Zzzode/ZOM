@@ -2,4 +2,4 @@ section: "08-adt primitive member read inside an inherent method body"
 covers_rule: "funDeclaration (member)"
 expected: "ACCEPT"
 notes:
-  - "The grammar admits a dot member read on a str local inside an inherent method; the method body slice cannot lower the primitive member read, so the method drains with ZOM4125."
+  - "The grammar admits a dot member read on a str parameter inside an inherent method; the length fold only applies to string-literal locals, so the method body slice cannot lower the primitive member read and the method drains with ZOM4125."
