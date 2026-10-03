@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#discussion-record
 decision: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#decision-record
 ---
 

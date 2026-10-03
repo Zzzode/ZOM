@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#discussion-record
 decision: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0049-enum-variants-and-exhaustive-matching-review.md#decision-record
 ---
 

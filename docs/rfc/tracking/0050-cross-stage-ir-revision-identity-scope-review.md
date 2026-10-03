@@ -57,4 +57,4 @@ ACCEPTED 2026-09-15 with option B (re-scope): SHA-256 content revisions are reta
 
 ## Implementation Tracker
 
-Not started; the revised RFC is not ACCEPTED.
+Implementation not started. The RFC was ACCEPTED on 2026-09-15.

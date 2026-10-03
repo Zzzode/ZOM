@@ -85,9 +85,8 @@ All eight required owners approved at Round 3 (lexer-parser, binder-checker, err
 
 ## Decision Record
 
-ACCEPTED 2026-09-15. Scope: enum record variants, exhaustive match, if-let/let-else, or-patterns, cross-module non_exhaustive. Products/boxing/layout/newtype/variance/derives deferred to later RFCs. Struct methods preserved. Open questions resolved (variant-scoped field names; scoped if-let; irrefutable-only for in this RFC). No decision is recorded; no owner approval is recorded for the revised
-scope.
+ACCEPTED 2026-09-15. Scope: enum record variants, exhaustive match, if-let/let-else, or-patterns, cross-module non_exhaustive. Products/boxing/layout/newtype/variance/derives deferred to later RFCs. Struct methods preserved. Open questions resolved (variant-scoped field names; scoped if-let; irrefutable-only for in this RFC).
 
 ## Implementation Tracker
 
-Not started; the revised RFC is not ACCEPTED.
+Implementation not started. The RFC was ACCEPTED on 2026-09-15.

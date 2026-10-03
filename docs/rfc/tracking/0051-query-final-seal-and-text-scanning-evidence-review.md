@@ -61,4 +61,4 @@ ACCEPTED 2026-09-15. Part 1: RETAIN the final-seal ceremony including the RFC 00
 
 ## Implementation Tracker
 
-Not started; the revised RFC is not ACCEPTED.
+Implementation not started. The RFC was ACCEPTED on 2026-09-15.

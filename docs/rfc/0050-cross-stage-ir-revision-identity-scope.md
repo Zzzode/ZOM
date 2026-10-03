@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#discussion-record
 decision: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0050-cross-stage-ir-revision-identity-scope-review.md#decision-record
 ---
 

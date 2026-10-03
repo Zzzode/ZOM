@@ -55,4 +55,4 @@ ACCEPTED 2026-09-15. Full-RFC / lightweight tracked-change / ordinary-commit mat
 
 ## Implementation Tracker
 
-Not started; the revised RFC is not ACCEPTED.
+Implementation not started. The RFC was ACCEPTED on 2026-09-15.

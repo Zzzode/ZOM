@@ -15,7 +15,7 @@ supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#discussion-record
 decision: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
-implementation: TBD
+implementation: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0051-query-final-seal-and-text-scanning-evidence-review.md#decision-record
 ---
 
