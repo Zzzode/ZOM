@@ -230,6 +230,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
     switch (binding.kind) {
       case SequentialInitializerKind::Literal:
       case SequentialInitializerKind::EnumVariant:
+      case SequentialInitializerKind::FoldedStringLength:
         ZC_IF_SOME(literal, binding.literal) {
           ctx.addExpression(HirScalarLiteralExpression{initializerIds[index], binding.type,
                                                        literal.clone(), HirValueCategory::Value,

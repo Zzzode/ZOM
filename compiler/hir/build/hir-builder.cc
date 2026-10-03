@@ -840,10 +840,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   break;
                 }
                 bindingLiteral = literalFact.literal.clone();
-              } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+              } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
+                         binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
                 // A qualified enum variant access lowers to an integer constant
-                // (the variant discriminant). The body-checker emits a literal
-                // fact with the discriminant value.
+                // (the variant discriminant), and a string-length fold lowers to
+                // the string's byte length. The body-checker emits a literal
+                // fact with the integer value.
                 auto literalIndex = factIndex(facts.literals(), binding.initializer);
                 if (literalIndex == zc::none) { break; }
                 size_t literalSlot = 0;
@@ -3360,9 +3362,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // transitively-dead concrete source) so only scalar locals reach
         // MIR/LIR. Unrelated dead scalar locals stay in the shape. The
         // verifier performs the same filter, guaranteeing one identical
-        // node-id layout. The MIR sequential-local-return classifier requires
-        // at least two statements, so a filtered shape with fewer than two
-        // bindings is rejected.
+        // node-id layout. A filtered shape with zero bindings has no
+        // initializer to lower and is rejected.
         {
           const auto dead = deadSequentialBindings(tree, sequentialShape);
           const auto removed =
@@ -3380,7 +3381,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               if (removed[i]) deadBindings.add(sequentialShape.bindings[i]);
             }
             auto filtered = filterDeadSequentialBindings(sequentialShape, removed);
-            if (filtered.bindings.size() < 2) {
+            if (filtered.bindings.empty()) {
               return rejectHirCapability<HirModuleCandidate>(
                   definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                   definition.source.clone());
@@ -3474,10 +3475,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               break;
             }
             bindingLiteral = literalFact.literal.clone();
-          } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+          } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
+                     binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
             // A qualified enum variant access `Enum::Variant` lowers to an
-            // integer constant (the variant discriminant). The body-checker
-            // emits a literal fact with the discriminant value.
+            // integer constant (the variant discriminant), and a string-length
+            // fold `s.length` lowers to the string's byte length. The
+            // body-checker emits a literal fact with the integer value.
             auto literalIndex = factIndex(facts.literals(), binding.initializer);
             if (literalIndex == zc::none) {
               rejected = true;
@@ -8311,6 +8314,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // cast fact and one additional node-type fact for the inner literal beyond
   // the per-binding local node type counted by localReturnCount.
   size_t castCount = 0;
+  // Folded string-length initializers (`let len = s.length` where `s` is a
+  // string-literal local). The checker folds the byte length to an integer
+  // constant, so the binding carries a literal fact, but its MemberExpression
+  // initializer also carries one extra node-type fact for the IdentExpr
+  // object beyond the per-binding local node type counted by localReturnCount.
+  size_t foldedStringLengthCount = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -8417,6 +8426,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             case SequentialInitializerKind::EnumVariant:
               ++literalBearingSlots;
               break;
+            case SequentialInitializerKind::FoldedStringLength:
+              ++literalBearingSlots;
+              ++foldedStringLengthCount;
+              break;
             case SequentialInitializerKind::Aggregate:
               ++aggregateCount;
               ++literalBearingSlots;
@@ -8504,6 +8517,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             case SequentialInitializerKind::Literal:
             case SequentialInitializerKind::EnumVariant:
               ++literalBearingSlots;
+              break;
+            case SequentialInitializerKind::FoldedStringLength:
+              ++literalBearingSlots;
+              ++foldedStringLengthCount;
               break;
             case SequentialInitializerKind::Aggregate: {
               ++aggregateCount;
@@ -9017,7 +9034,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+      foldedStringLengthCount + sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
       sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
       leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
       compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +

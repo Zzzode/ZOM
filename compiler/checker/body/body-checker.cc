@@ -55,6 +55,7 @@ enum class BodyProductionKind : uint8_t {
   EnumVariantValue = 0x1f,
   EnumVariantConstruction = 0x20,
   MatchExpression = 0x21,
+  StringLengthFold = 0x22,
   Unsupported = 0x17
 };
 
@@ -2103,6 +2104,38 @@ bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
     }
   }
   return false;
+}
+
+/// \brief Whether a dot member read `s.length` folds to the UTF-8 byte length
+/// of a string-literal-initialized owner local at compile time.
+///
+/// The fold is purely structural: a Dot member access whose property is
+/// `length`, whose object names an owner local, and whose local initializer is
+/// a string literal. The check loop verifies the receiver type is Str and emits
+/// the folded integer constant. Every other string operation stays unsupported.
+bool isStringLengthFoldSite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                            const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const auto propertyName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  if (propertyName != "length"_zc) { return false; }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  const auto binding = resolvedOwnerLocal(boundModule.bindings(), object);
+  if (binding == zc::none) { return false; }
+  const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
+  if (initializer == zc::none) { return false; }
+  return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
+         tree.node(ZC_ASSERT_NONNULL(initializer)).kind == ast::SyntaxKind::StringLiteralExpr;
 }
 
 namespace {
@@ -5045,18 +5078,20 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             }
           }
         }
-        if (isEnumVariant) {
+        if (isEnumVariant || isStringLengthFoldSite(boundModule, tree, node)) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
-          // A qualified enum variant access used as an initializer whose
-          // annotation is an erasable dyn existential drives a
-          // concrete-to-dyn coercion, mirroring the struct-literal path so
-          // `let c: dyn RedCheck = Color::Red;` records both the literal and
-          // the erase.
-          auto declaredType = ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
-                                                                buildInput.semanticTypes, node);
-          ZC_IF_SOME(declared, declaredType) {
-            if (erasableExistentialType(buildInput.semanticTypes, declared) != zc::none) {
-              addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+          if (isEnumVariant) {
+            // A qualified enum variant access used as an initializer whose
+            // annotation is an erasable dyn existential drives a
+            // concrete-to-dyn coercion, mirroring the struct-literal path so
+            // `let c: dyn RedCheck = Color::Red;` records both the literal and
+            // the erase.
+            auto declaredType = ownerLocalInitializerDeclaredType(
+                boundModule, buildInput.identities, buildInput.semanticTypes, node);
+            ZC_IF_SOME(declared, declaredType) {
+              if (erasableExistentialType(buildInput.semanticTypes, declared) != zc::none) {
+                addNodeRequirement(nodeRequirements, CheckedFactGroup::Coercion, node, key);
+              }
             }
           }
         } else {
@@ -5173,6 +5208,12 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                 }
               }
             }
+          }
+          if (production == BodyProductionKind::Unsupported &&
+              isStringLengthFoldSite(boundModule, tree, node)) {
+            // A `s.length` read on a string-literal-initialized local folds to
+            // its UTF-8 byte length at compile time.
+            production = BodyProductionKind::StringLengthFold;
           }
           if (production == BodyProductionKind::Unsupported) {
             production = isMethodCallCallee(tree, node)
@@ -7239,6 +7280,65 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
           }
         }
+      } else if (site.production == BodyProductionKind::StringLengthFold) {
+        // A `s.length` read on a string-literal-initialized local folds to the
+        // string's UTF-8 byte length at compile time. The classification
+        // precondition (the local initializer is a string literal) guarantees
+        // the receiver type is Str, so no node-type lookup is needed. The
+        // folded value is emitted as an i32 integer literal fact so the HIR
+        // builder lowers it to a scalar constant.
+        const auto& tree = input.boundModule.tree();
+        const auto& member = tree.node(site.node);
+        const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+        const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), object);
+        const auto initializer =
+            binding == zc::none
+                ? zc::none
+                : ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(binding));
+        if (initializer == zc::none || !tree.contains(ZC_ASSERT_NONNULL(initializer)) ||
+            tree.node(ZC_ASSERT_NONNULL(initializer)).kind != ast::SyntaxKind::StringLiteralExpr) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& literalSyntax = tree.node(ZC_ASSERT_NONNULL(initializer));
+        zc::Maybe<zc::StringPtr> text;
+        try {
+          text = tree.string(
+              ast::StringId(literalSyntax.payload.words[ast::kStringLiteralExprValueWord]));
+        } catch (const zc::Exception&) { text = zc::none; }
+        if (text == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto i32Type = internPrimitiveKind(input, type::semantic::PrimitiveKind::I32);
+        if (i32Type == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = ZC_ASSERT_NONNULL(i32Type);
+        // Build the big-endian magnitude of the byte length, stripping leading
+        // zero bytes so zero is an empty magnitude.
+        zc::Vector<uint8_t> bytes;
+        uint64_t remaining = ZC_ASSERT_NONNULL(text).size();
+        while (remaining != 0) {
+          bytes.add(static_cast<uint8_t>(remaining & 0xff));
+          remaining >>= 8;
+        }
+        auto magnitude = zc::heapArray<uint8_t>(bytes.size());
+        for (size_t index = 0; index < bytes.size(); ++index) {
+          magnitude[index] = bytes[bytes.size() - index - 1];
+        }
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{
+                site.node,
+                signature::CanonicalConstValue::integer(signature::CanonicalInteger{
+                    signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
+                ZC_ASSERT_NONNULL(i32Type), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
         // An enum tuple-variant construction `Enum::Variant(args)`. The variant
         // must carry a non-empty payload; each argument's type must match the

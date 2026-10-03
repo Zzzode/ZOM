@@ -572,6 +572,30 @@ bool isAdmittedEnumVariantConstruction(const ast::Tree& tree, ast::NodeId value)
   return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
 }
 
+/// \brief Structurally admits a `s.length` dot member read as a compile-time
+/// fold initializer.
+///
+/// The object must be an identifier naming a local; the binding resolution and
+/// the string-literal-initializer verification are checker decisions. The
+/// fold itself (reading the string bytes and emitting the integer constant)
+/// runs in the body checker, so surface admission only verifies the shape.
+bool isAdmittedStringLengthFold(const ast::Tree& tree, ast::NodeId initializer) {
+  if (!tree.contains(initializer) ||
+      tree.node(initializer).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(initializer);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const auto propertyName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  if (propertyName != "length"_zc) { return false; }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
   return isScalarLiteral(tree.node(value).kind) ||
@@ -1407,7 +1431,10 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         const ast::NodeId initializer(
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
         if (!tree.contains(initializer)) return false;
-        if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer)) { return false; }
+        if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer) &&
+            !isAdmittedStringLengthFold(tree, initializer)) {
+          return false;
+        }
       }
       return true;
     }

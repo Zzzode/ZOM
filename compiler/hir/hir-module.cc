@@ -897,6 +897,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   size_t sequentialParameterInitializers = 0;
   size_t sequentialLocalInitializers = 0;
   size_t sequentialCastInitializers = 0;
+  // Folded string-length bindings carry one extra node-type fact for the
+  // IdentExpr object of their MemberExpression initializer.
+  size_t sequentialFoldedStringLengthCount = 0;
   size_t sequentialLocalCount = 0;
   size_t sequentialFunctionCount = 0;
   size_t sequentialParameterReturns = 0;
@@ -978,6 +981,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               case SequentialInitializerKind::Literal:
               case SequentialInitializerKind::EnumVariant:
                 ++deadLiterals;
+                break;
+              case SequentialInitializerKind::FoldedStringLength:
+                ++deadLiterals;
+                ++deadNodeTypesExtra;
                 break;
               case SequentialInitializerKind::Aggregate: {
                 ++deadAggregateCount;
@@ -1063,6 +1070,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             case SequentialInitializerKind::Literal:
             case SequentialInitializerKind::EnumVariant:
               ++sequentialLiteralInitializers;
+              break;
+            case SequentialInitializerKind::FoldedStringLength:
+              ++sequentialLiteralInitializers;
+              ++sequentialFoldedStringLengthCount;
               break;
             case SequentialInitializerKind::Aggregate:
               ++sequentialAggregateInitializers;
@@ -1558,11 +1569,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               binaryWriteCount * 2 + parameterFieldProjectionCount +
               receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
               discardedStatementCallCount + sequentialCastInitializers +
-              sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-              sequentialMatchExprDefaultArmCount - leadingLocalConditionalUnaryCount -
-              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
-              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
-              forLoopBreakConditionCount ||
+              sequentialFoldedStringLengthCount + sequentialTernaryCount * 3 +
+              sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount -
+              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
+              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
+              compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -2295,7 +2306,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           break;
         }
         if (binding.initializerKind == SequentialInitializerKind::Literal ||
-            binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+            binding.initializerKind == SequentialInitializerKind::EnumVariant ||
+            binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
           zc::Maybe<const HirScalarLiteralExpression&> literal;
           for (const auto& expression : candidate.impl->expressions) {
             if (expression.node != hirId(initializerNodeOrdinal)) continue;

@@ -415,6 +415,75 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit the verified scalar constant-return fold shape: a standalone function
+  // with one user local, one block of StorageLive + Assign(Use constant), and a
+  // place-copy Return of that local. The constant is folded into a
+  // ReturnInteger terminator, so the source local is not declared in LIR.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& local = function.locals[0];
+  const auto& block = function.blocks[0];
+  if (local.kind != mir::MirLocalKind::UserLocal || local.type != function.resultType ||
+      block.statements.size() != 2 ||
+      block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+
+  const auto& assignment = block.statements[1].assignmentValue();
+  if (assignment.destination.local() != local.id ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != mir::MirRvalueKind::Use ||
+      assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant) {
+    return zc::none;
+  }
+  const auto& constant = assignment.value.useValue().operand.constantValue();
+  if (constant.type != function.resultType) { return zc::none; }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  bool returnsLocal = false;
+  ZC_IF_SOME(value, returnValue) {
+    returnsLocal = value.kind() != mir::MirOperandKind::Constant &&
+                   value.place().local() == local.id && value.place().projections().size() == 0;
+  }
+  if (!returnsLocal) { return zc::none; }
+
+  // Resolve the integer carrier and constant value.
+  auto carrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (carrier == zc::none) { return zc::none; }
+  const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+
+  const auto integer = constant.value.integerValue();
+  if (integer == zc::none) { return zc::none; }
+  auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  if (bits == zc::none) { return zc::none; }
+
+  auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+  if (lirConstant == zc::none) { return zc::none; }
+
+  // Build the single entry block returning the constant. The source local is
+  // folded into the terminator and not declared in LIR.
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                        Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+
+  // A zero-parameter function folds to the reserved no-argument
+  // `zom.module_init` entry the runtime `_start` calls.
+  zc::Vector<Function> functions;
+  functions.add(
+      Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified struct-local field-return shape. This mirrors the

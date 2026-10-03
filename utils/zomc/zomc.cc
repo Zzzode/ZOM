@@ -1448,6 +1448,9 @@ private:
             lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
           }
           if (lir == zc::none) {
+            lir = lir::MirToLirLowering::lowerScalarConstantReturn(functions[0], types);
+          }
+          if (lir == zc::none) {
             lir = lir::MirToLirLowering::lowerArithmeticReturn(functions[0], types);
           }
           if (lir == zc::none) {

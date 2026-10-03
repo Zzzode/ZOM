@@ -981,6 +981,32 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         return zc::none;
       }
       kind = SequentialInitializerKind::EnumVariant;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
+               static_cast<ast::MemberAccessKind>(
+                   tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
+                   ast::MemberAccessKind::Dot) {
+      // A string-length fold `s.length` where `s` is an earlier local
+      // initialized with a string literal. The checker folded the byte length
+      // to an integer constant; the builder lowers it to a scalar literal.
+      const ast::NodeId object(
+          tree.node(initializer).payload.words[ast::kMemberExpressionObjectWord]);
+      const auto propertyName = tree.ident(
+          ast::IdentId(tree.node(initializer).payload.words[ast::kMemberExpressionPropertyWord]));
+      bool folded = false;
+      if (propertyName == "length"_zc && tree.contains(object) &&
+          tree.node(object).kind == ast::SyntaxKind::IdentExpr) {
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, object) &&
+              tree.contains(shape.bindings[earlier].initializer) &&
+              tree.node(shape.bindings[earlier].initializer).kind ==
+                  ast::SyntaxKind::StringLiteralExpr) {
+            folded = true;
+            break;
+          }
+        }
+      }
+      if (!folded) return zc::none;
+      kind = SequentialInitializerKind::FoldedStringLength;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::CallExpression) {
       // An enum tuple-variant construction `Enum::Variant(args)`. The builder
       // dead-erases the binding when it is never read, so no aggregate
@@ -1147,6 +1173,29 @@ zc::Vector<bool> erasureRelatedDeadBindings(const ast::Tree& tree,
     if (!dead[i]) continue;
     for (const auto erased : erasedInitializers) {
       if (shape.bindings[i].initializer == erased) {
+        removed[i] = true;
+        break;
+      }
+    }
+  }
+  // Seed: dead string-literal bindings whose only reader is a string-length
+  // fold (`s.length`). The checker folded the byte length to an integer
+  // constant, so the string carrier is never read at runtime and can be
+  // filtered without a string representation in HIR/MIR/LIR.
+  for (size_t i = 0; i < count; ++i) {
+    if (removed[i] || !dead[i]) continue;
+    if (shape.bindings[i].initializerKind != SequentialInitializerKind::Literal) continue;
+    if (!tree.contains(shape.bindings[i].initializer) ||
+        tree.node(shape.bindings[i].initializer).kind != ast::SyntaxKind::StringLiteralExpr) {
+      continue;
+    }
+    for (size_t later = i + 1; later < count; ++later) {
+      if (shape.bindings[later].initializerKind != SequentialInitializerKind::FoldedStringLength) {
+        continue;
+      }
+      const ast::NodeId memberObject(tree.node(shape.bindings[later].initializer)
+                                         .payload.words[ast::kMemberExpressionObjectWord]);
+      if (matchesLocalReference(tree, shape.bindings[i].pattern, memberObject)) {
         removed[i] = true;
         break;
       }
