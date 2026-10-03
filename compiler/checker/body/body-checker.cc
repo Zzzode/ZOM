@@ -2307,6 +2307,15 @@ zc::Maybe<identity::DeclaredDefinitionName> enclosingMethodName(const BodyChecki
     const auto& body = ZC_ASSERT_NONNULL(bodySpan);
     const auto& contained = ZC_ASSERT_NONNULL(nodeSpan);
     if (body.byteStart() <= contained.byteStart() && contained.byteEnd() <= body.byteEnd()) {
+      // Trait methods supplied by a standalone impl block are not inherent
+      // methods; the body checker drains them as ZOM4099, not ZOM4125.
+      ZC_IF_SOME(entry, boundModule.definitions().definition(definition.identity)) {
+        for (const auto& owner : entry.record().owners()) {
+          if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) {
+            return zc::none;
+          }
+        }
+      }
       return definition.name.clone();
     }
   }
@@ -5669,10 +5678,18 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // calls, and so on). The HIR gate drains the method definition as a
         // capability rejection; emit the checker-side method capability code
         // ZOM4125 here so the unsupported construct never falls through to a
-        // MissingRequiredFact invariant. Sites outside a method keep the
-        // invariant rail.
+        // MissingRequiredFact invariant.
         ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
+        }
+        // An unproduced site inside a trait method body or a free function
+        // body is legal source the body slice cannot lower yet. Drain it as
+        // ZOM4099 rather than a missing-fact invariant.
+        ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+          ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+            return attachRecoveryLedger(rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal),
+                                        input, factStoreBrands);
+          }
         }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,

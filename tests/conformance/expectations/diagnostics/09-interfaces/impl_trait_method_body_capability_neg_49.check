@@ -3,7 +3,8 @@
 
 // A concrete trait method supplied by a standalone impl block is not in the
 // lowered surface yet (empty impls and `type Item = T` assignments are). The
-// owning method drains as ZOM4099, not as an internal compiler error.
+// body checker drains the unsupported receiver-field read as ZOM4099, not as
+// an internal compiler error.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:8:5
+// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:8:33
