@@ -1456,8 +1456,11 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
       // An unannotated binary-, unary-, cast-, or ternary-result binding
       // drains through the single-local gate below as ZOM4099; the sequential
-      // rail requires the annotation.
-      if (isAdmittedLocalInitializer(tree, declarator, soleInitializer) &&
+      // rail requires the annotation. A string-concat fold (`"a" + "b"`) is
+      // admitted on its structural shape alone: the checker folds it to a
+      // string constant, so no annotation is needed to anchor a type.
+      if ((isAdmittedLocalInitializer(tree, declarator, soleInitializer) ||
+           isAdmittedStringConcatFold(tree, soleInitializer)) &&
           tree.contains(soleInitializer) &&
           (tree.node(soleInitializer).kind == ast::SyntaxKind::BinaryExpr ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression ||
@@ -1486,7 +1489,8 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
             tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
         if (!tree.contains(initializer)) return false;
         if (!isAdmittedLocalInitializer(tree, declaratorNode, initializer) &&
-            !isAdmittedStringLengthFold(tree, initializer)) {
+            !isAdmittedStringLengthFold(tree, initializer) &&
+            !isAdmittedStringConcatFold(tree, initializer)) {
           return false;
         }
       }

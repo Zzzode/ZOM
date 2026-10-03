@@ -841,11 +841,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 }
                 bindingLiteral = literalFact.literal.clone();
               } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
-                         binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
+                         binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
+                         binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
                 // A qualified enum variant access lowers to an integer constant
-                // (the variant discriminant), and a string-length fold lowers to
-                // the string's byte length. The body-checker emits a literal
-                // fact with the integer value.
+                // (the variant discriminant), a string-length fold lowers to the
+                // string's byte length, and a string-concat fold lowers to the
+                // concatenated string constant. The body-checker emits a literal
+                // fact with the folded value.
                 auto literalIndex = factIndex(facts.literals(), binding.initializer);
                 if (literalIndex == zc::none) { break; }
                 size_t literalSlot = 0;
@@ -3496,11 +3498,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             bindingLiteral = literalFact.literal.clone();
           } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
-                     binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
+                     binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
+                     binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
             // A qualified enum variant access `Enum::Variant` lowers to an
-            // integer constant (the variant discriminant), and a string-length
-            // fold `s.length` lowers to the string's byte length. The
-            // body-checker emits a literal fact with the integer value.
+            // integer constant (the variant discriminant), a string-length
+            // fold `s.length` lowers to the string's byte length, and a
+            // string-concat fold `"a" + "b"` lowers to the concatenated
+            // string constant. The body-checker emits a literal fact with
+            // the folded value.
             auto literalIndex = factIndex(facts.literals(), binding.initializer);
             if (literalIndex == zc::none) {
               rejected = true;
@@ -8345,6 +8350,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // initializer also carries one extra node-type fact for the IdentExpr
   // object beyond the per-binding local node type counted by localReturnCount.
   size_t foldedStringLengthCount = 0;
+  // Folded string-concat initializers (`let s = "a" + "b"`). The checker folds
+  // the concatenation to a string constant, so the binding carries a literal
+  // fact, but its BinaryExpr initializer also carries two extra node-type and
+  // literal facts for the two StringLiteralExpr operands beyond the per-binding
+  // baseline counted by localReturnCount.
+  size_t sequentialFoldedStringConcatCount = 0;
   // String-concat-fold returns (`return "a" + "b"`). Each carries two extra
   // node-type facts for the two StringLiteralExpr operands beyond the
   // per-function baseline.
@@ -8465,6 +8476,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               ++foldedStringLengthCount;
               break;
+            case SequentialInitializerKind::FoldedStringConcat:
+              // The folded constant is the literal-bearing slot; the two
+              // operand StringLiteralExpr nodes each carry one extra node-type
+              // and one extra literal fact beyond the per-binding baseline.
+              ++literalBearingSlots;
+              ++sequentialFoldedStringConcatCount;
+              break;
             case SequentialInitializerKind::Aggregate:
               ++aggregateCount;
               ++literalBearingSlots;
@@ -8556,6 +8574,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             case SequentialInitializerKind::FoldedStringLength:
               ++literalBearingSlots;
               ++foldedStringLengthCount;
+              break;
+            case SequentialInitializerKind::FoldedStringConcat:
+              ++literalBearingSlots;
+              ++sequentialFoldedStringConcatCount;
               break;
             case SequentialInitializerKind::Aggregate: {
               ++aggregateCount;
@@ -9070,10 +9092,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
       foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
-      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
-      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
+      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
@@ -9106,6 +9128,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(nestedForLoopAccumulatorReturnCount) * 3 +
           static_cast<int64_t>(chainedMatchLiteralExcess) +
           static_cast<int64_t>(foldedStringConcatCount) * 2 +
+          static_cast<int64_t>(sequentialFoldedStringConcatCount) * 2 +
           static_cast<int64_t>(foldedFloatCastCount)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {

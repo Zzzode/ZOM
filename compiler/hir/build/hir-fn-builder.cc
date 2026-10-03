@@ -392,6 +392,7 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
       case SequentialInitializerKind::Literal:
       case SequentialInitializerKind::EnumVariant:
       case SequentialInitializerKind::FoldedStringLength:
+      case SequentialInitializerKind::FoldedStringConcat:
         ZC_IF_SOME(literal, binding.literal) {
           ctx.addExpression(HirScalarLiteralExpression{initializerNodeId, binding.type,
                                                        literal.clone(), HirValueCategory::Value,

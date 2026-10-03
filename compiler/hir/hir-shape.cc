@@ -72,6 +72,29 @@ bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Structurally admits a `"a" + "b"` binary as a compile-time fold initializer.
+// Both operands must be string literals and the operator must be `+`. The fold
+// itself (concatenating the string bytes and emitting the constant) runs in the
+// body checker, so the shape layer only verifies the structure. This must be
+// checked before the PrimitiveBinary branch because `+` is a primitive binary
+// operator, but the checker emits a Literal fact (not Call/dispatch facts) for
+// a fold, so the primitive-binary lowering would reject it.
+bool isStringConcatFoldInitializer(const ast::Tree& tree, ast::NodeId initializer) {
+  if (!tree.contains(initializer) || tree.node(initializer).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  const auto& binary = tree.node(initializer);
+  if (static_cast<ast::BinaryOperatorKind>(binary.payload.words[ast::kBinaryExprOpWord]) !=
+      ast::BinaryOperatorKind::Add) {
+    return false;
+  }
+  const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+  return tree.contains(left) && tree.contains(right) &&
+         tree.node(left).kind == ast::SyntaxKind::StringLiteralExpr &&
+         tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
+}
+
 // Structurally admits one for-loop accumulator body write: an
 // `<ident> = <binary>;` assignment whose binary operands are leaves
 // (identifier or scalar literal), with at least one identifier. The builder
@@ -709,6 +732,12 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
           break;
         }
       }
+    } else if (isStringConcatFoldInitializer(tree, initializer)) {
+      // A string-concat fold `"a" + "b"`. The checker folds the concatenation
+      // to a string constant; the builder lowers it to a scalar literal. This
+      // must precede the PrimitiveBinary branch because `+` is a primitive
+      // binary operator, but the fold carries no Call/dispatch facts.
+      kind = SequentialInitializerKind::FoldedStringConcat;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::BinaryExpr &&
                isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
                    tree.node(initializer).payload.words[ast::kBinaryExprOpWord]))) {
@@ -2521,7 +2550,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
              (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary));
+              shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
+              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

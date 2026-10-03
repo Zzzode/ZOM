@@ -900,6 +900,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // Folded string-length bindings carry one extra node-type fact for the
   // IdentExpr object of their MemberExpression initializer.
   size_t sequentialFoldedStringLengthCount = 0;
+  // Folded string-concat bindings (`let s = "a" + "b"`) carry two extra
+  // node-type and literal facts for the two StringLiteralExpr operands beyond
+  // the per-binding baseline. The folded constant itself is counted by
+  // sequentialLiteralInitializers.
+  size_t sequentialFoldedStringConcatCount = 0;
   size_t sequentialLocalCount = 0;
   size_t sequentialFunctionCount = 0;
   size_t sequentialParameterReturns = 0;
@@ -1004,6 +1009,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 ++deadLiterals;
                 ++deadNodeTypesExtra;
                 break;
+              case SequentialInitializerKind::FoldedStringConcat:
+                // The folded constant plus the two operand literals, and the
+                // two operand node types beyond the per-binding baseline.
+                deadLiterals += 3;
+                deadNodeTypesExtra += 2;
+                break;
               case SequentialInitializerKind::Aggregate: {
                 ++deadAggregateCount;
                 auto aggregateIndex = factIndex(facts.aggregates(), binding.initializer);
@@ -1092,6 +1103,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             case SequentialInitializerKind::FoldedStringLength:
               ++sequentialLiteralInitializers;
               ++sequentialFoldedStringLengthCount;
+              break;
+            case SequentialInitializerKind::FoldedStringConcat:
+              ++sequentialLiteralInitializers;
+              ++sequentialFoldedStringConcatCount;
               break;
             case SequentialInitializerKind::Aggregate:
               ++sequentialAggregateInitializers;
@@ -1629,7 +1644,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
               discardedStatementCallCount + sequentialCastInitializers +
               sequentialFoldedStringLengthCount + foldedStringConcatCount * 2 +
-              foldedFloatCastCount + sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+              sequentialFoldedStringConcatCount * 2 + foldedFloatCastCount +
+              sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
               sequentialMatchExprDefaultArmCount - leadingLocalConditionalUnaryCount -
               leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
               postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
@@ -1656,6 +1672,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               static_cast<int64_t>(chainedMatchLiteralExcess) +
               static_cast<int64_t>(chainedEnumMatchLiteralExcess) +
               static_cast<int64_t>(foldedStringConcatCount) * 2 +
+              static_cast<int64_t>(sequentialFoldedStringConcatCount) * 2 +
               static_cast<int64_t>(foldedFloatCastCount) ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
@@ -2384,7 +2401,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         if (binding.initializerKind == SequentialInitializerKind::Literal ||
             binding.initializerKind == SequentialInitializerKind::EnumVariant ||
-            binding.initializerKind == SequentialInitializerKind::FoldedStringLength) {
+            binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
+            binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
           zc::Maybe<const HirScalarLiteralExpression&> literal;
           for (const auto& expression : candidate.impl->expressions) {
             if (expression.node != hirId(initializerNodeOrdinal)) continue;

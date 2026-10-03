@@ -501,6 +501,32 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
   }
   if (!returnsLocal) { return zc::none; }
 
+  // Build the single entry block returning the constant. The source local is
+  // folded into the terminator and not declared in LIR. The carrier and
+  // terminator kind depend on the constant's value type.
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+
+  auto stringBytes = constant.value.stringValue();
+  if (stringBytes != zc::none) {
+    auto carrier = stringCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    const auto bytes = ZC_REQUIRE_NONNULL(stringBytes);
+    zc::Vector<uint8_t> lirBytes;
+    lirBytes.reserve(bytes.size());
+    for (const auto byte : bytes) { lirBytes.add(byte); }
+    auto lirConstant = StringConstant::from(carrierValue, zc::mv(lirBytes));
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+    zc::Vector<Function> functions;
+    functions.add(
+        Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
   // Resolve the integer carrier and constant value.
   auto carrier = integerCarrierFor(function.resultType, semanticTypes);
   if (carrier == zc::none) { return zc::none; }
@@ -514,11 +540,6 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
   auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
   if (lirConstant == zc::none) { return zc::none; }
 
-  // Build the single entry block returning the constant. The source local is
-  // folded into the terminator and not declared in LIR.
-  auto entryId = LirBlockId::fromOrdinal(1);
-  if (entryId == zc::none) { return zc::none; }
-  zc::Vector<BasicBlock> blocks;
   blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
                         Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
 

@@ -5455,6 +5455,15 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           production = BodyProductionKind::StructLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
+          // A literal-vs-literal `+` on two string literals folds to the
+          // concatenated string constant at compile time. This wins over the
+          // primitive-binary classification below, which would otherwise claim
+          // the annotated form (`let s: str = "a" + "b"`) via the
+          // literal-vs-literal-annotated path and reject it with ZOM4028.
+          if (isStringConcatFoldSite(tree, node)) {
+            production = BodyProductionKind::StringConcatFold;
+            break;
+          }
           // Admit the six relational comparisons (result bool, any position),
           // the twelve arithmetic/bitwise operators (result operand type, only
           // outside a condition), and the two logical short-circuit operators
@@ -5520,14 +5529,6 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                 (leftIsReference || rightIsReference || leftIsNested || rightIsNested ||
                  leftIsReceiverField || rightIsReceiverField || literalVsLiteralAnnotated)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
-            }
-            // A literal-vs-literal `+` on two string literals has no reference
-            // operand to anchor the operand type, so the primitive-binary path
-            // above leaves it unsupported. Fold it to the concatenated string
-            // constant at compile time instead.
-            if (production == BodyProductionKind::Unsupported &&
-                isStringConcatFoldSite(tree, node)) {
-              production = BodyProductionKind::StringConcatFold;
             }
           }
           break;

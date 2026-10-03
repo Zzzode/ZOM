@@ -1,0 +1,4 @@
+fun entry() -> str {
+  let s = "hello" + " world";
+  return s;
+}

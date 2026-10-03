@@ -251,6 +251,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-arith-cond-consumer/Zom.toml::float_arith_cond_consumer::float_arith_cond_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -270,7 +272,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --string-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::hello"
       --string-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::hello world")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::hello world"
+      --string-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer::hello world")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 180)
 endif()
 
@@ -410,6 +414,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-cast-fold-consumer/Zom.toml::float_cast_fold_consumer::float_cast_fold_consumer::1"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::0"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer::0"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)
