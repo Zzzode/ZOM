@@ -558,6 +558,30 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one shared-receiver devirtualized call module with one
+  /// standalone leaf to a three-function LIR module.
+  ///
+  /// Admits a three-function module: a Function-sourced caller with one
+  /// aggregate-initialized owner local, a shared borrow temporary, and a call
+  /// result temporary (folding to `zom.module_init`) that devirtualizes one
+  /// interface method call onto a concrete impl; a Method-sourced callee with
+  /// one shared receiver-parameter local whose single block returns a scalar
+  /// constant (`zom.callee`); and a second Method-sourced leaf of the identical
+  /// constant-return shape that no call references (`zom.leaf`). The caller
+  /// calls index 1 and the leaf is emitted but never targeted. This is the
+  /// two-impl devirtualization slice: one interface with two impls where the
+  /// erased call statically resolves to one impl method, leaving the other as
+  /// a standalone leaf. Every other shape returns none.
+  ///
+  /// \param caller Verified caller MIR function (two-block shared receiver call).
+  /// \param callee Verified method MIR function (constant return, receiver param).
+  /// \param leaf Verified standalone method MIR function (constant return shape).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered three-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerReceiverCallModuleWithLeaf(
+      const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// Lowers the verified caller-plus-method pair when the method is the
   /// four-block conditional shape: one shared receiver pointer parameter, one
   /// bool ordinary parameter, one FunctionResult local, and literal arms. The

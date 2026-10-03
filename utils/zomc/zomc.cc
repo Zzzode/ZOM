@@ -1693,6 +1693,14 @@ private:
                   ZC_IF_SOME(leaf, leafIndex) {
                     lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
                         functions[caller], functions[callee], functions[leaf], types);
+                    // Two-impl devirtualization: the caller/callee/leaf triple
+                    // is the same identification, but the callee and leaf are
+                    // Method-sourced constant-return functions (one receiver
+                    // parameter local each) rather than zero-local functions.
+                    if (lir == zc::none) {
+                      lir = lir::MirToLirLowering::lowerReceiverCallModuleWithLeaf(
+                          functions[caller], functions[callee], functions[leaf], types);
+                    }
                   }
                 }
               }
@@ -1714,6 +1722,7 @@ private:
                   "field-arithmetic method, shared-receiver conditional method (constant and "
                   "comparison argument), shared-receiver "
                   "self-call, three-function direct-call-with-leaf, "
+                  "two-impl devirtualization-with-leaf, "
                   "void-setter-then-value-getter receiver-call, and "
                   "string literal return slices)."));
     }

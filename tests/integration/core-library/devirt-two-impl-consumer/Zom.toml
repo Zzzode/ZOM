@@ -1,0 +1,8 @@
+[package]
+name = "devirt_two_impl_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "devirt_two_impl_consumer"
+path = "src/main.zom"

@@ -1,0 +1,29 @@
+// Devirtualization fixture with two impls of one interface. The dyn-trait
+// local `a` has a statically known concrete type (Dog) at the erasure site,
+// so the method call `a.speak()` resolves to the direct impl method
+// `Dog::speak` and returns 41. The second impl (`Cat::speak`) is a
+// standalone leaf that no call references.
+interface Animal {
+  fun speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+struct Cat {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fun speak(this) -> i32 { return 41; }
+}
+
+impl Animal for Cat {
+  fun speak(this) -> i32 { return 7; }
+}
+
+fun entry() -> i32 {
+  let a: dyn Animal = Dog { tag: 0 };
+  return a.speak();
+}
