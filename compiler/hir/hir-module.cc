@@ -12425,8 +12425,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
       } else if (signature.scope.variant()
                      .is<checker::signature::ModuleDefinitionSignatureScope>()) {
-        implOwner = implMethodOwner(sourceDefinition, registries,
-                                    candidate.impl->checkedModule.localSignatureFacts());
+        implOwner =
+            implMethodOwner(sourceDefinition, registries,
+                            candidate.impl->checkedModule.localSignatureFacts().implHeads());
         if (implOwner == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,

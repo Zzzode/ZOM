@@ -365,13 +365,13 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
 zc::Maybe<identity::DefId> implMethodOwner(
     const binder::MaterializedDefinitionInventoryEntry& definition,
     const checker::CheckerIdentityAuthority& identities,
-    const checker::signature::VerifiedSignatureFacts& localSignatures) {
+    zc::ArrayPtr<const checker::signature::ImplHead> implHeads) {
   for (const auto& owner : definition.record.owners()) {
     if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) continue;
     ZC_IF_SOME(key, owner.implKey()) {
       ZC_IF_SOME(entry, identities.implementation(key)) {
         const auto implId = entry.handle();
-        for (const auto& head : localSignatures.implHeads()) {
+        for (const auto& head : implHeads) {
           if (head.impl != implId) continue;
           if (!head.head.variant().is<checker::signature::NominalTypeHead>()) return zc::none;
           return head.head.variant().get<checker::signature::NominalTypeHead>().definition;

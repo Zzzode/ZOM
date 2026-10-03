@@ -2990,8 +2990,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           // ModuleDefinitionSignatureScope from the signature facts because
           // their enclosing owner is an impl, not a definition. Resolve the
           // concrete self-type DefId from the verified impl heads.
-          methodOwner =
-              implMethodOwner(definition, registries, checkedModule.localSignatureFacts());
+          methodOwner = implMethodOwner(definition, registries,
+                                        checkedModule.localSignatureFacts().implHeads());
           if (methodOwner == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,

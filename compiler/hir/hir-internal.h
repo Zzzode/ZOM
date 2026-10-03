@@ -250,7 +250,7 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
 zc::Maybe<identity::DefId> implMethodOwner(
     const binder::MaterializedDefinitionInventoryEntry& definition,
     const checker::CheckerIdentityAuthority& identities,
-    const checker::signature::VerifiedSignatureFacts& localSignatures);
+    zc::ArrayPtr<const checker::signature::ImplHead> implHeads);
 
 /// \brief Reports whether an annotated-initializer erasure is admitted because
 /// every read of the erased local is a receiver of a devirtualized method call
