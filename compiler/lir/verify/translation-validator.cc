@@ -1319,12 +1319,30 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 // carrier is resolved from the declared destination slot, not the
                 // statement's left operand, which may be a constant. BitAnd and
                 // BitOr admit a one-bit carrier because the logical short-circuit
-                // operators (`&&`, `||`) lower to them on bool operands.
+                // operators (`&&`, `||`) lower to them on bool operands. Float
+                // carriers admit only the five IEEE-754 arithmetic operations
+                // (Add, Sub, Mul, Div, Rem); bitwise and shift operations have no
+                // float semantics.
                 const bool admitsBit1 = arithmetic.op == mir::MirArithmeticOperator::BitAnd ||
                                         arithmetic.op == mir::MirArithmeticOperator::BitOr;
+                const bool admitsFloat = arithmetic.op == mir::MirArithmeticOperator::Add ||
+                                         arithmetic.op == mir::MirArithmeticOperator::Sub ||
+                                         arithmetic.op == mir::MirArithmeticOperator::Mul ||
+                                         arithmetic.op == mir::MirArithmeticOperator::Div ||
+                                         arithmetic.op == mir::MirArithmeticOperator::Rem;
                 const ValueType* resultCarrier = lirSlotCarrier(lir, destinationOrdinal);
-                if (resultCarrier == nullptr || resultCarrier->kind() != ValueTypeKind::Integer ||
-                    (resultCarrier->integerWidth() == IntegerBitWidth::Bit1 && !admitsBit1)) {
+                if (resultCarrier == nullptr) {
+                  return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                if (resultCarrier->kind() == ValueTypeKind::Float) {
+                  if (!admitsFloat) {
+                    return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
+                                 statementIndex);
+                  }
+                } else if (resultCarrier->kind() != ValueTypeKind::Integer ||
+                           (resultCarrier->integerWidth() == IntegerBitWidth::Bit1 &&
+                            !admitsBit1)) {
                   return fault(TranslationFaultKind::SlotSetMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }

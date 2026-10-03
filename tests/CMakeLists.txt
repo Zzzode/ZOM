@@ -248,6 +248,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-compare-consumer/Zom.toml::float_compare_consumer::float_compare_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-arith-cond-consumer/Zom.toml::float_arith_cond_consumer::float_arith_cond_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
@@ -402,6 +404,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-ops-consumer/Zom.toml::float_ops_consumer::float_ops_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-compare-consumer/Zom.toml::float_compare_consumer::float_compare_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-arith-cond-consumer/Zom.toml::float_arith_cond_consumer::float_arith_cond_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::0"
       --reject-case

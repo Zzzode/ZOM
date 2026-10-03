@@ -1,0 +1,8 @@
+[package]
+name = "float_arith_cond_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "float_arith_cond_consumer"
+path = "src/main.zom"

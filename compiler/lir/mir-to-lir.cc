@@ -2833,8 +2833,6 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     if (localCarrier == zc::none) { return zc::none; }
     const auto localCarrierValue = ZC_REQUIRE_NONNULL(localCarrier);
     if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
-      // Float arithmetic is outside this slice; fail closed.
-      if (localCarrierValue.kind() == ValueTypeKind::Float) { return zc::none; }
       const auto& arithmetic = assignment.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
       if (op == zc::none) { return zc::none; }

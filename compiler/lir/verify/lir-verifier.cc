@@ -294,16 +294,30 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             break;
           }
           case StatementKind::Arithmetic: {
-            // The destination and both operands share one integer carrier; the
+            // The destination and both operands share one carrier; the
             // arithmetic result is the same width as its operands, unlike a
             // comparison's one-bit result. BitAnd and BitOr admit a one-bit
-            // destination because the logical short-circuit operators (`&&`,
-            // `||`) lower to them on bool operands; every other arithmetic
-            // operation stays outside the one-bit subset.
+            // integer destination because the logical short-circuit operators
+            // (`&&`, `||`) lower to them on bool operands; every other
+            // arithmetic operation stays outside the one-bit subset. Float
+            // carriers admit only the five IEEE-754 arithmetic operations
+            // (Add, Sub, Mul, Div, Rem); bitwise and shift operations have no
+            // float semantics.
             const bool admitsBit1 = statement.arithmeticOp() == ArithmeticOp::BitAnd ||
                                     statement.arithmeticOp() == ArithmeticOp::BitOr;
-            if (destinationCarrier.kind() != ValueTypeKind::Integer ||
-                (destinationCarrier.integerWidth() == IntegerBitWidth::Bit1 && !admitsBit1)) {
+            const bool admitsFloat = statement.arithmeticOp() == ArithmeticOp::Add ||
+                                     statement.arithmeticOp() == ArithmeticOp::Sub ||
+                                     statement.arithmeticOp() == ArithmeticOp::Mul ||
+                                     statement.arithmeticOp() == ArithmeticOp::Div ||
+                                     statement.arithmeticOp() == ArithmeticOp::Rem;
+            if (destinationCarrier.kind() == ValueTypeKind::Float) {
+              if (!admitsFloat) {
+                return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                             statementIndex);
+              }
+            } else if (destinationCarrier.kind() != ValueTypeKind::Integer ||
+                       (destinationCarrier.integerWidth() == IntegerBitWidth::Bit1 &&
+                        !admitsBit1)) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
                            statementIndex);
             }
