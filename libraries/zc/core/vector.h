@@ -130,6 +130,66 @@ public:
 
   inline void removeLast() { builder.removeLast(); }
 
+  /// \brief Append a value to the end, moving it in.
+  /// \param value Value to append.
+  inline void push(T value) { add(zc::mv(value)); }
+
+  /// \brief Remove and return the last element.
+  /// \return The removed element, or zc::none when the vector is empty. Never
+  ///         reads past the end, matching Rust Vec::pop semantics.
+  inline Maybe<T> pop() {
+    if (empty()) return zc::none;
+    T value = zc::mv(back());
+    removeLast();
+    return value;
+  }
+
+  /// \brief Check whether the vector contains an element equal to `match`.
+  /// \param match Value to search for.
+  /// \return True if an equal element exists.
+  inline bool contains(const T& match) const { return asPtr().findFirst(match) != zc::none; }
+
+  /// \brief Find the index of the first element equal to `match`.
+  /// \param match Value to search for.
+  /// \return The index, or zc::none if no equal element exists.
+  inline Maybe<size_t> find(const T& match) const { return asPtr().findFirst(match); }
+
+  /// \brief Remove the element at `index`, shifting later elements left by one.
+  /// \param index Index of the element to remove. Must be less than size().
+  inline void removeAt(size_t index) {
+    ZC_IREQUIRE(index < size(), "Out-of-bounds Vector::removeAt().");
+    for (size_t i = index; i + 1 < size(); i++) { builder[i] = zc::mv(builder[i + 1]); }
+    removeLast();
+  }
+
+  /// \brief Insert `value` at `index`, shifting later elements right by one.
+  /// \param index Position at which to insert. Must be at most size().
+  /// \param value Value to insert.
+  inline void insert(size_t index, T&& value) {
+    ZC_IREQUIRE(index <= size(), "Out-of-bounds Vector::insert().");
+    if (index == size()) {
+      add(zc::mv(value));
+      return;
+    }
+    add(zc::mv(value));
+    T temp = zc::mv(builder[size() - 1]);
+    for (size_t i = size() - 1; i > index; i--) { builder[i] = zc::mv(builder[i - 1]); }
+    builder[index] = zc::mv(temp);
+  }
+
+  /// \brief Reverse the order of elements in place.
+  inline void reverse() {
+    size_t i = 0;
+    size_t j = size();
+    while (i + 1 < j) {
+      --j;
+      T temp = zc::mv(builder[i]);
+      builder[i] = zc::mv(builder[j]);
+      builder[j] = zc::mv(temp);
+      ++i;
+    }
+  }
+
   inline void resize(size_t size) {
     if (size > builder.capacity()) grow(size);
     builder.resize(size);
@@ -162,8 +222,11 @@ private:
     if (builder.size() > newSize) { builder.truncate(newSize); }
     ArrayBuilder<T> newBuilder;
     if (newSize != 0) {
-      ZC_IF_SOME(r, resource) { newBuilder = resourceHeapArrayBuilder<T>(r, newSize); }
-      else { newBuilder = heapArrayBuilder<T>(newSize); }
+      ZC_IF_SOME(r, resource) {
+        newBuilder = resourceHeapArrayBuilder<T>(r, newSize);
+      } else {
+        newBuilder = heapArrayBuilder<T>(newSize);
+      }
     }
     if (newSize != 0) { newBuilder.addAll(zc::mv(builder)); }
     builder = zc::mv(newBuilder);

@@ -36,6 +36,9 @@ class LiteralStringConst;
 class String;
 class ConstString;
 
+template <typename T>
+class Vector;
+
 class StringTree;  // string-tree.h
 }  // namespace zc
 
@@ -71,6 +74,10 @@ namespace zc {
 // NUL bytes are allowed to appear before the end of the string.  The only requirement is that
 // a NUL byte appear immediately after the last byte of the content.  This terminator byte is not
 // counted in the string's size.
+
+inline bool isAsciiWhitespace(char c) {
+  return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
 
 class StringPtr {
 public:
@@ -168,6 +175,43 @@ public:
   // string is a substring of any string.
 
   bool contains(const StringPtr& other) const { return find(other) != zc::none; }
+
+  Vector<String> split(char delimiter) const;
+  // Split on every occurrence of `delimiter`, returning owned substrings.
+  // Empty segments are preserved for leading, trailing, and consecutive delimiters,
+  // matching Rust and Python semantics.
+
+  Vector<String> split(const StringPtr& delimiter) const;
+  // Split on every occurrence of `delimiter`, returning owned substrings.
+  // Empty segments are preserved for leading, trailing, and consecutive delimiters,
+  // matching Rust and Python semantics. An empty delimiter returns a single-element
+  // vector containing a copy of this string.
+
+  String trim() const;
+  // Return a copy with ASCII whitespace removed from both ends.
+
+  String trimEnd() const;
+  // Return a copy with ASCII whitespace removed from the end.
+
+  inline StringPtr trimStart() const {
+    size_t start = 0;
+    while (start < size() && isAsciiWhitespace(operator[](start))) start++;
+    return slice(start);
+  }
+  // Return a suffix with ASCII whitespace removed from the start. The result borrows
+  // from this string and is valid as long as this string is alive.
+
+  String toUpper() const;
+  // Return a copy with ASCII lowercase letters (a-z) converted to uppercase.
+  // Non-ASCII bytes are passed through unchanged.
+
+  String toLower() const;
+  // Return a copy with ASCII uppercase letters (A-Z) converted to lowercase.
+  // Non-ASCII bytes are passed through unchanged.
+
+  String replace(const StringPtr& from, const StringPtr& to) const;
+  // Return a copy with every non-overlapping occurrence of `from` replaced by `to`.
+  // If `from` is empty, a copy of this string is returned unchanged.
 
   template <typename T>
   T parseAs() const;
@@ -369,6 +413,17 @@ public:
 
   bool contains(const StringPtr& other) const { return asPtr().contains(other); }
 
+  Vector<String> split(char delimiter) const;
+  Vector<String> split(const StringPtr& delimiter) const;
+  inline String trim() const { return asPtr().trim(); }
+  inline String trimEnd() const { return asPtr().trimEnd(); }
+  inline StringPtr trimStart() const { return asPtr().trimStart(); }
+  inline String toUpper() const { return asPtr().toUpper(); }
+  inline String toLower() const { return asPtr().toLower(); }
+  inline String replace(const StringPtr& from, const StringPtr& to) const {
+    return asPtr().replace(from, to);
+  }
+
   inline StringPtr slice(size_t start) const ZC_LIFETIMEBOUND {
     return StringPtr(*this).slice(start);
   }
@@ -499,6 +554,17 @@ public:
   // string is a substring of any string.
 
   bool contains(const StringPtr& other) const { return asPtr().contains(other); }
+
+  Vector<String> split(char delimiter) const;
+  Vector<String> split(const StringPtr& delimiter) const;
+  inline String trim() const { return asPtr().trim(); }
+  inline String trimEnd() const { return asPtr().trimEnd(); }
+  inline StringPtr trimStart() const { return asPtr().trimStart(); }
+  inline String toUpper() const { return asPtr().toUpper(); }
+  inline String toLower() const { return asPtr().toLower(); }
+  inline String replace(const StringPtr& from, const StringPtr& to) const {
+    return asPtr().replace(from, to);
+  }
 
   inline StringPtr slice(size_t start) const ZC_LIFETIMEBOUND {
     return StringPtr(*this).slice(start);
@@ -1097,8 +1163,11 @@ concept Stringifiable = requires(_::Stringifier s, const T& t) {
 template <typename T>
   requires Stringifiable<T>
 zc::String ZC_STRINGIFY(const zc::Maybe<T>& maybe) {
-  ZC_IF_SOME(val, maybe) { return str(val); }
-  else { return str("(none)"); }
+  ZC_IF_SOME(val, maybe) {
+    return str(val);
+  } else {
+    return str("(none)");
+  }
 }
 
 }  // namespace zc

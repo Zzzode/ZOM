@@ -573,6 +573,108 @@ static_assert(StringPtr(HELLO_WORLD.begin(), HELLO_WORLD.size()).size() == 11);
 static_assert(HELLO_WORLD > StringPtr());
 static_assert(StringPtr("const"_zc).size() == 5);
 
+TEST(String, SplitChar) {
+  String text = heapString("a,b,c");
+  Vector<String> parts = text.split(',');
+  EXPECT_EQ(3u, parts.size());
+  EXPECT_EQ("a", parts[0]);
+  EXPECT_EQ("b", parts[1]);
+  EXPECT_EQ("c", parts[2]);
+}
+
+TEST(String, SplitCharPreservesEmptySegments) {
+  String text = heapString(",a,,b,");
+  Vector<String> parts = text.split(',');
+  EXPECT_EQ(5u, parts.size());
+  EXPECT_EQ("", parts[0]);
+  EXPECT_EQ("a", parts[1]);
+  EXPECT_EQ("", parts[2]);
+  EXPECT_EQ("b", parts[3]);
+  EXPECT_EQ("", parts[4]);
+}
+
+TEST(String, SplitString) {
+  String text = heapString("a::b::c");
+  Vector<String> parts = text.split("::"_zc);
+  EXPECT_EQ(3u, parts.size());
+  EXPECT_EQ("a", parts[0]);
+  EXPECT_EQ("b", parts[1]);
+  EXPECT_EQ("c", parts[2]);
+}
+
+TEST(String, SplitEmptyDelimiterReturnsSingleElement) {
+  String text = heapString("abc");
+  Vector<String> parts = text.split(""_zc);
+  EXPECT_EQ(1u, parts.size());
+  EXPECT_EQ("abc", parts[0]);
+}
+
+TEST(String, TrimRemovesWhitespace) {
+  String text = heapString("  hello  ");
+  String trimmed = text.trim();
+  EXPECT_EQ("hello", trimmed);
+}
+
+TEST(String, TrimHandlesNoWhitespace) {
+  String text = heapString("hello");
+  String trimmed = text.trim();
+  EXPECT_EQ("hello", trimmed);
+}
+
+TEST(String, TrimHandlesAllWhitespace) {
+  String text = heapString("   ");
+  String trimmed = text.trim();
+  EXPECT_EQ("", trimmed);
+}
+
+TEST(String, TrimEndRemovesTrailingWhitespace) {
+  String text = heapString("hello  ");
+  String trimmed = text.trimEnd();
+  EXPECT_EQ("hello", trimmed);
+}
+
+TEST(String, TrimStartRemovesLeadingWhitespace) {
+  String text = heapString("  hello");
+  StringPtr trimmed = text.trimStart();
+  EXPECT_EQ("hello", trimmed);
+}
+
+TEST(String, ToUpperConvertsLowercase) {
+  String text = heapString("Hello World!");
+  String upper = text.toUpper();
+  EXPECT_EQ("HELLO WORLD!", upper);
+}
+
+TEST(String, ToLowerConvertsUppercase) {
+  String text = heapString("Hello World!");
+  String lower = text.toLower();
+  EXPECT_EQ("hello world!", lower);
+}
+
+TEST(String, ReplaceSubstitutesAllOccurrences) {
+  String text = heapString("hello world hello");
+  String replaced = text.replace("hello"_zc, "hi"_zc);
+  EXPECT_EQ("hi world hi", replaced);
+}
+
+TEST(String, ReplaceWithLongerString) {
+  String text = heapString("a.b");
+  String replaced = text.replace("."_zc, "::"_zc);
+  EXPECT_EQ("a::b", replaced);
+}
+
+TEST(String, ReplaceNoMatchReturnsCopy) {
+  String text = heapString("hello");
+  String replaced = text.replace("xyz"_zc, "abc"_zc);
+  EXPECT_EQ("hello", replaced);
+}
+
+TEST(String, ReplaceEmptyFromReturnsCopy) {
+  String text = heapString("hello");
+  String replaced = text.replace(""_zc, "x"_zc);
+  EXPECT_EQ("hello", replaced);
+}
+
 }  // namespace
 }  // namespace _
 }  // namespace zc

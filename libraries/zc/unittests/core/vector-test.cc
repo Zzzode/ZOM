@@ -209,5 +209,123 @@ TEST(ResourceVector, ReleasedArrayRetainsResourceDisposer) {
   EXPECT_EQ(0u, resource.currentAllocatedBytes());
 }
 
+TEST(Vector, PushAppendsValue) {
+  Vector<int> values;
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  EXPECT_EQ(3u, values.size());
+  EXPECT_EQ(1, values[0]);
+  EXPECT_EQ(2, values[1]);
+  EXPECT_EQ(3, values[2]);
+}
+
+TEST(Vector, PopReturnsLastValue) {
+  Vector<int> values;
+  values.push(10);
+  values.push(20);
+  Maybe<int> last = values.pop();
+  ZC_EXPECT(last == 20);
+  EXPECT_EQ(1u, values.size());
+  last = values.pop();
+  ZC_EXPECT(last == 10);
+  EXPECT_TRUE(values.empty());
+}
+
+TEST(Vector, PopOnEmptyReturnsNone) {
+  Vector<int> values;
+  Maybe<int> result = values.pop();
+  EXPECT_TRUE(result == zc::none);
+}
+
+TEST(Vector, ContainsFindsElement) {
+  Vector<int> values;
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  EXPECT_TRUE(values.contains(2));
+  EXPECT_FALSE(values.contains(5));
+}
+
+TEST(Vector, FindReturnsIndex) {
+  Vector<int> values;
+  values.push(10);
+  values.push(20);
+  values.push(30);
+  Maybe<size_t> idx = values.find(20);
+  ZC_EXPECT(idx == 1u);
+  idx = values.find(99);
+  EXPECT_TRUE(idx == zc::none);
+}
+
+TEST(Vector, RemoveAtShiftsElements) {
+  Vector<int> values;
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  values.push(4);
+  values.removeAt(1);
+  EXPECT_EQ(3u, values.size());
+  EXPECT_EQ(1, values[0]);
+  EXPECT_EQ(3, values[1]);
+  EXPECT_EQ(4, values[2]);
+}
+
+TEST(Vector, InsertShiftsElementsRight) {
+  Vector<int> values;
+  values.push(1);
+  values.push(3);
+  values.insert(1, 2);
+  EXPECT_EQ(3u, values.size());
+  EXPECT_EQ(1, values[0]);
+  EXPECT_EQ(2, values[1]);
+  EXPECT_EQ(3, values[2]);
+}
+
+TEST(Vector, InsertAtEndAppends) {
+  Vector<int> values;
+  values.push(1);
+  values.insert(1, 2);
+  EXPECT_EQ(2u, values.size());
+  EXPECT_EQ(1, values[0]);
+  EXPECT_EQ(2, values[1]);
+}
+
+TEST(Vector, ReverseReversesInPlace) {
+  Vector<int> values;
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  values.push(4);
+  values.reverse();
+  EXPECT_EQ(4, values[0]);
+  EXPECT_EQ(3, values[1]);
+  EXPECT_EQ(2, values[2]);
+  EXPECT_EQ(1, values[3]);
+}
+
+TEST(Vector, ReverseOddLength) {
+  Vector<int> values;
+  values.push(1);
+  values.push(2);
+  values.push(3);
+  values.reverse();
+  EXPECT_EQ(3, values[0]);
+  EXPECT_EQ(2, values[1]);
+  EXPECT_EQ(1, values[2]);
+}
+
+TEST(Vector, ReverseEmptyAndSingle) {
+  Vector<int> empty;
+  empty.reverse();
+  EXPECT_TRUE(empty.empty());
+
+  Vector<int> single;
+  single.push(42);
+  single.reverse();
+  EXPECT_EQ(1u, single.size());
+  EXPECT_EQ(42, single[0]);
+}
+
 }  // namespace
 }  // namespace zc

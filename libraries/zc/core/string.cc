@@ -29,6 +29,7 @@
 #include <stdlib.h>
 
 #include "zc/core/debug.h"
+#include "zc/core/vector.h"
 #if !defined(_WIN32)
 #include <string.h>
 #endif
@@ -823,6 +824,120 @@ Maybe<size_t> StringPtr::find(const StringPtr& other) const {
 
   return zc::none;
 #endif
+}
+
+Vector<String> StringPtr::split(char delimiter) const {
+  Vector<String> result;
+  size_t start = 0;
+  for (size_t i = 0; i < size(); i++) {
+    if (operator[](i) == delimiter) {
+      result.add(heapString(slice(start, i)));
+      start = i + 1;
+    }
+  }
+  result.add(heapString(slice(start, size())));
+  return result;
+}
+
+Vector<String> StringPtr::split(const StringPtr& delimiter) const {
+  Vector<String> result;
+  if (delimiter.size() == 0) {
+    result.add(heapString(*this));
+    return result;
+  }
+  size_t start = 0;
+  for (;;) {
+    Maybe<size_t> found = slice(start).find(delimiter);
+    if (found == zc::none) break;
+    ZC_IF_SOME(offset, found) {
+      size_t pos = start + offset;
+      result.add(heapString(slice(start, pos)));
+      start = pos + delimiter.size();
+    }
+  }
+  result.add(heapString(slice(start, size())));
+  return result;
+}
+
+String StringPtr::trim() const {
+  size_t start = 0;
+  while (start < size() && isAsciiWhitespace(operator[](start))) start++;
+  size_t end = size();
+  while (end > start && isAsciiWhitespace(operator[](end - 1))) end--;
+  return heapString(slice(start, end));
+}
+
+String StringPtr::trimEnd() const {
+  size_t end = size();
+  while (end > 0 && isAsciiWhitespace(operator[](end - 1))) end--;
+  return heapString(slice(0, end));
+}
+
+String StringPtr::toUpper() const {
+  String result = heapString(size());
+  for (size_t i = 0; i < size(); i++) {
+    char c = operator[](i);
+    result[i] = (c >= 'a' && c <= 'z') ? static_cast<char>(c - 32) : c;
+  }
+  return result;
+}
+
+String StringPtr::toLower() const {
+  String result = heapString(size());
+  for (size_t i = 0; i < size(); i++) {
+    char c = operator[](i);
+    result[i] = (c >= 'A' && c <= 'Z') ? static_cast<char>(c + 32) : c;
+  }
+  return result;
+}
+
+String StringPtr::replace(const StringPtr& from, const StringPtr& to) const {
+  if (from.size() == 0) return heapString(*this);
+
+  // Count non-overlapping occurrences to pre-allocate the result.
+  size_t count = 0;
+  size_t searchFrom = 0;
+  for (;;) {
+    Maybe<size_t> found = slice(searchFrom).find(from);
+    if (found == zc::none) break;
+    ZC_IF_SOME(offset, found) {
+      count++;
+      searchFrom += offset + from.size();
+    }
+  }
+
+  if (count == 0) return heapString(*this);
+
+  size_t resultSize = size() - count * from.size() + count * to.size();
+  String result = heapString(resultSize);
+  size_t pos = 0;
+  size_t src = 0;
+  for (;;) {
+    Maybe<size_t> found = slice(src).find(from);
+    if (found == zc::none) {
+      size_t remaining = size() - src;
+      memcpy(result.begin() + pos, begin() + src, remaining);
+      break;
+    }
+    ZC_IF_SOME(offset, found) {
+      size_t absPos = src + offset;
+      size_t before = absPos - src;
+      memcpy(result.begin() + pos, begin() + src, before);
+      pos += before;
+      memcpy(result.begin() + pos, to.begin(), to.size());
+      pos += to.size();
+      src = absPos + from.size();
+    }
+  }
+  return result;
+}
+
+Vector<String> String::split(char delimiter) const { return asPtr().split(delimiter); }
+Vector<String> String::split(const StringPtr& delimiter) const { return asPtr().split(delimiter); }
+
+Vector<String> ConstString::split(char delimiter) const { return asPtr().split(delimiter); }
+Vector<String> ConstString::split(const StringPtr& delimiter) const {
+  return asPtr().split(delimiter);
 }
 
 }  // namespace zc
