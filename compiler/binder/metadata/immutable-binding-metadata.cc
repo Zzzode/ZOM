@@ -312,6 +312,15 @@ zc::Vector<MaterializedFailedLookupFact> cloneFailedLookups(
   return result;
 }
 
+zc::Vector<MaterializedFailedControlTransferFact> cloneFailedControlTransfers(
+    zc::ArrayPtr<const MaterializedFailedControlTransferFact> facts) {
+  zc::Vector<MaterializedFailedControlTransferFact> result(facts.size());
+  for (const auto& fact : facts) {
+    result.add(MaterializedFailedControlTransferFact{fact.node, fact.kind, fact.reason});
+  }
+  return result;
+}
+
 }  // namespace
 
 struct ImmutableBindingMetadata::Impl final {
@@ -331,7 +340,8 @@ struct ImmutableBindingMetadata::Impl final {
        zc::Vector<GenericParameterFact>&& genericParameters,
        zc::Vector<CallableParameterFact>&& callableParameters,
        zc::Vector<OwnerLocalBindingFact>&& ownerLocalBindings,
-       zc::Vector<MaterializedFailedLookupFact>&& failedLookups)
+       zc::Vector<MaterializedFailedLookupFact>&& failedLookups,
+       zc::Vector<MaterializedFailedControlTransferFact>&& failedControlTransfers)
       : context(context),
         revision(revision),
         fingerprint(zc::mv(fingerprint)),
@@ -357,7 +367,8 @@ struct ImmutableBindingMetadata::Impl final {
         genericParameters(zc::mv(genericParameters)),
         callableParameters(zc::mv(callableParameters)),
         ownerLocalBindings(zc::mv(ownerLocalBindings)),
-        failedLookups(zc::mv(failedLookups)) {}
+        failedLookups(zc::mv(failedLookups)),
+        failedControlTransfers(zc::mv(failedControlTransfers)) {}
 
   identity::SemanticContextBrand context;
   query::DatabaseRevision revision;
@@ -385,6 +396,7 @@ struct ImmutableBindingMetadata::Impl final {
   zc::Vector<CallableParameterFact> callableParameters;
   zc::Vector<OwnerLocalBindingFact> ownerLocalBindings;
   zc::Vector<MaterializedFailedLookupFact> failedLookups;
+  zc::Vector<MaterializedFailedControlTransferFact> failedControlTransfers;
 };
 
 ImmutableBindingMetadata::ImmutableBindingMetadata(zc::Own<Impl>&& impl) noexcept
@@ -419,7 +431,8 @@ zc::Maybe<ImmutableBindingMetadata> ImmutableBindingMetadata::from(
       cloneExplicitClosureCaptures(facts.explicitClosureCaptures),
       cloneGenericParameters(facts.genericParameters),
       cloneCallableParameters(facts.callableParameters),
-      cloneOwnerLocalBindings(facts.ownerLocalBindings), cloneFailedLookups(facts.failedLookups)));
+      cloneOwnerLocalBindings(facts.ownerLocalBindings), cloneFailedLookups(facts.failedLookups),
+      cloneFailedControlTransfers(facts.failedControlTransfers)));
 }
 
 ImmutableBindingMetadata ImmutableBindingMetadata::clone() const {
@@ -441,7 +454,8 @@ ImmutableBindingMetadata ImmutableBindingMetadata::clone() const {
       cloneGenericParameters(impl->genericParameters.asPtr()),
       cloneCallableParameters(impl->callableParameters.asPtr()),
       cloneOwnerLocalBindings(impl->ownerLocalBindings.asPtr()),
-      cloneFailedLookups(impl->failedLookups.asPtr())));
+      cloneFailedLookups(impl->failedLookups.asPtr()),
+      cloneFailedControlTransfers(impl->failedControlTransfers.asPtr())));
 }
 
 identity::SemanticContextBrand ImmutableBindingMetadata::semanticContext() const noexcept {
@@ -548,6 +562,10 @@ zc::ArrayPtr<const MaterializedFailedLookupFact> ImmutableBindingMetadata::faile
     const noexcept {
   return impl->failedLookups.asPtr();
 }
+zc::ArrayPtr<const MaterializedFailedControlTransferFact>
+ImmutableBindingMetadata::failedControlTransfers() const noexcept {
+  return impl->failedControlTransfers.asPtr();
+}
 
 bool ImmutableBindingMetadata::matches(identity::SemanticContextBrand context,
                                        query::DatabaseRevision revision,
@@ -583,7 +601,8 @@ bool ImmutableBindingMetadata::matches(identity::SemanticContextBrand context,
          genericParameters().size() == facts.genericParameters.size() &&
          callableParameters().size() == facts.callableParameters.size() &&
          ownerLocalBindings().size() == facts.ownerLocalBindings.size() &&
-         failedLookups().size() == facts.failedLookups.size();
+         failedLookups().size() == facts.failedLookups.size() &&
+         failedControlTransfers().size() == facts.failedControlTransfers.size();
 }
 
 }  // namespace zomlang::compiler::binder

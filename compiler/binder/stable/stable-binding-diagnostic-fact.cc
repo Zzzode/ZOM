@@ -160,6 +160,25 @@ zc::Maybe<diagnostics::DiagnosticFact> identifierLookupFact(const identity::Sour
       zc::mv(ZC_ASSERT_NONNULL(keys).provenance), zc::Vector<diagnostics::DiagnosticSecondary>());
 }
 
+zc::Maybe<LookupDiagnosticKeys> controlTransferKeys(
+    const identity::SourceFileKey& source, const StableFailedControlTransferFact& transfer) {
+  const auto& module = transfer.owner().module();
+  if (!source.belongsTo(module.crate())) { return zc::none; }
+  auto owner = transfer.owner().owner().encode();
+  zc::Maybe<zc::Array<uint8_t>> occurrenceOwner = zc::heapArray<uint8_t>(owner.asPtr());
+  auto occurrence = StableBindingDiagnosticFactCodecAccess::occurrence(
+      module.clone(), source.clone(), diagnostics::BinderDiagnosticProducer::BindOwnerBody,
+      zc::mv(occurrenceOwner), diagnostics::BinderDiagnosticEmitter::ControlTransfer,
+      clonePath(transfer.transferPath().components()));
+  auto provenance = StableBindingDiagnosticFactCodecAccess::provenance(
+      module.clone(), source.clone(), zc::mv(owner),
+      diagnostics::BinderDiagnosticEmitter::ControlTransfer,
+      clonePath(transfer.transferPath().components()));
+  if (occurrence == zc::none || provenance == zc::none) { return zc::none; }
+  return LookupDiagnosticKeys{zc::mv(ZC_ASSERT_NONNULL(occurrence)),
+                              zc::mv(ZC_ASSERT_NONNULL(provenance))};
+}
+
 }  // namespace
 
 BinderIdentifierDiagnosticArguments::BinderIdentifierDiagnosticArguments(
@@ -304,6 +323,27 @@ zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::ambig
     const identity::SourceFileKey& source, const StableFailedLookupFact& lookup) {
   if (!lookup.outcome().value().is<StableAmbiguousLookupOutcome>()) { return zc::none; }
   return identifierLookupFact(source, lookup, diagnostics::DiagID::AmbiguousIdentifier);
+}
+
+zc::Maybe<diagnostics::DiagnosticFact> StableBindingDiagnosticFactFactory::failedControlTransfer(
+    const identity::SourceFileKey& source, const StableFailedControlTransferFact& transfer) {
+  diagnostics::DiagID code;
+  switch (transfer.reason()) {
+    case StableFailedControlTransferReason::BreakTargetNotFound:
+      code = diagnostics::DiagID::BreakTargetNotFound;
+      break;
+    case StableFailedControlTransferReason::ContinueTargetNotFound:
+      code = diagnostics::DiagID::ContinueTargetNotFound;
+      break;
+    case StableFailedControlTransferReason::ContinueTargetNotLoop:
+      code = diagnostics::DiagID::ContinueTargetNotLoop;
+      break;
+  }
+  auto keys = controlTransferKeys(source, transfer);
+  if (keys == zc::none) { return zc::none; }
+  return diagnostics::DiagnosticFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(keys).occurrence), code, zc::Vector<zc::String>(),
+      zc::mv(ZC_ASSERT_NONNULL(keys).provenance), zc::Vector<diagnostics::DiagnosticSecondary>());
 }
 
 zc::Maybe<diagnostics::DiagnosticFact>

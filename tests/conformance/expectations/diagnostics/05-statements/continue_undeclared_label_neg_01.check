@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/continue_undeclared_label_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM3021]: continue requires an enclosing loop or loop label
+// CHECK-LITERAL:   --> conformance/05-statements/continue_undeclared_label_neg_01.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     continue nonexistent;
+// CHECK-LITERAL:   |     ^

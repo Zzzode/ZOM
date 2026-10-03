@@ -1,6 +1,5 @@
 #include "compiler/driver/query/binding/owner-body-query.h"
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-accessors.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
@@ -9,6 +8,7 @@
 #include "compiler/driver/query/binding/named-item-query.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
 namespace {
@@ -1209,7 +1209,8 @@ query::TypedQueryResult<BindOwnerBody::Value> BindOwnerBody::provide(query::Quer
       ZC_ASSERT_NONNULL(closures).closures().clone(),
       ZC_ASSERT_NONNULL(freeVariables).freeVariables().clone(),
       ZC_ASSERT_NONNULL(explicitCaptures).captures().clone(),
-      ZC_ASSERT_NONNULL(lookups).failedLookups().clone());
+      ZC_ASSERT_NONNULL(lookups).failedLookups().clone(),
+      ZC_ASSERT_NONNULL(controls).failedTransfers().clone());
   if (value == zc::none) {
     return ownerBodyRuntimeFailure(query::QueryRuntimeFailure::InvariantViolation);
   }
@@ -1287,8 +1288,8 @@ bool BindOwnerBody::verify(query::QueryContext& context, const Key& key,
       !OwnerBodyLabelProjection::verify(key.body(), syntax.value().detachedSyntax(),
                                         body.nodeScopes(), body.labels()) ||
       !OwnerBodyControlProjection::verify(key.body(), syntax.value().detachedSyntax(),
-                                          body.nodeScopes(), body.labels(),
-                                          body.controlTransfers())) {
+                                          body.nodeScopes(), body.labels(), body.controlTransfers(),
+                                          body.failedControlTransfers())) {
     return false;
   }
   return OwnerBodyExplicitCaptureProjection::verify(

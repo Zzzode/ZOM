@@ -5,26 +5,26 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
-#include "compiler/binder/metadata/immutable-binding-metadata.h"
-#include "compiler/binder/metadata/immutable-definition-inventory.h"
-#include "compiler/binder/surface/materialized-export-surface-verifier.h"
 #include "compiler/binder/graph/materialized-module-skeleton.h"
 #include "compiler/binder/graph/module-graph-revision.h"
 #include "compiler/binder/graph/parsed-module.h"
+#include "compiler/binder/metadata/immutable-binding-metadata.h"
+#include "compiler/binder/metadata/immutable-definition-inventory.h"
+#include "compiler/binder/surface/materialized-export-surface-verifier.h"
 #include "compiler/diagnostics/fact/diagnostic-fact.h"
 #include "compiler/driver/query/binding/active-identity-membership-query.h"
+#include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query.h"
-#include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
 #include "compiler/identity/materialized-identity-entry.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/query/query-database.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 class NamedItemProvenance;
@@ -300,6 +300,8 @@ public:
   materializedExplicitClosureCaptures() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedFailedLookupFact> materializedFailedLookups()
       const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const binder::MaterializedFailedControlTransferFact>
+  materializedFailedControlTransfers() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const binder::DeferredMemberFact> materializedDeferredMembers()
       const noexcept;
   ZC_NODISCARD const binder::CanonicalSequence<binder::StableBodyScopeFact>& scopes()
@@ -327,6 +329,8 @@ public:
   explicitClosureCaptures() const noexcept;
   ZC_NODISCARD const binder::CanonicalSequence<binder::StableFailedLookupFact>& failedLookups()
       const noexcept;
+  ZC_NODISCARD const binder::CanonicalSequence<binder::StableFailedControlTransferFact>&
+  failedControlTransfers() const noexcept;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
 
 public:
@@ -622,8 +626,7 @@ public:
 };
 
 template <>
-class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleSkeleton>
-    final {
+class CapabilityCandidateContract<driver::module_graph_query::MaterializeModuleSkeleton> final {
 public:
   using Descriptor = driver::module_graph_query::MaterializeModuleSkeleton;
   ZC_NODISCARD static StableWitnessBytes encode(const Descriptor::Capability& candidate);
@@ -807,13 +810,13 @@ struct ActiveMaterialization<identity::DefinitionKey> final {
                                                            const Record& record);
 };
 
-#define ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(GlobalKey, Membership)                       \
-  template <>                                                                                  \
-  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleGraph, \
-                                      GlobalKey,                                               \
-                                      driver::incremental_binding_query::Membership##Query>    \
-      final {                                                                                  \
-    static constexpr bool allowed = true;                                                      \
+#define ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(GlobalKey, Membership)                    \
+  template <>                                                                               \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleGraph,   \
+                                      GlobalKey,                                            \
+                                      driver::incremental_binding_query::Membership##Query> \
+      final {                                                                               \
+    static constexpr bool allowed = true;                                                   \
   }
 
 ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(identity::CompilationUnitIdentity,
@@ -824,13 +827,13 @@ ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION(identity::ModuleKey, ActiveModuleMembe
 
 #undef ZOM_DECLARE_GRAPH_MATERIALIZER_PERMISSION
 
-#define ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(GlobalKey, Membership)                       \
-  template <>                                                                                     \
+#define ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(GlobalKey, Membership)                  \
+  template <>                                                                                \
   struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeModuleSkeleton, \
-                                      GlobalKey,                                                  \
-                                      driver::incremental_binding_query::Membership##Query>       \
-      final {                                                                                     \
-    static constexpr bool allowed = true;                                                         \
+                                      GlobalKey,                                             \
+                                      driver::incremental_binding_query::Membership##Query>  \
+      final {                                                                                \
+    static constexpr bool allowed = true;                                                    \
   }
 
 ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CompilationUnitIdentity,
@@ -847,13 +850,12 @@ ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION(identity::CallableParameterKey,
 
 #undef ZOM_DECLARE_SKELETON_MATERIALIZER_PERMISSION
 
-#define ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(GlobalKey, Membership)                \
-  template <>                                                                                \
-  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeOwnerBody, \
-                                      GlobalKey,                                             \
-                                      driver::incremental_binding_query::Membership##Query>  \
-      final {                                                                                \
-    static constexpr bool allowed = true;                                                    \
+#define ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(GlobalKey, Membership)                      \
+  template <>                                                                                      \
+  struct ActiveMaterializerPermission<driver::module_graph_query::MaterializeOwnerBody, GlobalKey, \
+                                      driver::incremental_binding_query::Membership##Query>        \
+      final {                                                                                      \
+    static constexpr bool allowed = true;                                                          \
   }
 
 ZOM_DECLARE_OWNER_BODY_MATERIALIZER_PERMISSION(identity::CompilationUnitIdentity,

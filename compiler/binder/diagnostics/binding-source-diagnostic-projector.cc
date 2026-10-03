@@ -75,6 +75,32 @@ bool projectSequence(const identity::SourceFileKey& source, const CanonicalParse
   return true;
 }
 
+bool projectControlTransferSequence(
+    const identity::SourceFileKey& source, const CanonicalParsedModule& parsed,
+    zc::ArrayPtr<const StableFailedControlTransferFact> stable,
+    zc::ArrayPtr<const MaterializedFailedControlTransferFact> materialized,
+    size_t& materializedIndex, diagnostics::SemanticDiagnosticFactBatch& batch) {
+  for (const auto& transfer : stable) {
+    if (materializedIndex >= materialized.size()) { return false; }
+    const auto& current = materialized[materializedIndex++];
+    if (current.kind != transfer.kind() || current.reason != transfer.reason() ||
+        !parsed.tree().contains(current.node)) {
+      return false;
+    }
+    auto span = parsed.spanFor(parsed.tree().node(current.node).range);
+    auto fact = StableBindingDiagnosticFactFactory::failedControlTransfer(source, transfer);
+    if (span == zc::none || fact == zc::none || !ZC_ASSERT_NONNULL(span).belongsTo(source)) {
+      return false;
+    }
+    batch.provenance.add(diagnostics::SourceDiagnosticProvenanceEntry{
+        ZC_ASSERT_NONNULL(fact).primary().clone(),
+        diagnostics::DiagnosticSourceRange{ZC_ASSERT_NONNULL(span).byteStart(),
+                                           ZC_ASSERT_NONNULL(span).byteStart(), false}});
+    batch.facts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+  }
+  return true;
+}
+
 }  // namespace
 
 diagnostics::SemanticDiagnosticBatchProjectionResult projectBindingSourceDiagnostics(
@@ -85,8 +111,9 @@ diagnostics::SemanticDiagnosticBatchProjectionResult projectBindingSourceDiagnos
 
   diagnostics::SemanticDiagnosticFactBatch batch;
   const auto materialized = bindings.failedLookups();
-  batch.facts.reserve(materialized.size());
-  batch.provenance.reserve(materialized.size());
+  const auto materializedControlTransfers = bindings.failedControlTransfers();
+  batch.facts.reserve(materialized.size() + materializedControlTransfers.size());
+  batch.provenance.reserve(materialized.size() + materializedControlTransfers.size());
   size_t materializedIndex = 0;
   if (!projectSequence(parsed.source(), parsed, bindings.skeleton().failedLookups().values(),
                        materialized, materializedIndex, batch)) {
@@ -99,6 +126,17 @@ diagnostics::SemanticDiagnosticBatchProjectionResult projectBindingSourceDiagnos
     }
   }
   if (materializedIndex != materialized.size()) {
+    return diagnostics::SemanticDiagnosticBatchProjectionFailure::InvalidFactProjection;
+  }
+  size_t materializedControlIndex = 0;
+  for (const auto& owner : bindings.ownerBodies()) {
+    if (!projectControlTransferSequence(
+            parsed.source(), parsed, owner.failedControlTransfers().values(),
+            materializedControlTransfers, materializedControlIndex, batch)) {
+      return diagnostics::SemanticDiagnosticBatchProjectionFailure::InvalidFactProjection;
+    }
+  }
+  if (materializedControlIndex != materializedControlTransfers.size()) {
     return diagnostics::SemanticDiagnosticBatchProjectionFailure::InvalidFactProjection;
   }
   return batch;

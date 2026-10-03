@@ -5,9 +5,9 @@
 
 #include "compiler/binder/stable/stable-binding-codec.h"
 
-#include "zc/core/debug.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -1957,6 +1957,37 @@ zc::Maybe<StableFailedLookupFact> StableBindingCodec<StableFailedLookupFact>::de
                                                                                   : zc::none;
 }
 
+zc::Array<uint8_t> StableBindingCodec<StableFailedControlTransferFact>::encode(
+    const StableFailedControlTransferFact& value) {
+  identity::CanonicalEncoder record;
+  encodeStableFrame(record, value.owner());
+  encodeFrame(record, value.transferPath().encode().asPtr());
+  record.encodeUint8(static_cast<uint8_t>(value.kind()));
+  record.encodeUint8(static_cast<uint8_t>(value.reason()));
+  return withDomain("zom.binder.failed-control-transfer"_zc, record.finish().asPtr());
+}
+
+zc::Maybe<StableFailedControlTransferFact>
+StableBindingCodec<StableFailedControlTransferFact>::decode(zc::ArrayPtr<const uint8_t> bytes) {
+  constexpr auto domain = "zom.binder.failed-control-transfer"_zc;
+  if (bytes.size() > kMaximumBinderValueBytes || !hasDomain(bytes, domain)) { return zc::none; }
+  identity::CanonicalDecoder decoder(bytes.slice(domain.size() + 1, bytes.size()));
+  auto owner = decodeStableFrame<StableOwnerBodyQueryKey>(decoder);
+  auto transferPath = decodeLocalFrame<LocalSyntaxPath>(decoder);
+  auto kind = decoder.decodeUint8();
+  auto reason = decoder.decodeUint8();
+  if (owner == zc::none || transferPath == zc::none || kind == zc::none || reason == zc::none ||
+      !decoder.finished()) {
+    return zc::none;
+  }
+  auto result = StableFailedControlTransferFact::from(
+      zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(transferPath)),
+      static_cast<ControlTransferKind>(ZC_ASSERT_NONNULL(kind)),
+      static_cast<StableFailedControlTransferReason>(ZC_ASSERT_NONNULL(reason)));
+  return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
+                                                                                  : zc::none;
+}
+
 zc::Array<uint8_t> StableBindingCodec<BoundOwnerBody>::encode(const BoundOwnerBody& value) {
   identity::CanonicalEncoder record;
   encodeStableFrame(record, value.owner());
@@ -1974,6 +2005,7 @@ zc::Array<uint8_t> StableBindingCodec<BoundOwnerBody>::encode(const BoundOwnerBo
   encodeSequence(record, value.closureFreeVariables());
   encodeSequence(record, value.explicitClosureCaptures());
   encodeSequence(record, value.failedLookups());
+  encodeSequence(record, value.failedControlTransfers());
   return withDomain("zom.binder.owner-body"_zc, record.finish().asPtr());
 }
 
@@ -1997,11 +2029,13 @@ zc::Maybe<BoundOwnerBody> StableBindingCodec<BoundOwnerBody>::decode(
   auto closureFreeVariables = decodeSequence<StableClosureFreeVariableFact>(decoder);
   auto explicitClosureCaptures = decodeSequence<StableExplicitClosureCaptureFact>(decoder);
   auto failedLookups = decodeSequence<StableFailedLookupFact>(decoder);
+  auto failedControlTransfers = decodeSequence<StableFailedControlTransferFact>(decoder);
   if (owner == zc::none || scopes == zc::none || nodeScopes == zc::none || bindings == zc::none ||
       resolutions == zc::none || deferredMembers == zc::none || selfTypes == zc::none ||
       thisBindings == zc::none || shadowTargets == zc::none || labels == zc::none ||
       controlTransfers == zc::none || closures == zc::none || closureFreeVariables == zc::none ||
-      explicitClosureCaptures == zc::none || failedLookups == zc::none || !decoder.finished())
+      explicitClosureCaptures == zc::none || failedLookups == zc::none ||
+      failedControlTransfers == zc::none || !decoder.finished())
     return zc::none;
   auto result = BoundOwnerBody::from(
       zc::mv(ZC_ASSERT_NONNULL(owner)), zc::mv(ZC_ASSERT_NONNULL(scopes)),
@@ -2011,7 +2045,8 @@ zc::Maybe<BoundOwnerBody> StableBindingCodec<BoundOwnerBody>::decode(
       zc::mv(ZC_ASSERT_NONNULL(shadowTargets)), zc::mv(ZC_ASSERT_NONNULL(labels)),
       zc::mv(ZC_ASSERT_NONNULL(controlTransfers)), zc::mv(ZC_ASSERT_NONNULL(closures)),
       zc::mv(ZC_ASSERT_NONNULL(closureFreeVariables)),
-      zc::mv(ZC_ASSERT_NONNULL(explicitClosureCaptures)), zc::mv(ZC_ASSERT_NONNULL(failedLookups)));
+      zc::mv(ZC_ASSERT_NONNULL(explicitClosureCaptures)), zc::mv(ZC_ASSERT_NONNULL(failedLookups)),
+      zc::mv(ZC_ASSERT_NONNULL(failedControlTransfers)));
   return result != zc::none && encode(ZC_ASSERT_NONNULL(result)).asPtr() == bytes ? zc::mv(result)
                                                                                   : zc::none;
 }

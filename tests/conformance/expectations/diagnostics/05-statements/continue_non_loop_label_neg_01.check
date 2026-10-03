@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/continue_non_loop_label_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM3022]: continue label must name a loop
+// CHECK-LITERAL:   --> conformance/05-statements/continue_non_loop_label_neg_01.zom:2:14
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     block: { continue block; }
+// CHECK-LITERAL:   |              ^

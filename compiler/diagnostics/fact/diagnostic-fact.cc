@@ -1455,6 +1455,10 @@ zc::Maybe<DiagnosticFact> DiagnosticFact::from(DiagnosticOccurrenceKey&& occurre
                (occurrence.binderEmitter() != BinderDiagnosticEmitter::Lookup ||
                 (code != DiagID::UndefinedIdentifier && code != DiagID::SymbolNamespaceMismatch &&
                  code != DiagID::AmbiguousIdentifier) ||
+                secondary.size() != 0) &&
+               (occurrence.binderEmitter() != BinderDiagnosticEmitter::ControlTransfer ||
+                (code != DiagID::BreakTargetNotFound && code != DiagID::ContinueTargetNotFound &&
+                 code != DiagID::ContinueTargetNotLoop) ||
                 secondary.size() != 0)) {
       return zc::none;
     }

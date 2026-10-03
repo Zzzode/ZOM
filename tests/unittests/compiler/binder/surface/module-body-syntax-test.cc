@@ -5,10 +5,6 @@
 
 #include "compiler/binder/surface/module-body-syntax.h"
 
-#include "tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h"
-#include "zc/core/debug.h"
-#include "zc/core/vector.h"
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -18,6 +14,10 @@
 #include "compiler/diagnostics/fact/source-diagnostic-draft-buffer.h"
 #include "compiler/parser/parser.h"
 #include "compiler/source/manager.h"
+#include "tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h"
+#include "zc/core/debug.h"
+#include "zc/core/vector.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -453,7 +453,8 @@ ZC_TEST("Module body syntax projects loop label facts") {
       controls.transfers().values()[0].kind() == ControlTransferKind::Continue &&
       controls.transfers().values()[0].target().value().is<StableExplicitLabelControlTarget>());
   ZC_EXPECT(OwnerBodyControlProjection::verify(owner, projection.syntax, scopes.nodeScopes(),
-                                               labels.labels(), controls.transfers()));
+                                               labels.labels(), controls.transfers(),
+                                               controls.failedTransfers()));
 }
 
 ZC_TEST("Module body syntax projects implicit loop control facts") {
@@ -481,10 +482,11 @@ ZC_TEST("Module body syntax projects implicit loop control facts") {
     ZC_EXPECT(transfer.target().value().is<StableLoopControlTarget>());
   }
   ZC_EXPECT(OwnerBodyControlProjection::verify(owner, projection.syntax, scopes.nodeScopes(),
-                                               labels.labels(), controls.transfers()));
+                                               labels.labels(), controls.transfers(),
+                                               controls.failedTransfers()));
 }
 
-ZC_TEST("Module body syntax rejects continue to block label") {
+ZC_TEST("Module body syntax records continue to block label as failed control transfer") {
   ModuleBodyFixture fixture("block: { continue block; }\n"_zc);
   auto projection = fixture.project();
   auto module = moduleKey();
@@ -502,8 +504,15 @@ ZC_TEST("Module body syntax rejects continue to block label") {
   auto labels = zc::mv(ZC_ASSERT_NONNULL(labelsResult));
   ZC_REQUIRE(labels.labels().values().size() == 1);
   ZC_EXPECT(labels.labels().values()[0].target().value().is<StableBlockLabelTarget>());
-  ZC_EXPECT(OwnerBodyControlProjection::from(owner, projection.syntax, scopes.nodeScopes(),
-                                             labels.labels()) == zc::none);
+  auto controlsResult = OwnerBodyControlProjection::from(owner, projection.syntax,
+                                                         scopes.nodeScopes(), labels.labels());
+  ZC_REQUIRE(controlsResult != zc::none);
+  auto controls = zc::mv(ZC_ASSERT_NONNULL(controlsResult));
+  ZC_EXPECT(controls.transfers().values().size() == 0);
+  ZC_REQUIRE(controls.failedTransfers().values().size() == 1);
+  ZC_EXPECT(controls.failedTransfers().values()[0].kind() == ControlTransferKind::Continue &&
+            controls.failedTransfers().values()[0].reason() ==
+                StableFailedControlTransferReason::ContinueTargetNotLoop);
 }
 
 ZC_TEST("Module body syntax resolves control to nearest nested label") {
@@ -543,7 +552,8 @@ ZC_TEST("Module body syntax resolves control to nearest nested label") {
       target.get<StableExplicitLabelControlTarget>().label.declarationPath().components().size() ==
       deepestLabelPath);
   ZC_EXPECT(OwnerBodyControlProjection::verify(owner, projection.syntax, scopes.nodeScopes(),
-                                               labels.labels(), controls.transfers()));
+                                               labels.labels(), controls.transfers(),
+                                               controls.failedTransfers()));
 }
 
 ZC_TEST("Named item syntax admits contextual callable declaration names") {

@@ -3,12 +3,12 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/map.h"
-#include "zc/ztest/test.h"
 #include "compiler/binder/graph/module-binding-allocation-plan.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/map.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -642,8 +642,8 @@ zc::Maybe<StableCallableParameterDeclarationFact> callableDeclaration(
 }
 
 identity::ImportBindingKey semanticBinding(identity::SemanticImportOperation operation,
-                                                   identity::DefinitionNamespace nameSpace,
-                                                   zc::StringPtr localName = "local"_zc) {
+                                           identity::DefinitionNamespace nameSpace,
+                                           zc::StringPtr localName = "local"_zc) {
   zc::Vector<identity::ModulePathSegment> path;
   path.add(tests::test_identity_detail::scalar<identity::ModulePathSegment>("dep"_zc));
   zc::Maybe<zc::Vector<identity::ModulePathSegment>> retainedPath(zc::mv(path));
@@ -662,9 +662,9 @@ identity::ImportBindingKey semanticBinding(identity::SemanticImportOperation ope
   }
   auto resolution = require(identity::ModuleResolutionKey::from(
       module("owner"_zc), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
-  return require(identity::ImportBindingKey::from(
-      module("owner"_zc), zc::mv(resolution), operation, nameSpace, declaredName("source"_zc),
-      nameSpace, declaredName(localName)));
+  return require(identity::ImportBindingKey::from(module("owner"_zc), zc::mv(resolution), operation,
+                                                  nameSpace, declaredName("source"_zc), nameSpace,
+                                                  declaredName(localName)));
 }
 
 ModuleAliasExportNamesRevision moduleAliasExportNamesRevision(uint8_t seed) {
@@ -1307,9 +1307,9 @@ identity::ImportBindingKey semanticBindingFor(
   }
   auto resolution = require(identity::ModuleResolutionKey::from(
       module(owner), dependencyKind, zc::mv(retainedPath), zc::mv(noAlias), policy()));
-  return require(identity::ImportBindingKey::from(
-      module(owner), zc::mv(resolution), operation, nameSpace, declaredName("source"_zc), nameSpace,
-      declaredName("local"_zc)));
+  return require(identity::ImportBindingKey::from(module(owner), zc::mv(resolution), operation,
+                                                  nameSpace, declaredName("source"_zc), nameSpace,
+                                                  declaredName("local"_zc)));
 }
 
 zc::Maybe<BoundModuleSkeleton> foreignOwnershipSkeleton(SkeletonOwnershipMutation mutation) {
@@ -2529,12 +2529,15 @@ BoundOwnerBody populatedOwnerBody() {
   auto failedLookups = singletonSequence(require(StableFailedLookupFact::from(
       BinderQueryOwner::body(owner.clone()), localPath(16), Namespace::Value,
       declaredName("missing"_zc), StableFailedLookupOutcome::missing())));
+  auto failedControlTransfers = singletonSequence(require(StableFailedControlTransferFact::from(
+      owner.clone(), localPath(17), ControlTransferKind::Break,
+      StableFailedControlTransferReason::BreakTargetNotFound)));
 
   return require(BoundOwnerBody::from(
       owner.clone(), zc::mv(scopes), zc::mv(nodeScopes), zc::mv(bindings), zc::mv(resolutions),
       zc::mv(deferredMembers), zc::mv(selfTypes), zc::mv(thisBindings), zc::mv(shadowTargets),
       zc::mv(labels), zc::mv(controlTransfers), zc::mv(closures), zc::mv(closureFreeVariables),
-      zc::mv(explicitClosureCaptures), zc::mv(failedLookups)));
+      zc::mv(explicitClosureCaptures), zc::mv(failedLookups), zc::mv(failedControlTransfers)));
 }
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEveryPopulatedFactFamily") {
@@ -2549,7 +2552,8 @@ ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEveryPopulatedFactFamily") {
             body.closures().values().size() == 1 &&
             body.closureFreeVariables().values().size() == 1 &&
             body.explicitClosureCaptures().values().size() == 1 &&
-            body.failedLookups().values().size() == 1);
+            body.failedLookups().values().size() == 1 &&
+            body.failedControlTransfers().values().size() == 1);
 }
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEmptyOwnerBody") {
@@ -2568,7 +2572,8 @@ ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsEmptyOwnerBody") {
                                    CanonicalSequence<StableClosureFact>::empty(),
                                    CanonicalSequence<StableClosureFreeVariableFact>::empty(),
                                    CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
-                                   CanonicalSequence<StableFailedLookupFact>::empty()));
+                                   CanonicalSequence<StableFailedLookupFact>::empty(),
+                                   CanonicalSequence<StableFailedControlTransferFact>::empty()));
 
   ZC_EXPECT(body.owner() == owner);
   ZC_EXPECT(body.scopes().values().size() == 0);
@@ -2604,7 +2609,8 @@ ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsNodesInOwningModuleScope") {
                                    CanonicalSequence<StableClosureFact>::empty(),
                                    CanonicalSequence<StableClosureFreeVariableFact>::empty(),
                                    CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
-                                   CanonicalSequence<StableFailedLookupFact>::empty());
+                                   CanonicalSequence<StableFailedLookupFact>::empty(),
+                                   CanonicalSequence<StableFailedControlTransferFact>::empty());
   ZC_EXPECT(body != zc::none);
 }
 
@@ -2831,7 +2837,8 @@ zc::Maybe<BoundOwnerBody> relationOwnerBody(OwnerBodyRelationMutation mutation) 
       zc::mv(owner), zc::mv(scopes), zc::mv(nodeScopes), zc::mv(bindings), zc::mv(resolutions),
       zc::mv(deferredMembers), zc::mv(selfTypes), CanonicalSequence<StableThisBindingFact>::empty(),
       zc::mv(shadowTargets), zc::mv(labels), zc::mv(controlTransfers), zc::mv(closures),
-      zc::mv(closureFreeVariables), zc::mv(explicitClosureCaptures), zc::mv(failedLookups));
+      zc::mv(closureFreeVariables), zc::mv(explicitClosureCaptures), zc::mv(failedLookups),
+      CanonicalSequence<StableFailedControlTransferFact>::empty());
 }
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyRejectsStructuralAndRelationalDrift") {
@@ -2999,7 +3006,8 @@ zc::Maybe<BoundOwnerBody> foreignOwnerBody(OwnerBodyForeignFamily family) {
       zc::mv(owner), zc::mv(scopes), zc::mv(nodeScopes), zc::mv(bindings), zc::mv(resolutions),
       zc::mv(deferredMembers), zc::mv(selfTypes), zc::mv(thisBindings), zc::mv(shadowTargets),
       zc::mv(labels), zc::mv(controlTransfers), zc::mv(closures), zc::mv(closureFreeVariables),
-      zc::mv(explicitClosureCaptures), zc::mv(failedLookups));
+      zc::mv(explicitClosureCaptures), zc::mv(failedLookups),
+      CanonicalSequence<StableFailedControlTransferFact>::empty());
 }
 
 zc::Maybe<BoundOwnerBody> scaledOwnerBody(uint32_t depth) {
@@ -3046,7 +3054,8 @@ zc::Maybe<BoundOwnerBody> scaledOwnerBody(uint32_t depth) {
       singletonSequence(require(StableClosureFreeVariableFact::from(
           owner.clone(), zc::mv(closure), singletonSequence(zc::mv(variable))))),
       CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
-      CanonicalSequence<StableFailedLookupFact>::empty());
+      CanonicalSequence<StableFailedLookupFact>::empty(),
+      CanonicalSequence<StableFailedControlTransferFact>::empty());
 }
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyRejectsEveryForeignFactFamily") {
@@ -3098,7 +3107,9 @@ ZC_TEST("StableBindingFacts.BoundOwnerBodyRequiresCanonicalAndSemanticMultiplici
                                  CanonicalSequence<StableClosureFact>::empty(),
                                  CanonicalSequence<StableClosureFreeVariableFact>::empty(),
                                  CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
-                                 CanonicalSequence<StableFailedLookupFact>::empty()) == zc::none);
+                                 CanonicalSequence<StableFailedLookupFact>::empty(),
+                                 CanonicalSequence<StableFailedControlTransferFact>::empty()) ==
+            zc::none);
 }
 
 ZC_TEST("StableBindingFacts.BoundOwnerBodyAdmitsIterativeReferenceCompleteScale") {
@@ -3221,7 +3232,8 @@ BoundOwnerBody emptyOwnerBodyForAllocation(StableOwnerBodyQueryKey&& owner) {
                                       CanonicalSequence<StableClosureFact>::empty(),
                                       CanonicalSequence<StableClosureFreeVariableFact>::empty(),
                                       CanonicalSequence<StableExplicitClosureCaptureFact>::empty(),
-                                      CanonicalSequence<StableFailedLookupFact>::empty()));
+                                      CanonicalSequence<StableFailedLookupFact>::empty(),
+                                      CanonicalSequence<StableFailedControlTransferFact>::empty()));
 }
 
 zc::Vector<BoundOwnerBody> allocationBodies(const BoundModuleSkeleton& skeleton) {
@@ -4378,6 +4390,14 @@ zc::Array<uint8_t> failedLookupFactWire(const StableFailedLookupFact& value) {
   encodeOracleFrame(record, failedLookupOutcomeWire(value.outcome()).asPtr());
   return expectedDomainRecord("zom.binder.failed-lookup"_zc, record.finish().asPtr());
 }
+zc::Array<uint8_t> failedControlTransferFactWire(const StableFailedControlTransferFact& value) {
+  identity::CanonicalEncoder record;
+  encodeStableOracleFrame(record, value.owner());
+  encodeOracleFrame(record, value.transferPath().encode().asPtr());
+  record.encodeUint8(static_cast<uint8_t>(value.kind()));
+  record.encodeUint8(static_cast<uint8_t>(value.reason()));
+  return expectedDomainRecord("zom.binder.failed-control-transfer"_zc, record.finish().asPtr());
+}
 template <typename T>
 void expectByteMutation(zc::ArrayPtr<const uint8_t> encoded, size_t offset);
 template <typename T>
@@ -4697,6 +4717,10 @@ zc::Array<uint8_t> ownerBodyAggregateWire(const BoundOwnerBody& value, bool reve
   encodeAggregateSequenceOracle(
       record, value.failedLookups(),
       [](const StableFailedLookupFact& fact) { return failedLookupFactWire(fact); });
+  encodeAggregateSequenceOracle(record, value.failedControlTransfers(),
+                                [](const StableFailedControlTransferFact& fact) {
+                                  return failedControlTransferFactWire(fact);
+                                });
   return expectedDomainRecord("zom.binder.owner-body"_zc, record.finish().asPtr());
 }
 
@@ -6987,6 +7011,10 @@ ZC_TEST("StableBindingCodec.OwnerBodyMatchesIndependentAggregateWire") {
   sequences.add(aggregateSequenceWire(body.failedLookups(), [](const StableFailedLookupFact& fact) {
     return failedLookupFactWire(fact);
   }));
+  sequences.add(aggregateSequenceWire(body.failedControlTransfers(),
+                                      [](const StableFailedControlTransferFact& fact) {
+                                        return failedControlTransferFactWire(fact);
+                                      }));
   for (const auto& sequence : sequences) {
     expectByteMutation<BoundOwnerBody>(encoded.asPtr(), offset);
     expectFrameLengthMutation<BoundOwnerBody>(encoded.asPtr(), offset + sizeof(uint64_t), 0);

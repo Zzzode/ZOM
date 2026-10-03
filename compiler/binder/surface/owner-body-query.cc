@@ -75,6 +75,7 @@ struct OwnerBodyLabelProjectionData final {
 
 struct OwnerBodyControlProjectionData final {
   CanonicalSequence<StableControlTransferFact> transfers;
+  CanonicalSequence<StableFailedControlTransferFact> failedTransfers;
 };
 
 }  // namespace owner_body_query_detail
@@ -1264,6 +1265,33 @@ zc::Maybe<StableControlTarget> explicitControlTarget(
     return zc::none;
   }
   return StableControlTarget::explicitLabel(ZC_ASSERT_NONNULL(selected).key().clone());
+}
+
+zc::Maybe<StableFailedControlTransferReason> explicitControlTargetFailure(
+    const identity::DeclaredDefinitionName& name, const LocalSyntaxPath& transferPath,
+    ControlTransferKind kind, const CanonicalSequence<StableLabelFact>& labels) {
+  zc::Maybe<const StableLabelFact&> selected;
+  for (const auto& label : labels.values()) {
+    if (label.name() != name ||
+        !isStrictAncestorPath(label.key().declarationPath(), transferPath)) {
+      continue;
+    }
+    if (selected == zc::none ||
+        label.key().declarationPath().components().size() >
+            ZC_ASSERT_NONNULL(selected).key().declarationPath().components().size()) {
+      selected = label;
+    }
+  }
+  if (selected == zc::none) {
+    return kind == ControlTransferKind::Break
+               ? StableFailedControlTransferReason::BreakTargetNotFound
+               : StableFailedControlTransferReason::ContinueTargetNotFound;
+  }
+  if (kind == ControlTransferKind::Continue &&
+      !ZC_ASSERT_NONNULL(selected).target().value().is<StableLoopLabelTarget>()) {
+    return StableFailedControlTransferReason::ContinueTargetNotLoop;
+  }
+  return zc::none;
 }
 
 zc::Maybe<StableScopeOwnerKey> providerRootScope(const StableOwnerBodyQueryKey& owner,
@@ -2973,6 +3001,7 @@ zc::Maybe<OwnerBodyControlProjection> OwnerBodyControlProjection::from(
   }
   const auto entries = ZC_ASSERT_NONNULL(traversal).entries();
   zc::Vector<StableControlTransferFact> facts;
+  zc::Vector<StableFailedControlTransferFact> failedFacts;
   for (const auto& entry : entries) {
     if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
         (entry.syntaxKind != ast::SyntaxKind::BreakStmt &&
@@ -2986,6 +3015,16 @@ zc::Maybe<OwnerBodyControlProjection> OwnerBodyControlProjection::from(
     zc::Maybe<StableControlTarget> target;
     if (labelName != zc::none) {
       target = explicitControlTarget(ZC_ASSERT_NONNULL(labelName), entry.path, kind, labels);
+      if (target == zc::none) {
+        auto reason =
+            explicitControlTargetFailure(ZC_ASSERT_NONNULL(labelName), entry.path, kind, labels);
+        if (reason == zc::none) { return zc::none; }
+        auto failed = StableFailedControlTransferFact::from(owner.clone(), entry.path.clone(), kind,
+                                                            ZC_ASSERT_NONNULL(reason));
+        if (failed == zc::none) { return zc::none; }
+        failedFacts.add(zc::mv(ZC_ASSERT_NONNULL(failed)));
+        continue;
+      }
     } else {
       uint32_t ancestorIndex = entry.parentIndex;
       while (ancestorIndex != kNoParent) {
@@ -3006,27 +3045,40 @@ zc::Maybe<OwnerBodyControlProjection> OwnerBodyControlProjection::from(
         }
         ancestorIndex = ancestor.parentIndex;
       }
+      if (target == zc::none) {
+        const auto reason = kind == ControlTransferKind::Break
+                                ? StableFailedControlTransferReason::BreakTargetNotFound
+                                : StableFailedControlTransferReason::ContinueTargetNotFound;
+        auto failed =
+            StableFailedControlTransferFact::from(owner.clone(), entry.path.clone(), kind, reason);
+        if (failed == zc::none) { return zc::none; }
+        failedFacts.add(zc::mv(ZC_ASSERT_NONNULL(failed)));
+        continue;
+      }
     }
-    if (target == zc::none) { return zc::none; }
     auto fact = StableControlTransferFact::from(owner.clone(), entry.path.clone(), kind,
                                                 zc::mv(ZC_ASSERT_NONNULL(target)));
     if (fact == zc::none) { return zc::none; }
     facts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
   }
   sortProviderCanonical(facts);
+  sortProviderCanonical(failedFacts);
   auto transfers = StableBindingSequenceBuilder<StableControlTransferFact>::from(zc::mv(facts));
-  if (transfers == zc::none) { return zc::none; }
+  auto failedTransfers =
+      StableBindingSequenceBuilder<StableFailedControlTransferFact>::from(zc::mv(failedFacts));
+  if (transfers == zc::none || failedTransfers == zc::none) { return zc::none; }
   return OwnerBodyControlProjection(
       zc::heap<owner_body_query_detail::OwnerBodyControlProjectionData>(
           owner_body_query_detail::OwnerBodyControlProjectionData{
-              zc::mv(ZC_ASSERT_NONNULL(transfers))}));
+              zc::mv(ZC_ASSERT_NONNULL(transfers)), zc::mv(ZC_ASSERT_NONNULL(failedTransfers))}));
 }
 
 bool OwnerBodyControlProjection::verify(
     const StableOwnerBodyQueryKey& owner, const ModuleBodySyntax& syntax,
     const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
     const CanonicalSequence<StableLabelFact>& labels,
-    const CanonicalSequence<StableControlTransferFact>& transfers) {
+    const CanonicalSequence<StableControlTransferFact>& transfers,
+    const CanonicalSequence<StableFailedControlTransferFact>& failedTransfers) {
   if (!OwnerBodyLabelProjection::verify(owner, syntax, nodeScopes, labels)) { return false; }
   zc::Vector<VerifierControlNode> entries;
   zc::Vector<VerifierControlPendingNode> pending;
@@ -3068,6 +3120,7 @@ bool OwnerBodyControlProjection::verify(
   if (!pending.empty() || rootIndex != syntax.rootCount()) { return false; }
 
   zc::Vector<StableControlTransferFact> expected;
+  zc::Vector<StableFailedControlTransferFact> expectedFailed;
   for (const auto& entry : entries) {
     if (entry.syntaxKind != ast::SyntaxKind::BreakStmt &&
         entry.syntaxKind != ast::SyntaxKind::ContinueStatement) {
@@ -3080,6 +3133,16 @@ bool OwnerBodyControlProjection::verify(
     zc::Maybe<StableControlTarget> target;
     if (labelName != zc::none) {
       target = explicitControlTarget(ZC_ASSERT_NONNULL(labelName), entry.path, kind, labels);
+      if (target == zc::none) {
+        auto reason =
+            explicitControlTargetFailure(ZC_ASSERT_NONNULL(labelName), entry.path, kind, labels);
+        if (reason == zc::none) { return false; }
+        auto failed = StableFailedControlTransferFact::from(owner.clone(), entry.path.clone(), kind,
+                                                            ZC_ASSERT_NONNULL(reason));
+        if (failed == zc::none) { return false; }
+        expectedFailed.add(zc::mv(ZC_ASSERT_NONNULL(failed)));
+        continue;
+      }
     } else {
       uint32_t ancestorIndex = entry.parentIndex;
       while (ancestorIndex != kNoParent) {
@@ -3100,21 +3163,39 @@ bool OwnerBodyControlProjection::verify(
         }
         ancestorIndex = ancestor.parentIndex;
       }
+      if (target == zc::none) {
+        const auto reason = kind == ControlTransferKind::Break
+                                ? StableFailedControlTransferReason::BreakTargetNotFound
+                                : StableFailedControlTransferReason::ContinueTargetNotFound;
+        auto failed =
+            StableFailedControlTransferFact::from(owner.clone(), entry.path.clone(), kind, reason);
+        if (failed == zc::none) { return false; }
+        expectedFailed.add(zc::mv(ZC_ASSERT_NONNULL(failed)));
+        continue;
+      }
     }
-    if (target == zc::none) { return false; }
     auto fact = StableControlTransferFact::from(owner.clone(), entry.path.clone(), kind,
                                                 zc::mv(ZC_ASSERT_NONNULL(target)));
     if (fact == zc::none) { return false; }
     expected.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
   }
   sortVerifierCanonical(expected);
+  sortVerifierCanonical(expectedFailed);
   auto admitted = StableBindingSequenceBuilder<StableControlTransferFact>::from(zc::mv(expected));
-  return admitted != zc::none && ZC_ASSERT_NONNULL(admitted) == transfers;
+  auto admittedFailed =
+      StableBindingSequenceBuilder<StableFailedControlTransferFact>::from(zc::mv(expectedFailed));
+  return admitted != zc::none && ZC_ASSERT_NONNULL(admitted) == transfers &&
+         admittedFailed != zc::none && ZC_ASSERT_NONNULL(admittedFailed) == failedTransfers;
 }
 
 const CanonicalSequence<StableControlTransferFact>& OwnerBodyControlProjection::transfers()
     const noexcept {
   return impl->transfers;
+}
+
+const CanonicalSequence<StableFailedControlTransferFact>&
+OwnerBodyControlProjection::failedTransfers() const noexcept {
+  return impl->failedTransfers;
 }
 
 }  // namespace zomlang::compiler::binder

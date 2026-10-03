@@ -16,14 +16,14 @@
 
 #include <cstdint>
 
+#include "compiler/ast/kinds.h"
+#include "compiler/binder/identity/local-identity.h"
+#include "compiler/binder/metadata/binding-metadata.h"
+#include "compiler/binder/stable/stable-binding-facts.h"
+#include "compiler/binder/surface/module-body-syntax.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "compiler/ast/kinds.h"
-#include "compiler/binder/metadata/binding-metadata.h"
-#include "compiler/binder/identity/local-identity.h"
-#include "compiler/binder/surface/module-body-syntax.h"
-#include "compiler/binder/stable/stable-binding-facts.h"
 
 namespace zomlang::compiler::binder {
 
@@ -400,12 +400,15 @@ public:
       const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
       const CanonicalSequence<StableLabelFact>& labels);
   /// \brief Independently validates canonical control-transfer facts.
-  ZC_NODISCARD static bool verify(const StableOwnerBodyQueryKey& owner,
-                                  const ModuleBodySyntax& syntax,
-                                  const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
-                                  const CanonicalSequence<StableLabelFact>& labels,
-                                  const CanonicalSequence<StableControlTransferFact>& transfers);
+  ZC_NODISCARD static bool verify(
+      const StableOwnerBodyQueryKey& owner, const ModuleBodySyntax& syntax,
+      const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
+      const CanonicalSequence<StableLabelFact>& labels,
+      const CanonicalSequence<StableControlTransferFact>& transfers,
+      const CanonicalSequence<StableFailedControlTransferFact>& failedTransfers);
   ZC_NODISCARD const CanonicalSequence<StableControlTransferFact>& transfers() const noexcept;
+  ZC_NODISCARD const CanonicalSequence<StableFailedControlTransferFact>& failedTransfers()
+      const noexcept;
 
 private:
   explicit OwnerBodyControlProjection(

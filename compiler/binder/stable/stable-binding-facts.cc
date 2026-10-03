@@ -5,10 +5,10 @@
 
 #include "compiler/binder/stable/stable-binding-facts.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/map.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
+#include "zc/core/map.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -2163,6 +2163,60 @@ bool StableFailedLookupFact::operator==(const StableFailedLookupFact& other) con
          impl->outcome == other.impl->outcome;
 }
 
+struct StableFailedControlTransferFact::Impl final {
+  StableOwnerBodyQueryKey owner;
+  LocalSyntaxPath transferPath;
+  ControlTransferKind kind;
+  StableFailedControlTransferReason reason;
+};
+
+StableFailedControlTransferFact::~StableFailedControlTransferFact() noexcept(false) = default;
+StableFailedControlTransferFact::StableFailedControlTransferFact(
+    StableFailedControlTransferFact&&) noexcept = default;
+StableFailedControlTransferFact& StableFailedControlTransferFact::operator=(
+    StableFailedControlTransferFact&&) noexcept = default;
+StableFailedControlTransferFact::StableFailedControlTransferFact(zc::Own<Impl>&& impl) noexcept
+    : impl(zc::mv(impl)) {}
+
+zc::Maybe<StableFailedControlTransferFact> StableFailedControlTransferFact::from(
+    StableOwnerBodyQueryKey&& owner, LocalSyntaxPath&& transferPath, ControlTransferKind kind,
+    StableFailedControlTransferReason reason) {
+  if (!inClosedRange(kind, ControlTransferKind::Break, ControlTransferKind::Continue) ||
+      !inClosedRange(reason, StableFailedControlTransferReason::BreakTargetNotFound,
+                     StableFailedControlTransferReason::ContinueTargetNotLoop)) {
+    return zc::none;
+  }
+  if (kind == ControlTransferKind::Break &&
+      reason != StableFailedControlTransferReason::BreakTargetNotFound) {
+    return zc::none;
+  }
+  if (kind == ControlTransferKind::Continue &&
+      reason == StableFailedControlTransferReason::BreakTargetNotFound) {
+    return zc::none;
+  }
+  return StableFailedControlTransferFact(
+      zc::heap<Impl>(Impl{zc::mv(owner), zc::mv(transferPath), kind, reason}));
+}
+StableFailedControlTransferFact StableFailedControlTransferFact::clone() const {
+  return ZC_ASSERT_NONNULL(
+      from(impl->owner.clone(), impl->transferPath.clone(), impl->kind, impl->reason));
+}
+const StableOwnerBodyQueryKey& StableFailedControlTransferFact::owner() const noexcept {
+  return impl->owner;
+}
+const LocalSyntaxPath& StableFailedControlTransferFact::transferPath() const noexcept {
+  return impl->transferPath;
+}
+ControlTransferKind StableFailedControlTransferFact::kind() const noexcept { return impl->kind; }
+StableFailedControlTransferReason StableFailedControlTransferFact::reason() const noexcept {
+  return impl->reason;
+}
+bool StableFailedControlTransferFact::operator==(
+    const StableFailedControlTransferFact& other) const {
+  return impl->owner == other.impl->owner && impl->transferPath == other.impl->transferPath &&
+         impl->kind == other.impl->kind && impl->reason == other.impl->reason;
+}
+
 namespace {
 class StableFactIndex final {
 public:
@@ -2312,6 +2366,7 @@ using ClosureFacts = CanonicalSequence<StableClosureFact>;
 using FreeVariableFacts = CanonicalSequence<StableClosureFreeVariableFact>;
 using CaptureFacts = CanonicalSequence<StableExplicitClosureCaptureFact>;
 using FailedFacts = CanonicalSequence<StableFailedLookupFact>;
+using FailedControlFacts = CanonicalSequence<StableFailedControlTransferFact>;
 }  // namespace
 struct BoundOwnerBody::Impl final {
   StableOwnerBodyQueryKey owner;
@@ -2329,6 +2384,7 @@ struct BoundOwnerBody::Impl final {
   CanonicalSequence<StableClosureFreeVariableFact> closureFreeVariables;
   CanonicalSequence<StableExplicitClosureCaptureFact> explicitClosureCaptures;
   CanonicalSequence<StableFailedLookupFact> failedLookups;
+  CanonicalSequence<StableFailedControlTransferFact> failedControlTransfers;
   bool operator==(const Impl& other) const = default;
 };
 BoundOwnerBody::~BoundOwnerBody() noexcept(false) = default;
@@ -2341,7 +2397,7 @@ zc::Maybe<BoundOwnerBody> BoundOwnerBody::from(
     SelfTypeFacts&& selfTypes, ThisBindingFacts&& thisBindings, ShadowFacts&& shadowTargets,
     LabelFacts&& labels, ControlFacts&& controlTransfers, ClosureFacts&& closures,
     FreeVariableFacts&& closureFreeVariables, CaptureFacts&& explicitClosureCaptures,
-    FailedFacts&& failedLookups) {
+    FailedFacts&& failedLookups, FailedControlFacts&& failedControlTransfers) {
   StableFactIndex scopeIndex(scopes.values().size()), nodeIndex(nodeScopes.values().size()),
       bindingIndex(bindings.values().size());
   StableFactIndex lookupIndex(resolutions.values().size() + deferredMembers.values().size() +
@@ -2353,7 +2409,8 @@ zc::Maybe<BoundOwnerBody> BoundOwnerBody::from(
   StableFactIndex closureIndex(closures.values().size()),
       freeVariableIndex(closureFreeVariables.values().size()),
       captureIndex(explicitClosureCaptures.values().size()),
-      failedIndex(failedLookups.values().size());
+      failedIndex(failedLookups.values().size()),
+      failedControlIndex(failedControlTransfers.values().size());
   zc::Vector<size_t> scopeEntries, scopeExits, callableRoots;
   if (!validOwnerScopeGraph(owner, scopes.values(), scopeIndex, scopeEntries, scopeExits,
                             callableRoots))
@@ -2552,19 +2609,25 @@ zc::Maybe<BoundOwnerBody> BoundOwnerBody::from(
            value.outcome().value().get<StableAmbiguousLookupOutcome>().candidates.values())
         if (!targetExists(candidate, value.nameSpace())) return zc::none;
   }
-  return BoundOwnerBody(zc::heap<Impl>(
-      Impl{zc::mv(owner), zc::mv(scopes), zc::mv(nodeScopes), zc::mv(bindings), zc::mv(resolutions),
-           zc::mv(deferredMembers), zc::mv(selfTypes), zc::mv(thisBindings), zc::mv(shadowTargets),
-           zc::mv(labels), zc::mv(controlTransfers), zc::mv(closures), zc::mv(closureFreeVariables),
-           zc::mv(explicitClosureCaptures), zc::mv(failedLookups)}));
+  for (const auto& value : failedControlTransfers.values()) {
+    if (value.owner() != owner || !covered(value.transferPath()) ||
+        !failedControlIndex.add(value.transferPath().encode(), 0))
+      return zc::none;
+  }
+  return BoundOwnerBody(zc::heap<Impl>(Impl{
+      zc::mv(owner), zc::mv(scopes), zc::mv(nodeScopes), zc::mv(bindings), zc::mv(resolutions),
+      zc::mv(deferredMembers), zc::mv(selfTypes), zc::mv(thisBindings), zc::mv(shadowTargets),
+      zc::mv(labels), zc::mv(controlTransfers), zc::mv(closures), zc::mv(closureFreeVariables),
+      zc::mv(explicitClosureCaptures), zc::mv(failedLookups), zc::mv(failedControlTransfers)}));
 }
 BoundOwnerBody BoundOwnerBody::clone() const {
-  return ZC_ASSERT_NONNULL(from(
-      impl->owner.clone(), impl->scopes.clone(), impl->nodeScopes.clone(), impl->bindings.clone(),
-      impl->resolutions.clone(), impl->deferredMembers.clone(), impl->selfTypes.clone(),
-      impl->thisBindings.clone(), impl->shadowTargets.clone(), impl->labels.clone(),
-      impl->controlTransfers.clone(), impl->closures.clone(), impl->closureFreeVariables.clone(),
-      impl->explicitClosureCaptures.clone(), impl->failedLookups.clone()));
+  return ZC_ASSERT_NONNULL(
+      from(impl->owner.clone(), impl->scopes.clone(), impl->nodeScopes.clone(),
+           impl->bindings.clone(), impl->resolutions.clone(), impl->deferredMembers.clone(),
+           impl->selfTypes.clone(), impl->thisBindings.clone(), impl->shadowTargets.clone(),
+           impl->labels.clone(), impl->controlTransfers.clone(), impl->closures.clone(),
+           impl->closureFreeVariables.clone(), impl->explicitClosureCaptures.clone(),
+           impl->failedLookups.clone(), impl->failedControlTransfers.clone()));
 }
 const StableOwnerBodyQueryKey& BoundOwnerBody::owner() const noexcept { return impl->owner; }
 const BodyScopeFacts& BoundOwnerBody::scopes() const noexcept { return impl->scopes; }
@@ -2587,6 +2650,9 @@ const CaptureFacts& BoundOwnerBody::explicitClosureCaptures() const noexcept {
   return impl->explicitClosureCaptures;
 }
 const FailedFacts& BoundOwnerBody::failedLookups() const noexcept { return impl->failedLookups; }
+const FailedControlFacts& BoundOwnerBody::failedControlTransfers() const noexcept {
+  return impl->failedControlTransfers;
+}
 bool BoundOwnerBody::operator==(const BoundOwnerBody& other) const { return *impl == *other.impl; }
 
 namespace {

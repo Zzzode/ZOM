@@ -5759,6 +5759,50 @@ bool sameMaterializedFailedLookups(zc::ArrayPtr<const binder::MaterializedFailed
   return true;
 }
 
+zc::Maybe<zc::Vector<binder::MaterializedFailedControlTransferFact>>
+materializeFailedControlTransfers(const binder::OwnerBodyProvenance& provenance,
+                                  const binder::BoundOwnerBody& stableWitness) {
+  const auto& provenanceEntries = provenance.detachedProvenance().entries();
+  zc::Vector<binder::MaterializedFailedControlTransferFact> result(
+      stableWitness.failedControlTransfers().values().size());
+  for (const auto& stable : stableWitness.failedControlTransfers().values()) {
+    if (stable.owner() != stableWitness.owner()) { return zc::none; }
+    zc::Maybe<ast::NodeId> node;
+    for (const auto& entry : provenanceEntries) {
+      if (entry.path != stable.transferPath()) { continue; }
+      if (node != zc::none) { return zc::none; }
+      node = entry.node;
+    }
+    if (node == zc::none) { return zc::none; }
+    result.add(binder::MaterializedFailedControlTransferFact{ZC_ASSERT_NONNULL(node), stable.kind(),
+                                                             stable.reason()});
+  }
+  return result;
+}
+
+zc::Vector<binder::MaterializedFailedControlTransferFact> cloneMaterializedFailedControlTransfers(
+    zc::ArrayPtr<const binder::MaterializedFailedControlTransferFact> transfers) {
+  zc::Vector<binder::MaterializedFailedControlTransferFact> result(transfers.size());
+  for (const auto& transfer : transfers) {
+    result.add(binder::MaterializedFailedControlTransferFact{transfer.node, transfer.kind,
+                                                             transfer.reason});
+  }
+  return result;
+}
+
+bool sameMaterializedFailedControlTransfers(
+    zc::ArrayPtr<const binder::MaterializedFailedControlTransferFact> left,
+    zc::ArrayPtr<const binder::MaterializedFailedControlTransferFact> right) {
+  if (left.size() != right.size()) { return false; }
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (left[index].node != right[index].node || left[index].kind != right[index].kind ||
+        left[index].reason != right[index].reason) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool sameThisBindings(zc::ArrayPtr<const binder::BoundThis> left,
                       zc::ArrayPtr<const binder::BoundThis> right) {
   if (left.size() != right.size()) { return false; }
@@ -6142,6 +6186,7 @@ struct AggregatedMaterializedBindingFacts final {
   zc::Vector<binder::CallableParameterFact> callableParameters;
   zc::Vector<binder::OwnerLocalBindingFact> ownerLocalBindings;
   zc::Vector<binder::MaterializedFailedLookupFact> failedLookups;
+  zc::Vector<binder::MaterializedFailedControlTransferFact> failedControlTransfers;
 
   ZC_NODISCARD binder::MaterializedBindingFacts view() const noexcept {
     return binder::MaterializedBindingFacts{nodeScopes.asPtr(),
@@ -6163,7 +6208,8 @@ struct AggregatedMaterializedBindingFacts final {
                                             genericParameters.asPtr(),
                                             callableParameters.asPtr(),
                                             ownerLocalBindings.asPtr(),
-                                            failedLookups.asPtr()};
+                                            failedLookups.asPtr(),
+                                            failedControlTransfers.asPtr()};
   }
 };
 
@@ -6205,6 +6251,8 @@ AggregatedMaterializedBindingFacts aggregateMaterializedBindingFacts(
                 cloneOwnerLocalBindingFacts(body.materializedOwnerLocalBindings()));
     appendFacts(result.failedLookups,
                 cloneMaterializedFailedLookups(body.materializedFailedLookups()));
+    appendFacts(result.failedControlTransfers,
+                cloneMaterializedFailedControlTransfers(body.materializedFailedControlTransfers()));
   }
   return result;
 }
@@ -6277,6 +6325,7 @@ struct MaterializedOwnerBody::Impl final {
        zc::Vector<binder::ClosureFreeVariableFact>&& closureFreeVariables,
        zc::Vector<binder::ExplicitClosureCaptureFact>&& explicitCaptures,
        zc::Vector<binder::MaterializedFailedLookupFact>&& failedLookups,
+       zc::Vector<binder::MaterializedFailedControlTransferFact>&& failedControlTransfers,
        zc::Vector<binder::DeferredMemberFact>&& deferredMembers) noexcept
       : key(zc::mv(key)),
         context(context),
@@ -6301,6 +6350,7 @@ struct MaterializedOwnerBody::Impl final {
         closureFreeVariables(zc::mv(closureFreeVariables)),
         explicitCaptures(zc::mv(explicitCaptures)),
         failedLookups(zc::mv(failedLookups)),
+        failedControlTransfers(zc::mv(failedControlTransfers)),
         deferredMembers(zc::mv(deferredMembers)) {}
 
   incremental_binding_query::ContextualBodyOwnerKey key;
@@ -6326,6 +6376,7 @@ struct MaterializedOwnerBody::Impl final {
   zc::Vector<binder::ClosureFreeVariableFact> closureFreeVariables;
   zc::Vector<binder::ExplicitClosureCaptureFact> explicitCaptures;
   zc::Vector<binder::MaterializedFailedLookupFact> failedLookups;
+  zc::Vector<binder::MaterializedFailedControlTransferFact> failedControlTransfers;
   zc::Vector<binder::DeferredMemberFact> deferredMembers;
 };
 
@@ -6846,13 +6897,16 @@ zc::Maybe<MaterializedOwnerBody> MaterializedOwnerBody::from(
                                         stableWitness, ZC_ASSERT_NONNULL(scopeIdentities).asPtr(),
                                         ZC_ASSERT_NONNULL(labels).asPtr(), parsedSource);
   auto failedLookups = materializeFailedLookups(provenance.capability(), stableWitness);
+  auto failedControlTransfers =
+      materializeFailedControlTransfers(provenance.capability(), stableWitness);
   auto deferredMembers =
       materializeDeferredMembers(source, provenance.capability(), stableWitness, parsedSource);
   if (nodeScopes == zc::none || ownerLocalFacts == zc::none || anonymousEntities == zc::none ||
       resolutions == zc::none || selfTypes == zc::none || thisBindings == zc::none ||
       shadowTargets == zc::none || closureFreeVariables == zc::none ||
       explicitCaptures == zc::none || labels == zc::none || controlTransfers == zc::none ||
-      failedLookups == zc::none || deferredMembers == zc::none) {
+      failedLookups == zc::none || failedControlTransfers == zc::none ||
+      deferredMembers == zc::none) {
     return zc::none;
   }
   if (!appendLabelResolutions(ZC_ASSERT_NONNULL(resolutions), ZC_ASSERT_NONNULL(labels).asPtr(),
@@ -6868,7 +6922,8 @@ zc::Maybe<MaterializedOwnerBody> MaterializedOwnerBody::from(
       zc::mv(ZC_ASSERT_NONNULL(thisBindings)), zc::mv(ZC_ASSERT_NONNULL(shadowTargets)),
       zc::mv(ZC_ASSERT_NONNULL(labels)), zc::mv(ZC_ASSERT_NONNULL(controlTransfers)),
       zc::mv(ZC_ASSERT_NONNULL(closureFreeVariables)), zc::mv(ZC_ASSERT_NONNULL(explicitCaptures)),
-      zc::mv(ZC_ASSERT_NONNULL(failedLookups)), zc::mv(ZC_ASSERT_NONNULL(deferredMembers))));
+      zc::mv(ZC_ASSERT_NONNULL(failedLookups)), zc::mv(ZC_ASSERT_NONNULL(failedControlTransfers)),
+      zc::mv(ZC_ASSERT_NONNULL(deferredMembers))));
 }
 
 MaterializedOwnerBody MaterializedOwnerBody::clone() const {
@@ -6927,6 +6982,7 @@ MaterializedOwnerBody MaterializedOwnerBody::clone() const {
       cloneClosureFreeVariableFacts(impl->closureFreeVariables.asPtr()),
       cloneExplicitClosureCaptureFacts(impl->explicitCaptures.asPtr()),
       cloneMaterializedFailedLookups(impl->failedLookups.asPtr()),
+      cloneMaterializedFailedControlTransfers(impl->failedControlTransfers.asPtr()),
       cloneDeferredMemberFacts(impl->deferredMembers.asPtr())));
 }
 
@@ -7045,6 +7101,11 @@ MaterializedOwnerBody::materializedFailedLookups() const noexcept {
   return impl->failedLookups.asPtr();
 }
 
+zc::ArrayPtr<const binder::MaterializedFailedControlTransferFact>
+MaterializedOwnerBody::materializedFailedControlTransfers() const noexcept {
+  return impl->failedControlTransfers.asPtr();
+}
+
 zc::ArrayPtr<const binder::DeferredMemberFact> MaterializedOwnerBody::materializedDeferredMembers()
     const noexcept {
   return impl->deferredMembers.asPtr();
@@ -7113,6 +7174,11 @@ MaterializedOwnerBody::explicitClosureCaptures() const noexcept {
 const binder::CanonicalSequence<binder::StableFailedLookupFact>&
 MaterializedOwnerBody::failedLookups() const noexcept {
   return stableWitness().failedLookups();
+}
+
+const binder::CanonicalSequence<binder::StableFailedControlTransferFact>&
+MaterializedOwnerBody::failedControlTransfers() const noexcept {
+  return stableWitness().failedControlTransfers();
 }
 
 zc::Array<uint8_t> MaterializedOwnerBody::encodeCanonical() const {
@@ -7321,6 +7387,9 @@ zc::Maybe<zc::Array<uint8_t>> MaterializeOwnerBody::verify(
           ZC_ASSERT_NONNULL(expected).materializedExplicitClosureCaptures()) ||
       !sameMaterializedFailedLookups(candidate.materializedFailedLookups(),
                                      ZC_ASSERT_NONNULL(expected).materializedFailedLookups()) ||
+      !sameMaterializedFailedControlTransfers(
+          candidate.materializedFailedControlTransfers(),
+          ZC_ASSERT_NONNULL(expected).materializedFailedControlTransfers()) ||
       !sameDeferredMemberFacts(candidate.materializedDeferredMembers(),
                                ZC_ASSERT_NONNULL(expected).materializedDeferredMembers())) {
     return zc::none;
@@ -7414,6 +7483,8 @@ bool validMaterializedOwnerBodyFacts(const MaterializedModuleSkeleton& skeleton,
           body.stableWitness().explicitClosureCaptures().values().size() ||
       body.materializedFailedLookups().size() !=
           body.stableWitness().failedLookups().values().size() ||
+      body.materializedFailedControlTransfers().size() !=
+          body.stableWitness().failedControlTransfers().values().size() ||
       body.materializedDeferredMembers().size() !=
           body.stableWitness().deferredMembers().values().size()) {
     return false;
@@ -7516,6 +7587,14 @@ bool validMaterializedOwnerBodyFacts(const MaterializedModuleSkeleton& skeleton,
   if (expectedFailedLookups == zc::none ||
       !sameMaterializedFailedLookups(body.materializedFailedLookups(),
                                      ZC_ASSERT_NONNULL(expectedFailedLookups).asPtr())) {
+    return false;
+  }
+  auto expectedFailedControlTransfers =
+      materializeFailedControlTransfers(body.provenanceLease().capability(), body.stableWitness());
+  if (expectedFailedControlTransfers == zc::none ||
+      !sameMaterializedFailedControlTransfers(
+          body.materializedFailedControlTransfers(),
+          ZC_ASSERT_NONNULL(expectedFailedControlTransfers).asPtr())) {
     return false;
   }
   for (const auto& fact : body.stableWitness().nodeScopes().values()) {

@@ -16,6 +16,7 @@
 namespace zomlang::compiler::binder {
 
 class StableFailedLookupFact;
+class StableFailedControlTransferFact;
 
 /// \brief Canonical Binder diagnostic payload for one declared identifier.
 class BinderIdentifierDiagnosticArguments final {
@@ -74,6 +75,8 @@ public:
       const identity::SourceFileKey& source, const StableFailedLookupFact& lookup);
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> ambiguousLookup(
       const identity::SourceFileKey& source, const StableFailedLookupFact& lookup);
+  ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> failedControlTransfer(
+      const identity::SourceFileKey& source, const StableFailedControlTransferFact& transfer);
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> constantExpressionNotAllowed(
       const IdentitySyntaxSiteKey& primary);
   ZC_NODISCARD static zc::Maybe<diagnostics::DiagnosticFact> duplicateGenericParameter(

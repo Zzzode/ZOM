@@ -5,18 +5,18 @@
 
 #pragma once
 
+#include "compiler/binder/identity/identity-pre-admission.h"
+#include "compiler/binder/identity/local-identity.h"
+#include "compiler/binder/metadata/binding-metadata.h"
+#include "compiler/diagnostics/fact/diagnostic-fact.h"
+#include "compiler/identity/key/definition-key.h"
+#include "compiler/identity/key/import-binding-key.h"
+#include "compiler/identity/key/source-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/binder/metadata/binding-metadata.h"
-#include "compiler/binder/identity/identity-pre-admission.h"
-#include "compiler/binder/identity/local-identity.h"
-#include "compiler/diagnostics/fact/diagnostic-fact.h"
-#include "compiler/identity/key/definition-key.h"
-#include "compiler/identity/key/import-binding-key.h"
-#include "compiler/identity/key/source-key.h"
 
 namespace zomlang::compiler::binder {
 
@@ -754,6 +754,38 @@ private:
   zc::Own<Impl> impl;
 };
 
+/// \brief Closed reason for one failed break or continue target resolution.
+enum class StableFailedControlTransferReason : uint8_t {
+  BreakTargetNotFound = 0x01,
+  ContinueTargetNotFound = 0x02,
+  ContinueTargetNotLoop = 0x03
+};
+
+/// \brief Stable semantic control-transfer failure retained at its exact owner and syntax path.
+class StableFailedControlTransferFact final {
+public:
+  ~StableFailedControlTransferFact() noexcept(false);
+  StableFailedControlTransferFact(StableFailedControlTransferFact&&) noexcept;
+  StableFailedControlTransferFact& operator=(StableFailedControlTransferFact&&) noexcept;
+  ZC_DISALLOW_COPY(StableFailedControlTransferFact);
+
+  ZC_NODISCARD static zc::Maybe<StableFailedControlTransferFact> from(
+      StableOwnerBodyQueryKey&& owner, LocalSyntaxPath&& transferPath, ControlTransferKind kind,
+      StableFailedControlTransferReason reason);
+  ZC_NODISCARD StableFailedControlTransferFact clone() const;
+  ZC_NODISCARD const StableOwnerBodyQueryKey& owner() const noexcept;
+  ZC_NODISCARD const LocalSyntaxPath& transferPath() const noexcept;
+  ZC_NODISCARD ControlTransferKind kind() const noexcept;
+  ZC_NODISCARD StableFailedControlTransferReason reason() const noexcept;
+  bool operator==(const StableFailedControlTransferFact& other) const;
+  bool operator!=(const StableFailedControlTransferFact& other) const { return !(*this == other); }
+
+private:
+  struct Impl;
+  explicit StableFailedControlTransferFact(zc::Own<Impl>&& impl) noexcept;
+  zc::Own<Impl> impl;
+};
+
 /// \brief Stable closure declaration and its body scope.
 class StableClosureFact final {
 public:
@@ -1298,6 +1330,13 @@ struct MaterializedFailedLookupFact final {
   StableFailedLookupOutcome outcome;
 };
 
+/// \brief Runtime projection of one stable failed control transfer without diagnostic ownership.
+struct MaterializedFailedControlTransferFact final {
+  ast::NodeId node;
+  ControlTransferKind kind;
+  StableFailedControlTransferReason reason;
+};
+
 /// \brief Complete stable semantic fact inventory for one owner body.
 class BoundOwnerBody final {
 public:
@@ -1319,7 +1358,8 @@ public:
       CanonicalSequence<StableClosureFact>&& closures,
       CanonicalSequence<StableClosureFreeVariableFact>&& closureFreeVariables,
       CanonicalSequence<StableExplicitClosureCaptureFact>&& explicitClosureCaptures,
-      CanonicalSequence<StableFailedLookupFact>&& failedLookups);
+      CanonicalSequence<StableFailedLookupFact>&& failedLookups,
+      CanonicalSequence<StableFailedControlTransferFact>&& failedControlTransfers);
   ZC_NODISCARD BoundOwnerBody clone() const;
   ZC_NODISCARD const StableOwnerBodyQueryKey& owner() const noexcept;
   ZC_NODISCARD const CanonicalSequence<StableBodyScopeFact>& scopes() const noexcept;
@@ -1339,6 +1379,8 @@ public:
   ZC_NODISCARD const CanonicalSequence<StableExplicitClosureCaptureFact>& explicitClosureCaptures()
       const noexcept;
   ZC_NODISCARD const CanonicalSequence<StableFailedLookupFact>& failedLookups() const noexcept;
+  ZC_NODISCARD const CanonicalSequence<StableFailedControlTransferFact>& failedControlTransfers()
+      const noexcept;
   bool operator==(const BoundOwnerBody& other) const;
 
 private:

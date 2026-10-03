@@ -5,14 +5,14 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/memory.h"
-#include "zc/core/vector.h"
 #include "compiler/binder/graph/module-binding-allocation-plan.h"
 #include "compiler/binder/stable/stable-binding-facts.h"
 #include "compiler/identity/semantic/context-fingerprint.h"
 #include "compiler/query/query-types.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/memory.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 
@@ -38,6 +38,7 @@ struct MaterializedBindingFacts final {
   zc::ArrayPtr<const CallableParameterFact> callableParameters;
   zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings;
   zc::ArrayPtr<const MaterializedFailedLookupFact> failedLookups;
+  zc::ArrayPtr<const MaterializedFailedControlTransferFact> failedControlTransfers;
 };
 
 /// \brief Immutable aggregate of one module skeleton and every exact owner-body fact set.
@@ -83,6 +84,8 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const CallableParameterFact> callableParameters() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const MaterializedFailedLookupFact> failedLookups() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const MaterializedFailedControlTransferFact> failedControlTransfers()
+      const noexcept;
   ZC_NODISCARD bool matches(identity::SemanticContextBrand context,
                             query::DatabaseRevision revision,
                             const identity::ContextFingerprint& fingerprint,
