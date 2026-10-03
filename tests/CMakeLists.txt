@@ -247,6 +247,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-ops-consumer/Zom.toml::float_ops_consumer::float_ops_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-compare-consumer/Zom.toml::float_compare_consumer::float_compare_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -260,7 +262,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
       --string-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::hello")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::hello"
+      --string-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::hello world")
   set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 180)
 endif()
 
@@ -394,6 +398,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-ops-consumer/Zom.toml::float_ops_consumer::float_ops_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-compare-consumer/Zom.toml::float_compare_consumer::float_compare_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::0"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 120)

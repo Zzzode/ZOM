@@ -607,6 +607,11 @@ struct PendingFunctionDeclaration final {
   // Populated for K leading scalar-local bindings followed by one comparison
   // conditional with two literal arms.
   zc::Maybe<PendingLeadingLocalConditionalReturn> leadingLocalConditionalReturn;
+  // True when the return value is a compile-time-folded string concatenation
+  // (`return "a" + "b"`). The body checker emits a string-literal fact for the
+  // binary node; the two operand StringLiteralExpr nodes each carry an extra
+  // node-type fact beyond the per-function baseline.
+  bool returnsFoldedStringConcat = false;
 };
 
 }  // namespace detail

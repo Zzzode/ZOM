@@ -56,6 +56,7 @@ enum class BodyProductionKind : uint8_t {
   EnumVariantConstruction = 0x20,
   MatchExpression = 0x21,
   StringLengthFold = 0x22,
+  StringConcatFold = 0x23,
   Unsupported = 0x17
 };
 
@@ -2136,6 +2137,27 @@ bool isStringLengthFoldSite(const driver::module_graph_query::CheckerBoundModule
   if (initializer == zc::none) { return false; }
   return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
          tree.node(ZC_ASSERT_NONNULL(initializer)).kind == ast::SyntaxKind::StringLiteralExpr;
+}
+
+/// \brief Whether a binary expression `"a" + "b"` folds to the concatenation
+/// of its two string-literal operands at compile time.
+///
+/// The fold is purely structural: an Add binary whose two operands are both
+/// string literals. The check loop verifies the operand types are Str and
+/// emits the folded string constant. Every other string operation stays
+/// unsupported.
+bool isStringConcatFoldSite(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) { return false; }
+  const auto& binary = tree.node(node);
+  if (static_cast<ast::BinaryOperatorKind>(binary.payload.words[ast::kBinaryExprOpWord]) !=
+      ast::BinaryOperatorKind::Add) {
+    return false;
+  }
+  const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+  return tree.contains(left) && tree.contains(right) &&
+         tree.node(left).kind == ast::SyntaxKind::StringLiteralExpr &&
+         tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
 }
 
 namespace {
@@ -5155,7 +5177,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                  syntax.kind == ast::SyntaxKind::BinaryExpr ||
                  syntax.kind == ast::SyntaxKind::PostfixExpression ||
                  syntax.kind == ast::SyntaxKind::AssignmentExpr) {
-        if (!addOperatorRequirements(syntax, node, key, nodeRequirements)) {
+        // A string-concat fold emits a Literal fact, not a Call fact, so it
+        // needs only a Literal requirement and skips the operator requirement.
+        if (syntax.kind == ast::SyntaxKind::BinaryExpr && isStringConcatFoldSite(tree, node)) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else if (!addOperatorRequirements(syntax, node, key, nodeRequirements)) {
           failure =
               rejectInvariant(signature::CheckerInvariantKind::InvalidFact, boundModule.module(),
                               ordinal, zc::none, node, sourceSpan.clone());
@@ -5328,6 +5354,14 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                 (leftIsReference || rightIsReference || leftIsNested || rightIsNested ||
                  leftIsReceiverField || rightIsReceiverField || literalVsLiteralAnnotated)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
+            }
+            // A literal-vs-literal `+` on two string literals has no reference
+            // operand to anchor the operand type, so the primitive-binary path
+            // above leaves it unsupported. Fold it to the concatenated string
+            // constant at compile time instead.
+            if (production == BodyProductionKind::Unsupported &&
+                isStringConcatFoldSite(tree, node)) {
+              production = BodyProductionKind::StringConcatFold;
             }
           }
           break;
@@ -7384,6 +7418,64 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 signature::CanonicalConstValue::integer(signature::CanonicalInteger{
                     signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
                 ZC_ASSERT_NONNULL(i32Type), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::StringConcatFold) {
+        // A `"a" + "b"` binary folds to the concatenation of its two
+        // string-literal operands at compile time. The classification
+        // precondition (both operands are string literals) guarantees the
+        // operand types are Str, so no node-type lookup is needed. The folded
+        // value is emitted as a string literal fact so the HIR builder lowers
+        // it to a scalar constant.
+        const auto& tree = input.boundModule.tree();
+        const auto& binary = tree.node(site.node);
+        const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+        if (!tree.contains(left) || !tree.contains(right) ||
+            tree.node(left).kind != ast::SyntaxKind::StringLiteralExpr ||
+            tree.node(right).kind != ast::SyntaxKind::StringLiteralExpr) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& leftSyntax = tree.node(left);
+        const auto& rightSyntax = tree.node(right);
+        zc::Maybe<zc::StringPtr> leftText;
+        zc::Maybe<zc::StringPtr> rightText;
+        try {
+          leftText = tree.string(
+              ast::StringId(leftSyntax.payload.words[ast::kStringLiteralExprValueWord]));
+          rightText = tree.string(
+              ast::StringId(rightSyntax.payload.words[ast::kStringLiteralExprValueWord]));
+        } catch (const zc::Exception&) {
+          leftText = zc::none;
+          rightText = zc::none;
+        }
+        if (leftText == zc::none || rightText == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto strType = internPrimitiveKind(input, type::semantic::PrimitiveKind::Str);
+        if (strType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = ZC_ASSERT_NONNULL(strType);
+        const auto& leftValue = ZC_ASSERT_NONNULL(leftText);
+        const auto& rightValue = ZC_ASSERT_NONNULL(rightText);
+        auto bytes = zc::heapArray<uint8_t>(leftValue.size() + rightValue.size());
+        for (size_t index = 0; index < leftValue.size(); ++index) {
+          bytes[index] = static_cast<uint8_t>(leftValue[index]);
+        }
+        for (size_t index = 0; index < rightValue.size(); ++index) {
+          bytes[leftValue.size() + index] = static_cast<uint8_t>(rightValue[index]);
+        }
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{site.node,
+                                        signature::CanonicalConstValue::string(zc::mv(bytes)),
+                                        ZC_ASSERT_NONNULL(strType), site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
         // An enum tuple-variant construction `Enum::Variant(args)`. The variant

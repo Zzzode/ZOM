@@ -1362,6 +1362,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
   }
+  // Folded string-concat returns (`return "a" + "b"`) emit a string-literal
+  // fact for the binary node, but the two operand StringLiteralExpr nodes each
+  // carry an extra node-type and literal fact beyond the per-function baseline.
+  // Counted to add two per function to the nodeTypes and literals equations.
+  size_t foldedStringConcatCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& functionDeclaration : candidate.impl->functions) {
+      auto sourceDefinitionIndex = definitionIndex(definitions, functionDeclaration.definition);
+      if (sourceDefinitionIndex == zc::none) continue;
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      if (!tree.contains(sourceDefinition.node)) continue;
+      auto shape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      ZC_IF_SOME(value, shape) {
+        if (value.returnsFoldedStringConcat) ++foldedStringConcatCount;
+      }
+    }
+  }
   // Void mutating methods (`this.<field> = <parameter>;`, Unit result) derived
   // from the source shapes. Each owns a function and a body block but no return
   // record or return value node, so the returns identity and the per-function
@@ -1588,11 +1608,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               binaryWriteCount * 2 + parameterFieldProjectionCount +
               receiverFieldArithmeticCount * 2 + parameterFieldWriteCount * 4 +
               discardedStatementCallCount + sequentialCastInitializers +
-              sequentialFoldedStringLengthCount + sequentialTernaryCount * 3 +
-              sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount -
-              leadingLocalConditionalUnaryCount - leadingLocalConditionalArithmeticCount +
-              leadingLocalConditionalArithmeticCount * 2 - postfixIncrementWriteCount * 3 -
-              compoundAssignmentWriteCount * 2 + forLoopBreakConditionCount ||
+              sequentialFoldedStringLengthCount + foldedStringConcatCount * 2 +
+              sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+              sequentialMatchExprDefaultArmCount - leadingLocalConditionalUnaryCount -
+              leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
+              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
+              forLoopBreakConditionCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
               declarationCount + functionCount - voidFunctionCount - directCallCount -
@@ -1613,7 +1634,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection +
               static_cast<int64_t>(chainedMatchLiteralExcess) +
-              static_cast<int64_t>(chainedEnumMatchLiteralExcess) ||
+              static_cast<int64_t>(chainedEnumMatchLiteralExcess) +
+              static_cast<int64_t>(foldedStringConcatCount) * 2 ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
               matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
@@ -13366,8 +13388,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, sourceValueSpan) {
         valueSpanMatches = sameSpan(expression.sourceSpan, value);
       }
-      if (!isScalarLiteral(tree.node(sourceValueNode).kind) || literalIndex == zc::none ||
-          expression.type != function.resultType ||
+      if ((!isScalarLiteral(tree.node(sourceValueNode).kind) &&
+           !source.returnsFoldedStringConcat) ||
+          literalIndex == zc::none || expression.type != function.resultType ||
           expression.category != HirValueCategory::Value || !valueSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,

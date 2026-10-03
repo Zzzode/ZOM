@@ -223,6 +223,12 @@ struct FunctionReturnShape final {
   bool returnsUnary = false;
   ast::NodeId unaryOperand;
   bool unaryOperandIsLiteral = false;
+  // When the body is a single `return "a" + "b"` of two string literals, the
+  // body checker folds the concatenation to a string constant at compile time.
+  // `shape.value` is the BinaryExpr node; the builder looks up its checked
+  // literal fact and lowers the return to a scalar literal, reusing the
+  // string-literal-return path.
+  bool returnsFoldedStringConcat = false;
   // Single-statement shared-receiver method shape:
   // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
   // reading the field through the implicit receiver with one field projection.

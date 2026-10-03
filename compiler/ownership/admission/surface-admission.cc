@@ -596,9 +596,31 @@ bool isAdmittedStringLengthFold(const ast::Tree& tree, ast::NodeId initializer) 
   return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
 }
 
+/// \brief Structurally admits a `"a" + "b"` binary as a compile-time fold
+/// return value.
+///
+/// Both operands must be string literals; the operator is `+`. The fold itself
+/// (reading the string bytes and emitting the concatenated constant) runs in
+/// the body checker, so surface admission only verifies the shape.
+bool isAdmittedStringConcatFold(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  const auto& binary = tree.node(value);
+  if (static_cast<ast::BinaryOperatorKind>(binary.payload.words[ast::kBinaryExprOpWord]) !=
+      ast::BinaryOperatorKind::Add) {
+    return false;
+  }
+  const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+  return tree.contains(left) && tree.contains(right) &&
+         tree.node(left).kind == ast::SyntaxKind::StringLiteralExpr &&
+         tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
+}
+
 bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value)) return false;
-  return isScalarLiteral(tree.node(value).kind) ||
+  return isScalarLiteral(tree.node(value).kind) || isAdmittedStringConcatFold(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||

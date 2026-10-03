@@ -2372,6 +2372,29 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     value = innerValue;
   }
   if (statements.size == 1) {
+    // A single `return "a" + "b"` folds the concatenation at compile time.
+    // The body checker emits a string-literal fact for the binary node; the
+    // builder lowers it to a scalar literal return, reusing the
+    // string-literal-return path.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::BinaryExpr) {
+      const auto op = static_cast<ast::BinaryOperatorKind>(
+          tree.node(value).payload.words[ast::kBinaryExprOpWord]);
+      if (op == ast::BinaryOperatorKind::Add) {
+        const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+        if (tree.contains(left) && tree.contains(right) &&
+            tree.node(left).kind == ast::SyntaxKind::StringLiteralExpr &&
+            tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = value;
+          shape.returnsFoldedStringConcat = true;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
+    }
     // A single `return <BinaryExpr>` returns the operation result directly. The
     // BinaryExpr is one of the six relational comparisons (result bool) or one of
     // the twelve arithmetic/bitwise operators (result operand type) over two

@@ -3344,6 +3344,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirReceiverCallExpression> statementReceiverCall;
       zc::Maybe<HirLocalReferenceExpression> statementReceiverReference;
       bool voidBody = false;
+      bool returnsFoldedStringConcat = false;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
@@ -5060,7 +5061,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ZC_ASSERT_NONNULL(assignmentSpan).clone(), ZC_ASSERT_NONNULL(valueSpan).clone()});
           localWriteValues.add(zc::mv(writeValueRecord));
         }
-      } else if (isScalarLiteral(tree.node(shape.value).kind)) {
+      } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
         if (literalIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5077,6 +5078,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ordinal + 2);
         }
         literal = sourceLiteral.literal.clone();
+        returnsFoldedStringConcat = shape.returnsFoldedStringConcat;
       } else if (!shape.isForLoopAccumulator && !shape.isNestedForLoopAccumulator &&
                  tree.node(shape.value).kind == ast::SyntaxKind::IdentExpr) {
         auto parameter = resolvedCallableParameter(bound.bindings(), shape.value);
@@ -8061,7 +8063,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       voidBody,
                                                       byValueParameterField,
-                                                      zc::none});
+                                                      zc::none,
+                                                      returnsFoldedStringConcat});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -8338,6 +8341,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // initializer also carries one extra node-type fact for the IdentExpr
   // object beyond the per-binding local node type counted by localReturnCount.
   size_t foldedStringLengthCount = 0;
+  // String-concat-fold returns (`return "a" + "b"`). Each carries two extra
+  // node-type facts for the two StringLiteralExpr operands beyond the
+  // per-function baseline.
+  size_t foldedStringConcatCount = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -8421,6 +8428,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t nestedForLoopAccumulatorReturnCount = 0;
   for (const auto& function : pendingFunctions) {
     if (function.voidBody) ++voidFunctionCount;
+    if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
       ZC_IF_SOME(sequential, function.sequentialLocalReturn) {
@@ -9052,10 +9060,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialBinaryCount * 2 + binaryWriteCount * 2 + parameterFieldProjectionCount +
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      foldedStringLengthCount + sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
-      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      foldedStringLengthCount + foldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
+      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
@@ -9086,7 +9094,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(forLoopAccumulatorLiteralRightCount) +
           static_cast<int64_t>(forLoopAccumulatorGuardedBreakCount) +
           static_cast<int64_t>(nestedForLoopAccumulatorReturnCount) * 3 +
-          static_cast<int64_t>(chainedMatchLiteralExcess)) +
+          static_cast<int64_t>(chainedMatchLiteralExcess) +
+          static_cast<int64_t>(foldedStringConcatCount) * 2) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
