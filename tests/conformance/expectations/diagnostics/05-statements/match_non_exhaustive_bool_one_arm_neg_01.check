@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/match_non_exhaustive_bool_one_arm_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A one-arm boolean match leaves the other bool constructor uncovered. The
+// closed bool domain requires both true and false; the checker rejects the
+// missing arm with ZOM4022 rather than the surface ZOM4096 drain.
+
+// CHECK-LITERAL: Error [ZOM4022]: Non-exhaustive match; missing patterns: false

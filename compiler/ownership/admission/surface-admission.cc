@@ -1128,13 +1128,15 @@ bool isAdmittedMatchGuard(const ast::Tree& tree, ast::NodeId guard) {
 // `match (c) { when Color.Red => return <lit>; ... }` with N (>= 2) enum arms.
 // The scrutinee is a bare identifier (a bool, integer, or enum parameter
 // reference); each arm pattern is a bool literal (one true, one false, no
-// duplicates), an integer literal (N, paired with a default arm), an enum
-// unit-variant pattern (N >= 2, no default needed on the closed domain), or a
-// `default` (wildcard) arm; the literal arm may carry a guard that is a single
-// identifier-vs-scalar-literal binary; each arm body tails a scalar-literal
-// return. The HIR builder lowers the bool shape to the same conditional path
-// as a bare-parameter `if` and the integer shape to the equality conditional
-// path, so the admitted surface is exactly the conditional surface.
+// duplicates, or a single literal arm whose uncovered counterpart the checker
+// rejects with ZOM4022), an integer literal (N, paired with a default arm), an
+// enum unit-variant pattern (N >= 2, no default needed on the closed domain),
+// or a `default` (wildcard) arm; the literal arm may carry a guard that is a
+// single identifier-vs-scalar-literal binary; each arm body tails a
+// scalar-literal return. The HIR builder lowers the bool shape to the same
+// conditional path as a bare-parameter `if` and the integer shape to the
+// equality conditional path, so the admitted surface is exactly the
+// conditional surface.
 bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   const auto& matchNode = tree.node(node);
   if (matchNode.kind != ast::SyntaxKind::MatchStmt) return false;
@@ -1144,7 +1146,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   }
   const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                            matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
-  if (!tree.contains(arms) || arms.size < 2) return false;
+  if (!tree.contains(arms) || arms.size < 1) return false;
   bool sawTrue = false;
   bool sawFalse = false;
   size_t intLiteralCount = 0;
@@ -1221,12 +1223,14 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       return false;
     }
   }
-  // Bool: two literal arms (true + false), or one literal arm plus one default
-  // arm. Integer: N literal arms plus one default arm. Enum: N (>= 2)
+  // Bool: one literal arm (the checker rejects the uncovered arm with
+  // ZOM4022), two literal arms (true + false), or one literal arm plus one
+  // default arm. Integer: N literal arms plus one default arm. Enum: N (>= 2)
   // unit-variant pattern arms on the same enum type; the closed domain needs
   // no default arm.
   if (intLiteralCount > 0) { return sawDefault && arms.size == intLiteralCount + 1; }
   if (sawEnumPattern) return arms.size >= 2;
+  if (arms.size == 1) return !sawDefault && (sawTrue != sawFalse);
   if (arms.size != 2) return false;
   return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }

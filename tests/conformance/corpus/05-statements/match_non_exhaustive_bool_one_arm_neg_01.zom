@@ -1,0 +1,5 @@
+fun f(b: bool) -> i32 {
+    match (b) {
+        when true => return 41;
+    }
+}

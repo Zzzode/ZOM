@@ -8050,11 +8050,79 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Vector<checked::PatternConstructor>(), zc::Vector<ast::NodeId>()},
           zc::Array<uint8_t>()});
     } else if (isBool) {
+      // Bool scrutinee: read each literal arm to determine which of the two
+      // closed-domain constructors (false, true) are covered. A default arm
+      // covers the remainder. A match that leaves a constructor uncovered is
+      // unsound: the scrutinee can reach a value with no arm.
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!input.boundModule.tree().contains(arms) || arms.size < 1) {
+        return rejectInvariant(
+            signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
+            site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
+      }
+      bool sawTrue = false;
+      bool sawFalse = false;
+      bool sawDefault = false;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = input.boundModule.tree().list(arms)[index];
+        if (!input.boundModule.tree().contains(armId)) continue;
+        const auto& arm = input.boundModule.tree().node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!input.boundModule.tree().contains(pattern)) continue;
+        if (input.boundModule.tree().node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
+          sawDefault = true;
+          continue;
+        }
+        if (input.boundModule.tree().node(pattern).kind != ast::SyntaxKind::LiteralPattern) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(),
+                                 factPath(CheckedFactGroup::Exhaustiveness));
+        }
+        const ast::NodeId literal(
+            input.boundModule.tree().node(pattern).payload.words[ast::kLiteralPatternLiteralWord]);
+        if (!input.boundModule.tree().contains(literal) ||
+            input.boundModule.tree().node(literal).kind != ast::SyntaxKind::BoolLiteral) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(),
+                                 factPath(CheckedFactGroup::Exhaustiveness));
+        }
+        if (input.boundModule.tree().node(literal).payload.words[ast::kBoolLiteralValueWord] != 0) {
+          sawTrue = true;
+        } else {
+          sawFalse = true;
+        }
+      }
       zc::Vector<checked::PatternConstructor> covered;
       covered.add(checked::PatternConstructor(
           checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
       covered.add(checked::PatternConstructor(
           checked::LiteralPattern{checked::CanonicalLiteral::boolean(true)}));
+      if (!sawDefault) {
+        zc::Vector<checked::PatternConstructor> missing;
+        if (!sawFalse) {
+          missing.add(checked::PatternConstructor(
+              checked::LiteralPattern{checked::CanonicalLiteral::boolean(false)}));
+        }
+        if (!sawTrue) {
+          missing.add(checked::PatternConstructor(
+              checked::LiteralPattern{checked::CanonicalLiteral::boolean(true)}));
+        }
+        if (missing.size() > 0) {
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return rejectNonExhaustiveMatch(site, ownerOrdinal, zc::mv(missing));
+            }
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(),
+                                 factPath(CheckedFactGroup::Exhaustiveness));
+        }
+      }
       exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
           site.node,
           checked::ExhaustivenessFact{
