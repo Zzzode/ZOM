@@ -259,6 +259,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-arithmetic-pow-consumer/Zom.toml::reject_arithmetic_pow_consumer::reject_arithmetic_pow_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-read-consumer/Zom.toml::dyn_erase_read_consumer::dyn_erase_read_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-nonexhaustive-consumer/Zom.toml::enum_match_nonexhaustive_consumer::enum_match_nonexhaustive_consumer"
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
       --string-case

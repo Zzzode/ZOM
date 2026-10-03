@@ -4058,6 +4058,32 @@ checked::CheckedFactsSourceRejected rejectCallArgumentCount(const BodyProduction
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4022: a match on a closed enum domain does not cover every variant.
+// The display argument carries the missing variant patterns, matching the
+// checked-facts projector contract (Patterns).
+checked::CheckedFactsSourceRejected rejectNonExhaustiveMatch(
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    zc::Vector<checked::PatternConstructor> missingPatterns) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::PatternsDisplayArg{zc::mv(missingPatterns)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CheckerNonExhaustiveMatch(),
+      checked::CheckerDiagnosticStage::Exhaustiveness, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Exhaustiveness,
+      checked::CheckerRecoveryPolicy(checked::NoRecoveryPolicy{}),
+      checked::CheckerEmitterOrdinal{
+          static_cast<uint8_t>(checked::CheckerDiagnosticStage::Exhaustiveness), ownerPreorder,
+          site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 // ZOM4018: a concrete value assigned to an annotated dyn existential has no
 // impl of the principal interface. Argument kinds are (Type, Definition),
 // matching the checked-facts projector contract.
@@ -7847,7 +7873,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     identity::SemanticTypeId scrutineeTypeId;
     ZC_IF_SOME(entry, scrutineeType) { scrutineeTypeId = entry.value; }
     auto scrutineeKind = primitiveKindOf(input.semanticTypes, scrutineeTypeId);
-    bool isEnum = false;
+    zc::Maybe<identity::DefId> enumDef;
     if (scrutineeKind == zc::none) {
       // A non-primitive scrutinee is admitted only when it is a closed nominal
       // enum type whose definition is visible in this module.
@@ -7859,23 +7885,23 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           for (const auto& definition : input.boundModule.definitions().definitions()) {
             if (definition.definition == nominal.definition &&
                 definition.record.kind() == identity::DefinitionKind::Enum) {
-              isEnum = true;
+              enumDef = nominal.definition;
               break;
             }
           }
         }
       }
-      if (!isEnum) {
+      if (enumDef == zc::none) {
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
       }
     }
     bool isBool = false;
-    if (!isEnum) {
+    if (enumDef == zc::none) {
       ZC_IF_SOME(kind, scrutineeKind) { isBool = kind == type::semantic::PrimitiveKind::Bool; }
     }
-    if (isEnum) {
+    if (enumDef != zc::none) {
       // Enum scrutinee: resolve each EnumPattern arm to its variant definition
       // and discriminant, produce NodeType + Literal facts on the pattern node,
       // and emit a Closed domain with the N EnumVariantPattern constructors.
@@ -7964,6 +7990,58 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           covered[j - 1] = zc::mv(covered[j]);
           covered[j] = zc::mv(temporary);
         }
+      }
+      // Enumerate every variant of the closed enum domain and diff against the
+      // covered set. A match that leaves a variant uncovered is unsound: the
+      // scrutinee can reach a variant with no arm.
+      zc::Vector<checked::PatternConstructor> missing;
+      for (const auto& signature : input.signatureFacts.signatures()) {
+        if (signature.definition != ZC_ASSERT_NONNULL(enumDef) ||
+            !signature.payload.variant().is<signature::NominalSignature>()) {
+          continue;
+        }
+        const auto& nominal = signature.payload.variant().get<signature::NominalSignature>();
+        for (const auto candidate : nominal.variants) {
+          bool isCovered = false;
+          for (const auto& constructor : covered) {
+            if (constructor.variant().get<checked::EnumVariantPattern>().variant == candidate) {
+              isCovered = true;
+              break;
+            }
+          }
+          if (!isCovered) {
+            missing.add(checked::PatternConstructor(checked::EnumVariantPattern{candidate}));
+          }
+        }
+      }
+      if (missing.size() > 0) {
+        // Sort missing by variant key for deterministic diagnostic output.
+        for (size_t i = 1; i < missing.size(); ++i) {
+          for (size_t j = i; j > 0; --j) {
+            const auto& prevVariant =
+                missing[j - 1].variant().get<checked::EnumVariantPattern>().variant;
+            const auto& curVariant =
+                missing[j].variant().get<checked::EnumVariantPattern>().variant;
+            auto prevEntry = input.identities.definition(prevVariant);
+            auto curEntry = input.identities.definition(curVariant);
+            if (prevEntry == zc::none || curEntry == zc::none ||
+                !(ZC_ASSERT_NONNULL(curEntry).key() < ZC_ASSERT_NONNULL(prevEntry).key())) {
+              break;
+            }
+            auto temporary = zc::mv(missing[j - 1]);
+            missing[j - 1] = zc::mv(missing[j]);
+            missing[j] = zc::mv(temporary);
+          }
+        }
+        ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+          ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+            return rejectNonExhaustiveMatch(site, ownerOrdinal, zc::mv(missing));
+          }
+        }
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, zc::none, site.node,
+                               site.key.sourceSpan.clone(),
+                               factPath(CheckedFactGroup::Exhaustiveness));
       }
       exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{
           site.node,

@@ -1,0 +1,8 @@
+[package]
+name = "enum_match_nonexhaustive_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "enum_match_nonexhaustive_consumer"
+path = "src/main.zom"

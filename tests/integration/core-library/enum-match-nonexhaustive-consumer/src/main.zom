@@ -1,0 +1,12 @@
+// Non-exhaustive enum match fixture: a three-variant enum matched with only
+// two arms. The closed enum domain requires every variant to be covered; the
+// missing Blue variant must be rejected with ZOM4022 at compile time.
+enum Color { Red, Green, Blue }
+
+fun matchEnum(c: Color) -> i32 {
+    match (c) {
+        when Color.Red => return 41;
+        when Color.Green => return 7;
+    }
+}
+fun entry() -> i32 { let v = matchEnum(Color::Red); return v; }
