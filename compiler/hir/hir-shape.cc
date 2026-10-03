@@ -367,20 +367,22 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
   return shape;
 }
 
-// Classifies one statement as the match-return shape: a two-arm match whose
-// scrutinee is a bare identifier (a bool or integer parameter reference) and
-// whose arms each tail-return a scalar literal. A bool match has one arm for
-// `true` and one for `false`, or one literal arm plus a `default` (wildcard)
-// arm covering the remaining bool value; it reuses the conditional fields
-// (`condition`, `thenReturnValue`, `elseReturnValue`) so the HIR builder
-// lowers it through the bare-parameter conditional path. An integer match has
-// one or more integer-literal arms plus a `default` arm covering the open
-// integer domain; a single literal arm sets `isMatchEquality` and carries the
-// pattern literal node so the HIR builder synthesizes
+// Classifies one statement as the match-return shape: a match whose
+// scrutinee is a bare identifier (a bool, integer, or enum parameter
+// reference) and whose arms each tail-return a scalar literal. A bool match
+// has one arm for `true` and one for `false`, or one literal arm plus a
+// `default` (wildcard) arm covering the remaining bool value; it reuses the
+// conditional fields (`condition`, `thenReturnValue`, `elseReturnValue`) so
+// the HIR builder lowers it through the bare-parameter conditional path. An
+// integer match has one or more integer-literal arms plus a `default` arm
+// covering the open integer domain; a single literal arm sets `isMatchEquality`
+// and carries the pattern literal node so the HIR builder synthesizes
 // `scrutinee == literal` through the equality conditional path, while two or
 // more literal arms set `isMatchChainedEquality` and carry all literal nodes
-// and return values for a chained conditional. Returns none for every other
-// statement.
+// and return values for a chained conditional. An enum match has N (>= 2)
+// unit-variant pattern arms on the closed enum domain; two arms route through
+// the equality path and three or more through the chained path with the last
+// arm as the else branch. Returns none for every other statement.
 zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::NodeId body,
                                                 ast::NodeId statement) {
   if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::MatchStmt) {
@@ -402,9 +404,8 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   zc::Vector<ast::NodeId> intLiteralValues;
   zc::Maybe<ast::NodeId> guardNode;
   bool sawEnumPattern = false;
-  ast::NodeId enumPatternNode{};
-  zc::Maybe<ast::NodeId> enumThenValue;
-  zc::Maybe<ast::NodeId> enumElseValue;
+  zc::Vector<ast::NodeId> enumPatternNodes;
+  zc::Vector<ast::NodeId> enumReturnValues;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
@@ -438,15 +439,14 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       if (sawDefault) return zc::none;
       sawDefault = true;
     } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
-      // A unit enum variant pattern (e.g., `Color.Red`). Two enum arms on the
-      // same scrutinee lower to the equality conditional path; the first arm
-      // is the "then" branch and the second is the "else" branch. The variant
-      // discriminant is read from the checker's literal fact by the builder.
+      // A unit enum variant pattern (e.g., `Color.Red`). N enum arms on the
+      // same scrutinee lower to the equality conditional path (N == 2) or the
+      // chained conditional path (N >= 3); the last arm is the "else" branch.
+      // The variant discriminant is read from the checker's literal fact by
+      // the builder.
       if (intLiteralNodes.size() > 0 || sawDefault) return zc::none;
-      if (!sawEnumPattern) {
-        sawEnumPattern = true;
-        enumPatternNode = pattern;
-      }
+      sawEnumPattern = true;
+      enumPatternNodes.add(pattern);
     } else {
       return zc::none;
     }
@@ -499,13 +499,7 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
         falseValue = returnValue;
       }
     } else if (sawEnumPattern) {
-      if (enumThenValue == zc::none) {
-        enumThenValue = returnValue;
-      } else if (enumElseValue == zc::none) {
-        enumElseValue = returnValue;
-      } else {
-        return zc::none;
-      }
+      enumReturnValues.add(returnValue);
     } else {
       defaultValue = returnValue;
     }
@@ -520,25 +514,39 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   shape.condition = scrutinee;
   shape.matchStatement = statement;
   if (sawEnumPattern) {
-    // Enum match: two unit-variant pattern arms. The first arm is the "then"
-    // branch and the second is the "else" branch. The HIR builder reads the
-    // variant discriminant from the checker's literal fact on the first
-    // EnumPattern node and synthesizes `scrutinee == discriminant`.
-    if (enumThenValue == zc::none || enumElseValue == zc::none) { return zc::none; }
-    ast::NodeId thenNode;
-    ast::NodeId elseNode;
-    ZC_IF_SOME(value, enumThenValue) { thenNode = value; }
-    ZC_IF_SOME(value, enumElseValue) { elseNode = value; }
+    // Enum match: N unit-variant pattern arms on a closed enum domain. Two
+    // arms lower to the equality conditional path; three or more lower to the
+    // chained conditional path with the last arm as the else branch. The HIR
+    // builder reads each variant discriminant from the checker's literal fact
+    // on the EnumPattern node and synthesizes `scrutinee == discriminant`.
+    if (enumPatternNodes.size() < 2 || enumPatternNodes.size() != enumReturnValues.size()) {
+      return zc::none;
+    }
+    if (enumPatternNodes.size() == 2) {
+      shape.isMatchEnum = true;
+      shape.isMatchEquality = true;
+      shape.matchEqualityLiteral = enumPatternNodes[0];
+      shape.conditionIsEquality = true;
+      shape.conditionLeft = scrutinee;
+      shape.conditionRight = enumPatternNodes[0];
+      shape.conditionLeftIsLiteral = false;
+      shape.conditionRightIsLiteral = true;
+      shape.thenReturnValue = enumReturnValues[0];
+      shape.elseReturnValue = enumReturnValues[1];
+      return shape;
+    }
+    // N >= 3: chained conditional path. The first N-1 arms are the chained
+    // equality comparisons; the Nth arm is the else branch.
     shape.isMatchEnum = true;
-    shape.isMatchEquality = true;
-    shape.matchEqualityLiteral = enumPatternNode;
-    shape.conditionIsEquality = true;
-    shape.conditionLeft = scrutinee;
-    shape.conditionRight = enumPatternNode;
-    shape.conditionLeftIsLiteral = false;
-    shape.conditionRightIsLiteral = true;
-    shape.thenReturnValue = thenNode;
-    shape.elseReturnValue = elseNode;
+    shape.isMatchChainedEquality = true;
+    const size_t chainedCount = enumPatternNodes.size() - 1;
+    for (size_t i = 0; i < chainedCount; ++i) {
+      shape.matchChainedLiterals.add(enumPatternNodes[i]);
+      shape.matchChainedThenValues.add(enumReturnValues[i]);
+    }
+    shape.matchChainedElseValue = enumReturnValues[chainedCount];
+    shape.thenReturnValue = shape.matchChainedThenValues[0];
+    shape.elseReturnValue = shape.matchChainedElseValue;
     return shape;
   }
   if (intLiteralNodes.size() > 0) {

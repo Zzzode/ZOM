@@ -2442,7 +2442,7 @@ zc::Maybe<RecursiveFunctionProduct> buildChainedConditionalReturn(
     auto rightOperand = binaryLeafOperand(hirModule, declaration, entry.equality->right,
                                           parameterLocals, zc::ArrayPtr<MirLocalId>{}, 0,
                                           entry.equality->operandType, proofs, copyMarker);
-    if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+    if (leftOperand == zc::none || rightOperand == zc::none) { return zc::none; }
 
     zc::Vector<MirProjection> tempProjections;
     ctx.appendStatement(MirStatement::assign(

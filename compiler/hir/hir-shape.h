@@ -337,11 +337,13 @@ struct FunctionReturnShape final {
   zc::Vector<ast::NodeId> matchChainedLiterals;
   zc::Vector<ast::NodeId> matchChainedThenValues;
   ast::NodeId matchChainedElseValue{};
-  // True when the match-return shape is an enum match with two unit-variant
-  // pattern arms. The HIR builder lowers this to the equality conditional
-  // path, synthesizing `scrutinee == discriminant` without an AST BinaryExpr
-  // node. `matchEqualityLiteral` carries the first EnumPattern node so the
-  // builder can read its checked literal fact (the variant discriminant).
+  // True when the match-return shape is an enum match with N (>= 2)
+  // unit-variant pattern arms. Two arms lower to the equality conditional
+  // path; three or more lower to the chained conditional path with the last
+  // arm as the else branch. `matchEqualityLiteral` carries the first
+  // EnumPattern node (two-arm case) so the builder can read its checked
+  // literal fact (the variant discriminant); `matchChainedLiterals` carries
+  // the first N-1 EnumPattern nodes (chained case).
   bool isMatchEnum = false;
   // True when the match-return shape has a guard on the literal (then) arm.
   // The guard is a single binary expression whose one operand is a bare

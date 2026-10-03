@@ -1,0 +1,17 @@
+// Match-on-enum backend-lowering fixture: a three-arm enum match with three
+// unit-variant pattern arms on a Color parameter that lowers through the
+// chained conditional return path to a verified LLVM relocatable object.
+// The three arms cover the closed enum domain. The parameter-free entry
+// calls the match function with a constant Color::Red argument and folds to
+// the reserved no-argument i32 `zom.module_init` entry the runtime `_start`
+// calls, so `zomc run` executes it natively.
+enum Color { Red, Green, Blue }
+
+fun matchEnum(c: Color) -> i32 {
+    match (c) {
+        when Color.Red => return 41;
+        when Color.Green => return 7;
+        when Color.Blue => return 0;
+    }
+}
+fun entry() -> i32 { let v = matchEnum(Color::Red); return v; }

@@ -1033,13 +1033,15 @@ bool isAdmittedMatchGuard(const ast::Tree& tree, ast::NodeId guard) {
   return isScalarLiteral(tree.node(literalOperand).kind);
 }
 
-// Structurally admits a two-arm match: `match (b) { when true => return <lit>;
-// when false => return <lit>; }` (block-bodied arms are also admitted) or
-// `match (x) { when <int> => return <lit>; default => return <lit>; }`. The
-// scrutinee is a bare identifier (a bool or integer parameter reference); each
-// arm pattern is a bool literal (one true, one false, no duplicates), an
-// integer literal (exactly one, paired with a default arm), or a `default`
-// (wildcard) arm; the literal arm may carry a guard that is a single
+// Structurally admits a match statement: `match (b) { when true => return
+// <lit>; when false => return <lit>; }` (block-bodied arms are also admitted)
+// or `match (x) { when <int> => return <lit>; default => return <lit>; }` or
+// `match (c) { when Color.Red => return <lit>; ... }` with N (>= 2) enum arms.
+// The scrutinee is a bare identifier (a bool, integer, or enum parameter
+// reference); each arm pattern is a bool literal (one true, one false, no
+// duplicates), an integer literal (N, paired with a default arm), an enum
+// unit-variant pattern (N >= 2, no default needed on the closed domain), or a
+// `default` (wildcard) arm; the literal arm may carry a guard that is a single
 // identifier-vs-scalar-literal binary; each arm body tails a scalar-literal
 // return. The HIR builder lowers the bool shape to the same conditional path
 // as a bare-parameter `if` and the integer shape to the equality conditional
@@ -1131,11 +1133,12 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     }
   }
   // Bool: two literal arms (true + false), or one literal arm plus one default
-  // arm. Integer: N literal arms plus one default arm. Enum: two
-  // unit-variant pattern arms on the same enum type.
+  // arm. Integer: N literal arms plus one default arm. Enum: N (>= 2)
+  // unit-variant pattern arms on the same enum type; the closed domain needs
+  // no default arm.
   if (intLiteralCount > 0) { return sawDefault && arms.size == intLiteralCount + 1; }
+  if (sawEnumPattern) return arms.size >= 2;
   if (arms.size != 2) return false;
-  if (sawEnumPattern) return true;
   return sawDefault ? (sawTrue != sawFalse) : (sawTrue && sawFalse);
 }
 

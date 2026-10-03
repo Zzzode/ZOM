@@ -4369,9 +4369,17 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
     const auto& comparison = tempAssign.value.comparisonValue();
     auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
       if (operand.kind() == mir::MirOperandKind::Constant) {
-        return integerCarrierFor(operand.constantValue().type, semanticTypes);
+        auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+        if (carrier == zc::none) {
+          carrier = enumCarrierFor(operand.constantValue().type, semanticTypes);
+        }
+        return carrier;
       }
-      return integerCarrierFor(operand.place().rootType(), semanticTypes);
+      auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
+      if (carrier == zc::none) {
+        carrier = enumCarrierFor(operand.place().rootType(), semanticTypes);
+      }
+      return carrier;
     };
     auto leftCarrier = operandCarrierFor(comparison.left);
     auto rightCarrier = operandCarrierFor(comparison.right);

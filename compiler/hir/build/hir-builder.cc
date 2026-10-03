@@ -8604,7 +8604,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.chainedConditionalReturn != zc::none) {
       ZC_IF_SOME(chained, function.chainedConditionalReturn) {
         ++matchReturnCount;
-        ++matchDefaultArmCount;
         for (const auto& entry : chained.entries) {
           ++conditionalCount;
           ++matchEqualityReturnCount;
@@ -8942,6 +8941,31 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            1);
     }
   }
+  // Derive the default-arm count from the exhaustiveness facts so enum matches
+  // (which have no wildcard arm) are not double-counted.
+  size_t verifiedMatchDefaultArmCount = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.exhaustiveness().entries()) {
+      if (!tree.contains(entry.value.node)) continue;
+      const auto& matchNode = tree.node(entry.value.node);
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!tree.contains(arms)) continue;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = tree.list(arms)[index];
+        if (!tree.contains(armId)) continue;
+        const auto& arm = tree.node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (tree.contains(pattern) && tree.node(pattern).kind == ast::SyntaxKind::WildcardPattern) {
+          ++verifiedMatchDefaultArmCount;
+          break;
+        }
+      }
+    }
+  }
+  matchDefaultArmCount = verifiedMatchDefaultArmCount;
   const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
       (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
@@ -9536,6 +9560,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.sequentialLocalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
+    if (value.chainedConditionalReturn != zc::none) {
+      // Control fields must be clear before lowering a chained conditional.
+    }
     if (value.conditionalReturn != zc::none && controlFieldsClear) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,

@@ -232,6 +232,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirtualization-consumer/Zom.toml::devirtualization_consumer::devirtualization_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
@@ -364,6 +366,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-tuple-variants-consumer/Zom.toml::enum_tuple_variants_consumer::enum_tuple_variants_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirtualization-consumer/Zom.toml::devirtualization_consumer::devirtualization_consumer::41"
       --reject-case

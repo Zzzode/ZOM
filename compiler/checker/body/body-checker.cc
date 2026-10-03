@@ -1095,15 +1095,13 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
   const auto propertyName =
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
   zc::Maybe<identity::DefId> variant;
-  uint64_t discriminant = 0;
   for (const auto& signature : input.signatureFacts.signatures()) {
     if (signature.definition != enumDefId ||
         !signature.payload.variant().is<signature::NominalSignature>()) {
       continue;
     }
     const auto& nominal = signature.payload.variant().get<signature::NominalSignature>();
-    for (size_t variantIndex = 0; variantIndex < nominal.variants.size(); ++variantIndex) {
-      const auto candidate = nominal.variants[variantIndex];
+    for (const auto candidate : nominal.variants) {
       for (const auto& definition : input.boundModule.definitions().definitions()) {
         if (definition.definition != candidate || definition.record.name() != propertyName) {
           continue;
@@ -1111,11 +1109,46 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
         if (definition.record.kind() != identity::DefinitionKind::EnumVariant) return zc::none;
         if (variant != zc::none) return zc::none;
         variant = candidate;
-        discriminant = static_cast<uint64_t>(variantIndex);
       }
     }
   }
   if (variant == zc::none) return zc::none;
+  // Resolve the source-order discriminant from the enum's AST node. The
+  // variants list in the nominal signature is sorted by canonical digest, so
+  // the discriminant for a unit variant without an explicit discriminant is
+  // its source declaration order, not its index in the sorted list.
+  uint64_t discriminant = 0;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != enumDefId) continue;
+    const auto& enumNode = tree.node(definition.node);
+    if (enumNode.kind != ast::SyntaxKind::EnumDeclaration) return zc::none;
+    const ast::NodeId variantListId(enumNode.payload.words[ast::kEnumDeclarationVariantsIdWord]);
+    if (!tree.contains(variantListId)) return zc::none;
+    const auto& variantList = tree.node(variantListId);
+    if (variantList.kind != ast::SyntaxKind::EnumVariantList) return zc::none;
+    const ast::NodeList variantNodes{
+        variantList.payload.words[ast::kEnumVariantListVariantsFirstWord],
+        variantList.payload.words[ast::kEnumVariantListVariantsSizeWord]};
+    if (!tree.contains(variantNodes)) return zc::none;
+    bool found = false;
+    for (size_t sourceIndex = 0; sourceIndex < variantNodes.size; ++sourceIndex) {
+      const ast::NodeId variantNodeId = tree.list(variantNodes)[sourceIndex];
+      if (!tree.contains(variantNodeId)) continue;
+      const auto& variantNode = tree.node(variantNodeId);
+      if (variantNode.kind != ast::SyntaxKind::UnitVariant &&
+          variantNode.kind != ast::SyntaxKind::TupleVariant) {
+        continue;
+      }
+      const auto variantNodeDef = input.boundModule.definitions().definitionAt(variantNodeId);
+      if (variantNodeDef == zc::none) continue;
+      if (ZC_ASSERT_NONNULL(variantNodeDef) != ZC_ASSERT_NONNULL(variant)) continue;
+      discriminant = static_cast<uint64_t>(sourceIndex);
+      found = true;
+      break;
+    }
+    if (!found) return zc::none;
+    break;
+  }
   // A unit variant (empty payload) is the only admitted shape in this slice.
   for (const auto& signature : input.signatureFacts.signatures()) {
     if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
@@ -7521,10 +7554,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     if (isEnum) {
       // Enum scrutinee: resolve each EnumPattern arm to its variant definition
       // and discriminant, produce NodeType + Literal facts on the pattern node,
-      // and emit a Closed domain with the two EnumVariantPattern constructors.
+      // and emit a Closed domain with the N EnumVariantPattern constructors.
       const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                                matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
-      if (!input.boundModule.tree().contains(arms) || arms.size != 2) {
+      if (!input.boundModule.tree().contains(arms) || arms.size < 2) {
         return rejectInvariant(
             signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
             site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
@@ -7583,25 +7616,29 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           covered.add(checked::PatternConstructor(checked::EnumVariantPattern{value.variant}));
         }
       }
-      if (covered.size() != 2) {
+      if (covered.size() != arms.size) {
         return rejectInvariant(
             signature::CheckerInvariantKind::InvalidFact, module, site.key.schemaPreorder, zc::none,
             site.node, site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Exhaustiveness));
       }
       // The canonical codec requires covered constructors in ascending encoded
       // order. EnumVariantPattern records sort by their variant DefinitionKey,
-      // which may differ from source arm order. Swap the two entries when the
-      // second variant's key sorts before the first's.
-      {
-        const auto& firstVariant = covered[0].variant().get<checked::EnumVariantPattern>().variant;
-        const auto& secondVariant = covered[1].variant().get<checked::EnumVariantPattern>().variant;
-        auto firstEntry = input.identities.definition(firstVariant);
-        auto secondEntry = input.identities.definition(secondVariant);
-        if (firstEntry != zc::none && secondEntry != zc::none &&
-            ZC_ASSERT_NONNULL(secondEntry).key() < ZC_ASSERT_NONNULL(firstEntry).key()) {
-          auto temporary = zc::mv(covered[0]);
-          covered[0] = zc::mv(covered[1]);
-          covered[1] = zc::mv(temporary);
+      // which may differ from source arm order. Insertion-sort the entries by
+      // their variant key.
+      for (size_t i = 1; i < covered.size(); ++i) {
+        for (size_t j = i; j > 0; --j) {
+          const auto& prevVariant =
+              covered[j - 1].variant().get<checked::EnumVariantPattern>().variant;
+          const auto& curVariant = covered[j].variant().get<checked::EnumVariantPattern>().variant;
+          auto prevEntry = input.identities.definition(prevVariant);
+          auto curEntry = input.identities.definition(curVariant);
+          if (prevEntry == zc::none || curEntry == zc::none ||
+              !(ZC_ASSERT_NONNULL(curEntry).key() < ZC_ASSERT_NONNULL(prevEntry).key())) {
+            break;
+          }
+          auto temporary = zc::mv(covered[j - 1]);
+          covered[j - 1] = zc::mv(covered[j]);
+          covered[j] = zc::mv(temporary);
         }
       }
       exhaustiveness.add(checked::ExhaustivenessFactMap::Entry{

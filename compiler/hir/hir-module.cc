@@ -691,14 +691,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
   }
   // A match-return that is an integer match with one or more literal pattern
-  // arms and one default arm. Each equality comparison is synthetic (no AST
-  // BinaryExpr node), so the checker produces no call fact or comparison-result
-  // node-type fact for it. The count equations subtract the phantom call, the
-  // phantom comparison-result node-types, and the double-counted pattern
-  // literal per literal arm. Derive the count from the same exhaustiveness
-  // facts that give matchReturnCount, inspecting each match's arms in the AST
-  // for integer literal patterns. Enum matches contribute one per match (the
-  // first enum pattern arm).
+  // arms and one default arm, or an enum match with N (>= 2) unit-variant
+  // pattern arms. Each equality comparison is synthetic (no AST BinaryExpr
+  // node), so the checker produces no call fact or comparison-result node-type
+  // fact for it. The count equations subtract the phantom call, the phantom
+  // comparison-result node-types, and the double-counted pattern literal per
+  // literal arm. Derive the count from the same exhaustiveness facts that give
+  // matchReturnCount, inspecting each match's arms in the AST for integer
+  // literal patterns or enum patterns. Integer matches contribute one per
+  // literal arm; enum matches contribute N-1 (the last arm is the else branch
+  // with no comparison).
   size_t matchEqualityReturnCount = 0;
   {
     const auto& tree = bound.tree();
@@ -708,6 +710,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
                                matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
       if (!tree.contains(arms)) continue;
+      size_t enumArmCount = 0;
       for (size_t index = 0; index < arms.size; ++index) {
         const ast::NodeId armId = tree.list(arms)[index];
         if (!tree.contains(armId)) continue;
@@ -722,10 +725,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             ++matchEqualityReturnCount;
           }
         } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
-          ++matchEqualityReturnCount;
-          break;
+          ++enumArmCount;
         }
       }
+      if (enumArmCount > 0) { matchEqualityReturnCount += enumArmCount - 1; }
     }
   }
   // Chained integer matches (N >= 2 literal arms + 1 default) carry 2N + 1
@@ -761,6 +764,35 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
       if (intLiteralArms >= 2) { chainedMatchLiteralExcess += intLiteralArms - 1; }
+    }
+  }
+  // Chained enum matches (N >= 3 unit-variant pattern arms, no default) carry
+  // 2N literals (N pattern + N return). The shared literals equation already
+  // counts the first two arms correctly via the conditional and match terms.
+  // Each additional enum arm beyond the second adds two literals (pattern +
+  // return) but also one parameter reference that the per-function baseline
+  // subtracts, leaving a net deficit of one per extra arm. Track the per-match
+  // excess N - 2 so the literals equation stays balanced.
+  size_t chainedEnumMatchLiteralExcess = 0;
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.exhaustiveness().entries()) {
+      if (!tree.contains(entry.value.node)) continue;
+      const auto& matchNode = tree.node(entry.value.node);
+      const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                               matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+      if (!tree.contains(arms)) continue;
+      size_t enumArmCount = 0;
+      for (size_t index = 0; index < arms.size; ++index) {
+        const ast::NodeId armId = tree.list(arms)[index];
+        if (!tree.contains(armId)) continue;
+        const auto& arm = tree.node(armId);
+        if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+        const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+        if (!tree.contains(pattern)) continue;
+        if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) { ++enumArmCount; }
+      }
+      if (enumArmCount >= 3) { chainedEnumMatchLiteralExcess += enumArmCount - 2; }
     }
   }
   // A match-return whose literal arm carries a guard condition. The guard
@@ -1534,7 +1566,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
               postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection +
-              static_cast<int64_t>(chainedMatchLiteralExcess) ||
+              static_cast<int64_t>(chainedMatchLiteralExcess) +
+              static_cast<int64_t>(chainedEnumMatchLiteralExcess) ||
       facts.calls().size() !=
           directCallCount + receiverCallCount + parameterIndexCount + equalityConditionalCount -
               matchEqualityReturnCount - matchGuardCount + sequentialBinaryCount +
