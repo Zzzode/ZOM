@@ -55,6 +55,31 @@ identity::SortedFeatureSet packageFeatures(zc::MemoryResource& resource,
   ZC_UNREACHABLE;
 }
 
+// Collects the trusted registry set from every workspace manifest's registry
+// dependency constraints. A locked registry package must name a registry in
+// this set or replay rejects it as TrustDomainMismatch.
+zc::Vector<identity::RegistryIdentity> collectTrustedRegistries(
+    const NormalizedWorkspace& workspace) {
+  zc::Vector<identity::RegistryIdentity> trusted;
+  auto collectDeps = [&](zc::ArrayPtr<const DependencyRequirement> deps) {
+    for (const auto& dep : deps) {
+      if (dep.withoutOrigin().sourceKind() != PackageSourceConstraintKind::Registry) { continue; }
+      trusted.add(dep.withoutOrigin().source().registryIdentity().clone());
+    }
+  };
+  if (workspace.root().hasPackage()) {
+    collectDeps(workspace.root().targetDependencies());
+    collectDeps(workspace.root().developmentDependencies());
+    collectDeps(workspace.root().buildDependencies());
+  }
+  for (const auto& member : workspace.members()) {
+    collectDeps(member.manifest().targetDependencies());
+    collectDeps(member.manifest().developmentDependencies());
+    collectDeps(member.manifest().buildDependencies());
+  }
+  return trusted;
+}
+
 }  // namespace
 
 WorkspacePackageResolveResult resolveWorkspacePackageInput(
@@ -146,6 +171,14 @@ WorkspacePackageResolveResult resolveWorkspacePackageInput(
     auto locked = LockfileCodec::read(*workspaceDirectory);
     if (locked.is<LockIssue>()) { return ResolveFailure(LockReadFailed{locked.get<LockIssue>()}); }
     const auto& lockedGraph = locked.get<VerifiedLockGraph>();
+    // RFC 0012: every locked replay verifies registry trust before its result
+    // may be consumed. A locked package naming a registry outside the
+    // workspace trusted set is rejected before resolution work begins.
+    auto trustedRegistries = collectTrustedRegistries(workspace);
+    LockReplayMetrics replayMetrics;
+    auto replay =
+        LockedReplayVerifier::replay(lockedGraph, lockedGraph, trustedRegistries, replayMetrics);
+    if (replay.is<LockIssue>()) { return ResolveFailure(LockTrustDomainMismatch{}); }
     LockReplayMetrics metrics;
     auto resolved =
         PackageResolver::resolveLocked(resolverMemory, roots, releases, lockedGraph, metrics);

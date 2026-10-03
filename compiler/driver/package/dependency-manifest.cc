@@ -170,6 +170,10 @@ PackageSourceConstraintKind PackageSourceConstraint::kind() const noexcept {
   return PackageSourceConstraintKind::LocalPath;
 }
 
+const identity::RegistryIdentity& PackageSourceConstraint::registryIdentity() const {
+  return value.get<RegistrySourceConstraint>().registry;
+}
+
 void PackageSourceConstraint::encode(identity::CanonicalEncoder& encoder) const {
   encoder.encodeUint8(static_cast<uint8_t>(kind()));
   ZC_SWITCH_ONEOF(value) {

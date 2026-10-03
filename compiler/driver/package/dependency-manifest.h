@@ -16,13 +16,13 @@
 
 #include <cstdint>
 
+#include "compiler/driver/package/manifest-model.h"
+#include "compiler/driver/package/semver-constraint.h"
+#include "compiler/identity/key/package-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/one-of.h"
 #include "zc/core/string.h"
-#include "compiler/driver/package/manifest-model.h"
-#include "compiler/driver/package/semver-constraint.h"
-#include "compiler/identity/key/package-key.h"
 
 namespace zomlang::compiler::driver::package {
 
@@ -99,6 +99,9 @@ public:
   /// \brief Clones this source constraint and all owned storage into `resource`.
   ZC_NODISCARD PackageSourceConstraint clone(zc::MemoryResource& resource) const;
   ZC_NODISCARD PackageSourceConstraintKind kind() const noexcept;
+  /// \brief Returns the registry identity of a registry-sourced constraint.
+  /// \pre `kind() == PackageSourceConstraintKind::Registry`.
+  ZC_NODISCARD const identity::RegistryIdentity& registryIdentity() const;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:

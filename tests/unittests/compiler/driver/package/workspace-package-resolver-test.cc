@@ -24,6 +24,7 @@
 #include "compiler/driver/package/source-inventory.h"
 #include "compiler/driver/package/workspace-normalizer.h"
 #include "compiler/ir/target/target-registry.h"
+#include "zc/core/encoding.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/memory.h"
 #include "zc/core/vector.h"
@@ -176,7 +177,9 @@ package::RegisteredTargetSelection selectionOf(const ir::TargetRegistrySnapshot&
 
 // Builds the verified request directly (the light path the driver and the proven
 // session suite use), so its host/target selections byte-match verifiedSelection.
-VerifiedPackageCompilationRequest verifiedRequest(const ir::TargetRegistrySnapshot& registry) {
+VerifiedPackageCompilationRequest verifiedRequest(
+    const ir::TargetRegistrySnapshot& registry,
+    PackageLockMode lockMode = PackageLockMode::PreferLocked) {
   zc::Vector<VerifiedCompilationRoot> roots;
   zc::Vector<identity::CanonicalPathSegment> sourceSegments;
   sourceSegments.add(scalar<identity::CanonicalPathSegment>("src"_zc));
@@ -186,16 +189,18 @@ VerifiedPackageCompilationRequest verifiedRequest(const ir::TargetRegistrySnapsh
       2026, false, identity::CanonicalRelativePath::from(zc::mv(sourceSegments))));
   auto result = VerifiedPackageCompilationRequest::from(
       zc::mv(roots), selectionOf(registry), selectionOf(registry),
-      package::SelectedLanguageOptions{}, PackageLockMode::PreferLocked);
+      package::SelectedLanguageOptions{}, lockMode);
   ZC_IF_SOME(value, result) { return zc::mv(value); }
   ZC_FAIL_REQUIRE("resolver fixture verified request was rejected");
 }
 
-NormalizedPackageCompilationRequest normalizedRequest(const ir::TargetRegistrySnapshot& registry) {
+NormalizedPackageCompilationRequest normalizedRequest(const ir::TargetRegistrySnapshot& registry,
+                                                      uint32_t lockedCount = 0) {
   auto service = registry.packageTargetService();
   ZC_REQUIRE(service != zc::none);
   RawPackageCompilationRequest raw;
   raw.packageSelections.add(zc::str("app"));
+  raw.lockedCount = lockedCount;
   zc::Maybe<identity::TargetName> noName;
   raw.targetSelections.add(
       RequestedTargetSelection(identity::CrateTargetKind::Library, zc::mv(noName)));
@@ -218,6 +223,110 @@ NormalizedWorkspace loadedWorkspace() {
   ZC_IF_SOME(inventoryValue, inventory) {
     zc::Vector<WorkspaceMemberInput> members;
     auto result = normalizeWorkspace(kManifest, inventoryValue, zc::mv(members));
+    ZC_REQUIRE(result.is<NormalizedWorkspace>());
+    return zc::mv(result.get<NormalizedWorkspace>());
+  }
+  ZC_FAIL_REQUIRE("resolver fixture workspace normalization failed");
+}
+
+// --- Lockfile trust test fixtures ---
+
+identity::Sha256Digest fixtureDigest(zc::StringPtr text) {
+  auto result = identity::sha256(text.asBytes());
+  ZC_IF_SOME(value, result) { return value; }
+  ZC_UNREACHABLE
+}
+
+identity::CanonicalUrl fixtureUrl(zc::StringPtr text) {
+  auto result = identity::CanonicalUrl::fromCanonical(text);
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
+
+identity::SortedFeatureSet fixtureEmptyFeatures() {
+  zc::Vector<identity::FeatureName> values;
+  auto result = identity::SortedFeatureSet::from(zc::mv(values));
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
+
+identity::PackageKey fixtureRegistryPackageKey() {
+  auto name = identity::PackageName::fromCanonical("codec"_zc);
+  auto version = identity::ResolvedVersion::fromCanonical("2.0.0"_zc);
+  ZC_IF_SOME(nameValue, name) {
+    ZC_IF_SOME(versionValue, version) {
+      return identity::PackageKey::from(
+          identity::CanonicalPackageSource::registry(identity::RegistryIdentity::from(
+              fixtureUrl("https://example.com/index"_zc), fixtureDigest("registry trust"_zc))),
+          zc::mv(nameValue), zc::mv(versionValue), fixtureEmptyFeatures());
+    }
+  }
+  ZC_UNREACHABLE
+}
+
+Ed25519PublicKey fixturePublicKey() {
+  auto bytes = zc::heapArray<zc::byte>(32, static_cast<zc::byte>(0x2a));
+  auto result = Ed25519PublicKey::fromBytes(bytes);
+  ZC_IF_SOME(value, result) { return zc::mv(value); }
+  ZC_UNREACHABLE
+}
+
+// Builds a minimal Zom.lock containing one registry-sourced package whose
+// registry identity is https://example.com/index with trust-domain-sha256
+// derived from "registry trust".
+zc::String fixtureRegistryLockToml() {
+  auto key = fixtureRegistryPackageKey();
+  auto record = LockPackageRecord::from(
+      zc::mv(key), fixtureDigest("registry manifest"_zc), fixtureDigest("registry tree"_zc),
+      ArchiveFormat::TarZstd, fixtureDigest("archive"_zc), SigningKeyId::from(fixturePublicKey()));
+  ZC_IF_SOME(recordValue, record) {
+    zc::Vector<LockPackageRecord> packages;
+    packages.add(zc::mv(recordValue));
+    zc::Vector<identity::PackageDependencyEdgeKey> edges;
+    auto graph = VerifiedLockGraph::from(zc::mv(packages), zc::mv(edges));
+    if (graph.is<VerifiedLockGraph>()) {
+      return LockfileCodec::write(graph.get<VerifiedLockGraph>());
+    }
+  }
+  ZC_UNREACHABLE
+}
+
+// Builds a manifest that declares a registry dependency on the same registry
+// identity as fixtureRegistryLockToml, so the trusted set includes it.
+zc::String fixtureRegistryDepManifest() {
+  auto trustHex = zc::encodeHex(fixtureDigest("registry trust"_zc).bytes());
+  return zc::str(
+      "[package]\nname = \"app\"\nversion = \"1.0.0\"\nedition = \"2026\"\n\n"
+      "[dependencies]\ncodec = { registry = \"https://example.com/index\", "
+      "trust-domain-sha256 = \"",
+      trustHex, "\", version = \"2.0.0\" }\n");
+}
+
+// Builds an in-memory workspace filesystem with the given manifest and lockfile.
+zc::Own<zc::Filesystem> workspaceFilesystemWithLock(zc::StringPtr manifest,
+                                                    zc::StringPtr lockToml) {
+  auto root = zc::newInMemoryDirectory(zc::nullClock());
+  root->openFile(zc::Path({"Zom.toml"_zc}), zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll(manifest);
+  root->openFile(zc::Path({"src"_zc, "lib.zom"_zc}),
+                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll("fn helper() {}\n"_zc);
+  root->openFile(zc::Path({"Zom.lock"_zc}), zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
+      ->writeAll(lockToml);
+  return zc::heap<MemoryFilesystem>(zc::mv(root));
+}
+
+NormalizedWorkspace loadedWorkspaceFromManifest(zc::StringPtr manifest) {
+  zc::Vector<identity::CanonicalRelativePath> files;
+  zc::Vector<identity::CanonicalPathSegment> segments;
+  segments.add(scalar<identity::CanonicalPathSegment>("src"_zc));
+  segments.add(scalar<identity::CanonicalPathSegment>("lib.zom"_zc));
+  files.add(identity::CanonicalRelativePath::from(zc::mv(segments)));
+  auto inventory = PackageSourceInventory::from(zc::mv(files));
+  ZC_REQUIRE(inventory != zc::none);
+  ZC_IF_SOME(inventoryValue, inventory) {
+    zc::Vector<WorkspaceMemberInput> members;
+    auto result = normalizeWorkspace(manifest, inventoryValue, zc::mv(members));
     ZC_REQUIRE(result.is<NormalizedWorkspace>());
     return zc::mv(result.get<NormalizedWorkspace>());
   }
@@ -253,6 +362,45 @@ ZC_TEST("resolveWorkspacePackageInput reports a typed registry mismatch for a fo
       verifiedSelectionOf(registry), verifiedSelectionOf(foreignRegistry), workspace, factory);
   ZC_REQUIRE(result.is<VerifyFailure>());
   ZC_EXPECT(result.get<VerifyFailure>().is<RegistryRevisionMismatch>());
+}
+
+ZC_TEST("resolveWorkspacePackageInput rejects a locked graph naming an untrusted registry") {
+  auto lockToml = fixtureRegistryLockToml();
+  auto filesystem = workspaceFilesystemWithLock(kManifest, lockToml);
+  auto registry = targetRegistry();
+  zc::MemoryResource resource;
+  auto request = normalizedRequest(registry, 1);
+  auto workspace = loadedWorkspaceFromManifest(kManifest);
+  MemoryFreshSourceDirectoryFactory factory;
+  // The workspace manifest declares no registry dependencies, so the trusted
+  // set is empty and every registry identity in the lockfile is untrusted.
+  auto result = resolveWorkspacePackageInput(*filesystem, zc::Path::parse(""_zc), resource, request,
+                                             verifiedRequest(registry, PackageLockMode::LockedOnly),
+                                             verifiedSelectionOf(registry),
+                                             verifiedSelectionOf(registry), workspace, factory);
+  ZC_REQUIRE(result.is<ResolveFailure>());
+  ZC_EXPECT(result.get<ResolveFailure>().is<LockTrustDomainMismatch>());
+}
+
+ZC_TEST("resolveWorkspacePackageInput admits a locked graph naming a trusted registry") {
+  auto lockToml = fixtureRegistryLockToml();
+  auto manifest = fixtureRegistryDepManifest();
+  auto filesystem = workspaceFilesystemWithLock(manifest, lockToml);
+  auto registry = targetRegistry();
+  zc::MemoryResource resource;
+  auto request = normalizedRequest(registry, 1);
+  auto workspace = loadedWorkspaceFromManifest(manifest);
+  MemoryFreshSourceDirectoryFactory factory;
+  // The manifest declares a registry dependency on the same registry identity
+  // as the lockfile, so the trust check passes. Resolution then fails because
+  // production admits only local-path packages, leaving the registry package
+  // without a release.
+  auto result = resolveWorkspacePackageInput(*filesystem, zc::Path::parse(""_zc), resource, request,
+                                             verifiedRequest(registry, PackageLockMode::LockedOnly),
+                                             verifiedSelectionOf(registry),
+                                             verifiedSelectionOf(registry), workspace, factory);
+  ZC_REQUIRE(result.is<ResolveFailure>());
+  ZC_EXPECT(result.get<ResolveFailure>().is<LockedResolveFailed>());
 }
 
 }  // namespace

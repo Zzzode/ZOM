@@ -912,6 +912,9 @@ public:
       ZC_CASE_ONEOF(_, package::LockReadFailed) {
         reportOperationalFailure("package-resolution"_zc, "lock-read-failed"_zc);
       }
+      ZC_CASE_ONEOF(_, package::LockTrustDomainMismatch) {
+        reportOperationalFailure("package-resolution"_zc, "lock-trust-domain-mismatch"_zc);
+      }
       ZC_CASE_ONEOF(_, package::LockedResolveFailed) {
         reportOperationalFailure("package-resolution"_zc, "locked-resolve-failed"_zc);
       }

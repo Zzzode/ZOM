@@ -43,6 +43,8 @@ struct LocalRecordRejected final {};
 struct LockReadFailed final {
   LockIssue issue;
 };
+/// \brief The locked graph names a registry outside the workspace trusted set.
+struct LockTrustDomainMismatch final {};
 /// \brief Locked resolution failed. Carries the resolver failure when one was
 /// produced; a `zc::none` failure means the locked graph unexpectedly required a
 /// solver invocation, which violates the locked-replay invariant.
@@ -59,9 +61,10 @@ struct ResolveFailed final {
 /// \brief A closed set of workspace resolution failures. Each alternative carries
 /// the most specific typed diagnostic the failing step produced, so a caller can
 /// always locate and render the exact cause without a generic string.
-using ResolveFailure = zc::OneOf<SnapshotParentUnavailable, PackageNameOrVersionInvalid,
-                                 SourceMaterializationFailed, LocalRecordRejected, LockReadFailed,
-                                 LockedResolveFailed, LockWriteFailed, ResolveFailed>;
+using ResolveFailure =
+    zc::OneOf<SnapshotParentUnavailable, PackageNameOrVersionInvalid, SourceMaterializationFailed,
+              LocalRecordRejected, LockReadFailed, LockTrustDomainMismatch, LockedResolveFailed,
+              LockWriteFailed, ResolveFailed>;
 
 /// \brief The outcome of resolving one workspace's package inputs: the installed
 /// inputs bundle, a typed resolution failure, or a typed verification failure.
