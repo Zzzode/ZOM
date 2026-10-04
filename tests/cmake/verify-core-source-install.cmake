@@ -21,6 +21,10 @@ set(ZOM_INSTALLED_MARKER
     "${ZOM_TEST_PREFIX}/share/zom/core/src/core/marker.zom")
 set(ZOM_INSTALLED_PRELUDE
     "${ZOM_TEST_PREFIX}/share/zom/core/src/core/prelude.zom")
+set(ZOM_INSTALLED_MATH
+    "${ZOM_TEST_PREFIX}/share/zom/core/src/core/math.zom")
+set(ZOM_INSTALLED_ORDERING
+    "${ZOM_TEST_PREFIX}/share/zom/core/src/core/ordering.zom")
 set(ZOM_INSTALLED_MANIFEST "${ZOM_TEST_PREFIX}/share/zom/core/Zom.toml")
 set(ZOM_INSTALLED_COMPILER "${ZOM_TEST_PREFIX}/bin/${ZOMC_FILE_NAME}")
 set(ZOM_INSTALLED_GDB "${ZOM_TEST_PREFIX}/share/zom/debuggers/gdb/zomlang_gdb.py")
@@ -33,6 +37,8 @@ foreach(
        "${ZOM_INSTALLED_CORE}"
        "${ZOM_INSTALLED_MARKER}"
        "${ZOM_INSTALLED_PRELUDE}"
+       "${ZOM_INSTALLED_MATH}"
+       "${ZOM_INSTALLED_ORDERING}"
        "${ZOM_INSTALLED_MANIFEST}"
        "${ZOM_INSTALLED_GDB}"
        "${ZOM_INSTALLED_LLDB}")
@@ -66,6 +72,8 @@ set(
   "share/zom/core/src/core.zom"
   "share/zom/core/src/core/marker.zom"
   "share/zom/core/src/core/prelude.zom"
+  "share/zom/core/src/core/math.zom"
+  "share/zom/core/src/core/ordering.zom"
   "share/zom/debuggers/gdb/zomlang_gdb.py"
   "share/zom/debuggers/lldb/zomlang_lldb.py")
 list(SORT ZOM_EXPECTED_FILES)

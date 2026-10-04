@@ -1,0 +1,31 @@
+// Ordering comparison results.
+//
+// This module defines the Ordering enum, the result of a total ordering
+// comparison between two values.
+//
+// An Ordering is the return type of a comparison function. Instead of
+// returning a boolean (which only answers "is a < b?"), an Ordering
+// answers "how does a relate to b?" in one call:
+//
+//   use core::ordering::Ordering;
+//
+//   let o: Ordering = Ordering::Less;
+//
+// Construct a value with the double-colon path:
+//
+//   let less: Ordering = Ordering::Less;
+//   let equal: Ordering = Ordering::Equal;
+//   let greater: Ordering = Ordering::Greater;
+//
+module ordering;
+
+// The result of a total ordering comparison.
+//
+// Less means the left value is smaller than the right.
+// Equal means both values are equivalent.
+// Greater means the left value is larger than the right.
+export enum Ordering {
+  Less,
+  Equal,
+  Greater,
+}

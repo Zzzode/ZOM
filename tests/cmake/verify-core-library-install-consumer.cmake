@@ -34,6 +34,8 @@ set(
   ZOM_EXPECTED_CORE_FILES
   "core.zom"
   "core/marker.zom"
+  "core/math.zom"
+  "core/ordering.zom"
   "core/prelude.zom")
 list(SORT ZOM_EXPECTED_CORE_FILES)
 if(NOT ZOM_INSTALLED_CORE_FILES STREQUAL ZOM_EXPECTED_CORE_FILES)

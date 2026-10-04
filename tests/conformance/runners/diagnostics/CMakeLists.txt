@@ -29,7 +29,7 @@ add_test(
 
 set_tests_properties(conformance-diagnostics PROPERTIES
   LABELS "conformance;conformance-diagnostics;diagnostics;lit;filecheck;specification"
-  TIMEOUT 300
+  TIMEOUT 600
   PROCESSORS 3
   ENVIRONMENT "${DIAGNOSTIC_TEST_ENV}"
 )

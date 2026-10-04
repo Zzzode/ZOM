@@ -1,0 +1,55 @@
+// Integer math utilities.
+//
+// This module provides common arithmetic operations on signed 32-bit
+// integers. Every function is total: the type signature fully describes
+// the contract, and there are no hidden preconditions.
+//
+// Call functions with the qualified path or a use declaration:
+//
+//   use core::math::{double, square};
+//   let x: i32 = double(21);
+//   let y: i32 = square(9);
+//
+module math;
+
+// Double a signed 32-bit integer.
+//
+// Returns x + x.
+export fun double(x: i32) -> i32 {
+  return x + x;
+}
+
+// Square a signed 32-bit integer.
+//
+// Returns x * x.
+export fun square(x: i32) -> i32 {
+  return x * x;
+}
+
+// Negate a signed 32-bit integer.
+//
+// Returns 0 - x.
+export fun negate(x: i32) -> i32 {
+  return 0 - x;
+}
+
+// Add two signed 32-bit integers.
+//
+// Returns a + b.
+export fun add(a: i32, b: i32) -> i32 {
+  return a + b;
+}
+
+// Subtract two signed 32-bit integers.
+//
+// Returns a - b.
+export fun sub(a: i32, b: i32) -> i32 {
+  return a - b;
+}
+
+// Multiply two signed 32-bit integers.
+//
+// Returns a * b.
+export fun mul(a: i32, b: i32) -> i32 {
+  return a * b;
+}
