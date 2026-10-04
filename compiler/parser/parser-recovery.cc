@@ -126,7 +126,7 @@ Parser::Impl::RecoveryFrame Parser::Impl::makeRecoveryFrame(RecoveryContext cont
       addSync(frame, ast::SyntaxKind::LetKeyword);
       addSync(frame, ast::SyntaxKind::ConstKeyword);
       addSync(frame, ast::SyntaxKind::MutKeyword);
-      addSync(frame, ast::SyntaxKind::FunKeyword);
+      addSync(frame, ast::SyntaxKind::FnKeyword);
       addSync(frame, ast::SyntaxKind::ClassKeyword);
       addSync(frame, ast::SyntaxKind::StructKeyword);
       addSync(frame, ast::SyntaxKind::InterfaceKeyword);
@@ -145,7 +145,7 @@ Parser::Impl::RecoveryFrame Parser::Impl::makeRecoveryFrame(RecoveryContext cont
       addSync(frame, ast::SyntaxKind::LetKeyword);
       addSync(frame, ast::SyntaxKind::ConstKeyword);
       addSync(frame, ast::SyntaxKind::MutKeyword);
-      addSync(frame, ast::SyntaxKind::FunKeyword);
+      addSync(frame, ast::SyntaxKind::FnKeyword);
       addSync(frame, ast::SyntaxKind::ClassKeyword);
       addSync(frame, ast::SyntaxKind::StructKeyword);
       addSync(frame, ast::SyntaxKind::InterfaceKeyword);
@@ -171,7 +171,7 @@ Parser::Impl::RecoveryFrame Parser::Impl::makeRecoveryFrame(RecoveryContext cont
       addSync(frame, ast::SyntaxKind::SpawnKeyword);
       addSync(frame, ast::SyntaxKind::LetKeyword);
       addSync(frame, ast::SyntaxKind::ConstKeyword);
-      addSync(frame, ast::SyntaxKind::FunKeyword);
+      addSync(frame, ast::SyntaxKind::FnKeyword);
       addSync(frame, ast::SyntaxKind::EndOfFile);
       break;
     case RecoveryContext::Expression:
@@ -656,7 +656,7 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       boundary.kind = ast::SyntaxKind::LetStmt;
       boundary.end = consumeBindingDeclarationEnd(head, limit);
       break;
-    case ast::SyntaxKind::FunKeyword:
+    case ast::SyntaxKind::FnKeyword:
       boundary.kind = ast::SyntaxKind::FunctionDecl;
       boundary.end = consumeFunctionDeclarationEnd(head, limit);
       break;

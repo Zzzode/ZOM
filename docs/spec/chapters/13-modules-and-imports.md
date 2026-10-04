@@ -19,7 +19,7 @@ The block form supplies the module's source items inline:
 
 ```zom
 module geometry {
-    export fun distance() -> f64 { 0.0 }
+    export fn distance() -> f64 { 0.0 }
 }
 ```
 

@@ -12,27 +12,27 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #9 @1:21..4:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:36 name="describe" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:35 name="describe" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:26..2:28 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:25..2:27 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:32..2:35 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:31..2:34 kind=Str
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #8 @3:5..3:41 name="operate" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #8 @3:5..3:40 name="operate" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #6 @3:25..3:33 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #6 @3:24..3:32 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #5 @3:26..3:32 name="x"
+// CHECK-NEXT:                         FunctionParameterDecl #5 @3:25..3:31 name="x"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #4 @3:29..3:32 kind=I32
+// CHECK-NEXT:                             PredefinedTypeExpr #4 @3:28..3:31 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:37..3:40 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:36..3:39 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

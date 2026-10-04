@@ -1,2 +1,2 @@
 class Cell { value: i32 }
-fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }
+fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }

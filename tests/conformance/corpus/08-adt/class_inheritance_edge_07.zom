@@ -1,4 +1,4 @@
 abstract class Base {
-    abstract fun describe() -> str;
-    abstract fun operate(x: i32) -> i32;
+    abstract fn describe() -> str;
+    abstract fn operate(x: i32) -> i32;
 }

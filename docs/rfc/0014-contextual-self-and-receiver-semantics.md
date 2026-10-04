@@ -150,11 +150,11 @@ use one of these forms:
 
 ```zom
 class Buffer {
-    fun len(this) -> usize { ... }
-    fun inspect(this: &Self) { ... }
-    mutating fun clear(this) { ... }
-    fun reserve(this: &mut Self, additional: usize) { ... }
-    fun into_bytes(#[zom::param::move] this) -> u8[] { ... }
+    fn len(this) -> usize { ... }
+    fn inspect(this: &Self) { ... }
+    mutating fn clear(this) { ... }
+    fn reserve(this: &mut Self, additional: usize) { ... }
+    fn into_bytes(#[zom::param::move] this) -> u8[] { ... }
 }
 ```
 
@@ -461,8 +461,8 @@ reject a declaration, but it cannot change this matrix.
 
 After normalization, bare `this`, `this: Self`, and `this: &Self` produce the
 same shared receiver place: the `ThisExpr` semantic type is the owning `Self`
-type and `ReceiverMode::Shared` supplies permission. `mutating fun f(this)` and
-`fun f(this: &mut Self)` likewise produce the same owning-`Self` place with
+type and `ReceiverMode::Shared` supplies permission. `mutating fn f(this)` and
+`fn f(this: &mut Self)` likewise produce the same owning-`Self` place with
 `ReceiverMode::Mutable`. The annotation is a receiver-mode declaration, not an
 ordinary reference-typed parameter value. A move receiver produces the owning
 `Self` value with `ReceiverMode::Move`.

@@ -4,7 +4,7 @@
 // `a.speak()` is the trailing return. Both resolve to the direct impl
 // method `Dog::speak` and the second returns 41.
 interface Animal {
-  fun speak(this) -> i32;
+  fn speak(this) -> i32;
 }
 
 struct Dog {
@@ -12,10 +12,10 @@ struct Dog {
 }
 
 impl Animal for Dog {
-  fun speak(this) -> i32 { return 41; }
+  fn speak(this) -> i32 { return 41; }
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let a: dyn Animal = Dog { tag: 0 };
   a.speak();
   return a.speak();

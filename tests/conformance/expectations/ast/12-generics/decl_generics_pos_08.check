@@ -27,9 +27,9 @@
 // CHECK-NEXT:                 UnitVariant #6 @1:27..1:31 name="None"
 // CHECK-NEXT:                   discriminant: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #22 @2:1..2:49
+// CHECK-NEXT:     StatementListItem #22 @2:1..2:48
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #21 @2:1..2:49 name="Mappable"
+// CHECK-NEXT:         InterfaceDecl #21 @2:1..2:48 name="Mappable"
 // CHECK-NEXT:           type_params_id:
 // CHECK-NEXT:             GenericParams #12 @2:19..2:25 nparams=2
 // CHECK-NEXT:               params:
@@ -42,25 +42,25 @@
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #20 @2:26..2:49 nmembers=1
+// CHECK-NEXT:             ClassMemberList #20 @2:26..2:48 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #19 @2:28..2:47 name="get" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #19 @2:28..2:46 name="get" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #16 @2:35..2:41 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #16 @2:34..2:40 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #15 @2:36..2:40 name="k"
+// CHECK-NEXT:                         FunctionParameterDecl #15 @2:35..2:39 name="k"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #14 @2:39..2:40
+// CHECK-NEXT:                             NamedTypeExpr #14 @2:38..2:39
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #13 @2:39..2:40 segments=["K"] root=Relative
+// CHECK-NEXT:                                 ModulePath #13 @2:38..2:39 segments=["K"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #18 @2:45..2:46
+// CHECK-NEXT:                     NamedTypeExpr #18 @2:44..2:45
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #17 @2:45..2:46 segments=["V"] root=Relative
+// CHECK-NEXT:                         ModulePath #17 @2:44..2:45 segments=["V"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

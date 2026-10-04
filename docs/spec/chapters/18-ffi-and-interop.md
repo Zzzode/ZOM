@@ -14,7 +14,7 @@ ExternBlockDeclaration ::= 'extern' AbiLiteral? '{' ExternItem* '}'
 AbiLiteral             ::= '"C"' | '"Cdecl"' | '"system"' | '"zom-cdecl"'
 ExternItem              ::= ExternFunctionDeclaration
                           | ExternVariableDeclaration
-ExternFunctionDeclaration ::= 'fun' Identifier FunctionSignature ';'
+ExternFunctionDeclaration ::= 'fn' Identifier FunctionSignature ';'
 ExternVariableDeclaration ::= 'variable' Identifier ':' TypeExpression ';'
 ```
 
@@ -27,7 +27,7 @@ An unknown ABI literal is rejected with `ZOM2091 UnknownExternAbi`.
 
 ```zom
 extern "C" {
-    fun read(fd: i32, buffer: str, length: u64) -> i64;
+    fn read(fd: i32, buffer: str, length: u64) -> i64;
     variable errno: i32;
 }
 ```

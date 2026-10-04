@@ -8,21 +8,21 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #9 @1:1..3:2 name="use_ref"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #4 @1:12..1:25 nparams=1
+// CHECK-NEXT:             FunctionParameterList #4 @1:11..1:24 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:13..1:24 name="value"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @1:12..1:23 name="value"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     ReferenceTypeExpr #2 @1:20..1:24 is_mut=false
+// CHECK-NEXT:                     ReferenceTypeExpr #2 @1:19..1:23 is_mut=false
 // CHECK-NEXT:                       elem:
-// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:21..1:24 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:20..1:23 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #5 @1:29..1:33 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #5 @1:28..1:32 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #8 @1:34..3:2
+// CHECK-NEXT:             BlockStmt #8 @1:33..3:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #7 @2:5..2:12
 // CHECK-NEXT:                   item:
@@ -34,14 +34,14 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #33 @5:1..9:2 name="main"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #11 @5:9..5:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #11 @5:8..5:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #12 @5:15..5:19 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #12 @5:14..5:18 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #32 @5:20..9:2
+// CHECK-NEXT:             BlockStmt #32 @5:19..9:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #18 @6:5..6:20
 // CHECK-NEXT:                   item:

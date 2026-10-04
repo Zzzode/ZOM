@@ -1,6 +1,6 @@
 interface MixedAccess {
-    protected fun helper() -> unit;
+    protected fn helper() -> unit;
     protected get ctx() -> Context;
-    fun publicOp() -> unit;
+    fn publicOp() -> unit;
     get id() -> u64;
 }

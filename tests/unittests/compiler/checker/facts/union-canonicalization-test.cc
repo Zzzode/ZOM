@@ -98,7 +98,7 @@ zc::String withOwner(zc::StringPtr declaration) {
 // A union with the Never identity element drops it: `i32 | never` is `i32`.
 ZC_TEST("Union absorbs the never identity element") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: i32 | never) {}"_zc));
+      withOwner("fn target(value: i32 | never) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::UnionTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -109,7 +109,7 @@ ZC_TEST("Union absorbs the never identity element") {
 // A union containing the Any annihilator collapses to Any: `i32 | any` is `any`.
 ZC_TEST("Union collapses to the any annihilator") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: i32 | any) {}"_zc));
+      withOwner("fn target(value: i32 | any) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::UnionTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -121,7 +121,7 @@ ZC_TEST("Union collapses to the any annihilator") {
 // `i32 | i32` is `i32`. This was a hard rejection before canonicalization.
 ZC_TEST("Union deduplicates equal members") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: i32 | i32) {}"_zc));
+      withOwner("fn target(value: i32 | i32) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::UnionTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -133,7 +133,7 @@ ZC_TEST("Union deduplicates equal members") {
 // `i32 & never` is `never`.
 ZC_TEST("Intersection collapses to the never annihilator") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: i32 & never) {}"_zc));
+      withOwner("fn target(value: i32 & never) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::IntersectionTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -144,7 +144,7 @@ ZC_TEST("Intersection collapses to the never annihilator") {
 // An intersection with the Any identity element drops it: `i32 & any` is `i32`.
 ZC_TEST("Intersection removes the any identity element") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: i32 & any) {}"_zc));
+      withOwner("fn target(value: i32 & any) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::IntersectionTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -156,7 +156,7 @@ ZC_TEST("Intersection removes the any identity element") {
 // the sole member `null`.
 ZC_TEST("Optional never reduces to null") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: never?) {}"_zc));
+      withOwner("fn target(value: never?) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::OptionalTypeExpr);
   ZC_REQUIRE(key != zc::none);
   ZC_IF_SOME(bytes, key) {
@@ -173,7 +173,7 @@ ZC_TEST("Union golden vector matches the RFC 0005 canonical key") {
   const auto expectedDigest = "95145d7b4eefcf1afa1074973dc414f8d268b3a79d86cbb7be2b761a3f40c844"_zc;
 
   tests::checker_fixture::CheckerAuthoritySession unionFixture(
-      withOwner("fun target(value: i32 | null) {}"_zc));
+      withOwner("fn target(value: i32 | null) {}"_zc));
   auto unionKey = resolveKindKey(unionFixture, ast::SyntaxKind::UnionTypeExpr);
   ZC_REQUIRE(unionKey != zc::none);
   ZC_IF_SOME(bytes, unionKey) {
@@ -185,7 +185,7 @@ ZC_TEST("Union golden vector matches the RFC 0005 canonical key") {
   }
 
   tests::checker_fixture::CheckerAuthoritySession optionalFixture(
-      withOwner("fun target(value: i32?) {}"_zc));
+      withOwner("fn target(value: i32?) {}"_zc));
   auto optionalKey = resolveKindKey(optionalFixture, ast::SyntaxKind::OptionalTypeExpr);
   ZC_REQUIRE(optionalKey != zc::none);
   ZC_IF_SOME(bytes, optionalKey) { ZC_EXPECT(zc::encodeHex(bytes.asPtr()) == expectedKey); }
@@ -196,7 +196,7 @@ ZC_TEST("Union golden vector matches the RFC 0005 canonical key") {
 // rather than admitted. This documents the boundary without a crash.
 ZC_TEST("Nested union member is rejected fail-closed") {
   tests::checker_fixture::CheckerAuthoritySession fixture(
-      withOwner("fun target(value: (i32 | str) | bool) {}"_zc));
+      withOwner("fn target(value: (i32 | str) | bool) {}"_zc));
   auto key = resolveKindKey(fixture, ast::SyntaxKind::UnionTypeExpr, /*outermost=*/true);
   ZC_EXPECT(key == zc::none);
 }

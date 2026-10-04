@@ -8,21 +8,21 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #22 @1:1..7:2 name="leak"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #3 @1:9..1:21 nparams=1
+// CHECK-NEXT:             FunctionParameterList #3 @1:8..1:20 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:10..1:20 name="flag"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:9..1:19 name="flag"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:16..1:20 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:15..1:19 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             ReferenceTypeExpr #5 @1:25..1:29 is_mut=false
+// CHECK-NEXT:             ReferenceTypeExpr #5 @1:24..1:28 is_mut=false
 // CHECK-NEXT:               elem:
-// CHECK-NEXT:                 PredefinedTypeExpr #4 @1:26..1:29 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #4 @1:25..1:28 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #21 @1:30..7:2
+// CHECK-NEXT:             BlockStmt #21 @1:29..7:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #20 @2:5..6:6
 // CHECK-NEXT:                   item:

@@ -8,21 +8,21 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         ExternBlock #8 @1:1..4:2 abi=Cdecl
 // CHECK-NEXT:           items:
-// CHECK-NEXT:             ExternDecl #4 @2:5..2:33 name="printf" abi=Cdecl
+// CHECK-NEXT:             ExternDecl #4 @2:5..2:32 name="printf" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @2:16..2:24 name="fmt"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @2:15..2:23 name="fmt"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:21..2:24 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:20..2:23 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty:
-// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:29..2:32 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #1 @2:28..2:31 kind=I32
 // CHECK-NEXT:               raises_ty: null
-// CHECK-NEXT:             ExternDecl #7 @3:5..3:22 name="free" abi=Cdecl
+// CHECK-NEXT:             ExternDecl #7 @3:5..3:21 name="free" abi=Cdecl
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #6 @3:14..3:20 name="p"
+// CHECK-NEXT:                 FunctionParameterDecl #6 @3:13..3:19 name="p"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:17..3:20 kind=U64
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:16..3:19 kind=U64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:               ret_ty: null

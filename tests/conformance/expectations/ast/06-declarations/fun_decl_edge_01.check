@@ -8,34 +8,34 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #18 @1:1..3:2 name="divide"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #5 @1:11..1:27 nparams=2
+// CHECK-NEXT:             FunctionParameterList #5 @1:10..1:26 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:12..1:18 name="a"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:11..1:17 name="a"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:15..1:18 kind=F64
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:14..1:17 kind=F64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #4 @1:20..1:26 name="b"
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:19..1:25 name="b"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:23..1:26 kind=F64
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:22..1:25 kind=F64
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #6 @1:31..1:34 kind=F64
+// CHECK-NEXT:             PredefinedTypeExpr #6 @1:30..1:33 kind=F64
 // CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             UnionTypeExpr #11 @1:42..1:60
+// CHECK-NEXT:             UnionTypeExpr #11 @1:41..1:59
 // CHECK-NEXT:               alts:
-// CHECK-NEXT:                 NamedTypeExpr #8 @1:42..1:49
+// CHECK-NEXT:                 NamedTypeExpr #8 @1:41..1:48
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #7 @1:42..1:49 segments=["DivZero"] root=Relative
+// CHECK-NEXT:                     ModulePath #7 @1:41..1:48 segments=["DivZero"] root=Relative
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #10 @1:52..1:60
+// CHECK-NEXT:                 NamedTypeExpr #10 @1:51..1:59
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #9 @1:52..1:60 segments=["Overflow"] root=Relative
+// CHECK-NEXT:                     ModulePath #9 @1:51..1:59 segments=["Overflow"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #17 @1:61..3:2
+// CHECK-NEXT:             BlockStmt #17 @1:60..3:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #16 @2:5..2:18
 // CHECK-NEXT:                   item:

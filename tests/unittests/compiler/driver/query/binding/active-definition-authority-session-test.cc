@@ -1159,8 +1159,8 @@ ZC_TEST(
   stageBaseInputs(state, database,
                   "module root;\n"
                   "interface Mapper {\n"
-                  "  fun set(index: u64, value: u64) -> unit;\n"
-                  "  fun map<U>(value: U) -> U;\n"
+                  "  fn set(index: u64, value: u64) -> unit;\n"
+                  "  fn map<U>(value: U) -> U;\n"
                   "}\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
@@ -1182,7 +1182,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonMaterializesHeaderScopeBindin
   auto roots = packageRoots();
   stageBaseInputs(state, database,
                   "module root;\n"
-                  "fun identity<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn identity<T>(value: T) -> T { return value; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -1352,7 +1352,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsPermissionAndLineageMu
                   "module root;\n"
                   "class Alpha<T> {}\n"
                   "impl Trait for Alpha {}\n"
-                  "fun Beta<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn Beta<T>(value: T) -> T { return value; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -1452,7 +1452,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.SkeletonRejectsHeaderMembershipWithdr
                     "module root;\n"
                     "class Alpha<T> {}\n"
                     "impl Trait for Alpha {}\n"
-                    "fun Beta<T>(value: T) -> T { return value; }\n"_zc);
+                    "fn Beta<T>(value: T) -> T { return value; }\n"_zc);
     ZC_REQUIRE(commitAuthority(state, database, roots));
 
     auto opened = database.beginInputTransaction(database.snapshot().revision());
@@ -1517,7 +1517,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyRejectsPermissionAndLineageM
   stageBaseInputs(state, database,
                   "module root;\n"
                   "let module_value = 0;\n"
-                  "fun Alpha<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn Alpha<T>(value: T) -> T { return value; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto owner = binder::StableOwnerBodyQueryKey::from(
@@ -1648,7 +1648,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesFunctionExpressi
   ContextualIdentityAuthorityInputLedger state;
   auto roots = packageRoots();
   stageBaseInputs(state, database,
-                  "module root;\nlet captured = 1;\nlet transform = fun () { captured; };\n"_zc);
+                  "module root;\nlet captured = 1;\nlet transform = fn () { captured; };\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto owner = binder::StableOwnerBodyQueryKey::from(
@@ -1678,7 +1678,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsExplicitClosureCaptu
   auto roots = packageRoots();
   stageBaseInputs(state, database,
                   "module root;\nlet captured = 1;\n"
-                  "let transform = fun () use [captured] { captured; };\n"_zc);
+                  "let transform = fn () use [captured] { captured; };\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto owner = binder::StableOwnerBodyQueryKey::from(
@@ -1745,8 +1745,8 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesReferenceAndEmpt
   auto roots = packageRoots();
   stageBaseInputs(state, database,
                   "module root;\nlet value = 1;\nlet reference = 2;\n"
-                  "let transform = fun () use [value, &reference] { value; reference; };\n"
-                  "let empty = fun () use [] {};\n"_zc);
+                  "let transform = fn () use [value, &reference] { value; reference; };\n"
+                  "let empty = fn () use [] {};\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto owner = binder::StableOwnerBodyQueryKey::from(
@@ -1998,7 +1998,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesThisBindings") {
   auto roots = packageRoots();
   stageBaseInputs(state, database,
                   "module root;\n"
-                  "class Host { fun make(this) { this; } }\n"_zc);
+                  "class Host { fn make(this) { this; } }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -2034,10 +2034,9 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesThisCaptures") {
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   ContextualIdentityAuthorityInputLedger state;
   auto roots = packageRoots();
-  stageBaseInputs(
-      state, database,
-      "module root;\n"
-      "class Host { fun make(this) { let closure = fun() use [this] { this; }; } }\n"_zc);
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "class Host { fn make(this) { let closure = fn() use [this] { this; }; } }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -2071,7 +2070,7 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsContextualSelfTypes"
   auto roots = packageRoots();
   stageBaseInputs(state, database,
                   "module root;\n"
-                  "class Host { fun make(this) { let value: Self = this; } }\n"_zc);
+                  "class Host { fn make(this) { let value: Self = this; } }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -2243,7 +2242,7 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
   stageBaseInputs(state, database,
                   "module root;\n"
                   "let module_value = 0;\n"
-                  "fun Alpha<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn Alpha<T>(value: T) -> T { return value; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
   auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
@@ -2499,7 +2498,7 @@ ZC_TEST("CheckerIdentityAuthority resolves every retained identity domain") {
                   "module root;\n"
                   "class Alpha<T> {}\n"
                   "impl Trait for Alpha {}\n"
-                  "fun Beta<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn Beta<T>(value: T) -> T { return value; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
   auto sealed = sealDatabase(database, roots);
 
@@ -2854,7 +2853,7 @@ ZC_TEST("SessionInputTransactionTest.IdentityPayloadRejectsAuthorityAndReadiness
                   "class Alpha {}\n"
                   "class Gamma {}\n"
                   "impl Trait for Alpha {}\n"
-                  "fun Beta<T>(value: T) -> T { return value; }\n"_zc);
+                  "fn Beta<T>(value: T) -> T { return value; }\n"_zc);
   auto staging = database.snapshot();
   auto prepared = ContextualIdentityAuthorityInputTransaction::prepare(staging, staging.revision(),
                                                                        roots, state);
@@ -2932,7 +2931,7 @@ ZC_TEST("Named identity inventory admits only the reserved core root mismatch") 
   auto coreDatabase = queryDatabase(scheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(coreDatabase));
   ContextualIdentityAuthorityInputLedger coreState;
-  stageBaseInputs(coreState, coreDatabase, "module core;\nfun Alpha() {}\n"_zc);
+  stageBaseInputs(coreState, coreDatabase, "module core;\nfn Alpha() {}\n"_zc);
   auto coreSnapshot = coreDatabase.snapshot();
   auto coreInventory = coreSnapshot.get<NamedDefinitionInventoryQuery>(stableModule());
   ZC_REQUIRE(coreInventory.kind() == query::QueryValueKind::Value);
@@ -2941,7 +2940,7 @@ ZC_TEST("Named identity inventory admits only the reserved core root mismatch") 
   auto mismatchDatabase = queryDatabase(scheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(mismatchDatabase));
   ContextualIdentityAuthorityInputLedger mismatchState;
-  stageBaseInputs(mismatchState, mismatchDatabase, "module wrong;\nfun Alpha() {}\n"_zc);
+  stageBaseInputs(mismatchState, mismatchDatabase, "module wrong;\nfn Alpha() {}\n"_zc);
   auto mismatchSnapshot = mismatchDatabase.snapshot();
   auto mismatchInventory = mismatchSnapshot.get<NamedDefinitionInventoryQuery>(stableModule());
   ZC_REQUIRE(mismatchInventory.isRuntimeFailure());
@@ -2959,11 +2958,11 @@ ZC_TEST("Owner body projection requires final admission") {
   stageBaseInputs(state, database,
                   "module root;\n"
                   "let module_value = 0;\n"
-                  "fun Alpha() { let value = 0; }\n"
+                  "fn Alpha() { let value = 0; }\n"
                   "abstract class Holder {\n"
                   "  let field: i32 = 1;\n"
-                  "  abstract fun pending();\n"
-                  "  fun run() {}\n"
+                  "  abstract fn pending();\n"
+                  "  fn run() {}\n"
                   "}\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
 
@@ -2996,8 +2995,8 @@ ZC_TEST("Owner body final-admission rejection is deterministic across workers") 
     auto roots = packageRoots();
     stageBaseInputs(state, database,
                     "module root;\nlet module_value = 0;\n"
-                    "fun Alpha() { let value = 0; }\n"
-                    "fun Beta() { let value = 1; }\n"_zc);
+                    "fn Alpha() { let value = 0; }\n"
+                    "fn Beta() { let value = 1; }\n"_zc);
     ZC_REQUIRE(commitAuthority(state, database, roots));
     auto snapshot = database.snapshot();
     auto moduleQueryKey = contextual(roots, semanticModule());
@@ -3314,7 +3313,7 @@ ZC_TEST("Final-sealed identity and named-item capabilities publish verified valu
                   "class Gamma {}\n"
                   "export { Gamma as PublicGamma };\n"
                   "impl Trait for Alpha {}\n"
-                  "fun Beta() { let value = 1; }\n"_zc);
+                  "fn Beta() { let value = 1; }\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
 
   zc::Maybe<identity::DefinitionKey> alphaKey;
@@ -3786,10 +3785,10 @@ ZC_TEST("Verified bound module materializes an imported behavior implementation"
   constexpr auto source =
       "module root;\n"
       "import dependency::{Behavior};\n"
-      "impl Behavior for i32 { fun act() {} }\n"_zc;
+      "impl Behavior for i32 { fn act() {} }\n"_zc;
   constexpr auto dependencySource =
       "module root;\n"
-      "export interface Behavior { fun act(); }\n"_zc;
+      "export interface Behavior { fn act(); }\n"_zc;
   stageBaseInputs(state, database, source, "authority"_zc, true, dependencySource, true);
 
   auto opened = database.beginInputTransaction(database.snapshot().revision());
@@ -4201,10 +4200,10 @@ ZC_TEST("Final-sealed owner-body capabilities publish every active body") {
   stageBaseInputs(state, database,
                   "module root;\n"
                   "let module_value = 0;\n"
-                  "fun Alpha() { let value = 0; }\n"
+                  "fn Alpha() { let value = 0; }\n"
                   "class Holder {\n"
                   "  let field: i32 = 1;\n"
-                  "  fun run() {}\n"
+                  "  fn run() {}\n"
                   "}\n"_zc);
   ZC_REQUIRE(commitAuthority(state, database, roots));
 

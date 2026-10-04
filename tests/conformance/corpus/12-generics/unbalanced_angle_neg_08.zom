@@ -1,1 +1,1 @@
-fun f<T: i32(a: T) -> T { return a; }
+fn f<T: i32(a: T) -> T { return a; }

@@ -1,4 +1,4 @@
-fun f() {
+fn f() {
   let a = x++;
   let b = y--;
   let c = z?!;

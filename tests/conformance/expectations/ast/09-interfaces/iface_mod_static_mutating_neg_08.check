@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2084]: Declaration modifiers 'static' and 'mutating' cannot be used together
 // CHECK-LITERAL:   --> conformance/iface_mod_static_mutating_neg_08.zom:2:12
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |     static mutating fun bad() -> unit;
+// CHECK-LITERAL: 2 |     static mutating fn bad() -> unit;
 // CHECK-LITERAL:   |            ^

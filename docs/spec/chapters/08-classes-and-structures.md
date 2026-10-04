@@ -23,15 +23,15 @@ class Vehicle {
         this.vin = vin;
     }
 
-    public fun getInfo(this) -> str {
+    public fn getInfo(this) -> str {
         return this.year.toString() + " " + this.make + " " + this.model;
     }
 
-    public fun start(this) {
+    public fn start(this) {
         print("Starting " + this.getInfo());
     }
 
-    protected fun getVin(this) -> str {
+    protected fn getVin(this) -> str {
         return this.vin;
     }
 }
@@ -50,12 +50,12 @@ class Car : Vehicle {
         this.fuelType = fuelType;
     }
 
-    override public fun start(this) {
+    override public fn start(this) {
         print("Turning key...");
         super.start();
     }
 
-    public fun getDoors(this) -> i32 {
+    public fn getDoors(this) -> i32 {
         return this.doors;
     }
 }
@@ -72,15 +72,15 @@ abstract class Shape {
     }
 
     // Abstract method - must be implemented by subclasses
-    abstract public fun area(this) -> f64;
-    abstract public fun perimeter(this) -> f64;
+    abstract public fn area(this) -> f64;
+    abstract public fn perimeter(this) -> f64;
 
     // Concrete method
-    public fun getColor(this) -> str {
+    public fn getColor(this) -> str {
         return this.color;
     }
 
-    public fun describe(this) -> str {
+    public fn describe(this) -> str {
         return "A " + this.color + " shape with area " + this.area().toString();
     }
 }
@@ -93,11 +93,11 @@ class Circle : Shape {
         this.radius = radius;
     }
 
-    override public fun area(this) -> f64 {
+    override public fn area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    override public fun perimeter(this) -> f64 {
+    override public fn perimeter(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 }
@@ -171,20 +171,20 @@ struct Vector3D {
     y: f64,
     z: f64,
 
-    fun length(this) -> f64 {
+    fn length(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y + this.z * this.z);
     }
 
-    fun normalize(this) -> Vector3D {
+    fn normalize(this) -> Vector3D {
         let len = this.length();
         return Vector3D(this.x / len, this.y / len, this.z / len);
     }
 
-    fun dot(this, other: Vector3D) -> f64 {
+    fn dot(this, other: Vector3D) -> f64 {
         return this.x * other.x + this.y * other.y + this.z * other.z;
     }
 
-    fun cross(this, other: Vector3D) -> Vector3D {
+    fn cross(this, other: Vector3D) -> Vector3D {
         return Vector3D(
             this.y * other.z - this.z * other.y,
             this.z * other.x - this.x * other.z,
@@ -200,15 +200,15 @@ struct Vector3D {
 struct Circle {
     radius: f64,
 
-    fun area(this) -> f64 {
+    fn area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    fun circumference(this) -> f64 {
+    fn circumference(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 
-    fun diameter(this) -> f64 {
+    fn diameter(this) -> f64 {
         return 2.0 * this.radius;
     }
 }
@@ -220,15 +220,15 @@ struct Circle {
 struct Counter {
     mut value: i32,
 
-    fun increment(this) {
+    fn increment(this) {
         this.value += 1;
     }
 
-    fun decrement(this) {
+    fn decrement(this) {
         this.value -= 1;
     }
 
-    fun reset(this) {
+    fn reset(this) {
         this.value = 0;
     }
 }

@@ -16,13 +16,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #6 @1:31..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #5 @2:5..2:32 name="area" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #5 @2:5..2:31 name="area" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #3 @2:22..2:24 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #3 @2:21..2:23 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #4 @2:28..2:31 kind=F64
+// CHECK-NEXT:                     PredefinedTypeExpr #4 @2:27..2:30 kind=F64
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

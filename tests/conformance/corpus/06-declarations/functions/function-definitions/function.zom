@@ -1,1 +1,1 @@
-fun foo(n: i32, s: str) -> str {}
+fn foo(n: i32, s: str) -> str {}

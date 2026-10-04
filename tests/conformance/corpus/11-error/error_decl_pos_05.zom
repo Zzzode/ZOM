@@ -1,5 +1,5 @@
 error NetworkError {
     code: i32;
     message: str;
-    fun describe() -> str { return self.message; }
+    fn describe() -> str { return self.message; }
 }

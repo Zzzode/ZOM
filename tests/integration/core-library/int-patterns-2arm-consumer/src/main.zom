@@ -5,10 +5,10 @@
 // entry calls the match function with a constant i32 argument and folds to
 // the reserved no-argument i32 `zom.module_init` entry the runtime `_start`
 // calls, so `zomc run` executes it natively.
-fun matchInt(x: i32) -> i32 {
+fn matchInt(x: i32) -> i32 {
     match (x) {
         when 1 => return 41;
         default => return 7;
     }
 }
-fun entry() -> i32 { let v = matchInt(1); return v; }
+fn entry() -> i32 { let v = matchInt(1); return v; }

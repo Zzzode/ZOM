@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2079]: Interface method signatures cannot have initializers
 // CHECK-LITERAL:   --> conformance/interface-method-extra-initializer.zom:2:13
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |   fun foo() = 1;
+// CHECK-LITERAL: 2 |   fn foo() = 1;
 // CHECK-LITERAL:   |             ^

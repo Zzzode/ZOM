@@ -12,15 +12,15 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #6 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #5 @2:5..2:20 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #5 @2:5..2:19 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:19 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:12..2:18 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:18 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:13..2:17 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:14..2:18
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:13..2:17
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:14..2:18 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:13..2:17 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -64,29 +64,29 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #32 @11:1..13:2 name="make"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #24 @11:9..11:20 nparams=1
+// CHECK-NEXT:             FunctionParameterList #24 @11:8..11:19 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #23 @11:10..11:19 name="c"
+// CHECK-NEXT:                 FunctionParameterDecl #23 @11:9..11:18 name="c"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #22 @11:13..11:19
+// CHECK-NEXT:                     NamedTypeExpr #22 @11:12..11:18
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #21 @11:13..11:19 segments=["Circle"] root=Relative
+// CHECK-NEXT:                         ModulePath #21 @11:12..11:18 segments=["Circle"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             DynTypeExpr #27 @11:24..11:36
+// CHECK-NEXT:             DynTypeExpr #27 @11:23..11:35
 // CHECK-NEXT:               principal:
-// CHECK-NEXT:                 NamedTypeExpr #26 @11:28..11:36
+// CHECK-NEXT:                 NamedTypeExpr #26 @11:27..11:35
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #25 @11:28..11:36 segments=["Drawable"] root=Relative
+// CHECK-NEXT:                     ModulePath #25 @11:27..11:35 segments=["Drawable"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:               markers_id: null
 // CHECK-NEXT:               assoc_bindings_id: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #31 @11:37..13:2
+// CHECK-NEXT:             BlockStmt #31 @11:36..13:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #30 @12:5..12:14
 // CHECK-NEXT:                   item:

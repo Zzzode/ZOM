@@ -1,8 +1,8 @@
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
 }
 
-fun erase(value: i32) -> i32 {
+fn erase(value: i32) -> i32 {
     let drawn: dyn Drawable = value;
     let sentinel: i32 = 1;
     return sentinel;

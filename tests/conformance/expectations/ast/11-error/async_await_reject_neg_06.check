@@ -9,10 +9,10 @@
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
 // CHECK-LITERAL:   --> conformance/async_await_reject_neg_06.zom:2:19
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 | fun f() { let a = await p; }
+// CHECK-LITERAL: 2 | fn f() { let a = await p; }
 // CHECK-LITERAL:   |                   ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
 // CHECK-LITERAL:   --> conformance/async_await_reject_neg_06.zom:2:19
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 | fun f() { let a = await p; }
+// CHECK-LITERAL: 2 | fn f() { let a = await p; }
 // CHECK-LITERAL:   |                   ^

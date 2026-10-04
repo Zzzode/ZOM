@@ -1,1 +1,1 @@
-export static fun greet() {}
+export static fn greet() {}

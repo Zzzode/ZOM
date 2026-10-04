@@ -13,9 +13,9 @@ def write_package(root: Path, name: str, dependency: bool, multi_module: bool = 
     (root / "src").mkdir(parents=True)
     main_source = "const value: i32 = 1;\n"
     if multi_module:
-        main_source = "import app::child;\nfun answer() -> i32 { return 42; }\n"
+        main_source = "import app::child;\nfn answer() -> i32 { return 42; }\n"
         (root / "src" / "child.zom").write_text(
-            "module child;\nfun childAnswer() -> i32 { return 7; }\n",
+            "module child;\nfn childAnswer() -> i32 { return 7; }\n",
             encoding="utf-8",
         )
     (root / "src" / "lib.zom").write_text(main_source, encoding="utf-8")

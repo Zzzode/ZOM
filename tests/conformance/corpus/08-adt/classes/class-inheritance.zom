@@ -1,7 +1,7 @@
 class Base {
-  fun foo() {}
+  fn foo() {}
 }
 
 class Derived : Base {
-  fun bar() {}
+  fn bar() {}
 }

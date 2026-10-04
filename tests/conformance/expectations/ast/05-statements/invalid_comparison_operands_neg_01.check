@@ -4,52 +4,52 @@
 // CHECK: SourceFile #22 @1:1..2:1 file_name="invalid_comparison_operands_neg_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #21 @1:1..1:78
+// CHECK-NEXT:     StatementListItem #21 @1:1..1:77
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #20 @1:1..1:78 name="entry"
+// CHECK-NEXT:         FunctionDecl #20 @1:1..1:77 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #4 @1:10..1:19 nparams=1
+// CHECK-NEXT:             FunctionParameterList #4 @1:9..1:18 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:11..1:18 name="x"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @1:10..1:17 name="x"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     OptionalTypeExpr #2 @1:14..1:18 double=false
+// CHECK-NEXT:                     OptionalTypeExpr #2 @1:13..1:17 double=false
 // CHECK-NEXT:                       inner:
-// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:14..1:17 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #1 @1:13..1:16 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #5 @1:23..1:26 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #5 @1:22..1:25 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #19 @1:27..1:78
+// CHECK-NEXT:             BlockStmt #19 @1:26..1:77
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #18 @1:29..1:76
+// CHECK-NEXT:                 StatementListItem #18 @1:28..1:75
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     IfStmt #17 @1:29..1:76
+// CHECK-NEXT:                     IfStmt #17 @1:28..1:75
 // CHECK-NEXT:                       cond:
-// CHECK-NEXT:                         BinaryExpr #12 @1:33..1:42 op=Ne
+// CHECK-NEXT:                         BinaryExpr #12 @1:32..1:41 op=Ne
 // CHECK-NEXT:                           lhs:
-// CHECK-NEXT:                             IdentExpr #10 @1:33..1:34 name="x"
+// CHECK-NEXT:                             IdentExpr #10 @1:32..1:33 name="x"
 // CHECK-NEXT:                           rhs:
-// CHECK-NEXT:                             NullLiteral #11 @1:38..1:42
+// CHECK-NEXT:                             NullLiteral #11 @1:37..1:41
 // CHECK-NEXT:                       then_stmt:
-// CHECK-NEXT:                         BlockStmt #16 @1:44..1:57
+// CHECK-NEXT:                         BlockStmt #16 @1:43..1:56
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #15 @1:46..1:55
+// CHECK-NEXT:                             StatementListItem #15 @1:45..1:54
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ReturnStmt #14 @1:46..1:55
+// CHECK-NEXT:                                 ReturnStmt #14 @1:45..1:54
 // CHECK-NEXT:                                   value:
-// CHECK-NEXT:                                     IntLiteral #13 @1:53..1:54 base=10 value="1"
+// CHECK-NEXT:                                     IntLiteral #13 @1:52..1:53 base=10 value="1"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       else_stmt:
-// CHECK-NEXT:                         BlockStmt #9 @1:63..1:76
+// CHECK-NEXT:                         BlockStmt #9 @1:62..1:75
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #8 @1:65..1:74
+// CHECK-NEXT:                             StatementListItem #8 @1:64..1:73
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ReturnStmt #7 @1:65..1:74
+// CHECK-NEXT:                                 ReturnStmt #7 @1:64..1:73
 // CHECK-NEXT:                                   value:
-// CHECK-NEXT:                                     IntLiteral #6 @1:72..1:73 base=10 value="0"
+// CHECK-NEXT:                                     IntLiteral #6 @1:71..1:72 base=10 value="0"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

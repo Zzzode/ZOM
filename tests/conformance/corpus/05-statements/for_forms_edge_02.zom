@@ -1,4 +1,4 @@
-fun f() {
+fn f() {
     let a = 0;
     let b = 0;
     for (a = 1, b = 2; a < 10; a = a + 1) {}

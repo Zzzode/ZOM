@@ -1,4 +1,4 @@
 // Test closure with raises clause
-let raisesClosure = fun () -> unit raises Error {
+let raisesClosure = fn () -> unit raises Error {
   return;
 };

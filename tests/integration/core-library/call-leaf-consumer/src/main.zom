@@ -4,6 +4,6 @@
 // module emitted in the fixed order [caller, callee, leaf]. The parameter-free
 // caller folds to the reserved no-argument `zom.module_init` entry the runtime
 // `_start` calls, so `zomc run` executes it natively.
-fun callee() -> i32 { return 42; }
-fun leaf() -> i32 { return 9; }
-fun caller() -> i32 { let x = callee(); return x; }
+fn callee() -> i32 { return 42; }
+fn leaf() -> i32 { return 9; }
+fn caller() -> i32 { let x = callee(); return x; }

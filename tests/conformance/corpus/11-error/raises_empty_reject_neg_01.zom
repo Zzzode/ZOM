@@ -1,1 +1,1 @@
-fun bad() raises -> i32;
+fn bad() raises -> i32;

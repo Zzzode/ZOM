@@ -12,9 +12,9 @@
 // License for the specific language governing permissions and limitations under
 // the License.
 
-#include "zc/ztest/test.h"
 #include "compiler/lexer/token.h"
 #include "tests/unittests/compiler/lexer/utils.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang {
 namespace compiler {
@@ -32,7 +32,7 @@ ZC_TEST("LexerInventoryTest.StaticTokenSpellingsRoundTripThroughLexer") {
       ast::SyntaxKind::ConstructorKeyword,
       ast::SyntaxKind::DeclareKeyword,
       ast::SyntaxKind::MutKeyword,
-      ast::SyntaxKind::FunKeyword,
+      ast::SyntaxKind::FnKeyword,
       ast::SyntaxKind::ClassKeyword,
       ast::SyntaxKind::IfKeyword,
       ast::SyntaxKind::ElseKeyword,

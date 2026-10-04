@@ -1,4 +1,4 @@
-fun fallible() raises IoError {
+fn fallible() raises IoError {
     let t = spawn {
         maybe_fail()?!;
     };

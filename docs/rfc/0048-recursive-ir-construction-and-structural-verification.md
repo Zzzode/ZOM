@@ -471,13 +471,13 @@ over the constructs the inventory refuses:
 - Specific-construct codes anchor at the construct/operator node: the control
   family (ZOM4095/4096), void return (ZOM4097), expression statement (ZOM4098),
   binary operator (ZOM4103).
-- ZOM4099 anchors at the owning function declaration (`fun`) for every body the
+- ZOM4099 anchors at the owning function declaration (`fn`) for every body the
   current slice reports there. This covers not only the two no-offending-node
   residuals (empty body; admitted statements with no terminal return) but also
   construct-bearing bodies whose construct has no dedicated code and that today
   report ZOM4099 at the declaration - proven against the corpus by
   `class_literal_body_shape_neg_03` (a class aggregate reports ZOM4099 at the
-  `fun`, 2:1). The projector maps such a construct (including a
+  `fn`, 2:1). The projector maps such a construct (including a
   reference-typed class aggregate) to ZOM4099 with the declaration anchor, not a
   node anchor, so the `.check` bytes stay identical. The construct-to-`DiagID`
   mapping is exhaustive over the initial inventory's refusals; the projector has

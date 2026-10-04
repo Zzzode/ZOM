@@ -1,4 +1,4 @@
-fun compute() -> i32 {
+fn compute() -> i32 {
     let v = unsafe {
         prepare_resources();
         compute_value()

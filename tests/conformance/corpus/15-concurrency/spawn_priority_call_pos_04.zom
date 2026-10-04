@@ -1,4 +1,4 @@
-fun main() {
+fn main() {
     let hi = spawn priority(high) do_work();
     let lo = spawn priority(low) do_work();
 }

@@ -5,7 +5,7 @@ class Animal {
     this.name = n;
   }
 
-  public fun makeSound(this) -> str {
+  public fn makeSound(this) -> str {
     return "noise";
   }
 }
@@ -18,7 +18,7 @@ class Dog : Animal {
     this.breed = b;
   }
 
-  public fun makeSound(this) -> str {
+  public fn makeSound(this) -> str {
     return "Woof";
   }
 }

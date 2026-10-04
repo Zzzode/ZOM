@@ -1,1 +1,1 @@
-fun f() { try {} catch (e) {} }
+fn f() { try {} catch (e) {} }

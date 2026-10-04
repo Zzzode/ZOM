@@ -37,8 +37,8 @@ public:
 
   DispatchFactsFixture()
       : session(
-            "interface Behavior { fun act(); }\n"
-            "class RecoveryOwner { fun act() {} }\n"
+            "interface Behavior { fn act(); }\n"
+            "class RecoveryOwner { fn act() {} }\n"
             "impl Behavior for RecoveryOwner {}\n"_zc),
         factStoreBrands(session.brands()),
         semanticTypes(session.semanticTypes()) {
@@ -850,9 +850,9 @@ ZC_TEST("DispatchFactsVerifier.RejectsNonPrimitiveTargetAgainstPrimitiveEnvelope
 ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
   CheckerAuthoritySession session(
       "class RecoveryOwner {}\n"
-      "class Holder { fun act() {} }\n"
-      "fun helper() {}\n"
-      "fun calculate() { helper(); let holder = Holder {}; holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
+      "class Holder { fn act() {} }\n"
+      "fn helper() {}\n"
+      "fn calculate() { helper(); let holder = Holder {}; holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
   auto requirements = body::BodyFactRequirementInventoryBuilder::build(
       {session.boundModule(), session.identityAuthority(), session.semanticTypes()});
   ZC_REQUIRE(requirements.is<body::VerifiedBodyFactRequirementInventory>());

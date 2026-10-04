@@ -15,50 +15,50 @@
 // CHECK-NEXT:                   ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #1 @2:10..2:13 kind=I32
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #15 @3:3..3:51 name="plus" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #15 @3:3..3:50 name="plus" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #6 @3:11..3:17 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #6 @3:10..3:16 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #5 @3:12..3:16 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #5 @3:11..3:15 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #4 @3:12..3:16
+// CHECK-NEXT:                             NamedTypeExpr #4 @3:11..3:15
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #3 @3:12..3:16 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #3 @3:11..3:15 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:21..3:24 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:20..3:23 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #14 @3:25..3:51
+// CHECK-NEXT:                     BlockStmt #14 @3:24..3:50
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #13 @3:27..3:49
+// CHECK-NEXT:                         StatementListItem #13 @3:26..3:48
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #12 @3:27..3:49
+// CHECK-NEXT:                             ReturnStmt #12 @3:26..3:48
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 BinaryExpr #11 @3:34..3:48 op=Add
+// CHECK-NEXT:                                 BinaryExpr #11 @3:33..3:47 op=Add
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #9 @3:34..3:44 property="value" access=Dot
+// CHECK-NEXT:                                     MemberExpression #9 @3:33..3:43 property="value" access=Dot
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         ThisExpr #8 @3:34..3:38
+// CHECK-NEXT:                                         ThisExpr #8 @3:33..3:37
 // CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     IntLiteral #10 @3:47..3:48 base=10 value="1"
+// CHECK-NEXT:                                     IntLiteral #10 @3:46..3:47 base=10 value="1"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #38 @5:1..8:2
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #37 @5:1..8:2 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #19 @5:10..5:12 nparams=0
+// CHECK-NEXT:             FunctionParameterList #19 @5:9..5:11 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #20 @5:16..5:19 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #20 @5:15..5:18 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #36 @5:20..8:2
+// CHECK-NEXT:             BlockStmt #36 @5:19..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #30 @6:3..6:33
 // CHECK-NEXT:                   item:

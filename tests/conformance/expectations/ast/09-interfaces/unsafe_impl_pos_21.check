@@ -12,13 +12,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:26..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:25 name="check" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:24 name="check" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:14..2:16 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:20..2:24 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -55,14 +55,14 @@
 // CHECK-NEXT:               members:
 // CHECK-NEXT:                 MethodDecl #22 @10:5..12:6 name="check" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #16 @10:14..10:16 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #16 @10:13..10:15 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #17 @10:20..10:24 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #17 @10:19..10:23 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #21 @10:25..12:6
+// CHECK-NEXT:                     BlockStmt #21 @10:24..12:6
 // CHECK-NEXT:                       stmts:
 // CHECK-NEXT:                         StatementListItem #20 @11:9..11:21
 // CHECK-NEXT:                           item:

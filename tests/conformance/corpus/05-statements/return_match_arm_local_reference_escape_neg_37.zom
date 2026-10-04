@@ -1,4 +1,4 @@
-fun leak(flag: bool) -> &i32 {
+fn leak(flag: bool) -> &i32 {
     match (flag) {
         when _ => {
             let value: i32;

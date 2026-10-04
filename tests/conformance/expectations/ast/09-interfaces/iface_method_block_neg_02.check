@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
 // CHECK-LITERAL:   --> conformance/iface_method_block_neg_02.zom:2:22
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |     fun bad() -> i32 { return 1; }
+// CHECK-LITERAL: 2 |     fn bad() -> i32 { return 1; }
 // CHECK-LITERAL:   |                      ^

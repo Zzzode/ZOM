@@ -779,7 +779,7 @@ ast::NodeId Parser::Impl::parseExternBlockDeclaration(ParserSyntaxFactory& build
     }
 
     const size_t itemStart = cursor;
-    if (kindAt(itemStart) == ast::SyntaxKind::FunKeyword) {
+    if (kindAt(itemStart) == ast::SyntaxKind::FnKeyword) {
       const size_t itemEnd = consumeFunctionDeclarationEnd(itemStart, bodyEnd);
       addNodeIfPresent(items, parseExternFunctionDecl(builder, itemStart, itemEnd, abi));
       cursor = itemEnd > itemStart ? itemEnd : itemStart + 1;
@@ -859,7 +859,7 @@ bool Parser::Impl::canContinueLetInitializerBefore(size_t index) const {
 
   const ast::SyntaxKind kind = kindAt(index);
   const ast::SyntaxKind previous = kindAt(index - 1);
-  if ((kind == ast::SyntaxKind::FunKeyword || kind == ast::SyntaxKind::ImportKeyword ||
+  if ((kind == ast::SyntaxKind::FnKeyword || kind == ast::SyntaxKind::ImportKeyword ||
        kind == ast::SyntaxKind::SpawnKeyword) &&
       previous == ast::SyntaxKind::Equals) {
     return true;

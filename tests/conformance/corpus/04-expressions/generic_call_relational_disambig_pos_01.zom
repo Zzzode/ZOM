@@ -1,4 +1,4 @@
-fun main() {
+fn main() {
   let rel = a < b > c;
   let call = foo<T>(x);
 }

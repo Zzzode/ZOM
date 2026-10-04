@@ -25,26 +25,26 @@
 // CHECK-NEXT:                         ModulePath #3 @2:24..2:25 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   init: null
-// CHECK-NEXT:                 MethodDecl #14 @3:5..3:42 name="get" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #14 @3:5..3:41 name="get" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #6 @3:12..3:14 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #6 @3:11..3:13 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #8 @3:18..3:19
+// CHECK-NEXT:                     NamedTypeExpr #8 @3:17..3:18
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #7 @3:18..3:19 segments=["T"] root=Relative
+// CHECK-NEXT:                         ModulePath #7 @3:17..3:18 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #13 @3:20..3:42
+// CHECK-NEXT:                     BlockStmt #13 @3:19..3:41
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #12 @3:22..3:40
+// CHECK-NEXT:                         StatementListItem #12 @3:21..3:39
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #11 @3:22..3:40
+// CHECK-NEXT:                             ReturnStmt #11 @3:21..3:39
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #10 @3:29..3:39 property="value" access=Dot
+// CHECK-NEXT:                                 MemberExpression #10 @3:28..3:38 property="value" access=Dot
 // CHECK-NEXT:                                   object:
-// CHECK-NEXT:                                     IdentExpr #9 @3:29..3:33 name="self"
+// CHECK-NEXT:                                     IdentExpr #9 @3:28..3:32 name="self"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

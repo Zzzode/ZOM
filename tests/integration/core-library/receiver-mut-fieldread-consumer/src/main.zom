@@ -4,9 +4,9 @@
 // through the receiver pointer. The module initializer returns 42.
 struct C {
   v: i32,
-  mutating fun g(this) -> i32 { return this.v; }
+  mutating fn g(this) -> i32 { return this.v; }
 }
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut c = C { v: 42 };
   return c.g();
 }

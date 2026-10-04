@@ -27,34 +27,34 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #7 @4:20..4:24 kind=Bool
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     BoolLiteral #8 @4:27..4:31 value=true
-// CHECK-NEXT:                 MethodDecl #12 @6:3..6:38 name="staticMethod" mode=Static visibility=Public
+// CHECK-NEXT:                 MethodDecl #12 @6:3..6:37 name="staticMethod" mode=Static visibility=Public
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #10 @6:33..6:35 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #10 @6:32..6:34 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #11 @6:36..6:38
+// CHECK-NEXT:                     BlockStmt #11 @6:35..6:37
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #15 @7:3..7:33 name="privateMethod" mode=Instance visibility=Private
+// CHECK-NEXT:                 MethodDecl #15 @7:3..7:32 name="privateMethod" mode=Instance visibility=Private
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #13 @7:28..7:30 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #13 @7:27..7:29 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #14 @7:31..7:33
+// CHECK-NEXT:                     BlockStmt #14 @7:30..7:32
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #18 @8:3..8:37 name="protectedMethod" mode=Instance visibility=Protected
+// CHECK-NEXT:                 MethodDecl #18 @8:3..8:36 name="protectedMethod" mode=Instance visibility=Protected
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #16 @8:32..8:34 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #16 @8:31..8:33 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #17 @8:35..8:37
+// CHECK-NEXT:                     BlockStmt #17 @8:34..8:36
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null

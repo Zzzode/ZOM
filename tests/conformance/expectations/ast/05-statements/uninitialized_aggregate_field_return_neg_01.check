@@ -20,14 +20,14 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #20 @5:1..8:2 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #6 @5:10..5:12 nparams=0
+// CHECK-NEXT:             FunctionParameterList #6 @5:9..5:11 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #7 @5:16..5:19 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #7 @5:15..5:18 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #19 @5:20..8:2
+// CHECK-NEXT:             BlockStmt #19 @5:19..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #14 @6:3..6:18
 // CHECK-NEXT:                   item:

@@ -3,7 +3,7 @@
 // unsupported construct (ZOM4099). The checker accepts the erasure; the HIR
 // builder drains it before lowering.
 interface Marker {
-  fun tag(this) -> i32;
+  fn tag(this) -> i32;
 }
 
 struct Cell {
@@ -12,7 +12,7 @@ struct Cell {
 
 impl Marker for Cell {}
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let c: Cell = Cell { value: 42 };
   let d: dyn Marker = c;
   let e: dyn Marker = d;

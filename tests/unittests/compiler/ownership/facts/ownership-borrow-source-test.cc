@@ -297,7 +297,7 @@ private:
 // outlives the function return.
 
 ZC_TEST("Borrow source verifier accepts a parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  BorrowSourcePipelineFixture fixture("fn entry(p: &i32) -> &i32 { return &*p; }"_zc);
   auto result = facts::BorrowSourceVerifier::verify(
       fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
       fixture.inputs().references());
@@ -305,7 +305,7 @@ ZC_TEST("Borrow source verifier accepts a parameter reborrow") {
 }
 
 ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
-  BorrowSourcePipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
+  BorrowSourcePipelineFixture fixture("fn entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
   auto result = facts::BorrowSourceVerifier::verify(
       fixture.builtMir(), fixture.overlay(), fixture.inputs().movePaths(), fixture.inputs().loans(),
       fixture.inputs().references());
@@ -318,14 +318,14 @@ ZC_TEST("Borrow source verifier accepts a mutable parameter reborrow") {
 // the module and records a ZOM4061 borrow-does-not-live-long-enough error.
 
 ZC_TEST("Check pipeline rejects a returned local borrow") {
-  BorrowSourceCheckFixture fixture("fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+  BorrowSourceCheckFixture fixture("fn entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   ZC_EXPECT(!fixture.compilerSession().checkSources());
   ZC_EXPECT(fixture.compilerSession().hasDiagnosticErrors());
 }
 
 ZC_TEST("Check pipeline rejects a returned mutable local borrow") {
   BorrowSourceCheckFixture fixture(
-      "fun entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+      "fn entry() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
   ZC_EXPECT(!fixture.compilerSession().checkSources());
   ZC_EXPECT(fixture.compilerSession().hasDiagnosticErrors());
 }

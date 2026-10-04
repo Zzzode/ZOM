@@ -3,7 +3,7 @@ enum Result {
     Err(str),
 }
 
-fun f(r: Result) -> unit {
+fn f(r: Result) -> unit {
     match (r) {
         when Result.Ok(v) => { }
     }

@@ -1,4 +1,4 @@
-fun f(x: i32) {
+fn f(x: i32) {
   match (x) {
     #[cfg::feature]
     when 0 => { return 1; }

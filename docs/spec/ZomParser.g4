@@ -139,7 +139,7 @@ options {
      // * at the tail of a structField (field declaration). Returns true when the
      // * next tokens mean we are in one of the following valid positions:
      // *   (a) end of body (next is RBRACE) - trailing field OK without separator
-     // *   (b) next member starts with block-form keyword (FUN / INIT / DEINIT)
+     // *   (b) next member starts with block-form keyword (FN / INIT / DEINIT)
      // *       these keywords self-delimit, no explicit SEMICOLON/COMMA needed
      // *   (c) next member has #[...] outer attribute (HASH) or starts
      // *       with a value-declaration keyword (MUT/LET/CONST)
@@ -155,7 +155,7 @@ options {
         switch (la1) {
             case ZomParser.RBRACE:
             case ZomParser.HASH:
-            case ZomParser.FUN: case ZomParser.INIT: case ZomParser.DEINIT:
+            case ZomParser.FN: case ZomParser.INIT: case ZomParser.DEINIT:
             case ZomParser.MUT: case ZomParser.LET: case ZomParser.CONST:
             case ZomParser.READONLY: case ZomParser.PUBLIC: case ZomParser.PRIVATE:
             case ZomParser.PROTECTED: case ZomParser.STATIC: case ZomParser.MUTATING:
@@ -765,7 +765,7 @@ declaration
     | modifierList ERROR memberIdentifier
       errorBody                                                                             # errorDeclaration
 
-    | modifierList FUN memberIdentifier
+    | modifierList FN memberIdentifier
       typeParameters?
       functionSignature
       whereClause?
@@ -868,7 +868,7 @@ implBody
     ;
 implMember
     // Method impl (abstract w/ SEMICOLON or concrete w/ blockBody)
-    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature ( SEMICOLON | blockBody )
+    : modifierList FN memberIdentifier typeParameters? memberFunctionSignature ( SEMICOLON | blockBody )
     // Associated-type assignment (impl-block-level 'type Item = T;' per 17-gr)
     | TYPE memberIdentifier typeParameters? ASSIGN typeExpr SEMICOLON
     // Let / mut / const inside impl (follow Ch.06 Value Declarations)
@@ -1036,7 +1036,7 @@ errorBody  : LBRACE structMember* RBRACE ;
 
 
 classMember
-    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature
+    : modifierList FN memberIdentifier typeParameters? memberFunctionSignature
       ( SEMICOLON
       | blockBody { checkAbstractNoBlock($modifierList.ctx, this) }?
       )                                                                                     # classMethod
@@ -1071,7 +1071,7 @@ structMember
 
     : modifierList (MUT | readonly)? memberIdentifier COLON typeExpr (ASSIGN expression)?
       ( SEMICOLON | COMMA | { okAfterStructFieldNoSeparator(this) }? )            # structField
-    | modifierList FUN memberIdentifier typeParameters? memberFunctionSignature
+    | modifierList FN memberIdentifier typeParameters? memberFunctionSignature
       ( SEMICOLON | blockBody )                                                             # structMethod
     | modifierList (INIT | DEINIT) parameterList (RAISES typeExpr)? blockBody   # structCtor
     ;
@@ -1083,7 +1083,7 @@ interfaceBody : LBRACE interfaceMember* RBRACE ;
 
 
 interfaceMember
-    : modifierList FUN memberIdentifier typeParameters? memberFunctionSignature SEMICOLON    # interfaceMethod
+    : modifierList FN memberIdentifier typeParameters? memberFunctionSignature SEMICOLON    # interfaceMethod
     | modifierList (GET | SET) memberIdentifier memberFunctionSignature SEMICOLON            # interfaceProperty
     | modifierList TYPE memberIdentifier typeParameters?
       ( COLON interfaceBoundList )? ( ASSIGN typeExpr )? SEMICOLON                                       # interfaceAssocType
@@ -1161,7 +1161,7 @@ typeParameters
 // intersections and from marker suffixes on a single dyn principal.
 // Order: variance? NAME : Bound+ = Default
 // Examples:
-//   fun f<T, U: number = i32, V: Eq + Hash>(x: T) -> str { ... }
+//   fn f<T, U: number = i32, V: Eq + Hash>(x: T) -> str { ... }
 //   class Vec<out T: Any> { ... }
 //   interface Map<K, in V> { ... }
 typeParameter
@@ -1200,7 +1200,7 @@ genericClose
     ;
 
 
-// so `fun f<T, U>>` (unbalanced over-close, two `>`) is REJECTED.
+// so `fn f<T, U>>` (unbalanced over-close, two `>`) is REJECTED.
 genericParamClose
     : {hasPendingGenericClose(this)}? { consumePendingGenericClose(this); }
     | {hasNoPendingGenericClose(this)}? GT
@@ -1249,7 +1249,7 @@ attr
 pathSegment
     : identifier
 
-    | CLASS | STRUCT | INTERFACE | ENUM | ERROR | ALIAS | FUN | MUT | LET | CONST
+    | CLASS | STRUCT | INTERFACE | ENUM | ERROR | ALIAS | FN | MUT | LET | CONST
     | CONSTRUCTOR | INIT | DEINIT | GET | SET | ACCESSOR | DECLARE
     // -- Control Flow --
     | IF | ELSE | MATCH | WHEN | DEFAULT | CASE | FOR | WHILE | DO | BREAK | CONTINUE
@@ -1837,8 +1837,8 @@ typeExpr : functionType ;
 
 functionType
     : typeParameters? functionTypeParameterList ( ARROW returnType ( RAISES typeExpr )? )  # typeFunction
-    // FUN-keyword-prefixed function type: fun(T) -> U raises E? (industry-standard explicit syntax)
-    | FUN typeParameters? functionTypeParameterList ( ARROW returnType ( RAISES typeExpr )? ) # typeFunctionKeyword
+    // FN-keyword-prefixed function type: fn(T) -> U raises E? (industry-standard explicit syntax)
+    | FN typeParameters? functionTypeParameterList ( ARROW returnType ( RAISES typeExpr )? ) # typeFunctionKeyword
     | unionType                                                                           # typeUnionSingle
     ;
 
@@ -1847,7 +1847,7 @@ functionTypeParameterList
     ;
 
 functionExpression
-    : FUN typeParameters? ordinaryParameterList captureClause?
+    : FN typeParameters? ordinaryParameterList captureClause?
       ( ARROW typeExpr ( RAISES typeExpr )? )? blockBody
     ;
 
@@ -1988,7 +1988,7 @@ identifier
 
 
 funDecl
-    : FUN identifier
+    : FN identifier
       functionSignature
       SEMICOLON
     ;

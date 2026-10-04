@@ -8,14 +8,14 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #25 @1:1..8:2 name="demo"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:18 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:14..1:17 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #24 @1:19..8:2
+// CHECK-NEXT:             BlockStmt #24 @1:18..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #20 @2:5..6:7
 // CHECK-NEXT:                   item:

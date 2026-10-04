@@ -120,13 +120,13 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one shared-receiver field-read method body:
-/// `fun m(this) -> T { return this.field; }` through the recursive driver:
+/// `fn m(this) -> T { return this.field; }` through the recursive driver:
 /// function -> block -> return -> parameter field projection. The receiver
 /// moves into the function header; the projection keys on its parameter key.
 void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one mutating-receiver write-read method body:
-/// `fun m(this) -> T { this.field = <scalar>; return this.field; }`. Six node
+/// `fn m(this) -> T { this.field = <scalar>; return this.field; }`. Six node
 /// ids in source preorder: function, body, write, write value literal, return,
 /// returned parameter field projection.
 void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);

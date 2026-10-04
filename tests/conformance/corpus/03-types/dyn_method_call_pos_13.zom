@@ -1,11 +1,11 @@
 interface Drawable {
-    fun draw() -> unit;
+    fn draw() -> unit;
 }
 
 class Sprite { }
 
 impl Drawable for Sprite {
-    fun draw() -> unit { }
+    fn draw() -> unit { }
 }
 
 let sprite: Sprite;

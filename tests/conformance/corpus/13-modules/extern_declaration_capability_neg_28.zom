@@ -1,4 +1,4 @@
 extern "Cdecl" {
-    fun puts(s: str) -> i32;
+    fn puts(s: str) -> i32;
     variable errno: i32;
 }

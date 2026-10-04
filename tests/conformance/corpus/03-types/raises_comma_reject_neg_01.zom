@@ -1,1 +1,1 @@
-fun f() -> i32 raises IoError, ParseError;
+fn f() -> i32 raises IoError, ParseError;

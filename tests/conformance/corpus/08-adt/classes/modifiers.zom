@@ -3,7 +3,7 @@ class Modifiers {
   private const b: str = "s";
   protected let c: bool = true;
 
-  public static fun staticMethod() {}
-  private fun privateMethod() {}
-  protected fun protectedMethod() {}
+  public static fn staticMethod() {}
+  private fn privateMethod() {}
+  protected fn protectedMethod() {}
 }

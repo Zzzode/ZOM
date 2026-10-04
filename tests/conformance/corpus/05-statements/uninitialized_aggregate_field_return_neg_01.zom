@@ -2,7 +2,7 @@ struct Cell {
   value: i32,
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let cell: Cell;
   return cell.value;
 }

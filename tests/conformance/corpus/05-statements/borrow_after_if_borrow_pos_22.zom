@@ -1,4 +1,4 @@
-fun main() -> unit {
+fn main() -> unit {
     let value: i32;
     if (true) {
         let shared = &value;

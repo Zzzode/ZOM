@@ -1,4 +1,4 @@
-fun spawn_chain() {
+fn spawn_chain() {
     spawn detached {
         spawn detached side_effect();
     };

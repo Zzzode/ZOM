@@ -52,52 +52,52 @@
 // CHECK-NEXT:                                   rhs:
 // CHECK-NEXT:                                     IdentExpr #15 @5:40..5:47 name="initial"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #33 @6:5..6:57 name="inc" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #33 @6:5..6:56 name="inc" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #21 @6:12..6:14 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #21 @6:11..6:13 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #22 @6:18..6:22 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #22 @6:17..6:21 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #32 @6:23..6:57
+// CHECK-NEXT:                     BlockStmt #32 @6:22..6:56
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #31 @6:25..6:55
+// CHECK-NEXT:                         StatementListItem #31 @6:24..6:54
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ExpressionStatement #30 @6:25..6:55
+// CHECK-NEXT:                             ExpressionStatement #30 @6:24..6:54
 // CHECK-NEXT:                               expression:
-// CHECK-NEXT:                                 AssignmentExpr #29 @6:25..6:54 op=Assign
+// CHECK-NEXT:                                 AssignmentExpr #29 @6:24..6:53 op=Assign
 // CHECK-NEXT:                                   lhs:
-// CHECK-NEXT:                                     MemberExpression #24 @6:25..6:36 property="_value" access=Dot
+// CHECK-NEXT:                                     MemberExpression #24 @6:24..6:35 property="_value" access=Dot
 // CHECK-NEXT:                                       object:
-// CHECK-NEXT:                                         IdentExpr #23 @6:25..6:29 name="self"
+// CHECK-NEXT:                                         IdentExpr #23 @6:24..6:28 name="self"
 // CHECK-NEXT:                                   rhs:
-// CHECK-NEXT:                                     BinaryExpr #28 @6:39..6:54 op=Add
+// CHECK-NEXT:                                     BinaryExpr #28 @6:38..6:53 op=Add
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #26 @6:39..6:50 property="_value" access=Dot
+// CHECK-NEXT:                                         MemberExpression #26 @6:38..6:49 property="_value" access=Dot
 // CHECK-NEXT:                                           object:
-// CHECK-NEXT:                                             IdentExpr #25 @6:39..6:43 name="self"
+// CHECK-NEXT:                                             IdentExpr #25 @6:38..6:42 name="self"
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         IntLiteral #27 @6:53..6:54 base=10 value="1"
+// CHECK-NEXT:                                         IntLiteral #27 @6:52..6:53 base=10 value="1"
 // CHECK-NEXT:                           attrs: null
-// CHECK-NEXT:                 MethodDecl #41 @7:5..7:50 name="getValue" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #41 @7:5..7:49 name="getValue" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #34 @7:17..7:19 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #34 @7:16..7:18 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #35 @7:23..7:26 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #35 @7:22..7:25 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #40 @7:27..7:50
+// CHECK-NEXT:                     BlockStmt #40 @7:26..7:49
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #39 @7:29..7:48
+// CHECK-NEXT:                         StatementListItem #39 @7:28..7:47
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #38 @7:29..7:48
+// CHECK-NEXT:                             ReturnStmt #38 @7:28..7:47
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #37 @7:36..7:47 property="_value" access=Dot
+// CHECK-NEXT:                                 MemberExpression #37 @7:35..7:46 property="_value" access=Dot
 // CHECK-NEXT:                                   object:
-// CHECK-NEXT:                                     IdentExpr #36 @7:36..7:40 name="self"
+// CHECK-NEXT:                                     IdentExpr #36 @7:35..7:39 name="self"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

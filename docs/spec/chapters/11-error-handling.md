@@ -13,12 +13,12 @@ A function-like declaration may attach one `raises` clause after its return
 type:
 
 ```zom
-fun read() -> str raises IoError;
+fn read() -> str raises IoError;
 
 class Resource {
     init() raises InitError { }
     deinit() raises CleanupError { }
-    fun refresh(this) -> bool raises IoError | ParseError { true }
+    fn refresh(this) -> bool raises IoError | ParseError { true }
 }
 ```
 
@@ -39,7 +39,7 @@ The clause contains one type expression. A union error set therefore uses the
 ordinary union-type operator:
 
 ```zom
-fun load() -> Data raises IoError | ParseError;
+fn load() -> Data raises IoError | ParseError;
 ```
 
 Comma-separated and empty `raises` clauses are syntax errors.
@@ -96,9 +96,9 @@ the declared raises type, or when it equals or is a subtype of one alternative
 in a declared raises union.
 
 ```zom
-fun fetch() -> i32 raises IoError { 0 }
+fn fetch() -> i32 raises IoError { 0 }
 
-fun load() -> i32 raises IoError {
+fn load() -> i32 raises IoError {
     return fetch()?!;
 }
 ```

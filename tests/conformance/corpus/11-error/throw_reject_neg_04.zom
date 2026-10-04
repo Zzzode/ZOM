@@ -1,1 +1,1 @@
-fun bad() { throw Error(); }
+fn bad() { throw Error(); }

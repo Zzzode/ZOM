@@ -8,12 +8,12 @@ class Greeter {
     this.name = name
   }
 
-  fun greet(): str {
+  fn greet(): str {
     return "Hello, " + name + "!"
   }
 }
 
-fun main() {
+fn main() {
   let g = Greeter.new("World")
   println(g.greet())
 }

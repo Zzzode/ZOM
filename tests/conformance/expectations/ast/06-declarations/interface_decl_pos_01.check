@@ -12,9 +12,9 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #3 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #2 @2:5..2:16 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #2 @2:5..2:15 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:12..2:14 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null

@@ -1,3 +1,3 @@
-fun entry() -> str {
+fn entry() -> str {
   return "hello";
 }

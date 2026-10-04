@@ -5,7 +5,7 @@ class Box<T> { value: T; }
 
 impl<T> Eq for Box<T> where T: Eq { }
 
-fun needs<T: Eq>(x: T) -> unit {
+fn needs<T: Eq>(x: T) -> unit {
     return;
 }
 

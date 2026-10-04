@@ -132,7 +132,7 @@ ZC_TEST("RecoveryTest.EofTerminationMidLet") {
 
 ZC_TEST("RecoveryTest.EofTerminationMidFunction") {
   // Source ends mid-function-body without a closing brace.
-  auto outcome = parseSource("fun foo() { let x = 1;");
+  auto outcome = parseSource("fn foo() { let x = 1;");
 
   ZC_EXPECT(outcome.hadErrors, "Unclosed function body should produce errors");
   ZC_EXPECT(outcome.result == zc::none, "Parser must fail closed");
@@ -193,7 +193,7 @@ ZC_TEST("RecoveryTest.ProgressInvariantRepeatedMalformedLets") {
 ZC_TEST("RecoveryTest.ProgressInvariantMixedGarbage") {
   // Mix of valid-but-out-of-context tokens to stress recovery paths.
   // Uses statement-level malformed constructs that recovery can handle.
-  zc::String source = repeatSource("let = ;\nfun ( { }\nlet x = ;\n"_zc, 50);
+  zc::String source = repeatSource("let = ;\nfn ( { }\nlet x = ;\n"_zc, 50);
   auto outcome = parseSource(source.asPtr());
 
   // Parser returned -- progress holds across mixed garbage.
@@ -223,7 +223,7 @@ ZC_TEST("RecoveryTest.FailClosedMissingSemicolon") {
 }
 
 ZC_TEST("RecoveryTest.FailClosedMissingClosingBrace") {
-  auto outcome = parseSource("fun foo() { let x = 1;");
+  auto outcome = parseSource("fn foo() { let x = 1;");
 
   ZC_EXPECT(outcome.hadErrors, "Missing closing brace should produce errors");
   ZC_EXPECT(outcome.result == zc::none, "Parser must fail closed for unclosed function body");

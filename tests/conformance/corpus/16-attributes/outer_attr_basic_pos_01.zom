@@ -1,2 +1,2 @@
 #[test::case]
-fun foo();
+fn foo();

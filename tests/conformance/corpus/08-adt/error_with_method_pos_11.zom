@@ -5,5 +5,5 @@ error ParseError {
     init(line: u32, column: u32, message: str) {
         self.line = line; self.column = column; self.message = message;
     }
-    fun describe() -> str { return self.message; }
+    fn describe() -> str { return self.message; }
 }

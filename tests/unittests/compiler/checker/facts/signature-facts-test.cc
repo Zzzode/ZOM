@@ -59,7 +59,7 @@ public:
 interface PatternInterface { type Associated; }
 class PatternNominal {}
 interface PatternMarker {}
-fun PatternGeneric<T>(value: T) {}
+fn PatternGeneric<T>(value: T) {}
 )zom"_zc) {
     const auto& inventory = userBoundModule().definitions();
     interfaceDefinition = findDefinition(inventory, "PatternInterface"_zc);
@@ -206,7 +206,7 @@ class SignatureFixture final {
 public:
   SignatureFixture()
       : session(R"zom(class RecoveryOwner {}
-fun signature0(value: unit) -> unit {}
+fn signature0(value: unit) -> unit {}
 class Signature1 {}
 interface Signature2 { type Signature4; }
 alias Signature3 = unit;
@@ -1561,11 +1561,11 @@ ZC_TEST("SignatureFactsVerifier fail-closes on a declared field set that is not 
 namespace {
 constexpr zc::StringPtr kSafeInheritanceSource = R"zom(class RecoveryOwner {}
 interface Base {
-    fun ping(this);
+    fn ping(this);
 }
 
 interface Child : Base {
-    fun draw(this);
+    fn draw(this);
 }
 )zom"_zc;
 
@@ -1620,7 +1620,7 @@ ZC_TEST("SignatureFactsBuilder publishes a safe interface inheriting a local par
 namespace {
 constexpr zc::StringPtr kBehaviorCycleSource = R"zom(class RecoveryOwner {}
 interface CycleA : CycleB {
-    fun a(this);
+    fn a(this);
 }
 
 interface CycleB : CycleA {}
@@ -1628,7 +1628,7 @@ interface CycleB : CycleA {}
 
 constexpr zc::StringPtr kSelfCycleSource = R"zom(class RecoveryOwner {}
 interface SelfI : SelfI {
-    fun f(this);
+    fn f(this);
 }
 )zom"_zc;
 
@@ -1691,7 +1691,7 @@ SignatureFactsBuildResult buildSignatures(zc::StringPtr sourceText) {
 
 constexpr zc::StringPtr kUnknownAssociatedBindingSource = R"zom(class RecoveryOwner {}
 interface I {
-    fun f(this);
+    fn f(this);
 }
 
 let x: dyn I<Bogus = i32>;
@@ -1709,10 +1709,10 @@ let child: dyn Child<Item = u8>;
 
 constexpr zc::StringPtr kUnknownBindingParameterSource = R"zom(class RecoveryOwner {}
 interface I {
-    fun f(this);
+    fn f(this);
 }
 
-fun g(x: dyn I<Bogus = i32>) -> i32 {
+fn g(x: dyn I<Bogus = i32>) -> i32 {
     return 1;
 }
 )zom"_zc;
@@ -1918,14 +1918,14 @@ interface Collection {
 )zom"_zc;
 
 constexpr zc::StringPtr kTypeNameUnresolvedSource = R"zom(class RecoveryOwner {}
-fun f(x: Missing) -> u8 {
+fn f(x: Missing) -> u8 {
     return 0;
 }
 )zom"_zc;
 
 constexpr zc::StringPtr kDynTypeAsBoundSource = R"zom(class RecoveryOwner {}
 interface I {}
-fun g<T: dyn I>() -> u8 {
+fn g<T: dyn I>() -> u8 {
     return 0;
 }
 )zom"_zc;
@@ -1941,7 +1941,7 @@ interface FullAssoc {
 constexpr zc::StringPtr kGenericParameterMultiBoundSource = R"zom(class RecoveryOwner {}
 interface Show {}
 interface Hash {}
-fun g<T: Show + Hash>(x: T) -> u8 {
+fn g<T: Show + Hash>(x: T) -> u8 {
     return 0;
 }
 )zom"_zc;

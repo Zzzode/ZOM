@@ -42,17 +42,17 @@ class Counter {
     self.value = initial;
   }
 
-  fun increment() -> unit {
+  fn increment() -> unit {
     self.value = self.value + 1;
   }
 
-  fun current() -> i32 {
+  fn current() -> i32 {
     return self.value;
   }
 }
 
 interface Drawable {
-  fun draw(this) -> unit;
+  fn draw(this) -> unit;
 }
 
 export struct Point<T: numeric> {
@@ -64,7 +64,7 @@ export struct Point<T: numeric> {
     this.y = y;
   }
 
-  fun dot(this, other: Point<T>) -> T {
+  fn dot(this, other: Point<T>) -> T {
     return this.x * other.x + this.y * other.y;
   }
 }
@@ -79,14 +79,14 @@ enum Message {
 alias UserId = u64;
 const maximumRetries: i32 = 3;
 
-fun fibonacci(n: u32) -> u64 {
+fn fibonacci(n: u32) -> u64 {
   if (n <= 1) {
     return n;
   }
   return fibonacci(n - 1) + fibonacci(n - 2);
 }
 
-fun sum(values: [i32]) -> i32 {
+fn sum(values: [i32]) -> i32 {
   let total: i32 = 0;
   for (let value in values) {
     total = total + value;
@@ -94,7 +94,7 @@ fun sum(values: [i32]) -> i32 {
   return total;
 }
 
-fun handle(message: Message) -> unit {
+fn handle(message: Message) -> unit {
   match (message) {
     when Message.Quit(code) => { }
     when Message.Move(value) => { }
@@ -103,7 +103,7 @@ fun handle(message: Message) -> unit {
   }
 }
 
-fun main() {
+fn main() {
   let counter = 0;
   while (counter < 10) {
     counter = counter + 1;

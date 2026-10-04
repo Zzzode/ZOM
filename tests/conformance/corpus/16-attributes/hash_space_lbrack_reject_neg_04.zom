@@ -1,2 +1,2 @@
 # [foo::bar]
-fun spaced_hash();
+fn spaced_hash();

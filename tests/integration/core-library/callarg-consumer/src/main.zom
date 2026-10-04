@@ -4,5 +4,5 @@
 // -> a verified two-function LLVM module. The parameter-free caller folds to
 // the reserved no-argument `zom.module_init` entry the runtime `_start` calls,
 // so `zomc run` executes it natively.
-fun callee(x: i32) -> i32 { return x; }
-fun caller() -> i32 { let y = callee(7); return y; }
+fn callee(x: i32) -> i32 { return x; }
+fn caller() -> i32 { let y = callee(7); return y; }

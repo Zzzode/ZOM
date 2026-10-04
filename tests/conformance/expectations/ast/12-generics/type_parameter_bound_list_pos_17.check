@@ -73,38 +73,38 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #39 @9:1..11:2 name="require_both"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #34 @9:41..9:51 nparams=1
+// CHECK-NEXT:             FunctionParameterList #34 @9:40..9:50 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #33 @9:42..9:50 name="value"
+// CHECK-NEXT:                 FunctionParameterDecl #33 @9:41..9:49 name="value"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #32 @9:49..9:50
+// CHECK-NEXT:                     NamedTypeExpr #32 @9:48..9:49
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #31 @9:49..9:50 segments=["T"] root=Relative
+// CHECK-NEXT:                         ModulePath #31 @9:48..9:49 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #30 @9:17..9:41 nparams=1
+// CHECK-NEXT:             GenericParams #30 @9:16..9:40 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #29 @9:18..9:40 name="T"
+// CHECK-NEXT:                 GenericTypeParam #29 @9:17..9:39 name="T"
 // CHECK-NEXT:                   bounds_id:
-// CHECK-NEXT:                     TypeParameterBoundList #28 @9:21..9:40
+// CHECK-NEXT:                     TypeParameterBoundList #28 @9:20..9:39
 // CHECK-NEXT:                       bounds:
-// CHECK-NEXT:                         NamedTypeExpr #25 @9:21..9:29
+// CHECK-NEXT:                         NamedTypeExpr #25 @9:20..9:28
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #24 @9:21..9:29 segments=["Readable"] root=Relative
+// CHECK-NEXT:                             ModulePath #24 @9:20..9:28 segments=["Readable"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                         NamedTypeExpr #27 @9:32..9:40
+// CHECK-NEXT:                         NamedTypeExpr #27 @9:31..9:39
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #26 @9:32..9:40 segments=["Writable"] root=Relative
+// CHECK-NEXT:                             ModulePath #26 @9:31..9:39 segments=["Writable"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #35 @9:55..9:59 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #35 @9:54..9:58 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #38 @9:60..11:2
+// CHECK-NEXT:             BlockStmt #38 @9:59..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #37 @10:5..10:12
 // CHECK-NEXT:                   item:

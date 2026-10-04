@@ -1,1 +1,1 @@
-async fun f() {}
+async fn f() {}

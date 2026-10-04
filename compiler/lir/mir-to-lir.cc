@@ -5641,7 +5641,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   // constant return and whose user local never becomes an LIR slot.
   zc::Vector<ValueType> ordinaryCarriers;
   bool calleeConstLocalFold = false;
-  // Case F: `fun m(this, p) -> T { return p OP <literal|p>; }`. The locals are
+  // Case F: `fn m(this, p) -> T { return p OP <literal|p>; }`. The locals are
   // the receiver parameter, one ordinary integer parameter, and a FunctionResult
   // local; the one block stores the result live then assigns the arithmetic
   // rvalue and returns the result local. Detected after the callee block is
@@ -5651,7 +5651,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   zc::Maybe<Operand> calleeArithmeticLeft;
   zc::Maybe<Operand> calleeArithmeticRight;
   uint32_t calleeArithmeticResultOrdinal = 0;
-  // Case G: `fun m(this) -> T { return this.<field> OP <literal>; }`. The locals
+  // Case G: `fn m(this) -> T { return this.<field> OP <literal>; }`. The locals
   // are the receiver parameter and a FunctionResult; the one block stores the
   // result live then assigns an arithmetic rvalue whose one operand is a
   // [Dereference, Field] place-use of the receiver and whose other operand is a

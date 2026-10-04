@@ -1923,7 +1923,7 @@ bool validReceiverFieldWriteReturnFunction(
 }
 
 /// \brief Validates the void mutating-receiver write shape
-/// `mutating fun m(this, x: T) { this.field = x; }` with a Unit result. Two
+/// `mutating fn m(this, x: T) { this.field = x; }` with a Unit result. Two
 /// parameter locals (receiver then ordinary parameter), one Overwrite Assign to
 /// [Dereference, Field] with a copy/move place-use of the parameter local, and a
 /// Return terminator carrying no value. The terminator span is the body block
@@ -7998,7 +7998,7 @@ bool validReceiverCallReturnFunction(
 }
 
 /// \brief Validates the discarded mutable-call then shared trailing-call caller
-/// `fun f() -> T { let o = S{..}; o.set(c); return o.get(); }`. Five dense
+/// `fn f() -> T { let o = S{..}; o.set(c); return o.get(); }`. Five dense
 /// locals (owner, the setter's mutable borrow temporary, the unread Unit call
 /// destination, the getter's shared borrow temporary, the getter result) span
 /// three blocks: owner initialization plus the setter call, a distinct second
@@ -8226,7 +8226,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
 }
 
 /// \brief Validates the shared-receiver self-call shape
-/// `fun m(this) -> T { return this.n(); }`. The receiver is the leading
+/// `fn m(this) -> T { return this.n(); }`. The receiver is the leading
 /// Parameter local and is forwarded directly as the call's sole receiver
 /// argument; no BorrowCreation temporary exists. One Temporary result local is
 /// storage-live in the entry block, the call targets block 2, which returns it.
@@ -15140,7 +15140,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         }
       }
       // Discarded mutable receiver call followed by a shared trailing receiver
-      // call: `fun f() -> T { let o = S{..constants..}; o.set(c); return
+      // call: `fn f() -> T { let o = S{..constants..}; o.set(c); return
       // o.get(); }`. The statement-position receiver call cannot be resolved by
       // the generic chain, so this branch owns the shape once its three leading
       // records resolve.

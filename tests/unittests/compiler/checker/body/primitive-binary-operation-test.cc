@@ -561,7 +561,7 @@ const checked::TypedCallFact& soleEqualityCall(const checked::VerifiedCheckedFac
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForScalarParameters") {
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32, b: i32) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32, b: i32) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -591,7 +591,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForScalarParamet
 
 ZC_TEST("PrimitiveBinaryOperation.ProjectsBinaryOperatorDispatchSite") {
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32, b: i32) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32, b: i32) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   auto dispatch = fixture.buildDispatchFacts(facts);
 
@@ -611,7 +611,7 @@ ZC_TEST("PrimitiveBinaryOperation.ProjectsBinaryOperatorDispatchSite") {
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveOrderingCallFactForScalarParameters") {
   PrimitiveBinaryFixture fixture(
-      "fun lt(a: i32, b: i32) -> bool { if (a < b) { return true; } else { return false; } }\n"_zc);
+      "fn lt(a: i32, b: i32) -> bool { if (a < b) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -633,7 +633,7 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsNonComparisonScalarBinaryOperation") {
   // checker drains the free function body as ZOM4099 rather than a
   // missing-fact invariant.
   PrimitiveBinaryFixture fixture(
-      "fun add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
+      "fn add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -646,7 +646,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedScalarOperandTypes") {
   // i32 and i64 are both scalars but not the same scalar. The comparison is not
   // defined for them, which is a user error rather than a compiler invariant.
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32, b: i64) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32, b: i64) -> bool { if (a == b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -660,7 +660,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsArithmeticOperatorOnBoolOperands") {
   // operators), so `a + b` on bool parameters is a type error, not an
   // unimplemented form or a compiler invariant.
   PrimitiveBinaryFixture fixture(
-      "fun add(a: bool, b: bool) -> i32 { let y: i32 = 0; let x: bool = a + b; return y; }\n"_zc);
+      "fn add(a: bool, b: bool) -> i32 { let y: i32 = 0; let x: bool = a + b; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -672,7 +672,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsOrderingComparisonOnBoolOperands") {
   // Ordering comparisons are not defined for bool (bool supports equality but
   // not ordering), so `a < b` on bool parameters reports ZOM4029.
   PrimitiveBinaryFixture fixture(
-      "fun lt(a: bool, b: bool) -> bool { if (a < b) { return true; } else { return false; } }\n"_zc);
+      "fn lt(a: bool, b: bool) -> bool { if (a < b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -683,7 +683,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsOrderingComparisonOnBoolOperands") {
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForParameterAndLiteral") {
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32) -> bool { if (a == 0) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32) -> bool { if (a == 0) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -714,7 +714,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForParameterAndL
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForLiteralAndParameter") {
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32) -> bool { if (0 == a) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32) -> bool { if (0 == a) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -737,7 +737,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveEqualityCallFactForLiteralAndPar
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveOrderingCallFactForParameterAndLiteral") {
   PrimitiveBinaryFixture fixture(
-      "fun lt(a: i32) -> bool { if (a < 5) { return true; } else { return false; } }\n"_zc);
+      "fn lt(a: i32) -> bool { if (a < 5) { return true; } else { return false; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -752,7 +752,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedLiteralOperandType") {
   // is not defined for are a user error, so this reports ZOM4029 rather than a
   // compiler invariant.
   PrimitiveBinaryFixture fixture(
-      "fun eq(a: i32) -> bool { if (a == 1.0) { return true; } else { return false; } }\n"_zc);
+      "fn eq(a: i32) -> bool { if (a == 1.0) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -765,7 +765,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveComparisonCallFactForReturnPosit
   // The checker keys on the BinaryExpr node, not its syntactic position, so a
   // `return a < b` body produces the same PrimitiveCallable fact as the
   // conditional-condition form.
-  PrimitiveBinaryFixture fixture("fun lt(a: i32, b: i32) -> bool { return a < b; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn lt(a: i32, b: i32) -> bool { return a < b; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -795,7 +795,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactWithOperandRes
   // `return a + b` for two i32 parameters produces a PrimitiveCallable{Add}
   // whose result type is the operand type (i32), NOT bool. This is the key
   // difference from a comparison, whose result is always bool.
-  PrimitiveBinaryFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn add(a: i32, b: i32) -> i32 { return a + b; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -825,7 +825,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactWithOperandRes
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveBitwiseCallFactWithOperandResultType") {
   // A bitwise operator behaves like an arithmetic operator: the result is the
   // operand type, not bool.
-  PrimitiveBinaryFixture fixture("fun band(a: i32, b: i32) -> i32 { return a & b; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn band(a: i32, b: i32) -> i32 { return a & b; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -843,7 +843,7 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsArithmeticConditionAsNonBool") {
   // the arithmetic operator stays unsupported in condition position and the body
   // is rejected as an unsupported function body construct (ZOM4099).
   PrimitiveBinaryFixture fixture(
-      "fun add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
+      "fn add(a: i32, b: i32) -> bool { if (a + b) { return true; } else { return false; } }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -856,7 +856,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalShortCircuitBinaryOperation") {
   // Logical `&&` has short-circuit semantics and the checker does not implement
   // it yet. It is specified language syntax, so the refusal reports ZOM4103
   // rather than a compiler invariant.
-  PrimitiveBinaryFixture fixture("fun conj(a: bool, b: bool) -> bool { return a && b; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn conj(a: bool, b: bool) -> bool { return a && b; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -869,7 +869,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactForBinaryLocal
   // `let x: i32 = a + b` as a sequential local initializer produces a
   // PrimitiveCallable{Add} whose result type is the operand type i32.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x; return y; }\n"_zc);
+      "fn f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x; return y; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -891,7 +891,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsBinaryLocalInitializerReferencingEarlierL
   // resolves it and emits a second PrimitiveCallable{Mul}. Two binary local
   // initializers yield two primitive call facts.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
+      "fn f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 2);
@@ -912,7 +912,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsBoolComparisonBinaryLocalInitializer") {
   // A relational comparison initializer `let f: bool = a < b` produces a
   // PrimitiveCallable{Lt} whose result type is bool.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> bool { let g: bool = a < b; let h: bool = g; return h; }\n"_zc);
+      "fn f(a: i32, b: i32) -> bool { let g: bool = a < b; let h: bool = g; return h; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -935,7 +935,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedOperandTypesInsideAMethodBody
   // destructor.
   PrimitiveBinaryFixture fixture(
       "class C {\n"
-      "    fun m(a: i32, b: i64) -> i32 { if (a != b) { return 1; } else { return 0; } }\n"
+      "    fn m(a: i32, b: i64) -> i32 { if (a != b) { return 1; } else { return 0; } }\n"
       "}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -950,7 +950,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedArithmeticOperandTypes") {
   // are both scalars but not the same scalar, so `+` is not defined for them.
   // This is a user error and reports ZOM4028, not a compiler invariant.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i64) -> i32 { let x: i32 = a + b; let y: i32 = a; return y; }\n"_zc);
+      "fn f(a: i32, b: i64) -> i32 { let x: i32 = a + b; let y: i32 = a; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -964,7 +964,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedIdentifierLocalInitialize
   // previously accepted silently: ownerLocalReferenceType reports a local's type
   // as its initializer's type, so the bool local bound an i32 with no
   // diagnostic at all.
-  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { let x: bool = a; return x; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn f(a: i32) -> i32 { let x: bool = a; return x; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -977,7 +977,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedBinaryLocalInitializer") 
   // The annotation is authoritative, so this is a user error and reports ZOM4009,
   // the same as the bare-identifier form `let x: bool = a`.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { let x: bool = a + b; let y: i32 = b; return y; }\n"_zc);
+      "fn f(a: i32, b: i32) -> i32 { let x: bool = a + b; let y: i32 = b; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -989,7 +989,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedComparisonLocalInitialize
   // The other direction: `let x: i32 = a < b` declares an i32 local but a
   // comparison produces bool.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a < b; let y: i32 = b; return y; }\n"_zc);
+      "fn f(a: i32, b: i32) -> i32 { let x: i32 = a < b; let y: i32 = b; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1001,7 +1001,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalBinaryLocalInitializer") {
   // A logical `&&` local initializer names an operator the checker does not
   // implement yet, so it reports ZOM4103.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
+      "fn f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1015,7 +1015,7 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") 
   // outer `+`. Both the outer Add and the inner Mul produce PrimitiveCallable
   // facts of operand type i32, so the body carries two primitive call facts.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }\n"_zc);
+      "fn f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 2);
@@ -1040,7 +1040,7 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalOuterWithNestedArithmeticOperand
   // is an operator the checker does not implement yet, so it reports ZOM4103.
   // This keeps the operator-support decision on the single checker rail.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: bool, b: bool, c: bool) -> bool { let z: bool = a && b * c; let w: bool = z; "
+      "fn f(a: bool, b: bool, c: bool) -> bool { let z: bool = a && b * c; let w: bool = z; "
       "return w; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -1055,7 +1055,7 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer"
   // result is i32; the declared type must match the result type, so the body
   // fails closed.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: bool = a + b * c; let w: i32 = c; return w; }\n"_zc);
+      "fn f(a: i32, b: i32, c: i32) -> i32 { let z: bool = a + b * c; let w: i32 = c; return w; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
 }
@@ -1065,7 +1065,7 @@ ZC_TEST("LocalWrite.EmitsParameterReferenceWriteValueFact") {
   // types the write target and the parameter-reference RHS as i32, exactly as
   // the scalar-literal write does but with an identifier value. The RHS resolves
   // to the callable parameter, so it lowers downstream to a place-use.
-  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
 
@@ -1103,7 +1103,7 @@ ZC_TEST("LocalWrite.EmitsBinaryWriteValueCallFact") {
   // keyed on the assignment's value node, of operand and result type i32. The
   // RHS is not a literal, so no literal fact is produced for the binary node.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }\n"_zc);
+      "fn f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
 
@@ -1146,8 +1146,8 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   identity::SemanticContextFactory contextFactory;
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   constexpr zc::StringPtr source =
-      "fun g() -> i32 { return 0; }\n"
-      "fun f() -> i32 { mut x: i32 = 0; x = g(); return x; }\n"_zc;
+      "fn g() -> i32 { return 0; }\n"
+      "fn f() -> i32 { mut x: i32 = 0; x = g(); return x; }\n"_zc;
   auto registry = targetRegistry();
   auto input = driver::VerifiedPackageSessionInput::from(
       compilationRequest(registry), verifiedTargetSelection(registry),
@@ -1177,10 +1177,10 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
 ZC_TEST("ConcreteToDynErasure.RecordsDynEraseAtAnnotatedInitializer") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "impl Drawable for Circle {}\n"
-      "fun erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
+      "fn erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
@@ -1202,10 +1202,10 @@ ZC_TEST("ConcreteToDynErasure.RecordsDynEraseAtAnnotatedInitializer") {
 ZC_TEST("ConcreteToDynErasure.VerifiesAndAdoptsDynEraseCoercion") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "impl Drawable for Circle {}\n"
-      "fun erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
+      "fn erase(c: Circle) -> i32 {\n    let d: dyn Drawable = c;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   ZC_EXPECT(facts.coercions().size() == 1);
@@ -1216,11 +1216,11 @@ ZC_TEST("ConcreteToDynErasure.VerifiesAndAdoptsDynEraseCoercion") {
 ZC_TEST("ConcreteToDynErasure.RejectsConcreteWithoutImpl") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "struct Square {}\n"
       "impl Drawable for Circle {}\n"
-      "fun erase(s: Square) -> i32 {\n    let d: dyn Drawable = s;\n"
+      "fn erase(s: Square) -> i32 {\n    let d: dyn Drawable = s;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -1234,8 +1234,8 @@ ZC_TEST("ConcreteToDynErasure.RejectsConcreteWithoutImpl") {
 ZC_TEST("ConcreteToDynErasure.RejectsUnrelatedConcreteType") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
-      "fun erase(v: i32) -> i32 {\n    let d: dyn Drawable = v;\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
+      "fn erase(v: i32) -> i32 {\n    let d: dyn Drawable = v;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -1250,8 +1250,8 @@ ZC_TEST("ConcreteToDynErasure.RejectsUnrelatedConcreteType") {
 ZC_TEST("ConcreteToDynErasure.IdentityDynParameterCopyNeedsNoCoercion") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
-      "fun copy(d: dyn Drawable) -> i32 {\n    let b: dyn Drawable = d;\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
+      "fn copy(d: dyn Drawable) -> i32 {\n    let b: dyn Drawable = d;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
@@ -1263,10 +1263,10 @@ ZC_TEST("ConcreteToDynErasure.IdentityDynParameterCopyNeedsNoCoercion") {
 ZC_TEST("ConcreteToDynErasure.ErasedLocalChainRecordsSingleErasure") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "impl Drawable for Circle {}\n"
-      "fun erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
+      "fn erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
       "    let b: dyn Drawable = a;\n    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsCandidate>());
@@ -1278,10 +1278,10 @@ ZC_TEST("ConcreteToDynErasure.ErasedLocalChainRecordsSingleErasure") {
 ZC_TEST("ConcreteToDynErasure.RejectsDynToConcreteDowncast") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "impl Drawable for Circle {}\n"
-      "fun erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
+      "fn erase(c: Circle) -> i32 {\n    let a: dyn Drawable = c;\n"
       "    let b: Circle = a;\n    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -1296,10 +1296,10 @@ ZC_TEST("ConcreteToDynErasure.RejectsDynToConcreteDowncast") {
 ZC_TEST("ConcreteToDynErasure.GenericConcreteReportsUnsupportedNotMissingImpl") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Box<T> {}\n"
       "impl Drawable for Box<i32> {}\n"
-      "fun erase(b: Box<i32>) -> i32 {\n    let d: dyn Drawable = b;\n"
+      "fn erase(b: Box<i32>) -> i32 {\n    let d: dyn Drawable = b;\n"
       "    let x: i32 = 1;\n    return x;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
@@ -1314,11 +1314,11 @@ ZC_TEST("ConcreteToDynErasure.GenericConcreteReportsUnsupportedNotMissingImpl") 
 ZC_TEST("ConcreteToDynErasure.ArgumentPositionAttachesDynEraseAdjustment") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Circle {}\n"
       "impl Drawable for Circle {}\n"
-      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
-      "fun erase(c: Circle) -> i32 {\n    let r: i32 = render(c);\n    return r;\n}\n"_zc);
+      "fn render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fn erase(c: Circle) -> i32 {\n    let r: i32 = render(c);\n    return r;\n}\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   ZC_REQUIRE(facts.calls().entries().size() == 1);
   const auto& call = facts.calls().entries()[0].value;
@@ -1343,10 +1343,10 @@ ZC_TEST("ConcreteToDynErasure.ArgumentPositionAttachesDynEraseAdjustment") {
 ZC_TEST("ConcreteToDynErasure.ArgumentPositionRejectsMissingImpl") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Square {}\n"
-      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
-      "fun erase(s: Square) -> i32 {\n    let r: i32 = render(s);\n    return r;\n}\n"_zc);
+      "fn render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fn erase(s: Square) -> i32 {\n    let r: i32 = render(s);\n    return r;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1359,11 +1359,11 @@ ZC_TEST("ConcreteToDynErasure.ArgumentPositionRejectsMissingImpl") {
 ZC_TEST("ConcreteToDynErasure.ArgumentPositionGenericReportsUnsupported") {
   PrimitiveBinaryFixture fixture(
       "class RecoveryOwner {}\n"
-      "interface Drawable {\n    fun draw(this);\n}\n"
+      "interface Drawable {\n    fn draw(this);\n}\n"
       "struct Box<T> {}\n"
       "impl Drawable for Box<i32> {}\n"
-      "fun render(d: dyn Drawable) -> i32 { return 1; }\n"
-      "fun erase(b: Box<i32>) -> i32 {\n    let r: i32 = render(b);\n    return r;\n}\n"_zc);
+      "fn render(d: dyn Drawable) -> i32 { return 1; }\n"
+      "fn erase(b: Box<i32>) -> i32 {\n    let r: i32 = render(b);\n    return r;\n}\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1378,8 +1378,8 @@ ZC_TEST("ConcreteToDynErasure.ArgumentPositionGenericReportsUnsupported") {
 // accepts the call.
 ZC_TEST("InherentMethodCall.SharedReceiverCallProducesCheckedFacts") {
   PrimitiveBinaryFixture fixture(
-      "struct Cell {\n    value: i32,\n    fun get(this) -> i32 { return 7; }\n}\n"
-      "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.get();\n}\n"_zc);
+      "struct Cell {\n    value: i32,\n    fn get(this) -> i32 { return 7; }\n}\n"
+      "fn entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.get();\n}\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   ZC_REQUIRE(facts.calls().entries().size() == 1);
   const auto& call = facts.calls().entries()[0].value.invocation;
@@ -1395,8 +1395,8 @@ ZC_TEST("InherentMethodCall.SharedReceiverCallProducesCheckedFacts") {
 ZC_TEST("InherentMethodCall.ThisFieldReadProducesReceiverParameterPlace") {
   PrimitiveBinaryFixture fixture(
       "struct Cell {\n    value: i32,\n"
-      "    fun get(this) -> i32 { return this.value; }\n}\n"
-      "fun entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.value;\n}\n"_zc);
+      "    fn get(this) -> i32 { return this.value; }\n}\n"
+      "fn entry() -> i32 {\n    let cell = Cell { value: 0 };\n    return cell.value;\n}\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
   ZC_REQUIRE(facts.members().entries().size() == 2);
   ZC_REQUIRE(facts.places().entries().size() == 2);
@@ -1415,7 +1415,7 @@ ZC_TEST("InherentMethodCall.ThisFieldReadProducesReceiverParameterPlace") {
 ZC_TEST("PrimitiveBinaryOperation.InfersOperandTypeForUnannotatedArithmeticLocal") {
   // An unannotated local initialized from a parameter-plus-literal binary infers
   // the operand type: `let z = a + 1` binds i32 without an annotation.
-  PrimitiveBinaryFixture fixture("fun f(a: i32) -> i32 { let z = a + 1; return z; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn f(a: i32) -> i32 { let z = a + 1; return z; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -1434,7 +1434,7 @@ ZC_TEST("PrimitiveBinaryOperation.InfersOperandTypeForUnannotatedArithmeticLocal
 ZC_TEST("PrimitiveBinaryOperation.InfersBoolForUnannotatedComparisonLocal") {
   // An unannotated local initialized from a relational comparison infers bool:
   // `let z = a == 1` binds bool without an annotation.
-  PrimitiveBinaryFixture fixture("fun f(a: i32) -> bool { let z = a == 1; return z; }\n"_zc);
+  PrimitiveBinaryFixture fixture("fn f(a: i32) -> bool { let z = a == 1; return z; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 1);
@@ -1454,7 +1454,7 @@ ZC_TEST("PrimitiveBinaryOperation.InfersThroughUnannotatedBinaryLocalChain") {
   // initializer `z + 2` references the first inferred local z and produces a
   // second Add fact, so the chain types without any annotation.
   PrimitiveBinaryFixture fixture(
-      "fun f(a: i32) -> i32 { let z = a + 1; let w = z + 2; return w; }\n"_zc);
+      "fn f(a: i32) -> i32 { let z = a + 1; let w = z + 2; return w; }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   ZC_REQUIRE(facts.calls().entries().size() == 2);
@@ -1472,7 +1472,7 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsFunctionValueOperandForUnannotatedLocal
   // `let a = g + 1` has no typed operand to infer from. The body drains with
   // ZOM4099 (FunctionBodySemanticsUnavailable), never an invariant.
   PrimitiveBinaryFixture fixture(
-      "fun g() -> i32 { return 5; }\nfun f() -> i32 { let a = g + 1; return a; }\n"_zc);
+      "fn g() -> i32 { return 5; }\nfn f() -> i32 { let a = g + 1; return a; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1486,8 +1486,8 @@ ZC_TEST("DirectCall.Argument.EmitsCheckedArgumentFactForI32OwnerLocal") {
   // argument rides the by-value scalar-local carrier: the call fact records one
   // ordinary argument with no coercion, just like a parameter argument.
   PrimitiveBinaryFixture fixture(
-      "fun h(x: i32) -> i32 { return x; }\n"
-      "fun f() -> i32 { let a: i32 = 7; return h(a); }\n"_zc);
+      "fn h(x: i32) -> i32 { return x; }\n"
+      "fn f() -> i32 { let a: i32 = 7; return h(a); }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
@@ -1511,8 +1511,8 @@ ZC_TEST("DirectCall.Argument.EmitsCheckedArgumentFactForInferredI32OwnerLocal") 
   // The unannotated form `let a = 7` infers i32 from its integer initializer,
   // so the scalar-local carrier admits it without a declared annotation.
   PrimitiveBinaryFixture fixture(
-      "fun h(x: i32) -> i32 { return x; }\n"
-      "fun f() -> i32 { let a = 7; return h(a); }\n"_zc);
+      "fn h(x: i32) -> i32 { return x; }\n"
+      "fn f() -> i32 { let a = 7; return h(a); }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
@@ -1532,8 +1532,8 @@ ZC_TEST("DirectCall.Argument.DrainsF64OwnerLocalAsUnsupportedMethodCall") {
   // An owner local of non-i32 scalar type stays on the ZOM4125 capability drain;
   // the scalar-local carrier admits i32 only.
   PrimitiveBinaryFixture fixture(
-      "fun h(x: f64) -> f64 { return x; }\n"
-      "fun f() -> f64 { let a: f64 = 7.0; return h(a); }\n"_zc);
+      "fn h(x: f64) -> f64 { return x; }\n"
+      "fn f() -> f64 { let a: f64 = 7.0; return h(a); }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
@@ -1547,7 +1547,7 @@ ZC_TEST("LeadingLocalConditional.AdmitsComparisonOverLeadingI32Local") {
   // is an admitted body: the comparison's left operand reads the leading local
   // and its right operand is a scalar literal, and both arms return a literal.
   PrimitiveBinaryFixture fixture(
-      "fun entry() -> i32 { let a: i32 = 1; if (a < 5) { return 41; } else { return 7; } }\n"_zc);
+      "fn entry() -> i32 { let a: i32 = 1; if (a < 5) { return 41; } else { return 7; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 
   const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
@@ -1572,7 +1572,7 @@ ZC_TEST("LeadingLocalConditional.AdmitsComparisonOverTwoLeadingI32Locals") {
   // Two leading locals may both feed the comparison; each operand resolves to a
   // distinct owner local of the shared operand type.
   PrimitiveBinaryFixture fixture(
-      "fun entry() -> i32 { let a: i32 = 1; let b: i32 = 2;"
+      "fn entry() -> i32 { let a: i32 = 1; let b: i32 = 2;"
       " if (a < b) { return 41; } else { return 7; } }\n"_zc);
   const auto& facts = fixture.adoptVerifiedFacts();
 

@@ -92,7 +92,7 @@ unit value by falling through the end of the block.
 ```zom
 let empty: unit = ();
 
-fun doSomething() -> unit {
+fn doSomething() -> unit {
     print("side effect");
 }
 ```
@@ -116,9 +116,9 @@ The **never type** (written `never`, pronounced "never" or "bottom") is the type
   imposes no fallthrough obligations on later arms.
 
 ```zom
-fun diverge() -> ! { loop { } }
+fn diverge() -> ! { loop { } }
 
-fun value_or_panic(opt: Option<i32>) -> i32 {
+fn value_or_panic(opt: Option<i32>) -> i32 {
     match (opt) {
         when Some(v) => return v;
         when None => panic!("empty");
@@ -325,7 +325,7 @@ Two named types are equal when they refer to the same declaration symbol and hav
 Type variables represent unknown types during type inference. They are written as uppercase identifiers in generic parameter lists or as fresh unknowns introduced by the inference engine.
 
 ```zom
-fun identity<T>(x: T) -> T {
+fn identity<T>(x: T) -> T {
     return x;
 }
 ```
@@ -346,7 +346,7 @@ type StringOrNumber = str | i32;
 mut value: StringOrNumber = "hello";
 value = 42; // Also valid
 
-fun process(input: str | i32 | bool) {
+fn process(input: str | i32 | bool) {
     match (input) {
         when str { print("String: " + input); }
         when i32 { print("Number: " + input.toString()); }
@@ -429,7 +429,7 @@ Valid forms:
 **Subtyping.** `&mut T` is a subtype of `&T` (reborrow coercion). A mutable reference may be used wherever an immutable reference is expected, with zero runtime cost:
 
 ```zom
-fun read_only(x: &i32) -> i32 { *x }
+fn read_only(x: &i32) -> i32 { *x }
 
 mut value = 42;
 let mref: &mut i32 = &mut value;
@@ -544,7 +544,7 @@ the compact source forms `dyn I<Item = T>` and `dyn I + Sendable + Shared`.
 | `let x: dyn Iterator<Bogus = T> = value;` (unknown head binding) | ZOM4108 `DynUnknownAssociatedTypeBinding` |
 | `let x: dyn Child<Item = T> = value;` (inherited head binding) | ZOM4109 `DynInheritedAssociatedTypeBindingUnsupported` |
 | `let x: dyn Missing = value;` (principal does not resolve) | ZOM4120 `TypeNameUnresolved` |
-| `fun f<T: dyn I>()` (`dyn` existential used as an interface bound) | ZOM4121 `DynTypeNotAllowedAsBound`; a bound must name an interface, not a value type |
+| `fn f<T: dyn I>()` (`dyn` existential used as an interface bound) | ZOM4121 `DynTypeNotAllowedAsBound`; a bound must name an interface, not a value type |
 
 **Runtime layout (2-word fat pointer):**
 
@@ -602,12 +602,12 @@ Associated types are type members of interfaces that are determined by the imple
 ```zom
 interface Iterator {
     type Item;
-    fun next(this: &mut Self) -> Option<Self::Item>;
+    fn next(this: &mut Self) -> Option<Self::Item>;
 }
 
 impl Iterator for VecIter<T> {
     type Item = T;
-    fun next(this: &mut Self) -> Option<T> { ... }
+    fn next(this: &mut Self) -> Option<T> { ... }
 }
 ```
 
@@ -734,7 +734,7 @@ For `let x: T = expr` (with annotation):
 This means constraints flow both ways:
 
 ```zom
-fun takes_u64(x: u64) -> unit { ... }
+fn takes_u64(x: u64) -> unit { ... }
 
 let x = 5;          // x gets a fresh type variable ?X
 takes_u64(x);       // unifies ?X with u64
@@ -904,12 +904,12 @@ let count: i32 = 0;
 let name: str = "Alice";
 
 // Function parameter and return type annotations
-fun greet(name: str): str {
+fn greet(name: str): str {
     return "Hello, " + name;
 }
 
 // Complex type annotations
-let callback: (str) -> bool = fun (s: str) -> bool { return s.length > 0; };
+let callback: (str) -> bool = fn (s: str) -> bool { return s.length > 0; };
 let data: { id: i32, values: f64[] } = {
     id: 1,
     values: [1.0, 2.0, 3.0]

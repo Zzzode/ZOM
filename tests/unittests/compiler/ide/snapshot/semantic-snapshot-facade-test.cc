@@ -284,7 +284,7 @@ ZC_TEST(
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
   auto sourceKey = sourceQueryKey("facade-outline.zom"_zc);
   auto sourceBytes = zc::heapArray(
-      "fun add(a: i32, b: i32) -> i32 { return a + b; }\nclass Point {}\nalias Id = i64;\n"_zcb);
+      "fn add(a: i32, b: i32) -> i32 { return a + b; }\nclass Point {}\nalias Id = i64;\n"_zcb);
   const uint64_t sourceLength = sourceBytes.size();
   auto sourceValue = sourceSnapshotValue("facade-outline.zom"_zc, zc::mv(sourceBytes));
   auto registry = targetRegistry();

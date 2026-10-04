@@ -4,7 +4,7 @@
 // `Dog::speak` and returns 41. The second impl (`Cat::speak`) is a
 // standalone leaf that no call references.
 interface Animal {
-  fun speak(this) -> i32;
+  fn speak(this) -> i32;
 }
 
 struct Dog {
@@ -16,14 +16,14 @@ struct Cat {
 }
 
 impl Animal for Dog {
-  fun speak(this) -> i32 { return 41; }
+  fn speak(this) -> i32 { return 41; }
 }
 
 impl Animal for Cat {
-  fun speak(this) -> i32 { return 7; }
+  fn speak(this) -> i32 { return 7; }
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let a: dyn Animal = Dog { tag: 0 };
   return a.speak();
 }

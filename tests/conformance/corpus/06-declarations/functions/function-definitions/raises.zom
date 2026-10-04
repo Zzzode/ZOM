@@ -1,2 +1,2 @@
-fun fail() -> unit raises Error {
+fn fail() -> unit raises Error {
 }

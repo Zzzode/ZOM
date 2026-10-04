@@ -1,1 +1,1 @@
-fun id<T>(x: T) -> T { return x; }
+fn id<T>(x: T) -> T { return x; }

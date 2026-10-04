@@ -1,4 +1,4 @@
-fun step(flag1: Bool, flag2: Bool) {
+fn step(flag1: Bool, flag2: Bool) {
     suspend;
     suspend until *flag1;
     suspend;

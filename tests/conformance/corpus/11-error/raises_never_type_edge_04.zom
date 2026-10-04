@@ -1,1 +1,1 @@
-fun pure() -> i32 raises never { return 42; }
+fn pure() -> i32 raises never { return 42; }

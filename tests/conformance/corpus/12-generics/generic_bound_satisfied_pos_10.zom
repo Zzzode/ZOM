@@ -4,7 +4,7 @@ class Box { }
 
 impl Hashable for Box { }
 
-fun needs<T: Hashable>(x: T) -> unit {
+fn needs<T: Hashable>(x: T) -> unit {
     return;
 }
 

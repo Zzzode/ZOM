@@ -400,7 +400,7 @@ zc::StringPtr linearReturnSource() {
          "struct Cell { value: i32, }\n"
          "impl !Copy for Cell;\n"
          "unsafe impl Linear for Cell;\n"
-         "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
+         "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
 }
 
 zc::StringPtr linearMoveReturnSource() {
@@ -408,7 +408,7 @@ zc::StringPtr linearMoveReturnSource() {
          "struct Cell { value: i32, }\n"
          "impl !Copy for Cell;\n"
          "unsafe impl Linear for Cell;\n"
-         "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc;
+         "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc;
 }
 
 }  // namespace

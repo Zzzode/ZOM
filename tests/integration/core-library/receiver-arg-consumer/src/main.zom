@@ -3,6 +3,6 @@
 // through the receiver-plus-argument call and exits 42.
 struct Cell {
   value: i32,
-  fun echo(this, answer: i32) -> i32 { return answer; }
+  fn echo(this, answer: i32) -> i32 { return answer; }
 }
-fun entry() -> i32 { let cell = Cell { value: 7 }; return cell.echo(42); }
+fn entry() -> i32 { let cell = Cell { value: 7 }; return cell.echo(42); }

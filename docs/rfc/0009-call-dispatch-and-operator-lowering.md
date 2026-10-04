@@ -125,7 +125,7 @@ Drawable::draw(shape);
 After type checking, each expression has a dispatch classification:
 
 - `i32 + i32` is a primitive arithmetic operation.
-- `Number + Number` selects the `impl Add for Number { fun add(rhs: Number)
+- `Number + Number` selects the `impl Add for Number { fn add(rhs: Number)
   -> Number; }` method.
 - `point1 == point2` selects `Eq.eq(rhs: Point) -> bool`.
 - `bag[0]` selects `Index.index(idx: i32) -> Output`.

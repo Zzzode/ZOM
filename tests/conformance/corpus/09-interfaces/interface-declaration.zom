@@ -1,9 +1,9 @@
 interface Runnable {
-  fun run() -> unit;
+  fn run() -> unit;
 }
 
 interface Comparable<T> {
-  fun compareTo(other: T) -> i32;
+  fn compareTo(other: T) -> i32;
 }
 
 interface Named {

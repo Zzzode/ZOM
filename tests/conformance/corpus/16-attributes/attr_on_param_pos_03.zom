@@ -1,1 +1,1 @@
-fun foo(#[deprecated::arg] x: i32);
+fn foo(#[deprecated::arg] x: i32);

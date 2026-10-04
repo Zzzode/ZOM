@@ -1,2 +1,2 @@
-alias CursorType = Box<fun(A & B | C, [i32; 4]) -> Result<D??[]> raises E | F>;
-alias CursorMembers = Table<{ mut left?: Pair<(A, B), C>, right: fun(D, E) -> F }, (G | H, [I])>;
+alias CursorType = Box<fn(A & B | C, [i32; 4]) -> Result<D??[]> raises E | F>;
+alias CursorMembers = Table<{ mut left?: Pair<(A, B), C>, right: fn(D, E) -> F }, (G | H, [I])>;

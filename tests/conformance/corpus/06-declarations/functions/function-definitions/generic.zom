@@ -1,2 +1,2 @@
-fun generic<T>(x: T) -> T {
+fn generic<T>(x: T) -> T {
 }

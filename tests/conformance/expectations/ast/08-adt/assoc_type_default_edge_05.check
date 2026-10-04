@@ -20,23 +20,23 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 MethodDecl #10 @4:5..4:52 name="build" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #10 @4:5..4:51 name="build" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #3 @4:14..4:16 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #3 @4:13..4:15 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #9 @4:20..4:51
+// CHECK-NEXT:                     NamedTypeExpr #9 @4:19..4:50
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #8 @4:20..4:26 segments=["Result"] root=Relative
+// CHECK-NEXT:                         ModulePath #8 @4:19..4:25 segments=["Result"] root=Relative
 // CHECK-NEXT:                       args:
-// CHECK-NEXT:                         NamedTypeExpr #5 @4:27..4:38
+// CHECK-NEXT:                         NamedTypeExpr #5 @4:26..4:37
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @4:27..4:38 segments=["Self", "Output"] root=Relative
+// CHECK-NEXT:                             ModulePath #4 @4:26..4:37 segments=["Self", "Output"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                         NamedTypeExpr #7 @4:40..4:50
+// CHECK-NEXT:                         NamedTypeExpr #7 @4:39..4:49
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #6 @4:40..4:50 segments=["Self", "Error"] root=Relative
+// CHECK-NEXT:                             ModulePath #6 @4:39..4:49 segments=["Self", "Error"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

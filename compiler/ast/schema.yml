@@ -171,7 +171,7 @@ variants:
   - id: 0x010
     name: ExternDecl
     bases: [NamedDeclaration]
-    doc:  "extern fun name(params) -> Ret raises E;"
+    doc:  "extern fn name(params) -> Ret raises E;"
     fields:
       - {name: name, type: IdentId}
       - {name: abi, type: Abi, default: Cdecl}
@@ -187,7 +187,7 @@ variants:
 
   - id: 0x012
     name: ExternBlock
-    doc:  "extern \"ABI\" { fun ...; variable ...; }"
+    doc:  "extern \"ABI\" { fn ...; variable ...; }"
     fields:
       - {name: abi, type: Abi, default: Cdecl}
       - {name: items, type: NodeList}
@@ -494,7 +494,7 @@ variants:
 
   - id: 0x08B
     name: FunctionExpression
-    doc:  "fun<T>(params) use [captures] -> Ret raises E { body } expression"
+    doc:  "fn<T>(params) use [captures] -> Ret raises E { body } expression"
     fields:
       - {name: params_id, type: NodeId, cast: FunctionParameterList}
       - {name: type_params_id, type: NodeId, cast: GenericParams, optional: true}
@@ -912,7 +912,7 @@ variants:
   - id: 0x110
     name: StandaloneImplDecl
     bases: [DeclarationStatement]
-    doc:  "impl Hash for MyType where T: Send { fun hash(...) -> u64; ... }"
+    doc:  "impl Hash for MyType where T: Send { fn hash(...) -> u64; ... }"
     fields:
       - {name: is_unsafe, type: bool}
       - {name: interface, type: NodeId, cast: TypeExpr}
@@ -940,7 +940,7 @@ variants:
   - id: 0x115
     name: FunctionDecl
     bases: [NamedDeclaration]
-    doc:  "fun name(params) -> Ret raises E { body }"
+    doc:  "fn name(params) -> Ret raises E { body }"
     fields:
       - {name: name, type: IdentId}
       - {name: params_id, type: NodeId, cast: FunctionParameterList}
@@ -1036,7 +1036,7 @@ variants:
   - id: 0x120
     name: MethodDecl
     bases: [DeclarationStatement]
-    doc:  "Class/struct/interface method: [modifiers] fun name(params) -> Ret { body }"
+    doc:  "Class/struct/interface method: [modifiers] fn name(params) -> Ret { body }"
     fields:
       - {name: name, type: IdentId}
       - {name: params_id, type: NodeId, cast: FunctionParameterList}

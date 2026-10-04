@@ -1,4 +1,4 @@
-fun leak() -> &i32 {
+fn leak() -> &i32 {
     let value: i32;
     return ((&value) as &i32);
 }

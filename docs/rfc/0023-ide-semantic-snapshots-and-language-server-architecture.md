@@ -215,7 +215,7 @@ never labels old facts with a new document version.
 ### Flow-Sensitive Hover
 
 ```zom
-fun printLength(value: str?) {
+fn printLength(value: str?) {
     if (value != null) {
         print(value.length);
     }
@@ -240,7 +240,7 @@ non-authoritative and never enters compilation.
 ### Completion During An Edit
 
 ```zom
-fun printLength(value: str?) {
+fn printLength(value: str?) {
     if (value != null) {
         value.
     }

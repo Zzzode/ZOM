@@ -559,7 +559,7 @@ ZC_TEST("Module body syntax resolves control to nearest nested label") {
 ZC_TEST("Named item syntax admits contextual callable declaration names") {
   ModuleBodyFixture fixture(
       "interface Collection {\n"
-      "  fun set(index: u64, value: u64) -> unit;\n"
+      "  fn set(index: u64, value: u64) -> unit;\n"
       "}\n"_zc);
   zc::Maybe<size_t> methodIndex;
   const auto& tree = ZC_ASSERT_NONNULL(fixture.parsed).tree();
@@ -591,7 +591,7 @@ ZC_TEST("Named item syntax admits contextual callable declaration names") {
 ZC_TEST("Parsed module recognizes the implicit Self type of a this receiver") {
   ModuleBodyFixture fixture(
       "interface Collection {\n"
-      "  fun consume(this);\n"
+      "  fn consume(this);\n"
       "}\n"_zc);
   const auto& verified = ZC_ASSERT_NONNULL(fixture.parsed);
   const auto& tree = verified.tree();

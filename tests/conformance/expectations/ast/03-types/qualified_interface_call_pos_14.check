@@ -12,21 +12,21 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #6 @2:5..2:37 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:36 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:28 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:12..2:27 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:27 name="value"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:13..2:26 name="value"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:21..2:27
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:20..2:26
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:21..2:27 segments=["Sprite"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:20..2:26 segments=["Sprite"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:32..2:36 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:31..2:35 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -57,24 +57,24 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #24 @7:26..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #23 @8:5..8:40 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #23 @8:5..8:39 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #20 @8:13..8:28 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #20 @8:12..8:27 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #19 @8:14..8:27 name="value"
+// CHECK-NEXT:                         FunctionParameterDecl #19 @8:13..8:26 name="value"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #18 @8:21..8:27
+// CHECK-NEXT:                             NamedTypeExpr #18 @8:20..8:26
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #17 @8:21..8:27 segments=["Sprite"] root=Relative
+// CHECK-NEXT:                                 ModulePath #17 @8:20..8:26 segments=["Sprite"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #21 @8:32..8:36 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #21 @8:31..8:35 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #22 @8:37..8:40
+// CHECK-NEXT:                     BlockStmt #22 @8:36..8:39
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #33 @11:1..11:20

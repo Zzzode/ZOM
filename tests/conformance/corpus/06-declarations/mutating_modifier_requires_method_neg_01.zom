@@ -1,2 +1,2 @@
-mutating fun f() -> i32 { return 1; }
-fun entry() -> i32 { return 0; }
+mutating fn f() -> i32 { return 1; }
+fn entry() -> i32 { return 0; }

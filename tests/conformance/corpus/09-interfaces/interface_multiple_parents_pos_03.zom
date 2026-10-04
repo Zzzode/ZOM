@@ -3,5 +3,5 @@ interface Closable {}
 interface Disposable {}
 
 interface IOReader : Readable + Closable + Disposable {
-    fun read(buf: u8) -> i32;
+    fn read(buf: u8) -> i32;
 }

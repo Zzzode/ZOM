@@ -24,22 +24,22 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #27 @6:1..11:2 name="f"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #11 @6:6..6:17 nparams=1
+// CHECK-NEXT:             FunctionParameterList #11 @6:5..6:16 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #10 @6:7..6:16 name="r"
+// CHECK-NEXT:                 FunctionParameterDecl #10 @6:6..6:15 name="r"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #9 @6:10..6:16
+// CHECK-NEXT:                     NamedTypeExpr #9 @6:9..6:15
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #8 @6:10..6:16 segments=["Result"] root=Relative
+// CHECK-NEXT:                         ModulePath #8 @6:9..6:15 segments=["Result"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #12 @6:21..6:25 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #12 @6:20..6:24 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #26 @6:26..11:2
+// CHECK-NEXT:             BlockStmt #26 @6:25..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #25 @7:5..10:6
 // CHECK-NEXT:                   item:

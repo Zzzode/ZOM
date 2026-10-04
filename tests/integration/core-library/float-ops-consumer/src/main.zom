@@ -3,7 +3,7 @@
 // annotation, and the dead-erase filter removes the float binding before LIR
 // lowering. The live integer arithmetic bindings lower through the verified
 // arithmetic-return path, so `zomc run` executes natively and exits 41.
-fun entry() -> i32 {
+fn entry() -> i32 {
   let x: f32 = 1.0 + 2.0;
   let a: i32 = 40;
   let answer: i32 = a + 1;

@@ -2,4 +2,4 @@ struct S {
   x: i32,
   mutating init() {}
 }
-fun entry() -> i32 { return 0; }
+fn entry() -> i32 { return 0; }

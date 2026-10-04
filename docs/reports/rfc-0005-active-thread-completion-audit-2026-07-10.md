@@ -187,7 +187,7 @@ slot, and `ErrorTarget` contract conflicts with the accepted identity and
 verified-handoff design.
 
 The parser/spec repair separated named declaration parameters from unnamed
-structural function-type components. `fun f(i32, str)` is rejected by both
+structural function-type components. `fn f(i32, str)` is rejected by both
 parsers and has grammar plus AST evidence; `(i32, str) -> bool` remains a valid
 function type. The grammar inventory and its README now agree at 39 Chapter 6
 cases and 794 total verdicts.

@@ -22,16 +22,16 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #26 @3:1..6:2 name="leak"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #7 @3:9..3:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #7 @3:8..3:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             ReferenceTypeExpr #9 @3:15..3:19 is_mut=false
+// CHECK-NEXT:             ReferenceTypeExpr #9 @3:14..3:18 is_mut=false
 // CHECK-NEXT:               elem:
-// CHECK-NEXT:                 PredefinedTypeExpr #8 @3:16..3:19 kind=I32
+// CHECK-NEXT:                 PredefinedTypeExpr #8 @3:15..3:18 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #25 @3:20..6:2
+// CHECK-NEXT:             BlockStmt #25 @3:19..6:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #15 @4:5..4:20
 // CHECK-NEXT:                   item:

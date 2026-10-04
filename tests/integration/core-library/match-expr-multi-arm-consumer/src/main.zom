@@ -5,7 +5,7 @@
 // (true+false cover all bool values) and is dropped during HIR shape
 // normalization. The scrutinee is a constant `true`, so the match evaluates
 // to the true arm's value (41) and `zomc run` exits 41.
-fun entry() -> i32 {
+fn entry() -> i32 {
     let x = match (true) {
         when true => 41;
         when false => 7;

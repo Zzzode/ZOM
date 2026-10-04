@@ -1,2 +1,2 @@
-fun g() -> i32 { return 5; }
-fun f() -> i32 { let a = g + 1; return a; }
+fn g() -> i32 { return 5; }
+fn f() -> i32 { let a = g + 1; return a; }

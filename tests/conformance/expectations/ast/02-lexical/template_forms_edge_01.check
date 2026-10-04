@@ -69,13 +69,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #32 @6:1..8:2 name="close_global_scope"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #28 @6:23..6:25 nparams=0
+// CHECK-NEXT:             FunctionParameterList #28 @6:22..6:24 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #31 @6:26..8:2
+// CHECK-NEXT:             BlockStmt #31 @6:25..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #30 @7:5..7:12
 // CHECK-NEXT:                   item:

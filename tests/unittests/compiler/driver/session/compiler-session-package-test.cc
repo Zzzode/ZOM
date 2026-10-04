@@ -262,9 +262,9 @@ package::DigestVerifiedSourceSnapshot twoModuleScalarSnapshot() {
   sourceDirectory
       ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                  zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
-      ->writeAll("import app::child;\nfun answer() -> i32 { return 42; }"_zc);
+      ->writeAll("import app::child;\nfn answer() -> i32 { return 42; }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
-      ->writeAll("module child;\nfun childAnswer() -> i32 { return 7; }"_zc);
+      ->writeAll("module child;\nfn childAnswer() -> i32 { return 7; }"_zc);
   MemoryFreshDirectoryFactory factory;
   package::SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*sourceDirectory, factory);
@@ -292,9 +292,9 @@ package::DigestVerifiedSourceSnapshot importedBehaviorImplementationSnapshot() {
   sourceDirectory
       ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                  zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
-      ->writeAll("import app::child::{Behavior};\nimpl Behavior for i32 { fun act() {} }"_zc);
+      ->writeAll("import app::child::{Behavior};\nimpl Behavior for i32 { fn act() {} }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
-      ->writeAll("module child;\nexport interface Behavior { fun act(); }"_zc);
+      ->writeAll("module child;\nexport interface Behavior { fn act(); }"_zc);
   MemoryFreshDirectoryFactory factory;
   package::SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*sourceDirectory, factory);
@@ -325,12 +325,12 @@ package::DigestVerifiedSourceSnapshot coherenceFailureModuleSnapshot() {
       ->openFile(zc::Path({"src"_zc, "main.zom"_zc}),
                  zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
       ->writeAll(
-          "import app::child::{Behavior};\nimport app::peer;\nimpl Behavior for i32 { fun act() -> i32 { return 0; } }"_zc);
+          "import app::child::{Behavior};\nimport app::peer;\nimpl Behavior for i32 { fn act() -> i32 { return 0; } }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "child.zom"_zc}), zc::WriteMode::CREATE)
-      ->writeAll("module child;\nexport interface Behavior { fun act() -> i32; }"_zc);
+      ->writeAll("module child;\nexport interface Behavior { fn act() -> i32; }"_zc);
   sourceDirectory->openFile(zc::Path({"src"_zc, "peer.zom"_zc}), zc::WriteMode::CREATE)
       ->writeAll(
-          "module peer;\nimport app::child::{Behavior};\nimpl Behavior for i32 { fun act() -> i32 { return 0; } }"_zc);
+          "module peer;\nimport app::child::{Behavior};\nimpl Behavior for i32 { fn act() -> i32 { return 0; } }"_zc);
   MemoryFreshDirectoryFactory factory;
   package::SourceDirectoryMaterializer materializer;
   auto result = materializer.materialize(*sourceDirectory, factory);
@@ -1334,14 +1334,14 @@ ZC_TEST("CompilerSession admits contextual callable names into the frozen bindin
     type Item;
     type Iter;
     type Error : Error;
-    fun size() -> u64;
-    fun get(i: u64) -> Item;
-    fun set(i: u64, v: Item) -> unit;
-    fun contains(v: Item) -> bool;
-    fun find(pred: (Item) -> bool) -> i64;
-    fun map<U>(f: (Item) -> U) -> [U];
-    fun filter(pred: (Item) -> bool) -> [Item];
-    fun reduce<A>(acc: A, f: (A, Item) -> A) -> A;
+    fn size() -> u64;
+    fn get(i: u64) -> Item;
+    fn set(i: u64, v: Item) -> unit;
+    fn contains(v: Item) -> bool;
+    fn find(pred: (Item) -> bool) -> i64;
+    fn map<U>(f: (Item) -> U) -> [U];
+    fn filter(pred: (Item) -> bool) -> [Item];
+    fn reduce<A>(acc: A, f: (A, Item) -> A) -> A;
     get isEmpty() -> bool;
     get length() -> u64;
     set length(v: u64) -> unit;
@@ -2487,7 +2487,7 @@ ZC_TEST("CompilerSession publishes a checked scalar-return function through HIR 
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun answer() -> i32 { return 42; }"_zc));
+      resolvedSourceSnapshots("app"_zc, "fn answer() -> i32 { return 42; }"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -2550,8 +2550,7 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
       resolvedSourceSnapshots(
-          "app"_zc,
-          "fun answer() -> i32 { let first = 1; let second = first; return second; }"_zc));
+          "app"_zc, "fn answer() -> i32 { let first = 1; let second = first; return second; }"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -2696,7 +2695,7 @@ ZC_TEST("CompilerSession lowers a conditional return through HIR") {
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
       resolvedSourceSnapshots(
           "app"_zc,
-          "fun answer(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc));
+          "fn answer(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -2771,7 +2770,7 @@ ZC_TEST("CompilerSession rejects a scalar return whose type differs from the sig
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun answer() -> bool { return 42; }"_zc));
+      resolvedSourceSnapshots("app"_zc, "fn answer() -> bool { return 42; }"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -2831,24 +2830,24 @@ ZC_TEST("CompilerSession rejects unadmitted frontend syntax before Checker publi
     ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   };
 
-  rejects("fun entry() { spawn {}; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
-  rejects("fun entry() { suspend; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
-  rejects("fun entry() { suspend; spawn {}; }"_zc,
+  rejects("fn entry() { spawn {}; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
+  rejects("fn entry() { suspend; }"_zc, diagnostics::DiagID::ConcurrencySemanticsUnavailable, 1);
+  rejects("fn entry() { suspend; spawn {}; }"_zc,
           diagnostics::DiagID::ConcurrencySemanticsUnavailable, 2);
-  rejects("fun entry() { return; }"_zc, diagnostics::DiagID::VoidReturnSemanticsUnavailable, 1);
-  rejects("fun entry() { 1; }"_zc, diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { mut value = 1; value = value; return value; }"_zc,
+  rejects("fn entry() { return; }"_zc, diagnostics::DiagID::VoidReturnSemanticsUnavailable, 1);
+  rejects("fn entry() { 1; }"_zc, diagnostics::DiagID::ExpressionStatementSemanticsUnavailable, 1);
+  rejects("fn entry() -> i32 { mut value = 1; value = value; return value; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() {}"_zc, diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { let value = 1; }"_zc,
+  rejects("fn entry() {}"_zc, diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
+  rejects("fn entry() -> i32 { let value = 1; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i64 { return 1 as i64; }"_zc,
+  rejects("fn entry() -> i64 { return 1 as i64; }"_zc,
           diagnostics::DiagID::FunctionBodySemanticsUnavailable, 1);
-  rejects("fun entry() -> i32 { while (false) { return 1; } return 2; }"_zc,
+  rejects("fn entry() -> i32 { while (false) { return 1; } return 2; }"_zc,
           diagnostics::DiagID::ControlFlowSemanticsUnavailable, 1);
-  rejects("fun entry() { for (;;) { break; } }"_zc,
+  rejects("fn entry() { for (;;) { break; } }"_zc,
           diagnostics::DiagID::ControlFlowSemanticsUnavailable, 2);
-  rejects("fun entry() { label: while (true) { continue label; } }"_zc,
+  rejects("fn entry() { label: while (true) { continue label; } }"_zc,
           diagnostics::DiagID::ControlFlowSemanticsUnavailable, 3);
 }
 
@@ -2971,7 +2970,7 @@ ZC_TEST("CompilerSession gives behavior body diagnostics precedence over marker 
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
       resolvedSourceSnapshots("app"_zc,
-                              "interface Behavior { fun act(); }\nimpl Behavior for i32;\n"_zc));
+                              "interface Behavior { fn act(); }\nimpl Behavior for i32;\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -3001,7 +3000,7 @@ ZC_TEST("CompilerSession lowers a function with mixed-type scalar locals") {
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
       resolvedSourceSnapshots("app"_zc,
-                              "fun pick(a: i32, b: i64, c: i32) -> i32 {\n"
+                              "fn pick(a: i32, b: i64, c: i32) -> i32 {\n"
                               "  let y: i32 = a;\n"
                               "  let wide: i64 = b;\n"
                               "  let flag: bool = a == c;\n"
@@ -3280,7 +3279,7 @@ ZC_TEST("CompilerSession rejects duplicate stable definitions before registry mu
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun value() {}\nfun value() {}\n"_zc));
+      resolvedSourceSnapshots("app"_zc, "fn value() {}\nfn value() {}\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -3301,7 +3300,7 @@ ZC_TEST("CompilerSession rejects duplicate generic binders before registry mutat
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun run<T, T>();\n"_zc));
+      resolvedSourceSnapshots("app"_zc, "fn run<T, T>();\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -3322,7 +3321,7 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
   auto input = VerifiedPackageSessionInput::from(
       request(registry), verifiedSelection(registry), verifiedSelection(registry),
       resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
-      resolvedSourceSnapshots("app"_zc, "fun run(size: i32) -> [i32; size] {}\n"_zc));
+      resolvedSourceSnapshots("app"_zc, "fn run(size: i32) -> [i32; size] {}\n"_zc));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
   installCore(session);
@@ -3341,7 +3340,7 @@ ZC_TEST("CompilerSession reports non-literal stable array lengths as source fail
 // confirm the input region is live at the function entry point.
 
 ZC_TEST("CompilerSession publishes escape facts and region memberships for a parameter reborrow") {
-  constexpr zc::StringPtr sourceText = "fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc;
+  constexpr zc::StringPtr sourceText = "fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc;
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
   identity::SemanticContextFactory contextFactory;

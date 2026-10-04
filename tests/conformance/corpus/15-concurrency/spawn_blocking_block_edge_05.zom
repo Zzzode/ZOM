@@ -1,4 +1,4 @@
-fun blocking_block() {
+fn blocking_block() {
     let r = spawn blocking {
         return heavy_cpu();
     };

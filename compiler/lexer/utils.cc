@@ -201,7 +201,7 @@ ast::SyntaxKind getKeywordKind(zc::ArrayPtr<const zc::byte> text) {
   if (text == "finally"_zcb) return ast::SyntaxKind::FinallyKeyword;
   if (text == "for"_zcb) return ast::SyntaxKind::ForKeyword;
   if (text == "from"_zcb) return ast::SyntaxKind::FromKeyword;
-  if (text == "fun"_zcb) return ast::SyntaxKind::FunKeyword;
+  if (text == "fn"_zcb) return ast::SyntaxKind::FnKeyword;
   if (text == "generator"_zcb) return ast::SyntaxKind::GeneratorKeyword;
   if (text == "get"_zcb) return ast::SyntaxKind::GetKeyword;
   if (text == "global"_zcb) return ast::SyntaxKind::GlobalKeyword;

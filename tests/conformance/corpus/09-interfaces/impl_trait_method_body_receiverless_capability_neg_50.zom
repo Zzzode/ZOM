@@ -1,6 +1,6 @@
 interface I {
-    fun act() -> i32;
+    fn act() -> i32;
 }
 impl I for i32 {
-    fun act() -> i32 { return 0; }
+    fn act() -> i32 { return 0; }
 }

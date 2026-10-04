@@ -19,7 +19,7 @@ ModuleExport ::= 'export' Declaration
 Examples:
 
 ```zom
-export fun run() -> i32 { 0 }
+export fn run() -> i32 { 0 }
 export { run as execute };
 ```
 
@@ -52,8 +52,8 @@ MemberVisibility ::= 'public' | 'private' | 'protected'
 ```zom
 class Session {
     private let token: str;
-    public fun user_id(this) -> i32 { 0 }
-    protected fun refresh_hook(this) -> unit {}
+    public fn user_id(this) -> i32 { 0 }
+    protected fn refresh_hook(this) -> unit {}
 }
 ```
 

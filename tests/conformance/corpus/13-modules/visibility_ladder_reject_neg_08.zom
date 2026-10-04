@@ -1,1 +1,1 @@
-export pub(crate) fun foo() {}
+export pub(crate) fn foo() {}

@@ -6,11 +6,11 @@ struct Holder {
     value: i32 | Err;
 }
 
-fun take(x: i32 | Err) -> unit {
+fn take(x: i32 | Err) -> unit {
     return;
 }
 
-fun produce(flag: bool) -> i32 | Err {
+fn produce(flag: bool) -> i32 | Err {
     if (flag) {
         return 1;
     }

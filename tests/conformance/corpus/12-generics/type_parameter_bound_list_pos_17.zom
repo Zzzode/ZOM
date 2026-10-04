@@ -6,7 +6,7 @@ class Resource { }
 impl Readable for Resource { }
 impl Writable for Resource { }
 
-fun require_both<T: Readable + Writable>(value: T) -> unit {
+fn require_both<T: Readable + Writable>(value: T) -> unit {
     return;
 }
 

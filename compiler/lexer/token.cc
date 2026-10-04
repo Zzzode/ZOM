@@ -14,8 +14,8 @@
 
 #include "compiler/lexer/token.h"
 
-#include "zc/core/memory.h"
 #include "compiler/source/manager.h"
+#include "zc/core/memory.h"
 
 namespace zomlang {
 namespace compiler {
@@ -134,8 +134,8 @@ constexpr zc::StringPtr getStaticTextForTokenKindImpl(ast::SyntaxKind kind) {
       return "declare"_zc;
     case ast::SyntaxKind::MutKeyword:
       return "mut"_zc;
-    case ast::SyntaxKind::FunKeyword:
-      return "fun"_zc;
+    case ast::SyntaxKind::FnKeyword:
+      return "fn"_zc;
     case ast::SyntaxKind::ClassKeyword:
       return "class"_zc;
     case ast::SyntaxKind::IfKeyword:

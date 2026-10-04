@@ -66,7 +66,7 @@ demonstrate:
 - **Module declaration**: `module core;` in `src/core.zom`
 - **Interface declaration**: `export interface Copy {}` in `src/core/marker.zom`
 - **Enum declaration**: `export enum Ordering { Less, Equal, Greater }` in `src/core/ordering.zom`
-- **Function definition**: `export fun double(x: i32) -> i32 { return x + x; }` in `src/core/math.zom`
+- **Function definition**: `export fn double(x: i32) -> i32 { return x + x; }` in `src/core/math.zom`
 - **Re-export**: `export core::marker::{Copy, Linear};` in `src/core/prelude.zom`
 
 For the full language reference, see `docs/spec/`.

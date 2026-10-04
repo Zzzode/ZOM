@@ -3,7 +3,7 @@
 // literal operand precedes the local read (`x = 1 + x`), and returns the
 // result. Exercises the operand-order-independent classification of the
 // binary-write local path. Exits 2.
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut x = 1;
   x = 1 + x;
   return x;

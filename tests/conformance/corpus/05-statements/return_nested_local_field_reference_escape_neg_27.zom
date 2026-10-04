@@ -6,7 +6,7 @@ class Owner {
     let field: Child;
 }
 
-fun leak() -> &i32 {
+fn leak() -> &i32 {
     let obj: Owner;
     return &obj.field.value;
 }

@@ -1,4 +1,4 @@
-fun takes_u64(x: u64) -> unit {
+fn takes_u64(x: u64) -> unit {
     return;
 }
 

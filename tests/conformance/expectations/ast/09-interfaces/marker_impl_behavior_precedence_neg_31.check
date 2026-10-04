@@ -12,9 +12,9 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #3 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #2 @2:3..2:13 name="act" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #2 @2:3..2:12 name="act" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:10..2:12 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:9..2:11 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null

@@ -1,4 +1,4 @@
-fun main() {
+fn main() {
   let x = 10;
 
   if (x > 5) {

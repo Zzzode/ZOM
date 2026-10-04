@@ -1,5 +1,5 @@
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
 }
 
 struct Circle {
@@ -8,6 +8,6 @@ struct Circle {
 
 impl Drawable for Circle {}
 
-fun make(c: Circle) -> dyn Drawable {
+fn make(c: Circle) -> dyn Drawable {
     return c;
 }

@@ -1,9 +1,9 @@
-interface Flyable { fun fly() -> unit; }
-interface Swimmable { fun swim() -> unit; }
-class Animal { fun breathe() -> unit { } }
+interface Flyable { fn fly() -> unit; }
+interface Swimmable { fn swim() -> unit; }
+class Animal { fn breathe() -> unit { } }
 class Duck : Animal {
-    override fun fly() -> unit { }
-    fun swim() -> unit { }
+    override fn fly() -> unit { }
+    fn swim() -> unit { }
 }
 impl Flyable for Duck { }
 impl Swimmable for Duck { }

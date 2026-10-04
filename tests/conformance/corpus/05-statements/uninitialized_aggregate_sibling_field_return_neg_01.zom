@@ -3,7 +3,7 @@ struct Pair {
   mut right: bool,
 }
 
-fun entry() -> bool {
+fn entry() -> bool {
   mut pair: Pair;
   pair.left = 0;
   return pair.right;

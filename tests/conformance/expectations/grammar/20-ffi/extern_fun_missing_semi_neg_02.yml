@@ -1,4 +1,4 @@
-section: "§20.4 Extern fun decl inside block missing terminating SEMICOLON — native syntax error"
+section: "§20.4 Extern fn decl inside block missing terminating SEMICOLON — native syntax error"
 covers_rule: "externItem (funDecl SEMICOLON branch — SEMICOLON absent → ANTLR error)"
 expected: "REJECT"
 notes: []

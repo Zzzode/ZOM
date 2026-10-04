@@ -1,1 +1,1 @@
-fun f() -> void raises A | B & C;
+fn f() -> void raises A | B & C;

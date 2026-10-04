@@ -1,1 +1,1 @@
-fun f<T: number>(x: T) -> T { return x; }
+fn f<T: number>(x: T) -> T { return x; }

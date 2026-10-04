@@ -17,19 +17,19 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #37 @3:1..11:2 name="main"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #6 @3:9..3:21 nparams=1
+// CHECK-NEXT:             FunctionParameterList #6 @3:8..3:20 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #5 @3:10..3:20 name="flag"
+// CHECK-NEXT:                 FunctionParameterDecl #5 @3:9..3:19 name="flag"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #4 @3:16..3:20 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #4 @3:15..3:19 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #7 @3:25..3:29 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #7 @3:24..3:28 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #36 @3:30..11:2
+// CHECK-NEXT:             BlockStmt #36 @3:29..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #14 @4:5..4:22
 // CHECK-NEXT:                   item:

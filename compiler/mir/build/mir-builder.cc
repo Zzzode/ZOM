@@ -641,10 +641,10 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f(...) -> T { return <literal>; }`: one root scope, no
+/// \brief Lowers `fn f(...) -> T { return <literal>; }`: one root scope, no
 /// locals, one empty entry block returning the scalar constant. Byte-identical
 /// to the legacy fallthrough scalar construction. An inherent method
-/// (`fun m(this) -> T { return <literal>; }`) additionally declares its
+/// (`fn m(this) -> T { return <literal>; }`) additionally declares its
 /// implicit `this` receiver as the leading parameter local, which the admitted
 /// scalar body never reads.
 zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
@@ -674,7 +674,7 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this) -> T { return this.field; }` on a shared or
+/// \brief Lowers `fn m(this) -> T { return this.field; }` on a shared or
 /// mutating receiver: one root scope, one receiver parameter local carrying
 /// the receiver reference, and a Return of a copy/move place-use rooted at that
 /// local through [Dereference(&Owner -> Owner), Field(Owner -> T)].
@@ -716,7 +716,7 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f(p: Owner) -> T { return p.field; }` for an ordinary
+/// \brief Lowers `fn f(p: Owner) -> T { return p.field; }` for an ordinary
 /// by-value struct parameter: one root scope, one Parameter local carrying the
 /// nominal owner, and a Return of a copy/move place-use rooted at that local
 /// through a single [Field(Owner -> T)] projection (no dereference, unlike the
@@ -765,7 +765,7 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueParameterFieldReturn(
 }
 
 /// \brief Lowers the method parameter-binary return
-/// `fun m(this, p0..pN-1) -> T { return <parameter|literal> OP <parameter|literal>; }`:
+/// `fn m(this, p0..pN-1) -> T { return <parameter|literal> OP <parameter|literal>; }`:
 /// the receiver leads the parameter locals, one FunctionResult local holds the
 /// arithmetic/comparison rvalue, and the entry block stores it live, assigns
 /// the result, and returns a place-use of that local.
@@ -856,7 +856,7 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodBinaryReturn(
 }
 
 /// \brief Lowers the free-function parameter-binary return
-/// `fun f(p0..pN-1) -> T { return <parameter|literal> OP <parameter|literal>; }`:
+/// `fn f(p0..pN-1) -> T { return <parameter|literal> OP <parameter|literal>; }`:
 /// one FunctionResult local holds the arithmetic/comparison rvalue, and the
 /// entry block stores it live, assigns it, and returns a place-use of that
 /// local.
@@ -944,7 +944,7 @@ zc::Maybe<RecursiveFunctionProduct> buildFreeFunctionBinaryReturn(
 }
 
 /// \brief Lowers the receiver-field arithmetic return
-/// `fun m(this) -> T { return this.<field> OP <literal>; }` (and the mirrored
+/// `fn m(this) -> T { return this.<field> OP <literal>; }` (and the mirrored
 /// operand order): the receiver leads the single parameter local, one
 /// FunctionResult local holds the arithmetic rvalue whose field operand is a
 /// [Dereference, Field] place-use of the receiver and whose other operand is a
@@ -1020,8 +1020,8 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldBinaryReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f(p0..pN-1) -> R { return pK; }`, or the method twin
-/// `fun m(this, p0..pN-1) -> R { return pK; }`: one root scope, parameter
+/// \brief Lowers `fn f(p0..pN-1) -> R { return pK; }`, or the method twin
+/// `fn m(this, p0..pN-1) -> R { return pK; }`: one root scope, parameter
 /// locals in source order with the implicit receiver leading for a method,
 /// one empty entry block returning a copy/move place-use of the referenced
 /// parameter local. Byte-identical to the legacy parameter-return construction.
@@ -1075,7 +1075,7 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f(...) -> T { let x = <literal>; return x; }`: one root
+/// \brief Lowers `fn f(...) -> T { let x = <literal>; return x; }`: one root
 /// scope, one UserLocal at localId(1), StorageLive followed by an Initialize
 /// Assign of the scalar constant, and a Return of the copy/move place-use of
 /// the local. The legacy dedicated single-local rail declares no parameter
@@ -1117,7 +1117,7 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun f() -> T { mut x = <lit>; x = <lit>; return x; }`: one
+/// \brief Lowers `fn f() -> T { mut x = <lit>; x = <lit>; return x; }`: one
 /// root scope, one UserLocal at localId(1), StorageLive, the Initialize Assign
 /// of the initializer constant, one Overwrite Assign of the write constant, and
 /// a Return of the copy/move place-use of the local. Both values are scalar
@@ -1459,7 +1459,7 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
 }
 
 /// \brief Lowers a by-value aggregate caller:
-/// `fun entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
+/// `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
 /// UserLocal of nominal type P at localId(1) is initialized from constant
 /// elements, one Temporary of the call result type at localId(2) receives the
 /// direct call, and the whole user local is copied as the call's sole by-value
@@ -1553,7 +1553,7 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(
 }
 
 /// \brief Lowers a scalar-local direct-call caller:
-/// `fun entry() -> i32 { let a: i32 = <literal>; return f(a); }`. One UserLocal
+/// `fn entry() -> i32 { let a: i32 = <literal>; return f(a); }`. One UserLocal
 /// of scalar type at localId(1) is initialized from a constant, one Temporary
 /// of the call result type at localId(2) receives the direct call, and the
 /// scalar user local is copied as the call's sole by-value argument. Block 1
@@ -1638,7 +1638,7 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this) -> T { let x = <literal>; return x; }` on a shared
+/// \brief Lowers `fn m(this) -> T { let x = <literal>; return x; }` on a shared
 /// receiver: one root scope, one receiver parameter local at localId(1), one
 /// UserLocal at localId(2), StorageLive followed by an Initialize Assign of the
 /// scalar constant, and a Return of the copy/move place-use of the user local.
@@ -1683,7 +1683,7 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodScalarLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this) -> T { this.field = <constant>; return this.field; }`
+/// \brief Lowers `fn m(this) -> T { this.field = <constant>; return this.field; }`
 /// on a mutable receiver: one root scope, one receiver parameter local carrying
 /// the mutable reference, one Overwrite Assign to the [Dereference, Field] place
 /// with a constant-use rvalue, and a Return of a copy/move place-use of that same
@@ -1741,7 +1741,7 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `mutating fun m(this, x: T) { this.field = x; }` with a Unit
+/// \brief Lowers `mutating fn m(this, x: T) { this.field = x; }` with a Unit
 /// result: one root scope with the receiver parameter local at localId(1) and
 /// the ordinary parameter local at localId(2), one Overwrite Assign to the
 /// [Dereference, Field] place whose rvalue is a copy/move place-use of the
@@ -1805,7 +1805,7 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteVoidReturn(
 }
 
 /// \brief Lowers the discarded-mutable-call then shared-call caller:
-/// `fun f() -> T { let o = S{..}; o.set(c); return o.get(); }`. Five dense
+/// `fn f() -> T { let o = S{..}; o.set(c); return o.get(); }`. Five dense
 /// locals (owner, the set-call mutable borrow, the unread Unit call result, the
 /// get-call shared borrow, the get-call result) and three blocks: the first
 /// initializes the owner, creates the mutable borrow, and calls the setter with
@@ -1933,7 +1933,7 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this, flag: bool) -> T { if (flag) { return a; } else {
+/// \brief Lowers `fn m(this, flag: bool) -> T { if (flag) { return a; } else {
 /// return b; } }` on a shared receiver: the receiver is the leading parameter
 /// local at localId(1), the ordinary parameters follow, and a FunctionResult
 /// local dominates the four-block diamond (SwitchInt, two arm blocks with an
@@ -2037,7 +2037,7 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fun m(this) -> T { return this.n(); }` on a shared receiver:
+/// \brief Lowers `fn m(this) -> T { return this.n(); }` on a shared receiver:
 /// the leading receiver parameter is forwarded directly as the call's receiver
 /// argument (a shared reborrow, so no BorrowCreation temporary), one result
 /// temporary receives the call, and the continuation returns it.
@@ -2924,7 +2924,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   }
 
   // Discarded receiver call followed by a shared trailing receiver call:
-  // `fun f() -> T { let o = S{..constants..}; o.set(c); return o.get(); }`. The
+  // `fn f() -> T { let o = S{..constants..}; o.set(c); return o.get(); }`. The
   // statement-position call targets an unread temporary; the trailing getter
   // returns the owner field. Two shapes are admitted: a mutable
   // one-literal-argument Unit call, or a shared zero-argument value-returning
@@ -2991,7 +2991,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   }
 
   // By-value aggregate caller:
-  // `fun entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. The
+  // `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. The
   // trailing return value is a direct call whose sole argument copies the
   // aggregate-initialized owner local. It must precede the scalar-local arm,
   // whose gate only admits a literal initializer and a place return.
@@ -3003,7 +3003,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   }
 
   // Scalar-local direct-call caller:
-  // `fun entry() -> i32 { let a: i32 = <literal>; return f(a); }`. The trailing
+  // `fn entry() -> i32 { let a: i32 = <literal>; return f(a); }`. The trailing
   // return value is a direct call whose sole argument copies the
   // literal-initialized scalar owner local. It must precede the scalar-local
   // arm, whose gate admits only a bare place return of the local.

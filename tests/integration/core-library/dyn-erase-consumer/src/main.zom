@@ -3,7 +3,7 @@
 // are skipped during sequential-local-return lowering, so only scalar locals
 // reach MIR/LIR. The function returns 42 through the live arithmetic binding.
 interface Marker {
-  fun tag(this) -> i32;
+  fn tag(this) -> i32;
 }
 
 struct Cell {
@@ -12,7 +12,7 @@ struct Cell {
 
 impl Marker for Cell {}
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let c: Cell = Cell { value: 42 };
   let d: dyn Marker = c;
   let a: i32 = 40;

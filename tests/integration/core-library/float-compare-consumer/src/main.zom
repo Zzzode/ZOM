@@ -4,7 +4,7 @@
 // of 1.5 < 2.5 selects the arm that exits 41. The float local is live (read
 // by the if-condition), so the dead-erase filter preserves it through the
 // full pipeline.
-fun entry() -> i32 {
+fn entry() -> i32 {
   let a: f32 = 1.5;
   if (a < 2.5) {
     return 41;

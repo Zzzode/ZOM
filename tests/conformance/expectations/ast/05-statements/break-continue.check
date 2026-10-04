@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #16 @1:1..8:2 name="testBreakContinue"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:22..1:24 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:21..1:23 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #15 @1:25..8:2
+// CHECK-NEXT:             BlockStmt #15 @1:24..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #14 @2:3..7:4
 // CHECK-NEXT:                   item:

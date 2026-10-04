@@ -116,7 +116,7 @@ Users experience `CompilerSession` through ordinary module code:
 // src/lib.zom
 module graphics;
 export shapes::{Point, Rect};
-export fun area(rect: Rect) -> f64 { rect.width * rect.height }
+export fn area(rect: Rect) -> f64 { rect.width * rect.height }
 
 // src/shapes.zom
 module shapes;

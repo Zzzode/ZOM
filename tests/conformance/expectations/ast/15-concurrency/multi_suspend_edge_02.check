@@ -8,21 +8,21 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #21 @1:1..6:2 name="step"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #7 @1:9..1:35 nparams=2
+// CHECK-NEXT:             FunctionParameterList #7 @1:8..1:34 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #3 @1:10..1:21 name="flag1"
+// CHECK-NEXT:                 FunctionParameterDecl #3 @1:9..1:20 name="flag1"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #2 @1:17..1:21
+// CHECK-NEXT:                     NamedTypeExpr #2 @1:16..1:20
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #1 @1:17..1:21 segments=["Bool"] root=Relative
+// CHECK-NEXT:                         ModulePath #1 @1:16..1:20 segments=["Bool"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #6 @1:23..1:34 name="flag2"
+// CHECK-NEXT:                 FunctionParameterDecl #6 @1:22..1:33 name="flag2"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #5 @1:30..1:34
+// CHECK-NEXT:                     NamedTypeExpr #5 @1:29..1:33
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #4 @1:30..1:34 segments=["Bool"] root=Relative
+// CHECK-NEXT:                         ModulePath #4 @1:29..1:33 segments=["Bool"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
@@ -30,7 +30,7 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #20 @1:36..6:2
+// CHECK-NEXT:             BlockStmt #20 @1:35..6:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #9 @2:5..2:13
 // CHECK-NEXT:                   item:

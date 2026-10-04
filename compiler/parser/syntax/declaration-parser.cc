@@ -28,7 +28,7 @@ bool isFunctionNameToken(ast::SyntaxKind kind) {
 }
 
 bool isMemberStartToken(ast::SyntaxKind kind) {
-  return kind == ast::SyntaxKind::FunKeyword || kind == ast::SyntaxKind::MutKeyword ||
+  return kind == ast::SyntaxKind::FnKeyword || kind == ast::SyntaxKind::MutKeyword ||
          kind == ast::SyntaxKind::LetKeyword || kind == ast::SyntaxKind::ConstKeyword ||
          kind == ast::SyntaxKind::GetKeyword || kind == ast::SyntaxKind::SetKeyword ||
          kind == ast::SyntaxKind::InitKeyword || kind == ast::SyntaxKind::DeinitKeyword ||
@@ -506,7 +506,7 @@ void Parser::Impl::diagnoseDeclarationModifierGroup(size_t start, size_t end) co
 size_t Parser::Impl::consumeMemberBoundary(size_t start, size_t limit) const {
   const ast::SyntaxKind head = kindAt(start);
   const bool bodyBearingHead =
-      head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
+      head == ast::SyntaxKind::FnKeyword || head == ast::SyntaxKind::GetKeyword ||
       head == ast::SyntaxKind::SetKeyword || head == ast::SyntaxKind::InitKeyword ||
       head == ast::SyntaxKind::DeinitKeyword ||
       (head == ast::SyntaxKind::Identifier &&
@@ -530,7 +530,7 @@ size_t Parser::Impl::consumeMemberBoundary(size_t start, size_t limit) const {
           (kind == ast::SyntaxKind::ConstKeyword || kind == ast::SyntaxKind::MutKeyword) &&
           kindAt(index - 1) == ast::SyntaxKind::Asterisk;
       if (index > start && isMemberStartToken(kind) && !rawPointerQualifier &&
-          !(head == ast::SyntaxKind::FunKeyword && index == start + 1 &&
+          !(head == ast::SyntaxKind::FnKeyword && index == start + 1 &&
             isFunctionNameToken(kind))) {
         return index;
       }
@@ -661,7 +661,7 @@ void Parser::Impl::diagnoseNamedTypeBody(size_t bodyOpen, size_t bodyClose,
     }
 
     if ((kind == ast::SyntaxKind::ClassDecl || kind == ast::SyntaxKind::StructDecl) &&
-        head == ast::SyntaxKind::FunKeyword) {
+        head == ast::SyntaxKind::FnKeyword) {
       size_t abstractIndex = modifiersEnd;
       if (modifierGroupContains(modifiersStart, modifiersEnd, ast::SyntaxKind::AbstractKeyword,
                                 abstractIndex) &&
@@ -685,7 +685,7 @@ void Parser::Impl::diagnoseNamedTypeBody(size_t bodyOpen, size_t bodyClose,
             tokenAt(cursor).getLocation());
       }
 
-      if ((head == ast::SyntaxKind::FunKeyword || head == ast::SyntaxKind::GetKeyword ||
+      if ((head == ast::SyntaxKind::FnKeyword || head == ast::SyntaxKind::GetKeyword ||
            head == ast::SyntaxKind::SetKeyword) &&
           body < memberEnd && (semi >= memberEnd || body < semi)) {
         diagnosticEngine.report<diagnostics::DiagID::ExpectedToken>(tokenAt(body).getLocation(),
@@ -792,7 +792,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
       --memberContentEnd;
     }
 
-    if (parentKind == ast::SyntaxKind::InterfaceDecl && head != ast::SyntaxKind::FunKeyword &&
+    if (parentKind == ast::SyntaxKind::InterfaceDecl && head != ast::SyntaxKind::FnKeyword &&
         head != ast::SyntaxKind::GetKeyword && head != ast::SyntaxKind::SetKeyword &&
         head != ast::SyntaxKind::TypeKeyword) {
       diagnosticEngine.report<diagnostics::DiagID::InterfaceMemberExpected>(
@@ -856,7 +856,7 @@ ast::NodeId Parser::Impl::parseClassMemberList(ParserSyntaxFactory& builder, siz
     // `mutating` only qualifies a method, getter, or setter. A mutating
     // constructor/destructor or a mutating field/associated type is invalid;
     // reject it on the modifier token rather than silently dropping it.
-    const bool isCallableMember = head == ast::SyntaxKind::FunKeyword ||
+    const bool isCallableMember = head == ast::SyntaxKind::FnKeyword ||
                                   head == ast::SyntaxKind::GetKeyword ||
                                   head == ast::SyntaxKind::SetKeyword;
     if (isMutating && !isCallableMember) {

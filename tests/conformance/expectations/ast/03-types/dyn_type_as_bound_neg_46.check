@@ -17,30 +17,30 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #16 @3:1..5:2 name="f"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #10 @3:16..3:18 nparams=0
+// CHECK-NEXT:             FunctionParameterList #10 @3:15..3:17 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #9 @3:6..3:16 nparams=1
+// CHECK-NEXT:             GenericParams #9 @3:5..3:15 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #8 @3:7..3:15 name="T"
+// CHECK-NEXT:                 GenericTypeParam #8 @3:6..3:14 name="T"
 // CHECK-NEXT:                   bounds_id:
-// CHECK-NEXT:                     TypeParameterBoundList #7 @3:10..3:15
+// CHECK-NEXT:                     TypeParameterBoundList #7 @3:9..3:14
 // CHECK-NEXT:                       bounds:
-// CHECK-NEXT:                         DynTypeExpr #6 @3:10..3:15
+// CHECK-NEXT:                         DynTypeExpr #6 @3:9..3:14
 // CHECK-NEXT:                           principal:
-// CHECK-NEXT:                             NamedTypeExpr #5 @3:14..3:15
+// CHECK-NEXT:                             NamedTypeExpr #5 @3:13..3:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #4 @3:14..3:15 segments=["I"] root=Relative
+// CHECK-NEXT:                                 ModulePath #4 @3:13..3:14 segments=["I"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           markers_id: null
 // CHECK-NEXT:                           assoc_bindings_id: null
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #11 @3:22..3:24 kind=U8
+// CHECK-NEXT:             PredefinedTypeExpr #11 @3:21..3:23 kind=U8
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #15 @3:25..5:2
+// CHECK-NEXT:             BlockStmt #15 @3:24..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #14 @4:5..4:14
 // CHECK-NEXT:                   item:

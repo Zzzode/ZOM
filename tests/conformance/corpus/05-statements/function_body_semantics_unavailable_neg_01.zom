@@ -1,1 +1,1 @@
-fun entry() {}
+fn entry() {}

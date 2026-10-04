@@ -7,4 +7,4 @@
 // as a capability rejection or an internal compiler invariant.
 
 // CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `counter`
-// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_immutable_neg_03.zom:5:65
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_immutable_neg_03.zom:5:64

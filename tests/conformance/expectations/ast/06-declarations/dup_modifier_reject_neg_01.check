@@ -4,10 +4,10 @@
 // CHECK-LITERAL: Error [ZOM2088]: Visibility modifier 'public' is valid only on a type member; use 'export' for a module-level API
 // CHECK-LITERAL:   --> conformance/dup_modifier_reject_neg_01.zom:1:1
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | public public fun f() {}
+// CHECK-LITERAL: 1 | public public fn f() {}
 // CHECK-LITERAL:   | ^
 // CHECK-LITERAL: Error [ZOM2083]: Duplicate declaration modifier 'public'
 // CHECK-LITERAL:   --> conformance/dup_modifier_reject_neg_01.zom:1:8
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | public public fun f() {}
+// CHECK-LITERAL: 1 | public public fn f() {}
 // CHECK-LITERAL:   |        ^

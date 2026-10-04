@@ -3,6 +3,6 @@ class Counter {
     static let instances: i32 = 0;
     const MAX: i32 = 1000;
     init(initial: i32) { self._value = initial; }
-    fun inc() -> unit { self._value = self._value + 1; }
-    fun getValue() -> i32 { return self._value; }
+    fn inc() -> unit { self._value = self._value + 1; }
+    fn getValue() -> i32 { return self._value; }
 }

@@ -12,13 +12,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #8 @1:21..4:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:38 name="internalOp" mode=Instance visibility=Private
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:37 name="internalOp" mode=Instance visibility=Private
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:27..2:29 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:26..2:28 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:33..2:37 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:32..2:36 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #7 @3:5..3:34 name="buffer" mode=Instance visibility=Private

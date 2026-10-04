@@ -12,14 +12,14 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:16..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:48 name="adjust" mode=Mutating visibility=Protected
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:47 name="adjust" mode=Mutating visibility=Protected
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:43..2:45 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:42..2:44 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #2 @2:46..2:48
+// CHECK-NEXT:                     BlockStmt #2 @2:45..2:47
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null

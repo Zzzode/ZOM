@@ -1,4 +1,4 @@
-fun testControlFlow() {
+fn testControlFlow() {
   let x = 10;
 
   // If statement

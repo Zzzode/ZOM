@@ -1,4 +1,4 @@
-fun entry(cond: bool) -> i32 {
+fn entry(cond: bool) -> i32 {
   mut x = 0;
   while (cond) {
     x = x + 1;

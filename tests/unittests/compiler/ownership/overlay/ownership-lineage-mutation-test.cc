@@ -599,7 +599,7 @@ void expectEscapeLineageRejection(const OwnershipPipelineFixture& fixture, Tampe
 // candidate, publishing the rejection instead of an ownership output.
 
 ZC_TEST("Ownership lineage mutation rejects a tampered fact owner") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -618,7 +618,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered fact owner") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a tampered fact point phase") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -640,7 +640,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered fact point phase") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a tampered causal operand ordinal") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -659,7 +659,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered causal operand ordinal") 
 }
 
 ZC_TEST("Ownership lineage mutation rejects a swapped liveness role sequence") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -683,8 +683,8 @@ ZC_TEST("Ownership lineage mutation rejects a swapped liveness role sequence") {
 
 ZC_TEST("Ownership lineage mutation rejects a tampered presentation source span") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& builtMir = fixture.builtMir();
 
   auto candidateResult = buildOverlay(fixture);
@@ -726,7 +726,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered marker-derived drop requi
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -751,7 +751,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered logical drop plan subject
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -776,7 +776,7 @@ ZC_TEST("Ownership lineage mutation rejects a tampered logical drop plan subject
 // mismatch, publishing the rejection instead of an ownership output.
 
 ZC_TEST("Ownership lineage mutation rejects a foreign semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowStateLineageRejection(
       fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
                   const VerifiedOwnershipEventOverlay&) {
@@ -786,7 +786,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign semantic context brand") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowStateLineageRejection(
       fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
                   const VerifiedOwnershipEventOverlay&) {
@@ -797,7 +797,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign context fingerprint") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowStateLineageRejection(
       fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
                   const VerifiedOwnershipEventOverlay&) {
@@ -807,7 +807,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign module identity") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowStateLineageRejection(
       fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir& builtMir,
                   const VerifiedOwnershipEventOverlay&) {
@@ -817,7 +817,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign built revision") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowStateLineageRejection(
       fixture, [](facts::ReborrowStateCandidate& candidate, const mir::VerifiedBuiltMir&,
                   const VerifiedOwnershipEventOverlay& overlay) {
@@ -827,10 +827,10 @@ ZC_TEST("Ownership lineage mutation rejects a foreign overlay revision") {
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   // BorrowEvidenceRevision has no public digest constructor, so a second,
   // genuinely different compilation donates a foreign-but-valid revision.
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   expectReborrowStateLineageRejection(fixture, [&foreign](facts::ReborrowStateCandidate& candidate,
@@ -845,87 +845,87 @@ ZC_TEST("Ownership lineage mutation rejects a foreign borrow evidence revision")
 // --- MovePathCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign move-path semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectMovePathLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign move-path context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectMovePathLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign move-path module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectMovePathLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign move-path built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectMovePathLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign move-path overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectMovePathLineageRejection(fixture, tamperOverlayRevision);
 }
 
 // --- FlowCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign flow semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectFlowLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign flow context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectFlowLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign flow module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectFlowLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign flow built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectFlowLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign flow overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectFlowLineageRejection(fixture, tamperOverlayRevision);
 }
 
 // --- LoanCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectLoanLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectLoanLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectLoanLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectLoanLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectLoanLineageRejection(fixture, tamperOverlayRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign loan borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   expectLoanLineageRejection(
@@ -940,34 +940,34 @@ ZC_TEST("Ownership lineage mutation rejects a foreign loan borrow evidence revis
 
 ZC_TEST(
     "Ownership lineage mutation rejects a foreign reference-definition semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReferenceDefinitionLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReferenceDefinitionLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReferenceDefinitionLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReferenceDefinitionLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reference-definition overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReferenceDefinitionLineageRejection(fixture, tamperOverlayRevision);
 }
 
 ZC_TEST(
     "Ownership lineage mutation rejects a foreign reference-definition borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   expectReferenceDefinitionLineageRejection(
@@ -981,33 +981,33 @@ ZC_TEST(
 // --- ReborrowRegionCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowRegionLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowRegionLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowRegionLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowRegionLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectReborrowRegionLineageRejection(fixture, tamperOverlayRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   expectReborrowRegionLineageRejection(
@@ -1021,87 +1021,87 @@ ZC_TEST("Ownership lineage mutation rejects a foreign reborrow-region borrow evi
 // --- InitializationCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign initialization semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectInitializationLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign initialization context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectInitializationLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign initialization module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectInitializationLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign initialization built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectInitializationLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign initialization overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectInitializationLineageRejection(fixture, tamperOverlayRevision);
 }
 
 // --- ResourceCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign resource overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOwnershipResourceLineageRejection(fixture, tamperOverlayRevision);
 }
 
 // --- EscapeCandidate lineage tamper tests ---
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectEscapeLineageRejection(fixture, tamperSemanticContext);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectEscapeLineageRejection(fixture, tamperContextFingerprint);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectEscapeLineageRejection(fixture, tamperModuleIdentity);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectEscapeLineageRejection(fixture, tamperBuiltRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectEscapeLineageRejection(fixture, tamperOverlayRevision);
 }
 
 ZC_TEST("Ownership lineage mutation rejects a foreign escape borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   expectEscapeLineageRejection(
@@ -1113,7 +1113,7 @@ ZC_TEST("Ownership lineage mutation rejects a foreign escape borrow evidence rev
 }
 
 ZC_TEST("Ownership lineage mutation rejects a spurious escape fact") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -1153,7 +1153,7 @@ ZC_TEST("Ownership lineage mutation rejects a spurious escape fact") {
 // --- Escape derivation tests ---
 
 ZC_TEST("Ownership escape derivation produces one return escape for a parameter reborrow") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
 
@@ -1174,7 +1174,7 @@ ZC_TEST("Ownership escape derivation produces one return escape for a parameter 
 }
 
 ZC_TEST("Ownership escape derivation produces no escapes for a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
 
@@ -1182,7 +1182,7 @@ ZC_TEST("Ownership escape derivation produces no escapes for a scalar function")
 }
 
 ZC_TEST("Ownership escape derivation rejects a tampered escape kind") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -1210,7 +1210,7 @@ ZC_TEST("Ownership escape derivation rejects a tampered escape kind") {
 }
 
 ZC_TEST("Ownership escape derivation rejects a missing escape row") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -1241,7 +1241,7 @@ ZC_TEST("Ownership escape derivation rejects a missing escape row") {
 
 ZC_TEST("Ownership escape derivation produces a contained return escape for a local borrow") {
   RejectedBorrowPipelineFixture fixture(
-      "fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
 
@@ -1321,7 +1321,7 @@ ZC_TEST("Ownership escape derivation produces a contained return escape for a lo
 // spurious row on an otherwise empty scalar function) must be rejected.
 
 ZC_TEST("Ownership escape derivation rejects a spurious escape on a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { let x = 42; return x; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { let x = 42; return x; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = sessionOverlay(session);
@@ -1365,7 +1365,7 @@ ZC_TEST("Ownership escape derivation rejects a spurious escape on a scalar funct
 // extended Store and ClosureCapture derivations emit no rows.
 
 ZC_TEST("Ownership escape derivation emits only return escapes for the admitted subset") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
 

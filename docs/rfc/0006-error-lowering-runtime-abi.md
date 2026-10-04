@@ -114,7 +114,7 @@ error still writes `raises`, `?!`, `!!`, `match`, and explicit union types as
 specified in Chapter 11.
 
 ```zom
-fun read_config(path: str) -> Config raises IoError | ParseError {
+fn read_config(path: str) -> Config raises IoError | ParseError {
     let text = fs::read_to_string(path)?!;
     parse_config(text)?!
 }

@@ -1,1 +1,1 @@
-fun f(i32, str) -> i32;
+fn f(i32, str) -> i32;

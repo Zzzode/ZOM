@@ -321,7 +321,7 @@ depth one is the immediately enclosing stable owner's binder, and larger
 depths proceed outward. The parser stores the absolute-versus-relative root in
 `ModulePath` before consuming a leading `::`; neither producer nor verifier
 infers the root from the remaining segments. Therefore
-`fun f<T>(x: T)` and `fun f<U>(x: U)` have identical overload-header bytes,
+`fn f<T>(x: T)` and `fn f<U>(x: U)` have identical overload-header bytes,
 while `::Trait` and `Trait` remain distinct. Shadowing changes binder depth
 according to lexical resolution, not spelling.
 

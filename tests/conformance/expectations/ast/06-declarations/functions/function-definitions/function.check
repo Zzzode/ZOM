@@ -4,27 +4,27 @@
 // CHECK: SourceFile #10 @1:1..2:1 file_name="function.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #9 @1:1..1:34
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:33
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #8 @1:1..1:34 name="foo"
+// CHECK-NEXT:         FunctionDecl #8 @1:1..1:33 name="foo"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #5 @1:8..1:24 nparams=2
+// CHECK-NEXT:             FunctionParameterList #5 @1:7..1:23 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:9..1:15 name="n"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:8..1:14 name="n"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:12..1:15 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:11..1:14 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #4 @1:17..1:23 name="s"
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:16..1:22 name="s"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:20..1:23 kind=Str
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:19..1:22 kind=Str
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #6 @1:28..1:31 kind=Str
+// CHECK-NEXT:             PredefinedTypeExpr #6 @1:27..1:30 kind=Str
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #7 @1:32..1:34
+// CHECK-NEXT:             BlockStmt #7 @1:31..1:33
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null

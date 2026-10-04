@@ -227,7 +227,7 @@ may originate only from the selected receiver or parameter. A local reference
 cannot escape:
 
 ```zom
-fun invalid() -> &i32 {
+fn invalid() -> &i32 {
     let value = 1;
     return &value; // ZOM4061 BorrowDoesNotLiveLongEnough
 }

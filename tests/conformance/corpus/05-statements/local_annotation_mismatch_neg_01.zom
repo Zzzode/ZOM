@@ -1,1 +1,1 @@
-fun f(a: i32) -> i32 { let x: bool = a; return x; }
+fn f(a: i32) -> i32 { let x: bool = a; return x; }

@@ -3,10 +3,10 @@
 // missing Blue variant must be rejected with ZOM4022 at compile time.
 enum Color { Red, Green, Blue }
 
-fun matchEnum(c: Color) -> i32 {
+fn matchEnum(c: Color) -> i32 {
     match (c) {
         when Color.Red => return 41;
         when Color.Green => return 7;
     }
 }
-fun entry() -> i32 { let v = matchEnum(Color::Red); return v; }
+fn entry() -> i32 { let v = matchEnum(Color::Red); return v; }

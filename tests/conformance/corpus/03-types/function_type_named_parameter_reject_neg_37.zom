@@ -1,1 +1,1 @@
-let callback: (value: i32) -> i32 = fn;
+let callback: (value: i32) -> i32 = fx;

@@ -1,2 +1,2 @@
-let f: ({x, y}: Pair) -> Pair = fn;
-let g: ([first, second]: Pair) -> Pair = fn;
+let f: ({x, y}: Pair) -> Pair = fx;
+let g: ([first, second]: Pair) -> Pair = fx;

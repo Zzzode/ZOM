@@ -476,11 +476,11 @@ public:
   /// \brief Lowers a by-value aggregate call to a two-function LIR module.
   ///
   /// Admits the verified pair: a caller
-  /// `fun entry() -> T { let p: P = P { ..integer constants.. }; return f(p); }`
+  /// `fn entry() -> T { let p: P = P { ..integer constants.. }; return f(p); }`
   /// (one aggregate-initialized `UserLocal`, one result `Temporary`, entry
   /// `StorageLive; p = NominalAggregate; StorageLive; Call(f, copy p) -> result`,
   /// continuation `return result`) and a callee
-  /// `fun f(p: P) -> T { return p.<field>; }` (one struct `Parameter` local,
+  /// `fn f(p: P) -> T { return p.<field>; }` (one struct `Parameter` local,
   /// single block returning a one-field projection of it). The nominal by-value
   /// argument is flattened in the admitted scalar pipeline: the caller aggregate
   /// elements (in source struct-literal order, the only field ordering this slice
@@ -500,11 +500,11 @@ public:
   /// \brief Lowers a scalar-local direct call to a two-function LIR module.
   ///
   /// Admits the verified pair: a caller
-  /// `fun entry() -> i32 { let a: i32 = <integer constant>; return f(a); }`
+  /// `fn entry() -> i32 { let a: i32 = <integer constant>; return f(a); }`
   /// (one scalar `UserLocal` initialized from a constant, one result
   /// `Temporary`, entry `StorageLive; a = Use(constant); StorageLive;
   /// Call(f, copy a) -> result`, continuation `return result`) and a callee
-  /// `fun f(x: i32) -> i32` whose single block either returns its parameter
+  /// `fn f(x: i32) -> i32` whose single block either returns its parameter
   /// directly or computes one admitted arithmetic/use body over it. The
   /// by-value scalar argument lowers to one integer call argument; the caller
   /// folds to the reserved no-argument `zom.module_init` entry. Every other

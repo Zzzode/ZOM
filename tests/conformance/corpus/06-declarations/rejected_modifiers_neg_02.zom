@@ -1,1 +1,1 @@
-unsafe fun danger() {}
+unsafe fn danger() {}

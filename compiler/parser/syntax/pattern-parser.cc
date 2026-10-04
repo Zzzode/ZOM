@@ -72,7 +72,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
   // RFC 0002: Forward state tracking replaces backward scans for interface
   // element head and method initializer detection.
   bool lastNonModifierWasBoundary = false;
-  bool sawFunSinceLastInterfaceBoundary = false;
+  bool sawFnSinceLastInterfaceBoundary = false;
 
   const size_t count = context.bufferedTokenLimit();
   for (size_t i = 0; i < count; ++i) {
@@ -116,14 +116,14 @@ void Parser::Impl::diagnoseTokenPatterns() {
     }
 
     // RFC 0002: Forward state tracking for interface method initializer detection.
-    // sawFunSinceLastInterfaceBoundary is true when 'fun' appeared since the last
+    // sawFnSinceLastInterfaceBoundary is true when 'fn' appeared since the last
     // '{', ';', or '}' — replaces backward scan in isInterfaceMethodInitializer.
     if (kind == ast::SyntaxKind::LeftBrace || kind == ast::SyntaxKind::Semicolon ||
         kind == ast::SyntaxKind::RightBrace) {
-      sawFunSinceLastInterfaceBoundary = false;
+      sawFnSinceLastInterfaceBoundary = false;
     }
-    if (insideInterfaceTopLevel && kind == ast::SyntaxKind::FunKeyword) {
-      sawFunSinceLastInterfaceBoundary = true;
+    if (insideInterfaceTopLevel && kind == ast::SyntaxKind::FnKeyword) {
+      sawFnSinceLastInterfaceBoundary = true;
     }
 
     if (isNamedDeclarationModifier(kind) &&
@@ -279,7 +279,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
             tokenAt(i + 1).getLocation());
       }
 
-      if (insideInterfaceTopLevel && kind == ast::SyntaxKind::FunKeyword) {
+      if (insideInterfaceTopLevel && kind == ast::SyntaxKind::FnKeyword) {
         for (size_t j = i + 1; j < count; ++j) {
           const ast::SyntaxKind nested = kindAt(j);
           if (nested == ast::SyntaxKind::LeftParen || nested == ast::SyntaxKind::Semicolon ||
@@ -301,7 +301,7 @@ void Parser::Impl::diagnoseTokenPatterns() {
       }
 
       if (insideInterfaceTopLevel && kind == ast::SyntaxKind::Equals &&
-          sawFunSinceLastInterfaceBoundary) {
+          sawFnSinceLastInterfaceBoundary) {
         diagnosticEngine.report<diagnostics::DiagID::InterfaceMethodSignatureInitializerNotAllowed>(
             current.getLocation());
       }

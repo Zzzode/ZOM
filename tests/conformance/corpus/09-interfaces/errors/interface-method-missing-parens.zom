@@ -1,5 +1,5 @@
 interface I {
-  fun foo -> i32;
+  fn foo -> i32;
   let i -> i32;
   const f: str;
 }

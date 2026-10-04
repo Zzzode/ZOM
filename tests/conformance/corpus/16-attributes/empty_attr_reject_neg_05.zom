@@ -1,2 +1,2 @@
 #[]
-fun empty();
+fn empty();

@@ -1,12 +1,12 @@
-fun moduleReceiver(this) {}
+fn moduleReceiver(this) {}
 
-fun outer() {
-    fun blockReceiver(this) {}
+fn outer() {
+    fn blockReceiver(this) {}
 }
 
 extern {
-    fun externReceiver(this);
+    fn externReceiver(this);
 }
 
-let functionReceiver = fun(this) {};
+let functionReceiver = fn(this) {};
 let lambdaReceiver = (this) => this;

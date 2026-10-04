@@ -4,17 +4,17 @@
 // CHECK: SourceFile #9 @1:1..3:1 file_name="attr_with_comment_pos_07.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #8 @1:1..2:20
+// CHECK-NEXT:     StatementListItem #8 @1:1..2:19
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #7 @2:1..2:20 name="with_comment"
+// CHECK-NEXT:         FunctionDecl #7 @2:1..2:19 name="with_comment"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #5 @2:17..2:19 nparams=0
+// CHECK-NEXT:             FunctionParameterList #5 @2:16..2:18 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #6 @2:19..2:20
+// CHECK-NEXT:             BlockStmt #6 @2:18..2:19
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs:
 // CHECK-NEXT:         AttributeList #4 @1:1..1:52

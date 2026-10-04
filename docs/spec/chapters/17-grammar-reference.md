@@ -188,7 +188,7 @@ ConstExpression ::= AssignmentExpression
    storage address. A `let` field may be definitely assigned by an `init`
    callable that explicitly declares `this`, before that receiver escapes. *)
 
-FunctionDeclaration ::= ModifierList 'fun' BindingIdentifier TypeParameters?
+FunctionDeclaration ::= ModifierList 'fn' BindingIdentifier TypeParameters?
                         FunctionSignature WhereClause? (BlockStatement | ';')
 FunctionSignature ::= OrdinaryParameterClause (ReturnType | RaisesClause)?
 MemberFunctionSignature ::= ParameterClause (ReturnType | RaisesClause)?
@@ -214,7 +214,7 @@ InterfaceHeritage ::= ':' InterfaceBoundList
 InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 InterfaceBody ::= InterfaceElement*
-InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+InterfaceElement ::= ModifierList 'fn' MethodSignature ';'
                    | ModifierList ('get' | 'set') PropertySignature ';'
                    | ModifierList 'type' Identifier TypeParameters?
                      (':' InterfaceBoundList)? ('=' TypeExpression)? ';'
@@ -228,7 +228,7 @@ MethodSignature ::= PropertyName TypeParameters? MemberFunctionSignature
 PropertyStorage ::= 'mut' | 'let'
 ConstantDeclaration ::= 'const' BindingIdentifier TypeAnnotation? '=' ConstExpression ';'
 
-ClassElement ::= ModifierList 'fun' MethodDeclaration
+ClassElement ::= ModifierList 'fn' MethodDeclaration
                | ModifierList InitDeclaration
                | ModifierList DeinitDeclaration
                | ModifierList 'mut' VariableDeclarationList ';'
@@ -238,7 +238,7 @@ ClassElement ::= ModifierList 'fun' MethodDeclaration
                | AccessorDeclaration
 StructElement ::= ModifierList ('mut' | 'readonly')? PropertyName ':' TypeExpression
                   Initializer? FieldTerminator
-                | ModifierList 'fun' MethodDeclaration
+                | ModifierList 'fn' MethodDeclaration
                 | ModifierList InitDeclaration
                 | ModifierList DeinitDeclaration
 MethodDeclaration ::= PropertyName TypeParameters? MemberFunctionSignature (BlockStatement | ';')
@@ -263,7 +263,7 @@ AliasDeclaration ::= ModifierList 'alias' BindingIdentifier TypeParameters?
 ExternBlockDeclaration ::= 'extern' AbiLiteral? '{' ExternItem* '}'
 AbiLiteral ::= '"C"' | '"Cdecl"' | '"system"' | '"zom-cdecl"'
 ExternItem ::= ExternFunctionDeclaration | ExternVariableDeclaration
-ExternFunctionDeclaration ::= 'fun' Identifier FunctionSignature ';'
+ExternFunctionDeclaration ::= 'fn' Identifier FunctionSignature ';'
 ExternVariableDeclaration ::= 'variable' Identifier ':' TypeExpression ';'
 
 MarkerPath        ::= Identifier | QualifiedMarkerPath
@@ -289,7 +289,7 @@ MarkerImplPath ::= Identifier ('::' Identifier)*
 StandaloneImplDeclaration
     ::= 'unsafe'? 'impl' TypeParameters? InterfaceBound 'for' TypeExpression
         WhereClause? '{' ImplMember* '}'
-ImplMember ::= ModifierList 'fun' MethodDeclaration
+ImplMember ::= ModifierList 'fn' MethodDeclaration
              | AssociatedTypeAssignment
              | 'mut' VariableDeclarationList ';'
              | 'let' VariableDeclarationList ';'
@@ -357,7 +357,7 @@ TupleType ::= '(' TupleElementTypes? ')'
 TupleElementTypes ::= TypeExpression (',' TypeExpression)*
 
 FunctionType ::= TypeParameters? FunctionTypeParameterClause '->' TypeExpression RaisesClause?
-               | 'fun' TypeParameters? FunctionTypeParameterClause '->' TypeExpression RaisesClause?
+               | 'fn' TypeParameters? FunctionTypeParameterClause '->' TypeExpression RaisesClause?
 FunctionTypeParameterClause ::= '(' FunctionTypeParameterList? ')'
 FunctionTypeParameterList ::= TypeExpression (',' TypeExpression)* ','?
 ParameterClause ::= '(' ParameterList? ')'
@@ -376,7 +376,7 @@ ReceiverParameter ::= OuterAttributeList? 'this' (':' TypeExpression)?
 OrdinaryParameter ::= OuterAttributeList? Identifier ':' TypeExpression Initializer?
 RaisesClause ::= 'raises' TypeExpression
     (* Multiple error types are written as a union type expression.
-       Example: 'fun f() -> T raises IoError | ParseError | ZOM80xx'
+       Example: 'fn f() -> T raises IoError | ParseError | ZOM80xx'
        Sync requirement: parser's raises clause parses exactly one
        TypeExpression; there is no comma-list or bracket-list form. *)
 
@@ -614,7 +614,7 @@ StructLiteralFields ::= StructLiteralField (',' StructLiteralField)* ','?
 StructLiteralField ::= Identifier ':' Expression
                     | Identifier
 
-FunctionExpression ::= 'fun' TypeParameters? OrdinaryParameterClause CaptureClause? ReturnType? BlockStatement
+FunctionExpression ::= 'fn' TypeParameters? OrdinaryParameterClause CaptureClause? ReturnType? BlockStatement
                      | LambdaExpression
 LambdaExpression ::= OrdinaryParameterClause ReturnType? '=>' (AssignmentExpression | BlockStatement)
 CaptureClause ::= 'use' '[' CaptureList? ']'

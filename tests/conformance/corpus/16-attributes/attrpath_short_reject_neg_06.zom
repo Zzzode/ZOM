@@ -1,2 +1,2 @@
 #[short]
-fun only_one_segment();
+fn only_one_segment();

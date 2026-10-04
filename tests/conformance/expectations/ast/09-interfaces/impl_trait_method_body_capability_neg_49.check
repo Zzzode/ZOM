@@ -12,21 +12,21 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:13..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #6 @2:5..2:24 name="m" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:23 name="m" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:10..2:16 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:9..2:15 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:11..2:15 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:10..2:14 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:11..2:15
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:10..2:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:11..2:15 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:10..2:14 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:20..2:23 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:19..2:22 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -60,31 +60,31 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #30 @7:14..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #29 @8:5..8:42 name="m" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #29 @8:5..8:41 name="m" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #22 @8:10..8:16 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #22 @8:9..8:15 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #21 @8:11..8:15 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #21 @8:10..8:14 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #20 @8:11..8:15
+// CHECK-NEXT:                             NamedTypeExpr #20 @8:10..8:14
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #19 @8:11..8:15 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #19 @8:10..8:14 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #23 @8:20..8:23 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #23 @8:19..8:22 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #28 @8:24..8:42
+// CHECK-NEXT:                     BlockStmt #28 @8:23..8:41
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #27 @8:26..8:40
+// CHECK-NEXT:                         StatementListItem #27 @8:25..8:39
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #26 @8:26..8:40
+// CHECK-NEXT:                             ReturnStmt #26 @8:25..8:39
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 MemberExpression #25 @8:33..8:39 property="v" access=Dot
+// CHECK-NEXT:                                 MemberExpression #25 @8:32..8:38 property="v" access=Dot
 // CHECK-NEXT:                                   object:
-// CHECK-NEXT:                                     ThisExpr #24 @8:33..8:37
+// CHECK-NEXT:                                     ThisExpr #24 @8:32..8:36
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

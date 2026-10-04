@@ -1,5 +1,5 @@
 interface Factory {
-    static fun create() -> unit;
+    static fn create() -> unit;
 }
 
 let x: dyn Factory;

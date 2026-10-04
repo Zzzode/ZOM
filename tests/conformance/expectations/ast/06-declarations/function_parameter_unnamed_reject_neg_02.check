@@ -4,10 +4,10 @@
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
 // CHECK-LITERAL:   --> conformance/function_parameter_unnamed_reject_neg_02.zom:1:7
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | fun f(i32, str) -> i32;
+// CHECK-LITERAL: 1 | fn f(i32, str) -> i32;
 // CHECK-LITERAL:   |       ^
 // CHECK-LITERAL: Error [ZOM2077]: Identifier expected
 // CHECK-LITERAL:   --> conformance/function_parameter_unnamed_reject_neg_02.zom:1:12
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | fun f(i32, str) -> i32;
+// CHECK-LITERAL: 1 | fn f(i32, str) -> i32;
 // CHECK-LITERAL:   |            ^

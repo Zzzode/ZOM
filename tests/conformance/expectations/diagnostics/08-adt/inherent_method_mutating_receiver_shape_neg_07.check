@@ -7,4 +7,4 @@
 // compiler error.
 
 // CHECK-LITERAL: Error [ZOM2097]: A mutating method requires a mutable 'this' receiver
-// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_receiver_shape_neg_07.zom:2:18
+// CHECK-LITERAL:   --> conformance/08-adt/inherent_method_mutating_receiver_shape_neg_07.zom:2:17

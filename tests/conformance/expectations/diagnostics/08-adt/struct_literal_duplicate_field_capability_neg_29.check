@@ -5,4 +5,4 @@
 // ZOM4131; last-wins projection folding is not an accepted resolution.
 
 // CHECK-LITERAL: Error [ZOM4131]: field `x` is initialized more than once in the aggregate literal
-// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_duplicate_field_capability_neg_29.zom:3:37
+// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_duplicate_field_capability_neg_29.zom:3:36

@@ -20,88 +20,88 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #3 @1:27..1:30 kind=I32
 // CHECK-NEXT:                   init: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #19 @2:1..2:42
+// CHECK-NEXT:     StatementListItem #19 @2:1..2:41
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #18 @2:1..2:42 name="getx"
+// CHECK-NEXT:         FunctionDecl #18 @2:1..2:41 name="getx"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #11 @2:9..2:19 nparams=1
+// CHECK-NEXT:             FunctionParameterList #11 @2:8..2:18 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #10 @2:10..2:18 name="p"
+// CHECK-NEXT:                 FunctionParameterDecl #10 @2:9..2:17 name="p"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #9 @2:13..2:18
+// CHECK-NEXT:                     NamedTypeExpr #9 @2:12..2:17
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #8 @2:13..2:18 segments=["Point"] root=Relative
+// CHECK-NEXT:                         ModulePath #8 @2:12..2:17 segments=["Point"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #12 @2:23..2:26 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #12 @2:22..2:25 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #17 @2:27..2:42
+// CHECK-NEXT:             BlockStmt #17 @2:26..2:41
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #16 @2:29..2:40
+// CHECK-NEXT:                 StatementListItem #16 @2:28..2:39
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #15 @2:29..2:40
+// CHECK-NEXT:                     ReturnStmt #15 @2:28..2:39
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         MemberExpression #14 @2:36..2:39 property="x" access=Dot
+// CHECK-NEXT:                         MemberExpression #14 @2:35..2:38 property="x" access=Dot
 // CHECK-NEXT:                           object:
-// CHECK-NEXT:                             IdentExpr #13 @2:36..2:37 name="p"
+// CHECK-NEXT:                             IdentExpr #13 @2:35..2:36 name="p"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #43 @3:1..3:77
+// CHECK-NEXT:     StatementListItem #43 @3:1..3:76
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #42 @3:1..3:77 name="entry"
+// CHECK-NEXT:         FunctionDecl #42 @3:1..3:76 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #20 @3:10..3:12 nparams=0
+// CHECK-NEXT:             FunctionParameterList #20 @3:9..3:11 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #21 @3:16..3:19 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #21 @3:15..3:18 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #41 @3:20..3:77
+// CHECK-NEXT:             BlockStmt #41 @3:19..3:76
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #35 @3:22..3:59
+// CHECK-NEXT:                 StatementListItem #35 @3:21..3:58
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     LetStmt #34 @3:22..3:59 kind=Let
+// CHECK-NEXT:                     LetStmt #34 @3:21..3:58 kind=Let
 // CHECK-NEXT:                       declarations:
-// CHECK-NEXT:                         VariableDeclaratorList #33 @3:26..3:58 n_decls=1
+// CHECK-NEXT:                         VariableDeclaratorList #33 @3:25..3:57 n_decls=1
 // CHECK-NEXT:                           decls:
-// CHECK-NEXT:                             VariableDeclarator #32 @3:26..3:58
+// CHECK-NEXT:                             VariableDeclarator #32 @3:25..3:57
 // CHECK-NEXT:                               pattern:
-// CHECK-NEXT:                                 IdentifierPattern #22 @3:26..3:27 name="p"
+// CHECK-NEXT:                                 IdentifierPattern #22 @3:25..3:26 name="p"
 // CHECK-NEXT:                                   ty: null
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #24 @3:29..3:34
+// CHECK-NEXT:                                 NamedTypeExpr #24 @3:28..3:33
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #23 @3:29..3:34 segments=["Point"] root=Relative
+// CHECK-NEXT:                                     ModulePath #23 @3:28..3:33 segments=["Point"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               init:
-// CHECK-NEXT:                                 StructLiteralExpr #31 @3:37..3:58
+// CHECK-NEXT:                                 StructLiteralExpr #31 @3:36..3:57
 // CHECK-NEXT:                                   ty:
-// CHECK-NEXT:                                     NamedTypeExpr #26 @3:37..3:42
+// CHECK-NEXT:                                     NamedTypeExpr #26 @3:36..3:41
 // CHECK-NEXT:                                       path:
-// CHECK-NEXT:                                         ModulePath #25 @3:37..3:42 segments=["Point"] root=Relative
+// CHECK-NEXT:                                         ModulePath #25 @3:36..3:41 segments=["Point"] root=Relative
 // CHECK-NEXT:                                       args: []
 // CHECK-NEXT:                                   properties:
-// CHECK-NEXT:                                     ObjectProperty #28 @3:45..3:50 name="x" short_form=false
+// CHECK-NEXT:                                     ObjectProperty #28 @3:44..3:49 name="x" short_form=false
 // CHECK-NEXT:                                       value:
-// CHECK-NEXT:                                         IntLiteral #27 @3:48..3:50 base=10 value="40"
-// CHECK-NEXT:                                     ObjectProperty #30 @3:52..3:56 name="x" short_form=false
+// CHECK-NEXT:                                         IntLiteral #27 @3:47..3:49 base=10 value="40"
+// CHECK-NEXT:                                     ObjectProperty #30 @3:51..3:55 name="x" short_form=false
 // CHECK-NEXT:                                       value:
-// CHECK-NEXT:                                         IntLiteral #29 @3:55..3:56 base=10 value="2"
+// CHECK-NEXT:                                         IntLiteral #29 @3:54..3:55 base=10 value="2"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #40 @3:60..3:75
+// CHECK-NEXT:                 StatementListItem #40 @3:59..3:74
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #39 @3:60..3:75
+// CHECK-NEXT:                     ReturnStmt #39 @3:59..3:74
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         CallExpression #38 @3:67..3:74
+// CHECK-NEXT:                         CallExpression #38 @3:66..3:73
 // CHECK-NEXT:                           callee:
-// CHECK-NEXT:                             IdentExpr #36 @3:67..3:71 name="getx"
+// CHECK-NEXT:                             IdentExpr #36 @3:66..3:70 name="getx"
 // CHECK-NEXT:                           type_args: []
 // CHECK-NEXT:                           args:
-// CHECK-NEXT:                             IdentExpr #37 @3:72..3:73 name="p"
+// CHECK-NEXT:                             IdentExpr #37 @3:71..3:72 name="p"
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:       attrs: null

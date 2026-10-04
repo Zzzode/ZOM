@@ -7,4 +7,4 @@
 // an internal compiler error.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:8:33
+// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:8:32

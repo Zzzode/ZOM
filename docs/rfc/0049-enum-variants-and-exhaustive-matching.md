@@ -114,7 +114,7 @@ enum Shape {
     Rect { w: u32, h: u32 },
 }
 
-fun area(shape: Shape) -> f64 {
+fn area(shape: Shape) -> f64 {
     match (shape) {
         when Shape.Empty => { return 0.0; }
         when Shape.Circle(r) => { return 3.14159 * r * r; }

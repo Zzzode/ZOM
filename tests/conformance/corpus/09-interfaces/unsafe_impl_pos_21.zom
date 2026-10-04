@@ -1,5 +1,5 @@
 interface UnsafeContract {
-    fun check() -> bool;
+    fn check() -> bool;
 }
 
 class Guard {
@@ -7,7 +7,7 @@ class Guard {
 }
 
 unsafe impl UnsafeContract for Guard {
-    fun check() -> bool {
+    fn check() -> bool {
         return true;
     }
 }

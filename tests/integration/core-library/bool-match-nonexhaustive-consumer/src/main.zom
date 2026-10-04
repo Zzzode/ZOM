@@ -2,9 +2,9 @@
 // parameter that leaves the false arm uncovered. The closed bool domain
 // requires both true and false to be covered; the missing false arm must be
 // rejected with ZOM4022 at compile time.
-fun matchBool(b: bool) -> i32 {
+fn matchBool(b: bool) -> i32 {
     match (b) {
         when true => return 41;
     }
 }
-fun entry() -> i32 { let x = matchBool(true); return x; }
+fn entry() -> i32 { let x = matchBool(true); return x; }

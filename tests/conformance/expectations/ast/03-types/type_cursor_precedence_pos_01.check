@@ -4,73 +4,73 @@
 // CHECK: SourceFile #65 @1:1..3:1 file_name="type_cursor_precedence_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #27 @1:1..1:80
+// CHECK-NEXT:     StatementListItem #27 @1:1..1:79
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #26 @1:1..1:80 name="CursorType"
+// CHECK-NEXT:         AliasDecl #26 @1:1..1:79 name="CursorType"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #25 @1:20..1:79
+// CHECK-NEXT:             NamedTypeExpr #25 @1:20..1:78
 // CHECK-NEXT:               path:
 // CHECK-NEXT:                 ModulePath #24 @1:20..1:23 segments=["Box"] root=Relative
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 FunctionTypeExpr #23 @1:24..1:78
+// CHECK-NEXT:                 FunctionTypeExpr #23 @1:24..1:77
 // CHECK-NEXT:                   params:
-// CHECK-NEXT:                     UnionTypeExpr #19 @1:28..1:37
+// CHECK-NEXT:                     UnionTypeExpr #19 @1:27..1:36
 // CHECK-NEXT:                       alts:
-// CHECK-NEXT:                         IntersectionTypeExpr #16 @1:28..1:33
+// CHECK-NEXT:                         IntersectionTypeExpr #16 @1:27..1:32
 // CHECK-NEXT:                           alts:
-// CHECK-NEXT:                             NamedTypeExpr #13 @1:28..1:29
+// CHECK-NEXT:                             NamedTypeExpr #13 @1:27..1:28
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #12 @1:28..1:29 segments=["A"] root=Relative
+// CHECK-NEXT:                                 ModulePath #12 @1:27..1:28 segments=["A"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                             NamedTypeExpr #15 @1:32..1:33
+// CHECK-NEXT:                             NamedTypeExpr #15 @1:31..1:32
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #14 @1:32..1:33 segments=["B"] root=Relative
+// CHECK-NEXT:                                 ModulePath #14 @1:31..1:32 segments=["B"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                         NamedTypeExpr #18 @1:36..1:37
+// CHECK-NEXT:                         NamedTypeExpr #18 @1:35..1:36
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #17 @1:36..1:37 segments=["C"] root=Relative
+// CHECK-NEXT:                             ModulePath #17 @1:35..1:36 segments=["C"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                     FixedArrayTypeExpr #22 @1:39..1:47
+// CHECK-NEXT:                     FixedArrayTypeExpr #22 @1:38..1:46
 // CHECK-NEXT:                       elem:
-// CHECK-NEXT:                         PredefinedTypeExpr #20 @1:40..1:43 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #20 @1:39..1:42 kind=I32
 // CHECK-NEXT:                       len_expr:
-// CHECK-NEXT:                         IntLiteral #21 @1:45..1:46 base=10 value="4"
+// CHECK-NEXT:                         IntLiteral #21 @1:44..1:45 base=10 value="4"
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #6 @1:52..1:65
+// CHECK-NEXT:                     NamedTypeExpr #6 @1:51..1:64
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @1:52..1:58 segments=["Result"] root=Relative
+// CHECK-NEXT:                         ModulePath #5 @1:51..1:57 segments=["Result"] root=Relative
 // CHECK-NEXT:                       args:
-// CHECK-NEXT:                         ArrayTypeExpr #4 @1:59..1:64
+// CHECK-NEXT:                         ArrayTypeExpr #4 @1:58..1:63
 // CHECK-NEXT:                           elem:
-// CHECK-NEXT:                             OptionalTypeExpr #3 @1:59..1:62 double=true
+// CHECK-NEXT:                             OptionalTypeExpr #3 @1:58..1:61 double=true
 // CHECK-NEXT:                               inner:
-// CHECK-NEXT:                                 NamedTypeExpr #2 @1:59..1:60
+// CHECK-NEXT:                                 NamedTypeExpr #2 @1:58..1:59
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #1 @1:59..1:60 segments=["D"] root=Relative
+// CHECK-NEXT:                                     ModulePath #1 @1:58..1:59 segments=["D"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                   raises:
-// CHECK-NEXT:                     UnionTypeExpr #11 @1:73..1:78
+// CHECK-NEXT:                     UnionTypeExpr #11 @1:72..1:77
 // CHECK-NEXT:                       alts:
-// CHECK-NEXT:                         NamedTypeExpr #8 @1:73..1:74
+// CHECK-NEXT:                         NamedTypeExpr #8 @1:72..1:73
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #7 @1:73..1:74 segments=["E"] root=Relative
+// CHECK-NEXT:                             ModulePath #7 @1:72..1:73 segments=["E"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                         NamedTypeExpr #10 @1:77..1:78
+// CHECK-NEXT:                         NamedTypeExpr #10 @1:76..1:77
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #9 @1:77..1:78 segments=["F"] root=Relative
+// CHECK-NEXT:                             ModulePath #9 @1:76..1:77 segments=["F"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #64 @2:1..2:98
+// CHECK-NEXT:     StatementListItem #64 @2:1..2:97
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         AliasDecl #63 @2:1..2:98 name="CursorMembers"
+// CHECK-NEXT:         AliasDecl #63 @2:1..2:97 name="CursorMembers"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           target:
-// CHECK-NEXT:             NamedTypeExpr #62 @2:23..2:97
+// CHECK-NEXT:             NamedTypeExpr #62 @2:23..2:96
 // CHECK-NEXT:               path:
 // CHECK-NEXT:                 ModulePath #61 @2:23..2:28 segments=["Table"] root=Relative
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 ObjectTypeExpr #46 @2:29..2:82
+// CHECK-NEXT:                 ObjectTypeExpr #46 @2:29..2:81
 // CHECK-NEXT:                   members:
 // CHECK-NEXT:                     ObjectTypeMember #37 @2:31..2:57 name="left" is_mut=true is_optional=true
 // CHECK-NEXT:                       ty:
@@ -92,40 +92,40 @@
 // CHECK-NEXT:                               path:
 // CHECK-NEXT:                                 ModulePath #33 @2:55..2:56 segments=["C"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                     ObjectTypeMember #45 @2:59..2:80 name="right" is_mut=false is_optional=false
+// CHECK-NEXT:                     ObjectTypeMember #45 @2:59..2:79 name="right" is_mut=false is_optional=false
 // CHECK-NEXT:                       ty:
-// CHECK-NEXT:                         FunctionTypeExpr #44 @2:66..2:80
+// CHECK-NEXT:                         FunctionTypeExpr #44 @2:66..2:79
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             NamedTypeExpr #41 @2:70..2:71
+// CHECK-NEXT:                             NamedTypeExpr #41 @2:69..2:70
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #40 @2:70..2:71 segments=["D"] root=Relative
+// CHECK-NEXT:                                 ModulePath #40 @2:69..2:70 segments=["D"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                             NamedTypeExpr #43 @2:73..2:74
+// CHECK-NEXT:                             NamedTypeExpr #43 @2:72..2:73
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #42 @2:73..2:74 segments=["E"] root=Relative
+// CHECK-NEXT:                                 ModulePath #42 @2:72..2:73 segments=["E"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           ret_ty:
-// CHECK-NEXT:                             NamedTypeExpr #39 @2:79..2:80
+// CHECK-NEXT:                             NamedTypeExpr #39 @2:78..2:79
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #38 @2:79..2:80 segments=["F"] root=Relative
+// CHECK-NEXT:                                 ModulePath #38 @2:78..2:79 segments=["F"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           raises: null
-// CHECK-NEXT:                 TupleTypeExpr #60 @2:84..2:96
+// CHECK-NEXT:                 TupleTypeExpr #60 @2:83..2:95
 // CHECK-NEXT:                   elems:
-// CHECK-NEXT:                     UnionTypeExpr #56 @2:85..2:90
+// CHECK-NEXT:                     UnionTypeExpr #56 @2:84..2:89
 // CHECK-NEXT:                       alts:
-// CHECK-NEXT:                         NamedTypeExpr #53 @2:85..2:86
+// CHECK-NEXT:                         NamedTypeExpr #53 @2:84..2:85
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #52 @2:85..2:86 segments=["G"] root=Relative
+// CHECK-NEXT:                             ModulePath #52 @2:84..2:85 segments=["G"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                         NamedTypeExpr #55 @2:89..2:90
+// CHECK-NEXT:                         NamedTypeExpr #55 @2:88..2:89
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #54 @2:89..2:90 segments=["H"] root=Relative
+// CHECK-NEXT:                             ModulePath #54 @2:88..2:89 segments=["H"] root=Relative
 // CHECK-NEXT:                           args: []
-// CHECK-NEXT:                     SliceArrayTypeExpr #59 @2:92..2:95
+// CHECK-NEXT:                     SliceArrayTypeExpr #59 @2:91..2:94
 // CHECK-NEXT:                       elem:
-// CHECK-NEXT:                         NamedTypeExpr #58 @2:93..2:94
+// CHECK-NEXT:                         NamedTypeExpr #58 @2:92..2:93
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #57 @2:93..2:94 segments=["I"] root=Relative
+// CHECK-NEXT:                             ModulePath #57 @2:92..2:93 segments=["I"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:       attrs: null

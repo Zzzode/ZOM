@@ -1,4 +1,4 @@
-fun f(b: bool) -> unit {
+fn f(b: bool) -> unit {
     match (b) {
         when true => { }
         when false => { }

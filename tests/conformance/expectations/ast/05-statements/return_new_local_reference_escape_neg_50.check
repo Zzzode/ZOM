@@ -22,17 +22,17 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #23 @3:1..6:2 name="leak"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #7 @3:9..3:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #7 @3:8..3:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             NamedTypeExpr #9 @3:15..3:18
+// CHECK-NEXT:             NamedTypeExpr #9 @3:14..3:17
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #8 @3:15..3:18 segments=["Box"] root=Relative
+// CHECK-NEXT:                 ModulePath #8 @3:14..3:17 segments=["Box"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #22 @3:19..6:2
+// CHECK-NEXT:             BlockStmt #22 @3:18..6:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #15 @4:5..4:20
 // CHECK-NEXT:                   item:

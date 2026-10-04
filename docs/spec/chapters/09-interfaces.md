@@ -14,12 +14,12 @@ An interface declaration introduces a new nominal interface type. The declaratio
 
 ```zom
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
     get bounds(this) -> Rectangle;
 }
 
 interface Movable {
-    fun move(this, deltaX: f64, deltaY: f64);
+    fn move(this, deltaX: f64, deltaY: f64);
     get position(this) -> Point;
 }
 ```
@@ -38,7 +38,7 @@ declaration.
 
 ```zom
 export interface Container<T> : Iterable {
-    fun size(this) -> i32;
+    fn size(this) -> i32;
 }
 ```
 
@@ -46,9 +46,9 @@ Individual interface members may also carry visibility modifiers (`private`, `pr
 
 ```zom
 interface MixedAccess {
-    protected fun helper(this);
+    protected fn helper(this);
     protected get context(this) -> Context;
-    fun publicOp(this);
+    fn publicOp(this);
     get id(this) -> u64;
 }
 ```
@@ -59,18 +59,18 @@ An interface may inherit from one or more super-interfaces using the colon (`:`)
 
 ```zom
 interface ReadableStream {
-    fun read(this, buffer: u8[], offset: i32, length: i32) -> i32;
-    fun close(this);
+    fn read(this, buffer: u8[], offset: i32, length: i32) -> i32;
+    fn close(this);
 }
 
 interface WritableStream {
-    fun write(this, buffer: u8[], offset: i32, length: i32) -> i32;
-    fun flush(this);
-    fun close(this);
+    fn write(this, buffer: u8[], offset: i32, length: i32) -> i32;
+    fn flush(this);
+    fn close(this);
 }
 
 interface ReadWriteStream : ReadableStream + WritableStream {
-    fun seek(this, position: i64);
+    fn seek(this, position: i64);
     get position(this) -> i64;
 }
 ```
@@ -93,7 +93,7 @@ Generic interfaces may inherit from other generic interfaces with type arguments
 
 ```zom
 interface Numeric<T> : Comparable<T> + Hash<T> {
-    fun add(this, other: T) -> T;
+    fn add(this, other: T) -> T;
 }
 ```
 
@@ -107,8 +107,8 @@ A method signature declares the name, parameter list, and optional return type o
 
 ```zom
 interface Writer {
-    fun write_bytes(this, data: u8[]) -> i32;
-    fun flush(this);
+    fn write_bytes(this, data: u8[]) -> i32;
+    fn flush(this);
 }
 ```
 
@@ -116,8 +116,8 @@ Methods may carry the `mutating` modifier to indicate that the call mutates the 
 
 ```zom
 interface Counter {
-    mutating fun inc(this);
-    mutating fun reset(this);
+    mutating fn inc(this);
+    mutating fn reset(this);
     get value(this) -> i64;
 }
 ```
@@ -126,7 +126,7 @@ The `override` modifier is permitted on a method signature when the interface re
 
 ```zom
 interface OverrideReadonly {
-    override fun toString(this) -> str;
+    override fn toString(this) -> str;
     readonly get tag(this) -> str;
 }
 ```
@@ -209,11 +209,11 @@ implementation body.
 
 ```zom
 impl Drawable for Button {
-    fun draw(this) {
+    fn draw(this) {
         print("Drawing " + this.text);
     }
 
-    fun bounds(this) -> Rectangle {
+    fn bounds(this) -> Rectangle {
         return Rectangle(this.position, this.size);
     }
 }
@@ -238,11 +238,11 @@ class ByteReader {
 impl Iterator for ByteReader {
     type Item = u8;
 
-    fun hasNext(this) -> bool {
+    fn hasNext(this) -> bool {
         return this.pos < this.buf.length;
     }
 
-    fun next(this) -> u8? {
+    fn next(this) -> u8? {
         if (!this.hasNext()) { return null; }
         let byte = this.buf[this.pos];
         this.pos = this.pos + 1;
@@ -268,7 +268,7 @@ Generic standalone impls may use a `where`-clause to constrain type parameters:
 
 ```zom
 impl<T> Debug for Vec<T> where T: Debug {
-    fun fmt(this, f: &mut Formatter) {
+    fn fmt(this, f: &mut Formatter) {
         f.write_char('[');
         for (mut i = 0; i < this.length; i = i + 1) {
             if (i > 0) { f.write_str(", "); }
@@ -352,22 +352,22 @@ Under IR-1, `D` inherits `foo()` from `A` without conflict. For `bar()`, both `B
 When a type implements multiple interfaces that share a method name, the user may disambiguate inside the implementing class body by invoking a specific interface's method using the `InterfaceName::method` qualified-call form:
 
 ```zom
-interface IBase { fun foo(this) -> str; }
-interface IA : IBase { fun bar(this) -> str; }
-interface IB : IBase { fun baz(this) -> str; }
+interface IBase { fn foo(this) -> str; }
+interface IA : IBase { fn bar(this) -> str; }
+interface IB : IBase { fn baz(this) -> str; }
 
 class C {
     let data: str;
 }
 
 impl IA for C {
-    fun foo(this) -> str { return "IA: " + this.data; }
-    fun bar(this) -> str { return this.foo(); }
+    fn foo(this) -> str { return "IA: " + this.data; }
+    fn bar(this) -> str { return this.foo(); }
 }
 
 impl IB for C {
-    fun foo(this) -> str { return "IB: " + this.data; }
-    fun baz(this) -> str { return IB::foo(this); }
+    fn foo(this) -> str { return "IB: " + this.data; }
+    fn baz(this) -> str { return IB::foo(this); }
 }
 ```
 
@@ -411,7 +411,7 @@ If `I : J` and `I` is object-safe, every superinterface `J` must also be object-
 Methods may not introduce their own type parameters. Each distinct instantiation would otherwise require a fresh vtable slot and the set of instantiations is unbounded.
 
 ```zom
-interface X { fun map<T>(this, f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
+interface X { fn map<T>(this, f: fn(Self)->T) -> T; }   // ZOM4001 DynGenericMethod
 ```
 
 ### 9.6.4 OS-2 No Methods Returning Bare Self
@@ -419,15 +419,15 @@ interface X { fun map<T>(this, f: fun(Self)->T) -> T; }   // ZOM4001 DynGenericM
 `Self` (the concrete implementing type) cannot be returned by value because its size is not statically known behind `dyn`. `Self?` is allowed only because the `dyn` calling convention lowers it as an explicit nullable union whose success payload is materialized behind the erased data pointer. The source type remains `Self | null`; the pointer-sized representation is a dyn ABI lowering detail, not the general layout of every nullable union.
 
 ```zom
-interface Cloneable { fun clone(this) -> Self; }        // ZOM4002 DynSelfReturn
+interface Cloneable { fn clone(this) -> Self; }        // ZOM4002 DynSelfReturn
 ```
 
 ### 9.6.5 OS-3 No Move-Consume Self
 
-A receiver with the linear move attribute, `fun consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. An explicit `this` receiver without that attribute remains eligible for object-safety analysis.
+A receiver with the linear move attribute, `fn consume(#[zom::param::move] this)`, is forbidden. Linear move of a `dyn I` receiver requires compile-time known size, which is not available. An explicit `this` receiver without that attribute remains eligible for object-safety analysis.
 
 ```zom
-interface Consumable { fun consume(#[zom::param::move] this); }   // ZOM4003 DynMoveSelf
+interface Consumable { fn consume(#[zom::param::move] this); }   // ZOM4003 DynMoveSelf
 ```
 
 ### 9.6.6 OS-4 All Associated Types Bound in the dyn Head
@@ -460,7 +460,7 @@ vtable. Such methods remain callable through the qualified path
 interface ineligible for `dyn I`.
 
 ```zom
-interface Factory { static fun create() -> Self; }        // ZOM4005 DynStaticMethod
+interface Factory { static fn create() -> Self; }        // ZOM4005 DynStaticMethod
 ```
 
 ### 9.6.8 OS-6 No Generic Associated Types (GAT)
@@ -483,11 +483,11 @@ A minimal object-safe interface:
 
 ```zom
 interface Writer {
-    fun write_bytes(this, data: u8[]) -> i32;
-    fun flush(this);
+    fn write_bytes(this, data: u8[]) -> i32;
+    fn flush(this);
 }
 
-fun write_all(w: &mut dyn Writer, data: u8[]) {
+fn write_all(w: &mut dyn Writer, data: u8[]) {
     mut remaining = data.length;
     while (remaining > 0) {
         let written = w.write_bytes(data.slice(data.length - remaining));
@@ -501,10 +501,10 @@ A dyn-compatible interface combined with marker bounds for cross-thread safety:
 
 ```zom
 interface RpcHandler {
-    fun handle(this, req: Request) -> Response;
+    fn handle(this, req: Request) -> Response;
 }
 
-fun dispatch(h: &(dyn RpcHandler + Sendable + Shared), req: Request) -> Response {
+fn dispatch(h: &(dyn RpcHandler + Sendable + Shared), req: Request) -> Response {
     return h.handle(req);
 }
 ```
@@ -518,7 +518,7 @@ implements `I`:
 
 ```zom
 interface Animal {
-    fun speak(this) -> i32;
+    fn speak(this) -> i32;
 }
 
 struct Dog {
@@ -526,10 +526,10 @@ struct Dog {
 }
 
 impl Animal for Dog {
-    fun speak(this) -> i32 { return 41; }
+    fn speak(this) -> i32 { return 41; }
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
     let a: dyn Animal = Dog { tag: 0 };
     return a.speak();
 }
@@ -564,7 +564,7 @@ A type parameter's bound list therefore has the general form `<T: Interface1<Arg
 A single interface bound on a generic function (Ch.12 generic form):
 
 ```zom
-fun sort<T: Comparable<T>>(arr: T[]) -> T[] {
+fn sort<T: Comparable<T>>(arr: T[]) -> T[] {
     // standard in-place quicksort using Comparable::compareTo
     return arr;
 }
@@ -573,7 +573,7 @@ fun sort<T: Comparable<T>>(arr: T[]) -> T[] {
 Combining an interface bound with two positive marker bounds for thread-safety:
 
 ```zom
-fun draw_all<T: Drawable + Sendable>(items: T[]) {
+fn draw_all<T: Drawable + Sendable>(items: T[]) {
     for (x in items) {
         x.draw();
     }
@@ -603,7 +603,7 @@ InterfaceBoundList ::= InterfaceBound ( '+' InterfaceBound )*
 InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 
 InterfaceBody   ::= InterfaceElement*
-InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+InterfaceElement ::= ModifierList 'fn' MethodSignature ';'
                   | ModifierList ('get' | 'set') PropertySignature ';'
                   | ModifierList 'type' Identifier TypeParameters?
                     ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
@@ -616,7 +616,7 @@ StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBound
                        'for' TypeExpr WhereClause?
                        '{' ImplMember* '}'
 
-ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
+ImplMember     ::= ModifierList 'fn' BindingIdent TypeParameters?
                     FunctionSignature ( ';' | BlockStatement )
                  | 'type' Identifier TypeParameters? '=' TypeExpr ';'
                  | 'mut' VariableDeclList ';'

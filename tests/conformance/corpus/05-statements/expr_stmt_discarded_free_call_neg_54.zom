@@ -1,4 +1,4 @@
-fun g() -> i32 { return 1; }
-fun f() {
+fn g() -> i32 { return 1; }
+fn f() {
     g();
 }

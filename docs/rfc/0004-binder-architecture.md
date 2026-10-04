@@ -205,11 +205,11 @@ This design prevents three common failures:
 Module declarations are visible throughout their module:
 
 ```zom
-fun entry() -> i32 {
+fn entry() -> i32 {
     return helper();
 }
 
-fun helper() -> i32 {
+fn helper() -> i32 {
     return 42;
 }
 ```
@@ -217,7 +217,7 @@ fun helper() -> i32 {
 Local values become visible only after declaration:
 
 ```zom
-fun example() -> i32 {
+fn example() -> i32 {
     let result = 42;
     return result;
 }

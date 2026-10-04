@@ -22,14 +22,14 @@
 // CHECK-NEXT:                     IntLiteral #4 @3:26..3:27 base=10 value="1"
 // CHECK-NEXT:                 MethodDecl #14 @4:3..6:4 name="hello" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #6 @4:12..4:14 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #6 @4:11..4:13 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @4:18..4:22 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @4:17..4:21 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #13 @4:23..6:4
+// CHECK-NEXT:                     BlockStmt #13 @4:22..6:4
 // CHECK-NEXT:                       stmts:
 // CHECK-NEXT:                         StatementListItem #12 @5:5..5:20
 // CHECK-NEXT:                           item:

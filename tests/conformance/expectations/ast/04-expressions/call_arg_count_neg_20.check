@@ -4,28 +4,28 @@
 // CHECK: SourceFile #15 @1:1..4:1 file_name="call_arg_count_neg_20.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #9 @1:1..1:32
+// CHECK-NEXT:     StatementListItem #9 @1:1..1:31
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #8 @1:1..1:32 name="add"
+// CHECK-NEXT:         FunctionDecl #8 @1:1..1:31 name="add"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #5 @1:8..1:24 nparams=2
+// CHECK-NEXT:             FunctionParameterList #5 @1:7..1:23 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:9..1:15 name="a"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:8..1:14 name="a"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:12..1:15 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:11..1:14 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #4 @1:17..1:23 name="b"
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:16..1:22 name="b"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:20..1:23 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:19..1:22 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #6 @1:28..1:31 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #6 @1:27..1:30 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #7 @1:31..1:32
+// CHECK-NEXT:             BlockStmt #7 @1:30..1:31
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #14 @3:1..3:8

@@ -1,2 +1,2 @@
 let x = async { return 1; };
-fun f() { let a = await p; }
+fn f() { let a = await p; }

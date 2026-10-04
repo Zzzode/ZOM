@@ -8,17 +8,17 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #17 @1:1..5:2 name="fallible"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:13..1:15 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:12..1:14 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             NamedTypeExpr #3 @1:23..1:30
+// CHECK-NEXT:             NamedTypeExpr #3 @1:22..1:29
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #2 @1:23..1:30 segments=["IoError"] root=Relative
+// CHECK-NEXT:                 ModulePath #2 @1:22..1:29 segments=["IoError"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #16 @1:31..5:2
+// CHECK-NEXT:             BlockStmt #16 @1:30..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #15 @2:5..4:7
 // CHECK-NEXT:                   item:

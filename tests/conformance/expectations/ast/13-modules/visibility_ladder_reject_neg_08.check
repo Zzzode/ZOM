@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2047]: Declaration expected
 // CHECK-LITERAL:   --> conformance/visibility_ladder_reject_neg_08.zom:1:8
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | export pub(crate) fun foo() {}
+// CHECK-LITERAL: 1 | export pub(crate) fn foo() {}
 // CHECK-LITERAL:   |        ^

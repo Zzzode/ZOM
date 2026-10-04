@@ -70,7 +70,7 @@ enum class SyntaxKind {
   FinallyKeyword,      // finally
   ForKeyword,          // for
   FromKeyword,         // from
-  FunKeyword,          // fun
+  FnKeyword,           // fn
   GetKeyword,          // get
   GlobalKeyword,       // global
   IfKeyword,           // if

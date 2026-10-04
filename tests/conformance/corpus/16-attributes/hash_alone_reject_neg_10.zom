@@ -1,2 +1,2 @@
 #
-fun after_hash();
+fn after_hash();

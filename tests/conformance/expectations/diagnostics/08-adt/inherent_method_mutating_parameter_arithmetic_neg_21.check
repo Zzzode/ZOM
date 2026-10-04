@@ -6,4 +6,4 @@
 // so the method drains per definition as ZOM4099.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK: 3 |   mutating fun increment(this, x: i32) -> i32 { return x + 1; }
+// CHECK: 3 |   mutating fn increment(this, x: i32) -> i32 { return x + 1; }

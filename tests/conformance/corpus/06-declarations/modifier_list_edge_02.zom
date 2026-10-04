@@ -1,3 +1,3 @@
 class Adjuster {
-    protected readonly mutating fun adjust() {}
+    protected readonly mutating fn adjust() {}
 }

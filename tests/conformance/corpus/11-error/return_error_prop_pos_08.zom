@@ -1,1 +1,1 @@
-fun call() raises X { return fetch()?!; }
+fn call() raises X { return fetch()?!; }

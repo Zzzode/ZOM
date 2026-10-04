@@ -22,26 +22,26 @@
 // CHECK-NEXT:                     PredefinedTypeExpr #4 @3:12..3:15 kind=Str
 // CHECK-NEXT:                   init:
 // CHECK-NEXT:                     StringLiteralExpr #5 @3:18..3:22 value="hi"
-// CHECK-NEXT:                 MethodDecl #15 @4:3..4:38 name="id" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #15 @4:3..4:37 name="id" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #9 @4:9..4:17 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #9 @4:8..4:16 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #8 @4:10..4:16 name="n"
+// CHECK-NEXT:                         FunctionParameterDecl #8 @4:9..4:15 name="n"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #7 @4:13..4:16 kind=I32
+// CHECK-NEXT:                             PredefinedTypeExpr #7 @4:12..4:15 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #10 @4:21..4:24 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @4:20..4:23 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #14 @4:25..4:38
+// CHECK-NEXT:                     BlockStmt #14 @4:24..4:37
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #13 @4:27..4:36
+// CHECK-NEXT:                         StatementListItem #13 @4:26..4:35
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ReturnStmt #12 @4:27..4:36
+// CHECK-NEXT:                             ReturnStmt #12 @4:26..4:35
 // CHECK-NEXT:                               value:
-// CHECK-NEXT:                                 IdentExpr #11 @4:34..4:35 name="n"
+// CHECK-NEXT:                                 IdentExpr #11 @4:33..4:34 name="n"
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:       attrs: null

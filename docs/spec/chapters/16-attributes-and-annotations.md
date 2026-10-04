@@ -59,7 +59,7 @@ pair, and several bracket pairs may be stacked:
 ```zom
 #[audit::trace, lint::allow("unused")]
 #[route::register(get("/items"), priority = 10)]
-fun handler();
+fn handler();
 ```
 
 Attribute arguments are parsed as expressions. A braced nested input preserves
@@ -67,7 +67,7 @@ grouping for inputs such as:
 
 ```zom
 #[schema::field(name = "point", options = { packed = true })]
-fun decode();
+fn decode();
 ```
 
 ## 16.3 Placement
@@ -92,9 +92,9 @@ or expression operand.
 
 ```zom
 #[api::entry]
-export fun run() {}
+export fn run() {}
 
-fun example() {
+fn example() {
     #[trace::scope]
     if ready { run(); }
 }
@@ -103,7 +103,7 @@ fun example() {
 The following form is rejected because `value` is an expression statement:
 
 ```zom
-fun example() {
+fn example() {
     #[trace::value]
     value;
 }
@@ -115,7 +115,7 @@ A function parameter may carry an outer attribute list immediately before the
 parameter:
 
 ```zom
-fun consume(#[zom::param::move] this, #[ffi::nonnull] ptr: *const u8);
+fn consume(#[zom::param::move] this, #[ffi::nonnull] ptr: *const u8);
 ```
 
 The parser stores the list on `FunctionParameterDecl.attrs`.
@@ -216,7 +216,7 @@ owned by the binder and checker.
 Examples:
 
 ```zom
-fun send<T: std::marker::Sendable>(value: T);
+fn send<T: std::marker::Sendable>(value: T);
 
 let object: dyn Drawable + std::marker::Sendable;
 ```

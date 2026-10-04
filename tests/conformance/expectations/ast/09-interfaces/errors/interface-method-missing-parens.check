@@ -14,7 +14,7 @@
 // CHECK-LITERAL: Error [ZOM2025]: Expected '('
 // CHECK-LITERAL:   --> conformance/interface-method-missing-parens.zom:2:11
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |   fun foo -> i32;
+// CHECK-LITERAL: 2 |   fn foo -> i32;
 // CHECK-LITERAL:   |           ^
 // CHECK-LITERAL: Error [ZOM2025]: Expected ':'
 // CHECK-LITERAL:   --> conformance/interface-method-missing-parens.zom:3:9

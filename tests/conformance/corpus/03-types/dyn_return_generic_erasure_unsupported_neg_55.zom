@@ -1,5 +1,5 @@
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
 }
 
 struct Box<T> {
@@ -8,6 +8,6 @@ struct Box<T> {
 
 impl Drawable for Box<i32> {}
 
-fun make(shape: Box<i32>) -> dyn Drawable {
+fn make(shape: Box<i32>) -> dyn Drawable {
     return shape;
 }

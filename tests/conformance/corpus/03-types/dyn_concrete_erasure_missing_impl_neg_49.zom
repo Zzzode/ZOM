@@ -1,5 +1,5 @@
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
 }
 
 struct Circle {
@@ -12,7 +12,7 @@ struct Square {
 
 impl Drawable for Circle {}
 
-fun erase(shape: Square) -> i32 {
+fn erase(shape: Square) -> i32 {
     let drawn: dyn Drawable = shape;
     let sentinel: i32 = 1;
     return sentinel;

@@ -375,7 +375,7 @@ ir::IrOperationResult<ValidatedOwnershipProofs> buildAndValidateProofs(
 // the pass-through validation publishes an empty proof inventory.
 
 ZC_TEST("Ownership proof validation passes for a scalar function") {
-  ProofValidationFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  ProofValidationFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
   ZC_REQUIRE(repository != zc::none);
   ZC_IF_SOME(value, repository) {
@@ -397,7 +397,7 @@ ZC_TEST("Ownership proof validation passes for a scalar function") {
 // direct-input escape proof for the returned reference.
 
 ZC_TEST("Ownership proof validation passes for a parameter reborrow function") {
-  ProofValidationFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  ProofValidationFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto repository = fixture.compilerSession().getBorrowEvidenceRepository();
   ZC_REQUIRE(repository != zc::none);
   ZC_IF_SOME(value, repository) {

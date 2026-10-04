@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #23 @1:1..5:2 name="testFor"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:12..1:14 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:11..1:13 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #22 @1:15..5:2
+// CHECK-NEXT:             BlockStmt #22 @1:14..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #21 @2:3..4:4
 // CHECK-NEXT:                   item:

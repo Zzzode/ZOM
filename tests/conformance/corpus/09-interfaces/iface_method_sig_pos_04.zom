@@ -1,6 +1,6 @@
 interface Compute {
-    public fun add(a: i32, b: i32) -> i32;
-    fun mul(x: f64, y: f64) -> f64 raises MathError;
-    fun greet(name: str) -> str raises IOError | EncodingError;
-    abstract fun exec(cmd: str) -> unit;
+    public fn add(a: i32, b: i32) -> i32;
+    fn mul(x: f64, y: f64) -> f64 raises MathError;
+    fn greet(name: str) -> str raises IOError | EncodingError;
+    abstract fn exec(cmd: str) -> unit;
 }

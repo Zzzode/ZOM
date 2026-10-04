@@ -3,5 +3,5 @@
 // -- that lowers MIR -> LIR -> a verified two-function LLVM module. The
 // parameter-free caller folds to the reserved no-argument `zom.module_init`
 // entry the runtime `_start` calls, so `zomc run` executes it natively.
-fun callee() -> i32 { return 42; }
-fun caller() -> i32 { let x = callee(); return x; }
+fn callee() -> i32 { return 42; }
+fn caller() -> i32 { let x = callee(); return x; }

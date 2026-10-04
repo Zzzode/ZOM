@@ -1,2 +1,2 @@
 # // comment after hash
-fun hash_with_comment();
+fn hash_with_comment();

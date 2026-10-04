@@ -1,5 +1,5 @@
 class FileStream {
-    fun read(buf: [u8]) -> i32 { return 0; }
+    fn read(buf: [u8]) -> i32 { return 0; }
 }
 impl Reader for FileStream { }
 impl Writer for FileStream { }

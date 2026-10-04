@@ -1,4 +1,4 @@
-fun trace_branch() {
+fn trace_branch() {
   #[trace::branch]
   if (true) {
     return;

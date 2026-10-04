@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #13 @1:1..5:2 name="spawn_chain"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:16..1:18 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:15..1:17 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #12 @1:19..5:2
+// CHECK-NEXT:             BlockStmt #12 @1:18..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #11 @2:5..4:7
 // CHECK-NEXT:                   item:

@@ -1,11 +1,11 @@
 interface Pow {
-    fun pow(rhs: Number) -> Number;
+    fn pow(rhs: Number) -> Number;
 }
 
 class Number { }
 
 impl Pow for Number {
-    fun pow(rhs: Number) -> Number;
+    fn pow(rhs: Number) -> Number;
 }
 
 let x: Number;

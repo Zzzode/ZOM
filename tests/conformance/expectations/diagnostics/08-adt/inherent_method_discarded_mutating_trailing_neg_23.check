@@ -7,4 +7,4 @@
 // drains as ZOM4099 instead of hitting an internal invalid-fact invariant.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK: 6 | fun entry() -> i32 {
+// CHECK: 6 | fn entry() -> i32 {

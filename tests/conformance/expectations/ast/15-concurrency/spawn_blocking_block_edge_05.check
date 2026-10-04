@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #14 @1:1..5:2 name="blocking_block"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:19..1:21 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:18..1:20 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #13 @1:22..5:2
+// CHECK-NEXT:             BlockStmt #13 @1:21..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #12 @2:5..4:7
 // CHECK-NEXT:                   item:

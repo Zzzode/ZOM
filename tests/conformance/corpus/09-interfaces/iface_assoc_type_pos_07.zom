@@ -1,9 +1,9 @@
 interface Show {
-    fun render(this);
+    fn render(this);
 }
 
 interface Hash {
-    fun hash(this) -> u64;
+    fn hash(this) -> u64;
 }
 
 interface FullAssoc {

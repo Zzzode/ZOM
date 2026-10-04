@@ -24,14 +24,14 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #28 @6:1..10:2 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #8 @6:10..6:12 nparams=0
+// CHECK-NEXT:             FunctionParameterList #8 @6:9..6:11 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #9 @6:16..6:20 kind=Bool
+// CHECK-NEXT:             PredefinedTypeExpr #9 @6:15..6:19 kind=Bool
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #27 @6:21..10:2
+// CHECK-NEXT:             BlockStmt #27 @6:20..10:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #16 @7:3..7:18
 // CHECK-NEXT:                   item:

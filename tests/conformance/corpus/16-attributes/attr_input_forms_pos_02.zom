@@ -1,2 +1,2 @@
 #[cfg::feature(x = "value", y = 42)]
-fun bar();
+fn bar();

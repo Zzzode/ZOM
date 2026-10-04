@@ -1,3 +1,3 @@
-fun f() {
+fn f() {
   let r = obj?.method()?.field[0]!!;
 }

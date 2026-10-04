@@ -448,8 +448,8 @@ ZC_TEST("HIR pipeline retains the exact canonical scalar const value") {
 
 ZC_TEST("HIR pipeline retains verified direct calls separately from literals") {
   HirPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.expressions().size() == 1);
@@ -487,8 +487,8 @@ ZC_TEST("HIR pipeline retains verified direct calls separately from literals") {
 
 ZC_TEST("HIR pipeline retains verified scalar direct call arguments") {
   HirPipelineFixture fixture(
-      "fun helper(value: i32) -> i32 { return value; }\n"
-      "fun entry() -> i32 { return helper(7); }"_zc);
+      "fn helper(value: i32) -> i32 { return value; }\n"
+      "fn entry() -> i32 { return helper(7); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.calls().size() == 1);
@@ -532,8 +532,8 @@ ZC_TEST("HIR pipeline lowers a two-argument direct call to two MIR operands") {
   // constant. This closes the admission-outruns-lowering gap recorded in the
   // lowerable-constructs inventory row 4.
   HirPipelineFixture fixture(
-      "fun callee(a: i32, b: i32) -> i32 { return a; }\n"
-      "fun caller(x: i32, y: i32) -> i32 { return callee(x, y); }"_zc);
+      "fn callee(a: i32, b: i32) -> i32 { return a; }\n"
+      "fn caller(x: i32, y: i32) -> i32 { return callee(x, y); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.calls().size() == 1);
@@ -579,8 +579,8 @@ ZC_TEST("HIR pipeline lowers a two-argument direct call to two MIR operands") {
 
 ZC_TEST("HIR pipeline lowers a direct call parameter argument to a place operand") {
   HirPipelineFixture fixture(
-      "fun helper(value: i32) -> i32 { return value; }\n"
-      "fun entry(input: i32) -> i32 { return helper(input); }"_zc);
+      "fn helper(value: i32) -> i32 { return value; }\n"
+      "fn entry(input: i32) -> i32 { return helper(input); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.calls().size() == 1);
@@ -620,11 +620,11 @@ ZC_TEST("HIR pipeline lowers a direct call parameter argument to a place operand
 
 ZC_TEST("HIR fingerprint discriminates direct call argument values") {
   HirPipelineFixture sevenFixture(
-      "fun helper(value: i32) -> i32 { return value; }\n"
-      "fun entry() -> i32 { return helper(7); }"_zc);
+      "fn helper(value: i32) -> i32 { return value; }\n"
+      "fn entry() -> i32 { return helper(7); }"_zc);
   HirPipelineFixture eightFixture(
-      "fun helper(value: i32) -> i32 { return value; }\n"
-      "fun entry() -> i32 { return helper(8); }"_zc);
+      "fn helper(value: i32) -> i32 { return value; }\n"
+      "fn entry() -> i32 { return helper(8); }"_zc);
   auto sevenDump = sevenFixture.hirModule().dump();
   auto eightDump = eightFixture.hirModule().dump();
   ZC_REQUIRE(sevenDump != zc::none);
@@ -638,8 +638,8 @@ ZC_TEST("HIR fingerprint discriminates direct call argument values") {
 
 ZC_TEST("HIR pipeline retains a direct-call local initializer") {
   HirPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { let value = helper(); return value; }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { let value = helper(); return value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.expressions().size() == 1);
@@ -662,7 +662,7 @@ ZC_TEST("HIR pipeline retains a direct-call local initializer") {
 }
 
 ZC_TEST("HIR pipeline preserves a returned function local without binder identity") {
-  HirPipelineFixture fixture("fun entry() -> i32 { let value = 0; return value; }"_zc);
+  HirPipelineFixture fixture("fn entry() -> i32 { let value = 0; return value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -701,7 +701,7 @@ ZC_TEST("HIR pipeline preserves a returned function local without binder identit
 }
 
 ZC_TEST("HIR pipeline lowers a parameter-initialized single local body") {
-  HirPipelineFixture fixture("fun entry(a: i32) -> i32 { let value: i32 = a; return value; }"_zc);
+  HirPipelineFixture fixture("fn entry(a: i32) -> i32 { let value: i32 = a; return value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -737,7 +737,7 @@ ZC_TEST("HIR pipeline lowers a parameter-initialized single local body") {
 
 ZC_TEST("HIR pipeline lowers a three-binding sequential local body") {
   HirPipelineFixture fixture(
-      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
+      "fn entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -847,7 +847,7 @@ ZC_TEST("HIR pipeline lowers a three-binding sequential local body") {
 
 ZC_TEST("HIR pipeline lowers a sequential local body returning a parameter") {
   HirPipelineFixture fixture(
-      "fun entry(a: i32) -> i32 { let x: i32 = 1; let y: i32 = x; return a; }"_zc);
+      "fn entry(a: i32) -> i32 { let x: i32 = 1; let y: i32 = x; return a; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   const auto& function = module.functions()[0];
@@ -890,7 +890,7 @@ ZC_TEST("HIR pipeline lowers a sequential local body returning a parameter") {
 
 ZC_TEST("HIR pipeline lowers a binary-initializer sequential local body") {
   HirPipelineFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }"_zc);
+      "fn f(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -1010,8 +1010,7 @@ ZC_TEST("HIR pipeline lowers a binary-initializer sequential local body") {
 ZC_TEST("HIR pipeline lowers a single binary-initializer local body") {
   // A single `let` whose initializer is a primitive comparison routes through the
   // sequential binary rail (N=1): the bool result local is returned directly.
-  HirPipelineFixture fixture(
-      "fun f(a: i32, b: i32) -> bool { let x: bool = a == b; return x; }"_zc);
+  HirPipelineFixture fixture("fn f(a: i32, b: i32) -> bool { let x: bool = a == b; return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -1093,7 +1092,7 @@ ZC_TEST("HIR pipeline lowers a single binary-initializer local body") {
 
 ZC_TEST("HIR pipeline lowers a nested-operand binary sequential local body") {
   HirPipelineFixture fixture(
-      "fun f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }"_zc);
+      "fn f(a: i32, b: i32, c: i32) -> i32 { let z: i32 = a + b * c; let w: i32 = z; return w; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 2);
@@ -1193,7 +1192,7 @@ ZC_TEST("HIR pipeline lowers a nested-operand binary sequential local body") {
 }
 
 ZC_TEST("HIR pipeline lowers a parameter-reference mutable local write") {
-  HirPipelineFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }"_zc);
+  HirPipelineFixture fixture("fn f(a: i32) -> i32 { mut x: i32 = 0; x = a; return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -1278,7 +1277,7 @@ ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
   // node-id layout and MIR shape after the reference-write value discriminator
   // was introduced. This body has no parameter and both write values are
   // literals, so no parameter reference is materialized.
-  HirPipelineFixture fixture("fun g() -> i32 { mut x: i32 = 0; x = 1; return x; }"_zc);
+  HirPipelineFixture fixture("fn g() -> i32 { mut x: i32 = 0; x = 1; return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -1327,7 +1326,7 @@ ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
 
 ZC_TEST("HIR pipeline lowers a binary mutable local write") {
   HirPipelineFixture fixture(
-      "fun f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }"_zc);
+      "fn f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -1429,7 +1428,7 @@ ZC_TEST("HIR pipeline lowers a binary mutable local write with a literal operand
   // A binary write with one literal operand `x = a + 1`: the left operand is a
   // parameter reference and the right operand is a scalar literal, so the write
   // materializes one parameter reference and one extra literal expression.
-  HirPipelineFixture fixture("fun f(a: i32) -> i32 { mut x: i32 = 0; x = a + 1; return x; }"_zc);
+  HirPipelineFixture fixture("fn f(a: i32) -> i32 { mut x: i32 = 0; x = a + 1; return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -1477,7 +1476,7 @@ ZC_TEST("HIR pipeline lowers a binary mutable local write with a literal operand
 ZC_TEST("HIR pipeline lowers a local nominal aggregate field projection") {
   HirPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -1548,7 +1547,7 @@ ZC_TEST("HIR field-write arm lowers one aggregate field overwrite through exact 
   // aggregate initialize plus field-overwrite statements.
   HirPipelineFixture fixture(
       "struct Cell { public mut a: i32, }\n"
-      "fun entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; return cell.a; }"_zc);
+      "fn entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; return cell.a; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -1639,7 +1638,7 @@ ZC_TEST("HIR field-write arm lowers repeated overwrites of one aggregate field")
   // write is an Overwrite; the stride grows by two ids per write.
   HirPipelineFixture fixture(
       "struct Cell { public mut a: i32, }\n"
-      "fun entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; cell.a = 9; return cell.a; }"_zc);
+      "fn entry() -> i32 { mut cell = Cell { a: 1 }; cell.a = 7; cell.a = 9; return cell.a; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.localWrites().size() == 2);
@@ -1694,7 +1693,7 @@ ZC_TEST("HIR field-write arm initializes one field of an uninitialized local") {
   // stride (no aggregate initializer id); the write kind is Initialize.
   HirPipelineFixture fixture(
       "struct Cell { public mut a: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.a = 7; return cell.a; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.a = 7; return cell.a; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.aggregates().size() == 0);
@@ -1758,7 +1757,7 @@ ZC_TEST("HIR field-write arm initializes multiple fields of an uninitialized loc
   // initialized by a literal write, returning the first written field.
   HirPipelineFixture fixture(
       "struct Cell { public mut a: i32, public mut b: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.a = 7; cell.b = 8; return cell.a; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.a = 7; cell.b = 8; return cell.a; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.aggregates().size() == 0);
@@ -1827,8 +1826,8 @@ ZC_TEST("HIR field-write arm initializes multiple fields of an uninitialized loc
 
 ZC_TEST("HIR pipeline lowers a mutable local receiver call") {
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+      "struct Cell { value: i32, mutating fn read(this, amount: i32) -> i32; }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -1852,13 +1851,13 @@ ZC_TEST("HIR pipeline lowers a mutable local receiver call") {
 
 ZC_TEST("HIR pipeline lowers a shared local receiver call with a bodied method") {
   // `let cell = Cell { value: 0 }; return cell.get();` against a shared
-  // receiver method `fun get(this) -> i32 { return 7; }`. Unlike the mutable
+  // receiver method `fn get(this) -> i32 { return 7; }`. Unlike the mutable
   // bodyless-method call, the shared call borrows a shared reference into the
   // receiver temporary, leaves the temporary unactivated (NoActivation), and
   // both the caller and the bodied method lower to verified Built MIR.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun get(this) -> i32 { return 7; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.get(); }"_zc);
+      "struct Cell { value: i32, fn get(this) -> i32 { return 7; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.get(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -1926,14 +1925,14 @@ ZC_TEST("HIR pipeline lowers a shared local receiver call with a bodied method")
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver this field read") {
-  // `fun get(this) -> i32 { return this.value; }` reads the one field through
+  // `fn get(this) -> i32 { return this.value; }` reads the one field through
   // the implicit shared receiver. The read materializes as a parameter-keyed
   // field projection (the receiver carries `&Cell`; its referent is the field
   // owner), and its Built MIR return is a place-use of the receiver parameter
   // through [Dereference, Field].
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun get(this) -> i32 { return this.value; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 7 }; return cell.get(); }"_zc);
+      "struct Cell { value: i32, fn get(this) -> i32 { return this.value; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 7 }; return cell.get(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.parameterFieldProjections().size() == 1);
@@ -1984,15 +1983,15 @@ ZC_TEST("HIR pipeline lowers a shared-receiver this field read") {
 }
 
 ZC_TEST("HIR pipeline lowers a mutating-receiver this field read") {
-  // `mutating fun get(this) -> i32 { return this.value; }` only reads the one
+  // `mutating fn get(this) -> i32 { return this.value; }` only reads the one
   // field through the implicit receiver. A field copy is sound through a
   // mutable receiver, so it lowers exactly like the shared getter: the
   // parameter-keyed field projection loads the field, the Built MIR return is
   // a place-use of the receiver parameter through [Dereference, Field], and
   // the caller's single receiver borrow is a mutable borrow.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun get(this) -> i32 { return this.value; } }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 7 }; return cell.get(); }"_zc);
+      "struct Cell { value: i32, mutating fn get(this) -> i32 { return this.value; } }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 7 }; return cell.get(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.parameterFieldProjections().size() == 1);
@@ -2081,14 +2080,14 @@ ZC_TEST("HIR pipeline lowers a mutating-receiver this field read") {
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method with a scalar local return") {
-  // `fun answer(this) -> i32 { let x = 42; return x; }` binds one plain let
+  // `fn answer(this) -> i32 { let x = 42; return x; }` binds one plain let
   // local from a scalar literal and returns it. The HIR tail is one
   // initialized local binding; Built MIR declares the implicit receiver as the
   // leading parameter local ordinal 1 and the user local at ordinal 2, with
   // StorageLive and an Initialize Assign of the constant.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun answer(this) -> i32 { let x = 42; return x; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.answer(); }"_zc);
+      "struct Cell { value: i32, fn answer(this) -> i32 { let x = 42; return x; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.answer(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
 
@@ -2147,24 +2146,24 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method with a scalar local as Z
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
       session,
-      "struct Cell { value: i32, mutating fun answer(this) -> i32 { let x = 42; return x; } }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.answer(); }"_zc);
+      "struct Cell { value: i32, mutating fn answer(this) -> i32 { let x = 42; return x; } }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.answer(); }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method conditional return") {
-  // `fun choose(this, flag: bool) -> i32 { if (flag) { return 42; } else {
+  // `fn choose(this, flag: bool) -> i32 { if (flag) { return 42; } else {
   // return 0; } }` lowers to a four-block diamond. Built MIR declares the
   // receiver parameter at ordinal 1, the bool condition parameter at ordinal 2,
   // and a FunctionResult local at ordinal 3; the entry switches on the
   // condition and each arm Initialize-assigns its literal before the join
   // returns the result.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun choose(this, flag: bool) -> i32 {"
+      "struct Cell { value: i32, fn choose(this, flag: bool) -> i32 {"
       " if (flag) { return 42; } else { return 0; } } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.conditionals().size() == 1);
@@ -2203,14 +2202,14 @@ ZC_TEST("HIR pipeline lowers a shared-receiver method conditional return") {
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method parameter arithmetic return") {
-  // `fun increment(this, x: i32) -> i32 { return x + 1; }` computes one
+  // `fn increment(this, x: i32) -> i32 { return x + 1; }` computes one
   // arithmetic rvalue over its ordinary parameter. Built MIR declares the
   // receiver parameter at ordinal 1, the i32 parameter at ordinal 2, and a
   // FunctionResult local at ordinal 3; the one block stores the result live,
   // assigns the Add rvalue, and returns the result.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun increment(this, x: i32) -> i32 { return x + 1; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.increment(41); }"_zc);
+      "struct Cell { value: i32, fn increment(this, x: i32) -> i32 { return x + 1; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.increment(41); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
@@ -2262,15 +2261,15 @@ ZC_TEST("HIR pipeline lowers a shared-receiver method parameter arithmetic retur
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method receiver-field arithmetic return") {
-  // `fun plus(this) -> i32 { return this.value + 1; }` reads one field off the
+  // `fn plus(this) -> i32 { return this.value + 1; }` reads one field off the
   // implicit receiver and combines it with a scalar literal. Built MIR
   // declares the receiver parameter at ordinal 1 and a FunctionResult local at
   // ordinal 2; the one block stores the result live, assigns the Add rvalue
   // whose field operand is a [Dereference, Field] place-use of the receiver,
   // and returns the result.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun plus(this) -> i32 { return this.value + 1; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 41 }; return cell.plus(); }"_zc);
+      "struct Cell { value: i32, fn plus(this) -> i32 { return this.value + 1; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 41 }; return cell.plus(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
@@ -2337,8 +2336,8 @@ ZC_TEST("HIR pipeline lowers a mutating-receiver method receiver-field arithmeti
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
       session,
-      "struct Cell { value: i32, mutating fun plus(this) -> i32 { return this.value + 1; } }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.plus(); }"_zc);
+      "struct Cell { value: i32, mutating fn plus(this) -> i32 { return this.value + 1; } }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.plus(); }"_zc);
   ZC_EXPECT(checked);
   ZC_EXPECT(!session.hasDiagnosticErrors());
   ZC_EXPECT(session.getVerifiedHirModules().size() > 0);
@@ -2354,15 +2353,15 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method parameter arithmetic as 
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
       session,
-      "struct Cell { value: i32, mutating fun increment(this, x: i32) -> i32 { return x + 1; } }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.increment(41); }"_zc);
+      "struct Cell { value: i32, mutating fn increment(this, x: i32) -> i32 { return x + 1; } }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.increment(41); }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method self-call return") {
-  // `fun pick(this) -> i32 { return this.base(); }` forwards the implicit
+  // `fn pick(this) -> i32 { return this.base(); }` forwards the implicit
   // receiver parameter to a zero-argument shared-receiver method. The HIR
   // tail is a receiver call whose receiver slot is unset (the header
   // parameter is forwarded directly); Built MIR declares the receiver
@@ -2370,9 +2369,9 @@ ZC_TEST("HIR pipeline lowers a shared-receiver method self-call return") {
   // the result live in the entry block, then calls base with the receiver
   // local as its sole argument and returns the result.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun base(this) -> i32 { return 42; },"
-      " fun pick(this) -> i32 { return this.base(); } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.pick(); }"_zc);
+      "struct Cell { value: i32, fn base(this) -> i32 { return 42; },"
+      " fn pick(this) -> i32 { return this.base(); } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.pick(); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 3);
   ZC_REQUIRE(module.receiverCalls().size() == 2);
@@ -2443,23 +2442,23 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method conditional as ZOM4099")
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
       session,
-      "struct Cell { value: i32, mutating fun choose(this, flag: bool) -> i32 {"
+      "struct Cell { value: i32, mutating fn choose(this, flag: bool) -> i32 {"
       " if (flag) { return 42; } else { return 0; } } }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.choose(true); }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
 ZC_TEST("HIR pipeline lowers a shared-receiver method returning an explicit parameter") {
-  // `fun echo(this, answer: i32) -> i32 { return answer; }` returns its one
+  // `fn echo(this, answer: i32) -> i32 { return answer; }` returns its one
   // ordinary parameter. The HIR tail is a generic parameter reference; Built
   // MIR declares the implicit receiver as the leading parameter local ordinal 1
   // and the explicit parameter at ordinal 2, then returns a place-use of local
   // 2 with no projections.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, fun echo(this, answer: i32) -> i32 { return answer; } }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 7 }; return cell.echo(42); }"_zc);
+      "struct Cell { value: i32, fn echo(this, answer: i32) -> i32 { return answer; } }\n"
+      "fn entry() -> i32 { let cell = Cell { value: 7 }; return cell.echo(42); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_EXPECT(module.parameterFieldProjections().size() == 0);
@@ -2512,8 +2511,8 @@ ZC_TEST("HIR pipeline lowers a bare direct call through exact node strides") {
   // Asserts the exact four-node source-preorder stride (function, body, return,
   // call) and the two-block call-continuation MIR with one FunctionResult local.
   HirPipelineFixture fixture(
-      "fun callee(a: i32, b: i32) -> i32 { return a; }\n"
-      "fun caller(x: i32, y: i32) -> i32 { return callee(x, 7); }"_zc);
+      "fn callee(a: i32, b: i32) -> i32 { return a; }\n"
+      "fn caller(x: i32, y: i32) -> i32 { return callee(x, 7); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.blocks().size() == 2);
@@ -2595,8 +2594,8 @@ ZC_TEST("HIR pipeline lowers a direct-call initializer with a literal argument")
   // arguments there); parameter arguments are admitted only for a bare
   // `return callee(..)` call, covered by the previous test.
   HirPipelineFixture fixture(
-      "fun callee(value: i32) -> i32 { return value; }\n"
-      "fun entry() -> i32 { let value = callee(7); return value; }"_zc);
+      "fn callee(value: i32) -> i32 { return value; }\n"
+      "fn entry() -> i32 { let value = callee(7); return value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -2678,9 +2677,9 @@ ZC_TEST("HIR pipeline lowers a three-function caller-callee-leaf call chain") {
   // is itself a caller of a standalone leaf. Each call keeps its own exact
   // node-id region and its canonical MIR record is byte-stable.
   HirPipelineFixture fixture(
-      "fun leaf() -> i32 { return 9; }\n"
-      "fun callee() -> i32 { let y = leaf(); return y; }\n"
-      "fun caller() -> i32 { let x = callee(); return x; }"_zc);
+      "fn leaf() -> i32 { return 9; }\n"
+      "fn callee() -> i32 { let y = leaf(); return y; }\n"
+      "fn caller() -> i32 { let x = callee(); return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 3);
   ZC_REQUIRE(module.calls().size() == 2);
@@ -2731,8 +2730,8 @@ ZC_TEST("HIR pipeline lowers a mutable-receiver call through exact node strides"
   // receiver reference, receiver call), the receiver borrow/effect MIR shape,
   // and byte-stable canonical MIR records.
   HirPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+      "struct Cell { value: i32, mutating fn read(this, amount: i32) -> i32; }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -2846,14 +2845,14 @@ ZC_TEST("Checked-module assembly ignores interfaces outside the exact imported v
 }
 
 ZC_TEST("HIR pipeline lowers an unsafe block wrapping a parameter reborrow") {
-  HirPipelineFixture fixture("fun entry() -> i32 { return unsafe { 1 }; }"_zc);
+  HirPipelineFixture fixture("fn entry() -> i32 { return unsafe { 1 }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.unsafeBlocks().size() == 1);
 }
 
 ZC_TEST("HIR pipeline lowers an unsafe block wrapping a direct parameter reborrow") {
-  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return unsafe { &*p }; }"_zc);
+  HirPipelineFixture fixture("fn entry(p: &i32) -> &i32 { return unsafe { &*p }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -2871,7 +2870,7 @@ ZC_TEST("HIR pipeline lowers an unsafe block wrapping a direct parameter reborro
 }
 
 ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
-  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
+  HirPipelineFixture fixture("fn entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -2889,7 +2888,7 @@ ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
 }
 
 ZC_TEST("HIR borrow arm lowers a bare parameter reborrow through exact node strides") {
-  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  HirPipelineFixture fixture("fn entry(p: &i32) -> &i32 { return &*p; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -2914,8 +2913,7 @@ ZC_TEST("HIR borrow arm lowers a bare parameter reborrow through exact node stri
 }
 
 ZC_TEST("HIR borrow arm lowers an unsafe parameter reborrow through exact node strides") {
-  HirPipelineFixture fixture(
-      "fun entry(p: &mut i32) -> &mut i32 { return unsafe { &mut *p }; }"_zc);
+  HirPipelineFixture fixture("fn entry(p: &mut i32) -> &mut i32 { return unsafe { &mut *p }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.parameterReborrows().size() == 1);
   ZC_REQUIRE(module.unsafeBlocks().size() == 1);
@@ -2960,7 +2958,7 @@ ZC_TEST("HIR borrow arm lowers an unsafe parameter reborrow through exact node s
 }
 
 ZC_TEST("HIR borrow arm lowers an unsafe scalar return through exact node strides") {
-  HirPipelineFixture fixture("fun entry() -> i32 { return unsafe { 1 }; }"_zc);
+  HirPipelineFixture fixture("fn entry() -> i32 { return unsafe { 1 }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.expressions().size() == 1);
@@ -2981,7 +2979,7 @@ ZC_TEST("HIR borrow arm lowers an unsafe scalar return through exact node stride
 }
 
 ZC_TEST("HIR borrow arm lowers an unsafe local-alias reborrow through exact node strides") {
-  HirPipelineFixture fixture("fun entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
+  HirPipelineFixture fixture("fn entry(p: &i32) -> &i32 { let y = p; return unsafe { &*y }; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.locals().size() == 1);
   ZC_REQUIRE(module.parameterReferences().size() == 1);
@@ -3017,7 +3015,7 @@ ZC_TEST("HIR borrow arm lowers an unsafe local-alias reborrow through exact node
 
 ZC_TEST("HIR pipeline lowers an admitted while loop") {
   HirPipelineFixture fixture(
-      "fun spin(cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = 1; } return x; }"_zc);
+      "fn spin(cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = 1; } return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -3095,7 +3093,7 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
 
 ZC_TEST("HIR pipeline lowers a while loop whose body writes a mutable local") {
   HirPipelineFixture fixture(
-      "fun f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
+      "fn f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -3176,7 +3174,7 @@ ZC_TEST("HIR pipeline lowers a while loop whose body writes a mutable local") {
 
 ZC_TEST("HIR pipeline lowers a two-arm scalar-literal conditional") {
   HirPipelineFixture fixture(
-      "fun pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
+      "fn pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -3226,7 +3224,7 @@ ZC_TEST("HIR pipeline lowers a two-arm scalar-literal conditional") {
 
 ZC_TEST("HIR pipeline lowers a two-arm parameter conditional") {
   HirPipelineFixture fixture(
-      "fun choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
+      "fn choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -3277,7 +3275,7 @@ ZC_TEST("HIR pipeline lowers a two-arm parameter conditional") {
 
 ZC_TEST("HIR pipeline lowers an equality-comparison conditional condition") {
   HirPipelineFixture fixture(
-      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+      "fn eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -3339,7 +3337,7 @@ ZC_TEST("HIR pipeline lowers an equality-comparison conditional condition") {
 
 ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
   HirPipelineFixture fixture(
-      "fun lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
+      "fn lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.conditionals().size() == 1);
@@ -3367,7 +3365,7 @@ ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
 
 ZC_TEST("HIR control arm lowers a parameter-condition conditional through exact node strides") {
   HirPipelineFixture fixture(
-      "fun choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
+      "fn choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -3402,7 +3400,7 @@ ZC_TEST("HIR control arm lowers a parameter-condition conditional through exact 
 
 ZC_TEST("HIR control arm lowers a literal-arm parameter conditional through exact node strides") {
   HirPipelineFixture fixture(
-      "fun pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
+      "fn pick(c: bool) -> i32 { if (c) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.conditionals().size() == 1);
@@ -3420,7 +3418,7 @@ ZC_TEST("HIR control arm lowers a literal-arm parameter conditional through exac
 
 ZC_TEST("HIR control arm lowers a comparison-condition conditional through exact node strides") {
   HirPipelineFixture fixture(
-      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+      "fn eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.blocks().size() == 1);
@@ -3456,7 +3454,7 @@ ZC_TEST("HIR control arm lowers a comparison-condition conditional through exact
 
 ZC_TEST("HIR control arm lowers a parameter-and-literal comparison conditional exact strides") {
   HirPipelineFixture fixture(
-      "fun lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
+      "fn lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.conditionals().size() == 1);
   ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
@@ -3473,7 +3471,7 @@ ZC_TEST("HIR control arm lowers a parameter-and-literal comparison conditional e
 
 ZC_TEST("HIR control arm lowers a loop-body write composite through exact node strides") {
   HirPipelineFixture fixture(
-      "fun f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
+      "fn f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.loops().size() == 1);
@@ -3518,7 +3516,7 @@ ZC_TEST("HIR composite arm lowers an aggregate field overwrite through exact nod
   // projection 8. The block lists [local, write, return].
   HirPipelineFixture fixture(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }"_zc);
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -3589,7 +3587,7 @@ ZC_TEST("HIR composite arm lowers multiple aggregate field overwrites exact stri
   // return 9, projection 10.
   HirPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> i32 { mut pair = Pair { left: 0, right: false }; pair.left = 1; "
+      "fn entry() -> i32 { mut pair = Pair { left: 0, right: false }; pair.left = 1; "
       "pair.right = true; return pair.left; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.localWrites().size() == 2);
@@ -3639,7 +3637,7 @@ ZC_TEST("HIR composite arm lowers an uninitialized field initialization exact no
   // initializer), field write 4, write literal 5, return 6, projection 7.
   HirPipelineFixture fixture(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.locals().size() == 1);
@@ -3699,7 +3697,7 @@ ZC_TEST("HIR composite arm lowers a repeated uninitialized field overwrite exact
   // second overwrites it; stride with two writes is 9 nodes.
   HirPipelineFixture fixture(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; cell.value = 1; return cell.value; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.value = 0; cell.value = 1; return cell.value; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.localWrites().size() == 2);
   const auto& local = module.locals()[0];
@@ -3718,7 +3716,7 @@ ZC_TEST("HIR composite arm lowers a repeated uninitialized field overwrite exact
 
 ZC_TEST("Built MIR comparison rvalue byte oracle is stable and mutation sensitive") {
   HirPipelineFixture fixture(
-      "fun eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
+      "fn eq(a: i32, b: i32) -> i32 { if (a == b) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   const auto& function = module.functions()[0];
@@ -3796,7 +3794,7 @@ ZC_TEST("Built MIR comparison rvalue byte oracle is stable and mutation sensitiv
 ZC_TEST(
     "Built MIR less-than comparison rvalue emits the Lt operator byte through the live encoder") {
   HirPipelineFixture fixture(
-      "fun lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
+      "fn lt(a: i32, b: i32) -> i32 { if (a < b) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   const auto& function = module.functions()[0];
@@ -3863,7 +3861,7 @@ ZC_TEST(
 
 ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional condition") {
   HirPipelineFixture fixture(
-      "fun lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
+      "fn lt(a: i32) -> i32 { if (a < 5) { return 1; } else { return 2; } }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.conditionals().size() == 1);
@@ -3919,7 +3917,7 @@ ZC_TEST("HIR pipeline lowers a parameter-and-literal relational conditional cond
 }
 
 ZC_TEST("HIR pipeline lowers a return-position relational comparison") {
-  HirPipelineFixture fixture("fun lt(a: i32, b: i32) -> bool { return a < b; }"_zc);
+  HirPipelineFixture fixture("fn lt(a: i32, b: i32) -> bool { return a < b; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -3983,17 +3981,17 @@ ZC_TEST("HIR pipeline lowers all six relational operators in return position") {
     checker::PrimitiveOperation operation;
     mir::MirComparisonOperator mirOperator;
   };
-  const Case cases[] = {{"fun f(a: i32, b: i32) -> bool { return a == b; }"_zc,
+  const Case cases[] = {{"fn f(a: i32, b: i32) -> bool { return a == b; }"_zc,
                          checker::PrimitiveOperation::Eq, mir::MirComparisonOperator::Eq},
-                        {"fun f(a: i32, b: i32) -> bool { return a != b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> bool { return a != b; }"_zc,
                          checker::PrimitiveOperation::Ne, mir::MirComparisonOperator::Ne},
-                        {"fun f(a: i32, b: i32) -> bool { return a < b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> bool { return a < b; }"_zc,
                          checker::PrimitiveOperation::Lt, mir::MirComparisonOperator::Lt},
-                        {"fun f(a: i32, b: i32) -> bool { return a <= b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> bool { return a <= b; }"_zc,
                          checker::PrimitiveOperation::Le, mir::MirComparisonOperator::Le},
-                        {"fun f(a: i32, b: i32) -> bool { return a > b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> bool { return a > b; }"_zc,
                          checker::PrimitiveOperation::Gt, mir::MirComparisonOperator::Gt},
-                        {"fun f(a: i32, b: i32) -> bool { return a >= b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> bool { return a >= b; }"_zc,
                          checker::PrimitiveOperation::Ge, mir::MirComparisonOperator::Ge}};
   for (const auto& testCase : cases) {
     HirPipelineFixture fixture(testCase.source);
@@ -4018,7 +4016,7 @@ ZC_TEST("HIR pipeline lowers all six relational operators in return position") {
 }
 
 ZC_TEST("HIR pipeline lowers a return-position arithmetic operation") {
-  HirPipelineFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
+  HirPipelineFixture fixture("fn add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   ZC_REQUIRE(module.returns().size() == 1);
@@ -4076,29 +4074,29 @@ ZC_TEST("HIR pipeline lowers all twelve arithmetic and bitwise operators in retu
     checker::PrimitiveOperation operation;
     mir::MirArithmeticOperator mirOperator;
   };
-  const Case cases[] = {{"fun f(a: i32, b: i32) -> i32 { return a + b; }"_zc,
+  const Case cases[] = {{"fn f(a: i32, b: i32) -> i32 { return a + b; }"_zc,
                          checker::PrimitiveOperation::Add, mir::MirArithmeticOperator::Add},
-                        {"fun f(a: i32, b: i32) -> i32 { return a - b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a - b; }"_zc,
                          checker::PrimitiveOperation::Sub, mir::MirArithmeticOperator::Sub},
-                        {"fun f(a: i32, b: i32) -> i32 { return a * b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a * b; }"_zc,
                          checker::PrimitiveOperation::Mul, mir::MirArithmeticOperator::Mul},
-                        {"fun f(a: i32, b: i32) -> i32 { return a / b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a / b; }"_zc,
                          checker::PrimitiveOperation::Div, mir::MirArithmeticOperator::Div},
-                        {"fun f(a: i32, b: i32) -> i32 { return a % b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a % b; }"_zc,
                          checker::PrimitiveOperation::Rem, mir::MirArithmeticOperator::Rem},
-                        {"fun f(a: i32, b: i32) -> i32 { return a ** b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a ** b; }"_zc,
                          checker::PrimitiveOperation::Pow, mir::MirArithmeticOperator::Pow},
-                        {"fun f(a: i32, b: i32) -> i32 { return a << b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a << b; }"_zc,
                          checker::PrimitiveOperation::Shl, mir::MirArithmeticOperator::Shl},
-                        {"fun f(a: i32, b: i32) -> i32 { return a >> b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a >> b; }"_zc,
                          checker::PrimitiveOperation::Shr, mir::MirArithmeticOperator::Shr},
-                        {"fun f(a: i32, b: i32) -> i32 { return a >>> b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a >>> b; }"_zc,
                          checker::PrimitiveOperation::UShr, mir::MirArithmeticOperator::UShr},
-                        {"fun f(a: i32, b: i32) -> i32 { return a & b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a & b; }"_zc,
                          checker::PrimitiveOperation::BitAnd, mir::MirArithmeticOperator::BitAnd},
-                        {"fun f(a: i32, b: i32) -> i32 { return a | b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a | b; }"_zc,
                          checker::PrimitiveOperation::BitOr, mir::MirArithmeticOperator::BitOr},
-                        {"fun f(a: i32, b: i32) -> i32 { return a ^ b; }"_zc,
+                        {"fn f(a: i32, b: i32) -> i32 { return a ^ b; }"_zc,
                          checker::PrimitiveOperation::BitXor, mir::MirArithmeticOperator::BitXor}};
   for (const auto& testCase : cases) {
     HirPipelineFixture fixture(testCase.source);
@@ -4123,7 +4121,7 @@ ZC_TEST("HIR pipeline lowers all twelve arithmetic and bitwise operators in retu
 }
 
 ZC_TEST("Built MIR arithmetic rvalue byte oracle is stable and mutation sensitive") {
-  HirPipelineFixture fixture("fun add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
+  HirPipelineFixture fixture("fn add(a: i32, b: i32) -> i32 { return a + b; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 1);
   const auto& function = module.functions()[0];
@@ -4197,7 +4195,7 @@ ZC_TEST("Built MIR arithmetic rvalue byte oracle is stable and mutation sensitiv
 }
 
 ZC_TEST("HIR pipeline lowers a scalar-return inherent method to a receiver MIR local") {
-  // The flat scalar-return method body (`fun get(this) -> i32 { return 7; }`)
+  // The flat scalar-return method body (`fn get(this) -> i32 { return 7; }`)
   // is the first inherent method shape to reach Built MIR. The method lowers as
   // a function whose source definition kind is Method and whose single leading
   // local is the implicit `this` receiver parameter; the admitted scalar body
@@ -4205,9 +4203,9 @@ ZC_TEST("HIR pipeline lowers a scalar-return inherent method to a receiver MIR l
   HirPipelineFixture fixture(
       "struct Cell {\n"
       "  value: i32,\n"
-      "  fun get(this) -> i32 { return 7; }\n"
+      "  fn get(this) -> i32 { return 7; }\n"
       "}\n"
-      "fun entry() -> i32 { return 0; }"_zc);
+      "fn entry() -> i32 { return 0; }"_zc);
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);
   zc::Maybe<const HirFunctionDeclaration&> method;
@@ -4262,10 +4260,10 @@ ZC_TEST("HIR pipeline lowers a discarded unit receiver call and a parameter-RHS 
   HirPipelineFixture fixture(
       "struct Cell {\n"
       "  value: i32,\n"
-      "  mutating fun set(this, x: i32) { this.value = x; }\n"
-      "  fun get(this) -> i32 { return this.value; }\n"
+      "  mutating fn set(this, x: i32) { this.value = x; }\n"
+      "  fn get(this) -> i32 { return this.value; }\n"
       "}\n"
-      "fun entry() -> i32 {\n"
+      "fn entry() -> i32 {\n"
       "  mut cell = Cell { value: 0 };\n"
       "  cell.set(42);\n"
       "  return cell.get();\n"
@@ -4510,7 +4508,7 @@ ZC_TEST("HIR pipeline reads either named sibling field of a two-field local aggr
   {
     HirPipelineFixture fixture(
         "struct Point { x: i32, y: i32, }\n"
-        "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.x; }"_zc);
+        "fn entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.x; }"_zc);
     ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
     const auto& module = fixture.hirModule();
     ZC_REQUIRE(module.aggregates().size() == 1);
@@ -4521,7 +4519,7 @@ ZC_TEST("HIR pipeline reads either named sibling field of a two-field local aggr
   {
     HirPipelineFixture fixture(
         "struct Point { x: i32, y: i32, }\n"
-        "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.y; }"_zc);
+        "fn entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return p.y; }"_zc);
     ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
     const auto& module = fixture.hirModule();
     ZC_REQUIRE(module.aggregates().size() == 1);
@@ -4534,8 +4532,8 @@ ZC_TEST("HIR pipeline reads either named sibling field of a two-field local aggr
 ZC_TEST("HIR pipeline lowers a by-value aggregate call and its parameter field callee") {
   HirPipelineFixture fixture(
       "struct Point { x: i32, y: i32, }\n"
-      "fun first(p: Point) -> i32 { return p.x; }\n"
-      "fun entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return first(p); }"_zc);
+      "fn first(p: Point) -> i32 { return p.x; }\n"
+      "fn entry() -> i32 { let p: Point = Point { x: 40, y: 2 }; return first(p); }"_zc);
   ZC_REQUIRE(!fixture.compilerSession().hasDiagnosticErrors());
   const auto& module = fixture.hirModule();
   ZC_REQUIRE(module.functions().size() == 2);

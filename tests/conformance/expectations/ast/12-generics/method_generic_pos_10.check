@@ -18,53 +18,53 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #22 @1:12..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #21 @2:5..2:52 name="map" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #21 @2:5..2:50 name="map" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #11 @2:15..2:31 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #11 @2:14..2:29 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #10 @2:16..2:30 name="f"
+// CHECK-NEXT:                         FunctionParameterDecl #10 @2:15..2:28 name="f"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             FunctionTypeExpr #9 @2:19..2:30
+// CHECK-NEXT:                             FunctionTypeExpr #9 @2:18..2:28
 // CHECK-NEXT:                               params:
-// CHECK-NEXT:                                 NamedTypeExpr #8 @2:23..2:24
+// CHECK-NEXT:                                 NamedTypeExpr #8 @2:21..2:22
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #7 @2:23..2:24 segments=["T"] root=Relative
+// CHECK-NEXT:                                     ModulePath #7 @2:21..2:22 segments=["T"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               ret_ty:
-// CHECK-NEXT:                                 NamedTypeExpr #6 @2:29..2:30
+// CHECK-NEXT:                                 NamedTypeExpr #6 @2:27..2:28
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #5 @2:29..2:30 segments=["U"] root=Relative
+// CHECK-NEXT:                                     ModulePath #5 @2:27..2:28 segments=["U"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               raises: null
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id:
-// CHECK-NEXT:                     GenericParams #4 @2:12..2:15 nparams=1
+// CHECK-NEXT:                     GenericParams #4 @2:11..2:14 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         GenericTypeParam #3 @2:13..2:14 name="U"
+// CHECK-NEXT:                         GenericTypeParam #3 @2:12..2:13 name="U"
 // CHECK-NEXT:                           bounds_id: null
 // CHECK-NEXT:                           default_ty: null
 // CHECK-NEXT:                       where_: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #15 @2:35..2:39
+// CHECK-NEXT:                     NamedTypeExpr #15 @2:33..2:37
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #14 @2:35..2:36 segments=["C"] root=Relative
+// CHECK-NEXT:                         ModulePath #14 @2:33..2:34 segments=["C"] root=Relative
 // CHECK-NEXT:                       args:
-// CHECK-NEXT:                         NamedTypeExpr #13 @2:37..2:38
+// CHECK-NEXT:                         NamedTypeExpr #13 @2:35..2:36
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #12 @2:37..2:38 segments=["U"] root=Relative
+// CHECK-NEXT:                             ModulePath #12 @2:35..2:36 segments=["U"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #20 @2:40..2:52
+// CHECK-NEXT:                     BlockStmt #20 @2:38..2:50
 // CHECK-NEXT:                       stmts:
-// CHECK-NEXT:                         StatementListItem #19 @2:42..2:50
+// CHECK-NEXT:                         StatementListItem #19 @2:40..2:48
 // CHECK-NEXT:                           item:
-// CHECK-NEXT:                             ExpressionStatement #18 @2:42..2:50
+// CHECK-NEXT:                             ExpressionStatement #18 @2:40..2:48
 // CHECK-NEXT:                               expression:
-// CHECK-NEXT:                                 CallExpression #17 @2:42..2:49
+// CHECK-NEXT:                                 CallExpression #17 @2:40..2:47
 // CHECK-NEXT:                                   callee:
-// CHECK-NEXT:                                     IdentExpr #16 @2:42..2:47 name="panic"
+// CHECK-NEXT:                                     IdentExpr #16 @2:40..2:45 name="panic"
 // CHECK-NEXT:                                   type_args: []
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                           attrs: null

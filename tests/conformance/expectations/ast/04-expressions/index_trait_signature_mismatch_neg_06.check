@@ -16,20 +16,20 @@
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 MethodDecl #7 @3:5..3:40 name="index" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #7 @3:5..3:39 name="index" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @3:14..3:24 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @3:13..3:23 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @3:15..3:23 name="idx"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @3:14..3:22 name="idx"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #2 @3:20..3:23 kind=I32
+// CHECK-NEXT:                             PredefinedTypeExpr #2 @3:19..3:22 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #6 @3:28..3:39
+// CHECK-NEXT:                     NamedTypeExpr #6 @3:27..3:38
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @3:28..3:39 segments=["Self", "Output"] root=Relative
+// CHECK-NEXT:                         ModulePath #5 @3:27..3:38 segments=["Self", "Output"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
@@ -66,18 +66,18 @@
 // CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
 // CHECK-NEXT:                     PredefinedTypeExpr #18 @9:19..9:22 kind=I32
-// CHECK-NEXT:                 MethodDecl #24 @10:5..10:32 name="index" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #24 @10:5..10:31 name="index" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #22 @10:14..10:24 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #22 @10:13..10:23 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #21 @10:15..10:23 name="idx"
+// CHECK-NEXT:                         FunctionParameterDecl #21 @10:14..10:22 name="idx"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #20 @10:20..10:23 kind=Str
+// CHECK-NEXT:                             PredefinedTypeExpr #20 @10:19..10:22 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #23 @10:28..10:31 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #23 @10:27..10:30 kind=I32
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

@@ -1,4 +1,4 @@
-fun main() -> unit {
+fn main() -> unit {
     let ptr: *const i32;
     let value = unsafe { *ptr };
 }

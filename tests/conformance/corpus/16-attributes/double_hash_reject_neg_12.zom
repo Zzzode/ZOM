@@ -1,2 +1,2 @@
 ##
-fun double_hash();
+fn double_hash();

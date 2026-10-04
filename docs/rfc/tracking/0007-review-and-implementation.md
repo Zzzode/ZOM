@@ -1176,7 +1176,7 @@ scalar-comparison operator family in `hir/hir-module.cc:316-323`
 end-to-end pipeline tests in `tests/unittests/compiler/hir/hir-module-test.cc`
 compile source through the session and assert the lowered Built MIR CFG:
 
-- The minimal reducible while loop `fun spin(cond: bool) -> i32 { while (cond)
+- The minimal reducible while loop `fn spin(cond: bool) -> i32 { while (cond)
   { } return 0; }` lowers to a four-block CFG (entry `Goto`, `SwitchInt` header,
   reducible back-edge `Goto` body, `Return` exit) at
   `hir-module-test.cc:736-802`.

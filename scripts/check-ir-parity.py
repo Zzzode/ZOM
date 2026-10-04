@@ -216,7 +216,7 @@ def run_self_test() -> int:
         corpus = root / "corpus"
         sub = corpus / "pkg"
         sub.mkdir(parents=True)
-        source = write_file(sub / "a.zom", "fun entry() -> i32 { return 0; }\n")
+        source = write_file(sub / "a.zom", "fn entry() -> i32 { return 0; }\n")
 
         compiler_a = make_fake(
             root,

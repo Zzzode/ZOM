@@ -1,1 +1,1 @@
-static mutating fun f() {}
+static mutating fn f() {}

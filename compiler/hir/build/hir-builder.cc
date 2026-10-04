@@ -9275,7 +9275,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                value.initializerSpan.clone()});
   }
   for (auto& value : pendingFunctions) {
-    // By-value struct parameter field return: `fun f(p: P) -> T { return p.f; }`
+    // By-value struct parameter field return: `fn f(p: P) -> T { return p.f; }`
     // with no receiver and no other body carriers. The HIR projection record is
     // identical to a receiver field projection; MIR construction selects the
     // by-value builder from the declaration parameters.
@@ -9349,7 +9349,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       continue;
     }
     // Void mutating-method family: one receiver-field write whose value is the
-    // ordinary parameter (`mutating fun set(this, x) { this.f = x; }`), no
+    // ordinary parameter (`mutating fn set(this, x) { this.f = x; }`), no
     // return, Unit result. Four node ids: function, body, write, parameter
     // reference. The receiver moves into the header and is the sole carrier
     // besides the write and the parameter reference.

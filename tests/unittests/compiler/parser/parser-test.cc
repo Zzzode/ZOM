@@ -247,7 +247,7 @@ ZC_TEST("ParserTest.FunctionDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
+      zc::str("fn add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -504,7 +504,7 @@ ZC_TEST("ParserTest.ObjectType") {
 
   auto bufferId = sourceManager->addMemBufferCopy(
       zc::str("let x: { prop: i32; getProp: () -> i32 } = { prop: 42, "
-              "getProp: fun() -> i32 { return 42; } };")
+              "getProp: fn() -> i32 { return 42; } };")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -781,7 +781,7 @@ ZC_TEST("ParserTest.ParseComplexFunction") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
+      zc::str("fn add(a: i32, b: i32) -> i32 { return a + b; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -819,7 +819,7 @@ ZC_TEST("ParserTest.ParseSimpleFunction") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("fun test() { return 42; }").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("fn test() { return 42; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -859,7 +859,7 @@ ZC_TEST("ParserTest.ParseFunctionLocalStructLiteralMember") {
 
   auto bufferId = sourceManager->addMemBufferCopy(
       zc::str("struct Cell { value: i32, }\n"
-              "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }")
+              "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -872,7 +872,7 @@ ZC_TEST("ParserTest.ParseFunctionLocalStructLiteralMember") {
 ZC_TEST("ParserTest.CanonicalizesFunctionLocalStructLiteralMember") {
   const auto sourceText = zc::str(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }");
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }");
   auto sourceManager = zc::heap<source::SourceManager>();
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
@@ -959,7 +959,7 @@ ZC_TEST("ParserTest.ParseRaisesClause") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun test() -> i32 raises ErrorType { return 42; }").asBytes(), "test.zom");
+      zc::str("fn test() -> i32 raises ErrorType { return 42; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1009,8 +1009,8 @@ ZC_TEST("ParserTest.ParseInlineModuleDeclarationShape") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("module graphics {\n"
-                                                          "  fun first() -> i32 { return 1; }\n"
-                                                          "  fun second() -> i32 { return 2; }\n"
+                                                          "  fn first() -> i32 { return 1; }\n"
+                                                          "  fn second() -> i32 { return 2; }\n"
                                                           "}\n")
                                                       .asBytes(),
                                                   "test.zom");
@@ -1044,9 +1044,9 @@ ZC_TEST("ParserTest.PreserveDeclarationAfterInlineModule") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("module graphics {\n"
-                                                          "  fun inside() {}\n"
+                                                          "  fn inside() {}\n"
                                                           "}\n"
-                                                          "fun trailing() {}\n")
+                                                          "fn trailing() {}\n")
                                                       .asBytes(),
                                                   "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -1113,7 +1113,7 @@ ZC_TEST("ParserTest.ParseDeclarationSiteExport") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("export fun distance() -> i32 { return 0; }").asBytes(), "test.zom");
+      zc::str("export fn distance() -> i32 { return 0; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1130,7 +1130,7 @@ ZC_TEST("ParserTest.RejectsImportAndExportDeclarationsInBlocks") {
   auto sourceManager = zc::heap<source::SourceManager>();
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("fun invalidModuleItems() {\n"
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("fn invalidModuleItems() {\n"
                                                           "  import std::io;\n"
                                                           "  export { value };\n"
                                                           "}\n"_zc)
@@ -1284,7 +1284,7 @@ ZC_TEST("ParserTest.UnsupportedExportDefaultInBlockRecovers") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
 
-  auto bufferId = sourceManager->addMemBufferCopy(zc::str("fun outer() {\n"
+  auto bufferId = sourceManager->addMemBufferCopy(zc::str("fn outer() {\n"
                                                           "  export default foo;\n"
                                                           "  let x = 1;\n"
                                                           "}\n")
@@ -1316,7 +1316,7 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Drawable { fun draw() -> unit; }").asBytes(), "test.zom");
+      zc::str("interface Drawable { fn draw() -> unit; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1329,7 +1329,7 @@ ZC_TEST("ParserTest.ParseInterfaceHeritagePreservesIfaces") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Derived : Base + Sendable { fun draw(); }").asBytes(), "test.zom");
+      zc::str("interface Derived : Base + Sendable { fn draw(); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1398,7 +1398,7 @@ ZC_TEST("ParserTest.ParseParameterAttributeOnThisReceiver") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Consumable { fun consume(#[zom::param::move] this); }").asBytes(),
+      zc::str("interface Consumable { fn consume(#[zom::param::move] this); }").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
@@ -1456,8 +1456,8 @@ ZC_TEST("ParserTest.RejectsThisReceiverAfterFirstParameter") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("class C {\n"
-                                                          "  fun late(value: i32, this) {}\n"
-                                                          "  fun duplicate(this, this: Self) {}\n"
+                                                          "  fn late(value: i32, this) {}\n"
+                                                          "  fn duplicate(this, this: Self) {}\n"
                                                           "}\n"_zc)
                                                       .asBytes(),
                                                   "test.zom");
@@ -1472,8 +1472,8 @@ ZC_TEST("ParserTest.RejectsThisReceiverDefaultValue") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
   auto bufferId = sourceManager->addMemBufferCopy(zc::str("class C {\n"
-                                                          "  fun inferred(this = value) {}\n"
-                                                          "  fun typed(this: i32 = 0) {}\n"
+                                                          "  fn inferred(this = value) {}\n"
+                                                          "  fn typed(this: i32 = 0) {}\n"
                                                           "}\n"_zc)
                                                       .asBytes(),
                                                   "test.zom");
@@ -1488,10 +1488,10 @@ ZC_TEST("ParserTest.RejectsReceiverOutsideDirectMember") {
   basic::LangOptions langOpts;
   basic::StringPool stringPool;
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("fun moduleReceiver(this) {}\n"
-                                              "fun outer() { fun blockReceiver(this) {} }\n"
-                                              "extern { fun foreignReceiver(this); }\n"
-                                              "let expressionReceiver = fun(this) {};\n"
+      sourceManager->addMemBufferCopy(zc::str("fn moduleReceiver(this) {}\n"
+                                              "fn outer() { fn blockReceiver(this) {} }\n"
+                                              "extern { fn foreignReceiver(this); }\n"
+                                              "let expressionReceiver = fn(this) {};\n"
                                               "let lambdaReceiver = (this) => this;\n"_zc)
                                           .asBytes(),
                                       "test.zom");
@@ -1507,7 +1507,7 @@ ZC_TEST("ParserTest.ParseGetSetKeywordMethodNames") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Mappable<K, V> { fun get(k: K) -> V; fun set(k: K, v: V) -> unit; }")
+      zc::str("interface Mappable<K, V> { fn get(k: K) -> V; fn set(k: K, v: V) -> unit; }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -1545,7 +1545,7 @@ ZC_TEST("ParserTest.ParseInterfacePropertySignature") {
 
   auto bufferId =
       sourceManager->addMemBufferCopy(zc::str("interface I { get x() -> i32; set x(value: i32); "
-                                              "fun f<T>(a: i32) -> unit raises Failure; }")
+                                              "fn f<T>(a: i32) -> unit raises Failure; }")
                                           .asBytes(),
                                       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -1618,7 +1618,7 @@ ZC_TEST("ParserTest.ParseInterfaceGenericMethodPreservesTypeParams") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Mapper { fun map<U>(value: i32) -> U; }").asBytes(), "test.zom");
+      zc::str("interface Mapper { fn map<U>(value: i32) -> U; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   ZC_IF_SOME(root, parser.parse()) {
@@ -1818,7 +1818,7 @@ ZC_TEST("ParserTest.ParseTypeQueryInFunctionParameter") {
 
   // Test type query in function parameter type
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun test(param: typeof MyClass.method) -> unit {}").asBytes(), "test.zom");
+      zc::str("fn test(param: typeof MyClass.method) -> unit {}").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -1832,7 +1832,7 @@ ZC_TEST("ParserTest.ParseTypeQueryInReturnType") {
 
   // Test type query in function return type
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun test() -> typeof globalVar { return globalVar; }").asBytes(), "test.zom");
+      zc::str("fn test() -> typeof globalVar { return globalVar; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -2081,7 +2081,7 @@ ZC_TEST("ParserTest.ParseFunctionReturnObjectTypeBeforeNextDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun make() -> { value: i32 } { return {}; }\nlet done = true;").asBytes(),
+      zc::str("fn make() -> { value: i32 } { return {}; }\nlet done = true;").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
@@ -2351,7 +2351,7 @@ ZC_TEST("ParserTest.ParseMissingClosingBrace") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("fun foo() { let x = 1;").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("fn foo() { let x = 1;").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3299,7 +3299,7 @@ ZC_TEST("ParserTest.ParseAwaitExpressionReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { let x = await bar(); }").asBytes(), "test.zom");
+      zc::str("fn foo() { let x = await bar(); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3313,7 +3313,7 @@ ZC_TEST("ParserTest.ParseFunctionExpression") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("let f = fun(x: i32) -> i32 { return x + 1; };").asBytes(), "test.zom");
+      zc::str("let f = fn(x: i32) -> i32 { return x + 1; };").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3326,7 +3326,7 @@ ZC_TEST("ParserTest.ParseFunctionExpressionNoReturnType") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("let f = fun() { print(\"hello\"); };").asBytes(), "test.zom");
+      zc::str("let f = fn() { print(\"hello\"); };").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3339,7 +3339,7 @@ ZC_TEST("ParserTest.ParseCaptureClause") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("let f = fun() use [x, &y] { return x + y; };").asBytes(), "test.zom");
+      zc::str("let f = fn() use [x, &y] { return x + y; };").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3352,7 +3352,7 @@ ZC_TEST("ParserTest.ParseTypeParameterWithConstraint") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo<T: i32>(x: T) -> T { return x; }").asBytes(), "test.zom");
+      zc::str("fn foo<T: i32>(x: T) -> T { return x; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3365,7 +3365,7 @@ ZC_TEST("ParserTest.ParseTypeParameterDefaultWithNestedGenericClose") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo<T = Vec<i32>>(x: T) -> T { return x; }").asBytes(), "test.zom");
+      zc::str("fn foo<T = Vec<i32>>(x: T) -> T { return x; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3378,8 +3378,7 @@ ZC_TEST("ParserTest.ParseFunctionTypeBoundWithCommaParameters") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun constrained<T: fun(i32, i32) -> i32>(value: T) -> T { return value; }")
-          .asBytes(),
+      zc::str("fn constrained<T: fn(i32, i32) -> i32>(value: T) -> T { return value; }").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
@@ -3420,7 +3419,7 @@ ZC_TEST("ParserTest.ParseTypeParameterBoundListRetainsOrderedMembers") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun constrained<T: A + B + A>(value: T) -> T { return value; }").asBytes(),
+      zc::str("fn constrained<T: A + B + A>(value: T) -> T { return value; }").asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
@@ -3458,7 +3457,7 @@ ZC_TEST("ParserTest.RejectExtraRightAngleAfterTypeParameters") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun f<T, U>>(a: T, b: U) -> unit { return unit; }").asBytes(), "test.zom");
+      zc::str("fn f<T, U>>(a: T, b: U) -> unit { return unit; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3753,7 +3752,7 @@ ZC_TEST("ParserTest.ParseClassDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class Foo { public x: i32 = 0; public fun bar() -> i32 { return self.x; } }")
+      zc::str("class Foo { public x: i32 = 0; public fn bar() -> i32 { return self.x; } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -3810,7 +3809,7 @@ ZC_TEST("ParserTest.ParseInterfaceDeclaration") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface Drawable { fun draw(); fun resize(scale: f64); }").asBytes(), "test.zom");
+      zc::str("interface Drawable { fn draw(); fn resize(scale: f64); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -3901,7 +3900,7 @@ ZC_TEST("ParserTest.AllowsDebuggerAsIdentifier") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun debugger() { let debugger = 1; debugger; }").asBytes(), "test.zom");
+      zc::str("fn debugger() { let debugger = 1; debugger; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -4057,7 +4056,7 @@ ZC_TEST("ParserTest.ParseReturnStatement") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() -> i32 { return 42; }").asBytes(), "test.zom");
+      zc::str("fn foo() -> i32 { return 42; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -4070,7 +4069,7 @@ ZC_TEST("ParserTest.ParseThrowStatementReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { throw Error(\"fail\"); }").asBytes(), "test.zom");
+      zc::str("fn foo() { throw Error(\"fail\"); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -4084,7 +4083,7 @@ ZC_TEST("ParserTest.ParseTryCatchStatementReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { try { bar(); } catch (e) { print(e); } }").asBytes(), "test.zom");
+      zc::str("fn foo() { try { bar(); } catch (e) { print(e); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -4098,7 +4097,7 @@ ZC_TEST("ParserTest.ParseTryFinallyStatementReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { try { bar(); } finally { cleanup(); } }").asBytes(), "test.zom");
+      zc::str("fn foo() { try { bar(); } finally { cleanup(); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
 
   auto result = parser.parse();
@@ -4112,7 +4111,7 @@ ZC_TEST("ParserTest.ParseTryCatchFinallyStatementReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { try { bar(); } catch (e) { print(e); } finally { cleanup(); } }")
+      zc::str("fn foo() { try { bar(); } catch (e) { print(e); } finally { cleanup(); } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -4146,7 +4145,7 @@ ZC_TEST("ParserTest.ParseInterfaceMethodWithSemicolon") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("interface I { fun foo(); fun bar(x: i32) -> str; }").asBytes(), "test.zom");
+      zc::str("interface I { fn foo(); fn bar(x: i32) -> str; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -4175,7 +4174,7 @@ ZC_TEST("ParserTest.RejectsUndeclaredSoftVisibilitySpellings") {
     }
   }
   {
-    auto ids = parseAndCollectDiagnostics("class C { priv fun f() {} }"_zc);
+    auto ids = parseAndCollectDiagnostics("class C { priv fn f() {} }"_zc);
     ZC_EXPECT(ids.size() == 1);
     if (ids.size() == 1) {
       ZC_EXPECT(ids[0] == diagnostics::DiagID::UnsupportedVisibilityModifierSpelling);
@@ -4189,7 +4188,7 @@ ZC_TEST("ParserTest.RejectsUndeclaredSoftVisibilitySpellings") {
     }
   }
   {
-    auto ids = parseAndCollectDiagnostics("class C { package fun f() {} }"_zc);
+    auto ids = parseAndCollectDiagnostics("class C { package fn f() {} }"_zc);
     ZC_EXPECT(ids.size() == 1);
     if (ids.size() == 1) {
       ZC_EXPECT(ids[0] == diagnostics::DiagID::UnsupportedVisibilityModifierSpelling);
@@ -4247,7 +4246,7 @@ ZC_TEST("ParserTest.ParseNamespaceDeclarationReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("namespace Utils { fun helper() -> i32 { return 42; } }").asBytes(), "test.zom");
+      zc::str("namespace Utils { fn helper() -> i32 { return 42; } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported namespace declarations");
@@ -4261,7 +4260,7 @@ ZC_TEST("ParserTest.ParseDeclareStatementReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("declare fun externalFunc(x: i32) -> str;").asBytes(), "test.zom");
+      zc::str("declare fn externalFunc(x: i32) -> str;").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported declare syntax");
@@ -4304,7 +4303,7 @@ ZC_TEST("ParserTest.ParseErrorWithMethods") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("error AppError { message: str; fun format() -> str { return self.message; } }")
+      zc::str("error AppError { message: str; fn format() -> str { return self.message; } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -4332,7 +4331,7 @@ ZC_TEST("ParserTest.ParseStaticMethod") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class Math { public static fun add(a: i32, b: i32) -> i32 { return a + b; } }")
+      zc::str("class Math { public static fn add(a: i32, b: i32) -> i32 { return a + b; } }")
           .asBytes(),
       "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
@@ -4416,7 +4415,7 @@ ZC_TEST("ParserTest.ParseInterfaceWithModifiers") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("interface Comparable { public fun compareTo(other: "
+      sourceManager->addMemBufferCopy(zc::str("interface Comparable { public fn compareTo(other: "
                                               "Self) -> i32; readonly get val() -> i32; }")
                                           .asBytes(),
                                       "test.zom");
@@ -4497,7 +4496,7 @@ ZC_TEST("ParserTest.ParseClassImplementsInterface") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("class Dog { public fun speak() -> str { return \"woof\"; } } "
+      zc::str("class Dog { public fn speak() -> str { return \"woof\"; } } "
               "impl Animal for Dog {}")
           .asBytes(),
       "test.zom");
@@ -4578,7 +4577,7 @@ ZC_TEST("ParserTest.ParseIdentifierPropertyName") {
   basic::StringPool stringPool;
 
   auto bufferId =
-      sourceManager->addMemBufferCopy(zc::str("interface I { fun key(); }").asBytes(), "test.zom");
+      sourceManager->addMemBufferCopy(zc::str("interface I { fn key(); }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -4788,7 +4787,7 @@ ZC_TEST("ParserTest.ParseCatchPatternReportsError") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() { try { bar(); } catch (e: Error) { print(e); } }").asBytes(), "test.zom");
+      zc::str("fn foo() { try { bar(); } catch (e: Error) { print(e); } }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result == zc::none, "Parser must fail closed for unsupported catch syntax");
@@ -4802,7 +4801,7 @@ ZC_TEST("ParserTest.ParseFunctionWithRaises") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() -> unit raises Error { return; }").asBytes(), "test.zom");
+      zc::str("fn foo() -> unit raises Error { return; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -4816,7 +4815,7 @@ ZC_TEST("ParserTest.ParseArrayTypeInFunction") {
   basic::StringPool stringPool;
 
   auto bufferId = sourceManager->addMemBufferCopy(
-      zc::str("fun foo() -> i32[][] { return [[1, 2], [3, 4]]; }").asBytes(), "test.zom");
+      zc::str("fn foo() -> i32[][] { return [[1, 2], [3, 4]]; }").asBytes(), "test.zom");
   Parser parser(*sourceManager, langOpts, stringPool, bufferId);
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none);
@@ -4938,7 +4937,7 @@ ZC_TEST("ParserTest.InvalidSourceBytesRemainInRecoverableLexemeAndSkipRecords") 
 ZC_TEST("ParserTest.RecoverableEventReplayCoversNormalizedAndMultilineSources") {
   const zc::String sourcesToParse[] = {
       zc::str("let a = 123n;\nlet b = 0x123n;\nlet c = 0b101n;\nlet d = 0o123n;\n"),
-      zc::str("let closure = fun (n: i32, s: str) -> str { return \"1234\"; };\n"),
+      zc::str("let closure = fn (n: i32, s: str) -> str { return \"1234\"; };\n"),
       zc::str("/* line", "\xe2\x80\xa8", "separator", "\xe2\x80\xa9", "paragraph */\nlet x = 1;\n"),
   };
   for (const auto& sourceText : sourcesToParse) {

@@ -1,1 +1,1 @@
-fun foo<T, U = unit, V: number>(a: T, b: U) -> V { panic(); }
+fn foo<T, U = unit, V: number>(a: T, b: U) -> V { panic(); }

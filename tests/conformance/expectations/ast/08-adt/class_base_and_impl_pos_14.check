@@ -4,60 +4,60 @@
 // CHECK: SourceFile #47 @1:1..10:1 file_name="class_base_and_impl_pos_14.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..1:41
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:40
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #5 @1:1..1:41 name="Flyable"
+// CHECK-NEXT:         InterfaceDecl #5 @1:1..1:40 name="Flyable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #4 @1:19..1:41 nmembers=1
+// CHECK-NEXT:             ClassMemberList #4 @1:19..1:40 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @1:21..1:39 name="fly" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @1:21..1:38 name="fly" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @1:28..1:30 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @1:27..1:29 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:34..1:38 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:33..1:37 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #12 @2:1..2:44
+// CHECK-NEXT:     StatementListItem #12 @2:1..2:43
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #11 @2:1..2:44 name="Swimmable"
+// CHECK-NEXT:         InterfaceDecl #11 @2:1..2:43 name="Swimmable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #10 @2:21..2:44 nmembers=1
+// CHECK-NEXT:             ClassMemberList #10 @2:21..2:43 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #9 @2:23..2:42 name="swim" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #9 @2:23..2:41 name="swim" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #7 @2:31..2:33 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #7 @2:30..2:32 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #8 @2:37..2:41 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #8 @2:36..2:40 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #19 @3:1..3:43
+// CHECK-NEXT:     StatementListItem #19 @3:1..3:42
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         ClassDecl #18 @3:1..3:43 name="Animal"
+// CHECK-NEXT:         ClassDecl #18 @3:1..3:42 name="Animal"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           base_ty: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #17 @3:14..3:43 nmembers=1
+// CHECK-NEXT:             ClassMemberList #17 @3:14..3:42 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #16 @3:16..3:41 name="breathe" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #16 @3:16..3:40 name="breathe" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #13 @3:27..3:29 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #13 @3:26..3:28 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #14 @3:33..3:37 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #14 @3:32..3:36 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #15 @3:38..3:41
+// CHECK-NEXT:                     BlockStmt #15 @3:37..3:40
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #32 @4:1..7:2
@@ -72,27 +72,27 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #30 @4:21..7:2 nmembers=2
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #25 @5:5..5:35 name="fly" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #25 @5:5..5:34 name="fly" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #22 @5:21..5:23 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #22 @5:20..5:22 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #23 @5:27..5:31 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #23 @5:26..5:30 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #24 @5:32..5:35
+// CHECK-NEXT:                     BlockStmt #24 @5:31..5:34
 // CHECK-NEXT:                       stmts: []
-// CHECK-NEXT:                 MethodDecl #29 @6:5..6:27 name="swim" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #29 @6:5..6:26 name="swim" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #26 @6:13..6:15 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #26 @6:12..6:14 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #27 @6:19..6:23 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #27 @6:18..6:22 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #28 @6:24..6:27
+// CHECK-NEXT:                     BlockStmt #28 @6:23..6:26
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #39 @8:1..8:26

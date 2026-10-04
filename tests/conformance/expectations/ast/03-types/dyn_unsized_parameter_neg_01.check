@@ -12,20 +12,20 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:18..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #6 @2:5..2:37 name="write" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:36 name="write" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:14..2:28 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:27 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:15..2:27 name="items"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:26 name="items"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             SliceArrayTypeExpr #2 @2:22..2:27
+// CHECK-NEXT:                             SliceArrayTypeExpr #2 @2:21..2:26
 // CHECK-NEXT:                               elem:
-// CHECK-NEXT:                                 PredefinedTypeExpr #1 @2:23..2:26 kind=I32
+// CHECK-NEXT:                                 PredefinedTypeExpr #1 @2:22..2:25 kind=I32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:32..2:36 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:31..2:35 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

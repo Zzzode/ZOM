@@ -1,4 +1,4 @@
-fun main(flag: bool) -> unit {
+fn main(flag: bool) -> unit {
     let value: i32;
     match (flag) {
         when _ => {

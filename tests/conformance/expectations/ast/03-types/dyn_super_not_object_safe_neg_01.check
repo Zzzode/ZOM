@@ -12,15 +12,15 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #5 @1:16..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #4 @2:5..2:25 name="clone" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #4 @2:5..2:24 name="clone" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:14..2:16 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #3 @2:20..2:24
+// CHECK-NEXT:                     NamedTypeExpr #3 @2:19..2:23
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #2 @2:20..2:24 segments=["Self"] root=Relative
+// CHECK-NEXT:                         ModulePath #2 @2:19..2:23 segments=["Self"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
@@ -39,13 +39,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #14 @5:24..7:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #13 @6:5..6:24 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #13 @6:5..6:23 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #11 @6:13..6:15 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #11 @6:12..6:14 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #12 @6:19..6:23 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #12 @6:18..6:22 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

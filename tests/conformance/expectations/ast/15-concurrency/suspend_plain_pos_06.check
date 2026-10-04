@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #17 @1:1..5:2 name="coop"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #16 @1:12..5:2
+// CHECK-NEXT:             BlockStmt #16 @1:11..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #7 @2:5..2:15
 // CHECK-NEXT:                   item:

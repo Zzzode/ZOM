@@ -1,4 +1,4 @@
-fun read(x: &i32) -> unit {
+fn read(x: &i32) -> unit {
     return;
 }
 

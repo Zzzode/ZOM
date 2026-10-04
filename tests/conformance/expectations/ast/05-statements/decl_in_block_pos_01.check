@@ -8,13 +8,13 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #27 @1:1..7:2 name="f"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:6..1:8 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:5..1:7 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #26 @1:9..7:2
+// CHECK-NEXT:             BlockStmt #26 @1:8..7:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #5 @2:5..2:9
 // CHECK-NEXT:                   item:
@@ -54,17 +54,17 @@
 // CHECK-NEXT:                               init:
 // CHECK-NEXT:                                 IntLiteral #13 @4:15..4:16 base=10 value="2"
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 StatementListItem #21 @5:5..5:15
+// CHECK-NEXT:                 StatementListItem #21 @5:5..5:14
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     FunctionDecl #20 @5:5..5:15 name="g"
+// CHECK-NEXT:                     FunctionDecl #20 @5:5..5:14 name="g"
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #18 @5:10..5:12 nparams=0
+// CHECK-NEXT:                         FunctionParameterList #18 @5:9..5:11 nparams=0
 // CHECK-NEXT:                           params: []
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty: null
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #19 @5:13..5:15
+// CHECK-NEXT:                         BlockStmt #19 @5:12..5:14
 // CHECK-NEXT:                           stmts: []
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:                 StatementListItem #25 @6:5..6:9

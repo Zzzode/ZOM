@@ -2,7 +2,7 @@
 // follows its initializer. A literal-root local is i32, and an unannotated
 // binary of two inferred locals (`a + b`) infers the operand type. The entry
 // folds to the no-argument i32 module initializer and exits 41.
-fun entry() -> i32 {
+fn entry() -> i32 {
     let a = 40;
     let b = 1;
     let c = a + b;

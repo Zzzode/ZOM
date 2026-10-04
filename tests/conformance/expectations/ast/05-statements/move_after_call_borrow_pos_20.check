@@ -17,24 +17,24 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #13 @3:1..5:2 name="use_ref"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #8 @3:12..3:27 nparams=1
+// CHECK-NEXT:             FunctionParameterList #8 @3:11..3:26 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #7 @3:13..3:26 name="value"
+// CHECK-NEXT:                 FunctionParameterDecl #7 @3:12..3:25 name="value"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     ReferenceTypeExpr #6 @3:20..3:26 is_mut=false
+// CHECK-NEXT:                     ReferenceTypeExpr #6 @3:19..3:25 is_mut=false
 // CHECK-NEXT:                       elem:
-// CHECK-NEXT:                         NamedTypeExpr #5 @3:21..3:26
+// CHECK-NEXT:                         NamedTypeExpr #5 @3:20..3:25
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @3:21..3:26 segments=["Owner"] root=Relative
+// CHECK-NEXT:                             ModulePath #4 @3:20..3:25 segments=["Owner"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #9 @3:31..3:35 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #9 @3:30..3:34 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #12 @3:36..5:2
+// CHECK-NEXT:             BlockStmt #12 @3:35..5:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #11 @4:5..4:12
 // CHECK-NEXT:                   item:
@@ -46,14 +46,14 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #39 @7:1..11:2 name="main"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #15 @7:9..7:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #15 @7:8..7:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #16 @7:15..7:19 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #16 @7:14..7:18 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #38 @7:20..11:2
+// CHECK-NEXT:             BlockStmt #38 @7:19..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #23 @8:5..8:22
 // CHECK-NEXT:                   item:

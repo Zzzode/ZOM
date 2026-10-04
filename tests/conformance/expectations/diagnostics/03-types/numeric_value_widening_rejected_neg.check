@@ -6,4 +6,4 @@
 // assigning an i32 parameter to an i64 local is ZOM4009.
 
 // CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected i64, got i32
-// CHECK-LITERAL:   --> conformance/03-types/numeric_value_widening_rejected_neg.zom:1:37
+// CHECK-LITERAL:   --> conformance/03-types/numeric_value_widening_rejected_neg.zom:1:36

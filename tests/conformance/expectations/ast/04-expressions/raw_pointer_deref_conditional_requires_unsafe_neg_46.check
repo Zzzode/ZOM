@@ -8,26 +8,26 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #19 @1:1..3:2 name="main"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #6 @1:9..1:38 nparams=2
+// CHECK-NEXT:             FunctionParameterList #6 @1:8..1:37 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:10..1:20 name="flag"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:9..1:19 name="flag"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:16..1:20 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:15..1:19 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #5 @1:22..1:37 name="ptr"
+// CHECK-NEXT:                 FunctionParameterDecl #5 @1:21..1:36 name="ptr"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     RawPointerTypeExpr #4 @1:27..1:37 is_mut=false
+// CHECK-NEXT:                     RawPointerTypeExpr #4 @1:26..1:36 is_mut=false
 // CHECK-NEXT:                       elem:
-// CHECK-NEXT:                         PredefinedTypeExpr #3 @1:34..1:37 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #3 @1:33..1:36 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #7 @1:42..1:46 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #7 @1:41..1:45 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #18 @1:47..3:2
+// CHECK-NEXT:             BlockStmt #18 @1:46..3:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #17 @2:5..2:33
 // CHECK-NEXT:                   item:

@@ -12,22 +12,22 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #10 @1:19..5:2 nmembers=3
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:32 name="inc" mode=Mutating visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:31 name="inc" mode=Mutating visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:21..2:23 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:20..2:22 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:27..2:31 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:26..2:30 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
-// CHECK-NEXT:                 MethodDecl #6 @3:5..3:34 name="reset" mode=Mutating visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @3:5..3:33 name="reset" mode=Mutating visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @3:23..3:25 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #4 @3:22..3:24 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:29..3:33 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @3:28..3:32 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:                 MethodDecl #9 @4:5..4:24 name="value" mode=Instance visibility=Default

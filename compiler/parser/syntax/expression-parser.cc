@@ -337,7 +337,7 @@ ast::NodeId Parser::Impl::parseCaptureList(ParserSyntaxFactory& builder, size_t 
 }
 
 // RFC 0002: All consumeBalanced* calls within this function are boundary detection only.
-// The production is already identified by the 'fun' keyword; scans locate '(', ')', '{',
+// The production is already identified by the 'fn' keyword; scans locate '(', ')', '{',
 // '->', 'raises', and 'use' boundaries within the function expression.
 ast::NodeId Parser::Impl::parseFunctionExpression(ParserSyntaxFactory& builder, size_t start,
                                                   size_t end) const {
@@ -514,11 +514,11 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
         //   1. Computed:   [expr]: value   — invalid syntax (PropertyName ::= Identifier).
         //                                   Emits ObjectLiteralPropertyNameExpected diagnostic.
         //   2. String:     "foo": value    — single token, check if next is ':'
-        //   3. Method:     fun foo() {}    — invalid syntax in object literals.
+        //   3. Method:     fn foo() {}    — invalid syntax in object literals.
         //                    get foo() {}    Emits ObjectLiteralMethodSyntax diagnostic.
         //                    set foo(v) {}
-        //   4. Keyword:    fun: value      — keyword used as property name (next token is ':')
-        //                    in: value       (all keywords except fun/get/set are handled
+        //   4. Keyword:    fn: value      — keyword used as property name (next token is ':')
+        //                    in: value       (all keywords except fn/get/set are handled
         //                    is: value       in a single catch-all branch)
         //   5. Identifier: foo: value / foo — find type path end via findTypePathEnd, check
         //                                   if token at pathEnd is ':'
@@ -543,12 +543,12 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
           if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
             colon = itemStart + 1;
           }
-        } else if (firstKind == ast::SyntaxKind::FunKeyword ||
+        } else if (firstKind == ast::SyntaxKind::FnKeyword ||
                    firstKind == ast::SyntaxKind::GetKeyword ||
                    firstKind == ast::SyntaxKind::SetKeyword) {
           // Method/getter/setter keyword.
           if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
-            // Keyword used as property name (e.g. {fun: value}).
+            // Keyword used as property name (e.g. {fn: value}).
             colon = itemStart + 1;
           } else {
             // Method syntax: invalid in object literals per ZOM grammar.
@@ -1087,7 +1087,7 @@ Parser::Impl::ExpressionParseResult Parser::Impl::parsePrimaryExpressionAt(
     return {parseSpawnExpression(builder, start, limit), limit};
   }
 
-  if (kindAt(start) == ast::SyntaxKind::FunKeyword) {
+  if (kindAt(start) == ast::SyntaxKind::FnKeyword) {
     return {parseFunctionExpression(builder, start, limit), limit};
   }
 

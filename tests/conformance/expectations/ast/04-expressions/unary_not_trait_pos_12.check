@@ -12,13 +12,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:15..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:23 name="not" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:22 name="not" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:12..2:14 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:11..2:13 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:18..2:22 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:17..2:21 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -49,13 +49,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #17 @7:22..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #16 @8:5..8:23 name="not" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #16 @8:5..8:22 name="not" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #14 @8:12..8:14 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #14 @8:11..8:13 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #15 @8:18..8:22 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #15 @8:17..8:21 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null

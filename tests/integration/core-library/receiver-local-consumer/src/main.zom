@@ -3,9 +3,9 @@
 // return, so the callee lowers to ReturnInteger and the program exits 42.
 struct Cell {
   value: i32,
-  fun answer(this) -> i32 { let x = 42; return x; }
+  fn answer(this) -> i32 { let x = 42; return x; }
 }
-fun entry() -> i32 {
+fn entry() -> i32 {
   let cell = Cell { value: 0 };
   return cell.answer();
 }

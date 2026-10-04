@@ -1,5 +1,5 @@
 interface Behavior {
-  fun act();
+  fn act();
 }
 
 impl Behavior for i32;

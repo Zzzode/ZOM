@@ -24,7 +24,7 @@ Declaration ::= VariableStatement
 | Category | Keywords | Description |
 |---|---|---|
 | **Value Declarations** | `mut`, `let`, `const` | Runtime bindings and compile-time constants |
-| **Function Declarations** | `fun` | Named function definitions |
+| **Function Declarations** | `fn` | Named function definitions |
 | **Class Declarations** | `class` | Reference types with inheritance |
 | **Struct Declarations** | `struct` | Value types with named fields |
 | **Interface Declarations** | `interface` | Contracts for types to implement |
@@ -202,7 +202,7 @@ bindings.
 ## Function Declarations
 
 ```ebnf
-FunctionDecl   ::= ModifierList 'fun' BindingIdent TypeParameters?
+FunctionDecl   ::= ModifierList 'fn' BindingIdent TypeParameters?
                    FunctionSignature WhereClause? FunctionBody
 
 FunctionSignature ::= OrdinaryParameterClause
@@ -244,22 +244,22 @@ receiver never has a default value;
 
 ```zom
 // Simple function
-fun greet(name: str) -> str {
+fn greet(name: str) -> str {
     return "Hello, " + name + "!";
 }
 
 // Function with multiple parameters
-fun add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b;
 }
 
 // Function with no return value (unit type)
-fun printMessage(message: str) {
+fn printMessage(message: str) {
     print(message);
 }
 
 // Function with no parameters
-fun getCurrentTime() -> str {
+fn getCurrentTime() -> str {
     return Date.now().toString();
 }
 ```
@@ -268,19 +268,19 @@ fun getCurrentTime() -> str {
 
 ```zom
 // Default parameter values
-fun greet(name: str, greeting: str = "Hello") -> str {
+fn greet(name: str, greeting: str = "Hello") -> str {
     return greeting + ", " + name + "!";
 }
 
 // Nullable parameter with a default value
-fun createUser(name: str, email: str, age: i32? = null) {
+fn createUser(name: str, email: str, age: i32? = null) {
     if (age != null) {
         print("Age: " + age.toString());
     }
 }
 
 // Default parameter used by positional calls
-fun createPoint(x: f64, y: f64, z: f64 = 0.0) -> Point {
+fn createPoint(x: f64, y: f64, z: f64 = 0.0) -> Point {
     return Point(x, y, z);
 }
 
@@ -294,7 +294,7 @@ The `raises` clause explicitly declares which error types a function may produce
 
 ```zom
 // Function that raises a single error type
-fun divide(a: f64, b: f64) -> f64 raises DivisionByZeroError {
+fn divide(a: f64, b: f64) -> f64 raises DivisionByZeroError {
     if (b == 0.0) {
         return DivisionByZeroError("Cannot divide by zero");
     }
@@ -302,7 +302,7 @@ fun divide(a: f64, b: f64) -> f64 raises DivisionByZeroError {
 }
 
 // Function with multiple error types (union in raises)
-fun parseAndValidate(input: str) -> i32 raises ParseError | ValidationError {
+fn parseAndValidate(input: str) -> i32 raises ParseError | ValidationError {
     let parsed = parseInt(input);
     match (parsed) {
         when Failure(e) => { return e; }
@@ -316,7 +316,7 @@ fun parseAndValidate(input: str) -> i32 raises ParseError | ValidationError {
 }
 
 // Function with raises only (no return type = unit)
-fun connect(host: str) raises ConnectionError | TimeoutError {
+fn connect(host: str) raises ConnectionError | TimeoutError {
     // implementation
 }
 ```
@@ -335,10 +335,10 @@ functions are expressed in ZOM through receiver methods and interfaces:
 
 ```zom
 interface Display {
-    fun render(this) -> str;
+    fn render(this) -> str;
 }
 
-fun renderValue<T: Display>(value: T) -> str {
+fn renderValue<T: Display>(value: T) -> str {
     return value.render();
 }
 ```
@@ -350,24 +350,24 @@ from the receiver or the interface witness rather than from an overload set.
 
 ```zom
 // Generic function with type parameter
-fun identity<T>(value: T) -> T {
+fn identity<T>(value: T) -> T {
     return value;
 }
 
 // Generic function with constraints
-fun compare<T: Comparable>(a: T, b: T) -> i32 {
+fn compare<T: Comparable>(a: T, b: T) -> i32 {
     if (a < b) return -1;
     if (a > b) return 1;
     return 0;
 }
 
 // Multiple type parameters
-fun pair<T, U>(first: T, second: U) -> (T, U) {
+fn pair<T, U>(first: T, second: U) -> (T, U) {
     return (first, second);
 }
 
 // Generic function with default type
-fun parseOrDefault<T = str>(input: str, defaultValue: T) -> T {
+fn parseOrDefault<T = str>(input: str, defaultValue: T) -> T {
     // Implementation
 }
 ```
@@ -403,7 +403,7 @@ PropertyDecl    ::= PropertyStorage PropertyName
 ClassConstDecl  ::= 'const' BindingIdent TypeAnnotation? '=' ConstExpression ';'
 ClassFieldDecl  ::= PropertyName ':' TypeExpr ('=' Expression)?
                      (';' | ',' | (* implicit separator before next keyword-starting member *))
-MethodDecl      ::= 'fun' PropertyName TypeParameters? MemberFunctionSignature
+MethodDecl      ::= 'fn' PropertyName TypeParameters? MemberFunctionSignature
                      ( BlockStatement | ';' )
 InitDecl        ::= 'init' ParameterClause RaisesClause? BlockStatement
 DeinitDecl      ::= 'deinit' ParameterClause RaisesClause? BlockStatement
@@ -427,7 +427,7 @@ class Person {
         this.age = age;
     }
 
-    fun greet(this) -> str {
+    fn greet(this) -> str {
         return "Hello, I'm " + this.name;
     }
 }
@@ -447,17 +447,17 @@ class BankAccount {
         this.balance = initialBalance;
     }
 
-    public fun getBalance(this) -> f64 {
+    public fn getBalance(this) -> f64 {
         return this.balance;
     }
 
-    public fun deposit(this, amount: f64) {
+    public fn deposit(this, amount: f64) {
         if (amount > 0) {
             this.balance += amount;
         }
     }
 
-    private fun validateTransaction(this, amount: f64) -> bool {
+    private fn validateTransaction(this, amount: f64) -> bool {
         return amount > 0 && amount <= this.balance;
     }
 }
@@ -478,11 +478,11 @@ class Animal {
         this.species = species;
     }
 
-    fun makeSound(this) -> str {
+    fn makeSound(this) -> str {
         return "Some generic animal sound";
     }
 
-    fun getInfo(this) -> str {
+    fn getInfo(this) -> str {
         return this.name + " is a " + this.species;
     }
 }
@@ -496,11 +496,11 @@ class Dog: Animal {
         this.breed = breed;
     }
 
-    override fun makeSound(this) -> str {
+    override fn makeSound(this) -> str {
         return "Woof!";
     }
 
-    fun getBreed(this) -> str {
+    fn getBreed(this) -> str {
         return this.breed;
     }
 }
@@ -517,11 +517,11 @@ abstract class Shape {
     }
 
     // Abstract method — must be implemented by subclasses
-    abstract public fun area(this) -> f64;
-    abstract public fun perimeter(this) -> f64;
+    abstract public fn area(this) -> f64;
+    abstract public fn perimeter(this) -> f64;
 
     // Concrete method
-    public fun getColor(this) -> str {
+    public fn getColor(this) -> str {
         return this.color;
     }
 }
@@ -534,11 +534,11 @@ class Circle: Shape {
         this.radius = radius;
     }
 
-    override public fun area(this) -> f64 {
+    override public fn area(this) -> f64 {
         return 3.14159 * this.radius * this.radius;
     }
 
-    override public fun perimeter(this) -> f64 {
+    override public fn perimeter(this) -> f64 {
         return 2.0 * 3.14159 * this.radius;
     }
 }
@@ -575,19 +575,19 @@ class Temperature {
 class Stack<T> {
     private let items: T[] = [];
 
-    fun push(this, item: T) {
+    fn push(this, item: T) {
         this.items.push(item);
     }
 
-    fun pop(this) -> T? {
+    fn pop(this) -> T? {
         return this.items.pop();
     }
 
-    fun peek(this) -> T? {
+    fn peek(this) -> T? {
         return this.items.length > 0 ? this.items[this.items.length - 1] : null;
     }
 
-    fun isEmpty(this) -> bool {
+    fn isEmpty(this) -> bool {
         return this.items.length == 0;
     }
 }
@@ -596,12 +596,12 @@ class Stack<T> {
 class SortedList<T: Comparable> {
     private let items: T[] = [];
 
-    fun add(this, item: T) {
+    fn add(this, item: T) {
         let index = this.findInsertionPoint(item);
         this.items.insert(index, item);
     }
 
-    private fun findInsertionPoint(this, item: T) -> i32 {
+    private fn findInsertionPoint(this, item: T) -> i32 {
         mut left = 0;
         mut right = this.items.length;
 
@@ -703,11 +703,11 @@ struct Vector2D {
     x: f64,
     y: f64;
 
-    fun length(this) -> f64 {
+    fn length(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y);
     }
 
-    fun normalize(this) -> Vector2D {
+    fn normalize(this) -> Vector2D {
         let len = this.length();
         return Vector2D { x: this.x / len, y: this.y / len };
     }
@@ -721,7 +721,7 @@ falling through, so an effect-only method has no `return` statement:
 ```zom
 struct Counter {
     count: i32,
-    mutating fun set(this, value: i32) {
+    mutating fn set(this, value: i32) {
         this.count = value;
     }
 }
@@ -772,7 +772,7 @@ InterfaceBound     ::= QualifiedPathOrIdent ( '<' TypeArgumentList '>' )?
 QualifiedPathOrIdent ::= PathSegment ( '::' PathSegment )*
 
 InterfaceBody   ::= InterfaceElement*
-InterfaceElement ::= ModifierList 'fun' MethodSignature ';'
+InterfaceElement ::= ModifierList 'fn' MethodSignature ';'
                   | ModifierList ('get' | 'set') PropertySignature ';'
                   | ModifierList 'type' Identifier TypeParameters?
                     ( ':' InterfaceBoundList )? ( '=' TypeExpr )? ';'
@@ -786,8 +786,8 @@ CallSignature     ::= TypeParameters? MemberFunctionSignature
 
 ```zom
 interface Drawable {
-    fun draw(this);
-    fun getBounds(this) -> Rectangle;
+    fn draw(this);
+    fn getBounds(this) -> Rectangle;
 }
 ```
 
@@ -807,8 +807,8 @@ interface Shape {
     readonly get area(this) -> f64;
     readonly get perimeter(this) -> f64;
 
-    fun scale(this, factor: f64);
-    fun contains(this, point: Point) -> bool;
+    fn scale(this, factor: f64);
+    fn contains(this, point: Point) -> bool;
 }
 ```
 
@@ -816,10 +816,10 @@ interface Shape {
 
 ```zom
 interface Container<T> {
-    fun add(this, item: T);
-    fun remove(this, item: T) -> bool;
-    fun contains(this, item: T) -> bool;
-    fun size(this) -> i32;
+    fn add(this, item: T);
+    fn remove(this, item: T) -> bool;
+    fn contains(this, item: T) -> bool;
+    fn size(this) -> i32;
 }
 ```
 
@@ -831,12 +831,12 @@ Interface inheritance uses the colon (`:`) syntax with `+` for multiple super-in
 // Single super-interface
 interface ColoredShape: Shape {
     get color(this) -> Color;
-    fun changeColor(this, newColor: Color);
+    fn changeColor(this, newColor: Color);
 }
 
 // Multiple super-interfaces (conjunction via '+')
 interface NamedShape: Named + Shape {
-    fun getDisplayName(this) -> str;
+    fn getDisplayName(this) -> str;
 }
 ```
 
@@ -844,8 +844,8 @@ interface NamedShape: Named + Shape {
 
 ```zom
 interface Configurable {
-    fun configure(this, options: ConfigOptions);
-    fun reset(this);
+    fn configure(this, options: ConfigOptions);
+    fn reset(this);
 }
 ```
 
@@ -855,16 +855,16 @@ interface Configurable {
 interface Iterator {
     type Item;   // Associated type
 
-    fun next(this) -> Self::Item?;
-    fun hasNext(this) -> bool;
+    fn next(this) -> Self::Item?;
+    fn hasNext(this) -> bool;
 }
 
 interface Collection {
     type Element;
     type Iter: Iterator;
 
-    fun iter(this) -> Self::Iter;
-    fun count(this) -> i32;
+    fn iter(this) -> Self::Iter;
+    fn count(this) -> i32;
 }
 ```
 
@@ -1026,7 +1026,7 @@ StandaloneImplDecl ::= UnsafePrefix? 'impl' TypeParameters? InterfaceBound 'for'
                        WhereClause? '{' ImplMember* '}'
     (* 'impl' is a SOFT keyword — recognized only at impl-head position *)
 
-ImplMember     ::= ModifierList 'fun' BindingIdent TypeParameters?
+ImplMember     ::= ModifierList 'fn' BindingIdent TypeParameters?
                     MemberFunctionSignature ( ';' | BlockStatement )
                  | 'type' Identifier TypeParameters? '=' TypeExpr ';'
                  | 'mut' VariableDeclList ';'
@@ -1050,8 +1050,8 @@ bindings, members, or body.
 
 ```zom
 interface Drawable {
-    fun draw(this);
-    fun getBounds(this) -> Rectangle;
+    fn draw(this);
+    fn getBounds(this) -> Rectangle;
 }
 
 class Button {
@@ -1067,11 +1067,11 @@ class Button {
 }
 
 impl Drawable for Button {
-    public fun draw(this) {
+    public fn draw(this) {
         print("Drawing button: " + this.text);
     }
 
-    public fun getBounds(this) -> Rectangle {
+    public fn getBounds(this) -> Rectangle {
         return Rectangle(this.position, this.size);
     }
 }
@@ -1082,8 +1082,8 @@ impl Drawable for Button {
 ```zom
 interface Iterator {
     type Item;
-    fun next(this) -> Self::Item?;
-    fun hasNext(this) -> bool;
+    fn next(this) -> Self::Item?;
+    fn hasNext(this) -> bool;
 }
 
 struct VecIter<T> {
@@ -1099,14 +1099,14 @@ struct VecIter<T> {
 impl<T> Iterator for VecIter<T> {
     type Item = T;
 
-    fun next(this) -> T? {
+    fn next(this) -> T? {
         if (this.index >= this.data.length) return null;
         let value = this.data[this.index];
         this.index += 1;
         return value;
     }
 
-    fun hasNext(this) -> bool {
+    fn hasNext(this) -> bool {
         return this.index < this.data.length;
     }
 }
@@ -1161,7 +1161,7 @@ ExternDecl     ::= 'extern' AbiLiteral? ExternBlock
 AbiLiteral     ::= '"' ('C' | 'Cdecl' | 'system' | 'zom-cdecl') '"'
 
 ExternBlock    ::= '{' ExternItem* '}'
-ExternItem     ::= 'fun' Identifier FunctionSignature ';'  (* external function *)
+ExternItem     ::= 'fn' Identifier FunctionSignature ';'  (* external function *)
                  | 'variable' Identifier ':' TypeExpr ';'  (* external variable *)
 ```
 
@@ -1169,9 +1169,9 @@ ExternItem     ::= 'fun' Identifier FunctionSignature ';'  (* external function 
 
 ```zom
 extern "C" {
-    fun puts(message: str) -> i32;
-    fun malloc(size: i64) -> *mut u8;
-    fun free(ptr: *mut u8);
+    fn puts(message: str) -> i32;
+    fn malloc(size: i64) -> *mut u8;
+    fn free(ptr: *mut u8);
 }
 ```
 
@@ -1202,7 +1202,7 @@ ModuleAliasPath ::= Identifier ('::' Identifier)+
 module auth;
 
 module auth {
-    export fun validate() -> bool { true }
+    export fn validate() -> bool { true }
 }
 
 module utils = myapp::utilities::common;

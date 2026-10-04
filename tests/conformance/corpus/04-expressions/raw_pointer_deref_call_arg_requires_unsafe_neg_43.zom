@@ -1,6 +1,6 @@
-fun use_value(value: i32) -> unit {
+fn use_value(value: i32) -> unit {
 }
 
-fun main(ptr: *const i32) -> unit {
+fn main(ptr: *const i32) -> unit {
     use_value(*ptr);
 }

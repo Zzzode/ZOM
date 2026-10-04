@@ -5,10 +5,10 @@
 
 #include "compiler/checker/inference/checked-facts.h"
 
-#include "zc/core/encoding.h"
-#include "zc/ztest/test.h"
 #include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/checker/checker-authority-test-fixture.h"
+#include "zc/core/encoding.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::checker::checked {
 namespace {
@@ -49,10 +49,10 @@ class CheckedFactsCodecFixture final {
 public:
   CheckedFactsCodecFixture()
       : session(
-            "interface Behavior { fun act(); }\n"
-            "class RecoveryOwner { fun act() {} }\n"
+            "interface Behavior { fn act(); }\n"
+            "class RecoveryOwner { fn act() {} }\n"
             "impl Behavior for RecoveryOwner {}\n"
-            "fun paramRoot(value: i32) {}\n"_zc),
+            "fn paramRoot(value: i32) {}\n"_zc),
         storeBrands(session.brands()),
         semanticTypes(session.semanticTypes()) {
     context = session.semanticContext();

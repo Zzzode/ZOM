@@ -12,23 +12,23 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #9 @1:22..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #8 @2:5..2:43 name="consume" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #8 @2:5..2:42 name="consume" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #7 @2:16..2:42 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #7 @2:15..2:41 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #6 @2:17..2:41 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #6 @2:16..2:40 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #5 @2:37..2:41
+// CHECK-NEXT:                             NamedTypeExpr #5 @2:36..2:40
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #4 @2:37..2:41 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #4 @2:36..2:40 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs:
-// CHECK-NEXT:                             AttributeList #3 @2:17..2:36
+// CHECK-NEXT:                             AttributeList #3 @2:16..2:35
 // CHECK-NEXT:                               attrs:
-// CHECK-NEXT:                                 Attribute #2 @2:19..2:35
+// CHECK-NEXT:                                 Attribute #2 @2:18..2:34
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     AttributePath #1 @2:19..2:35 segments=["zom", "param", "move"] leading=None
+// CHECK-NEXT:                                     AttributePath #1 @2:18..2:34 segments=["zom", "param", "move"] leading=None
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty: null

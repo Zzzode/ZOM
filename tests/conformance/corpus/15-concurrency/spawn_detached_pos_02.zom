@@ -1,4 +1,4 @@
-fun fire() {
+fn fire() {
     spawn detached {
         side_effect();
     }

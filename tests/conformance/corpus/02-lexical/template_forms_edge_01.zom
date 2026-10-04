@@ -3,7 +3,7 @@ let b = `hello ${name}`;
 let c = `a ${x} b ${y} c`;
 let d = `trailing dollar $`;
 
-fun close_global_scope() {
+fn close_global_scope() {
     return;
 }
 

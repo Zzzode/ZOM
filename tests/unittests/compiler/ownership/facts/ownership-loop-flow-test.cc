@@ -481,7 +481,7 @@ bool flowHasEdgePoint(const facts::FlowFunction& flow, mir::MirBlockId from, uin
 
 ZC_TEST("Flow builder derives the edge points of a conditional-return diamond") {
   LoopPipelineFixture fixture(
-      "fun choose(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc);
+      "fn choose(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   ZC_REQUIRE(builtMir.functions().size() == 1);
@@ -514,7 +514,7 @@ ZC_TEST("Flow builder derives the edge points of a conditional-return diamond") 
 
 ZC_TEST("Region membership fixpoint converges on a conditional diamond") {
   LoopPipelineFixture fixture(
-      "fun choose(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc);
+      "fn choose(cond: bool) -> i32 { if (cond) { return 1; } else { return 2; } }"_zc);
 
   auto candidateResult = facts::RegionMembershipBuilder::build(
       fixture.inputs().flow(), fixture.inputs().loans(), fixture.builtMir(), fixture.overlay());

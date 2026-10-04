@@ -1,1 +1,1 @@
-abstract static fun f() {}
+abstract static fn f() {}

@@ -31,9 +31,9 @@ struct GenericContainers<T> { fixed: [T; 4]; dynamic: T[]; }
 struct NestedBox<T> { value: GenericBox<T>; }
 struct PlainStruct { value: i32; }
 enum PlainEnum { Value(i32), Empty }
-interface LocalBehavior { fun act(); }
+interface LocalBehavior { fn act(); }
 impl LocalBehavior for PlainStruct {}
-interface EnumBehavior { fun act(); }
+interface EnumBehavior { fn act(); }
 impl EnumBehavior for PlainEnum {}
 struct SelfCycle { next: SelfCycle; }
 struct LeftCycle { right: RightCycle; }
@@ -750,21 +750,21 @@ ZC_TEST("SignatureFactsBuilder retains and re-encodes behavior implementation he
 
 ZC_TEST("SignatureFactsBuilder canonicalizes non-nominal behavior implementation heads") {
   auto source = zc::str(kMarkerProofSource,
-                        "interface IntegerBehavior { fun act(); }\n"
+                        "interface IntegerBehavior { fn act(); }\n"
                         "impl IntegerBehavior for i32 {}\n"
-                        "interface TupleBehavior { fun act(); }\n"
+                        "interface TupleBehavior { fn act(); }\n"
                         "impl TupleBehavior for (i32, bool) {}\n"
-                        "interface ArrayBehavior { fun act(); }\n"
+                        "interface ArrayBehavior { fn act(); }\n"
                         "impl ArrayBehavior for i32[] {}\n"
-                        "interface FixedArrayBehavior { fun act(); }\n"
+                        "interface FixedArrayBehavior { fn act(); }\n"
                         "impl FixedArrayBehavior for [i32; 4] {}\n"
-                        "interface ReferenceBehavior { fun act(); }\n"
+                        "interface ReferenceBehavior { fn act(); }\n"
                         "impl ReferenceBehavior for &i32 {}\n"
-                        "interface PointerBehavior { fun act(); }\n"
+                        "interface PointerBehavior { fn act(); }\n"
                         "impl PointerBehavior for *const i32 {}\n"
-                        "interface UnionBehavior { fun act(); }\n"
+                        "interface UnionBehavior { fn act(); }\n"
                         "impl UnionBehavior for i32 | bool {}\n"
-                        "interface IntersectionBehavior { fun act(); }\n"
+                        "interface IntersectionBehavior { fn act(); }\n"
                         "impl IntersectionBehavior for i32 & bool {}\n"_zc);
   MarkerProofFixture fixture(source);
   const auto heads = fixture.implHeads();

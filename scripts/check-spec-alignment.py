@@ -147,7 +147,7 @@ def self_test() -> int:
         print("spec-alignment baseline failed")
         return 1
     mutation = dict(values)
-    mutation[LEXER] = mutation[LEXER].replace("FUN      : 'fun';", "FUN      : 'function';", 1)
+    mutation[LEXER] = mutation[LEXER].replace("FN      : 'fn';", "FN      : 'function';", 1)
     if not any("lexer keywords" in error for error in check(mutation)):
         print("spec-alignment self-test escaped lexer keyword mutation")
         return 1

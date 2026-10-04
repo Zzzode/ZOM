@@ -35,27 +35,27 @@
 // CHECK-NEXT:                       bounds_id: null
 // CHECK-NEXT:                       default_ty:
 // CHECK-NEXT:                         PredefinedTypeExpr #7 @3:18..3:21 kind=U64
-// CHECK-NEXT:                     MethodDecl #17 @4:5..4:41 name="next" mode=Instance visibility=Default
+// CHECK-NEXT:                     MethodDecl #17 @4:5..4:40 name="next" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #12 @4:13..4:19 nparams=1
+// CHECK-NEXT:                         FunctionParameterList #12 @4:12..4:18 nparams=1
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #11 @4:14..4:18 name="this"
+// CHECK-NEXT:                             FunctionParameterDecl #11 @4:13..4:17 name="this"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 NamedTypeExpr #10 @4:14..4:18
+// CHECK-NEXT:                                 NamedTypeExpr #10 @4:13..4:17
 // CHECK-NEXT:                                   path:
-// CHECK-NEXT:                                     ModulePath #9 @4:14..4:18 segments=["Self"] root=Relative
+// CHECK-NEXT:                                     ModulePath #9 @4:13..4:17 segments=["Self"] root=Relative
 // CHECK-NEXT:                                   args: []
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         NamedTypeExpr #16 @4:23..4:40
+// CHECK-NEXT:                         NamedTypeExpr #16 @4:22..4:39
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #15 @4:23..4:29 segments=["Option"] root=Relative
+// CHECK-NEXT:                             ModulePath #15 @4:22..4:28 segments=["Option"] root=Relative
 // CHECK-NEXT:                           args:
-// CHECK-NEXT:                             NamedTypeExpr #14 @4:30..4:39
+// CHECK-NEXT:                             NamedTypeExpr #14 @4:29..4:38
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #13 @4:30..4:39 segments=["Self", "Item"] root=Relative
+// CHECK-NEXT:                                 ModulePath #13 @4:29..4:38 segments=["Self", "Item"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body: null

@@ -2,7 +2,7 @@
 // the accumulator write, exercising the continue-to-header back-edge through
 // the full IR pipeline. Continue is a no-op back-edge, so the loop runs all
 // ten iterations and the sum of 0..9 is 45.
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut sum = 0;
   for (let i = 0; i < 10; i = i + 1) {
     sum = sum + i;

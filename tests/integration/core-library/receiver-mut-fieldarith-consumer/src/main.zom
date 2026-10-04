@@ -4,9 +4,9 @@
 // flows into the return. The module initializer returns 42.
 struct Cell {
   value: i32,
-  mutating fun plus(this) -> i32 { return this.value + 1; }
+  mutating fn plus(this) -> i32 { return this.value + 1; }
 }
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut cell = Cell { value: 41 };
   return cell.plus();
 }

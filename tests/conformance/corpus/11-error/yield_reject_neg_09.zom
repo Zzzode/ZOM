@@ -1,1 +1,1 @@
-fun gen() { yield 1; }
+fn gen() { yield 1; }

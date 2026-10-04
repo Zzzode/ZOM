@@ -1,11 +1,11 @@
 interface Not {
-    fun not() -> bool;
+    fn not() -> bool;
 }
 
 class Operand { }
 
 impl Not for Operand {
-    fun not() -> bool;
+    fn not() -> bool;
 }
 
 let value: Operand;

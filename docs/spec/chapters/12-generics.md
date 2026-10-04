@@ -6,22 +6,22 @@ Generics enable writing flexible, reusable code while maintaining type safety.
 
 ```zom
 // Basic generic function
-fun identity<T>(value: T) -> T {
+fn identity<T>(value: T) -> T {
     return value;
 }
 
 // Generic function with multiple type parameters
-fun pair<T, U>(first: T, second: U) -> (T, U) {
+fn pair<T, U>(first: T, second: U) -> (T, U) {
     return (first, second);
 }
 
 // Generic function with constraints
-fun max<T: Comparable>(a: T, b: T) -> T {
+fn max<T: Comparable>(a: T, b: T) -> T {
     return a > b ? a : b;
 }
 
 // Generic function with default type parameter
-fun parseValue<T = str>(input: str) -> T? {
+fn parseValue<T = str>(input: str) -> T? {
     // Implementation depends on T
     return null; // Placeholder
 }
@@ -40,33 +40,33 @@ class Box<T> {
         this.value = value;
     }
 
-    public fun getValue(this) -> T {
+    public fn getValue(this) -> T {
         return this.value;
     }
 
-    public fun map<U>(this, transform: (T) -> U) -> Box<U> {
+    public fn map<U>(this, transform: (T) -> U) -> Box<U> {
         return Box(transform(this.value));
     }
 }
 
 // Usage
 let intBox = Box(42);
-let stringBox = intBox.map(fun (x: i32) -> str { return x.toString(); });
+let stringBox = intBox.map(fn (x: i32) -> str { return x.toString(); });
 ```
 
 ### Generic Interfaces
 
 ```zom
 interface Comparable<T> {
-    fun compareTo(this, other: T) -> i32;
+    fn compareTo(this, other: T) -> i32;
 }
 
 interface Functor<T> {
-    fun map<U>(this, transform: (T) -> U) -> Functor<U>;
+    fn map<U>(this, transform: (T) -> U) -> Functor<U>;
 }
 
 interface Monad<T> : Functor<T> {
-    fun flatMap<U>(this, transform: (T) -> Monad<U>) -> Monad<U>;
+    fn flatMap<U>(this, transform: (T) -> Monad<U>) -> Monad<U>;
 }
 ```
 
@@ -99,10 +99,10 @@ therefore have no generic constraint surface.
 
 ```zom
 // Short form (single type param, two bounds)
-fun draw<T: Drawable + Sendable>(x: T);
+fn draw<T: Drawable + Sendable>(x: T);
 
 // Equivalent long form — where clause
-fun draw<T>(x: T)
+fn draw<T>(x: T)
 where
     T: Drawable,
     T: Sendable;
@@ -118,22 +118,22 @@ Four illustrative examples:
 
 ```zom
 // 1. Single interface bound
-fun sort<T: Comparable<T>>(array: T[]) -> T[] {
+fn sort<T: Comparable<T>>(array: T[]) -> T[] {
     return array;
 }
 
 // 2. Interface + 2 markers. Ordering does not affect semantics.
-fun render_all<T: Drawable + Sendable + Shared>(surfaces: T[]) -> Canvas {
+fn render_all<T: Drawable + Sendable + Shared>(surfaces: T[]) -> Canvas {
     return Canvas();
 }
 
 // 3. Interface + marker
-fun spawn_local<T: Runnable + TaskBound>(task: T) -> LocalJoinHandle<T> {
+fn spawn_local<T: Runnable + TaskBound>(task: T) -> LocalJoinHandle<T> {
     return LocalJoinHandle(task);
 }
 
 // 4. Where clause for a complex multi-parameter signature
-fun complex_render<T, U>(surfaces: T[], transforms: U[]) -> Canvas
+fn complex_render<T, U>(surfaces: T[], transforms: U[]) -> Canvas
 where
     T: Drawable,
     T: Sendable,
@@ -160,7 +160,7 @@ where
 2. **Conjunction.** The expression `M1 + M2 + M3` in a type-parameter bound list requires all three bounds. A `where` predicate carries one right-hand type, so multiple obligations for the same subject are written as repeated predicates. Interface and marker bounds share the same source syntax and canonical ordering.
 
    ```zom
-   fun spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
+   fn spawn_single_writer<F, T>(f: F) -> JoinHandle<T>
    where
        F: Sendable,
        F: Linear,
@@ -193,16 +193,16 @@ contravariant, and return and raises members are covariant. See
 interface Iterator<T> {
     type Item = T;
 
-    fun next(this) -> Item?;
-    fun hasNext(this) -> bool;
+    fn next(this) -> Item?;
+    fn hasNext(this) -> bool;
 }
 
 interface Collection<T> {
     type Iterator: Iterator<T>;
     type Item = T;
 
-    fun iterator(this) -> Iterator;
-    fun size(this) -> i32;
+    fn iterator(this) -> Iterator;
+    fn size(this) -> i32;
 }
 ```
 

@@ -2,11 +2,11 @@ class UnsafeBox {
     ptr: *const i32;
 }
 
-fun needs<T: Sendable>(x: T) -> unit {
+fn needs<T: Sendable>(x: T) -> unit {
     return;
 }
 
-fun needs_shared<T: Shared>(x: T) -> unit {
+fn needs_shared<T: Shared>(x: T) -> unit {
     return;
 }
 

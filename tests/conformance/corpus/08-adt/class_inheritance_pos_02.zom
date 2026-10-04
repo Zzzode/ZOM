@@ -1,11 +1,11 @@
-interface Drawable { fun draw() -> unit; }
-interface Updatable { fun update(dt: f32) -> unit; }
+interface Drawable { fn draw() -> unit; }
+interface Updatable { fn update(dt: f32) -> unit; }
 export class Sprite : Object {
     protected mut x: f32 = 0.0;
     let name: str;
     init(name: str, x: f32) { self.name = name; self.x = x; }
-    override fun draw() -> unit { }
-    fun update(dt: f32) -> unit { self.x = self.x + dt; }
+    override fn draw() -> unit { }
+    fn update(dt: f32) -> unit { self.x = self.x + dt; }
 }
 impl Drawable for Sprite { }
 impl Updatable for Sprite { }

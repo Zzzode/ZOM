@@ -7,4 +7,4 @@
 // no user-facing path.
 
 // CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected bool, got i32
-// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_annotation_mismatch_neg_01.zom:1:46
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_annotation_mismatch_neg_01.zom:1:45

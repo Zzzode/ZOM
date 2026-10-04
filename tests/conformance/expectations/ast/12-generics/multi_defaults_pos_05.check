@@ -4,64 +4,64 @@
 // CHECK: SourceFile #25 @1:1..2:1 file_name="multi_defaults_pos_05.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #24 @1:1..1:62
+// CHECK-NEXT:     StatementListItem #24 @1:1..1:61
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #23 @1:1..1:62 name="foo"
+// CHECK-NEXT:         FunctionDecl #23 @1:1..1:61 name="foo"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #15 @1:32..1:44 nparams=2
+// CHECK-NEXT:             FunctionParameterList #15 @1:31..1:43 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #11 @1:33..1:37 name="a"
+// CHECK-NEXT:                 FunctionParameterDecl #11 @1:32..1:36 name="a"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #10 @1:36..1:37
+// CHECK-NEXT:                     NamedTypeExpr #10 @1:35..1:36
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #9 @1:36..1:37 segments=["T"] root=Relative
+// CHECK-NEXT:                         ModulePath #9 @1:35..1:36 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #14 @1:39..1:43 name="b"
+// CHECK-NEXT:                 FunctionParameterDecl #14 @1:38..1:42 name="b"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #13 @1:42..1:43
+// CHECK-NEXT:                     NamedTypeExpr #13 @1:41..1:42
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #12 @1:42..1:43 segments=["U"] root=Relative
+// CHECK-NEXT:                         ModulePath #12 @1:41..1:42 segments=["U"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #8 @1:8..1:32 nparams=3
+// CHECK-NEXT:             GenericParams #8 @1:7..1:31 nparams=3
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #1 @1:9..1:10 name="T"
+// CHECK-NEXT:                 GenericTypeParam #1 @1:8..1:9 name="T"
 // CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty: null
-// CHECK-NEXT:                 GenericTypeParam #3 @1:12..1:20 name="U"
+// CHECK-NEXT:                 GenericTypeParam #3 @1:11..1:19 name="U"
 // CHECK-NEXT:                   bounds_id: null
 // CHECK-NEXT:                   default_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:16..1:20 kind=Unit
-// CHECK-NEXT:                 GenericTypeParam #7 @1:22..1:31 name="V"
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:15..1:19 kind=Unit
+// CHECK-NEXT:                 GenericTypeParam #7 @1:21..1:30 name="V"
 // CHECK-NEXT:                   bounds_id:
-// CHECK-NEXT:                     TypeParameterBoundList #6 @1:25..1:31
+// CHECK-NEXT:                     TypeParameterBoundList #6 @1:24..1:30
 // CHECK-NEXT:                       bounds:
-// CHECK-NEXT:                         NamedTypeExpr #5 @1:25..1:31
+// CHECK-NEXT:                         NamedTypeExpr #5 @1:24..1:30
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #4 @1:25..1:31 segments=["number"] root=Relative
+// CHECK-NEXT:                             ModulePath #4 @1:24..1:30 segments=["number"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             NamedTypeExpr #17 @1:48..1:49
+// CHECK-NEXT:             NamedTypeExpr #17 @1:47..1:48
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #16 @1:48..1:49 segments=["V"] root=Relative
+// CHECK-NEXT:                 ModulePath #16 @1:47..1:48 segments=["V"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #22 @1:50..1:62
+// CHECK-NEXT:             BlockStmt #22 @1:49..1:61
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #21 @1:52..1:60
+// CHECK-NEXT:                 StatementListItem #21 @1:51..1:59
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ExpressionStatement #20 @1:52..1:60
+// CHECK-NEXT:                     ExpressionStatement #20 @1:51..1:59
 // CHECK-NEXT:                       expression:
-// CHECK-NEXT:                         CallExpression #19 @1:52..1:59
+// CHECK-NEXT:                         CallExpression #19 @1:51..1:58
 // CHECK-NEXT:                           callee:
-// CHECK-NEXT:                             IdentExpr #18 @1:52..1:57 name="panic"
+// CHECK-NEXT:                             IdentExpr #18 @1:51..1:56 name="panic"
 // CHECK-NEXT:                           type_args: []
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   attrs: null

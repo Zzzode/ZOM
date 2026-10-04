@@ -1,1 +1,1 @@
-abstract fun process();
+abstract fn process();

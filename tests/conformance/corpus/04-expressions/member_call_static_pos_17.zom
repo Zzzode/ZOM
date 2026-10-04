@@ -1,5 +1,5 @@
 class Counter {
-  static fun make() -> Counter;
+  static fn make() -> Counter;
 }
 
 Counter.make();

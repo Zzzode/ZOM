@@ -289,12 +289,12 @@ What the core library provides:
 
 ```zom
 interface FromError<E> {
-    fun fromError(err: E) -> Self;
+    fn fromError(err: E) -> Self;
 }
 
 // Blanket identity: a function raising E can ?! a call raising E.
 impl<E> FromError<E> for E {
-    fun fromError(err: E) -> E { err }
+    fn fromError(err: E) -> E { err }
 }
 ```
 
@@ -307,7 +307,7 @@ signature level, zero-cost at runtime.
 
 ```zom
 interface Error {
-    fun message(this) -> str;
+    fn message(this) -> str;
 }
 ```
 
@@ -318,17 +318,17 @@ Convention: error types are enums, one variant per failure mode.
 **Error-union combinators** (provided as methods on the `T | E` shape):
 
 ```zom
-fun isOk(this) -> bool
-fun isErr(this) -> bool
-fun map<U>(this, f: (T) -> U) -> (U | E)
-fun mapErr<F>(this, f: (E) -> F) -> (T | F)
-fun andThen<U>(this, f: (T) -> (U | E)) -> (U | E)
-fun orElse<F>(this, f: (E) -> (T | F)) -> (T | F)
-fun unwrapOr(this, default: T) -> T    // == expr?: default
-fun ok(this) -> Maybe<T>
-fun err(this) -> Maybe<E>
-fun inspect(this, f: (T) -> ()) -> (T | E)
-fun inspectErr(this, f: (E) -> ()) -> (T | E)
+fn isOk(this) -> bool
+fn isErr(this) -> bool
+fn map<U>(this, f: (T) -> U) -> (U | E)
+fn mapErr<F>(this, f: (E) -> F) -> (T | F)
+fn andThen<U>(this, f: (T) -> (U | E)) -> (U | E)
+fn orElse<F>(this, f: (E) -> (T | F)) -> (T | F)
+fn unwrapOr(this, default: T) -> T    // == expr?: default
+fn ok(this) -> Maybe<T>
+fn err(this) -> Maybe<E>
+fn inspect(this, f: (T) -> ()) -> (T | E)
+fn inspectErr(this, f: (E) -> ()) -> (T | E)
 ```
 
 ### Marker Interfaces
@@ -339,7 +339,7 @@ fun inspectErr(this, f: (E) -> ()) -> (T | E)
 interface Copy {}       // bitwise duplication is valid
 interface Linear {}     // must be explicitly consumed; no copy, no drop
 interface Drop {        // compiler-called at scope exit
-    fun drop(this: &mut Self);
+    fn drop(this: &mut Self);
 }
 interface Sendable {}   // ownership may cross thread boundaries (auto-derived)
 interface Shared {}     // shared references are thread-safe (auto-derived)
@@ -362,7 +362,7 @@ work in generic numeric code. Every operator interface has an associated
 ```zom
 interface Add<Rhs = Self> {
     type Output;
-    fun add(this, rhs: Rhs) -> Output;
+    fn add(this, rhs: Rhs) -> Output;
 }
 // Sub, Mul, Div, Rem — same shape.
 // AddAssign, SubAssign, MulAssign, DivAssign, RemAssign — separate traits.
@@ -377,12 +377,12 @@ interface Add<Rhs = Self> {
 enum Ordering { Less, Equal, Greater }
 
 interface Eq {
-    fun eq(this, other: &Self) -> bool;
-    // Provided: fun ne(this, other: &Self) -> bool { !this.eq(other) }
+    fn eq(this, other: &Self) -> bool;
+    // Provided: fn ne(this, other: &Self) -> bool { !this.eq(other) }
 }
 
 interface Ord : Eq {
-    fun cmp(this, other: &Self) -> Ordering;
+    fn cmp(this, other: &Self) -> Ordering;
     // Provided: lt, le, gt, ge, min, max, clamp
 }
 ```
@@ -395,7 +395,7 @@ They get inherent `totalCmp` for sorting.
 ```zom
 interface Iterator {
     type Item;
-    fun next(this: &mut Self) -> Maybe<Self::Item>;
+    fn next(this: &mut Self) -> Maybe<Self::Item>;
     // All other methods are provided: map, filter, fold, forEach, take, skip,
     // chain, zip, enumerate, collect, count, last, nth, any, all, sum,
     // product, min, max, reduce, partition, unzip, position, ...
@@ -404,12 +404,12 @@ interface Iterator {
 interface IntoIterator {
     type Item;
     type IntoIter: Iterator<Item = Item>;
-    fun intoIter(this) -> IntoIter;
+    fn intoIter(this) -> IntoIter;
 }
 
 interface FromIterator {
     type Item;
-    fun fromIter<I: IntoIterator<Item = Item>>(iter: I) -> Self;
+    fn fromIter<I: IntoIterator<Item = Item>>(iter: I) -> Self;
 }
 ```
 
@@ -429,43 +429,43 @@ Three axes:
 ```zom
 // Axis 1: infallible, consuming. Implement From; Into comes free.
 interface From<T> {
-    fun from(value: T) -> Self;
+    fn from(value: T) -> Self;
 }
 interface Into<T> {
-    fun into(this) -> T;
+    fn into(this) -> T;
 }
 // Blanket: impl<T, U: From<T>> Into<U> for T
 
 // Axis 2: fallible, consuming — returns the error union.
 interface TryFrom<T> {
     type Error;
-    fun tryFrom(value: T) -> (Self | Self.Error);
+    fn tryFrom(value: T) -> (Self | Self.Error);
 }
 interface TryInto<T> {
     type Error;
-    fun tryInto(this) -> (T | Self.Error);
+    fn tryInto(this) -> (T | Self.Error);
 }
 
 // Axis 3: borrowed views.
 interface AsRef<T> {
-    fun asRef(this) -> &T;
+    fn asRef(this) -> &T;
 }
 interface AsMut<T> {
-    fun asMut(this) -> &mut T;
+    fn asMut(this) -> &mut T;
 }
 // Borrow: CONTRACT — eq/ord/hash identical to owner.
 // This is what makes HashMap<String, _> lookups with &str sound.
 interface Borrow<T> {
-    fun borrow(this) -> &T;
+    fn borrow(this) -> &T;
 }
 interface BorrowMut<T> : Borrow<T> {
-    fun borrowMut(this) -> &mut T;
+    fn borrowMut(this) -> &mut T;
 }
 
 // Parsing belongs to the type, not the string.
 interface FromStr {
     type Error;
-    fun fromStr(s: str) -> (Self | Self.Error);
+    fn fromStr(s: str) -> (Self | Self.Error);
 }
 ```
 
@@ -473,11 +473,11 @@ interface FromStr {
 
 ```zom
 interface Display {
-    fun format(this, f: &mut Formatter);
+    fn format(this, f: &mut Formatter);
 }
 
 interface Debug {
-    fun format(this, f: &mut Formatter);
+    fn format(this, f: &mut Formatter);
 }
 ```
 
@@ -493,7 +493,7 @@ human-facing representation.
 
 ```zom
 // Blanket: impl<T: Display> ToString for T {
-//     fun toString(this) -> String { ... }
+//     fn toString(this) -> String { ... }
 // }
 ```
 
@@ -579,57 +579,57 @@ enum Maybe<T> {
 
 | Method | Signature | Description |
 |---|---|---|
-| `isSome` | `fun isSome(this) -> bool` | Returns `true` if `Some`. |
-| `isSomeAnd` | `fun isSomeAnd(this, f: (T) -> bool) -> bool` | Returns `true` if `Some` and predicate holds. |
-| `isNone` | `fun isNone(this) -> bool` | Returns `true` if `None`. |
+| `isSome` | `fn isSome(this) -> bool` | Returns `true` if `Some`. |
+| `isSomeAnd` | `fn isSomeAnd(this, f: (T) -> bool) -> bool` | Returns `true` if `Some` and predicate holds. |
+| `isNone` | `fn isNone(this) -> bool` | Returns `true` if `None`. |
 
 **Unwrap:**
 
 | Method | Signature | Description |
 |---|---|---|
-| `unwrap` | `fun unwrap(this) -> T` | Returns the payload or traps. |
-| `expect` | `fun expect(this, msg: str) -> T` | Returns the payload or traps with `msg`. |
-| `unwrapOr` | `fun unwrapOr(this, default: T) -> T` | Returns the payload or `default`. |
-| `unwrapOrElse` | `fun unwrapOrElse(this, f: () -> T) -> T` | Returns the payload or computes from `f`. |
-| `unwrapOrDefault` | `fun unwrapOrDefault(this) -> T where T: Default` | Returns the payload or `T::default()`. |
+| `unwrap` | `fn unwrap(this) -> T` | Returns the payload or traps. |
+| `expect` | `fn expect(this, msg: str) -> T` | Returns the payload or traps with `msg`. |
+| `unwrapOr` | `fn unwrapOr(this, default: T) -> T` | Returns the payload or `default`. |
+| `unwrapOrElse` | `fn unwrapOrElse(this, f: () -> T) -> T` | Returns the payload or computes from `f`. |
+| `unwrapOrDefault` | `fn unwrapOrDefault(this) -> T where T: Default` | Returns the payload or `T::default()`. |
 
 **Transform:**
 
 | Method | Signature | Description |
 |---|---|---|
-| `map` | `fun map<U>(this, f: (T) -> U) -> Maybe<U>` | Transforms the payload. |
-| `mapOr` | `fun mapOr<U>(this, default: U, f: (T) -> U) -> U` | Transforms or returns `default`. |
-| `mapOrElse` | `fun mapOrElse<U>(this, default: () -> U, f: (T) -> U) -> U` | Transforms or computes. |
-| `andThen` | `fun andThen<U>(this, f: (T) -> Maybe<U>) -> Maybe<U>` | Monadic bind. |
-| `and` | `fun and<U>(this, other: Maybe<U>) -> Maybe<U>` | Returns `None` if `None`, else `other`. |
-| `or` | `fun or(this, other: Maybe<T>) -> Maybe<T>` | Returns `this` if `Some`, else `other`. |
-| `orElse` | `fun orElse(this, f: () -> Maybe<T>) -> Maybe<T>` | Returns `this` if `Some`, else computes. |
-| `filter` | `fun filter(this, f: (T) -> bool) -> Maybe<T>` | Returns `Some` if predicate holds. |
-| `flatten` | `fun flatten(this: Maybe<Maybe<T>>) -> Maybe<T>` | Flattens one level. |
-| `zip` | `fun zip<U>(this, other: Maybe<U>) -> Maybe<(T, U)>` | Combines two maybes. |
-| `inspect` | `fun inspect(this, f: (T) -> ()) -> Maybe<T>` | Calls `f` on payload, returns `this`. |
+| `map` | `fn map<U>(this, f: (T) -> U) -> Maybe<U>` | Transforms the payload. |
+| `mapOr` | `fn mapOr<U>(this, default: U, f: (T) -> U) -> U` | Transforms or returns `default`. |
+| `mapOrElse` | `fn mapOrElse<U>(this, default: () -> U, f: (T) -> U) -> U` | Transforms or computes. |
+| `andThen` | `fn andThen<U>(this, f: (T) -> Maybe<U>) -> Maybe<U>` | Monadic bind. |
+| `and` | `fn and<U>(this, other: Maybe<U>) -> Maybe<U>` | Returns `None` if `None`, else `other`. |
+| `or` | `fn or(this, other: Maybe<T>) -> Maybe<T>` | Returns `this` if `Some`, else `other`. |
+| `orElse` | `fn orElse(this, f: () -> Maybe<T>) -> Maybe<T>` | Returns `this` if `Some`, else computes. |
+| `filter` | `fn filter(this, f: (T) -> bool) -> Maybe<T>` | Returns `Some` if predicate holds. |
+| `flatten` | `fn flatten(this: Maybe<Maybe<T>>) -> Maybe<T>` | Flattens one level. |
+| `zip` | `fn zip<U>(this, other: Maybe<U>) -> Maybe<(T, U)>` | Combines two maybes. |
+| `inspect` | `fn inspect(this, f: (T) -> ()) -> Maybe<T>` | Calls `f` on payload, returns `this`. |
 
 **Convert:**
 
 | Method | Signature | Description |
 |---|---|---|
-| `okOr` | `fun okOr<E>(this, err: E) -> (T | E)` | Converts to error union. |
-| `okOrElse` | `fun okOrElse<E>(this, f: () -> E) -> (T | E)` | Converts with lazy error. |
+| `okOr` | `fn okOr<E>(this, err: E) -> (T | E)` | Converts to error union. |
+| `okOrElse` | `fn okOrElse<E>(this, f: () -> E) -> (T | E)` | Converts with lazy error. |
 
 **Entry-style mutation:**
 
 | Method | Signature | Description |
 |---|---|---|
-| `take` | `fun take(this: &mut Self) -> Maybe<T>` | Takes the payload, leaving `None`. |
-| `replace` | `fun replace(this: &mut Self, value: T) -> Maybe<T>` | Replaces, returns old. |
-| `getOrInsert` | `fun getOrInsert(this: &mut Self, value: T) -> &mut T` | Inserts if `None`, returns ref. |
-| `getOrInsertWith` | `fun getOrInsertWith(this: &mut Self, f: () -> T) -> &mut T` | Lazy insert. |
+| `take` | `fn take(this: &mut Self) -> Maybe<T>` | Takes the payload, leaving `None`. |
+| `replace` | `fn replace(this: &mut Self, value: T) -> Maybe<T>` | Replaces, returns old. |
+| `getOrInsert` | `fn getOrInsert(this: &mut Self, value: T) -> &mut T` | Inserts if `None`, returns ref. |
+| `getOrInsertWith` | `fn getOrInsertWith(this: &mut Self, f: () -> T) -> &mut T` | Lazy insert. |
 
 **Iterate:**
 
 | Method | Signature | Description |
 |---|---|---|
-| `iter` | `fun iter(this) -> MaybeIter<T>` | Zero-or-one iterator. |
+| `iter` | `fn iter(this) -> MaybeIter<T>` | Zero-or-one iterator. |
 
 **Interface implementations:**
 
@@ -649,11 +649,11 @@ enum Maybe<T> {
 
 ```zom
 interface FromError<E> {
-    fun fromError(err: E) -> Self;
+    fn fromError(err: E) -> Self;
 }
 
 impl<E> FromError<E> for E {
-    fun fromError(err: E) -> E { err }
+    fn fromError(err: E) -> E { err }
 }
 ```
 
@@ -661,7 +661,7 @@ impl<E> FromError<E> for E {
 
 ```zom
 interface Error {
-    fun message(this) -> str;
+    fn message(this) -> str;
 }
 ```
 
@@ -669,17 +669,17 @@ interface Error {
 
 | Method | Signature | Description |
 |---|---|---|
-| `isOk` | `fun isOk(this) -> bool` | Returns `true` if success. |
-| `isErr` | `fun isErr(this) -> bool` | Returns `true` if error. |
-| `map` | `fun map<U>(this, f: (T) -> U) -> (U | E)` | Transforms success. |
-| `mapErr` | `fun mapErr<F>(this, f: (E) -> F) -> (T | F)` | Transforms error. |
-| `andThen` | `fun andThen<U>(this, f: (T) -> (U | E)) -> (U | E)` | Monadic bind. |
-| `orElse` | `fun orElse<F>(this, f: (E) -> (T | F)) -> (T | F)` | Error recovery. |
-| `unwrapOr` | `fun unwrapOr(this, default: T) -> T` | Returns success or default. |
-| `ok` | `fun ok(this) -> Maybe<T>` | Converts to `Maybe`, discarding error. |
-| `err` | `fun err(this) -> Maybe<E>` | Converts to `Maybe`, discarding success. |
-| `inspect` | `fun inspect(this, f: (T) -> ()) -> (T | E)` | Calls `f` on success. |
-| `inspectErr` | `fun inspectErr(this, f: (E) -> ()) -> (T | E)` | Calls `f` on error. |
+| `isOk` | `fn isOk(this) -> bool` | Returns `true` if success. |
+| `isErr` | `fn isErr(this) -> bool` | Returns `true` if error. |
+| `map` | `fn map<U>(this, f: (T) -> U) -> (U | E)` | Transforms success. |
+| `mapErr` | `fn mapErr<F>(this, f: (E) -> F) -> (T | F)` | Transforms error. |
+| `andThen` | `fn andThen<U>(this, f: (T) -> (U | E)) -> (U | E)` | Monadic bind. |
+| `orElse` | `fn orElse<F>(this, f: (E) -> (T | F)) -> (T | F)` | Error recovery. |
+| `unwrapOr` | `fn unwrapOr(this, default: T) -> T` | Returns success or default. |
+| `ok` | `fn ok(this) -> Maybe<T>` | Converts to `Maybe`, discarding error. |
+| `err` | `fn err(this) -> Maybe<E>` | Converts to `Maybe`, discarding success. |
+| `inspect` | `fn inspect(this, f: (T) -> ()) -> (T | E)` | Calls `f` on success. |
+| `inspectErr` | `fn inspectErr(this, f: (E) -> ()) -> (T | E)` | Calls `f` on error. |
 
 ### Marker Interfaces (Normative)
 
@@ -689,7 +689,7 @@ interface Error {
 interface Copy {}
 interface Linear {}
 interface Drop {
-    fun drop(this: &mut Self);
+    fn drop(this: &mut Self);
 }
 interface Sendable {}
 interface Shared {}
@@ -732,23 +732,23 @@ struct Phantom<T> {}
 ```zom
 interface Add<Rhs = Self> {
     type Output;
-    fun add(this, rhs: Rhs) -> Output;
+    fn add(this, rhs: Rhs) -> Output;
 }
 interface Sub<Rhs = Self> {
     type Output;
-    fun sub(this, rhs: Rhs) -> Output;
+    fn sub(this, rhs: Rhs) -> Output;
 }
 interface Mul<Rhs = Self> {
     type Output;
-    fun mul(this, rhs: Rhs) -> Output;
+    fn mul(this, rhs: Rhs) -> Output;
 }
 interface Div<Rhs = Self> {
     type Output;
-    fun div(this, rhs: Rhs) -> Output;
+    fn div(this, rhs: Rhs) -> Output;
 }
 interface Rem<Rhs = Self> {
     type Output;
-    fun rem(this, rhs: Rhs) -> Output;
+    fn rem(this, rhs: Rhs) -> Output;
 }
 ```
 
@@ -757,11 +757,11 @@ interface Rem<Rhs = Self> {
 ```zom
 interface Neg {
     type Output;
-    fun neg(this) -> Output;
+    fn neg(this) -> Output;
 }
 interface Not {
     type Output;
-    fun not(this) -> Output;
+    fn not(this) -> Output;
 }
 ```
 
@@ -770,23 +770,23 @@ interface Not {
 ```zom
 interface BitAnd<Rhs = Self> {
     type Output;
-    fun bitAnd(this, rhs: Rhs) -> Output;
+    fn bitAnd(this, rhs: Rhs) -> Output;
 }
 interface BitOr<Rhs = Self> {
     type Output;
-    fun bitOr(this, rhs: Rhs) -> Output;
+    fn bitOr(this, rhs: Rhs) -> Output;
 }
 interface BitXor<Rhs = Self> {
     type Output;
-    fun bitXor(this, rhs: Rhs) -> Output;
+    fn bitXor(this, rhs: Rhs) -> Output;
 }
 interface Shl<Rhs = Self> {
     type Output;
-    fun shl(this, rhs: Rhs) -> Output;
+    fn shl(this, rhs: Rhs) -> Output;
 }
 interface Shr<Rhs = Self> {
     type Output;
-    fun shr(this, rhs: Rhs) -> Output;
+    fn shr(this, rhs: Rhs) -> Output;
 }
 ```
 
@@ -794,7 +794,7 @@ interface Shr<Rhs = Self> {
 
 ```zom
 interface AddAssign<Rhs = Self> {
-    fun addAssign(this: &mut Self, rhs: Rhs);
+    fn addAssign(this: &mut Self, rhs: Rhs);
 }
 // SubAssign, MulAssign, DivAssign, RemAssign,
 // BitAndAssign, BitOrAssign, BitXorAssign, ShlAssign, ShrAssign
@@ -810,12 +810,12 @@ enum Ordering {
 }
 
 interface Eq {
-    fun eq(this, other: &Self) -> bool;
-    // Provided: fun ne(this, other: &Self) -> bool { !this.eq(other) }
+    fn eq(this, other: &Self) -> bool;
+    // Provided: fn ne(this, other: &Self) -> bool { !this.eq(other) }
 }
 
 interface Ord : Eq {
-    fun cmp(this, other: &Self) -> Ordering;
+    fn cmp(this, other: &Self) -> Ordering;
     // Provided: lt, le, gt, ge, min, max, clamp
 }
 ```
@@ -825,10 +825,10 @@ interface Ord : Eq {
 ```zom
 interface Index<Idx> {
     type Output;
-    fun index(this, idx: Idx) -> &Output;
+    fn index(this, idx: Idx) -> &Output;
 }
 interface IndexMut<Idx> : Index<Idx> {
-    fun indexMut(this: &mut Self, idx: Idx) -> &mut Output;
+    fn indexMut(this: &mut Self, idx: Idx) -> &mut Output;
 }
 ```
 
@@ -839,7 +839,7 @@ interface IndexMut<Idx> : Index<Idx> {
 
 interface Iterator {
     type Item;
-    fun next(this: &mut Self) -> Maybe<Self::Item>;
+    fn next(this: &mut Self) -> Maybe<Self::Item>;
 
     // Provided methods (all have default implementations):
     // Adapters (lazy): map, filter, filterMap, flatMap, flatten, take, skip,
@@ -853,26 +853,26 @@ interface Iterator {
 interface IntoIterator {
     type Item;
     type IntoIter: Iterator<Item = Item>;
-    fun intoIter(this) -> IntoIter;
+    fn intoIter(this) -> IntoIter;
 }
 
 interface FromIterator {
     type Item;
-    fun fromIter<I: IntoIterator<Item = Item>>(iter: I) -> Self;
+    fn fromIter<I: IntoIterator<Item = Item>>(iter: I) -> Self;
 }
 
 interface DoubleEndedIterator : Iterator {
-    fun nextBack(this: &mut Self) -> Maybe<Item>;
+    fn nextBack(this: &mut Self) -> Maybe<Item>;
 }
 
 interface ExactSizeIterator : Iterator {
-    fun len(this) -> usize;
-    fun isEmpty(this) -> bool;
+    fn len(this) -> usize;
+    fn isEmpty(this) -> bool;
 }
 
 interface Extend {
     type Item;
-    fun extend<I: IntoIterator<Item = Item>>(this: &mut Self, iter: I);
+    fn extend<I: IntoIterator<Item = Item>>(this: &mut Self, iter: I);
 }
 ```
 
@@ -882,44 +882,44 @@ interface Extend {
 // core::convert
 
 interface From<T> {
-    fun from(value: T) -> Self;
+    fn from(value: T) -> Self;
 }
 
 interface Into<T> {
-    fun into(this) -> T;
+    fn into(this) -> T;
 }
 // Blanket: impl<T, U: From<T>> Into<U> for T
 
 interface TryFrom<T> {
     type Error;
-    fun tryFrom(value: T) -> (Self | Self.Error);
+    fn tryFrom(value: T) -> (Self | Self.Error);
 }
 
 interface TryInto<T> {
     type Error;
-    fun tryInto(this) -> (T | Self.Error);
+    fn tryInto(this) -> (T | Self.Error);
 }
 // Blanket: impl<T, U: TryFrom<T>> TryInto<U> for T
 
 interface AsRef<T> {
-    fun asRef(this) -> &T;
+    fn asRef(this) -> &T;
 }
 
 interface AsMut<T> {
-    fun asMut(this) -> &mut T;
+    fn asMut(this) -> &mut T;
 }
 
 interface Borrow<T> {
-    fun borrow(this) -> &T;
+    fn borrow(this) -> &T;
 }
 
 interface BorrowMut<T> : Borrow<T> {
-    fun borrowMut(this) -> &mut T;
+    fn borrowMut(this) -> &mut T;
 }
 
 interface FromStr {
     type Error;
-    fun fromStr(s: str) -> (Self | Self.Error);
+    fn fromStr(s: str) -> (Self | Self.Error);
 }
 ```
 
@@ -929,16 +929,16 @@ interface FromStr {
 // core::fmt
 
 interface Display {
-    fun format(this, f: &mut Formatter);
+    fn format(this, f: &mut Formatter);
 }
 
 interface Debug {
-    fun format(this, f: &mut Formatter);
+    fn format(this, f: &mut Formatter);
 }
 
 interface Write {
-    fun writeStr(this: &mut Self, s: str);
-    fun writeChar(this: &mut Self, c: char);
+    fn writeStr(this: &mut Self, s: str);
+    fn writeChar(this: &mut Self, c: char);
 }
 ```
 
@@ -952,7 +952,7 @@ are all `Debug`.
 
 ```zom
 // Blanket: impl<T: Display> ToString for T {
-//     fun toString(this) -> String { ... }
+//     fn toString(this) -> String { ... }
 // }
 ```
 
@@ -962,7 +962,7 @@ are all `Debug`.
 // core::default
 
 interface Default {
-    fun default() -> Self;
+    fn default() -> Self;
 }
 ```
 
@@ -975,22 +975,22 @@ Implementations: primitives default to zero/false; `Maybe<T>` defaults to
 // core::hash
 
 interface Hash {
-    fun hash(this, hasher: &mut Hasher);
+    fn hash(this, hasher: &mut Hasher);
 }
 
 interface Hasher {
-    fun writeBytes(this: &mut Self, bytes: u8[]);
-    fun writeU8(this: &mut Self, v: u8);
-    fun writeU16(this: &mut Self, v: u16);
-    fun writeU32(this: &mut Self, v: u32);
-    fun writeU64(this: &mut Self, v: u64);
-    fun writeI8(this: &mut Self, v: i8);
-    fun writeI16(this: &mut Self, v: i16);
-    fun writeI32(this: &mut Self, v: i32);
-    fun writeI64(this: &mut Self, v: i64);
-    fun writeUsize(this: &mut Self, v: usize);
-    fun writeIsize(this: &mut Self, v: isize);
-    fun finish(this) -> u64;
+    fn writeBytes(this: &mut Self, bytes: u8[]);
+    fn writeU8(this: &mut Self, v: u8);
+    fn writeU16(this: &mut Self, v: u16);
+    fn writeU32(this: &mut Self, v: u32);
+    fn writeU64(this: &mut Self, v: u64);
+    fn writeI8(this: &mut Self, v: i8);
+    fn writeI16(this: &mut Self, v: i16);
+    fn writeI32(this: &mut Self, v: i32);
+    fn writeI64(this: &mut Self, v: i64);
+    fn writeUsize(this: &mut Self, v: usize);
+    fn writeIsize(this: &mut Self, v: isize);
+    fn finish(this) -> u64;
 }
 ```
 

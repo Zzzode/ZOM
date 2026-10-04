@@ -12,7 +12,7 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 /// \brief Lowers one void mutating-receiver method body:
-/// `mutating fun set(this, x) { this.field = x; }`. Four node ids in source
+/// `mutating fn set(this, x) { this.field = x; }`. Four node ids in source
 /// preorder: function, body, write statement, write value parameter reference.
 /// No return is materialized; the callable result is Unit.
 void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);

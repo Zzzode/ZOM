@@ -3,7 +3,7 @@
 // the same local (`x = x * x`), and returns the result. Exercises the Mul
 // operation and the both-operands-local case in the binary-write local path.
 // Exits 9.
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut x = 3;
   x = x * x;
   return x;

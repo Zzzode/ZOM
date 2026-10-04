@@ -456,7 +456,7 @@ ZC_TEST("Scalar module initializers of non-i32 integer widths lower to a verifie
 }
 
 // Build the verified four-block boolean-conditional return MIR shape:
-//   fun f(cond: bool) -> i32 { if cond { return thenValue } else { return elseValue } }
+//   fn f(cond: bool) -> i32 { if cond { return thenValue } else { return elseValue } }
 //   local#1 = cond : bool (Parameter); local#2 = result : i32 (FunctionResult)
 //   bb1: StorageLive(local#2); SwitchInt(copy local#1) [true -> bb2, false -> bb3], default bb3
 //   bb2: local#2 = const thenValue; Goto(bb4)
@@ -618,7 +618,7 @@ mir::MirFunction buildReceiverConditionalCallee(identity::DefId calleeOwner,
 }
 
 // Build the verified reducible four-block while-loop return MIR shape:
-//   fun f(cond: bool) -> i32 { while cond {} return exitValue }
+//   fn f(cond: bool) -> i32 { while cond {} return exitValue }
 //   local#1 = cond : bool (Parameter); local#2 = result : i32 (FunctionResult)
 //   bb1 entry:  StorageLive(local#2); Goto(bb2)
 //   bb2 header: SwitchInt(copy local#1) [true -> bb3], default bb4
@@ -719,7 +719,7 @@ ZC_TEST("Reducible while-loop lowers to a verified multi-block LLVM function") {
 }
 
 // Build the verified four-block comparison-driven conditional return MIR shape:
-//   fun f(a: i32, b: i32) -> i32 { if a == b { return thenValue } else { return elseValue } }
+//   fn f(a: i32, b: i32) -> i32 { if a == b { return thenValue } else { return elseValue } }
 //   local#1 = a : i32 (Parameter); local#2 = b : i32 (Parameter)
 //   local#3 = result : i32 (FunctionResult); local#4 = temp : bool (Temporary)
 //   bb1 entry: StorageLive(#3); StorageLive(#4); #4 = (copy #1 == copy #2);
@@ -838,7 +838,7 @@ ZC_TEST("Comparison-driven conditional lowers to a verified multi-block LLVM fun
 }
 
 // Build the verified one-block arithmetic MIR shape:
-//   fun f(a: i32) -> i32 { let r: i32 = a + 1; return r; }
+//   fn f(a: i32) -> i32 { let r: i32 = a + 1; return r; }
 //   local#1 = a : i32 (Parameter); local#2 = r : i32 (FunctionResult)
 //   bb1: StorageLive(#2); #2 = copy #1 Add const 1; return move #2
 mir::MirFunction buildArithmeticReturn(identity::DefId owner, identity::SemanticTypeId i32,
@@ -911,7 +911,7 @@ ZC_TEST(
 }
 
 // Build the verified four-block conditional whose then-arm returns a parameter:
-//   fun f(cond: bool, v: i32) -> i32 { if cond { return v } else { return elseValue } }
+//   fn f(cond: bool, v: i32) -> i32 { if cond { return v } else { return elseValue } }
 //   local#1 = cond : bool (Parameter); local#2 = v : i32 (Parameter)
 //   local#3 = result : i32 (FunctionResult)
 //   bb1: StorageLive(#3); SwitchInt(copy #1) [true -> bb2], default bb3
@@ -1018,8 +1018,8 @@ ZC_TEST("Conditional with a parameter-returning arm lowers to a verified functio
 
 // Build a verified callee (scalar constant-return) and caller (two-block
 // Call+Return) pair for a same-module zero-argument direct call:
-//   fun g() -> i32 { return calleeValue }
-//   fun f() -> i32 { let x = g(); return x }
+//   fn g() -> i32 { return calleeValue }
+//   fn f() -> i32 { let x = g(); return x }
 mir::MirFunction buildScalarReturnCallee(identity::DefId owner, identity::SemanticTypeId i32,
                                          uint8_t calleeValue) {
   zc::Vector<mir::MirSourceScope> scopes;
@@ -1075,8 +1075,8 @@ mir::MirFunction buildLocalCallCaller(identity::DefId owner, identity::DefId cal
 }
 
 // O5/KR5.2 multi-block widening (same-module call): a zero-argument direct call
-// `fun f() -> i32 { let x = g(); return x }` with a defined callee
-// `fun g() -> i32 { return 5 }` lowers to a two-function LIR module that
+// `fn f() -> i32 { let x = g(); return x }` with a defined callee
+// `fn g() -> i32 { return 5 }` lowers to a two-function LIR module that
 // translates to verified LLVM IR (a `call` to a module-local defined function)
 // and a native ELF object. Both functions are defined; no external/synthetic
 // callee symbol is invented.
@@ -1124,7 +1124,7 @@ ZC_TEST("Same-module direct call lowers to a verified two-function LLVM module")
 
 // O5/KR5.2 argument-carrying call: a same-module direct call passing one integer
 // constant to a one-parameter callee that returns its parameter
-// `fun id(x: i32) -> i32 { return x }`, `fun f() -> i32 { let r = id(9); return
+// `fn id(x: i32) -> i32 { return x }`, `fn f() -> i32 { let r = id(9); return
 // r }`, lowers to a two-function LIR module that translates to verified LLVM IR
 // (a `call i32 @zom.callee(i32 9)`) and a native ELF object.
 mir::MirFunction buildParameterReturnCallee(identity::DefId owner, identity::SemanticTypeId i32) {
@@ -1225,8 +1225,8 @@ ZC_TEST("Same-module call with one integer argument lowers to a verified LLVM mo
 }
 
 // By-value aggregate call:
-//   fun first(p: Point) -> i32 { return p.x; }
-//   fun entry() -> i32 { let p = Point { x: 40, y: 2 }; return first(p); }
+//   fn first(p: Point) -> i32 { return p.x; }
+//   fn entry() -> i32 { let p = Point { x: 40, y: 2 }; return first(p); }
 // The nominal by-value argument flattens to two integer call arguments and the
 // callee returns the projected field's parameter slot. The caller folds to the
 // reserved no-argument zom.module_init entry, so the module is runnable.
@@ -1352,8 +1352,8 @@ ZC_TEST("By-value aggregate call flattens fields to a verified two-function LLVM
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
-// Parameter-argument call: `fun id(x: i32) -> i32 { return x }`,
-// `fun f(input: i32) -> i32 { let r = id(input); return r }` lowers to a
+// Parameter-argument call: `fn id(x: i32) -> i32 { return x }`,
+// `fn f(input: i32) -> i32 { let r = id(input); return r }` lowers to a
 // two-function LIR module whose call passes a load of the caller's parameter
 // slot (not a constant), translating to verified LLVM IR (`call i32 ... %n`
 // with no constant argument) and a native ELF object.
@@ -1439,8 +1439,8 @@ ZC_TEST("Same-module call forwarding its parameter argument lowers to verified L
   ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
 }
 
-// Return-position parameter-argument call: `fun id(x: i32) -> i32 { return x }`,
-// `fun f(input: i32) -> i32 { return id(input) }` lowers to a two-function
+// Return-position parameter-argument call: `fn id(x: i32) -> i32 { return x }`,
+// `fn f(input: i32) -> i32 { return id(input) }` lowers to a two-function
 // LIR module. The caller is one Parameter local, a Temporary (the call
 // destination), and a FunctionResult: entry StorageLive(temp) + Call(dest=temp),
 // continuation StorageLive(result) + Assign(result = move temp) + StorageDead(temp)

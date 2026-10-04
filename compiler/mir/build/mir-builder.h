@@ -34,8 +34,8 @@ struct RecursiveFunctionProduct final {
 /// when it matches the current Phase-3 legality set.
 ///
 /// The accepted shapes are the bare single-block returns the legacy rail emits:
-/// a scalar literal return (`fun f(...) -> T { return <literal>; }`, no locals,
-/// Return(Constant)), a parameter return (`fun f(p0..pN-1) -> R { return pK;
+/// a scalar literal return (`fn f(...) -> T { return <literal>; }`, no locals,
+/// Return(Constant)), a parameter return (`fn f(p0..pN-1) -> R { return pK;
 /// }`, leading parameter locals, Return(copy/move place-use)), a single
 /// scalar-initialized user local returned by place-use (`let x = <literal>;
 /// return x;`, one UserLocal, StorageLive plus an Initialize Assign), its

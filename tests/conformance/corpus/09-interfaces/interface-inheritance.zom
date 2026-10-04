@@ -1,7 +1,7 @@
 interface Base {
-  fun foo();
+  fn foo();
 }
 
 interface Derived : Base {
-  fun bar();
+  fn bar();
 }

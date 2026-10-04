@@ -12,23 +12,23 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #8 @1:15..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #7 @2:5..2:36 name="pow" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #7 @2:5..2:35 name="pow" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:12..2:25 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:11..2:24 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:13..2:24 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:12..2:23 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:18..2:24
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:17..2:23
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:18..2:24 segments=["Number"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:17..2:23 segments=["Number"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #6 @2:29..2:35
+// CHECK-NEXT:                     NamedTypeExpr #6 @2:28..2:34
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #5 @2:29..2:35 segments=["Number"] root=Relative
+// CHECK-NEXT:                         ModulePath #5 @2:28..2:34 segments=["Number"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
@@ -60,23 +60,23 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #25 @7:21..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #24 @8:5..8:36 name="pow" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #24 @8:5..8:35 name="pow" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #21 @8:12..8:25 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #21 @8:11..8:24 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #20 @8:13..8:24 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #20 @8:12..8:23 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #19 @8:18..8:24
+// CHECK-NEXT:                             NamedTypeExpr #19 @8:17..8:23
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #18 @8:18..8:24 segments=["Number"] root=Relative
+// CHECK-NEXT:                                 ModulePath #18 @8:17..8:23 segments=["Number"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #23 @8:29..8:35
+// CHECK-NEXT:                     NamedTypeExpr #23 @8:28..8:34
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #22 @8:29..8:35 segments=["Number"] root=Relative
+// CHECK-NEXT:                         ModulePath #22 @8:28..8:34 segments=["Number"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

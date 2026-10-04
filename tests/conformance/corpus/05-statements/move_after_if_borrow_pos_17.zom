@@ -1,6 +1,6 @@
 class Owner { }
 
-fun main() -> unit {
+fn main() -> unit {
     let owned: Owner;
     if (true) {
         let ref = &owned;

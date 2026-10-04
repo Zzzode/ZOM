@@ -1,4 +1,4 @@
-fun f(x: i32) {
+fn f(x: i32) {
     match (x) {
         when 1 if 2 > 1 => { return; }
         when 2 => { return; }

@@ -3,7 +3,7 @@
 // same local (`x = x + 1`), and returns the result. The function folds to the
 // reserved no-argument `zom.module_init` entry the runtime `_start` calls, so
 // `zomc run` executes it natively and exits 2.
-fun entry() -> i32 {
+fn entry() -> i32 {
   mut x = 1;
   x = x + 1;
   return x;

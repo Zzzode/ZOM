@@ -6,7 +6,7 @@ struct Point {
     y: i32,
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
     let p1 = Point { x: 1, y: 2 };
     let p2 = Point { x: 3, ..p1 };
     return p2.x;

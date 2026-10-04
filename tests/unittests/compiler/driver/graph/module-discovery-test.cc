@@ -270,7 +270,7 @@ ZC_TEST("ModuleDiscoveryTest.IgnoresUnreachableParserArenaNodes") {
   auto fixture = parseTree(R"(
 struct Box { item: &i32 }
 
-fun leak() -> &i32 {
+fn leak() -> &i32 {
   let value: i32;
   return Box { item: (&value) }.item;
 }

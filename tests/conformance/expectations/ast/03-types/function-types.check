@@ -32,5 +32,5 @@
 // CHECK-NEXT:                             ModulePath #4 @1:27..1:30 segments=["Err"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #9 @1:33..1:35 name="fn"
+// CHECK-NEXT:                     IdentExpr #9 @1:33..1:35 name="fx"
 // CHECK-NEXT:       attrs: null

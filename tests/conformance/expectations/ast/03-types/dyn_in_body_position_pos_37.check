@@ -12,15 +12,15 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #6 @1:16..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #5 @2:5..2:21 name="write" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #5 @2:5..2:20 name="write" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:14..2:20 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:13..2:19 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:15..2:19 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:14..2:18 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:15..2:19
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:14..2:18
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:15..2:19 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:14..2:18 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
@@ -33,15 +33,15 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #23 @5:1..7:2 name="consume"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #13 @5:12..5:30 nparams=1
+// CHECK-NEXT:             FunctionParameterList #13 @5:11..5:29 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #12 @5:13..5:29 name="target"
+// CHECK-NEXT:                 FunctionParameterDecl #12 @5:12..5:28 name="target"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     DynTypeExpr #11 @5:21..5:29
+// CHECK-NEXT:                     DynTypeExpr #11 @5:20..5:28
 // CHECK-NEXT:                       principal:
-// CHECK-NEXT:                         NamedTypeExpr #10 @5:25..5:29
+// CHECK-NEXT:                         NamedTypeExpr #10 @5:24..5:28
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #9 @5:25..5:29 segments=["Sink"] root=Relative
+// CHECK-NEXT:                             ModulePath #9 @5:24..5:28 segments=["Sink"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                       markers_id: null
 // CHECK-NEXT:                       assoc_bindings_id: null
@@ -51,7 +51,7 @@
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #22 @5:31..7:2
+// CHECK-NEXT:             BlockStmt #22 @5:30..7:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #21 @6:5..6:25
 // CHECK-NEXT:                   item:

@@ -13,7 +13,7 @@
  * Usage:
  *   antlr4 ZomLexer.g4 ZomParser.g4 -visitor
  *   javac -cp $(antlr4 -cp) Zom*.java
- *   echo 'fun id() -> i32 { return 42; }' | grun Zom tokens
+ *   echo 'fn id() -> i32 { return 42; }' | grun Zom tokens
  *
  * ANTLR 4.13+ is required for Unicode property escapes.
  */
@@ -499,7 +499,7 @@ STRUCT   : 'struct';
 INTERFACE: 'interface';
 ENUM     : 'enum';
 ERROR    : 'error';
-FUN      : 'fun';
+FN      : 'fn';
 MUT      : 'mut';
 LET      : 'let';
 CONST    : 'const';

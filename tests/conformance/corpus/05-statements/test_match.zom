@@ -1,4 +1,4 @@
-fun testMatch() {
+fn testMatch() {
   match (x) {
     when 0 => {
       x = 100;

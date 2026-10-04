@@ -109,34 +109,34 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #52 @9:1..11:2 name="needs"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #47 @9:17..9:23 nparams=1
+// CHECK-NEXT:             FunctionParameterList #47 @9:16..9:22 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #46 @9:18..9:22 name="x"
+// CHECK-NEXT:                 FunctionParameterDecl #46 @9:17..9:21 name="x"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #45 @9:21..9:22
+// CHECK-NEXT:                     NamedTypeExpr #45 @9:20..9:21
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #44 @9:21..9:22 segments=["T"] root=Relative
+// CHECK-NEXT:                         ModulePath #44 @9:20..9:21 segments=["T"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id:
-// CHECK-NEXT:             GenericParams #43 @9:10..9:17 nparams=1
+// CHECK-NEXT:             GenericParams #43 @9:9..9:16 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 GenericTypeParam #42 @9:11..9:16 name="T"
+// CHECK-NEXT:                 GenericTypeParam #42 @9:10..9:15 name="T"
 // CHECK-NEXT:                   bounds_id:
-// CHECK-NEXT:                     TypeParameterBoundList #41 @9:14..9:16
+// CHECK-NEXT:                     TypeParameterBoundList #41 @9:13..9:15
 // CHECK-NEXT:                       bounds:
-// CHECK-NEXT:                         NamedTypeExpr #40 @9:14..9:16
+// CHECK-NEXT:                         NamedTypeExpr #40 @9:13..9:15
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #39 @9:14..9:16 segments=["Eq"] root=Relative
+// CHECK-NEXT:                             ModulePath #39 @9:13..9:15 segments=["Eq"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_ty: null
 // CHECK-NEXT:               where_: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #48 @9:27..9:31 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #48 @9:26..9:30 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #51 @9:32..11:2
+// CHECK-NEXT:             BlockStmt #51 @9:31..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #50 @10:5..10:12
 // CHECK-NEXT:                   item:

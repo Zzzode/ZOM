@@ -6,4 +6,4 @@
 // 0 and no diagnostic at all, binding a bool local to an i32 value.
 
 // CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected bool, got i32
-// CHECK-LITERAL:   --> conformance/05-statements/local_annotation_mismatch_neg_01.zom:1:38
+// CHECK-LITERAL:   --> conformance/05-statements/local_annotation_mismatch_neg_01.zom:1:37

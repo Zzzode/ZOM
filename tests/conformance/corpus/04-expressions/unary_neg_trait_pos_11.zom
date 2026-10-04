@@ -1,11 +1,11 @@
 interface Neg {
-    fun neg() -> Operand;
+    fn neg() -> Operand;
 }
 
 class Operand { }
 
 impl Neg for Operand {
-    fun neg() -> Operand;
+    fn neg() -> Operand;
 }
 
 let value: Operand;

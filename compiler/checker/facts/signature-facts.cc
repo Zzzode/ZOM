@@ -8782,7 +8782,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       ast::NodeId parameters;
       ast::NodeId returnType;
       if (tree.node(definition.node).kind == ast::SyntaxKind::ExternDecl) {
-        // An `extern "abi" { fun ... }` member is grammar the parser and binder
+        // An `extern "abi" { fn ... }` member is grammar the parser and binder
         // accept, but the FFI call ABI (RFC 0006) is not implemented yet. The
         // companion `variable` declaration binds as a Static and drains in the
         // Constant/Static branch above. Drain the foreign function itself as
@@ -8808,7 +8808,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       // A concrete method supplied by a standalone `impl` block ALWAYS publishes its
       // signature here, even when its body is outside the lowered surface. Coherence
       // (orphan/conflicting-impl detection) is a signature-level fact and must observe the
-      // complete impl, including receiverless trait methods (`impl I for T { fun act() ... }`)
+      // complete impl, including receiverless trait methods (`impl I for T { fn act() ... }`)
       // and receiver-bearing ones. An unsupported BODY is drained later (ZOM4099) by the
       // checker body / HIR stage; suppressing the signature here would hide those impls from
       // coherence.

@@ -41,7 +41,7 @@ Statement ::= BlockStatement
 ExpressionStatement ::= Expression ';'
 ```
 
-The first token of the expression MUST NOT be `{`, `class`, `struct`, `enum`, `mut`, `let`, `const`, `fun`, `interface`, `error`, `alias`, or `module` to avoid ambiguity with declarations and block statements.
+The first token of the expression MUST NOT be `{`, `class`, `struct`, `enum`, `mut`, `let`, `const`, `fn`, `interface`, `error`, `alias`, or `module` to avoid ambiguity with declarations and block statements.
 
 #### Admitted expression-statement shapes
 
@@ -341,7 +341,7 @@ loop-body write is an assignment `<ident> = <scalar-literal | identifier |
 admitted primitive binary>;` targeting a local binding. For example:
 
 ```zom
-fun spin(cond: bool) -> i32 {
+fn spin(cond: bool) -> i32 {
     mut x = 0;
     while (cond) {
         x = x + 1;
@@ -588,18 +588,18 @@ ReturnStatement ::= 'return' Expression? ';'
 
 ```zom
 // Return with value
-fun add(a: i32, b: i32) -> i32 {
+fn add(a: i32, b: i32) -> i32 {
     return a + b;
 }
 
 // Return without value (unit type)
-fun printMessage(msg: str) {
+fn printMessage(msg: str) {
     print(msg);
     return; // Optional for unit-returning functions
 }
 
 // Early return
-fun divide(a: f64, b: f64) -> f64? {
+fn divide(a: f64, b: f64) -> f64? {
     if (b == 0.0) return null;
     return a / b;
 }
@@ -762,7 +762,7 @@ unsafe {
   ```
 - **Prefer safe wrappers.** Encapsulate unsafe operations in a function that provides a safe interface:
   ```zom
-  fun safe_read(ptr: *const i32) -> i32? {
+  fn safe_read(ptr: *const i32) -> i32? {
       if (ptr == null) return null;
       // SAFETY: we just checked for null
       return unsafe { *ptr };

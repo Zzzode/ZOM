@@ -1,6 +1,6 @@
 class Owner { }
 
-fun main(flag: bool) -> unit {
+fn main(flag: bool) -> unit {
     let owned: Owner;
     match (flag) {
         when _ => {

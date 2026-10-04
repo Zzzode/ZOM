@@ -7,4 +7,4 @@
 // rather than reaching a checker invariant. A call `g()` is unaffected.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_function_value_capability_neg.zom:2:26
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_function_value_capability_neg.zom:2:25

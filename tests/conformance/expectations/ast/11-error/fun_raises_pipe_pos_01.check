@@ -4,27 +4,27 @@
 // CHECK: SourceFile #11 @1:1..2:1 file_name="fun_raises_pipe_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #10 @1:1..1:33
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:32
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #9 @1:1..1:33 name="foo"
+// CHECK-NEXT:         FunctionDecl #9 @1:1..1:32 name="foo"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:7..1:9 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #2 @1:14..1:17 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:13..1:16 kind=I32
 // CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             UnionTypeExpr #7 @1:25..1:32
+// CHECK-NEXT:             UnionTypeExpr #7 @1:24..1:31
 // CHECK-NEXT:               alts:
-// CHECK-NEXT:                 NamedTypeExpr #4 @1:25..1:27
+// CHECK-NEXT:                 NamedTypeExpr #4 @1:24..1:26
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #3 @1:25..1:27 segments=["E1"] root=Relative
+// CHECK-NEXT:                     ModulePath #3 @1:24..1:26 segments=["E1"] root=Relative
 // CHECK-NEXT:                   args: []
-// CHECK-NEXT:                 NamedTypeExpr #6 @1:30..1:32
+// CHECK-NEXT:                 NamedTypeExpr #6 @1:29..1:31
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #5 @1:30..1:32 segments=["E2"] root=Relative
+// CHECK-NEXT:                     ModulePath #5 @1:29..1:31 segments=["E2"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #8 @1:32..1:33
+// CHECK-NEXT:             BlockStmt #8 @1:31..1:32
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null

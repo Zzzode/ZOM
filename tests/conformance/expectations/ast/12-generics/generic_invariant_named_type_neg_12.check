@@ -19,49 +19,49 @@
 // CHECK-NEXT:             ClassMemberList #3 @1:14..1:17 nmembers=0
 // CHECK-NEXT:               members: []
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #13 @3:1..3:38
+// CHECK-NEXT:     StatementListItem #13 @3:1..3:37
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #12 @3:1..3:38 name="make_mut_refs"
+// CHECK-NEXT:         FunctionDecl #12 @3:1..3:37 name="make_mut_refs"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #6 @3:18..3:20 nparams=0
+// CHECK-NEXT:             FunctionParameterList #6 @3:17..3:19 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             NamedTypeExpr #10 @3:24..3:37
+// CHECK-NEXT:             NamedTypeExpr #10 @3:23..3:36
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #9 @3:24..3:27 segments=["Vec"] root=Relative
+// CHECK-NEXT:                 ModulePath #9 @3:23..3:26 segments=["Vec"] root=Relative
 // CHECK-NEXT:               args:
-// CHECK-NEXT:                 ReferenceTypeExpr #8 @3:28..3:36 is_mut=true
+// CHECK-NEXT:                 ReferenceTypeExpr #8 @3:27..3:35 is_mut=true
 // CHECK-NEXT:                   elem:
-// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:33..3:36 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #7 @3:32..3:35 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #11 @3:37..3:38
+// CHECK-NEXT:             BlockStmt #11 @3:36..3:37
 // CHECK-NEXT:               stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #25 @5:1..7:2
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #24 @5:1..7:2 name="read_refs"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #19 @5:14..5:29 nparams=1
+// CHECK-NEXT:             FunctionParameterList #19 @5:13..5:28 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #18 @5:15..5:28 name="xs"
+// CHECK-NEXT:                 FunctionParameterDecl #18 @5:14..5:27 name="xs"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #17 @5:19..5:28
+// CHECK-NEXT:                     NamedTypeExpr #17 @5:18..5:27
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #16 @5:19..5:22 segments=["Vec"] root=Relative
+// CHECK-NEXT:                         ModulePath #16 @5:18..5:21 segments=["Vec"] root=Relative
 // CHECK-NEXT:                       args:
-// CHECK-NEXT:                         ReferenceTypeExpr #15 @5:23..5:27 is_mut=false
+// CHECK-NEXT:                         ReferenceTypeExpr #15 @5:22..5:26 is_mut=false
 // CHECK-NEXT:                           elem:
-// CHECK-NEXT:                             PredefinedTypeExpr #14 @5:24..5:27 kind=I32
+// CHECK-NEXT:                             PredefinedTypeExpr #14 @5:23..5:26 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #20 @5:33..5:37 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #20 @5:32..5:36 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #23 @5:38..7:2
+// CHECK-NEXT:             BlockStmt #23 @5:37..7:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #22 @6:5..6:12
 // CHECK-NEXT:                   item:

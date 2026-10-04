@@ -332,7 +332,7 @@ facts::RegionMembership makeMembership(facts::RegionKey region, facts::Point poi
 // relation is empty as well.
 
 ZC_TEST("Region outlives produces empty inventory for a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   auto verified = buildAndVerifyRegionOutlives(fixture);
   ZC_REQUIRE(verified.isVerified());
   ZC_EXPECT(verified.verifiedValue().outlives().size() == 0);
@@ -343,7 +343,7 @@ ZC_TEST("Region outlives produces empty inventory for a scalar function") {
 // live-point set is a subset of the input's, so the input outlives the loan.
 
 ZC_TEST("Region outlives derives input outlives loan for a parameter reborrow") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto verified = buildAndVerifyRegionOutlives(fixture);
   ZC_REQUIRE(verified.isVerified());
   const auto& outlives = verified.verifiedValue().outlives();
@@ -427,7 +427,7 @@ ZC_TEST("Region outlives unrelated loans have no relation") {
 // revision mismatch.
 
 ZC_TEST("Region outlives rejects a foreign semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -442,7 +442,7 @@ ZC_TEST("Region outlives rejects a foreign semantic context brand") {
 }
 
 ZC_TEST("Region outlives rejects a foreign context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -459,7 +459,7 @@ ZC_TEST("Region outlives rejects a foreign context fingerprint") {
 }
 
 ZC_TEST("Region outlives rejects a foreign module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -474,7 +474,7 @@ ZC_TEST("Region outlives rejects a foreign module identity") {
 }
 
 ZC_TEST("Region outlives rejects a foreign built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -489,7 +489,7 @@ ZC_TEST("Region outlives rejects a foreign built revision") {
 }
 
 ZC_TEST("Region outlives rejects a foreign overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -504,10 +504,10 @@ ZC_TEST("Region outlives rejects a foreign overlay revision") {
 }
 
 ZC_TEST("Region outlives rejects a foreign borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   // BorrowEvidenceRevision has no public digest constructor, so a second,
   // genuinely different compilation donates a foreign-but-valid revision.
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   auto memberships = buildAndVerifyRegionMemberships(fixture);
@@ -529,7 +529,7 @@ ZC_TEST("Region outlives rejects a foreign borrow evidence revision") {
 // spurious edge on an otherwise empty scalar function) must be rejected.
 
 ZC_TEST("Region outlives rejects a spurious fact on a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);
@@ -553,7 +553,7 @@ ZC_TEST("Region outlives rejects a spurious fact on a scalar function") {
 // candidate on a reborrow function) must be rejected.
 
 ZC_TEST("Region outlives rejects a missing fact on a reborrow function") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto memberships = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(memberships.isVerified());
   auto candidateResult = buildRegionOutlives(memberships.verifiedValue(), fixture);

@@ -12,15 +12,15 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #6 @1:17..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #5 @2:5..2:22 name="report" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #5 @2:5..2:21 name="report" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:15..2:21 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:14..2:20 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:16..2:20 name="this"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:15..2:19 name="this"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:16..2:20
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:15..2:19
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:16..2:20 segments=["Self"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:15..2:19 segments=["Self"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null

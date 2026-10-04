@@ -1,11 +1,11 @@
 interface Eq {
-    fun eq(rhs: Point) -> bool;
+    fn eq(rhs: Point) -> bool;
 }
 
 class Point { }
 
 impl Eq for Point {
-    fun eq(rhs: str) -> Point;
+    fn eq(rhs: str) -> Point;
 }
 
 let x: Point;

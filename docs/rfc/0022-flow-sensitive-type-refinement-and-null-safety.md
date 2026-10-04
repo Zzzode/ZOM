@@ -212,7 +212,7 @@ stages consume without reconstructing it.
 implicit trap or default value when a nullable value is used as `T`.
 
 ```zom
-fun printLength(value: str?) {
+fn printLength(value: str?) {
     if (value == null) {
         return;
     }
@@ -227,7 +227,7 @@ path on which execution continues is the path where `value != null`.
 The same rule applies inside a true branch:
 
 ```zom
-fun printLength(value: str?) {
+fn printLength(value: str?) {
     if (value != null) {
         print(value.length);
     }
@@ -242,7 +242,7 @@ The right side of a short-circuit operator is checked under the facts required
 for that side to execute.
 
 ```zom
-fun hasText(value: str?) -> bool {
+fn hasText(value: str?) -> bool {
     return value != null && value.length > 0;
 }
 ```
@@ -253,7 +253,7 @@ fun hasText(value: str?) -> bool {
 For `||`, the right operand receives the false facts from the left operand:
 
 ```zom
-fun isMissingOrEmpty(value: str?) -> bool {
+fn isMissingOrEmpty(value: str?) -> bool {
     return value == null || value.length == 0;
 }
 ```
@@ -264,7 +264,7 @@ An `is` test refines the true branch to the tested type when the intersection
 is representable:
 
 ```zom
-fun describe(value: any) {
+fn describe(value: any) {
     if (value is str) {
         print(value.length);
     }
@@ -275,7 +275,7 @@ Pattern success refines a direct binding scrutinee and gives pattern bindings
 their pattern-specific declared types:
 
 ```zom
-fun describe(value: str | i32 | null) {
+fn describe(value: str | i32 | null) {
     match (value) {
         when str => { print(value.length); }
         when i32 => { print(value.toString()); }
@@ -297,7 +297,7 @@ member, operator, overload, or call selection. Other assignments conservatively
 reset the possible type to the declared type.
 
 ```zom
-fun update() {
+fn update() {
     mut value: str? = "ready";
     print(value.length);
 

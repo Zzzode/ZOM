@@ -368,7 +368,7 @@ size_t countRegionLivePoints(zc::ArrayPtr<const facts::RegionMembership> members
 // liveness dataflow produces an empty membership inventory.
 
 ZC_TEST("Region membership produces empty inventory for a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   auto verified = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(verified.isVerified());
   ZC_EXPECT(verified.verifiedValue().memberships().size() == 0);
@@ -379,7 +379,7 @@ ZC_TEST("Region membership produces empty inventory for a scalar function") {
 // reachable flow point.
 
 ZC_TEST("Region membership seeds input region at every point for a parameter reborrow") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& inputs = fixture.inputs();
   auto verified = buildAndVerifyRegionMemberships(fixture);
   ZC_REQUIRE(verified.isVerified());
@@ -410,7 +410,7 @@ ZC_TEST("Region membership seeds input region at every point for a parameter reb
 
 ZC_TEST("Region membership activates loan region at borrow for a local borrow") {
   RejectedBorrowPipelineFixture fixture(
-      "fun entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn entry() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
 
@@ -462,7 +462,7 @@ ZC_TEST("Region membership activates loan region at borrow for a local borrow") 
 // revision mismatch.
 
 ZC_TEST("Region membership rejects a foreign semantic context brand") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -477,7 +477,7 @@ ZC_TEST("Region membership rejects a foreign semantic context brand") {
 }
 
 ZC_TEST("Region membership rejects a foreign context fingerprint") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -493,7 +493,7 @@ ZC_TEST("Region membership rejects a foreign context fingerprint") {
 }
 
 ZC_TEST("Region membership rejects a foreign module identity") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -507,7 +507,7 @@ ZC_TEST("Region membership rejects a foreign module identity") {
 }
 
 ZC_TEST("Region membership rejects a foreign built revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -521,7 +521,7 @@ ZC_TEST("Region membership rejects a foreign built revision") {
 }
 
 ZC_TEST("Region membership rejects a foreign overlay revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -535,10 +535,10 @@ ZC_TEST("Region membership rejects a foreign overlay revision") {
 }
 
 ZC_TEST("Region membership rejects a foreign borrow evidence revision") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   // BorrowEvidenceRevision has no public digest constructor, so a second,
   // genuinely different compilation donates a foreign-but-valid revision.
-  OwnershipPipelineFixture foreign("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture foreign("fn entry() -> i32 { return 0; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   auto candidateResult = buildRegionMemberships(fixture);
@@ -559,7 +559,7 @@ ZC_TEST("Region membership rejects a foreign borrow evidence revision") {
 // spurious row on an otherwise empty scalar function) must be rejected.
 
 ZC_TEST("Region membership rejects a spurious membership on a scalar function") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -582,7 +582,7 @@ ZC_TEST("Region membership rejects a spurious membership on a scalar function") 
 // candidate on a reborrow function) must be rejected.
 
 ZC_TEST("Region membership rejects a missing membership on a reborrow function") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   auto candidateResult = buildRegionMemberships(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();

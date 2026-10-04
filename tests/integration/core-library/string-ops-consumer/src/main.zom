@@ -1,4 +1,4 @@
-fun entry() -> i32 {
+fn entry() -> i32 {
   let s = "hello";
   let len = s.length;
   return len;

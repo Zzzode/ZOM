@@ -1,11 +1,11 @@
 interface Drawable {
-    fun draw(this);
+    fn draw(this);
 }
 
 struct Square {
     value: u8,
 }
 
-fun make(s: Square) -> dyn Drawable {
+fn make(s: Square) -> dyn Drawable {
     return s;
 }

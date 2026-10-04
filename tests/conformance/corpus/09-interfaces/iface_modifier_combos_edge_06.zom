@@ -1,4 +1,4 @@
 interface OverrideReadonly {
-    override fun toString() -> str;
+    override fn toString() -> str;
     readonly get tag() -> str;
 }

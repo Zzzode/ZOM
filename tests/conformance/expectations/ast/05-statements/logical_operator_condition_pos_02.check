@@ -8,24 +8,24 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #21 @1:1..7:2 name="f"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #5 @1:6..1:24 nparams=2
+// CHECK-NEXT:             FunctionParameterList #5 @1:5..1:23 nparams=2
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:7..1:14 name="a"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:6..1:13 name="a"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:10..1:14 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:9..1:13 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
-// CHECK-NEXT:                 FunctionParameterDecl #4 @1:16..1:23 name="b"
+// CHECK-NEXT:                 FunctionParameterDecl #4 @1:15..1:22 name="b"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:19..1:23 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #3 @1:18..1:22 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #6 @1:28..1:31 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #6 @1:27..1:30 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #20 @1:32..7:2
+// CHECK-NEXT:             BlockStmt #20 @1:31..7:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #19 @2:3..6:4
 // CHECK-NEXT:                   item:

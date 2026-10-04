@@ -111,7 +111,7 @@ The following identifiers are reserved as keywords and cannot be used as regular
 
 ```
 class       struct      interface   enum        error
-fun         mut         let         const       var
+fn         mut         let         const       var
 alias
 type        module      namespace   package     constructor
 init        deinit      get         set         accessor

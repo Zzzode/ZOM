@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2025]: Expected ','
 // CHECK-LITERAL:   --> conformance/function_type_named_parameter_reject_neg_37.zom:1:21
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | let callback: (value: i32) -> i32 = fn;
+// CHECK-LITERAL: 1 | let callback: (value: i32) -> i32 = fx;
 // CHECK-LITERAL:   |                     ^

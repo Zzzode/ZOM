@@ -1,4 +1,4 @@
 abstract class Shape : Object {
-    abstract fun area() -> f64;
+    abstract fn area() -> f64;
 }
 impl Drawable for Shape { }

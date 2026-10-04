@@ -269,14 +269,14 @@ void expectPublishedRejection(const Result& result, ir::IrFailureKind expected) 
 // publishes it through the verified ownership inputs bundle.
 
 ZC_TEST("Ownership capture derivation produces no captures for a scalar function") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& inputs = fixture.inputs();
 
   ZC_EXPECT(inputs.captures().captures().size() == 0);
 }
 
 ZC_TEST("Ownership capture derivation produces no captures for a reborrow function") {
-  CapturePipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  CapturePipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& inputs = fixture.inputs();
 
   // The reborrow fixture carries references and escapes but no closures, so
@@ -290,7 +290,7 @@ ZC_TEST("Ownership capture derivation produces no captures for a reborrow functi
 // rejected as an invalid ownership proof.
 
 ZC_TEST("Ownership capture derivation rejects a spurious capture fact") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { let x = 42; return x; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { let x = 42; return x; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -329,7 +329,7 @@ ZC_TEST("Ownership capture derivation rejects a spurious capture fact") {
 // mismatch, publishing the rejection instead of an ownership output.
 
 ZC_TEST("Ownership capture derivation rejects a foreign semantic context brand") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -346,7 +346,7 @@ ZC_TEST("Ownership capture derivation rejects a foreign semantic context brand")
 }
 
 ZC_TEST("Ownership capture derivation rejects a foreign context fingerprint") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -364,7 +364,7 @@ ZC_TEST("Ownership capture derivation rejects a foreign context fingerprint") {
 }
 
 ZC_TEST("Ownership capture derivation rejects a foreign module identity") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -381,7 +381,7 @@ ZC_TEST("Ownership capture derivation rejects a foreign module identity") {
 }
 
 ZC_TEST("Ownership capture derivation rejects a foreign built revision") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -398,7 +398,7 @@ ZC_TEST("Ownership capture derivation rejects a foreign built revision") {
 }
 
 ZC_TEST("Ownership capture derivation rejects a foreign overlay revision") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
   const auto& inputs = fixture.inputs();
@@ -415,10 +415,10 @@ ZC_TEST("Ownership capture derivation rejects a foreign overlay revision") {
 }
 
 ZC_TEST("Ownership capture derivation rejects a foreign borrow evidence revision") {
-  CapturePipelineFixture fixture("fun entry() -> i32 { return 0; }"_zc);
+  CapturePipelineFixture fixture("fn entry() -> i32 { return 0; }"_zc);
   // BorrowEvidenceRevision has no public digest constructor, so a second,
   // genuinely different compilation donates a foreign-but-valid revision.
-  CapturePipelineFixture foreign("fun other() -> i32 { return 1; }"_zc);
+  CapturePipelineFixture foreign("fn other() -> i32 { return 1; }"_zc);
   ZC_REQUIRE(fixture.builtMir().borrowEvidenceRevision().digest() !=
              foreign.builtMir().borrowEvidenceRevision().digest());
   const auto& builtMir = fixture.builtMir();

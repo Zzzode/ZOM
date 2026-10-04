@@ -65,7 +65,7 @@ that yields the variant's discriminant as an integer constant:
 ```zom
 enum Color { Red, Green, Blue }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
     let c: Color = Color::Red;   // c holds the discriminant 0
     let r: i32 = 41;
     return r;
@@ -85,7 +85,7 @@ fields as arguments:
 ```zom
 enum Result { Ok(i32), Err(i32) }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
     let r: Result = Result::Ok(41);
     let a: i32 = 40;
     let answer: i32 = a + 1;
@@ -102,7 +102,7 @@ a `match` arm, field projection) has no admitted semantic contract yet.
 ### Pattern Matching with Enums
 
 ```zom
-fun processResult<T, E>(result: Result<T, E>) {
+fn processResult<T, E>(result: Result<T, E>) {
     match (result) {
         when Success(value) => {
             print("Operation succeeded with value: " + value.toString());
@@ -113,7 +113,7 @@ fun processResult<T, E>(result: Result<T, E>) {
     }
 }
 
-fun handleMessage(message: Message) {
+fn handleMessage(message: Message) {
     match (message) {
         when Text(content) => {
             print("Text message: " + content);

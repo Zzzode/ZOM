@@ -1,8 +1,8 @@
 class Vec<T> { }
 
-fun make_mut_refs() -> Vec<&mut i32>;
+fn make_mut_refs() -> Vec<&mut i32>;
 
-fun read_refs(xs: Vec<&i32>) -> unit {
+fn read_refs(xs: Vec<&i32>) -> unit {
     return;
 }
 

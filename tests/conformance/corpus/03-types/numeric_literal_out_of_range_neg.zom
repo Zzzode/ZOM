@@ -1,1 +1,1 @@
-fun f() -> u8 { let a: u8 = 300; return a; }
+fn f() -> u8 { let a: u8 = 300; return a; }

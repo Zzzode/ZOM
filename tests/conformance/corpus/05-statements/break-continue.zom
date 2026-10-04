@@ -1,4 +1,4 @@
-fun testBreakContinue() {
+fn testBreakContinue() {
   loop1: while (true) {
     break;
     continue;

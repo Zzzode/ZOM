@@ -1,4 +1,4 @@
 class Box<T> {
     private let value: T;
-    fun get() -> T { return self.value; }
+    fn get() -> T { return self.value; }
 }

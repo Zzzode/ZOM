@@ -4,5 +4,5 @@
 // CHECK-LITERAL: Error [ZOM2025]: Expected ';'
 // CHECK-LITERAL:   --> conformance/iface_method_block_reject_neg_08.zom:2:23
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 2 |     fun bar() -> unit { }
+// CHECK-LITERAL: 2 |     fn bar() -> unit { }
 // CHECK-LITERAL:   |                       ^

@@ -265,7 +265,7 @@ bool Parser::Impl::consumeFunctionTypeHead(TokenCursor& cursor, size_t limit, si
   openParen = limit;
   closeParen = limit;
 
-  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::FunKeyword) {
+  if (cursor.position() < limit && cursor.peek() == ast::SyntaxKind::FnKeyword) {
     cursor.advance();
   }
 
@@ -975,7 +975,7 @@ Parser::Impl::TypeParseResult Parser::Impl::parseAtomType(ParserSyntaxFactory& b
   if (start >= limit) { return TypeParseResult(); }
 
   const ast::SyntaxKind atomStart = cursor.peek();
-  if (atomStart == ast::SyntaxKind::FunKeyword || atomStart == ast::SyntaxKind::LessThan ||
+  if (atomStart == ast::SyntaxKind::FnKeyword || atomStart == ast::SyntaxKind::LessThan ||
       atomStart == ast::SyntaxKind::LeftParen) {
     if (atomStart == ast::SyntaxKind::LessThan) {
       TypeParseResult projection = parseAssociatedTypeProjection(builder, cursor, limit);

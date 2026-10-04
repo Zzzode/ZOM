@@ -5,4 +5,4 @@
 // rejected on the literal as ZOM4048, never as a checker invariant.
 
 // CHECK-LITERAL: Error [ZOM4048]: Unknown field `z` in aggregate literal
-// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_unknown_field_capability_neg_27.zom:2:33
+// CHECK-LITERAL:   --> conformance/08-adt/struct_literal_unknown_field_capability_neg_27.zom:2:32

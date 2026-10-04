@@ -4,7 +4,7 @@ struct intrinsic<intrinsic> {
     intrinsic: intrinsic;
 }
 
-fun intrinsic<intrinsic>(intrinsic: intrinsic) -> intrinsic {
+fn intrinsic<intrinsic>(intrinsic: intrinsic) -> intrinsic {
     let {intrinsic} = intrinsic;
     intrinsic: while (intrinsic) {
         intrinsic.intrinsic;

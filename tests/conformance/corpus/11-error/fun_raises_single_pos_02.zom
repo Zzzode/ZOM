@@ -1,1 +1,1 @@
-fun bar() -> bool raises NotFound;
+fn bar() -> bool raises NotFound;

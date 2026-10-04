@@ -687,8 +687,8 @@ ZC_TEST("Ownership event overlay builder and verifier accept one scalar initiali
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered event source span") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& builtMir = fixture.builtMir();
 
   auto candidateResult = buildOverlay(fixture);
@@ -1078,7 +1078,7 @@ ZC_TEST("Move-path verifier rejects a self conflict pair") {
 ZC_TEST("Move-path verifier rejects a reversed aggregate path order") {
   OwnershipPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(checkedMir.size() == 1);
@@ -1103,7 +1103,7 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate path order") {
 ZC_TEST("Move-path verifier rejects a reversed aggregate conflict pair") {
   OwnershipPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(checkedMir.size() == 1);
@@ -1128,7 +1128,7 @@ ZC_TEST("Move-path verifier rejects a reversed aggregate conflict pair") {
 ZC_TEST("Move-path verifier rejects a missing aggregate field conflict") {
   OwnershipPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(checkedMir.size() == 1);
@@ -1152,7 +1152,7 @@ ZC_TEST("Move-path verifier rejects a missing aggregate field conflict") {
 ZC_TEST("Move-path verifier rejects a missing multi-field aggregate conflict") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto checkedMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(checkedMir.size() == 1);
@@ -1196,8 +1196,8 @@ ZC_TEST("Move-path verifier rejects a tampered semantic context fingerprint") {
 
 ZC_TEST("Move-path verifier rejects a tampered direct call result path") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -1300,7 +1300,7 @@ ZC_TEST("Initialization verifier rejects a tampered local state") {
 ZC_TEST("Initialization verifier rejects a tampered field path state") {
   OwnershipPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -1509,9 +1509,9 @@ ZC_TEST("Initialization lattice mergeLossCauses publishes canonical kind-event-p
 
 ZC_TEST("Loan verifier rejects a tampered active point, issue, commit, and foreign lineage") {
   OwnershipPipelineFixture fixture(
-      "fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }"_zc);
+      "fn reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }"_zc);
   OwnershipPipelineFixture foreignFixture(
-      "fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }"_zc);
+      "fn reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& movePaths = ownershipInputs(session).movePaths();
@@ -1633,7 +1633,7 @@ ZC_TEST("Ownership input verifier rejects an equivalent evidence pair from anoth
 }
 
 ZC_TEST("Ownership input snapshots retain live borrow evidence") {
-  OwnershipPipelineFixture fixture("fun entry(value: i32) -> i32 { return value; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry(value: i32) -> i32 { return value; }"_zc);
 
   const auto& inputs = ownershipInputs(fixture.compilerSession());
   ZC_EXPECT(inputs.hasLiveBorrowEvidence());
@@ -1642,7 +1642,7 @@ ZC_TEST("Ownership input snapshots retain live borrow evidence") {
 ZC_TEST("Resource verifier rejects a missing logical resource function") {
   OwnershipPipelineFixture fixture(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -1700,7 +1700,7 @@ ZC_TEST("Ownership resources retain a linear nominal aggregate") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& resources = ownershipInputs(session).resources();
 
@@ -1721,7 +1721,7 @@ ZC_TEST("Ownership resources retain a logical nominal aggregate") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1742,7 +1742,7 @@ ZC_TEST("Ownership resources retain a noncopy linear nominal aggregate") {
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1758,7 +1758,7 @@ ZC_TEST("Resource verifier rejects a tampered linear resource") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -1784,7 +1784,7 @@ ZC_TEST("Resource verifier rejects a tampered resource action") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -1811,7 +1811,7 @@ ZC_TEST("Resource verifier rejects a tampered resource subject") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -1837,8 +1837,8 @@ ZC_TEST("Ownership resources retain a linear direct-call result") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
-      "fun entry() -> Cell { return helper(); }"_zc);
+      "fn helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fn entry() -> Cell { return helper(); }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   bool foundNormalEdgeResource = false;
@@ -1861,7 +1861,7 @@ ZC_TEST("Ownership drop plans retain a closed linear component") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1883,7 +1883,7 @@ ZC_TEST("Ownership drop plans retain a closed logical component") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1903,7 +1903,7 @@ ZC_TEST("Ownership drop plans retain a moved resource component") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1925,7 +1925,7 @@ ZC_TEST("Ownership resources retain no cast route for a same-type move") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -1940,7 +1940,7 @@ ZC_TEST("Resource verifier rejects a spurious cast route") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -1972,7 +1972,7 @@ ZC_TEST("Resource verifier rejects a tampered cast route subject") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2007,7 +2007,7 @@ ZC_TEST("Linear resource produces one obligation with return consumption") {
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -2029,7 +2029,7 @@ ZC_TEST("Linear resource tracks transfer and return consumption across carriers"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& resources = ownershipInputs(fixture.compilerSession()).resources();
 
   ZC_REQUIRE(resources.functions().size() == 1);
@@ -2054,7 +2054,7 @@ ZC_TEST("Resource verifier rejects a tampered linear carrier") {
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2080,7 +2080,7 @@ ZC_TEST("Same-type move emits no cast-carrier roles") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
 
@@ -2100,7 +2100,7 @@ ZC_TEST("Resource verifier rejects a tampered drop plan mode") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2159,7 +2159,7 @@ ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2183,8 +2183,8 @@ ZC_TEST("Resource verifier rejects a tampered drop plan component ordinal") {
 
 ZC_TEST("Flow verifier rejects a tampered direct-call continuation") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2216,8 +2216,8 @@ ZC_TEST("Flow verifier rejects a tampered direct-call continuation") {
 
 ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& flow = ownershipInputs(session).flow();
@@ -2295,7 +2295,7 @@ ZC_TEST("Flow inventory connects direct-call continuation cutpoints") {
 }
 
 ZC_TEST("Move paths retain a parameter dereference after its root") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& paths = ownershipInputs(fixture.compilerSession()).movePaths();
   ZC_REQUIRE(builtMir.functions().size() == 1);
@@ -2403,7 +2403,7 @@ ZC_TEST("Move-path places conflict with their projection prefixes") {
 ZC_TEST("Move-path sibling fields and distinct downcast variants do not conflict") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: i32, }\n"
-      "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
+      "fn entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
   const auto& paths = ownershipInputs(fixture.compilerSession()).movePaths();
   ZC_REQUIRE(paths.functions().size() == 1);
   zc::Maybe<identity::DefId> firstField;
@@ -2555,7 +2555,7 @@ ZC_TEST("Move-path dereference chains conflict with their projection prefixes") 
 ZC_TEST("Move-path dereference and deep field chains separate sibling fields at depth") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: i32, }\n"
-      "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
+      "fn entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = 0; return pair.left; }"_zc);
   const auto& paths = ownershipInputs(fixture.compilerSession()).movePaths();
   ZC_REQUIRE(paths.functions().size() == 1);
   zc::Maybe<identity::DefId> firstField;
@@ -2605,7 +2605,7 @@ ZC_TEST("Move-path dereference and deep field chains separate sibling fields at 
 }
 
 ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2715,7 +2715,7 @@ ZC_TEST("Reference definition verifier rejects tampered definition inputs") {
 
 ZC_TEST("Reference definition verifier rejects a forged local alias origin") {
   OwnershipPipelineFixture fixture(
-      "fun reborrow(value: &i32) -> &i32 { let local = value; return &*local; }"_zc);
+      "fn reborrow(value: &i32) -> &i32 { let local = value; return &*local; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -2745,9 +2745,9 @@ ZC_TEST("Reference definition verifier rejects a forged local alias origin") {
 }
 
 ZC_TEST("Parameter reborrow region verifier rejects tampered members") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   OwnershipPipelineFixture foreignFixture(
-      "fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+      "fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
   const auto& builtMir = fixture.builtMir();
@@ -2778,7 +2778,7 @@ ZC_TEST("Parameter reborrow region verifier rejects tampered members") {
 }
 
 ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& inputs = ownershipInputs(session);
   const auto& builtMir = fixture.builtMir();
@@ -2801,7 +2801,7 @@ ZC_TEST("Parameter reborrow reference-state verifier rejects tampered point") {
 
 ZC_TEST("Local borrow reference definitions derive a StorageLive origin") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   const auto inventory = buildRejectedBorrowInventory(fixture);
 
   ZC_REQUIRE(inventory.references.definitions().size() == 1);
@@ -2823,7 +2823,7 @@ ZC_TEST("Local borrow reference definitions derive a StorageLive origin") {
 
 ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = fixture.overlay();
 
@@ -2855,7 +2855,7 @@ ZC_TEST("Local borrow reference verifier rejects a forged parameter origin") {
 
 ZC_TEST("Local borrow loan facts record a shared borrow kind") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   const auto inventory = buildRejectedBorrowInventory(fixture);
 
   ZC_REQUIRE(inventory.loans.loans().size() == 1);
@@ -2867,7 +2867,7 @@ ZC_TEST("Local borrow loan facts record a shared borrow kind") {
 
 ZC_TEST("Mutable local borrow reference definitions derive a StorageLive origin") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+      "fn borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
   const auto inventory = buildRejectedBorrowInventory(fixture);
 
   ZC_REQUIRE(inventory.loans.loans().size() == 1);
@@ -2925,8 +2925,8 @@ ZC_TEST("Initialization source verifier accepts matching inputs and rejects fore
 
 ZC_TEST("Initialization verifier rejects a tampered direct call result state") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -2970,8 +2970,8 @@ ZC_TEST("Initialization verifier rejects a tampered direct call result state") {
 
 ZC_TEST("Initialization verifier rejects a tampered direct call storage end cause") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3082,7 +3082,7 @@ ZC_TEST("CompilerSession publishes verified ownership event overlays") {
 }
 
 ZC_TEST("CompilerSession publishes verified ownership inputs for a returned function local") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { let value = 0; return value; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { let value = 0; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3142,7 +3142,7 @@ ZC_TEST("Ownership facts lower a noncopy aggregate local return as a move") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3185,7 +3185,7 @@ ZC_TEST("Ownership facts lower a noncopy aggregate local return as a move") {
 
 ZC_TEST("Ownership facts preserve sequential scalar local copies without resources") {
   OwnershipPipelineFixture fixture(
-      "fun entry() -> i32 { let first = 1; let second = first; return second; }"_zc);
+      "fn entry() -> i32 { let first = 1; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& inputs = ownershipInputs(session);
@@ -3219,7 +3219,7 @@ ZC_TEST("Ownership facts preserve sequential scalar local copies without resourc
 
 ZC_TEST("Built MIR lowers three sequential scalar locals to StorageLive/Assign pairs") {
   OwnershipPipelineFixture fixture(
-      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
+      "fn entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
@@ -3268,7 +3268,7 @@ ZC_TEST("Ownership resources preserve a moved sequential aggregate local") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& inputs = ownershipInputs(session);
@@ -3304,7 +3304,7 @@ ZC_TEST("Resource verifier rejects a missing sequential aggregate transfer") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -3330,7 +3330,7 @@ ZC_TEST("Ownership resources retain a moved parameter subject") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
+      "fn entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   const auto& builtMir = fixture.builtMir();
   const auto& inputs = ownershipInputs(fixture.compilerSession());
   ZC_REQUIRE(builtMir.functions().size() == 1);
@@ -3366,8 +3366,8 @@ ZC_TEST("Ownership resources transfer and verify a moved direct-call result") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
-      "fun entry() -> Cell { return helper(); }"_zc);
+      "fn helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fn entry() -> Cell { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -3433,8 +3433,8 @@ ZC_TEST("Ownership resources record exact drop transfer paths for a call result"
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
-      "fun entry() -> Cell { return helper(); }"_zc);
+      "fn helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fn entry() -> Cell { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& inputs = ownershipInputs(session);
@@ -3463,7 +3463,7 @@ ZC_TEST("Resource verifier rejects a tampered parameter move transfer") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
+      "fn entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -3489,7 +3489,7 @@ ZC_TEST("Resource verifier rejects a missing parameter move transfer") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
+      "fn entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -3513,7 +3513,7 @@ ZC_TEST("Resource verifier rejects a missing parameter move transfer") {
 ZC_TEST("Ownership facts preserve a sibling aggregate field after an overwrite") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, right: bool, }\n"
-      "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3558,7 +3558,7 @@ ZC_TEST("Ownership facts preserve a sibling aggregate field after an overwrite")
 ZC_TEST("Ownership facts preserve consecutive aggregate field overwrites") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; pair.right = false; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; pair.right = false; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3594,7 +3594,7 @@ ZC_TEST("Ownership facts preserve consecutive aggregate field overwrites") {
 ZC_TEST("Ownership facts initialize an uninitialized aggregate field") {
   OwnershipPipelineFixture fixture(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3639,7 +3639,7 @@ ZC_TEST("Ownership facts initialize an uninitialized aggregate field") {
 ZC_TEST("Ownership facts initialize distinct fields of an uninitialized aggregate") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3711,7 +3711,7 @@ ZC_TEST("Ownership facts initialize distinct fields of an uninitialized aggregat
 ZC_TEST("Ownership facts overwrite an initialized field of an uninitialized aggregate") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = true; pair.left = 2; return pair.left; }"_zc);
+      "fn entry() -> i32 { mut pair: Pair; pair.left = 0; pair.right = true; pair.left = 2; return pair.left; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3756,7 +3756,7 @@ ZC_TEST("Ownership facts overwrite an initialized field of an uninitialized aggr
 ZC_TEST("Initialization verifier rejects a tampered partially initialized field state") {
   OwnershipPipelineFixture fixture(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
+      "fn entry() -> i32 { mut cell: Cell; cell.value = 0; return cell.value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3795,7 +3795,7 @@ ZC_TEST("Initialization verifier rejects a tampered partially initialized field 
 ZC_TEST("Initialization verifier rejects a tampered sibling field state") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, right: bool, }\n"
-      "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3836,7 +3836,7 @@ ZC_TEST("Ownership facts record the causal path in a root move loss cause") {
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3854,7 +3854,7 @@ ZC_TEST("Ownership facts record the causal path in a root move loss cause") {
 ZC_TEST("Ownership facts record per-path causal paths for partial initialization") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& inputs = ownershipInputs(session);
@@ -3889,7 +3889,7 @@ ZC_TEST("Ownership facts record per-path causal paths for partial initialization
 ZC_TEST("Initialization verifier rejects a tampered loss cause causal path") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3939,7 +3939,7 @@ ZC_TEST("Initialization verifier rejects a tampered loss cause causal path") {
 
 ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership facts") {
   OwnershipPipelineFixture fixture(
-      "fun entry() -> i32 { mut value = 0; value = 1; return value; }"_zc);
+      "fn entry() -> i32 { mut value = 0; value = 1; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -3982,7 +3982,7 @@ ZC_TEST("CompilerSession publishes a mutable local overwrite through ownership f
 
 ZC_TEST("CompilerSession initializes a mutable annotated local through ownership facts") {
   OwnershipPipelineFixture fixture(
-      "fun entry() -> i32 { mut value: i32; value = 1; return value; }"_zc);
+      "fn entry() -> i32 { mut value: i32; value = 1; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -4021,7 +4021,7 @@ ZC_TEST("CompilerSession initializes a mutable annotated local through ownership
 
 ZC_TEST("CompilerSession preserves consecutive mutable local writes through ownership facts") {
   OwnershipPipelineFixture fixture(
-      "fun entry() -> i32 { mut value = 0; value = 1; value = 2; return value; }"_zc);
+      "fn entry() -> i32 { mut value = 0; value = 1; value = 2; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -4067,7 +4067,7 @@ ZC_TEST("CompilerSession preserves consecutive mutable local writes through owne
 
 ZC_TEST("CompilerSession initializes then overwrites an annotated local through ownership facts") {
   OwnershipPipelineFixture fixture(
-      "fun entry() -> i32 { mut value: i32; value = 1; value = 2; return value; }"_zc);
+      "fn entry() -> i32 { mut value: i32; value = 1; value = 2; return value; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -4106,8 +4106,8 @@ ZC_TEST("CompilerSession initializes then overwrites an annotated local through 
 
 ZC_TEST("CompilerSession retains following functions after consecutive local writes") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { mut value = 0; value = 1; value = 2; return value; }\n"
-      "fun entry() -> i32 { return 3; }"_zc);
+      "fn helper() -> i32 { mut value = 0; value = 1; value = 2; return value; }\n"
+      "fn entry() -> i32 { return 3; }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getVerifiedHirModules().size() == 1);
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
@@ -4133,7 +4133,7 @@ ZC_TEST("CompilerSession retains following functions after consecutive local wri
 
 ZC_TEST("Ownership facts retain a parameter initialized function local") {
   OwnershipPipelineFixture fixture(
-      "fun entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
+      "fn entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& hir = session.getVerifiedHirModules()[0];
   const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
@@ -4160,8 +4160,8 @@ ZC_TEST("Ownership facts retain a parameter initialized function local") {
 
 ZC_TEST("Ownership event overlay records mutable receiver activation on normal call edge") {
   OwnershipPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+      "struct Cell { value: i32, mutating fn read(this, amount: i32) -> i32; }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& function = session.getOwnershipCheckedMirModules()[0].builtMir().functions()[0];
@@ -4245,8 +4245,8 @@ ZC_TEST("Ownership event overlay records mutable receiver activation on normal c
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered deferred activation") {
   OwnershipPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+      "struct Cell { value: i32, mutating fn read(this, amount: i32) -> i32; }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -4267,8 +4267,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered deferred activation
 
 ZC_TEST("Ownership event overlay models direct call operation and result commit") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& session = fixture.compilerSession();
   ZC_REQUIRE(session.getOwnershipCheckedMirModules().size() == 1);
   const auto& builtMir = session.getOwnershipCheckedMirModules()[0].builtMir();
@@ -4403,8 +4403,8 @@ ZC_TEST("Ownership event overlay models direct call operation and result commit"
 
 ZC_TEST("Ownership event overlay models scalar direct call argument sources") {
   OwnershipPipelineFixture fixture(
-      "fun helper(value: i32) -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(7); }"_zc);
+      "fn helper(value: i32) -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(7); }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto checkedMir = session.getOwnershipCheckedMirModules();
@@ -4451,7 +4451,7 @@ ZC_TEST("Ownership event overlay models scalar direct call argument sources") {
 
 ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and return") {
   OwnershipPipelineFixture copyFixture(
-      "fun entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
+      "fn entry(value: i32) -> i32 { let copy = value; return copy; }"_zc);
   const auto& copyMir = copyFixture.builtMir();
   const auto& copyOverlay =
       copyFixture.compilerSession().getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -4489,8 +4489,7 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
   ZC_EXPECT(foundAssignmentSource);
   ZC_EXPECT(foundReturnSource);
 
-  OwnershipPipelineFixture borrowFixture(
-      "fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture borrowFixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   const auto& borrowMir = borrowFixture.builtMir();
   const auto& borrowOverlay =
       borrowFixture.compilerSession().getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -4550,8 +4549,8 @@ ZC_TEST("Ownership event overlay publishes source roles for copy, reborrow, and 
 
 ZC_TEST("Ownership facts initialize a returned user local from a direct call") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { let value = helper(); return value; }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { let value = helper(); return value; }"_zc);
   const auto& session = fixture.compilerSession();
   const auto& builtMir = fixture.builtMir();
   const auto& overlay = session.getOwnershipCheckedMirModules()[0].eventOverlay();
@@ -4642,8 +4641,8 @@ ZC_TEST("Ownership facts initialize a returned user local from a direct call") {
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered direct call result commit") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& builtMir = fixture.builtMir();
 
   auto candidateResult = buildOverlay(fixture);
@@ -4681,8 +4680,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered direct call result 
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered direct call marker use") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& builtMir = fixture.builtMir();
 
   auto candidateResult = buildOverlay(fixture);
@@ -4719,8 +4718,8 @@ ZC_TEST("Ownership event overlay verifier rejects a tampered direct call marker 
 
 ZC_TEST("Ownership event overlay verifier rejects a tampered direct call drop plan") {
   OwnershipPipelineFixture fixture(
-      "fun helper() -> i32 { return 0; }\n"
-      "fun entry() -> i32 { return helper(); }"_zc);
+      "fn helper() -> i32 { return 0; }\n"
+      "fn entry() -> i32 { return helper(); }"_zc);
   const auto& builtMir = fixture.builtMir();
 
   auto candidateResult = buildOverlay(fixture);
@@ -4879,7 +4878,7 @@ ZC_TEST("Ownership marker proof construction records a positive Copy decision") 
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -4915,7 +4914,7 @@ ZC_TEST("Ownership marker proof construction records a positive Linear decision"
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -4951,7 +4950,7 @@ ZC_TEST("Ownership marker proof construction records a positive Linear decision"
 ZC_TEST("Ownership descendant query tree enumerates aggregate field descendants") {
   OwnershipPipelineFixture fixture(
       "struct Pair { left: i32, right: bool, }\n"
-      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+      "fn entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5008,7 +5007,7 @@ ZC_TEST("Ownership postorder fold emits a maximal linear component for an aggreg
       "import core::marker::{Linear};\n"
       "struct Pair { left: i32, right: bool, }\n"
       "unsafe impl Linear for Pair;\n"
-      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+      "fn entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5036,7 +5035,7 @@ ZC_TEST("Ownership postorder fold suppresses components for a copy aggregate") {
       "import core::marker::{Copy};\n"
       "struct Pair { left: i32, right: bool, }\n"
       "unsafe impl Copy for Pair;\n"
-      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+      "fn entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5058,7 +5057,7 @@ ZC_TEST("Ownership postorder fold retains a logical component for a non-copy agg
       "import core::marker::{Copy};\n"
       "struct Pair { left: i32, right: bool, }\n"
       "impl !Copy for Pair;\n"
-      "fun entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
+      "fn entry() -> Pair { let pair = Pair { left: 0, right: true }; return pair; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5128,7 +5127,7 @@ ZC_TEST(
     "Ownership deinitializer attachment yields one maximal root component with a declared action") {
   OwnershipPipelineFixture fixture(
       "struct Managed { value: i32; deinit() {} }\n"
-      "fun entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
+      "fn entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5171,7 +5170,7 @@ ZC_TEST("Ownership deinitializer attachment stops descendant discovery at the ou
   OwnershipPipelineFixture fixture(
       "struct Inner { value: i32, }\n"
       "struct Outer { inner: Inner, deinit() {} }\n"
-      "fun entry(outer: Outer) -> Outer { let result = outer; return result; }"_zc);
+      "fn entry(outer: Outer) -> Outer { let result = outer; return result; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5209,7 +5208,7 @@ ZC_TEST("Ownership deinitializer attachment stops descendant discovery at the ou
 ZC_TEST("Ownership event overlay verifier rejects a tampered deinitializer") {
   OwnershipPipelineFixture fixture(
       "struct Managed { value: i32; deinit() {} }\n"
-      "fun entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
+      "fn entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc);
   auto candidateResult = buildOverlay(fixture);
   ZC_REQUIRE(candidateResult.isVerified());
   auto candidate = zc::mv(candidateResult).takeVerified();
@@ -5540,7 +5539,7 @@ void expectOracleMatchesRejectedInventory(const RejectedBorrowPipelineFixture& f
 }
 
 ZC_TEST("Differential oracle matches production facts for a scalar parameter return") {
-  OwnershipPipelineFixture fixture("fun entry(value: i32) -> i32 { return value; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry(value: i32) -> i32 { return value; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5549,7 +5548,7 @@ ZC_TEST("Differential oracle matches production facts for an aggregate local ret
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5558,7 +5557,7 @@ ZC_TEST("Differential oracle matches production facts for a sequential aggregate
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return second; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5567,32 +5566,32 @@ ZC_TEST("Differential oracle matches production facts for a direct call result")
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
-      "fun entry() -> Cell { return helper(); }"_zc);
+      "fn helper() -> Cell { let cell = Cell { value: 0 }; return cell; }\n"
+      "fn entry() -> Cell { return helper(); }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a parameter reborrow") {
-  OwnershipPipelineFixture fixture("fun reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
+  OwnershipPipelineFixture fixture("fn reborrow(value: &i32) -> &i32 { return &*value; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a local borrow") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
+      "fn borrow_local() -> &i32 { let value: i32 = 0; return &value; }"_zc);
   expectOracleMatchesRejectedInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a mutable local borrow") {
   RejectedBorrowPipelineFixture fixture(
-      "fun borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
+      "fn borrow_local_mut() -> &mut i32 { mut value: i32 = 0; return &mut value; }"_zc);
   expectOracleMatchesRejectedInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a field projection write and read") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, right: bool, }\n"
-      "fun entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return "
+      "fn entry() -> bool { mut pair = Pair { left: 0, right: true }; pair.left = 2; return "
       "pair.right; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
@@ -5600,14 +5599,14 @@ ZC_TEST("Differential oracle matches production facts for a field projection wri
 ZC_TEST("Differential oracle matches production facts for a partial aggregate initialization") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; pair.right = true; return pair.right; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a mutable receiver activation") {
   OwnershipPipelineFixture fixture(
-      "struct Cell { value: i32, mutating fun read(this, amount: i32) -> i32; }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
+      "struct Cell { value: i32, mutating fn read(this, amount: i32) -> i32; }\n"
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; return cell.read(1); }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5616,7 +5615,7 @@ ZC_TEST("Differential oracle matches production facts for a linear aggregate ret
       "import core::marker::{Linear};\n"
       "struct Cell { value: i32, }\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5625,15 +5624,15 @@ ZC_TEST("Differential oracle matches production facts for a parameter move into 
       "struct Cell { value: i32, }\n"
       "import core::marker::{Copy};\n"
       "impl !Copy for Cell;\n"
-      "fun entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
+      "fn entry(value: Cell) -> Cell { let cell = value; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Differential oracle matches production facts for a multi-function call chain") {
   OwnershipPipelineFixture fixture(
-      "fun inner() -> i32 { return 0; }\n"
-      "fun middle() -> i32 { return inner(); }\n"
-      "fun entry() -> i32 { return middle(); }"_zc);
+      "fn inner() -> i32 { return 0; }\n"
+      "fn middle() -> i32 { return inner(); }\n"
+      "fn entry() -> i32 { return middle(); }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5643,7 +5642,7 @@ ZC_TEST("Differential oracle matches production facts for a linear-logical aggre
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
       "unsafe impl Linear for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -5949,7 +5948,7 @@ ZC_TEST("Ownership source failure ordering distinguishes unsafe boundaries on on
 }
 
 ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar return") {
-  OwnershipPipelineFixture fixture("fun answer() -> i32 { return unsafe { 42 }; }"_zc);
+  OwnershipPipelineFixture fixture("fn answer() -> i32 { return unsafe { 42 }; }"_zc);
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
@@ -6013,7 +6012,7 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a scalar 
 
 ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a sequential return") {
   OwnershipPipelineFixture fixture(
-      "fun answer() -> i32 { let source = 42; let dest = source; return unsafe { dest }; }"_zc);
+      "fn answer() -> i32 { let source = 42; let dest = source; return unsafe { dest }; }"_zc);
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];
@@ -6075,7 +6074,7 @@ ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a sequent
 
 ZC_TEST("Ownership event overlay projects unsafe scope boundaries from a local return") {
   OwnershipPipelineFixture fixture(
-      "fun answer() -> i32 { let local = 42; return unsafe { local }; }"_zc);
+      "fn answer() -> i32 { let local = 42; return unsafe { local }; }"_zc);
   const auto& builtMir = fixture.builtMir();
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& function = builtMir.functions()[0];

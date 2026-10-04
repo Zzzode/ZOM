@@ -396,8 +396,8 @@ ZC_TEST("SchemaVerifier.ParsedSourceNoNullRequiredField") {
   checkCase("let x = 42;");
   checkCase("let y: i32 = 100;");
   checkCase("const PI = 3.14;");
-  checkCase("fun f() {}");
-  checkCase("fun add(a: i32, b: i32) -> i32 { return a + b; }");
+  checkCase("fn f() {}");
+  checkCase("fn add(a: i32, b: i32) -> i32 { return a + b; }");
   checkCase("let x = 1 + 2 * 3;");
   checkCase("if (true) { let a = 1; } else { let b = 2; }");
   checkCase("while (true) { break; }");

@@ -4,31 +4,31 @@
 // CHECK: SourceFile #12 @1:1..2:1 file_name="return_error_prop_pos_08.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #11 @1:1..1:42
+// CHECK-NEXT:     StatementListItem #11 @1:1..1:41
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         FunctionDecl #10 @1:1..1:42 name="call"
+// CHECK-NEXT:         FunctionDecl #10 @1:1..1:41 name="call"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:             FunctionParameterList #1 @1:8..1:10 nparams=0
 // CHECK-NEXT:               params: []
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty: null
 // CHECK-NEXT:           raises_ty:
-// CHECK-NEXT:             NamedTypeExpr #3 @1:19..1:20
+// CHECK-NEXT:             NamedTypeExpr #3 @1:18..1:19
 // CHECK-NEXT:               path:
-// CHECK-NEXT:                 ModulePath #2 @1:19..1:20 segments=["X"] root=Relative
+// CHECK-NEXT:                 ModulePath #2 @1:18..1:19 segments=["X"] root=Relative
 // CHECK-NEXT:               args: []
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #9 @1:21..1:42
+// CHECK-NEXT:             BlockStmt #9 @1:20..1:41
 // CHECK-NEXT:               stmts:
-// CHECK-NEXT:                 StatementListItem #8 @1:23..1:40
+// CHECK-NEXT:                 StatementListItem #8 @1:22..1:39
 // CHECK-NEXT:                   item:
-// CHECK-NEXT:                     ReturnStmt #7 @1:23..1:40
+// CHECK-NEXT:                     ReturnStmt #7 @1:22..1:39
 // CHECK-NEXT:                       value:
-// CHECK-NEXT:                         PostfixExpression #6 @1:30..1:39 op=ErrorPropagate
+// CHECK-NEXT:                         PostfixExpression #6 @1:29..1:38 op=ErrorPropagate
 // CHECK-NEXT:                           operand:
-// CHECK-NEXT:                             CallExpression #5 @1:30..1:37
+// CHECK-NEXT:                             CallExpression #5 @1:29..1:36
 // CHECK-NEXT:                               callee:
-// CHECK-NEXT:                                 IdentExpr #4 @1:30..1:35 name="fetch"
+// CHECK-NEXT:                                 IdentExpr #4 @1:29..1:34 name="fetch"
 // CHECK-NEXT:                               type_args: []
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                   attrs: null

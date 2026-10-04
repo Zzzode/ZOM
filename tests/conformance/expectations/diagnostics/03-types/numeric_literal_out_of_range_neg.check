@@ -6,4 +6,4 @@
 // rather than silently truncated.
 
 // CHECK-LITERAL: Error [ZOM4077]: Literal 300 is not representable as u8
-// CHECK-LITERAL:   --> conformance/03-types/numeric_literal_out_of_range_neg.zom:1:29
+// CHECK-LITERAL:   --> conformance/03-types/numeric_literal_out_of_range_neg.zom:1:28

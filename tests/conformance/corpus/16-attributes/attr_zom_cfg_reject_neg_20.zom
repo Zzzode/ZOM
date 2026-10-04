@@ -1,2 +1,2 @@
 #[zom::cfg(test)]
-fun conditional_entry() {}
+fn conditional_entry() {}

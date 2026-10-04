@@ -161,7 +161,7 @@
 // CHECK-NEXT:                             ModulePath #66 @8:27..8:30 segments=["Err"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     IdentExpr #71 @8:33..8:35 name="fn"
+// CHECK-NEXT:                     IdentExpr #71 @8:33..8:35 name="fx"
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #83 @9:1..9:27
 // CHECK-NEXT:       item:

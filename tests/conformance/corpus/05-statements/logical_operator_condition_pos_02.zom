@@ -1,4 +1,4 @@
-fun f(a: bool, b: bool) -> i32 {
+fn f(a: bool, b: bool) -> i32 {
   if (a || b) {
     return 41;
   } else {

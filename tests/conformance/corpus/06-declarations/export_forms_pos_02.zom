@@ -1,1 +1,1 @@
-export fun hello() {}
+export fn hello() {}

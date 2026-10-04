@@ -76,7 +76,7 @@ in-repo corpus that must become source diagnostics.
   instead of a bare reject; cycles also deserve a user diagnostic); inherited
   members/associated types are still reference-only, not added to the child
   inventory (A10/A11/A12).
-- A4. Pre-monomorphization parametric return: `fun f<T>() -> T` hits the
+- A4. Pre-monomorphization parametric return: `fn f<T>() -> T` hits the
   borrow-rail ZOM4083; slice `[T]` parameter hits an InvalidFact in
   borrow classification. Decide and implement the parametric region/borrow
   contract so these signatures build. (RFC 0007 boundary)
@@ -116,7 +116,7 @@ in-repo corpus that must become source diagnostics.
   O(N x D) local-name scan makes the 256-parent corpus slow under ASan.
 - A7c. DONE 2026-09-23: `dyn I` in an interface-bound position is a closed
   source error everywhere the bound rail runs — generic parameter bounds
-  (`fun f<T: dyn I>()`), associated type bounds (`type X : dyn I;`), and impl
+  (`fn f<T: dyn I>()`), associated type bounds (`type X : dyn I;`), and impl
   `where` predicates (`impl I for T where T: dyn I`) — via
   ZOM4121 DynTypeNotAllowedAsBound emitted at the single SourceTypeBuilder
   bound funnel. Function-level `where` clauses are still parser-unparsed
@@ -133,7 +133,7 @@ in-repo corpus that must become source diagnostics.
   generic parameter or an associated type is ZOM4122 DuplicateInterfaceBound;
   the associated-type and generic-parameter signature encoders now canonicalize
   their bound order, which also fixed a pre-existing ICE on any legal
-  multi-bound parameter (`fun f<T: A + B>()`).
+  multi-bound parameter (`fn f<T: A + B>()`).
 - A7e. DONE 2026-09-23: impl associated type assignment is implemented end to
   end. An interface-declared associated type now publishes a real
   AssociatedTypeSignature (generic parameters, ordered bounds, marker bounds,

@@ -1,12 +1,12 @@
 struct C {
     v: i32;
 
-    fun g(this, s: str) -> i32 {
+    fn g(this, s: str) -> i32 {
         return s.length;
     }
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
     let c = C { v: 1 };
     return c.v;
 }

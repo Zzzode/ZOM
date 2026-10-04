@@ -1,4 +1,4 @@
-fun identity<T>(x: T) -> T {
+fn identity<T>(x: T) -> T {
     return x;
 }
 

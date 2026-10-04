@@ -1,5 +1,5 @@
 module graphics {
-    fun inside() {}
+    fn inside() {}
 }
 
-fun trailing() {}
+fn trailing() {}

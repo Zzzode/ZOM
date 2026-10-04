@@ -108,14 +108,14 @@ foreign verified summaries, and rejecting unverified extern borrow surfaces.
 A direct returned reference can be tied to the only direct reference input:
 
 ```zom
-fun first(value: &Buffer) -> &Byte { value.first() }
+fn first(value: &Buffer) -> &Byte { value.first() }
 ```
 
 A shared or mutable receiver is preferred when other direct reference
 parameters are also present:
 
 ```zom
-fun Buffer::choose(this: &Buffer, fallback: &Byte) -> &Byte {
+fn Buffer::choose(this: &Buffer, fallback: &Byte) -> &Byte {
     this.first()
 }
 ```
@@ -124,15 +124,15 @@ A free function with two possible direct sources is rejected because ZOM does
 not yet have explicit region syntax:
 
 ```zom
-fun choose(left: &Byte, right: &Byte) -> &Byte
+fn choose(left: &Byte, right: &Byte) -> &Byte
 // error: returned reference region cannot be inferred
 ```
 
 The first revision also rejects aggregate or parametric reference results:
 
 ```zom
-fun wrap(value: &Byte) -> (&Byte, i32)
-fun identity<T>(value: T) -> T
+fn wrap(value: &Byte) -> (&Byte, i32)
+fn identity<T>(value: T) -> T
 ```
 
 The second signature may instantiate `T` as a reference, so an empty summary
@@ -140,7 +140,7 @@ would be unsound. A generic direct-reference shell remains expressible because
 its outer reference region does not change under substitution:
 
 ```zom
-fun borrow<T>(value: &T) -> &T { value }
+fn borrow<T>(value: &T) -> &T { value }
 ```
 
 Borrow-bearing extern signatures are rejected until a trusted FFI contract is

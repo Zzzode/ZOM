@@ -39,25 +39,25 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #24 @9:1..11:2 name="take"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #19 @9:9..9:23 nparams=1
+// CHECK-NEXT:             FunctionParameterList #19 @9:8..9:22 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #18 @9:10..9:22 name="x"
+// CHECK-NEXT:                 FunctionParameterDecl #18 @9:9..9:21 name="x"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     UnionTypeExpr #17 @9:13..9:22
+// CHECK-NEXT:                     UnionTypeExpr #17 @9:12..9:21
 // CHECK-NEXT:                       alts:
-// CHECK-NEXT:                         PredefinedTypeExpr #14 @9:13..9:16 kind=I32
-// CHECK-NEXT:                         NamedTypeExpr #16 @9:19..9:22
+// CHECK-NEXT:                         PredefinedTypeExpr #14 @9:12..9:15 kind=I32
+// CHECK-NEXT:                         NamedTypeExpr #16 @9:18..9:21
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #15 @9:19..9:22 segments=["Err"] root=Relative
+// CHECK-NEXT:                             ModulePath #15 @9:18..9:21 segments=["Err"] root=Relative
 // CHECK-NEXT:                           args: []
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #20 @9:27..9:31 kind=Unit
+// CHECK-NEXT:             PredefinedTypeExpr #20 @9:26..9:30 kind=Unit
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #23 @9:32..11:2
+// CHECK-NEXT:             BlockStmt #23 @9:31..11:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #22 @10:5..10:12
 // CHECK-NEXT:                   item:
@@ -69,25 +69,25 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #48 @13:1..18:2 name="produce"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #28 @13:12..13:24 nparams=1
+// CHECK-NEXT:             FunctionParameterList #28 @13:11..13:23 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #27 @13:13..13:23 name="flag"
+// CHECK-NEXT:                 FunctionParameterDecl #27 @13:12..13:22 name="flag"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #26 @13:19..13:23 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #26 @13:18..13:22 kind=Bool
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             UnionTypeExpr #32 @13:28..13:37
+// CHECK-NEXT:             UnionTypeExpr #32 @13:27..13:36
 // CHECK-NEXT:               alts:
-// CHECK-NEXT:                 PredefinedTypeExpr #29 @13:28..13:31 kind=I32
-// CHECK-NEXT:                 NamedTypeExpr #31 @13:34..13:37
+// CHECK-NEXT:                 PredefinedTypeExpr #29 @13:27..13:30 kind=I32
+// CHECK-NEXT:                 NamedTypeExpr #31 @13:33..13:36
 // CHECK-NEXT:                   path:
-// CHECK-NEXT:                     ModulePath #30 @13:34..13:37 segments=["Err"] root=Relative
+// CHECK-NEXT:                     ModulePath #30 @13:33..13:36 segments=["Err"] root=Relative
 // CHECK-NEXT:                   args: []
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #47 @13:38..18:2
+// CHECK-NEXT:             BlockStmt #47 @13:37..18:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #39 @14:5..16:6
 // CHECK-NEXT:                   item:

@@ -274,7 +274,7 @@ zc::StringPtr linearReturnSource() {
          "struct Cell { value: i32, }\n"
          "impl !Copy for Cell;\n"
          "unsafe impl Linear for Cell;\n"
-         "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
+         "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc;
 }
 
 zc::StringPtr linearUnconsumedSource() {
@@ -282,7 +282,7 @@ zc::StringPtr linearUnconsumedSource() {
          "struct Cell { value: i32, }\n"
          "impl !Copy for Cell;\n"
          "unsafe impl Linear for Cell;\n"
-         "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc;
+         "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zc;
 }
 
 }  // namespace

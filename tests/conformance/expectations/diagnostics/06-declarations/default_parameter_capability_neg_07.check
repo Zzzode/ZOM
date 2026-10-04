@@ -6,4 +6,4 @@
 // error.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/06-declarations/default_parameter_capability_neg_07.zom:1:15
+// CHECK-LITERAL:   --> conformance/06-declarations/default_parameter_capability_neg_07.zom:1:14

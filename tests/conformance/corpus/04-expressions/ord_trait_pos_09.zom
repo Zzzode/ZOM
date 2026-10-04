@@ -1,11 +1,11 @@
 interface Ord {
-    fun cmp(rhs: Point) -> i32;
+    fn cmp(rhs: Point) -> i32;
 }
 
 class Point { }
 
 impl Ord for Point {
-    fun cmp(rhs: Point) -> i32;
+    fn cmp(rhs: Point) -> i32;
 }
 
 let x: Point;

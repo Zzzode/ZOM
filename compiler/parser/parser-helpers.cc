@@ -418,7 +418,7 @@ bool canStartStatementAfterBindingDeclaration(ast::SyntaxKind kind) {
     case ast::SyntaxKind::MutKeyword:
     case ast::SyntaxKind::LetKeyword:
     case ast::SyntaxKind::ConstKeyword:
-    case ast::SyntaxKind::FunKeyword:
+    case ast::SyntaxKind::FnKeyword:
     case ast::SyntaxKind::ClassKeyword:
     case ast::SyntaxKind::StructKeyword:
     case ast::SyntaxKind::InterfaceKeyword:
@@ -518,7 +518,7 @@ bool isDeclarationHead(ast::SyntaxKind kind) {
     case ast::SyntaxKind::LetKeyword:
     case ast::SyntaxKind::MutKeyword:
     case ast::SyntaxKind::ConstKeyword:
-    case ast::SyntaxKind::FunKeyword:
+    case ast::SyntaxKind::FnKeyword:
     case ast::SyntaxKind::ClassKeyword:
     case ast::SyntaxKind::StructKeyword:
     case ast::SyntaxKind::InterfaceKeyword:

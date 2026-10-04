@@ -1,9 +1,9 @@
 interface Base {
-    fun clone() -> Self;
+    fn clone() -> Self;
 }
 
 interface Child : Base {
-    fun draw() -> unit;
+    fn draw() -> unit;
 }
 
 let x: dyn Child;

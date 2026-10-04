@@ -1,1 +1,1 @@
-export fun foo() -> i32 { return 0; }
+export fn foo() -> i32 { return 0; }

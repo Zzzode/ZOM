@@ -1,5 +1,5 @@
 interface I {
-    fun f(this);
+    fn f(this);
 }
 
 let x: dyn I<Bogus = i32>;

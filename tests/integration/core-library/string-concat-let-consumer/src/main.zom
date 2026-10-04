@@ -1,4 +1,4 @@
-fun entry() -> str {
+fn entry() -> str {
   let s = "hello" + " world";
   return s;
 }

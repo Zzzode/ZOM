@@ -12,21 +12,21 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #7 @1:14..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #6 @2:5..2:32 name="eq" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #6 @2:5..2:31 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #4 @2:11..2:23 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #4 @2:10..2:22 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #3 @2:12..2:22 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #3 @2:11..2:21 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             NamedTypeExpr #2 @2:17..2:22
+// CHECK-NEXT:                             NamedTypeExpr #2 @2:16..2:21
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #1 @2:17..2:22 segments=["Point"] root=Relative
+// CHECK-NEXT:                                 ModulePath #1 @2:16..2:21 segments=["Point"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:27..2:31 kind=Bool
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @2:26..2:30 kind=Bool
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -57,20 +57,20 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #23 @7:19..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #22 @8:5..8:31 name="eq" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #22 @8:5..8:30 name="eq" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #19 @8:11..8:21 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #19 @8:10..8:20 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #18 @8:12..8:20 name="rhs"
+// CHECK-NEXT:                         FunctionParameterDecl #18 @8:11..8:19 name="rhs"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #17 @8:17..8:20 kind=Str
+// CHECK-NEXT:                             PredefinedTypeExpr #17 @8:16..8:19 kind=Str
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     NamedTypeExpr #21 @8:25..8:30
+// CHECK-NEXT:                     NamedTypeExpr #21 @8:24..8:29
 // CHECK-NEXT:                       path:
-// CHECK-NEXT:                         ModulePath #20 @8:25..8:30 segments=["Point"] root=Relative
+// CHECK-NEXT:                         ModulePath #20 @8:24..8:29 segments=["Point"] root=Relative
 // CHECK-NEXT:                       args: []
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null

@@ -491,7 +491,7 @@ ZC_TEST("Incremental binding query publishes a local nominal aggregate projectio
   auto sourceValue = sourceSnapshotValue(
       "local-aggregate.zom"_zc,
       zc::heapArray("struct Cell { value: i32, }\n"
-                    "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
+                    "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
@@ -515,7 +515,7 @@ ZC_TEST("Incremental binding query admits a local nominal aggregate projection")
   auto sourceValue = sourceSnapshotValue(
       "local-aggregate.zom"_zc,
       zc::heapArray("struct Cell { value: i32, }\n"
-                    "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
+                    "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }"_zcb));
   auto registry = targetRegistry();
   auto options = compilationOptionsValue(registry);
   auto write = transaction(database);
@@ -797,9 +797,9 @@ ZC_TEST("Named definition inventory derives executable bodies from selected synt
   auto catalog = selectedModuleCatalog("root"_zc, "body-disposition.zom"_zc);
   auto sourceKey = sourceQueryKey("body-disposition.zom"_zc);
   auto sourceValue = sourceSnapshotValue("body-disposition.zom"_zc, zc::heapArray(R"zom(module root;
-fun Top() {}
+fn Top() {}
 interface Contract {
-    fun required() -> unit;
+    fn required() -> unit;
 }
 class Counter {
     let plain: i32;
@@ -807,7 +807,7 @@ class Counter {
     const MAX: i32 = 2;
     init() {}
     deinit() {}
-    fun present() {}
+    fn present() {}
 }
 )zom"_zcb));
   auto registry = targetRegistry();

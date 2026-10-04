@@ -460,7 +460,7 @@ zc::Maybe<identity::Sha256Digest> digestOf(zc::ArrayPtr<const uint8_t> bytes) {
 // ---------------------------------------------------------------------------
 
 ZC_TEST("Facts oracle matches production for a scalar local return") {
-  OwnershipPipelineFixture fixture("fun entry() -> i32 { let value = 0; return value; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry() -> i32 { let value = 0; return value; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -469,17 +469,17 @@ ZC_TEST("Facts oracle matches production for an aggregate local return") {
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
+      "fn entry() -> Cell { let cell = Cell { value: 0 }; return cell; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Facts oracle matches production for a parameter reborrow return") {
-  OwnershipPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry(p: &i32) -> &i32 { return &*p; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
 ZC_TEST("Facts oracle matches production for a mutable parameter reborrow return") {
-  OwnershipPipelineFixture fixture("fun entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry(p: &mut i32) -> &mut i32 { return &mut *p; }"_zc);
   expectOracleMatchesInventory(fixture);
 }
 
@@ -825,7 +825,7 @@ ZC_TEST("Production ownership facts codec is sensitive to source changes") {
 }
 
 ZC_TEST("Production ownership facts codec encodes a parameter reborrow") {
-  OwnershipPipelineFixture fixture("fun entry(p: &i32) -> &i32 { return &*p; }"_zc);
+  OwnershipPipelineFixture fixture("fn entry(p: &i32) -> &i32 { return &*p; }"_zc);
   auto encoded = encodeProductionFacts(fixture);
   ZC_REQUIRE(encoded != zc::none);
   ZC_IF_SOME(bytes, encoded) {

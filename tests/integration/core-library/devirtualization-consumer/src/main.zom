@@ -2,7 +2,7 @@
 // statically known at the erasure site. The method call `a.speak()`
 // resolves to the direct impl method `Dog::speak` and returns 41.
 interface Animal {
-  fun speak(this) -> i32;
+  fn speak(this) -> i32;
 }
 
 struct Dog {
@@ -10,10 +10,10 @@ struct Dog {
 }
 
 impl Animal for Dog {
-  fun speak(this) -> i32 { return 41; }
+  fn speak(this) -> i32 { return 41; }
 }
 
-fun entry() -> i32 {
+fn entry() -> i32 {
   let a: dyn Animal = Dog { tag: 0 };
   return a.speak();
 }

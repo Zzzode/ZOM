@@ -4,18 +4,18 @@
 // CHECK: SourceFile #67 @1:1..3:1 file_name="variable_declarator_cursor_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #41 @1:1..1:114
+// CHECK-NEXT:     StatementListItem #41 @1:1..1:112
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         LetStmt #40 @1:1..1:114 kind=Let
+// CHECK-NEXT:         LetStmt #40 @1:1..1:112 kind=Let
 // CHECK-NEXT:           declarations:
-// CHECK-NEXT:             VariableDeclaratorList #39 @1:5..1:113 n_decls=2
+// CHECK-NEXT:             VariableDeclaratorList #39 @1:5..1:111 n_decls=2
 // CHECK-NEXT:               decls:
-// CHECK-NEXT:                 VariableDeclarator #27 @1:5..1:68
+// CHECK-NEXT:                 VariableDeclarator #27 @1:5..1:67
 // CHECK-NEXT:                   pattern:
 // CHECK-NEXT:                     IdentifierPattern #1 @1:5..1:10 name="typed"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     NamedTypeExpr #16 @1:12..1:43
+// CHECK-NEXT:                     NamedTypeExpr #16 @1:12..1:42
 // CHECK-NEXT:                       path:
 // CHECK-NEXT:                         ModulePath #15 @1:12..1:16 segments=["Pair"] root=Relative
 // CHECK-NEXT:                       args:
@@ -31,70 +31,70 @@
 // CHECK-NEXT:                               path:
 // CHECK-NEXT:                                 ModulePath #4 @1:24..1:25 segments=["B"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                         FunctionTypeExpr #14 @1:28..1:42
+// CHECK-NEXT:                         FunctionTypeExpr #14 @1:28..1:41
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             NamedTypeExpr #11 @1:32..1:33
+// CHECK-NEXT:                             NamedTypeExpr #11 @1:31..1:32
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #10 @1:32..1:33 segments=["C"] root=Relative
+// CHECK-NEXT:                                 ModulePath #10 @1:31..1:32 segments=["C"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                             NamedTypeExpr #13 @1:35..1:36
+// CHECK-NEXT:                             NamedTypeExpr #13 @1:34..1:35
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #12 @1:35..1:36 segments=["D"] root=Relative
+// CHECK-NEXT:                                 ModulePath #12 @1:34..1:35 segments=["D"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           ret_ty:
-// CHECK-NEXT:                             NamedTypeExpr #9 @1:41..1:42
+// CHECK-NEXT:                             NamedTypeExpr #9 @1:40..1:41
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #8 @1:41..1:42 segments=["E"] root=Relative
+// CHECK-NEXT:                                 ModulePath #8 @1:40..1:41 segments=["E"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                           raises: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     CallExpression #26 @1:46..1:68
+// CHECK-NEXT:                     CallExpression #26 @1:45..1:67
 // CHECK-NEXT:                       callee:
-// CHECK-NEXT:                         IdentExpr #17 @1:46..1:50 name="make"
+// CHECK-NEXT:                         IdentExpr #17 @1:45..1:49 name="make"
 // CHECK-NEXT:                       type_args:
-// CHECK-NEXT:                         NamedTypeExpr #23 @1:51..1:62
+// CHECK-NEXT:                         NamedTypeExpr #23 @1:50..1:61
 // CHECK-NEXT:                           path:
-// CHECK-NEXT:                             ModulePath #22 @1:51..1:55 segments=["Pair"] root=Relative
+// CHECK-NEXT:                             ModulePath #22 @1:50..1:54 segments=["Pair"] root=Relative
 // CHECK-NEXT:                           args:
-// CHECK-NEXT:                             NamedTypeExpr #19 @1:56..1:57
+// CHECK-NEXT:                             NamedTypeExpr #19 @1:55..1:56
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #18 @1:56..1:57 segments=["A"] root=Relative
+// CHECK-NEXT:                                 ModulePath #18 @1:55..1:56 segments=["A"] root=Relative
 // CHECK-NEXT:                               args: []
-// CHECK-NEXT:                             NamedTypeExpr #21 @1:59..1:60
+// CHECK-NEXT:                             NamedTypeExpr #21 @1:58..1:59
 // CHECK-NEXT:                               path:
-// CHECK-NEXT:                                 ModulePath #20 @1:59..1:60 segments=["B"] root=Relative
+// CHECK-NEXT:                                 ModulePath #20 @1:58..1:59 segments=["B"] root=Relative
 // CHECK-NEXT:                               args: []
 // CHECK-NEXT:                       args:
-// CHECK-NEXT:                         IdentExpr #24 @1:63..1:64 name="a"
-// CHECK-NEXT:                         IdentExpr #25 @1:66..1:67 name="b"
-// CHECK-NEXT:                 VariableDeclarator #38 @1:70..1:113
+// CHECK-NEXT:                         IdentExpr #24 @1:62..1:63 name="a"
+// CHECK-NEXT:                         IdentExpr #25 @1:65..1:66 name="b"
+// CHECK-NEXT:                 VariableDeclarator #38 @1:69..1:111
 // CHECK-NEXT:                   pattern:
-// CHECK-NEXT:                     IdentifierPattern #28 @1:70..1:78 name="callback"
+// CHECK-NEXT:                     IdentifierPattern #28 @1:69..1:77 name="callback"
 // CHECK-NEXT:                       ty: null
 // CHECK-NEXT:                   ty: null
 // CHECK-NEXT:                   init:
-// CHECK-NEXT:                     FunctionExpression #37 @1:81..1:113
+// CHECK-NEXT:                     FunctionExpression #37 @1:80..1:111
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #31 @1:84..1:92 nparams=1
+// CHECK-NEXT:                         FunctionParameterList #31 @1:82..1:90 nparams=1
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #30 @1:85..1:91 name="x"
+// CHECK-NEXT:                             FunctionParameterDecl #30 @1:83..1:89 name="x"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 PredefinedTypeExpr #29 @1:88..1:91 kind=I32
+// CHECK-NEXT:                                 PredefinedTypeExpr #29 @1:86..1:89 kind=I32
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       captures_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #32 @1:96..1:99 kind=I32
+// CHECK-NEXT:                         PredefinedTypeExpr #32 @1:94..1:97 kind=I32
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #36 @1:100..1:113
+// CHECK-NEXT:                         BlockStmt #36 @1:98..1:111
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #35 @1:102..1:111
+// CHECK-NEXT:                             StatementListItem #35 @1:100..1:109
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ReturnStmt #34 @1:102..1:111
+// CHECK-NEXT:                                 ReturnStmt #34 @1:100..1:109
 // CHECK-NEXT:                                   value:
-// CHECK-NEXT:                                     IdentExpr #33 @1:109..1:110 name="x"
+// CHECK-NEXT:                                     IdentExpr #33 @1:107..1:108 name="x"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #66 @2:1..2:76

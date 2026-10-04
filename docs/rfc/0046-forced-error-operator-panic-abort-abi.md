@@ -128,12 +128,12 @@ checked error union or force-casts a value still writes `!!` and `as!` exactly
 as Chapter 11 specifies.
 
 ```zom
-fun parse_port(text: str) -> u16 {
+fn parse_port(text: str) -> u16 {
     // If parsing yields the residual (error) alternative, this aborts.
     return text.to_u16()!!;
 }
 
-fun as_widget(node: Node) -> Widget {
+fn as_widget(node: Node) -> Widget {
     // If the runtime kind is not Widget, this aborts.
     return node as! Widget;
 }

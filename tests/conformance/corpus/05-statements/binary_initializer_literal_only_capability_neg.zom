@@ -1,1 +1,1 @@
-fun f() -> i32 { let a = 2 + 3; return a; }
+fn f() -> i32 { let a = 2 + 3; return a; }

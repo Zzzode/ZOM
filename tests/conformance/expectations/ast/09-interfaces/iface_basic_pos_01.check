@@ -14,13 +14,13 @@
 // CHECK-NEXT:               members_id:
 // CHECK-NEXT:                 ClassMemberList #4 @1:27..3:2 nmembers=1
 // CHECK-NEXT:                   members:
-// CHECK-NEXT:                     MethodDecl #3 @2:5..2:24 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                     MethodDecl #3 @2:5..2:23 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #1 @2:13..2:15 nparams=0
+// CHECK-NEXT:                         FunctionParameterList #1 @2:12..2:14 nparams=0
 // CHECK-NEXT:                           params: []
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
+// CHECK-NEXT:                         PredefinedTypeExpr #2 @2:18..2:22 kind=Unit
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body: null
 // CHECK-NEXT:           path: null

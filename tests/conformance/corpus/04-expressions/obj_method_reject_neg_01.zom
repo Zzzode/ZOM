@@ -1,1 +1,1 @@
-let obj = {fun foo() { return 42; }};
+let obj = {fn foo() { return 42; }};

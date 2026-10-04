@@ -4,10 +4,10 @@
 // CHECK-LITERAL: Error [ZOM2056]: Expression expected
 // CHECK-LITERAL:   --> conformance/throw_reject_neg_04.zom:1:13
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | fun bad() { throw Error(); }
+// CHECK-LITERAL: 1 | fn bad() { throw Error(); }
 // CHECK-LITERAL:   |             ^
 // CHECK-LITERAL: Error [ZOM2076]: Unexpected token expected
 // CHECK-LITERAL:   --> conformance/throw_reject_neg_04.zom:1:13
 // CHECK-LITERAL:   |
-// CHECK-LITERAL: 1 | fun bad() { throw Error(); }
+// CHECK-LITERAL: 1 | fn bad() { throw Error(); }
 // CHECK-LITERAL:   |             ^

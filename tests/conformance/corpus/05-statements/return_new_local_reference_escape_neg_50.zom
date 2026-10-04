@@ -1,6 +1,6 @@
 struct Box { item: &i32 }
 
-fun leak() -> Box {
+fn leak() -> Box {
     let value: i32;
     return new Box(&value);
 }

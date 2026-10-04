@@ -23,11 +23,11 @@ class BorrowInterfaceFixture final {
 public:
   BorrowInterfaceFixture()
       : session(
-            "fun borrow0(first: i32, second: i32) -> i32 { return 0; }\n"
-            "fun borrow1() -> i32 { return 0; }\n"
-            "fun borrow2(first: i32) -> i32 { return 0; }\n"
+            "fn borrow0(first: i32, second: i32) -> i32 { return 0; }\n"
+            "fn borrow1() -> i32 { return 0; }\n"
+            "fn borrow2(first: i32) -> i32 { return 0; }\n"
             "class RecoveryOwner {\n"
-            "  fun borrow3(this, first: i32, second: i32) -> i32 { return 0; }\n"
+            "  fn borrow3(this, first: i32, second: i32) -> i32 { return 0; }\n"
             "}\n"_zc),
         context(session.semanticContext()),
         moduleId(session.module()) {

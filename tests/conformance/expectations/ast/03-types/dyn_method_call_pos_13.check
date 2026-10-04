@@ -12,13 +12,13 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #4 @1:20..3:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @2:5..2:24 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @2:5..2:23 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @2:13..2:15 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @2:12..2:14 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:19..2:23 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @2:18..2:22 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -49,16 +49,16 @@
 // CHECK-NEXT:           members_id:
 // CHECK-NEXT:             ClassMemberList #18 @7:26..9:2 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #17 @8:5..8:27 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #17 @8:5..8:26 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #14 @8:13..8:15 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #14 @8:12..8:14 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #15 @8:19..8:23 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #15 @8:18..8:22 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body:
-// CHECK-NEXT:                     BlockStmt #16 @8:24..8:27
+// CHECK-NEXT:                     BlockStmt #16 @8:23..8:26
 // CHECK-NEXT:                       stmts: []
 // CHECK-NEXT:       attrs: null
 // CHECK-NEXT:     StatementListItem #27 @11:1..11:20

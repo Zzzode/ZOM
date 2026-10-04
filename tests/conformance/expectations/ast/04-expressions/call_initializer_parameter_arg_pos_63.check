@@ -8,19 +8,19 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #9 @1:1..3:2 name="helper"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #3 @1:11..1:23 nparams=1
+// CHECK-NEXT:             FunctionParameterList #3 @1:10..1:22 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #2 @1:12..1:22 name="value"
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:11..1:21 name="value"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:19..1:22 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:18..1:21 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #4 @1:27..1:30 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:26..1:29 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #8 @1:31..3:2
+// CHECK-NEXT:             BlockStmt #8 @1:30..3:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #7 @2:5..2:18
 // CHECK-NEXT:                   item:
@@ -33,19 +33,19 @@
 // CHECK-NEXT:       item:
 // CHECK-NEXT:         FunctionDecl #28 @5:1..8:2 name="entry"
 // CHECK-NEXT:           params_id:
-// CHECK-NEXT:             FunctionParameterList #13 @5:10..5:22 nparams=1
+// CHECK-NEXT:             FunctionParameterList #13 @5:9..5:21 nparams=1
 // CHECK-NEXT:               params:
-// CHECK-NEXT:                 FunctionParameterDecl #12 @5:11..5:21 name="input"
+// CHECK-NEXT:                 FunctionParameterDecl #12 @5:10..5:20 name="input"
 // CHECK-NEXT:                   ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #11 @5:18..5:21 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #11 @5:17..5:20 kind=I32
 // CHECK-NEXT:                   default_: null
 // CHECK-NEXT:                   attrs: null
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ret_ty:
-// CHECK-NEXT:             PredefinedTypeExpr #14 @5:26..5:29 kind=I32
+// CHECK-NEXT:             PredefinedTypeExpr #14 @5:25..5:28 kind=I32
 // CHECK-NEXT:           raises_ty: null
 // CHECK-NEXT:           body:
-// CHECK-NEXT:             BlockStmt #27 @5:30..8:2
+// CHECK-NEXT:             BlockStmt #27 @5:29..8:2
 // CHECK-NEXT:               stmts:
 // CHECK-NEXT:                 StatementListItem #23 @6:5..6:37
 // CHECK-NEXT:                   item:

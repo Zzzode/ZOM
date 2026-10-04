@@ -6,4 +6,4 @@
 // runtime `_start` contract, but this fixture only exercises object emission --
 // execution stays out of scope for this slice.
 struct Box { v: i32, }
-fun entry() -> i32 { let b = Box { v: 42 }; return b.v; }
+fn entry() -> i32 { let b = Box { v: 42 }; return b.v; }

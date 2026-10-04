@@ -187,7 +187,7 @@ def run_self_test() -> int:
     with tempfile.TemporaryDirectory(prefix="zom-determinism-") as directory:
         root = Path(directory)
         source = root / "input.zom"
-        write(source, "fun entry() -> i32 { return 0; }\n")
+        write(source, "fn entry() -> i32 { return 0; }\n")
 
         stable = make_fake_zomc(
             root,

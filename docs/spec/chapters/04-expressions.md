@@ -44,7 +44,7 @@ class Point {
     let x: f64;
     let y: f64;
 
-    fun distanceFromOrigin(this) -> f64 {
+    fn distanceFromOrigin(this) -> f64 {
         return sqrt(this.x * this.x + this.y * this.y);
     }
 }
@@ -102,8 +102,8 @@ let shorthand = { name, age }; // Same as { name: name, age: age }
 // Object with function-valued properties (not method syntax)
 let calculator = {
     value: 0,
-    add: fun(current: i32, x: i32) -> i32 { return current + x; },
-    result: fun(current: i32) -> i32 { return current; }
+    add: fn(current: i32, x: i32) -> i32 { return current + x; },
+    result: fn(current: i32) -> i32 { return current; }
 };
 
 // Spread properties
@@ -435,7 +435,7 @@ same parameter, generic parameter, return-type, and `raises` syntax as a
 function declaration, but it has no binding identifier.
 
 ```text
-FunctionExpression ::= 'fun' TypeParameters? OrdinaryParameterClause CaptureClause?
+FunctionExpression ::= 'fn' TypeParameters? OrdinaryParameterClause CaptureClause?
                        ReturnType? BlockStatement
 CaptureClause ::= 'use' '[' CaptureList? ']'
 CaptureList ::= CaptureElement (',' CaptureElement)* ','?
@@ -476,10 +476,10 @@ lifetime.
 
 ```zom
 // Basic function expression
-let add = fun (a: i32, b: i32) -> i32 { return a + b; };
+let add = fn (a: i32, b: i32) -> i32 { return a + b; };
 
 // Function expression with block body
-let complexOperation = fun (x: i32) -> i32 {
+let complexOperation = fn (x: i32) -> i32 {
     let doubled = x * 2;
     let squared = doubled * doubled;
     return squared;
@@ -487,17 +487,17 @@ let complexOperation = fun (x: i32) -> i32 {
 
 // Function expression as an argument
 let numbers = [1, 2, 3, 4, 5];
-let doubled = numbers.map(fun (x: i32) -> i32 { return x * 2; });
-let filtered = numbers.filter(fun (x: i32) -> bool { return x > 2; });
+let doubled = numbers.map(fn (x: i32) -> i32 { return x * 2; });
+let filtered = numbers.filter(fn (x: i32) -> bool { return x > 2; });
 
 // Function expression capturing variables
 let multiplier = 3;
-let multiply = fun (x: i32) use [multiplier] -> i32 {
+let multiply = fn (x: i32) use [multiplier] -> i32 {
     return x * multiplier;
 };
 
 // Explicitly no captures
-let identity = fun (x: i32) use [] -> i32 { return x; };
+let identity = fn (x: i32) use [] -> i32 { return x; };
 ```
 
 ## Operator Precedence

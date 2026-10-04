@@ -4,44 +4,44 @@
 // CHECK: SourceFile #78 @1:1..12:1 file_name="class_inheritance_pos_02.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
-// CHECK-NEXT:     StatementListItem #6 @1:1..1:43
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:42
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #5 @1:1..1:43 name="Drawable"
+// CHECK-NEXT:         InterfaceDecl #5 @1:1..1:42 name="Drawable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #4 @1:20..1:43 nmembers=1
+// CHECK-NEXT:             ClassMemberList #4 @1:20..1:42 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #3 @1:22..1:41 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #3 @1:22..1:40 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #1 @1:30..1:32 nparams=0
+// CHECK-NEXT:                     FunctionParameterList #1 @1:29..1:31 nparams=0
 // CHECK-NEXT:                       params: []
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:36..1:40 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:35..1:39 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
-// CHECK-NEXT:     StatementListItem #14 @2:1..2:53
+// CHECK-NEXT:     StatementListItem #14 @2:1..2:52
 // CHECK-NEXT:       item:
-// CHECK-NEXT:         InterfaceDecl #13 @2:1..2:53 name="Updatable"
+// CHECK-NEXT:         InterfaceDecl #13 @2:1..2:52 name="Updatable"
 // CHECK-NEXT:           type_params_id: null
 // CHECK-NEXT:           ifaces_id: null
 // CHECK-NEXT:           members_id:
-// CHECK-NEXT:             ClassMemberList #12 @2:21..2:53 nmembers=1
+// CHECK-NEXT:             ClassMemberList #12 @2:21..2:52 nmembers=1
 // CHECK-NEXT:               members:
-// CHECK-NEXT:                 MethodDecl #11 @2:23..2:51 name="update" mode=Instance visibility=Default
+// CHECK-NEXT:                 MethodDecl #11 @2:23..2:50 name="update" mode=Instance visibility=Default
 // CHECK-NEXT:                   params_id:
-// CHECK-NEXT:                     FunctionParameterList #9 @2:33..2:42 nparams=1
+// CHECK-NEXT:                     FunctionParameterList #9 @2:32..2:41 nparams=1
 // CHECK-NEXT:                       params:
-// CHECK-NEXT:                         FunctionParameterDecl #8 @2:34..2:41 name="dt"
+// CHECK-NEXT:                         FunctionParameterDecl #8 @2:33..2:40 name="dt"
 // CHECK-NEXT:                           ty:
-// CHECK-NEXT:                             PredefinedTypeExpr #7 @2:38..2:41 kind=F32
+// CHECK-NEXT:                             PredefinedTypeExpr #7 @2:37..2:40 kind=F32
 // CHECK-NEXT:                           default_: null
 // CHECK-NEXT:                           attrs: null
 // CHECK-NEXT:                   type_params_id: null
 // CHECK-NEXT:                   ret_ty:
-// CHECK-NEXT:                     PredefinedTypeExpr #10 @2:46..2:50 kind=Unit
+// CHECK-NEXT:                     PredefinedTypeExpr #10 @2:45..2:49 kind=Unit
 // CHECK-NEXT:                   raises_ty: null
 // CHECK-NEXT:                   body: null
 // CHECK-NEXT:       attrs: null
@@ -110,50 +110,50 @@
 // CHECK-NEXT:                                       rhs:
 // CHECK-NEXT:                                         IdentExpr #35 @6:58..6:59 name="x"
 // CHECK-NEXT:                               attrs: null
-// CHECK-NEXT:                     MethodDecl #44 @7:5..7:36 name="draw" mode=Instance visibility=Default
+// CHECK-NEXT:                     MethodDecl #44 @7:5..7:35 name="draw" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #41 @7:22..7:24 nparams=0
+// CHECK-NEXT:                         FunctionParameterList #41 @7:21..7:23 nparams=0
 // CHECK-NEXT:                           params: []
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #42 @7:28..7:32 kind=Unit
+// CHECK-NEXT:                         PredefinedTypeExpr #42 @7:27..7:31 kind=Unit
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #43 @7:33..7:36
+// CHECK-NEXT:                         BlockStmt #43 @7:32..7:35
 // CHECK-NEXT:                           stmts: []
-// CHECK-NEXT:                     MethodDecl #59 @8:5..8:58 name="update" mode=Instance visibility=Default
+// CHECK-NEXT:                     MethodDecl #59 @8:5..8:57 name="update" mode=Instance visibility=Default
 // CHECK-NEXT:                       params_id:
-// CHECK-NEXT:                         FunctionParameterList #47 @8:15..8:24 nparams=1
+// CHECK-NEXT:                         FunctionParameterList #47 @8:14..8:23 nparams=1
 // CHECK-NEXT:                           params:
-// CHECK-NEXT:                             FunctionParameterDecl #46 @8:16..8:23 name="dt"
+// CHECK-NEXT:                             FunctionParameterDecl #46 @8:15..8:22 name="dt"
 // CHECK-NEXT:                               ty:
-// CHECK-NEXT:                                 PredefinedTypeExpr #45 @8:20..8:23 kind=F32
+// CHECK-NEXT:                                 PredefinedTypeExpr #45 @8:19..8:22 kind=F32
 // CHECK-NEXT:                               default_: null
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:                       type_params_id: null
 // CHECK-NEXT:                       ret_ty:
-// CHECK-NEXT:                         PredefinedTypeExpr #48 @8:28..8:32 kind=Unit
+// CHECK-NEXT:                         PredefinedTypeExpr #48 @8:27..8:31 kind=Unit
 // CHECK-NEXT:                       raises_ty: null
 // CHECK-NEXT:                       body:
-// CHECK-NEXT:                         BlockStmt #58 @8:33..8:58
+// CHECK-NEXT:                         BlockStmt #58 @8:32..8:57
 // CHECK-NEXT:                           stmts:
-// CHECK-NEXT:                             StatementListItem #57 @8:35..8:56
+// CHECK-NEXT:                             StatementListItem #57 @8:34..8:55
 // CHECK-NEXT:                               item:
-// CHECK-NEXT:                                 ExpressionStatement #56 @8:35..8:56
+// CHECK-NEXT:                                 ExpressionStatement #56 @8:34..8:55
 // CHECK-NEXT:                                   expression:
-// CHECK-NEXT:                                     AssignmentExpr #55 @8:35..8:55 op=Assign
+// CHECK-NEXT:                                     AssignmentExpr #55 @8:34..8:54 op=Assign
 // CHECK-NEXT:                                       lhs:
-// CHECK-NEXT:                                         MemberExpression #50 @8:35..8:41 property="x" access=Dot
+// CHECK-NEXT:                                         MemberExpression #50 @8:34..8:40 property="x" access=Dot
 // CHECK-NEXT:                                           object:
-// CHECK-NEXT:                                             IdentExpr #49 @8:35..8:39 name="self"
+// CHECK-NEXT:                                             IdentExpr #49 @8:34..8:38 name="self"
 // CHECK-NEXT:                                       rhs:
-// CHECK-NEXT:                                         BinaryExpr #54 @8:44..8:55 op=Add
+// CHECK-NEXT:                                         BinaryExpr #54 @8:43..8:54 op=Add
 // CHECK-NEXT:                                           lhs:
-// CHECK-NEXT:                                             MemberExpression #52 @8:44..8:50 property="x" access=Dot
+// CHECK-NEXT:                                             MemberExpression #52 @8:43..8:49 property="x" access=Dot
 // CHECK-NEXT:                                               object:
-// CHECK-NEXT:                                                 IdentExpr #51 @8:44..8:48 name="self"
+// CHECK-NEXT:                                                 IdentExpr #51 @8:43..8:47 name="self"
 // CHECK-NEXT:                                           rhs:
-// CHECK-NEXT:                                             IdentExpr #53 @8:53..8:55 name="dt"
+// CHECK-NEXT:                                             IdentExpr #53 @8:52..8:54 name="dt"
 // CHECK-NEXT:                               attrs: null
 // CHECK-NEXT:           path: null
 // CHECK-NEXT:           specifiers: []

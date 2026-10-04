@@ -486,7 +486,7 @@ ZC_TEST("CompilerSessionTest.CheckerPreflightPublishesAnnotatedConstantFacts") {
 }
 
 ZC_TEST("CompilerSessionTest.ErrorPropagateNonUnionUsesCheckerDiagnostic") {
-  auto session = packageSession("fun entry(value: i32) -> i32 { return value?!; }\n"_zc);
+  auto session = packageSession("fn entry(value: i32) -> i32 { return value?!; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -496,7 +496,7 @@ ZC_TEST("CompilerSessionTest.ErrorPropagateNonUnionUsesCheckerDiagnostic") {
 }
 
 ZC_TEST("CompilerSessionTest.ErrorUnwrapNonUnionUsesCheckerDiagnostic") {
-  auto session = packageSession("fun entry(value: i32) -> i32 { return value!!; }\n"_zc);
+  auto session = packageSession("fn entry(value: i32) -> i32 { return value!!; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -506,7 +506,7 @@ ZC_TEST("CompilerSessionTest.ErrorUnwrapNonUnionUsesCheckerDiagnostic") {
 }
 
 ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") {
-  auto session = packageSession("fun entry(value: i32 | bool) -> i32 { return value?!; }\n"_zc);
+  auto session = packageSession("fn entry(value: i32 | bool) -> i32 { return value?!; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -516,7 +516,7 @@ ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") 
 }
 
 ZC_TEST("CompilerSessionTest.ArrayIndexReturnUsesFunctionBodyUnavailableDiagnostic") {
-  auto session = packageSession("fun entry(values: i32[]) -> i32 { return values[0]; }\n"_zc);
+  auto session = packageSession("fn entry(values: i32[]) -> i32 { return values[0]; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -525,7 +525,7 @@ ZC_TEST("CompilerSessionTest.ArrayIndexReturnUsesFunctionBodyUnavailableDiagnost
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedParameterReturn") {
-  auto session = packageSession("fun identity(value: i32) -> i32 { return value; }\n"_zc);
+  auto session = packageSession("fn identity(value: i32) -> i32 { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -535,7 +535,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedParam
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
-  auto session = packageSession("fun identity<T>(value: i32) -> i32 { return value; }\n"_zc);
+  auto session = packageSession("fn identity<T>(value: i32) -> i32 { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -551,7 +551,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
-  auto session = packageSession("fun borrow<T>(value: &T) -> &T { return value; }\n"_zc);
+  auto session = packageSession("fn borrow<T>(value: &T) -> &T { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -567,7 +567,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
-  auto session = packageSession("fun borrow<T>(value: &mut T) -> &mut T { return value; }\n"_zc);
+  auto session = packageSession("fn borrow<T>(value: &mut T) -> &mut T { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -585,7 +585,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableBorrowSignature") {
 }
 
 ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
-  auto session = packageSession("fun reborrow(value: &i32) -> &i32 { return &*value; }\n"_zc);
+  auto session = packageSession("fn reborrow(value: &i32) -> &i32 { return &*value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -718,7 +718,7 @@ ZC_TEST("CompilerSessionTest.PublishesSharedParameterReborrow") {
 
 ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
   auto session =
-      packageSession("fun reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }\n"_zc);
+      packageSession("fn reborrow(value: &mut i32) -> &mut i32 { return &mut *value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -889,7 +889,7 @@ ZC_TEST("CompilerSessionTest.PublishesMutableParameterReborrow") {
 
 ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
   auto session =
-      packageSession("fun reborrow<T>(value: &mut T) -> &mut T { return &mut *value; }\n"_zc);
+      packageSession("fn reborrow<T>(value: &mut T) -> &mut T { return &mut *value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -915,7 +915,7 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
 }
 
 ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract") {
-  auto session = packageSession("fun identity<T>(value: T) -> T { return value; }\n"_zc);
+  auto session = packageSession("fn identity<T>(value: T) -> T { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -925,8 +925,8 @@ ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract"
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitializedLocalReturn") {
-  auto session = packageSession(
-      "fun identity(value: i32) -> i32 { let copy: i32 = value; return copy; }\n"_zc);
+  auto session =
+      packageSession("fn identity(value: i32) -> i32 { let copy: i32 = value; return copy; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -937,7 +937,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitial
 
 ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
   auto session = packageSession(
-      "fun reborrow(value: &i32) -> &i32 { let local = value; return &*local; }\n"_zc);
+      "fn reborrow(value: &i32) -> &i32 { let local = value; return &*local; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -988,7 +988,7 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForLocalAliasReborrow") {
 
 ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborrow") {
   auto session = packageSession(
-      "fun reborrow(value: &mut i32) -> &mut i32 { let local = value; return &mut *local; }\n"_zc);
+      "fn reborrow(value: &mut i32) -> &mut i32 { let local = value; return &mut *local; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1038,7 +1038,7 @@ ZC_TEST("CompilerSessionTest.PublishesOwnershipInputsForMutableLocalAliasReborro
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedAggregateFieldReturn") {
   auto session = packageSession(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }\n"_zc);
+      "fn entry() -> i32 { let cell = Cell { value: 0 }; return cell.value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1050,7 +1050,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForInitializedAggre
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOverwrite") {
   auto session = packageSession(
       "struct Cell { mut value: i32, }\n"
-      "fun entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }\n"_zc);
+      "fn entry() -> i32 { mut cell = Cell { value: 0 }; cell.value = 1; return cell.value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1078,7 +1078,7 @@ ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForAggregateFieldOv
 }
 
 ZC_TEST("CompilerSessionTest.RejectsUninitializedLocalUseWithoutPublishingOwnershipInputs") {
-  auto session = packageSession("fun entry() -> i32 { let value: i32; return value; }\n"_zc);
+  auto session = packageSession("fn entry() -> i32 { let value: i32; return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1095,7 +1095,7 @@ ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs
       "import core::marker::{Copy};\n"
       "struct Cell { value: i32, }\n"
       "impl !Copy for Cell;\n"
-      "fun entry() -> Cell { let first = Cell { value: 0 }; let second = first; return first; }\n"_zc);
+      "fn entry() -> Cell { let first = Cell { value: 0 }; let second = first; return first; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1107,8 +1107,8 @@ ZC_TEST("CompilerSessionTest.RejectsUseAfterMoveWithoutPublishingOwnershipInputs
 }
 
 ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
-  auto session = packageSession(
-      "fun entry() -> i32 { let first = 0; let second = first; return first; }\n"_zc);
+  auto session =
+      packageSession("fn entry() -> i32 { let first = 0; let second = first; return first; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1119,7 +1119,7 @@ ZC_TEST("CompilerSessionTest.AcceptsCopyAfterLocalTransfer") {
 
 ZC_TEST("CompilerSessionTest.AcceptsThreeSequentialScalarLocals") {
   auto session = packageSession(
-      "fun entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }\n"_zc);
+      "fn entry(a: i32) -> i32 { let x: i32 = a; let y: i32 = x; let z: i32 = 5; return z; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1130,7 +1130,7 @@ ZC_TEST("CompilerSessionTest.AcceptsThreeSequentialScalarLocals") {
 
 ZC_TEST("CompilerSessionTest.AcceptsFourSequentialLocalsReturningParameter") {
   auto session = packageSession(
-      "fun entry(a: i32, b: i32) -> i32 { let w: i32 = a; let x: i32 = w; let y: i32 = b; "
+      "fn entry(a: i32, b: i32) -> i32 { let w: i32 = a; let x: i32 = w; let y: i32 = b; "
       "let z: i32 = 7; return a; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
@@ -1145,7 +1145,7 @@ ZC_TEST("CompilerSessionTest.AcceptsBinaryInitializerInSequentialLocalBody") {
   // initializer (slice 2 of G2), including an operand that references an earlier
   // local (`x * b`). The full body lowers end-to-end.
   auto session = packageSession(
-      "fun entry(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
+      "fn entry(a: i32, b: i32) -> i32 { let x: i32 = a + b; let y: i32 = x * b; return y; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1160,7 +1160,7 @@ ZC_TEST("CompilerSessionTest.LogicalInitializerReportsUnsupportedOperator") {
   // production unsupported, but `&&` is specified language syntax, so the refusal
   // reaches the user as ZOM4103 rather than as a compiler incident.
   auto session = packageSession(
-      "fun entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
+      "fn entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1176,7 +1176,7 @@ ZC_TEST(
     "CompilerSessionTest.RejectsUninitializedAggregateFieldUseWithoutPublishingOwnershipInputs") {
   auto session = packageSession(
       "struct Cell { value: i32, }\n"
-      "fun entry() -> i32 { let cell: Cell; return cell.value; }\n"_zc);
+      "fn entry() -> i32 { let cell: Cell; return cell.value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
@@ -1191,7 +1191,7 @@ ZC_TEST(
     "RejectsUninitializedAggregateSiblingFieldWithoutPublishingOwnershipInputs") {
   auto session = packageSession(
       "struct Pair { mut left: i32, mut right: bool, }\n"
-      "fun entry() -> bool { mut pair: Pair; pair.left = 0; return pair.right; }\n"_zc);
+      "fn entry() -> bool { mut pair: Pair; pair.left = 0; return pair.right; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());

@@ -1,10 +1,10 @@
-interface A { fun a() -> unit; }
-interface B { fun b() -> unit; }
-interface C { fun c() -> unit; }
+interface A { fn a() -> unit; }
+interface B { fn b() -> unit; }
+interface C { fn c() -> unit; }
 struct S {
-    fun a() -> unit { }
-    fun b() -> unit { }
-    fun c() -> unit { }
+    fn a() -> unit { }
+    fn b() -> unit { }
+    fn c() -> unit { }
 }
 impl A for S { }
 impl B for S { }

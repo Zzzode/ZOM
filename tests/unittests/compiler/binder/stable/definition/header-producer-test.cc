@@ -5,7 +5,6 @@
 
 #include "compiler/binder/stable/definition/header-producer.h"
 
-#include "zc/ztest/test.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -16,6 +15,7 @@
 #include "compiler/parser/parser.h"
 #include "tests/unittests/compiler/binder/graph/parsed-module-query-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -289,7 +289,7 @@ const RevisionLocalDefinitionSite& matchingSite(const RevisionLocalDefinitionSit
 zc::StringPtr matrixSource() {
   return R"zom(module test;
 extern "C" {
-    fun foreignCall(first: i32, second: i32) -> i32;
+    fn foreignCall(first: i32, second: i32) -> i32;
     variable errno: i32;
 }
 enum Choice<T, E> { None, Some(i32), }
@@ -297,7 +297,7 @@ struct Record {}
 interface Contract {
     type Item;
     type Iter<T>;
-    fun required() -> unit;
+    fn required() -> unit;
 }
 error Problem { Failed: "failed", }
 alias Pair = (i32, i32);
@@ -309,12 +309,12 @@ class Access {
     protected let protectedField: i32;
     init() {}
     deinit() {}
-    public fun visible() {}
-    fun receive(this, value: i32) {}
-    fun two(first: i32, second: i32) {}
+    public fn visible() {}
+    fn receive(this, value: i32) {}
+    fn two(first: i32, second: i32) {}
 }
-fun noParameters() {}
-fun whereOnly() where i32: Eq {}
+fn noParameters() {}
+fn whereOnly() where i32: Eq {}
 const MODULE_CONST = 1;
 let moduleStatic = 2;
 impl Contract for Record {}
