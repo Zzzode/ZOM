@@ -60,6 +60,8 @@ CHECKER_ERROR(GenericConcreteDynErasureUnsupported)
 CHECKER_ERROR(MethodCallSemanticsUnavailable)
 CHECKER_ERROR(CannotMutateSharedReceiver)
 CHECKER_ERROR(DuplicateStructField)
+CHECKER_ERROR(InvalidUnaryOperands)
+CHECKER_ERROR(MatchScrutineePatternMismatch)
 CHECKER_ERROR(FunctionBodySemanticsUnavailable)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)

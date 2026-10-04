@@ -73,6 +73,12 @@ public:
   /// destination id. Used by every binary operand and condition arm.
   void lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf);
 
+  /// \brief Allocates and lowers one conditional arm, returning the node id of
+  /// its value. A leaf arm (literal, parameter, or local reference) allocates
+  /// one node; a binary arm allocates three (left operand, right operand,
+  /// binary) and returns the binary node id as the arm's value.
+  HirNodeId lowerArmValue(const PendingConditionalArm& arm);
+
 private:
   uint32_t* nextNode;
   zc::Vector<HirFunctionDeclaration>* functions;

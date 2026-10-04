@@ -1,9 +1,8 @@
 // RUN: cd %corpus && ! %zomc compile --check 05-statements/unary_logical_not_integer_capability_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// `!a` on an integer operand is legal source the body slice does not admit
-// (LogicalNot is defined for bool only). The body checker drains it as ZOM4099
-// rather than a missing-fact invariant.
+// `!a` on an integer operand is a type error: LogicalNot is defined for bool
+// only. The body checker reports ZOM4132 rather than a missing-fact invariant.
 
-// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL: Error [ZOM4132]: Operator `!` is not defined for type `i32`
 // CHECK-LITERAL:   --> conformance/05-statements/unary_logical_not_integer_capability_neg_01.zom:1:33

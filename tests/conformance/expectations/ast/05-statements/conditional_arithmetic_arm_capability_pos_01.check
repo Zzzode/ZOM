@@ -1,7 +1,7 @@
-// RUN: %zomc compile --dump-ast %corpus/05-statements/conditional_arithmetic_arm_capability_neg_01.zom | %FileCheck %s
+// RUN: %zomc compile --dump-ast %corpus/05-statements/conditional_arithmetic_arm_capability_pos_01.zom | %FileCheck %s
 
 
-// CHECK: SourceFile #23 @1:1..2:1 file_name="conditional_arithmetic_arm_capability_neg_01.zom"
+// CHECK: SourceFile #23 @1:1..2:1 file_name="conditional_arithmetic_arm_capability_pos_01.zom"
 // CHECK-NEXT:   module: null
 // CHECK-NEXT:   statements:
 // CHECK-NEXT:     StatementListItem #22 @1:1..1:74

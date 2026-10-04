@@ -1,0 +1,7 @@
+section: "05-statements conditional body"
+covers_rule: "functionDeclaration, ifStatement, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "A conditional arm may be a one-level arithmetic expression (`0 - x`) whose"
+  - "operands are a scalar literal and a bare parameter reference; the arm lowers"
+  - "to an Arithmetic rvalue in the Built MIR and through the LIR and LLVM backends."

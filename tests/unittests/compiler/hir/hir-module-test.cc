@@ -3488,6 +3488,75 @@ ZC_TEST("HIR control arm lowers a parameter-and-literal comparison conditional e
   ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
 }
 
+ZC_TEST("HIR pipeline lowers an arithmetic-arm equality conditional through exact node strides") {
+  HirPipelineFixture fixture(
+      "fn abs(x: i32) -> i32 { if (x < 0) { return 0 - x; } else { return x; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  // Two primitive binaries: the arm subtraction (lowered first) and the
+  // condition comparison (lowered after the arms).
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 2);
+  // Three parameter references: arm right, else arm, condition left.
+  ZC_REQUIRE(module.parameterReferences().size() == 3);
+  // Two scalar literals: arm left and condition right.
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& armBinary = module.primitiveBinaryOperations()[0];
+  const auto& equality = module.primitiveBinaryOperations()[1];
+  // Eleven-node stride (9 + 2K, K=1): function 1, body 2, condition left 3,
+  // condition right 4, equality 5, then-arm left 6, then-arm right 7,
+  // then-arm binary 8, else-arm 9, conditional 10, return 11.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(equality.left.ordinal() == 3);
+  ZC_EXPECT(equality.right.ordinal() == 4);
+  ZC_EXPECT(equality.node.ordinal() == 5);
+  ZC_EXPECT(armBinary.left.ordinal() == 6);
+  ZC_EXPECT(armBinary.right.ordinal() == 7);
+  ZC_EXPECT(armBinary.node.ordinal() == 8);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 8);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 9);
+  ZC_EXPECT(conditional.node.ordinal() == 10);
+  ZC_EXPECT(returnStatement.node.ordinal() == 11);
+  ZC_EXPECT(conditional.condition == equality.node);
+  ZC_EXPECT(returnStatement.value == conditional.node);
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+  ZC_EXPECT(armBinary.operation == checker::PrimitiveOperation::Sub);
+
+  // The MIR lowers the arithmetic then-arm to an Arithmetic rvalue and the
+  // parameter else-arm to a place-use of the parameter local.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> abs;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) abs = mirFunction;
+  }
+  ZC_REQUIRE(abs != zc::none);
+  ZC_IF_SOME(mirFunction, abs) {
+    // One parameter (x), the function result, and the bool temp.
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    // bb2 then: Assign(result = Arithmetic(Sub, 0, x)), Goto.
+    ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
+    const auto& thenAssign = mirFunction.blocks[1].statements[0].assignmentValue();
+    ZC_REQUIRE(thenAssign.value.kind() == mir::MirRvalueKind::Arithmetic);
+    const auto& arithmetic = thenAssign.value.arithmeticValue();
+    ZC_EXPECT(arithmetic.op == mir::MirArithmeticOperator::Sub);
+    ZC_EXPECT(arithmetic.left.kind() == mir::MirOperandKind::Constant);
+    ZC_EXPECT(arithmetic.right.kind() == mir::MirOperandKind::Copy);
+    // bb3 else: Assign(result = Use(x)), Goto.
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    const auto& elseAssign = mirFunction.blocks[2].statements[0].assignmentValue();
+    ZC_REQUIRE(elseAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(elseAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+  }
+}
+
 ZC_TEST("HIR control arm lowers a loop-body write composite through exact node strides") {
   HirPipelineFixture fixture(
       "fn f(a: i32, cond: bool) -> i32 { mut x: i32 = 0; while (cond) { x = a; } return x; }"_zc);

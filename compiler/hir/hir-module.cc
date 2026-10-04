@@ -5303,13 +5303,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             tree.node(source.thenReturnValue).kind == ast::SyntaxKind::IdentExpr;
         const bool elseIsParameter =
             tree.node(source.elseReturnValue).kind == ast::SyntaxKind::IdentExpr;
-        auto thenLiteralIndex =
-            thenIsParameter ? zc::none : factIndex(facts.literals(), source.thenReturnValue);
-        auto elseLiteralIndex =
-            elseIsParameter ? zc::none : factIndex(facts.literals(), source.elseReturnValue);
+        const bool thenIsBinary = !thenIsParameter && tree.node(source.thenReturnValue).kind ==
+                                                          ast::SyntaxKind::BinaryExpr;
+        const bool elseIsBinary = !elseIsParameter && tree.node(source.elseReturnValue).kind ==
+                                                          ast::SyntaxKind::BinaryExpr;
+        auto thenLiteralIndex = (thenIsParameter || thenIsBinary)
+                                    ? zc::none
+                                    : factIndex(facts.literals(), source.thenReturnValue);
+        auto elseLiteralIndex = (elseIsParameter || elseIsBinary)
+                                    ? zc::none
+                                    : factIndex(facts.literals(), source.elseReturnValue);
         if (conditionTypeIndex == zc::none || thenTypeIndex == zc::none ||
-            elseTypeIndex == zc::none || (!thenIsParameter && thenLiteralIndex == zc::none) ||
-            (!elseIsParameter && elseLiteralIndex == zc::none)) {
+            elseTypeIndex == zc::none ||
+            (!thenIsParameter && !thenIsBinary && thenLiteralIndex == zc::none) ||
+            (!elseIsParameter && !elseIsBinary && elseLiteralIndex == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
@@ -5338,16 +5345,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const bool conditionIsUnary = source.conditionIsUnary;
         const bool conditionHasConjunctiveStride = source.hasMatchGuard;
         const bool conditionHasEqualityStride = conditionIsEquality || conditionIsUnary;
-        const uint32_t thenOffset =
+        // The condition stride fixes the base offset of the then arm. Each
+        // binary arm materializes three nodes (left operand, right operand,
+        // binary) instead of one, so a binary arm shifts every later offset by
+        // two and the arm's value node is its third (binary) node.
+        const uint32_t conditionThenOffset =
             conditionHasConjunctiveStride ? 7 : (conditionHasEqualityStride ? 5 : 3);
-        const uint32_t elseOffset =
-            conditionHasConjunctiveStride ? 8 : (conditionHasEqualityStride ? 6 : 4);
-        const uint32_t conditionalOffset =
-            conditionHasConjunctiveStride ? 9 : (conditionHasEqualityStride ? 7 : 5);
-        const uint32_t returnOffset =
-            conditionHasConjunctiveStride ? 10 : (conditionHasEqualityStride ? 8 : 6);
-        const uint32_t functionNodeCount =
-            conditionHasConjunctiveStride ? 11 : (conditionHasEqualityStride ? 9 : 7);
+        const uint32_t thenArmNodes = thenIsBinary ? 3 : 1;
+        const uint32_t elseArmNodes = elseIsBinary ? 3 : 1;
+        const uint32_t thenValueOffset = conditionThenOffset + (thenIsBinary ? 2 : 0);
+        const uint32_t elseArmOffset = conditionThenOffset + thenArmNodes;
+        const uint32_t elseValueOffset = elseArmOffset + (elseIsBinary ? 2 : 0);
+        const uint32_t conditionalOffset = elseArmOffset + elseArmNodes;
+        const uint32_t returnOffset = conditionalOffset + 1;
+        const uint32_t functionNodeCount = returnOffset + 1;
         // Common arm verification: each arm value node resolves to a
         // scalar-literal expression or a parameter reference depending on its AST
         // kind. Locate the matching materialized node and cross-check it.
@@ -5397,6 +5408,67 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           return ok;
         };
+        // Binary arm verification: resolve the checked call fact, verify the
+        // two leaf operands at armBaseOffset and armBaseOffset + 1 via
+        // verifyArm, then verify the primitive binary operation at
+        // armBaseOffset + 2 with its operands and cross-checked operation.
+        auto verifyBinaryArm = [&](ast::NodeId armSourceNode, uint32_t armBaseOffset,
+                                   identity::SemanticTypeId armType,
+                                   const identity::SourceSpan& armSpan) -> bool {
+          auto armCallIndex = factIndex(facts.calls(), armSourceNode);
+          if (armCallIndex == zc::none) return false;
+          size_t armCallSlot = 0;
+          ZC_IF_SOME(index, armCallIndex) { armCallSlot = index; }
+          const auto& armCallFact = facts.calls().entries()[armCallSlot].value;
+          const auto& armCall = armCallFact.invocation;
+          const auto& armSelected = armCall.selected.variant();
+          if (!armSelected.is<checker::checked::PrimitiveCallable>()) return false;
+          const auto armOperation =
+              armSelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (!isScalarArithmeticOperation(armOperation) &&
+              !isScalarComparisonOperation(armOperation)) {
+            return false;
+          }
+          if (armCall.arguments.size() != 2 || armCall.resultType != armType ||
+              armCall.successType != armType) {
+            return false;
+          }
+          const auto armOperandType = armCall.arguments[0].sourceType;
+          if (armCall.arguments[1].sourceType != armOperandType) return false;
+          const ast::NodeId leftNode = armCall.arguments[0].sourceNode;
+          const ast::NodeId rightNode = armCall.arguments[1].sourceNode;
+          const bool leftIsParameter = tree.node(leftNode).kind == ast::SyntaxKind::IdentExpr;
+          const bool rightIsParameter = tree.node(rightNode).kind == ast::SyntaxKind::IdentExpr;
+          auto leftLiteralIndex =
+              leftIsParameter ? zc::none : factIndex(facts.literals(), leftNode);
+          auto rightLiteralIndex =
+              rightIsParameter ? zc::none : factIndex(facts.literals(), rightNode);
+          auto leftSpan = bound.parsedModule().spanFor(tree.node(leftNode).range);
+          auto rightSpan = bound.parsedModule().spanFor(tree.node(rightNode).range);
+          if (leftSpan == zc::none || rightSpan == zc::none) return false;
+          if (!verifyArm(leftIsParameter, leftNode, hirId(expectedFunction + armBaseOffset),
+                         armOperandType, leftLiteralIndex, ZC_ASSERT_NONNULL(leftSpan)) ||
+              !verifyArm(rightIsParameter, rightNode, hirId(expectedFunction + armBaseOffset + 1),
+                         armOperandType, rightLiteralIndex, ZC_ASSERT_NONNULL(rightSpan))) {
+            return false;
+          }
+          zc::Maybe<const HirPrimitiveBinaryExpression&> binaryValue;
+          for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+            if (binary.node != hirId(expectedFunction + armBaseOffset + 2)) continue;
+            if (binaryValue != zc::none) return false;
+            binaryValue = binary;
+          }
+          if (binaryValue == zc::none) return false;
+          bool binaryOk = false;
+          ZC_IF_SOME(binary, binaryValue) {
+            binaryOk = binary.left == hirId(expectedFunction + armBaseOffset) &&
+                       binary.right == hirId(expectedFunction + armBaseOffset + 1) &&
+                       binary.operandType == armOperandType && binary.type == armType &&
+                       binary.category == HirValueCategory::Value &&
+                       binary.operation == armOperation && sameSpan(binary.sourceSpan, armSpan);
+          }
+          return binaryOk;
+        };
         zc::Maybe<const HirConditionalExpression&> conditionalValue;
         for (const auto& candidate : candidate.impl->conditionals) {
           if (candidate.node != hirId(expectedFunction + conditionalOffset)) continue;
@@ -5412,12 +5484,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        if (!verifyArm(thenIsParameter, source.thenReturnValue,
-                       hirId(expectedFunction + thenOffset), thenType, thenLiteralIndex,
-                       ZC_ASSERT_NONNULL(thenSpan)) ||
-            !verifyArm(elseIsParameter, source.elseReturnValue,
-                       hirId(expectedFunction + elseOffset), elseType, elseLiteralIndex,
-                       ZC_ASSERT_NONNULL(elseSpan))) {
+        bool armsOk = true;
+        if (thenIsBinary) {
+          armsOk = verifyBinaryArm(source.thenReturnValue, conditionThenOffset, thenType,
+                                   ZC_ASSERT_NONNULL(thenSpan));
+        } else {
+          armsOk = verifyArm(thenIsParameter, source.thenReturnValue,
+                             hirId(expectedFunction + thenValueOffset), thenType, thenLiteralIndex,
+                             ZC_ASSERT_NONNULL(thenSpan));
+        }
+        if (armsOk) {
+          if (elseIsBinary) {
+            armsOk = verifyBinaryArm(source.elseReturnValue, elseArmOffset, elseType,
+                                     ZC_ASSERT_NONNULL(elseSpan));
+          } else {
+            armsOk = verifyArm(elseIsParameter, source.elseReturnValue,
+                               hirId(expectedFunction + elseValueOffset), elseType,
+                               elseLiteralIndex, ZC_ASSERT_NONNULL(elseSpan));
+          }
+        }
+        if (!armsOk) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -5432,8 +5518,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        returnStatement.node == hirId(expectedFunction + returnOffset) &&
                        returnStatement.value == conditional.node &&
                        returnStatement.resultType == function.resultType &&
-                       conditional.thenReturnValue == hirId(expectedFunction + thenOffset) &&
-                       conditional.elseReturnValue == hirId(expectedFunction + elseOffset) &&
+                       conditional.thenReturnValue == hirId(expectedFunction + thenValueOffset) &&
+                       conditional.elseReturnValue == hirId(expectedFunction + elseValueOffset) &&
                        conditional.type == function.resultType &&
                        conditional.category == HirValueCategory::Value &&
                        sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) &&

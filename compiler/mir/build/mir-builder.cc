@@ -2148,13 +2148,40 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   auto comparison = comparisonOperatorFor(comparisonValue.operation);
   auto arithmetic = arithmeticOperatorFor(comparisonValue.operation);
   if (comparison == zc::none && arithmetic == zc::none) return zc::none;
-  auto thenLiteral = expressionFor(hirModule, conditionalValue.thenReturnValue);
-  auto elseLiteral = expressionFor(hirModule, conditionalValue.elseReturnValue);
-  if (thenLiteral == zc::none || elseLiteral == zc::none) return zc::none;
-  if (ZC_ASSERT_NONNULL(thenLiteral).type != declaration.resultType ||
-      ZC_ASSERT_NONNULL(elseLiteral).type != declaration.resultType) {
+  // Resolve one conditional arm: a scalar literal, a parameter place-use, or a
+  // primitive binary (arithmetic/comparison) operation over two leaf operands.
+  struct ArmValue {
+    enum class Kind { Literal, Parameter, Binary };
+    Kind kind;
+    const hir::HirScalarLiteralExpression* literal = nullptr;
+    const hir::HirParameterReferenceExpression* parameter = nullptr;
+    const hir::HirPrimitiveBinaryExpression* binary = nullptr;
+  };
+  auto resolveArm = [&](hir::HirNodeId armNode) -> zc::Maybe<ArmValue> {
+    if (auto literal = expressionFor(hirModule, armNode); literal != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(literal);
+      if (value.type != declaration.resultType) return zc::none;
+      return ArmValue{ArmValue::Kind::Literal, &value, nullptr, nullptr};
+    }
+    if (auto parameter = parameterReferenceFor(hirModule, armNode); parameter != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(parameter);
+      if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      return ArmValue{ArmValue::Kind::Parameter, nullptr, &value, nullptr};
+    }
+    if (auto binary = primitiveBinaryFor(hirModule, armNode); binary != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(binary);
+      if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Value) {
+        return zc::none;
+      }
+      return ArmValue{ArmValue::Kind::Binary, nullptr, nullptr, &value};
+    }
     return zc::none;
-  }
+  };
+  auto thenArm = resolveArm(conditionalValue.thenReturnValue);
+  auto elseArm = resolveArm(conditionalValue.elseReturnValue);
+  if (thenArm == zc::none || elseArm == zc::none) return zc::none;
 
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
@@ -2304,17 +2331,76 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
   ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
                                               blockId(3), conditionalValue.sourceSpan.clone()));
-  const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
+  // Resolve one arm to its MIR rvalue and source span. A literal arm lowers to
+  // a constant use; a parameter arm lowers to a place-use of the parameter
+  // local; a binary arm lowers to an arithmetic or comparison rvalue over two
+  // leaf operands resolved via binaryLeafOperand.
+  auto armRvalue = [&](const ArmValue& arm) -> zc::Maybe<MirRvalue> {
+    switch (arm.kind) {
+      case ArmValue::Kind::Literal: {
+        const auto& literal = ZC_ASSERT_NONNULL(arm.literal);
+        return MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone()));
+      }
+      case ArmValue::Kind::Parameter: {
+        const auto& parameter = ZC_ASSERT_NONNULL(arm.parameter);
+        auto parameterIndex = parameterIndexFor(declaration, parameter.parameter);
+        if (parameterIndex == zc::none) return zc::none;
+        zc::Vector<MirProjection> projections;
+        auto operand =
+            placeUse(proofs, copyMarker,
+                     MirPlace(parameterLocals[ZC_ASSERT_NONNULL(parameterIndex)],
+                              declaration.resultType, zc::mv(projections), declaration.resultType));
+        if (operand == zc::none) return zc::none;
+        return MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+      }
+      case ArmValue::Kind::Binary: {
+        const auto& binary = ZC_ASSERT_NONNULL(arm.binary);
+        auto armArithmetic = arithmeticOperatorFor(binary.operation);
+        auto armComparison = comparisonOperatorFor(binary.operation);
+        if (armArithmetic == zc::none && armComparison == zc::none) return zc::none;
+        auto left = binaryLeafOperand(hirModule, declaration, binary.left, parameterLocals,
+                                      userLocals.asPtr(), bindingCount, binary.operandType, proofs,
+                                      copyMarker);
+        auto right = binaryLeafOperand(hirModule, declaration, binary.right, parameterLocals,
+                                       userLocals.asPtr(), bindingCount, binary.operandType, proofs,
+                                       copyMarker);
+        if (left == zc::none || right == zc::none) return zc::none;
+        if (armArithmetic != zc::none) {
+          return MirRvalue::arithmetic(ZC_ASSERT_NONNULL(armArithmetic),
+                                       zc::mv(ZC_ASSERT_NONNULL(left)),
+                                       zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+        }
+        return MirRvalue::comparison(ZC_ASSERT_NONNULL(armComparison),
+                                     zc::mv(ZC_ASSERT_NONNULL(left)),
+                                     zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+      }
+    }
+    return zc::none;
+  };
+  auto armSpan = [](const ArmValue& arm) -> const identity::SourceSpan& {
+    switch (arm.kind) {
+      case ArmValue::Kind::Literal:
+        return ZC_ASSERT_NONNULL(arm.literal).sourceSpan;
+      case ArmValue::Kind::Parameter:
+        return ZC_ASSERT_NONNULL(arm.parameter).sourceSpan;
+      case ArmValue::Kind::Binary:
+        return ZC_ASSERT_NONNULL(arm.binary).sourceSpan;
+    }
+    ZC_UNREACHABLE
+  };
+  auto thenRvalue = armRvalue(ZC_ASSERT_NONNULL(thenArm));
+  auto elseRvalue = armRvalue(ZC_ASSERT_NONNULL(elseArm));
+  if (thenRvalue == zc::none || elseRvalue == zc::none) return zc::none;
+  const auto armBlock = [&](MirRvalue rvalue, const identity::SourceSpan& span) {
     (void)ctx.beginBlock(scope);
     zc::Vector<MirProjection> projections;
     ctx.appendStatement(MirStatement::assign(
         MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
-        MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
-        MirInitializationKind::Initialize, literal.sourceSpan.clone()));
-    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+        zc::mv(rvalue), MirInitializationKind::Initialize, span.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), span.clone()));
   };
-  armBlock(ZC_ASSERT_NONNULL(thenLiteral));
-  armBlock(ZC_ASSERT_NONNULL(elseLiteral));
+  armBlock(zc::mv(ZC_ASSERT_NONNULL(thenRvalue)), armSpan(ZC_ASSERT_NONNULL(thenArm)));
+  armBlock(zc::mv(ZC_ASSERT_NONNULL(elseRvalue)), armSpan(ZC_ASSERT_NONNULL(elseArm)));
   (void)ctx.beginBlock(scope);
   zc::Vector<MirProjection> returnProjections;
   auto returnOperand = placeUse(proofs, copyMarker,

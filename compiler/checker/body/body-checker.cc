@@ -2421,6 +2421,64 @@ zc::Maybe<InvalidBinaryOperandTypes> invalidBinaryOperandTypes(
   return InvalidBinaryOperandTypes{leftValue, rightValue, op, comparison != zc::none};
 }
 
+/// \brief Operand type of a unary operation the shape validator refused.
+struct InvalidUnaryOperandTypes final {
+  identity::SemanticTypeId operandType;
+  PrimitiveOperation operation;
+};
+
+/// \brief Classifies a refused unary operation as ill-typed, not unsupported.
+///
+/// `primitiveUnaryOperationShape` returns none for two very different reasons:
+/// a form this slice does not lower yet (a bare literal with no reference
+/// anchor, an unresolvable operand), and an operand type the operator is simply
+/// not defined for. The first is a compiler-capability boundary and stays on
+/// the invariant rail; the second is a user error and must reach the source
+/// rail as `ZOM4132`. The operand must resolve to a type for the answer to be
+/// trustworthy, so this returns none when the type is unknown, leaving the
+/// existing fail-closed rejection in place.
+zc::Maybe<InvalidUnaryOperandTypes> invalidUnaryOperandTypes(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::UnaryExpression) {
+    return zc::none;
+  }
+  const auto& syntax = tree.node(node);
+  const auto unaryOperator =
+      static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]);
+  auto kind = OperatorKind::fromUnary(unaryOperator);
+  if (kind == zc::none) return zc::none;
+  const auto& variant = ZC_ASSERT_NONNULL(kind).variant();
+  if (!variant.is<PrimitiveOperation>()) return zc::none;
+  const auto operation = variant.get<PrimitiveOperation>();
+  const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand)) return zc::none;
+  // Resolve the operand's type the same way the shape validator does: a
+  // reference (parameter or owner local) or a scalar literal. An unresolved
+  // operand yields none and the caller keeps its existing rejection.
+  zc::Maybe<identity::SemanticTypeId> operandType;
+  if (tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+    auto parameter = callableParameterReferenceType(input, operand);
+    if (parameter != zc::none) {
+      operandType = parameter;
+    } else {
+      operandType = ownerLocalReferenceType(input, operand, nodeTypes);
+    }
+  } else if (isScalarLiteral(tree.node(operand).kind)) {
+    ZC_IF_SOME(entry, factEntry(nodeTypes, operand)) { operandType = entry.value; }
+  }
+  if (operandType == zc::none) return zc::none;
+  identity::SemanticTypeId operandTypeValue;
+  ZC_IF_SOME(value, operandType) { operandTypeValue = value; }
+  auto operandKind = primitiveKindOf(input.semanticTypes, operandTypeValue);
+  if (operandKind == zc::none ||
+      primitiveUnaryOperationAdmits(operation, ZC_ASSERT_NONNULL(operandKind))) {
+    return zc::none;
+  }
+  return InvalidUnaryOperandTypes{operandTypeValue, operation};
+}
+
 /// \brief Declared and produced types of a binary local initializer that disagree.
 struct BinaryInitializerTypeMismatch final {
   identity::SemanticTypeId declaredType;
@@ -4165,6 +4223,63 @@ checked::CheckedFactsSourceRejected rejectTypeMismatch(const BodyProductionSite&
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4045: a condition position carries a non-bool type. The single display
+// argument is the actual type, matching the checked-facts projector contract
+// (Type).
+checked::CheckedFactsSourceRejected rejectConditionMustBeBool(const BodyProductionSite& site,
+                                                              uint32_t ownerPreorder,
+                                                              identity::SemanticTypeId actualType) {
+  zc::Maybe<identity::SemanticIdentifier> noActualAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{actualType, zc::mv(noActualAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::ConditionMustBeBool(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Condition,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4133: a match scrutinee type does not match the pattern type. Both
+// display arguments are types, matching the checked-facts projector contract
+// (Type, Type).
+checked::CheckedFactsSourceRejected rejectMatchScrutineePatternMismatch(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId scrutineeType,
+    identity::SemanticTypeId patternType) {
+  zc::Maybe<identity::SemanticIdentifier> noScrutineeAlias;
+  zc::Maybe<identity::SemanticIdentifier> noPatternAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{scrutineeType, zc::mv(noScrutineeAlias)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{patternType, zc::mv(noPatternAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::MatchScrutineePatternMismatch(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Condition,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 // ZOM4036: a call supplies a different number of arguments than the resolved
 // callee declares. Both display arguments are plain counts, matching the
 // projector contract (Count, Count).
@@ -4299,6 +4414,35 @@ checked::CheckedFactsSourceRejected rejectInvalidBinaryOperands(
   failures.add(checked::CheckerFailureRef{
       diagnostic, checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
       zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Operator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4132: a unary operator the operand type does not support (e.g. logical
+// not on an integer). The display arguments are (Operator, Type), matching the
+// checked-facts projector contract.
+checked::CheckedFactsSourceRejected rejectInvalidUnaryOperands(
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    const InvalidUnaryOperandTypes& operands) {
+  zc::Maybe<identity::SemanticIdentifier> noOperandAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::OperatorDisplayArg{OperatorKind(operands.operation)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{operands.operandType, zc::mv(noOperandAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::InvalidUnaryOperands(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Operator,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
       checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
@@ -6866,9 +7010,23 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::PrimitiveUnaryOperation) {
         auto shape = primitiveUnaryOperationShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
-          // A primitive unary operator the slice does not admit for this
-          // operand type (e.g. `!a` on an integer) is legal source the body
-          // slice cannot lower yet. Drain it as ZOM4099/ZOM4125 rather than a
+          // The shape validator refuses both forms this slice cannot lower yet
+          // and operands the operator is not defined for. Only the second is a
+          // user error; report it as ZOM4132 instead of a compiler invariant.
+          // Everything else keeps the existing fail-closed rejection.
+          auto invalidOperands = invalidUnaryOperandTypes(input, site.node, nodeTypes.asPtr());
+          ZC_IF_SOME(operands, invalidOperands) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectInvalidUnaryOperands(site, ownerOrdinal, operands), input,
+                    factStoreBrands);
+              }
+            }
+          }
+          // A primitive unary operator whose operand type cannot be resolved
+          // (e.g. a bare literal with no reference anchor) is a capability
+          // gap, not a type error. Drain it as ZOM4099/ZOM4125 rather than a
           // missing-fact invariant.
           ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
             return zc::mv(drained);
@@ -7017,21 +7175,26 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         if (condKind == zc::none ||
             ZC_ASSERT_NONNULL(condKind) != type::semantic::PrimitiveKind::Bool) {
           // A ternary whose condition is not bool (e.g. an integer reference)
-          // is legal source the body slice cannot lower yet. Drain it as
-          // ZOM4099/ZOM4125 rather than an invalid-fact invariant.
-          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
-            return zc::mv(drained);
+          // is a type error: the condition must have type bool. Report it as
+          // ZOM4045 instead of a compiler invariant.
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(rejectConditionMustBeBool(site, ownerOrdinal, cond),
+                                          input, factStoreBrands);
+            }
           }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
         if (then != elseTy) {
-          // A ternary whose two branches carry different types is legal source
-          // the body slice cannot lower yet. Drain it as ZOM4099/ZOM4125 rather
-          // than an invalid-fact invariant.
-          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
-            return zc::mv(drained);
+          // A ternary whose two branches carry different types is a type
+          // error. Report it as ZOM4009 instead of a compiler invariant.
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(rejectTypeMismatch(site, ownerOrdinal, elseTy, then),
+                                          input, factStoreBrands);
+            }
           }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
@@ -7060,10 +7223,21 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         if (scrutineeKind == zc::none ||
             ZC_ASSERT_NONNULL(scrutineeKind) != type::semantic::PrimitiveKind::Bool) {
           // A match expression whose scrutinee is not bool (e.g. an integer or
-          // enum reference) is legal source the body slice cannot lower yet.
-          // Drain it as ZOM4099/ZOM4125 rather than an invalid-fact invariant.
-          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
-            return zc::mv(drained);
+          // enum reference) with bool literal patterns is a type error: the
+          // scrutinee type must match the pattern type. The surface admission
+          // confirms every arm carries a bool literal pattern, so the pattern
+          // type is always bool. Report it as ZOM4133 instead of a compiler
+          // invariant.
+          auto boolType = internPrimitiveKind(input, type::semantic::PrimitiveKind::Bool);
+          ZC_IF_SOME(patternType, boolType) {
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectMatchScrutineePatternMismatch(
+                        site, ownerOrdinal, ZC_ASSERT_NONNULL(scrutineeType).value, patternType),
+                    input, factStoreBrands);
+              }
+            }
           }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,

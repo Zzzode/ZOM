@@ -642,54 +642,45 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsNonComparisonScalarBinaryOperation") {
             checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
 }
 
-ZC_TEST("PrimitiveUnaryOperation.DrainsLogicalNotOnIntegerToZom4099") {
-  // `!a` on an integer operand is legal source the body slice does not admit
-  // (LogicalNot is defined for bool only). The shape validator returns none,
-  // so the body checker drains the free function body as ZOM4099 rather than a
-  // missing-fact invariant.
+ZC_TEST("PrimitiveUnaryOperation.ReportsLogicalNotOnIntegerAsTypeError") {
+  // `!a` on an integer operand is a type error: LogicalNot is defined for bool
+  // only. The body checker reports ZOM4132 instead of draining as ZOM4099.
   PrimitiveBinaryFixture fixture("fn not(a: i32) -> bool { return !a; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::InvalidUnaryOperands());
 }
 
-ZC_TEST("ConditionalExpression.DrainsNonBoolConditionToZom4099") {
-  // A ternary whose condition is an integer reference is legal source the body
-  // slice does not admit (the condition must be bool). The surface admission
-  // admits the let-binding shape; the body checker drains the ternary as
-  // ZOM4099 rather than an invalid-fact invariant.
+ZC_TEST("ConditionalExpression.ReportsNonBoolConditionAsTypeError") {
+  // A ternary whose condition is an integer reference is a type error: the
+  // condition must have type bool. The body checker reports ZOM4045 instead of
+  // draining as ZOM4099.
   PrimitiveBinaryFixture fixture("fn tern(a: i32) -> i32 { let x = a ? 1 : 2; return x; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::ConditionMustBeBool());
 }
 
-ZC_TEST("ConditionalExpression.DrainsMismatchedBranchTypesToZom4099") {
-  // A ternary whose two branches carry different types (i32 vs bool) is legal
-  // source the body slice does not admit. The surface admission admits the
-  // let-binding shape; the body checker drains the ternary as ZOM4099 rather
-  // than an invalid-fact invariant.
+ZC_TEST("ConditionalExpression.ReportsMismatchedBranchTypesAsTypeError") {
+  // A ternary whose two branches carry different types (i32 vs bool) is a type
+  // error. The body checker reports ZOM4009 instead of draining as ZOM4099.
   PrimitiveBinaryFixture fixture(
       "fn tern(a: bool) -> i32 { let x = a ? 1 : true; return x; }\n"_zc);
   auto result = fixture.runBodyChecker();
   ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
 }
 
-ZC_TEST("MatchExpression.DrainsNonBoolScrutineeToZom4099") {
-  // A boolean match whose scrutinee is an integer reference is legal source
-  // the body slice does not admit (the scrutinee must be bool). The surface
-  // admission admits the let-binding shape; the body checker drains the
-  // match expression as ZOM4099 rather than an invalid-fact invariant.
+ZC_TEST("MatchExpression.ReportsNonBoolScrutineeAsTypeError") {
+  // A boolean match whose scrutinee is an integer reference is a type error:
+  // the scrutinee type must match the bool pattern type. The body checker
+  // reports ZOM4133 instead of draining as ZOM4099.
   PrimitiveBinaryFixture fixture(
       "fn m(a: i32) -> i32 { let x = match (a) { when true => 1; when false => 2; }; "
       "return x; }\n"_zc);
@@ -698,7 +689,7 @@ ZC_TEST("MatchExpression.DrainsNonBoolScrutineeToZom4099") {
   const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
   ZC_REQUIRE(rejection.failures.size() == 1);
   ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+            checked::CheckerErrorId::MatchScrutineePatternMismatch());
 }
 
 ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedScalarOperandTypes") {

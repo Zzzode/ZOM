@@ -2794,6 +2794,7 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
     case DiagID::ErrorPropagateOutsideRaises:
     case DiagID::ArrayElementTypeMismatch:
     case DiagID::InvalidDynUpcast:
+    case DiagID::MatchScrutineePatternMismatch:
       return argumentKinds(arguments, Kind::Type, Kind::Type);
     case DiagID::CannotUnifyTypes:
       return argumentKinds(arguments, Kind::Type, Kind::Type, Kind::ConstraintContext);
@@ -2832,6 +2833,8 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
     case DiagID::InvalidBinaryOperands:
     case DiagID::InvalidComparisonOperands:
       return argumentKinds(arguments, Kind::Operator, Kind::Type, Kind::Type);
+    case DiagID::InvalidUnaryOperands:
+      return argumentKinds(arguments, Kind::Operator, Kind::Type);
     case DiagID::BinaryOperatorSemanticsUnavailable:
       return argumentKinds(arguments, Kind::Operator);
     case DiagID::UnknownStructField:
@@ -2974,6 +2977,7 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::InvalidBinaryOperands:
     case DiagID::InvalidComparisonOperands:
     case DiagID::PostfixUpdateRequiresNumeric:
+    case DiagID::InvalidUnaryOperands:
       return matches(Stage::Body, Producer::Operator, Class::InvalidOperation, true);
     case DiagID::BinaryOperatorSemanticsUnavailable:
       return matches(Stage::Body, Producer::Operator, Class::InvalidOperation, true);
@@ -2990,6 +2994,7 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
     case DiagID::CannotIndexType:
       return matches(Stage::Body, Producer::Index, Class::InvalidOperation, true);
     case DiagID::ConditionMustBeBool:
+    case DiagID::MatchScrutineePatternMismatch:
       return matches(Stage::Body, Producer::Condition, Class::TypeMismatch, true);
     case DiagID::MissingReturnValue:
       return matches(Stage::Body, Producer::Return, Class::TypeMismatch, true);

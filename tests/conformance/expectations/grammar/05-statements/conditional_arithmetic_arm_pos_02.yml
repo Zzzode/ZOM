@@ -1,0 +1,7 @@
+section: "05-statements conditional body"
+covers_rule: "functionDeclaration, ifStatement, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "A comparison conditional whose arms are bare parameter references lowers"
+  - "through the equality-conditional path; each arm assigns a place-use of the"
+  - "parameter local to the result local."

@@ -139,6 +139,23 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
   }
 }
 
+HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
+  ZC_IF_SOME(binary, arm.binary) {
+    const HirNodeId leftId = allocNode();
+    const HirNodeId rightId = allocNode();
+    const HirNodeId binaryId = allocNode();
+    lowerArmLeaf(leftId, *binary.left);
+    lowerArmLeaf(rightId, *binary.right);
+    addPrimitiveBinary(HirPrimitiveBinaryExpression{binaryId, leftId, rightId, binary.operandType,
+                                                    arm.type, HirValueCategory::Value,
+                                                    binary.operation, arm.sourceSpan.clone()});
+    return binaryId;
+  }
+  const HirNodeId valueId = allocNode();
+  lowerArmLeaf(valueId, arm);
+  return valueId;
+}
+
 namespace {
 
 /// \brief Lowers the family-1 scalar leaf (literal or resolved parameter) into

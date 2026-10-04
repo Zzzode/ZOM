@@ -224,3 +224,10 @@ DIAG(4130, PrimitiveTypeBoundUnsupported, kError,
 // between two initializers for one storage slot, so the literal is rejected.
 DIAG(4131, DuplicateStructField, kError,
      "field {0} is initialized more than once in the aggregate literal", 1)
+// A unary operator the operand type does not support (e.g. logical not on an
+// integer) is a user type error, not an unimplemented lowering form.
+DIAG(4132, InvalidUnaryOperands, kError, "Operator `{0}` is not defined for type `{1}`", 2)
+// A match expression whose scrutinee type does not match the pattern type
+// (e.g. an integer scrutinee with bool literal patterns) is a type error.
+DIAG(4133, MatchScrutineePatternMismatch, kError,
+     "match scrutinee type `{0}` does not match pattern type `{1}`", 2)

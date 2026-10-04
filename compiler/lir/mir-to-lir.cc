@@ -794,8 +794,22 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
     return zc::none;
   }
 
-  // Each arm assigns the result local (a constant or a parameter place-use) then
-  // jumps to the join.
+  // Lowers one arm-binary operand: an integer constant or a parameter
+  // place-use. Both operands of an arm binary share the integer carrier.
+  auto lowerArmBinaryOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+    }
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+  };
+
+  // Each arm assigns the result local (a constant, a parameter place-use, or a
+  // binary operation) then jumps to the join.
   auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<Statement>& out) -> bool {
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
@@ -805,26 +819,49 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
     }
     const auto& assignment = branch.statements[0].assignmentValue();
     if (assignment.destination.local() != result.id ||
-        assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != mir::MirRvalueKind::Use) {
+        assignment.destination.projections().size() != 0) {
       return false;
     }
-    const auto& operand = assignment.value.useValue().operand;
-    if (operand.kind() == mir::MirOperandKind::Constant &&
-        operand.constantValue().type != function.resultType) {
-      return false;
+    if (assignment.value.kind() == mir::MirRvalueKind::Use) {
+      const auto& operand = assignment.value.useValue().operand;
+      if (operand.kind() == mir::MirOperandKind::Constant &&
+          operand.constantValue().type != function.resultType) {
+        return false;
+      }
+      // A parameter place-use arm must reference an integer parameter of the
+      // result type (a projected place is out of the slice).
+      if (operand.kind() != mir::MirOperandKind::Constant &&
+          (operand.place().projections().size() != 0 ||
+           operand.place().rootType() != function.resultType)) {
+        return false;
+      }
+      auto lowered = lirOperandFor(operand, resultCarrierValue);
+      if (lowered == zc::none) { return false; }
+      out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      return true;
     }
-    // A parameter place-use arm must reference an integer parameter of the
-    // result type (a projected place is out of the slice).
-    if (operand.kind() != mir::MirOperandKind::Constant &&
-        (operand.place().projections().size() != 0 ||
-         operand.place().rootType() != function.resultType)) {
-      return false;
+    if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = assignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none || arithmetic.resultType != function.resultType) { return false; }
+      auto left = lowerArmBinaryOperand(arithmetic.left);
+      auto right = lowerArmBinaryOperand(arithmetic.right);
+      if (left == zc::none || right == zc::none) { return false; }
+      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
+                                    ZC_REQUIRE_NONNULL(right)));
+      return true;
     }
-    auto lowered = lirOperandFor(operand, resultCarrierValue);
-    if (lowered == zc::none) { return false; }
-    out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
-    return true;
+    if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assignment.value.comparisonValue();
+      if (comparison.resultType != function.resultType) { return false; }
+      auto left = lowerArmBinaryOperand(comparison.left);
+      auto right = lowerArmBinaryOperand(comparison.right);
+      if (left == zc::none || right == zc::none) { return false; }
+      out.add(Statement::compare(resultOrdinal, lirComparisonOpFor(comparison.op),
+                                 ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+      return true;
+    }
+    return false;
   };
 
   zc::Vector<Statement> thenStatements;
@@ -2666,7 +2703,22 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     return zc::none;
   }
 
-  // Each arm assigns the result an integer constant, then jumps to the join.
+  // Lowers one arm-binary operand: an integer constant or a parameter
+  // place-use. Both operands of an arm binary share the integer carrier.
+  auto lowerArmBinaryOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+    }
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+  };
+
+  // Each arm assigns the result (a constant, a parameter place-use, or a
+  // binary operation) then jumps to the join.
   auto lowerArm = [&](const mir::MirBasicBlock& branch, zc::Vector<Statement>& out) -> bool {
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
@@ -2676,19 +2728,47 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     }
     const auto& assignment = branch.statements[0].assignmentValue();
     if (assignment.destination.local() != resultLocalDecl.id ||
-        assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != mir::MirRvalueKind::Use) {
+        assignment.destination.projections().size() != 0) {
       return false;
     }
-    const auto& operand = assignment.value.useValue().operand;
-    if (operand.kind() != mir::MirOperandKind::Constant ||
-        operand.constantValue().type != function.resultType) {
-      return false;
+    if (assignment.value.kind() == mir::MirRvalueKind::Use) {
+      const auto& operand = assignment.value.useValue().operand;
+      if (operand.kind() == mir::MirOperandKind::Constant &&
+          operand.constantValue().type != function.resultType) {
+        return false;
+      }
+      if (operand.kind() != mir::MirOperandKind::Constant &&
+          (operand.place().projections().size() != 0 ||
+           operand.place().rootType() != function.resultType)) {
+        return false;
+      }
+      auto lowered = lirOperandFor(operand, resultCarrierValue);
+      if (lowered == zc::none) { return false; }
+      out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      return true;
     }
-    auto lowered = lirOperandFor(operand, resultCarrierValue);
-    if (lowered == zc::none) { return false; }
-    out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
-    return true;
+    if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = assignment.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none || arithmetic.resultType != function.resultType) { return false; }
+      auto left = lowerArmBinaryOperand(arithmetic.left);
+      auto right = lowerArmBinaryOperand(arithmetic.right);
+      if (left == zc::none || right == zc::none) { return false; }
+      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
+                                    ZC_REQUIRE_NONNULL(right)));
+      return true;
+    }
+    if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assignment.value.comparisonValue();
+      if (comparison.resultType != function.resultType) { return false; }
+      auto left = lowerArmBinaryOperand(comparison.left);
+      auto right = lowerArmBinaryOperand(comparison.right);
+      if (left == zc::none || right == zc::none) { return false; }
+      out.add(Statement::compare(resultOrdinal, lirComparisonOpFor(comparison.op),
+                                 ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+      return true;
+    }
+    return false;
   };
   zc::Vector<Statement> thenStatements;
   zc::Vector<Statement> elseStatements;

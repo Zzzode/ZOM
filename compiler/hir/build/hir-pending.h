@@ -117,18 +117,39 @@ struct PendingSequentialLocalReturn final {
   zc::Vector<SequentialLocalBinding> deadBindings;
 };
 
+// Forward declaration to break the circular by-value dependency with
+// PendingConditionalArmBinary.
+struct PendingConditionalArm;
+
+// One primitive binary operation embedded in a conditional arm. The two
+// operands reuse the literal-XOR-parameter-XOR-local arm shape; the operation
+// is a checked scalar arithmetic call. A binary arm lowers to an Arithmetic
+// rvalue exactly like the primitive-binary initializer path. The operands are
+// heap-owned to break the otherwise-circular by-value dependency with
+// PendingConditionalArm.
+struct PendingConditionalArmBinary final {
+  zc::Own<PendingConditionalArm> left;
+  zc::Own<PendingConditionalArm> right;
+  identity::SemanticTypeId operandType;
+  checker::PrimitiveOperation operation;
+};
+
 // One conditional arm carries a scalar literal value, a reference to a
-// function parameter, or a reference to the function's user local. Exactly one
-// of the three Maybe fields is populated; the arm kind is discriminated by
-// which one is set. The local alternative is reachable only from a binary
-// write operand (`x = x + 1`); conditional and comparison arms never populate
-// it.
+// function parameter, a reference to the function's user local, or a primitive
+// binary operation over two such leaves. Exactly one of `literal`, `parameter`,
+// `local`, and `binary` is populated; the arm kind is discriminated by which
+// one is set. The local alternative is reachable only from a binary write
+// operand (`x = x + 1`); conditional and comparison arms never populate it.
+// `binary` is declared last so the pre-existing five-field aggregate
+// initializers (literal, parameter, local, type, sourceSpan) keep compiling
+// with a defaulted none.
 struct PendingConditionalArm final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirParameterReferenceExpression> parameter;
   zc::Maybe<HirLocalReferenceExpression> local;
   identity::SemanticTypeId type;
   identity::SourceSpan sourceSpan;
+  zc::Maybe<PendingConditionalArmBinary> binary = zc::none;
 };
 
 // One mutable-local write value. It is a scalar literal (`literal` populated), a

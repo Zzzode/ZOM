@@ -17,14 +17,17 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
   const HirNodeId bodyId = ctx.allocNode();
 
   ZC_IF_SOME(equality, conditional.condition.equality) {
-    // Comparison-condition stride (9 nodes): function, body, left operand,
-    // right operand, equality comparison, then value, else value, conditional,
-    // return. The conditional takes the equality node as its condition.
+    // Comparison-condition stride (9 + 2K nodes, where K is the count of binary
+    // arms): function, body, left operand, right operand, equality comparison,
+    // then arm value(s), else arm value(s), conditional, return. A binary arm
+    // materializes three nodes (left operand, right operand, binary); a leaf arm
+    // materializes one. The conditional takes the equality node as its
+    // condition and each arm's value node (the binary node for a binary arm).
     const HirNodeId leftId = ctx.allocNode();
     const HirNodeId rightId = ctx.allocNode();
     const HirNodeId equalityId = ctx.allocNode();
-    const HirNodeId thenValueId = ctx.allocNode();
-    const HirNodeId elseValueId = ctx.allocNode();
+    const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
+    const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
     const HirNodeId conditionalId = ctx.allocNode();
     const HirNodeId returnId = ctx.allocNode();
 
@@ -42,8 +45,6 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
         equalityId, leftId, rightId, equality.operandType, equality.type, HirValueCategory::Value,
         equality.operation, equality.sourceSpan.clone(), equality.isUnaryDesugar});
-    ctx.lowerArmLeaf(thenValueId, conditional.thenArm);
-    ctx.lowerArmLeaf(elseValueId, conditional.elseArm);
     ctx.addConditional(HirConditionalExpression{conditionalId, equalityId, thenValueId, elseValueId,
                                                 function.resultType, HirValueCategory::Value,
                                                 conditional.conditionalSpan.clone()});
@@ -51,17 +52,19 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
   }
 
   ZC_IF_SOME(conjunctive, conditional.condition.conjunctive) {
-    // Conjunctive-condition stride (11 nodes): function, body, scrutinee
-    // parameter reference, guard left operand, guard right operand, guard
-    // comparison, conjunction (BitAnd), then value, else value, conditional,
-    // return. The conditional takes the conjunction node as its condition.
+    // Conjunctive-condition stride (11 + 2K nodes, where K is the count of
+    // binary arms): function, body, scrutinee parameter reference, guard left
+    // operand, guard right operand, guard comparison, conjunction (BitAnd),
+    // then arm value(s), else arm value(s), conditional, return. The
+    // conjunction is the conditional's condition; the guard comparison is the
+    // conjunction's right operand.
     const HirNodeId conditionId = ctx.allocNode();
     const HirNodeId guardLeftId = ctx.allocNode();
     const HirNodeId guardRightId = ctx.allocNode();
     const HirNodeId guardComparisonId = ctx.allocNode();
     const HirNodeId conjunctionId = ctx.allocNode();
-    const HirNodeId thenValueId = ctx.allocNode();
-    const HirNodeId elseValueId = ctx.allocNode();
+    const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
+    const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
     const HirNodeId conditionalId = ctx.allocNode();
     const HirNodeId returnId = ctx.allocNode();
 
@@ -87,19 +90,18 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
         conjunctionId, conditionId, guardComparisonId, conjunctive.parameter.type,
         conjunctive.parameter.type, HirValueCategory::Value,
         checker::PrimitiveOperation::LogicalAnd, conjunctive.sourceSpan.clone(), false});
-    ctx.lowerArmLeaf(thenValueId, conditional.thenArm);
-    ctx.lowerArmLeaf(elseValueId, conditional.elseArm);
     ctx.addConditional(HirConditionalExpression{
         conditionalId, conjunctionId, thenValueId, elseValueId, function.resultType,
         HirValueCategory::Value, conditional.conditionalSpan.clone()});
     return;
   }
 
-  // Parameter-condition stride (7 nodes): function, body, condition parameter
-  // reference, then value, else value, conditional, return.
+  // Parameter-condition stride (7 + 2K nodes, where K is the count of binary
+  // arms): function, body, condition parameter reference, then arm value(s),
+  // else arm value(s), conditional, return.
   const HirNodeId conditionId = ctx.allocNode();
-  const HirNodeId thenValueId = ctx.allocNode();
-  const HirNodeId elseValueId = ctx.allocNode();
+  const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
+  const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
   const HirNodeId conditionalId = ctx.allocNode();
   const HirNodeId returnId = ctx.allocNode();
 
@@ -117,8 +119,6 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
         HirParameterReferenceExpression{conditionId, parameter.parameter.clone(), parameter.type,
                                         parameter.category, parameter.sourceSpan.clone()});
   }
-  ctx.lowerArmLeaf(thenValueId, conditional.thenArm);
-  ctx.lowerArmLeaf(elseValueId, conditional.elseArm);
   ctx.addConditional(HirConditionalExpression{conditionalId, conditionId, thenValueId, elseValueId,
                                               function.resultType, HirValueCategory::Value,
                                               conditional.conditionalSpan.clone()});
