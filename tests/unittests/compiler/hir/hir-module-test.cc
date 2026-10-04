@@ -2450,6 +2450,25 @@ ZC_TEST("HIR pipeline drains a mutating-receiver method conditional as ZOM4099")
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
+ZC_TEST("HIR pipeline drains an identity dyn-to-dyn return as ZOM4099") {
+  // A dyn parameter returned to the same dyn type is an identity copy that
+  // needs no coercion, so the body checker publishes no erasure fact. The HIR
+  // builder rejects the function as ZOM4099 because the existential return
+  // carrier is not built yet, never an internal compiler error.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session,
+      "interface Drawable { fn draw(this); }\n"
+      "fn make(d: dyn Drawable) -> dyn Drawable { return d; }\n"
+      "fn entry() -> i32 { return 42; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 ZC_TEST("HIR pipeline lowers a shared-receiver method returning an explicit parameter") {
   // `fn echo(this, answer: i32) -> i32 { return answer; }` returns its one
   // ordinary parameter. The HIR tail is a generic parameter reference; Built

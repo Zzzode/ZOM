@@ -1,0 +1,5 @@
+section: "05-statements unary expression"
+covers_rule: "functionDeclaration, returnStatement, unaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; LogicalNot on an integer operand drains as ZOM4099 because the body slice admits bool only."

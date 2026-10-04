@@ -1070,9 +1070,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 bound.parsedModule().spanFor(tree.node(shape.conditionUnaryOperand).range);
             if (leadingRejected || operandTypeIndex == zc::none || unaryCallIndex == zc::none ||
                 operandSpan == zc::none) {
-              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                   ir::IrFailureKind::MissingRequiredFact, module,
-                                                   registries, ordinal + 2);
+              // A unary condition whose operand type or call fact is missing
+              // (the body checker drained the construct, or a leading binding
+              // could not be resolved) is legal source the lowering carrier
+              // does not implement yet. Drain it as a per-definition capability
+              // rejection (ZOM4099) rather than an internal missing-fact
+              // incident.
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
             }
             size_t operandTypeSlot = 0;
             size_t unaryCallSlot = 0;
@@ -1123,9 +1129,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto rightSpan = bound.parsedModule().spanFor(tree.node(shape.conditionRight).range);
             if (leadingRejected || leftTypeIndex == zc::none || rightTypeIndex == zc::none ||
                 callIndex == zc::none || leftSpan == zc::none || rightSpan == zc::none) {
-              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                   ir::IrFailureKind::MissingRequiredFact, module,
-                                                   registries, ordinal + 2);
+              // A comparison condition whose operand type or call fact is
+              // missing (the body checker drained the construct, or a leading
+              // binding could not be resolved) is legal source the lowering
+              // carrier does not implement yet. Drain it as a per-definition
+              // capability rejection (ZOM4099) rather than an internal
+              // missing-fact incident.
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
             }
             size_t leftTypeSlot = 0;
             size_t rightTypeSlot = 0;
@@ -1987,9 +1999,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         auto thenArm = buildArm(shape.thenReturnValue, thenType, ZC_ASSERT_NONNULL(thenSpan));
         auto elseArm = buildArm(shape.elseReturnValue, elseType, ZC_ASSERT_NONNULL(elseSpan));
         if (armRejected || thenArm == zc::none || elseArm == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               ordinal + 2);
+          // A conditional arm that is neither a scalar literal nor a bare
+          // parameter reference (e.g. an arithmetic expression such as the
+          // `0 - x` arm of `abs`) is legal source the lowering carrier does not
+          // implement yet. Drain it as a per-definition capability rejection
+          // (ZOM4099) rather than an internal invalid-fact incident.
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
         }
         {
           auto conditionalReturn = PendingConditionalReturn{zc::mv(pendingCondition),

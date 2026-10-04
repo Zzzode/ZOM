@@ -1,0 +1,1 @@
+fn not(a: i32) -> bool { return !a; }

@@ -1,0 +1,5 @@
+section: "05-statements conditional body"
+covers_rule: "functionDeclaration, ifStatement, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a conditional arm that is an arithmetic expression rather than a scalar literal drains as ZOM4099 because the lowering carrier does not implement it yet."

@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/conditional_arithmetic_arm_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A conditional arm that is an arithmetic expression (`0 - x`) rather than a
+// scalar literal or bare parameter reference is legal source the lowering
+// carrier does not implement yet. The HIR builder drains it as ZOM4099 rather
+// than an internal invalid-fact incident.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/conditional_arithmetic_arm_capability_neg_01.zom:1:1

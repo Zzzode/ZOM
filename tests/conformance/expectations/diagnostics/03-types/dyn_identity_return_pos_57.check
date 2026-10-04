@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/dyn_identity_return_pos_57.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dyn-to-dyn identity return needs no coercion, so the body checker
+// publishes no erasure fact. The HIR builder rejects the function as
+// ZOM4099 because the existential return carrier is not built yet, never
+// an internal compiler error.
+// CHECK: Error [ZOM4099]:

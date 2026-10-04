@@ -1,0 +1,7 @@
+interface Drawable {
+    fn draw(this);
+}
+
+fn make(d: dyn Drawable) -> dyn Drawable {
+    return d;
+}

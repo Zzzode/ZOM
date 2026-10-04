@@ -1,0 +1,5 @@
+section: "Existential Types"
+covers_rule: "dynType, returnStmt, functionDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A dyn parameter returned to the same dyn type is an identity copy that needs no coercion. The body checker publishes no erasure fact; the HIR builder rejects the function with 4099 because existential return lowering is not built yet."

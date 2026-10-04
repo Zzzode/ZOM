@@ -4605,6 +4605,29 @@ rejectMethodCallCapability(const BodyProductionSite& site, const BodyCheckingInp
                          site.key.sourceSpan.clone(), zc::mv(structuralPath));
 }
 
+/// \brief Drains a legal-source construct the current body slice cannot lower
+/// to a user-facing capability rejection: ZOM4125 inside an inherent method,
+/// ZOM4099 inside a free function or trait method. Returns none when the site
+/// has no resolvable body owner, so the caller keeps its existing invariant
+/// rejection as the last-resort fail-closed rail. A production-kind handler
+/// whose shape validator rejects well-formed source calls this before its
+/// fall-through invariant so the user sees a capability code, not an ICE.
+zc::Maybe<BodyCheckingResult> drainUnsupportedBodyConstruct(
+    const BodyProductionSite& site, const BodyCheckingInput& input,
+    const identity::RegistryBrandIssuer& factStoreBrands) {
+  ZC_IF_SOME(method, enclosingMethodName(input, site.node)) {
+    return zc::Maybe<BodyCheckingResult>(
+        rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method)));
+  }
+  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+      return zc::Maybe<BodyCheckingResult>(attachRecoveryLedger(
+          rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input, factStoreBrands));
+    }
+  }
+  return zc::none;
+}
+
 checked::CheckedFactsSourceRejected rejectCannotMutateImmutableVariable(
     const BodyProductionSite& site, uint32_t ownerPreorder, const ast::Tree& tree,
     ast::NodeId receiverNode) {
@@ -6843,6 +6866,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::PrimitiveUnaryOperation) {
         auto shape = primitiveUnaryOperationShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
+          // A primitive unary operator the slice does not admit for this
+          // operand type (e.g. `!a` on an integer) is legal source the body
+          // slice cannot lower yet. Drain it as ZOM4099/ZOM4125 rather than a
+          // missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -6885,6 +6915,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto operandType = ownerLocalReferenceType(input, operand, nodeTypes.asPtr());
         if (operandType == zc::none ||
             integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType)) == zc::none) {
+          // A postfix increment/decrement on a mutable owner local whose type
+          // is not an integer primitive (bool, float, or an aggregate) is legal
+          // source the body slice cannot lower yet. Drain it as
+          // ZOM4099/ZOM4125 rather than a missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -6966,6 +7003,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto thenType = factEntry(nodeTypes.asPtr(), thenExpr);
         auto elseType = factEntry(nodeTypes.asPtr(), elseExpr);
         if (condType == zc::none || thenType == zc::none || elseType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -6976,11 +7016,23 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto condKind = primitiveKindOf(input.semanticTypes, cond);
         if (condKind == zc::none ||
             ZC_ASSERT_NONNULL(condKind) != type::semantic::PrimitiveKind::Bool) {
+          // A ternary whose condition is not bool (e.g. an integer reference)
+          // is legal source the body slice cannot lower yet. Drain it as
+          // ZOM4099/ZOM4125 rather than an invalid-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
         if (then != elseTy) {
+          // A ternary whose two branches carry different types is legal source
+          // the body slice cannot lower yet. Drain it as ZOM4099/ZOM4125 rather
+          // than an invalid-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -6996,6 +7048,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  matchNode.payload.words[ast::kMatchExprArmsSizeWord]};
         auto scrutineeType = factEntry(nodeTypes.asPtr(), scrutinee);
         if (scrutineeType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -7004,6 +7059,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             primitiveKindOf(input.semanticTypes, ZC_ASSERT_NONNULL(scrutineeType).value);
         if (scrutineeKind == zc::none ||
             ZC_ASSERT_NONNULL(scrutineeKind) != type::semantic::PrimitiveKind::Bool) {
+          // A match expression whose scrutinee is not bool (e.g. an integer or
+          // enum reference) is legal source the body slice cannot lower yet.
+          // Drain it as ZOM4099/ZOM4125 rather than an invalid-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -7015,6 +7076,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           const ast::NodeId body(arm.payload.words[ast::kMatchArmExprBodyWord]);
           auto bodyType = factEntry(nodeTypes.asPtr(), body);
           if (bodyType == zc::none) {
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
             return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,
                                    site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -7022,6 +7086,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           if (firstArmType == zc::none) {
             firstArmType = ZC_ASSERT_NONNULL(bodyType).value;
           } else if (ZC_ASSERT_NONNULL(firstArmType) != ZC_ASSERT_NONNULL(bodyType).value) {
+            // A match expression whose arms carry different types is legal
+            // source the body slice cannot lower yet. Drain it as
+            // ZOM4099/ZOM4125 rather than an invalid-fact invariant.
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
             return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,
                                    site.key.sourceSpan.clone(), factPath(site.primaryGroup));

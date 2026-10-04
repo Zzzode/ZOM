@@ -1,0 +1,57 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/conditional_arithmetic_arm_capability_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #23 @1:1..2:1 file_name="conditional_arithmetic_arm_capability_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #22 @1:1..1:74
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #21 @1:1..1:74 name="abs"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:7..1:15 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:8..1:14 name="x"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:11..1:14 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:19..1:22 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #20 @1:23..1:74
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #19 @1:25..1:72
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     IfStmt #18 @1:25..1:72
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         BinaryExpr #11 @1:29..1:34 op=Lt
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #9 @1:29..1:30 name="x"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #10 @1:33..1:34 base=10 value="0"
+// CHECK-NEXT:                       then_stmt:
+// CHECK-NEXT:                         BlockStmt #17 @1:36..1:53
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #16 @1:38..1:51
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #15 @1:38..1:51
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     BinaryExpr #14 @1:45..1:50 op=Sub
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IntLiteral #12 @1:45..1:46 base=10 value="0"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IdentExpr #13 @1:49..1:50 name="x"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       else_stmt:
+// CHECK-NEXT:                         BlockStmt #8 @1:59..1:72
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #7 @1:61..1:70
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #6 @1:61..1:70
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IdentExpr #5 @1:68..1:69 name="x"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -37,9 +37,9 @@ those belong in compiler AST/FileCheck expectations under
 | # | Directory | Purpose | Total |
 |---|-----------|---------|------:|
 | 1 | `02-lexical` | Lexer tokens, literals, identifiers, escapes, whitespace, and comments | 48 |
-| 2 | `03-types` | Type syntax, projections, dynamic types, references, and aliases | 114 |
+| 2 | `03-types` | Type syntax, projections, dynamic types, references, and aliases | 115 |
 | 3 | `04-expressions` | Operators, calls, casts, literals, lambdas, and spawn expressions | 184 |
-| 4 | `05-statements` | Bindings, control flow, borrow syntax, and returns | 116 |
+| 4 | `05-statements` | Bindings, control flow, borrow syntax, and returns | 118 |
 | 5 | `06-declarations` | Functions, named types, aliases, modifiers, and declarations | 43 |
 | 6 | `07-patterns` | Binding, literal, structural, alternative, and guarded patterns | 31 |
 | 7 | `08-adt` | Structs, classes, enums, variants, constructors, and fields | 46 |
@@ -50,7 +50,7 @@ those belong in compiler AST/FileCheck expectations under
 | 12 | `15-concurrency` | Spawn modifiers and suspend forms | 22 |
 | 13 | `16-attributes` | Outer attributes, inputs, paths, attachment targets, and unavailable paths | 34 |
 | 14 | `20-ffi` | Extern declarations, ABI strings, and unsafe blocks | 16 |
-|   | **Total** | | **827** |
+|   | **Total** | | **830** |
 
 ## Usage
 
