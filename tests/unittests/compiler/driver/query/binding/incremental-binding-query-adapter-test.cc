@@ -8,7 +8,6 @@
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/basic/thread-pool.h"
 #include "compiler/binder/graph/parsed-module.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/query/binding/named-identity-inventory-query.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
@@ -16,7 +15,6 @@
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/parser/query/effective-source-query.h"
 #include "compiler/parser/query/parse-source-query.h"
-#include "compiler/source/core-distribution.h"
 #include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::incremental_binding_query {
@@ -1157,43 +1155,6 @@ ZC_TEST("Incremental binding query active crates derive and shield package graph
   auto changedMetadata = changed.metadata<ActiveCrates>(roots);
   ZC_REQUIRE(changedMetadata != zc::none);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(changedMetadata).changedAt() == changed.revision());
-}
-
-ZC_TEST("Incremental binding query active crates unite user and toolchain core roots") {
-  auto registry = targetRegistry();
-  auto request = compilationRequest(registry);
-  auto packageRoots = packageRootSet(request);
-  auto user = stableCrate("incremental_binding_query"_zc);
-  auto core = identity::projectToolchainCoreCrate(crateKey());
-  ZC_REQUIRE(core != zc::none);
-  auto stableCore = StableCrateQueryKey::fromVerified(ZC_REQUIRE_NONNULL(core));
-  ZC_REQUIRE(stableCore != zc::none);
-  zc::Vector<identity::CrateKey> coreCrates;
-  coreCrates.add(ZC_REQUIRE_NONNULL(core).clone());
-  auto roots = CompilationRootSetQueryKey::fromVerified(request, coreCrates.asPtr());
-  ZC_REQUIRE(roots != zc::none);
-
-  auto database = queryTestDatabase();
-  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
-  ZC_REQUIRE(core_library_query::registerCoreLibraryQueryProvider(database));
-  auto distribution = source::core::initialCoreDistributionInput();
-  ZC_REQUIRE(distribution != zc::none);
-  auto write = transaction(database);
-  ZC_REQUIRE(
-      write
-          .set<PackageGraphInput>(packageRoots, singlePackageGraph("incremental_binding_query"_zc,
-                                                                   "incremental_binding_query"_zc))
-          .isApplied());
-  ZC_REQUIRE(write
-                 .set<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core(),
-                                                                 ZC_REQUIRE_NONNULL(distribution))
-                 .isApplied());
-  ZC_REQUIRE(write.commit().isCommitted());
-
-  auto active = database.snapshot().get<ActiveCrates>(ZC_REQUIRE_NONNULL(roots));
-  ZC_REQUIRE(!active.isRuntimeFailure());
-  ZC_REQUIRE(active.kind() == query::QueryValueKind::Value);
-  ZC_EXPECT(active.value() == crateSet(user, ZC_REQUIRE_NONNULL(stableCore)));
 }
 
 ZC_TEST("Incremental package graph input admits only a closed canonical graph") {

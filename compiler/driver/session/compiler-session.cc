@@ -46,7 +46,6 @@
 #include "compiler/diagnostics/fact/semantic-diagnostic-fact.h"
 #include "compiler/diagnostics/incident/diagnostic-incident-projector.h"
 #include "compiler/driver/core/diagnostic-projector.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/diagnostics/module-interface-diagnostic-projector.h"
 #include "compiler/driver/graph/module-discovery.h"
 #include "compiler/driver/interface/coherence-builder.h"
@@ -162,12 +161,6 @@ zc::String packageSourceIdentifier(const identity::PackageKey& package,
 zc::String generatedSourceIdentifier(const identity::PackageKey& package,
                                      const identity::CanonicalRelativePath& path) {
   zc::String result = zc::str(package.name(), "/<generated>");
-  for (const auto& segment : path.segments()) { result = zc::str(result, "/", segment.text()); }
-  return result;
-}
-
-zc::String coreSourceIdentifier(const identity::CanonicalRelativePath& path) {
-  zc::String result = zc::str("<toolchain-core>");
   for (const auto& segment : path.segments()) { result = zc::str(result, "/", segment.text()); }
   return result;
 }
@@ -425,12 +418,6 @@ struct CompilerSession::Impl {
                         binder::ModuleGraphIncidentProducer::QueryRuntime);
       return;
     }
-    if (!core_library_query::registerCoreLibraryQueryProvider(queryDatabase)) {
-      rejectModuleGraph(binder::ModuleGraphIncidentPhase::Initialization,
-                        binder::ModuleGraphIncidentKind::RegistrationFailed,
-                        binder::ModuleGraphIncidentProducer::QueryRuntime);
-      return;
-    }
     if (initializedContext.failure == SemanticContextResourceFailure::ContextBrandExhausted) {
       recordIdentityIncident(identity::IdentityInvariantKind::BrandExhausted,
                              identity::IdentityAllocationPhase::Context,
@@ -485,8 +472,8 @@ struct CompilerSession::Impl {
   zc::Vector<source_query::StableSourceQueryKey> stagedSourceSnapshots;
   /// Complete crate keys retained to replace crate-keyed compilation options.
   zc::Vector<identity::CrateKey> stagedCompilationOptions;
-  /// Stable crate keys retained to replace per-crate active source and module roots.
-  zc::Vector<incremental_binding_query::StableCrateQueryKey> stagedActiveCrates;
+  /// Toolchain-core crate keys retained to replace the active-source family before parsing.
+  zc::Vector<incremental_binding_query::StableCrateQueryKey> stagedCoreSourceCrates;
   /// User-package crate keys retained to replace the active-source family before parsing.
   zc::Vector<incremental_binding_query::StableCrateQueryKey> stagedUserSourceCrates;
   /// Package-root-set key retained to replace the package-graph input root.
@@ -509,8 +496,12 @@ struct CompilerSession::Impl {
   zc::Vector<package::ResolvedPackageSourceSnapshot> packageSnapshots;
   zc::Maybe<package::VerifiedBuildScriptPlan> buildScriptPlan;
   zc::Maybe<package::VerifiedBuildScriptResultSet> buildScriptResults;
-  /// Complete pre-parse core transaction retained with its structural catalogs.
-  zc::Maybe<core_library_query::VerifiedCoreDistributionInputTransaction> coreDistributionInputs;
+  /// Core library source files installed before parsing begins.
+  zc::Vector<CoreSourceInput> coreSourceInputs;
+  /// Projected toolchain-core crate keys retained from installation until graph staging.
+  zc::Vector<identity::CrateKey> projectedCoreCrates;
+  /// Compiler-side marker policy template retained from installation until graph staging.
+  zc::Maybe<source::core::CoreStandardMarkerPolicyTemplate> corePolicyTemplate;
   /// Canonical source identities retained from package admission until source freeze.
   zc::HashMap<source::BufferId, identity::SourceFileKey> pendingSourceIdentities;
   /// Structurally selected non-empty module paths retained until module identity freeze.
@@ -541,7 +532,7 @@ struct CompilerSession::Impl {
   bool verifiedParsedSyntax = false;
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> markerPolicies;
-  zc::Maybe<core::VerifiedCoreLibrary> coreLibrary;
+  zc::Maybe<core::VerifiedCoreStandardMarkerAuthority> standardMarkerAuthority;
   zc::Vector<checker::signature::VerifiedSignatureFacts> signatureFacts;
   zc::Vector<checker::cross_module::ImportedSignatureView> importedSignatureViews;
   zc::Vector<checker::body::VerifiedBodyFactRequirementInventory> bodyRequirements;
@@ -557,7 +548,6 @@ struct CompilerSession::Impl {
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
   zc::Vector<ir::IrCapabilityFailureGroup> irCapabilityFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
-  zc::Maybe<core_library_query::CoreOperationalFailureKind> coreOperationalFailure;
   basic::BoundedIncidentSet incidents;
   bool verifiedCheckedSources = false;
   /// Closed Checker invariant rejection retained when no complete publication exists.
@@ -594,37 +584,10 @@ struct CompilerSession::Impl {
     return false;
   }
 
-  bool recordCoreIncident(basic::CompilerIncidentDescriptor incident) {
-    ZC_REQUIRE(incidents.add(incident),
+  bool recordCoreIncident(core::CoreSessionInvariantKind kind) {
+    ZC_REQUIRE(incidents.add(core::CoreDiagnosticProjector::project(kind)),
                "core incident set capacity must cover the registered inventory");
     return false;
-  }
-
-  bool rejectCoreQueryRuntime(query::QueryRuntimeFailure failure) {
-    auto operational = core_library_query::coreOperationalFailure(failure);
-    if (operational != zc::none) {
-      if (coreOperationalFailure == zc::none) {
-        coreOperationalFailure = ZC_ASSERT_NONNULL(operational);
-      }
-      return false;
-    }
-    return recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(failure));
-  }
-
-  template <typename Demand>
-  bool rejectCoreDemand(const Demand& demand,
-                        core_library_query::CoreSessionInvariantKind fallback) {
-    if (demand.isRuntimeRejected()) { return rejectCoreQueryRuntime(demand.runtimeFailure()); }
-    if constexpr (requires {
-                    demand.isKeyRejected();
-                    demand.keyFailure();
-                  }) {
-      if (demand.isKeyRejected()) {
-        return recordCoreIncident(
-            core_library_query::CoreDiagnosticProjector::project(demand.keyFailure().kind));
-      }
-    }
-    return recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(fallback));
   }
 
   bool collectSourceDiagnostics(const identity::SourceFileKey& source,
@@ -800,7 +763,7 @@ struct CompilerSession::Impl {
     signatureFacts.clear();
     markerPolicies = zc::none;
     markerShapes = zc::none;
-    coreLibrary = zc::none;
+    standardMarkerAuthority = zc::none;
     borrowEvidenceRepository = nullptr;
     stagedBorrowSourceRejectedBorrowEvidence = nullptr;
     checkedFactsRepository = nullptr;
@@ -856,6 +819,7 @@ struct CompilerSession::Impl {
     zc::TreeMap<zc::String, StagedSource> canonicalSources;
     zc::TreeMap<zc::String, identity::CrateKey> compilationCrates;
     zc::TreeMap<zc::String, StagedUserSources> userSources;
+    zc::TreeMap<zc::String, StagedUserSources> coreSources;
     for (const auto& entry : pendingSourceIdentities) {
       auto key = source_query::StableSourceQueryKey::fromVerified(entry.value);
       auto snapshot = identity::ImmutableSourceSnapshot::from(
@@ -889,6 +853,20 @@ struct CompilerSession::Impl {
         } else {
           ZC_IF_SOME(value, user) { value.sources.add(stableSource.clone()); }
         }
+      } else if (entry.value.crate().unit().kind() == identity::CompilationUnitKind::Toolchain) {
+        auto coreCrateSortKey = zc::encodeHex(crateBytes.asPtr());
+        auto core = coreSources.find(coreCrateSortKey);
+        if (core == zc::none) {
+          auto stableCrate = incremental::StableCrateQueryKey::fromVerified(entry.value.crate());
+          if (stableCrate == zc::none) { return false; }
+          zc::Vector<source_query::StableSourceQueryKey> sources;
+          sources.add(stableSource.clone());
+          coreSources.insert(
+              zc::mv(coreCrateSortKey),
+              StagedUserSources(zc::mv(ZC_ASSERT_NONNULL(stableCrate)), zc::mv(sources)));
+        } else {
+          ZC_IF_SOME(value, core) { value.sources.add(stableSource.clone()); }
+        }
       }
     }
 
@@ -914,6 +892,13 @@ struct CompilerSession::Impl {
         auto key = zc::encodeHex(prior.canonicalCrateBytes());
         if (userSources.find(key) == zc::none &&
             !transaction.erase<incremental::UserPackageActiveSourcesInput>(prior).isApplied()) {
+          return false;
+        }
+      }
+      for (const auto& prior : stagedCoreSourceCrates) {
+        auto key = zc::encodeHex(prior.canonicalCrateBytes());
+        if (coreSources.find(key) == zc::none &&
+            !transaction.erase<incremental::ToolchainCoreActiveSourcesInput>(prior).isApplied()) {
           return false;
         }
       }
@@ -954,6 +939,15 @@ struct CompilerSession::Impl {
           return false;
         }
       }
+      for (auto& entry : coreSources) {
+        auto sources = incremental::CanonicalSourceSet::from(zc::mv(entry.value.sources));
+        if (sources == zc::none || !transaction
+                                        .set<incremental::ToolchainCoreActiveSourcesInput>(
+                                            entry.value.crate, ZC_ASSERT_NONNULL(sources))
+                                        .isApplied()) {
+          return false;
+        }
+      }
       if (!transaction.commit().isCommitted()) { return false; }
     }
     stagedSourceSnapshots.clear();
@@ -969,6 +963,9 @@ struct CompilerSession::Impl {
     stagedUserSourceCrates.clear();
     stagedUserSourceCrates.reserve(userSources.size());
     for (const auto& entry : userSources) { stagedUserSourceCrates.add(entry.value.crate.clone()); }
+    stagedCoreSourceCrates.clear();
+    stagedCoreSourceCrates.reserve(coreSources.size());
+    for (const auto& entry : coreSources) { stagedCoreSourceCrates.add(entry.value.crate.clone()); }
     ZC_IF_SOME(rootKey, packageRoots) { stagedPackageRoots = rootKey.clone(); }
     return true;
   }
@@ -1281,10 +1278,8 @@ struct CompilerSession::Impl {
         if (!addCrate(crate)) { return false; }
       }
     }
-    ZC_IF_SOME(coreInputs, coreDistributionInputs) {
-      for (const auto& projection : coreInputs.projections()) {
-        if (!addCrate(projection.crate())) { return false; }
-      }
+    for (const auto& crate : projectedCoreCrates) {
+      if (!addCrate(crate)) { return false; }
     }
     for (const auto& entry : compilationUnits) {
       if (!semanticContextResources.identityInterners()
@@ -1432,7 +1427,7 @@ struct CompilerSession::Impl {
     namespace resolution_query = incremental_module_resolution_query;
 
     if (packageRequest == zc::none || packageGraph == zc::none || crateGraph == zc::none ||
-        coreDistributionInputs == zc::none || resolver.catalog().size() == 0) {
+        corePolicyTemplate == zc::none || resolver.catalog().size() == 0) {
       return false;
     }
 
@@ -1668,13 +1663,6 @@ struct CompilerSession::Impl {
     zc::Vector<resolution_query::CanonicalModuleCatalogBucket> buckets(bucketMap.size());
     for (auto& entry : bucketMap) { buckets.add(zc::mv(entry.value)); }
 
-    zc::Vector<identity::CrateKey> projectedCoreCrates;
-    ZC_IF_SOME(coreInputs, coreDistributionInputs) {
-      projectedCoreCrates.reserve(coreInputs.projections().size());
-      for (const auto& projection : coreInputs.projections()) {
-        projectedCoreCrates.add(projection.crate().clone());
-      }
-    }
     zc::Maybe<incremental_binding_query::CompilationRootSetQueryKey> contextRoots;
     ZC_IF_SOME(request, packageRequest) {
       contextRoots = incremental_binding_query::CompilationRootSetQueryKey::fromVerified(
@@ -1682,19 +1670,102 @@ struct CompilerSession::Impl {
     }
     if (contextRoots == zc::none) { return false; }
 
+    // Construct the CompleteCompilationContextAuthority from the staged inputs.
+    // This replaces the deleted bootstrap transaction that previously set this input.
+    zc::Maybe<source_query::CanonicalCompilationOptions> canonicalOptions;
+    zc::Maybe<incremental_binding_query::PackageRootSetKey> packageRootSet;
+    zc::Maybe<incremental_binding_query::CanonicalPackageGraph> canonicalPackageGraph;
+    ZC_IF_SOME(request, packageRequest) {
+      canonicalOptions = source_query::CanonicalCompilationOptions::fromVerified(request);
+      packageRootSet = incremental_binding_query::PackageRootSetKey::fromVerified(request);
+    }
+    ZC_IF_SOME(resolution, packageGraph) {
+      ZC_IF_SOME(graph, crateGraph) {
+        canonicalPackageGraph =
+            incremental_binding_query::CanonicalPackageGraph::fromVerified(resolution, graph);
+      }
+    }
+    if (canonicalOptions == zc::none || packageRootSet == zc::none ||
+        canonicalPackageGraph == zc::none) {
+      return false;
+    }
+
+    zc::Vector<identity::CrateKey> userRootCrates;
+    ZC_IF_SOME(request, packageRequest) {
+      ZC_IF_SOME(graph, crateGraph) {
+        for (const auto& root : graph.roots()) {
+          size_t matchingRequests = 0;
+          for (const auto& requested : request.roots()) {
+            if (samePackage(root.packageKey(), requested.packageKey()) &&
+                root.crateKey().targetKind() == requested.targetKind() &&
+                root.crateKey().targetName() == requested.targetName()) {
+              ++matchingRequests;
+            }
+          }
+          if (matchingRequests > 1) { return false; }
+          if (matchingRequests == 1) { userRootCrates.add(root.crateKey().clone()); }
+        }
+      }
+    }
+
+    zc::Vector<graph_query::CompilationOptionsEntry> optionEntries;
+    ZC_IF_SOME(graph, crateGraph) {
+      for (const auto& crate : graph.crates()) {
+        optionEntries.add(graph_query::CompilationOptionsEntry::from(
+            crate.clone(), ZC_ASSERT_NONNULL(canonicalOptions).clone()));
+      }
+    }
+    for (const auto& core : projectedCoreCrates) {
+      optionEntries.add(graph_query::CompilationOptionsEntry::from(
+          core.clone(), ZC_ASSERT_NONNULL(canonicalOptions).clone()));
+    }
+
+    zc::Vector<graph_query::ModuleSearchRootsEntry> searchRootEntries;
+    for (const auto& roots : searchRoots) {
+      searchRootEntries.add(
+          graph_query::ModuleSearchRootsEntry::from(roots.crate().clone(), roots.clone()));
+    }
+
+    const graph_query::CompleteCompilationContextSources contextSources{
+        ZC_ASSERT_NONNULL(packageRequest),
+        ZC_ASSERT_NONNULL(packageRootSet),
+        ZC_ASSERT_NONNULL(canonicalPackageGraph),
+        userRootCrates.asPtr(),
+        projectedCoreCrates.asPtr(),
+        optionEntries.asPtr(),
+        searchRootEntries.asPtr(),
+        ZC_ASSERT_NONNULL(corePolicyTemplate)};
+    auto contextAuthority =
+        graph_query::CompleteCompilationContextAuthority::fromVerified(contextSources);
+    if (contextAuthority == zc::none) { return false; }
+
     const graph_query::ModuleGraphInputTransactionAuthority authority{
-        ZC_ASSERT_NONNULL(packageRequest), ZC_ASSERT_NONNULL(coreDistributionInputs), resolver,
+        ZC_ASSERT_NONNULL(packageRequest), ZC_ASSERT_NONNULL(corePolicyTemplate), resolver,
         parsedModuleInputs};
     const auto expectedPreviousRevision = queryDatabase.snapshot().revision();
     const auto priorLedger = graph_query::VerifiedModuleGraphInputLedger::empty();
+    zc::Vector<identity::CrateKey> projectedCoreCratesCopy(projectedCoreCrates.size());
+    for (const auto& crate : projectedCoreCrates) { projectedCoreCratesCopy.add(crate.clone()); }
     auto prepared = graph_query::VerifiedModuleGraphInputTransaction::prepare(
         authority, expectedPreviousRevision, ZC_ASSERT_NONNULL(contextRoots).clone(),
-        zc::mv(projectedCoreCrates), zc::mv(catalogs), zc::mv(dependencySites), zc::mv(ancestries),
-        zc::mv(buckets), zc::mv(searchRoots), zc::mv(aliases), zc::mv(preludes), priorLedger);
+        zc::mv(projectedCoreCratesCopy), zc::mv(catalogs), zc::mv(dependencySites),
+        zc::mv(ancestries), zc::mv(buckets), zc::mv(searchRoots), zc::mv(aliases), zc::mv(preludes),
+        priorLedger);
     if (prepared == zc::none) { return false; }
     auto commit = ZC_ASSERT_NONNULL(prepared).commit(queryDatabase);
     if (!commit.isCommitted()) { return false; }
     stagedCompilationRoots = zc::mv(ZC_ASSERT_NONNULL(contextRoots));
+
+    // Stage the CompleteCompilationContextAuthorityInput required by final snapshot admission.
+    {
+      auto opened = queryDatabase.beginInputTransaction(queryDatabase.snapshot().revision());
+      if (!opened.isOpened()) { return false; }
+      auto transaction = zc::mv(opened).takeTransaction();
+      auto mutation = transaction.set<graph_query::CompleteCompilationContextAuthorityInput>(
+          ZC_ASSERT_NONNULL(stagedCompilationRoots), ZC_ASSERT_NONNULL(contextAuthority));
+      if (!mutation.isApplied()) { return false; }
+      if (!transaction.commit().isCommitted()) { return false; }
+    }
 
     const auto authorityStagingSnapshot = queryDatabase.snapshot();
     auto graph = authorityStagingSnapshot.get<graph_query::ModuleGraph>(
@@ -1734,21 +1805,6 @@ struct CompilerSession::Impl {
         graph.kind() != query::QueryValueKind::Value ||
         scc.kind() != query::QueryValueKind::Value || scc.value().hasCycle(graph.value())) {
       return false;
-    }
-    ZC_IF_SOME(coreInputs, coreDistributionInputs) {
-      if (coreInputs.projections().size() == 0) { return false; }
-      for (const auto& projection : coreInputs.projections()) {
-        auto coreKey = core_library_query::ContextualCoreCrateKey::from(
-            ZC_ASSERT_NONNULL(stagedCompilationRoots).clone(), projection.crate().clone());
-        if (coreKey == zc::none) { return false; }
-        auto coreGraph = authorityStagingSnapshot.get<core_library_query::CoreModuleGraph>(
-            zc::mv(ZC_ASSERT_NONNULL(coreKey)));
-        if (coreGraph.isRuntimeFailure() || coreGraph.kind() != query::QueryValueKind::Value ||
-            coreGraph.value().core().encode().asPtr() != projection.crate().encode().asPtr() ||
-            coreGraph.value().modules().size() == 0) {
-          return false;
-        }
-      }
     }
     return true;
   }
@@ -1812,12 +1868,12 @@ struct CompilerSession::Impl {
       const auto& binding = moduleKeys[entry.value];
       const auto& crate = binding.key.crate();
       if (crate.unit().kind() == identity::CompilationUnitKind::Toolchain) {
-        if (coreDistributionInputs == zc::none) {
+        if (corePolicyTemplate == zc::none) {
           return rejectInvariant(binder::ModuleGraphIncidentKind::MissingRequiredState);
         }
-        ZC_IF_SOME(inputs, coreDistributionInputs) {
-          auto root = binder::ModuleSearchRoot::toolchainCore(crate.clone(),
-                                                              inputs.distribution().digest());
+        ZC_IF_SOME(policyTemplate, corePolicyTemplate) {
+          auto root =
+              binder::ModuleSearchRoot::toolchainCore(crate.clone(), policyTemplate.revision());
           if (root == zc::none) {
             return rejectInvariant(binder::ModuleGraphIncidentKind::VerificationFailed);
           }
@@ -2151,91 +2207,6 @@ zc::Maybe<CompilerSession::MaterializedModuleGraphLease> CompilerSession::materi
   return zc::mv(demand).takeLease();
 }
 
-zc::Maybe<core::VerifiedCoreLibrary> CompilerSession::materializeCoreLibrary(
-    const identity::CrateKey& coreCrate) {
-  const auto reject = [&](core_library_query::CoreSessionInvariantKind kind) {
-    impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(kind));
-    return zc::Maybe<core::VerifiedCoreLibrary>();
-  };
-  if (impl->finalSealedSnapshot == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::InvalidInstallationState);
-  }
-  const auto& snapshot = ZC_ASSERT_NONNULL(impl->finalSealedSnapshot);
-  auto coreKey = core_library_query::ContextualCoreCrateKey::from(snapshot.contextRoots().clone(),
-                                                                  coreCrate.clone());
-  if (coreKey == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
-  }
-  auto roleSeed = snapshot.getCapability<core_library_query::MaterializeCoreRoleSeed>(
-      ZC_ASSERT_NONNULL(coreKey).clone());
-  if (!roleSeed.isPublished()) {
-    impl->rejectCoreDemand(roleSeed,
-                           core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected);
-    return zc::none;
-  }
-  auto graph =
-      snapshot.get<core_library_query::CoreModuleGraph>(ZC_ASSERT_NONNULL(coreKey).clone());
-  auto distribution =
-      snapshot.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  auto prelude =
-      snapshot.get<core_library_query::CorePreludeSurface>(ZC_ASSERT_NONNULL(coreKey).clone());
-  auto authority = snapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
-      zc::mv(ZC_ASSERT_NONNULL(coreKey)));
-  if (graph.isRuntimeFailure()) {
-    impl->rejectCoreQueryRuntime(graph.runtimeFailure());
-    return zc::none;
-  }
-  if (distribution.isRuntimeFailure()) {
-    impl->rejectCoreQueryRuntime(distribution.runtimeFailure());
-    return zc::none;
-  }
-  if (prelude.isRuntimeFailure()) {
-    impl->rejectCoreQueryRuntime(prelude.runtimeFailure());
-    return zc::none;
-  }
-  if (!authority.isPublished()) {
-    impl->rejectCoreDemand(authority,
-                           core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected);
-    return zc::none;
-  }
-  if (graph.kind() != query::QueryValueKind::Value ||
-      distribution.kind() != query::QueryValueKind::Value ||
-      prelude.kind() != query::QueryValueKind::Value ||
-      graph.value().core().encode().asPtr() != coreCrate.encode().asPtr() ||
-      prelude.value().core().encode().asPtr() != coreCrate.encode().asPtr()) {
-    return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
-  }
-  zc::Vector<core::VerifiedCoreModule> modules(graph.value().modules().size());
-  for (const auto& module : graph.value().modules()) {
-    auto moduleKey = core_library_query::ContextualCoreModuleKey::from(
-        snapshot.contextRoots().clone(), module.clone());
-    if (moduleKey == zc::none) {
-      return reject(core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
-    }
-    auto interface = snapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
-        zc::mv(ZC_ASSERT_NONNULL(moduleKey)));
-    if (!interface.isPublished()) {
-      impl->rejectCoreDemand(interface,
-                             core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
-      return zc::none;
-    }
-    auto published = core::VerifiedCoreModule::from(module.clone(), zc::mv(interface).takeLease());
-    if (published == zc::none) {
-      return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
-    }
-    modules.add(zc::mv(ZC_ASSERT_NONNULL(published)));
-  }
-  auto library = core::VerifiedCoreLibrary::from(
-      authority.lease().capability().context(),
-      authority.lease().capability().fingerprint().clone(), snapshot.contextRoots().clone(),
-      snapshot.revision(), distribution.value().digest(), graph.value().clone(), zc::mv(modules),
-      prelude.value().preludeModule().clone(), zc::mv(authority).takeLease());
-  if (library == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::CoreLibraryRejected);
-  }
-  return library;
-}
-
 zc::Maybe<checker::CheckerIdentityAuthority> CompilerSession::materializeCheckerIdentityAuthority()
     const {
   if (impl->finalSealedSnapshot == zc::none) { return zc::none; }
@@ -2283,10 +2254,16 @@ zc::Maybe<const checker::coherence::FrozenCoherenceView&> CompilerSession::getFr
   return zc::none;
 }
 
+zc::Maybe<const core::VerifiedCoreStandardMarkerAuthority&>
+CompilerSession::getStandardMarkerAuthority() const noexcept {
+  ZC_IF_SOME(authority, impl->standardMarkerAuthority) { return authority; }
+  return zc::none;
+}
+
 zc::Maybe<checker::marker::MarkerProofResult> CompilerSession::proveMarker(
     identity::ModuleId requester, identity::DefId marker, identity::SemanticTypeId subject) {
   if (impl->semanticTypeStore.get() == nullptr || impl->markerPolicies == zc::none ||
-      impl->coreLibrary == zc::none || impl->coherenceView == zc::none ||
+      impl->standardMarkerAuthority == zc::none || impl->coherenceView == zc::none ||
       impl->checkerIdentityAuthority == zc::none ||
       impl->signatureFacts.size() != impl->importedSignatureViews.size()) {
     return zc::none;
@@ -2315,8 +2292,7 @@ zc::Maybe<checker::marker::MarkerProofResult> CompilerSession::proveMarker(
       auto crate = authority.crate(boundView.crate());
       if (crate == zc::none) return zc::none;
       ZC_IF_SOME(crateEntry, crate) {
-        const auto& standardMarkers =
-            ZC_ASSERT_NONNULL(impl->coreLibrary).authorityLease().capability().authority();
+        const auto& standardMarkers = ZC_ASSERT_NONNULL(impl->standardMarkerAuthority);
         checker::body::BodyCheckingInput bodyInput{boundView.retain(),
                                                    authority,
                                                    policies,
@@ -2383,7 +2359,7 @@ CompilerSession::getVerifiedExecutableMirModules() const noexcept {
 zc::Maybe<ownership::EventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
     identity::ModuleId module) const noexcept {
   if (impl->checkerIdentityAuthority == zc::none || impl->markerPolicies == zc::none ||
-      impl->coreLibrary == zc::none || impl->coherenceView == zc::none ||
+      impl->standardMarkerAuthority == zc::none || impl->coherenceView == zc::none ||
       impl->semanticTypeStore.get() == nullptr ||
       impl->signatureFacts.size() != impl->importedSignatureViews.size() ||
       impl->signatureFacts.size() != impl->bodyRequirements.size() ||
@@ -2402,8 +2378,7 @@ zc::Maybe<ownership::EventOverlayInput> CompilerSession::getOwnershipEventOverla
     auto crate = authority.crate(admittedModule.crate());
     if (crate == zc::none) return zc::none;
     ZC_IF_SOME(crateEntry, crate) {
-      const auto& standardMarkers =
-          ZC_ASSERT_NONNULL(impl->coreLibrary).authorityLease().capability().authority();
+      const auto& standardMarkers = ZC_ASSERT_NONNULL(impl->standardMarkerAuthority);
       return ownership::EventOverlayInput{
           admittedModule, hirModule.admittedCheckedModule(), hirModule, builtMir,
           checker::body::BodyCheckingInput{
@@ -2441,11 +2416,6 @@ zc::ArrayPtr<const identity::IdentityInvariant> CompilerSession::getIrIdentityIn
 
 const basic::BoundedIncidentSet& CompilerSession::getIncidents() const noexcept {
   return impl->incidents;
-}
-
-zc::Maybe<core_library_query::CoreOperationalFailureKind>
-CompilerSession::getCoreOperationalFailure() const noexcept {
-  return impl->coreOperationalFailure;
 }
 
 bool CompilerSession::hasDiagnosticErrors() const noexcept {
@@ -2511,7 +2481,7 @@ bool CompilerSession::parseSources() {
                           binder::ModuleGraphIncidentProducer producer) {
     return impl->rejectModuleGraph(binder::ModuleGraphIncidentPhase::SourceParsing, kind, producer);
   };
-  if (impl->coreDistributionInputs == zc::none) {
+  if (impl->coreSourceInputs.size() == 0) {
     return reject(binder::ModuleGraphIncidentKind::MissingRequiredState,
                   binder::ModuleGraphIncidentProducer::Session);
   }
@@ -2801,89 +2771,6 @@ bool CompilerSession::checkSources() {
   auto graphDemand = finalSnapshot.getCapability<module_graph_query::MaterializeModuleGraph>(
       finalSnapshot.contextRoots());
   if (!graphDemand.isPublished()) { return false; }
-  for (const auto& crate : graphDemand.lease().capability().crates()) {
-    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
-        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
-      continue;
-    }
-    auto coreKey = core_library_query::ContextualCoreCrateKey::from(
-        finalSnapshot.contextRoots().clone(), crate.key().clone());
-    if (coreKey == zc::none) {
-      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-          core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected));
-    }
-    auto roleSeed = finalSnapshot.getCapability<core_library_query::MaterializeCoreRoleSeed>(
-        ZC_ASSERT_NONNULL(coreKey).clone());
-    if (!roleSeed.isPublished()) {
-      return impl->rejectCoreDemand(
-          roleSeed, core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected);
-    }
-    auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>(
-        ZC_ASSERT_NONNULL(coreKey).clone());
-    if (preludeSurface.isRuntimeFailure()) {
-      return impl->rejectCoreQueryRuntime(preludeSurface.runtimeFailure());
-    }
-    if (preludeSurface.kind() != query::QueryValueKind::Value ||
-        preludeSurface.value().core().encode().asPtr() != crate.key().encode().asPtr()) {
-      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-          core_library_query::CoreSessionInvariantKind::CorePreludeRejected));
-    }
-    auto roleAuthority = finalSnapshot.get<core_library_query::CoreRoleAuthority>(
-        ZC_ASSERT_NONNULL(coreKey).clone());
-    if (roleAuthority.isRuntimeFailure()) {
-      return impl->rejectCoreQueryRuntime(roleAuthority.runtimeFailure());
-    }
-    if (roleAuthority.kind() != query::QueryValueKind::Value ||
-        roleAuthority.value().core().encode().asPtr() != crate.key().encode().asPtr() ||
-        roleAuthority.value().preludeRevision().digest() !=
-            preludeSurface.value().revision().digest() ||
-        roleAuthority.value().roles().size() != preludeSurface.value().roles().size()) {
-      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-          core_library_query::CoreSessionInvariantKind::CoreRoleAuthorityRejected));
-    }
-    auto materializedAuthority =
-        finalSnapshot.getCapability<core_library_query::MaterializeCoreAuthority>(
-            zc::mv(ZC_ASSERT_NONNULL(coreKey)));
-    if (!materializedAuthority.isPublished()) {
-      return impl->rejectCoreDemand(
-          materializedAuthority,
-          core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected);
-    }
-    if (materializedAuthority.lease().capability().record().revision().digest() !=
-            roleAuthority.value().revision().digest() ||
-        materializedAuthority.lease().capability().record().roleSeedRevision().digest() !=
-            roleAuthority.value().roleSeedRevision().digest() ||
-        materializedAuthority.lease().capability().authority().prelude().encode().asPtr() !=
-            preludeSurface.value().preludeModule().encode().asPtr()) {
-      return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-          core_library_query::CoreSessionInvariantKind::CoreAuthorityRejected));
-    }
-    for (const auto& module : graphDemand.lease().capability().modules()) {
-      if (module.key().crate().encode().asPtr() != crate.key().encode().asPtr()) { continue; }
-      auto finalInterfaceKey = core_library_query::ContextualCoreModuleKey::from(
-          finalSnapshot.contextRoots().clone(), module.key().clone());
-      if (finalInterfaceKey == zc::none) {
-        return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-            core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected));
-      }
-      auto finalInterface =
-          finalSnapshot.getCapability<core_library_query::FinalizeCoreModuleInterface>(
-              zc::mv(ZC_ASSERT_NONNULL(finalInterfaceKey)));
-      if (!finalInterface.isPublished()) {
-        return impl->rejectCoreDemand(
-            finalInterface, core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected);
-      }
-      if (finalInterface.lease().capability().record().module().encode().asPtr() !=
-              module.key().encode().asPtr() ||
-          finalInterface.lease().capability().record().coreContext().digest() !=
-              materializedAuthority.lease().capability().record().coreContext().digest() ||
-          finalInterface.lease().capability().record().authorityRevision().digest() !=
-              materializedAuthority.lease().capability().authority().revision().digest()) {
-        return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-            core_library_query::CoreSessionInvariantKind::CoreInterfaceRejected));
-      }
-    }
-  }
 
   auto checkerAuthority = materializeCheckerIdentityAuthority();
   if (checkerAuthority == zc::none) { return false; }
@@ -2971,6 +2858,7 @@ bool CompilerSession::checkSources() {
 
   zc::Maybe<checker::signature::VerifiedMarkerShapeInventory> stagedMarkerShapes;
   zc::Maybe<checker::signature::VerifiedMarkerPolicyRegistry> stagedMarkerPolicies;
+  zc::Maybe<core::VerifiedCoreStandardMarkerAuthority> stagedStandardMarkerAuthority;
   zc::Vector<checker::signature::VerifiedSignatureFacts> stagedSignatureFacts;
   zc::Vector<checker::cross_module::ImportedSignatureView> stagedImportedSignatureViews;
   zc::Vector<VerifiedModuleInterface> stagedModuleInterfaces;
@@ -3039,24 +2927,6 @@ bool CompilerSession::checkSources() {
     return true;
   }
   const auto ordinaryDiagnosticModule = checkerModules[ordinaryBoundModuleIndices[0]].module();
-  zc::Vector<core::VerifiedCoreLibrary> coreLibraries;
-  for (const auto& crate : graphDemand.lease().capability().crates()) {
-    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
-        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
-      continue;
-    }
-    auto library = materializeCoreLibrary(crate.key());
-    if (library == zc::none) { return false; }
-    ZC_IF_SOME(value, library) {
-      if (value.context() != impl->contextBrand ||
-          value.fingerprint().digest() != retainedCheckerAuthority.fingerprint().digest() ||
-          value.modules().size() == 0) {
-        return false;
-      }
-      coreLibraries.add(zc::mv(value));
-    }
-  }
-  if (coreLibraries.size() != 1) { return false; }
 
   if (retainedCheckerAuthority.semanticContext() == impl->contextBrand) {
     const auto& checkerAuthority = retainedCheckerAuthority;
@@ -3105,6 +2975,173 @@ bool CompilerSession::checkSources() {
     stagedMarkerShapes =
         zc::mv(shapeResult).get<checker::signature::VerifiedMarkerShapeInventory>();
 
+    // Phase 1: build an explicit-only marker policy registry for core modules.
+    // Core's empty marker interfaces carry no Copy obligations, so the checker
+    // can verify core without lang items. After core's interfaces are published,
+    // Copy and Linear are discovered by name and the real policy is built.
+    {
+      auto explicitConfiguration = checker::signature::MarkerPolicyConfiguration::explicitOnly();
+      zc::Vector<identity::ModuleId> noAuthorizedModules;
+      auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
+          ordinaryDiagnosticModule, explicitConfiguration, ZC_ASSERT_NONNULL(stagedMarkerShapes),
+          noAuthorizedModules.asPtr(), checkerAuthority);
+      if (!policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>()) {
+        auto rejected =
+            zc::mv(policyResult).get<checker::signature::SignatureFactsInvariantRejected>();
+        return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
+      }
+      stagedMarkerPolicies =
+          zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
+    }
+
+    // Split SCC-ordered modules into core (toolchain) and user (package) phases.
+    zc::Vector<size_t> coreModuleIndices;
+    zc::Vector<size_t> userModuleIndices;
+    for (const auto moduleIndex : checkerFactModuleIndices) {
+      const auto& boundModule = checkerModules[moduleIndex];
+      auto crate = retainedCheckerAuthority.crate(boundModule.crate());
+      if (crate == zc::none) {
+        return rejectOne(boundModule.module(),
+                         checker::signature::CheckerInvariantKind::InputReceiptMismatch,
+                         checker::signature::CheckerInvariantStage::Signature, 0);
+      }
+      if (ZC_ASSERT_NONNULL(crate).key().unit().kind() ==
+          identity::CompilationUnitKind::UserPackage) {
+        userModuleIndices.add(moduleIndex);
+      } else {
+        coreModuleIndices.add(moduleIndex);
+      }
+    }
+
+    // Phase 1: signature facts, imported views, and module interfaces for core.
+    // Uses temporary vectors because the real policy is not yet available;
+    // core's interfaces are only needed to discover Copy and Linear by name.
+    zc::Vector<checker::signature::VerifiedSignatureFacts> phaseOneSignatureFacts;
+    zc::Vector<checker::cross_module::ImportedSignatureView> phaseOneImportedViews;
+    zc::Vector<VerifiedModuleInterface> phaseOneInterfaces;
+    for (const auto moduleIndex : coreModuleIndices) {
+      const auto& boundView = checkerModules[moduleIndex];
+      ZC_IF_SOME(shapes, stagedMarkerShapes) {
+        ZC_IF_SOME(policies, stagedMarkerPolicies) {
+          auto signatureResult = checker::signature::SignatureFactsBuilder::build(
+              checker::signature::SignatureFactsBuildInput{boundView, *impl->semanticTypeStore,
+                                                           shapes, policies, checkerAuthority});
+          if (signatureResult.is<checker::signature::SignatureFactsSourceRejected>()) {
+            if (!impl->collectSemanticDiagnostics(
+                    checker::projectSignatureSourceDiagnostics(
+                        boundView, retainedCheckerAuthority, *impl->semanticTypeStore,
+                        signatureResult.get<checker::signature::SignatureFactsSourceRejected>()),
+                    diagnostics::DiagnosticIncidentProducer::Checker)) {
+              return false;
+            }
+            return false;
+          }
+          if (signatureResult.is<checker::signature::SignatureFactsInvariantRejected>()) {
+            auto rejected =
+                zc::mv(signatureResult).get<checker::signature::SignatureFactsInvariantRejected>();
+            return rejectChecker(boundView.module(), zc::mv(rejected.failures));
+          }
+          phaseOneSignatureFacts.add(
+              zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
+
+          zc::Vector<VerifiedInterfaceSource> interfaceSources(phaseOneInterfaces.size());
+          for (size_t index = 0; index < phaseOneInterfaces.size(); ++index) {
+            interfaceSources.add(VerifiedInterfaceSource{phaseOneInterfaces[index]});
+          }
+          auto imported = ImportedSignatureViewProjector::build(
+              boundView, interfaceSources.asPtr(), *impl->semanticTypeStore, checkerAuthority);
+          if (imported == zc::none) {
+            return rejectOne(boundView.module(),
+                             checker::signature::CheckerInvariantKind::ViewMismatch,
+                             checker::signature::CheckerInvariantStage::Signature, 0);
+          }
+          ZC_IF_SOME(view, imported) { phaseOneImportedViews.add(zc::mv(view)); }
+          const auto& signatures = phaseOneSignatureFacts.back();
+          const auto& importedView = phaseOneImportedViews.back();
+          auto borrowResult = checker::borrow::BorrowInterfaceBuilder::build(
+              checker::borrow::BorrowInterfaceBuildInput{
+                  impl->contextBrand, fingerprint, boundView.module(), signatures.revision(),
+                  importedView.revision(), signatures.signatures(),
+                  zc::ArrayPtr<const checker::signature::SemanticSignature>(),
+                  retainedCheckerAuthority, *impl->semanticTypeStore});
+          if (borrowResult.is<checker::borrow::BorrowInterfaceSourceRejected>()) {
+            if (!impl->collectSemanticDiagnostics(
+                    checker::borrow::projectBorrowSignatureFailures(
+                        retainedCheckerAuthority,
+                        borrowResult.get<checker::borrow::BorrowInterfaceSourceRejected>()
+                            .failures.asPtr()),
+                    diagnostics::DiagnosticIncidentProducer::Checker)) {
+              return false;
+            }
+            return false;
+          }
+          if (borrowResult.is<checker::borrow::BorrowInterfaceInvariantRejected>()) {
+            auto rejected =
+                zc::mv(borrowResult).get<checker::borrow::BorrowInterfaceInvariantRejected>();
+            return rejectChecker(boundView.module(), zc::mv(rejected.failures));
+          }
+          auto interfaceResult = ModuleInterfaceVerifier::build(ModuleInterfaceBuildInput{
+              boundView, signatures, importedView, policies,
+              zc::mv(borrowResult).get<checker::borrow::VerifiedBorrowInterfaceSurface>(),
+              *impl->semanticTypeStore, checkerAuthority});
+          if (!interfaceResult.is<VerifiedModuleInterface>()) {
+            auto rejected = zc::mv(interfaceResult).get<ModuleInterfaceInvariantRejected>();
+            auto projected =
+                ModuleInterfaceDiagnosticProjector::projectAll(rejected.failures.asPtr());
+            ZC_REQUIRE(projected != zc::none && impl->incidents.merge(ZC_ASSERT_NONNULL(projected)),
+                       "module interface incident projection must fit the registered inventory");
+            return false;
+          }
+          phaseOneInterfaces.add(zc::mv(interfaceResult).get<VerifiedModuleInterface>());
+        }
+      }
+    }
+
+    // Phase 2: discover Copy and Linear by name in core's checked interfaces,
+    // then build the standard marker authority and the real policy registry.
+    zc::Maybe<identity::DefId> copyDefId;
+    zc::Maybe<identity::DefId> linearDefId;
+    for (const auto& interface : phaseOneInterfaces) {
+      for (const auto& binding : interface.exportedBindings()) {
+        if (binding.name.nameSpace() != binder::Namespace::Type) { continue; }
+        if (binding.bindingIdentity.value().is<binder::DefinitionBindingTarget>()) {
+          const auto& defId =
+              binding.bindingIdentity.value().get<binder::DefinitionBindingTarget>().definition;
+          if (binding.name.name().text() == "Copy"_zc) {
+            copyDefId = defId;
+          } else if (binding.name.name().text() == "Linear"_zc) {
+            linearDefId = defId;
+          }
+        }
+      }
+    }
+    if (copyDefId == zc::none || linearDefId == zc::none) {
+      return impl->recordCoreIncident(core::CoreSessionInvariantKind::CoreMarkerNotFound);
+    }
+    auto copyDefinition = checkerAuthority.definition(ZC_ASSERT_NONNULL(copyDefId));
+    auto linearDefinition = checkerAuthority.definition(ZC_ASSERT_NONNULL(linearDefId));
+    if (copyDefinition == zc::none || linearDefinition == zc::none) {
+      return impl->recordCoreIncident(core::CoreSessionInvariantKind::CoreMarkerNotFound);
+    }
+    stagedStandardMarkerAuthority = core::VerifiedCoreStandardMarkerAuthority::from(
+        impl->contextBrand, fingerprint.clone(), ZC_ASSERT_NONNULL(copyDefId),
+        ZC_ASSERT_NONNULL(copyDefinition).key().clone(), ZC_ASSERT_NONNULL(linearDefId),
+        ZC_ASSERT_NONNULL(linearDefinition).key().clone());
+    if (stagedStandardMarkerAuthority == zc::none) {
+      return impl->recordCoreIncident(core::CoreSessionInvariantKind::CoreAuthorityRejected);
+    }
+
+    // Build the real marker policy configuration from the policy template and
+    // the resolved Copy and Linear definition keys.
+    zc::Maybe<source::core::CoreStandardMarkerPolicyTemplate> policyTemplate =
+        source::core::initialCoreMarkerPolicyTemplate();
+    if (policyTemplate == zc::none) { return false; }
+    auto markerConfiguration = core::buildMarkerPolicyConfiguration(
+        ZC_ASSERT_NONNULL(policyTemplate),
+        ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority).copyKey(),
+        ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority).linearKey());
+    if (markerConfiguration == zc::none) { return false; }
+
     zc::Vector<identity::ModuleId> authorizedPreludeModules;
     const auto addAuthorizedModule = [&](identity::ModuleId module) {
       for (const auto authorized : authorizedPreludeModules) {
@@ -3112,49 +3149,36 @@ bool CompilerSession::checkSources() {
       }
       authorizedPreludeModules.add(module);
     };
-    addAuthorizedModule(coreLibraries[0].authorityLease().capability().preludeModule());
-    for (const auto& entry : coreLibraries[0].authorityLease().capability().policies().entries()) {
-      auto definition = checkerAuthority.definition(entry.definition);
-      if (definition == zc::none) { return false; }
-      ZC_IF_SOME(value, definition) {
-        auto owner = checkerAuthority.module(value.record().module());
-        if (owner == zc::none) { return false; }
-        ZC_IF_SOME(module, owner) { addAuthorizedModule(module.handle()); }
-      }
-      for (const auto& rule : entry.policy.referenceRules()) {
-        ZC_IF_SOME(requiredMarker, rule.requiredMarker) {
-          auto required = checkerAuthority.definition(requiredMarker);
-          if (required == zc::none) { return false; }
-          ZC_IF_SOME(value, required) {
-            auto owner = checkerAuthority.module(value.record().module());
-            if (owner == zc::none) { return false; }
-            ZC_IF_SOME(module, owner) { addAuthorizedModule(module.handle()); }
-          }
-        }
-      }
-    }
     for (const auto& edge : materializedGraph.requestEdges()) {
       if (edge.request().dependencyKind() != identity::ModuleDependencyKind::Prelude) { continue; }
       addAuthorizedModule(edge.dependency());
     }
-    auto markerConfiguration =
-        core::checkerConfig(coreLibraries[0].authorityLease().capability().policies());
-    if (markerConfiguration == zc::none) { return false; }
-    ZC_IF_SOME(shapes, stagedMarkerShapes) {
-      ZC_IF_SOME(configuration, markerConfiguration) {
-        auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
-            ordinaryDiagnosticModule, configuration, shapes, authorizedPreludeModules.asPtr(),
-            checkerAuthority);
-        if (!policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>()) {
-          auto rejected =
-              zc::mv(policyResult).get<checker::signature::SignatureFactsInvariantRejected>();
-          return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
-        }
-        stagedMarkerPolicies =
-            zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
+    {
+      auto copyOwner = checkerAuthority.module(ZC_ASSERT_NONNULL(copyDefinition).record().module());
+      if (copyOwner != zc::none) { addAuthorizedModule(ZC_ASSERT_NONNULL(copyOwner).handle()); }
+      auto linearOwner =
+          checkerAuthority.module(ZC_ASSERT_NONNULL(linearDefinition).record().module());
+      if (linearOwner != zc::none) { addAuthorizedModule(ZC_ASSERT_NONNULL(linearOwner).handle()); }
+    }
+    {
+      auto policyResult = checker::signature::MarkerPolicyRegistryBuilder::build(
+          ordinaryDiagnosticModule, ZC_ASSERT_NONNULL(markerConfiguration),
+          ZC_ASSERT_NONNULL(stagedMarkerShapes), authorizedPreludeModules.asPtr(),
+          checkerAuthority);
+      if (!policyResult.is<checker::signature::VerifiedMarkerPolicyRegistry>()) {
+        auto rejected =
+            zc::mv(policyResult).get<checker::signature::SignatureFactsInvariantRejected>();
+        return rejectChecker(ordinaryDiagnosticModule, zc::mv(rejected.failures));
       }
+      stagedMarkerPolicies =
+          zc::mv(policyResult).get<checker::signature::VerifiedMarkerPolicyRegistry>();
     }
 
+    // Phase 2: signature facts, imported views, and module interfaces for ALL
+    // modules with the real marker policy. Core modules were already checked
+    // with the explicit-only policy to discover Copy and Linear; those results
+    // were temporary. Now all modules are re-checked with the real policy so
+    // that coherence sees a uniform policy revision across every module.
     for (const auto moduleIndex : checkerFactModuleIndices) {
       const auto& boundView = checkerModules[moduleIndex];
       ZC_IF_SOME(shapes, stagedMarkerShapes) {
@@ -3181,28 +3205,8 @@ bool CompilerSession::checkSources() {
               zc::mv(signatureResult).get<checker::signature::VerifiedSignatureFacts>());
 
           zc::Vector<VerifiedInterfaceSource> interfaceSources(stagedModuleInterfaces.size());
-          auto requesterCrate = retainedCheckerAuthority.crate(boundView.crate());
-          if (requesterCrate == zc::none) { return false; }
-          const bool ordinaryRequester = ZC_ASSERT_NONNULL(requesterCrate).key().unit().kind() ==
-                                         identity::CompilationUnitKind::UserPackage;
           for (size_t index = 0; index < stagedModuleInterfaces.size(); ++index) {
-            const auto boundIndex = checkerFactModuleIndices[index];
-            auto crate = retainedCheckerAuthority.crate(checkerModules[boundIndex].crate());
-            if (crate == zc::none ||
-                (ordinaryRequester && ZC_ASSERT_NONNULL(crate).key().unit().kind() !=
-                                          identity::CompilationUnitKind::UserPackage)) {
-              continue;
-            }
-            interfaceSources.add(VerifiedInterfaceSource(
-                UserVerifiedInterfaceSource{stagedModuleInterfaces[index]}));
-          }
-          if (ordinaryRequester) {
-            for (const auto& library : coreLibraries) {
-              for (const auto& module : library.modules()) {
-                interfaceSources.add(VerifiedInterfaceSource(
-                    ToolchainCoreVerifiedInterfaceSource{module.interfaceLease().capability()}));
-              }
-            }
+            interfaceSources.add(VerifiedInterfaceSource{stagedModuleInterfaces[index]});
           }
           auto imported = ImportedSignatureViewProjector::build(
               boundView, interfaceSources.asPtr(), *impl->semanticTypeStore, checkerAuthority);
@@ -3342,13 +3346,13 @@ bool CompilerSession::checkSources() {
           }
           ZC_IF_SOME(crateEntry, crate) {
             auto bodyResult = bodyChecker.check(
-                checker::body::BodyCheckingInput{
-                    boundView.boundModule().retain(), checkerAuthority,
-                    ZC_ASSERT_NONNULL(stagedMarkerPolicies),
-                    coreLibraries[0].authorityLease().capability().authority(),
-                    stagedSignatureFacts[factIndex], stagedImportedSignatureViews[factIndex],
-                    coherence, *impl->semanticTypeStore, inventory,
-                    crateEntry.key().semanticOptions()},
+                checker::body::BodyCheckingInput{boundView.boundModule().retain(), checkerAuthority,
+                                                 ZC_ASSERT_NONNULL(stagedMarkerPolicies),
+                                                 ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority),
+                                                 stagedSignatureFacts[factIndex],
+                                                 stagedImportedSignatureViews[factIndex], coherence,
+                                                 *impl->semanticTypeStore, inventory,
+                                                 crateEntry.key().semanticOptions()},
                 factStoreBrands);
             if (bodyResult.is<checker::checked::CheckedFactsSourceRejected>()) {
               auto rejected =
@@ -3573,17 +3577,25 @@ bool CompilerSession::checkSources() {
     ordinaryCheckedEvidence.add(zc::mv(stagedCheckedEvidence[factIndex]));
     ordinaryDispatchFacts.add(zc::mv(stagedDispatchFacts[factIndex]));
   }
-  zc::Vector<VerifiedInterfaceSource> checkedModuleInterfaceSources(
-      ordinaryModuleInterfaces.size() + coreLibraries.size());
-  for (const auto& interface : ordinaryModuleInterfaces) {
-    checkedModuleInterfaceSources.add(
-        VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
-  }
-  for (const auto& library : coreLibraries) {
-    for (const auto& module : library.modules()) {
-      checkedModuleInterfaceSources.add(VerifiedInterfaceSource(
-          ToolchainCoreVerifiedInterfaceSource{module.interfaceLease().capability()}));
+  // Build the interface source list for HIR checking from ALL staged interfaces
+  // (core modules still in stagedModuleInterfaces) plus the extracted ordinary
+  // (user) module interfaces. The HIR builder needs to resolve imports against
+  // every interface the user module can see, including core's Copy and Linear.
+  zc::Vector<VerifiedInterfaceSource> checkedModuleInterfaceSources(stagedModuleInterfaces.size());
+  for (size_t factIndex = 0; factIndex < stagedModuleInterfaces.size(); ++factIndex) {
+    bool isOrdinary = false;
+    for (const auto ordinaryIndex : ordinaryBoundModuleIndices) {
+      if (checkerFactIndexByModule[ordinaryIndex] == factIndex) {
+        isOrdinary = true;
+        break;
+      }
     }
+    if (!isOrdinary) {
+      checkedModuleInterfaceSources.add(VerifiedInterfaceSource{stagedModuleInterfaces[factIndex]});
+    }
+  }
+  for (const auto& interface : ordinaryModuleInterfaces) {
+    checkedModuleInterfaceSources.add(VerifiedInterfaceSource{interface});
   }
   for (size_t ordinaryIndex = 0; ordinaryIndex < ordinaryBoundModuleIndices.size();
        ++ordinaryIndex) {
@@ -3635,16 +3647,11 @@ bool CompilerSession::checkSources() {
                        checker::signature::CheckerInvariantStage::Verification, 0);
     }
     checker::body::BodyCheckingInput bodyInput{
-        checkerBound.boundModule().retain(),
-        retainedCheckerAuthority,
-        ZC_ASSERT_NONNULL(stagedMarkerPolicies),
-        coreLibraries[0].authorityLease().capability().authority(),
-        ordinarySignatureFacts[ordinaryIndex],
-        ordinaryImportedSignatureViews[ordinaryIndex],
-        ZC_ASSERT_NONNULL(stagedCoherenceView),
-        *impl->semanticTypeStore,
-        ordinaryBodyRequirements[ordinaryIndex],
-        ZC_ASSERT_NONNULL(crate).key().semanticOptions()};
+        checkerBound.boundModule().retain(),     retainedCheckerAuthority,
+        ZC_ASSERT_NONNULL(stagedMarkerPolicies), ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority),
+        ordinarySignatureFacts[ordinaryIndex],   ordinaryImportedSignatureViews[ordinaryIndex],
+        ZC_ASSERT_NONNULL(stagedCoherenceView),  *impl->semanticTypeStore,
+        ordinaryBodyRequirements[ordinaryIndex], ZC_ASSERT_NONNULL(crate).key().semanticOptions()};
     const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput};
     auto mirCandidate = mir::BuiltMirBuilder::build(mirInput);
     if (mirCandidate.isCapabilityRejected()) {
@@ -4165,7 +4172,7 @@ bool CompilerSession::checkSources() {
   }
   impl->markerShapes = zc::mv(stagedMarkerShapes);
   impl->markerPolicies = zc::mv(stagedMarkerPolicies);
-  impl->coreLibrary = zc::mv(coreLibraries[0]);
+  impl->standardMarkerAuthority = zc::mv(ZC_ASSERT_NONNULL(stagedStandardMarkerAuthority));
   impl->signatureFacts = zc::mv(ordinarySignatureFacts);
   impl->importedSignatureViews = zc::mv(ordinaryImportedSignatureViews);
   impl->bodyRequirements = zc::mv(ordinaryBodyRequirements);
@@ -4225,218 +4232,79 @@ bool CompilerSession::installVerifiedPackageInput(package::InstalledPackageInput
   return impl->installInstalledInputs(zc::mv(inputs));
 }
 
-bool CompilerSession::installVerifiedCoreDistribution(
-    const source::core::VerifiedCoreDistribution& distribution) {
-  const auto reject = [&](core_library_query::CoreSessionInvariantKind kind) {
-    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(kind));
+bool CompilerSession::installCoreSources(zc::Vector<CoreSourceInput>&& coreSources) {
+  const auto reject = [&](core::CoreSessionInvariantKind kind) {
+    return impl->recordCoreIncident(kind);
   };
   if (impl->packageRequest == zc::none || impl->crateGraph == zc::none ||
-      impl->coreDistributionInputs != zc::none ||
-      impl->sourceManager->getManagedBufferIds().size() != 0) {
-    return reject(core_library_query::CoreSessionInvariantKind::InvalidInstallationState);
+      impl->coreSourceInputs.size() != 0) {
+    return reject(core::CoreSessionInvariantKind::InvalidInstallationState);
   }
-  zc::Maybe<source_query::CanonicalCompilationOptions> compilationOptions;
-  ZC_IF_SOME(request, impl->packageRequest) {
-    compilationOptions = source_query::CanonicalCompilationOptions::fromVerified(request);
-  }
-  if (compilationOptions == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::CompilationOptionsRejected);
+  auto policyTemplate = source::core::initialCoreMarkerPolicyTemplate();
+  if (policyTemplate == zc::none) {
+    return reject(core::CoreSessionInvariantKind::InvalidInstallationState);
   }
 
-  zc::Maybe<incremental_binding_query::PackageRootSetKey> packageRoots;
-  zc::Maybe<incremental_binding_query::CanonicalPackageGraph> packageGraphInput;
-  zc::Vector<identity::CrateKey> userRootCrates;
   zc::Vector<identity::CrateKey> projectedCoreCrates;
-  zc::Vector<module_graph_query::CompilationOptionsEntry> optionEntries;
-  zc::Vector<module_graph_query::ModuleSearchRootsEntry> searchRootEntries;
-  ZC_IF_SOME(request, impl->packageRequest) {
-    packageRoots = incremental_binding_query::PackageRootSetKey::fromVerified(request);
-  }
-  ZC_IF_SOME(resolution, impl->packageGraph) {
-    ZC_IF_SOME(graph, impl->crateGraph) {
-      packageGraphInput =
-          incremental_binding_query::CanonicalPackageGraph::fromVerified(resolution, graph);
-      ZC_IF_SOME(request, impl->packageRequest) {
-        for (const auto& root : graph.roots()) {
-          size_t matchingRequests = 0;
-          for (const auto& requested : request.roots()) {
-            if (samePackage(root.packageKey(), requested.packageKey()) &&
-                root.crateKey().targetKind() == requested.targetKind() &&
-                root.crateKey().targetName() == requested.targetName()) {
-              ++matchingRequests;
-            }
-          }
-          if (matchingRequests > 1) {
-            return reject(core_library_query::CoreSessionInvariantKind::AmbiguousPackageRoot);
-          }
-          if (matchingRequests == 1) { userRootCrates.add(root.crateKey().clone()); }
-        }
-      }
-      for (const auto& consumer : graph.crates()) {
-        auto projected = identity::projectToolchainCoreCrate(consumer);
-        if (projected == zc::none) {
-          return reject(core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
-        }
-        bool retained = false;
-        for (const auto& candidate : projectedCoreCrates) {
-          if (candidate.encode().asPtr() == ZC_ASSERT_NONNULL(projected).encode().asPtr()) {
-            retained = true;
-            break;
-          }
-        }
-        if (!retained) { projectedCoreCrates.add(zc::mv(ZC_ASSERT_NONNULL(projected))); }
-
-        optionEntries.add(module_graph_query::CompilationOptionsEntry::from(
-            consumer.clone(), ZC_ASSERT_NONNULL(compilationOptions).clone()));
-        zc::Vector<binder::ModuleSearchRoot> environment;
-        auto root = impl->compilationRoot(consumer);
-        if (root == zc::none) {
-          return reject(core_library_query::CoreSessionInvariantKind::CompilationRootUnavailable);
-        }
-        ZC_IF_SOME(rootValue, root) {
-          const auto relativeRoot = parentDirectory(rootValue.sourcePath());
-          const auto& package = consumer.unit().userPackage();
-          switch (package.source().kind()) {
-            case identity::PackageSourceKind::LocalPath: {
-              zc::Vector<identity::CanonicalPathSegment> segments;
-              for (const auto& segment : package.source().localPath().segments()) {
-                segments.add(segment.clone());
-              }
-              for (const auto& segment : relativeRoot.segments()) { segments.add(segment.clone()); }
-              environment.add(binder::ModuleSearchRoot::workspace(
-                  consumer.clone(),
-                  identity::CanonicalWorkspaceRelativePath::from(
-                      package.source().localPath().leadingParents(), zc::mv(segments))));
-              break;
-            }
-            case identity::PackageSourceKind::Registry:
-            case identity::PackageSourceKind::Vcs:
-              environment.add(binder::ModuleSearchRoot::package(consumer.clone(), package.clone(),
-                                                                relativeRoot.clone()));
-              break;
-          }
-          ZC_IF_SOME(plan, impl->buildScriptPlan) {
-            for (const auto& node : plan.nodes()) {
-              if (!samePackage(package, node.key().preparatory().package())) { continue; }
-              zc::Vector<identity::CanonicalPathSegment> noSegments;
-              environment.add(binder::ModuleSearchRoot::generated(
-                  consumer.clone(), node.key().preparatory().producerKey(),
-                  identity::CanonicalRelativePath::from(zc::mv(noSegments))));
-            }
-          }
-        }
-        auto roots = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
-            consumer, environment.asPtr());
-        if (roots == zc::none) {
-          return reject(core_library_query::CoreSessionInvariantKind::ConsumerSearchRootsRejected);
-        }
-        searchRootEntries.add(module_graph_query::ModuleSearchRootsEntry::from(
-            consumer.clone(), zc::mv(ZC_ASSERT_NONNULL(roots))));
-      }
-    }
-  }
-  for (const auto& core : projectedCoreCrates) {
-    optionEntries.add(module_graph_query::CompilationOptionsEntry::from(
-        core.clone(), ZC_ASSERT_NONNULL(compilationOptions).clone()));
-    auto root =
-        binder::ModuleSearchRoot::toolchainCore(core.clone(), distribution.distributionDigest());
-    if (root == zc::none) {
-      return reject(core_library_query::CoreSessionInvariantKind::CoreSearchRootRejected);
-    }
-    zc::Vector<binder::ModuleSearchRoot> environment;
-    environment.add(zc::mv(ZC_ASSERT_NONNULL(root)));
-    auto roots = incremental_module_resolution_query::CanonicalModuleSearchRoots::fromVerified(
-        core, environment.asPtr());
-    if (roots == zc::none) {
-      return reject(core_library_query::CoreSessionInvariantKind::CoreSearchRootsRejected);
-    }
-    searchRootEntries.add(module_graph_query::ModuleSearchRootsEntry::from(
-        core.clone(), zc::mv(ZC_ASSERT_NONNULL(roots))));
-  }
-  if (packageRoots == zc::none || packageGraphInput == zc::none || projectedCoreCrates.empty()) {
-    return reject(packageRoots == zc::none
-                      ? core_library_query::CoreSessionInvariantKind::PackageRootProjectionRejected
-                  : packageGraphInput == zc::none
-                      ? core_library_query::CoreSessionInvariantKind::PackageGraphProjectionRejected
-                      : core_library_query::CoreSessionInvariantKind::CoreCrateProjectionRejected);
-  }
-
-  zc::Maybe<module_graph_query::CompleteCompilationContextAuthority> contextAuthority;
-  auto acceptedDistribution = source::core::initialCoreDistributionInput();
-  if (acceptedDistribution == zc::none) {
-    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-        source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch,
-        core_library_query::CoreIncidentPhase::InputPreparation,
-        core_library_query::CoreIncidentProducer::Session));
-  }
-  ZC_IF_SOME(request, impl->packageRequest) {
-    const module_graph_query::CompleteCompilationContextSources sources{
-        request,
-        ZC_ASSERT_NONNULL(packageRoots),
-        ZC_ASSERT_NONNULL(packageGraphInput),
-        userRootCrates.asPtr(),
-        projectedCoreCrates.asPtr(),
-        optionEntries.asPtr(),
-        searchRootEntries.asPtr(),
-        ZC_ASSERT_NONNULL(acceptedDistribution),
-    };
-    contextAuthority =
-        module_graph_query::CompleteCompilationContextAuthority::fromVerified(sources);
-  }
-  if (contextAuthority == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::ContextAuthorityRejected);
-  }
-
-  const auto previousRevision = impl->queryDatabase.snapshot().revision();
-  zc::Maybe<core_library_query::CoreDistributionInputPreparationResult> prepared;
   ZC_IF_SOME(graph, impl->crateGraph) {
-    ZC_IF_SOME(request, impl->packageRequest) {
-      prepared = core_library_query::VerifiedCoreDistributionInputTransaction::prepare(
-          previousRevision, distribution, request, zc::mv(ZC_ASSERT_NONNULL(contextAuthority)),
-          ZC_ASSERT_NONNULL(compilationOptions), graph.crates());
-    }
-  }
-  if (prepared == zc::none) {
-    return reject(core_library_query::CoreSessionInvariantKind::TransactionPreparationRejected);
-  }
-  auto preparation = zc::mv(ZC_ASSERT_NONNULL(prepared));
-  if (preparation.is<core_library_query::CoreDistributionInputPreparationInvariantKind>()) {
-    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-        preparation.get<core_library_query::CoreDistributionInputPreparationInvariantKind>()));
-  }
-  if (preparation.is<source::core::CoreDistributionAdmissionInvariantKind>()) {
-    return impl->recordCoreIncident(core_library_query::CoreDiagnosticProjector::project(
-        preparation.get<source::core::CoreDistributionAdmissionInvariantKind>(),
-        core_library_query::CoreIncidentPhase::InputPreparation,
-        core_library_query::CoreIncidentProducer::SourceCatalog));
-  }
-  auto transaction =
-      zc::mv(preparation).get<core_library_query::VerifiedCoreDistributionInputTransaction>();
-  auto commit = transaction.commit(impl->queryDatabase);
-  if (!commit.isCommitted()) {
-    return impl->recordCoreIncident(
-        core_library_query::CoreDiagnosticProjector::project(commit.failure()));
-  }
-  for (const auto& projection : transaction.projections()) {
-    if (projection.catalog().entries().size() != distribution.snapshots().size()) {
-      return reject(core_library_query::CoreSessionInvariantKind::ProjectionCatalogMismatch);
-    }
-    for (size_t index = 0; index < distribution.snapshots().size(); ++index) {
-      const auto& entry = projection.catalog().entries()[index];
-      const auto& snapshot = distribution.snapshots()[index];
-      if (entry.contentDigest() != snapshot.contentDigest()) {
-        return reject(core_library_query::CoreSessionInvariantKind::ProjectionSnapshotMismatch);
+    for (const auto& consumer : graph.crates()) {
+      auto projected = identity::projectToolchainCoreCrate(consumer);
+      if (projected == zc::none) {
+        return reject(core::CoreSessionInvariantKind::CoreCrateProjectionRejected);
       }
-      bool added = false;
-      auto registered = impl->registerSource(entry.source().clone(), entry.module(),
-                                             zc::heapArray<zc::byte>(snapshot.bytes()),
-                                             coreSourceIdentifier(snapshot.path()), added);
-      if (registered == zc::none || !added) {
-        return reject(core_library_query::CoreSessionInvariantKind::SourceRegistrationRejected);
+      bool retained = false;
+      for (const auto& candidate : projectedCoreCrates) {
+        if (candidate.encode().asPtr() == ZC_ASSERT_NONNULL(projected).encode().asPtr()) {
+          retained = true;
+          break;
+        }
       }
+      if (!retained) { projectedCoreCrates.add(zc::mv(ZC_ASSERT_NONNULL(projected))); }
     }
   }
-  impl->coreDistributionInputs = zc::mv(transaction);
+  if (projectedCoreCrates.empty()) {
+    return reject(core::CoreSessionInvariantKind::CoreCrateProjectionRejected);
+  }
+
+  const auto& coreCrate = projectedCoreCrates[0];
+  const auto toolchain = coreCrate.unit().toolchain();
+  for (const auto& input : coreSources) {
+    auto pathSegments = input.filePath.split('/');
+    zc::Vector<identity::CanonicalPathSegment> canonicalSegments;
+    for (auto& segment : pathSegments) {
+      auto canonical = identity::CanonicalPathSegment::fromCanonical(segment.asPtr());
+      if (canonical == zc::none) {
+        return reject(core::CoreSessionInvariantKind::CoreSourceRegistrationRejected);
+      }
+      canonicalSegments.add(zc::mv(ZC_ASSERT_NONNULL(canonical)));
+    }
+    auto canonicalPath = identity::CanonicalRelativePath::from(zc::mv(canonicalSegments));
+    auto origin = identity::SourceOriginKey::coreFile(toolchain, canonicalPath.clone());
+    auto sourceKey = identity::SourceFileKey::from(coreCrate.clone(), zc::mv(origin));
+
+    auto moduleSegments = input.modulePath.split('.');
+    zc::Vector<identity::ModulePathSegment> modulePath;
+    for (auto& segment : moduleSegments) {
+      auto moduleSegment = identity::ModulePathSegment::fromCanonical(segment.asPtr());
+      if (moduleSegment == zc::none) {
+        return reject(core::CoreSessionInvariantKind::CoreSourceRegistrationRejected);
+      }
+      modulePath.add(zc::mv(ZC_ASSERT_NONNULL(moduleSegment)));
+    }
+
+    bool added = false;
+    auto identifier = zc::str("<toolchain-core>/", input.filePath);
+    auto registered =
+        impl->registerSource(zc::mv(sourceKey), modulePath.asPtr(),
+                             zc::heapArray<zc::byte>(input.bytes), zc::mv(identifier), added);
+    if (registered == zc::none || !added) {
+      return reject(core::CoreSessionInvariantKind::CoreSourceRegistrationRejected);
+    }
+  }
+
+  impl->coreSourceInputs = zc::mv(coreSources);
+  impl->projectedCoreCrates = zc::mv(projectedCoreCrates);
+  impl->corePolicyTemplate = zc::mv(policyTemplate);
   return true;
 }
 

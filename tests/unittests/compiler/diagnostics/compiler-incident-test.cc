@@ -141,45 +141,39 @@ ZC_TEST("Compiler incident rendering rejects an empty set") {
   ZC_EXPECT(diagnostics::renderCompilerIncident("ZomLang Version test"_zc, incidents) == zc::none);
 }
 
-ZC_TEST("CoreDiagnosticProjector preserves registered three-rail failure identities") {
-  using namespace driver::core_library_query;
+ZC_TEST("CoreDiagnosticProjector preserves registered session invariant identities") {
+  using driver::core::CoreDiagnosticProjector;
+  using driver::core::CoreSessionInvariantKind;
 
-  const auto admission = CoreDiagnosticProjector::project(
-      source::core::CoreDistributionAdmissionInvariantKind::VerifierDisagreement,
-      CoreIncidentPhase::DistributionAdmission, CoreIncidentProducer::SourceAdmission);
-  ZC_EXPECT(admission.domain() == basic::CompilerIncidentDomain::Driver);
-  ZC_EXPECT(admission.phase().tag() ==
-            static_cast<uint32_t>(CoreIncidentPhase::DistributionAdmission));
-  ZC_EXPECT(admission.kind().tag() ==
-            0x0100U +
-                static_cast<uint32_t>(
-                    source::core::CoreDistributionAdmissionInvariantKind::VerifierDisagreement));
-  ZC_EXPECT(admission.producer().tag() ==
-            static_cast<uint32_t>(CoreIncidentProducer::SourceAdmission));
+  const auto invalidState =
+      CoreDiagnosticProjector::project(CoreSessionInvariantKind::InvalidInstallationState);
+  ZC_EXPECT(invalidState.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(invalidState.kind().tag() ==
+            static_cast<uint32_t>(CoreSessionInvariantKind::InvalidInstallationState));
 
-  const auto preparation = CoreDiagnosticProjector::project(
-      CoreDistributionInputPreparationInvariantKind::PayloadVerificationFailed);
-  ZC_EXPECT(preparation.phase().tag() ==
-            static_cast<uint32_t>(CoreIncidentPhase::InputPreparation));
-  ZC_EXPECT(preparation.kind().tag() ==
-            0x0200U +
-                static_cast<uint32_t>(
-                    CoreDistributionInputPreparationInvariantKind::PayloadVerificationFailed));
+  const auto crateRejected =
+      CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreCrateProjectionRejected);
+  ZC_EXPECT(crateRejected.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(crateRejected.kind().tag() ==
+            static_cast<uint32_t>(CoreSessionInvariantKind::CoreCrateProjectionRejected));
 
-  const auto roleSeed =
-      CoreDiagnosticProjector::project(CoreRoleSeedFailureKind::MissingRequiredRole);
-  ZC_EXPECT(roleSeed.phase().tag() == static_cast<uint32_t>(CoreIncidentPhase::QueryEvaluation));
-  ZC_EXPECT(roleSeed.kind().tag() ==
-            0x0500U + static_cast<uint32_t>(CoreRoleSeedFailureKind::MissingRequiredRole));
-  ZC_EXPECT(roleSeed.producer().tag() == static_cast<uint32_t>(CoreIncidentProducer::QueryRuntime));
+  const auto sourceRejected =
+      CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreSourceRegistrationRejected);
+  ZC_EXPECT(sourceRejected.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(sourceRejected.kind().tag() ==
+            static_cast<uint32_t>(CoreSessionInvariantKind::CoreSourceRegistrationRejected));
 
-  auto allocation = coreOperationalFailure(query::QueryRuntimeFailure::AllocationFailure);
-  auto cancellation = coreOperationalFailure(query::QueryRuntimeFailure::Cancelled);
-  ZC_REQUIRE(allocation != zc::none);
-  ZC_REQUIRE(cancellation != zc::none);
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(allocation) == CoreOperationalFailureKind::AllocationFailed);
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(cancellation) == CoreOperationalFailureKind::Cancelled);
-  ZC_EXPECT(coreOperationalFailure(query::QueryRuntimeFailure::ProviderRejected) == zc::none);
+  const auto markerNotFound =
+      CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreMarkerNotFound);
+  ZC_EXPECT(markerNotFound.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(markerNotFound.kind().tag() ==
+            static_cast<uint32_t>(CoreSessionInvariantKind::CoreMarkerNotFound));
+
+  const auto authorityRejected =
+      CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreAuthorityRejected);
+  ZC_EXPECT(authorityRejected.domain() == basic::CompilerIncidentDomain::Driver);
+  ZC_EXPECT(authorityRejected.kind().tag() ==
+            static_cast<uint32_t>(CoreSessionInvariantKind::CoreAuthorityRejected));
 }
 
 }  // namespace zomlang::compiler

@@ -223,7 +223,7 @@ public:
         resolvedSnapshots(sourceText));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    driver::core_library_test::installCoreDistribution(session);
+    driver::core_library_test::installCoreSources(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -233,8 +233,32 @@ public:
     identityAuthority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(identityAuthority != zc::none);
     const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
-    coreLibrary = driver::core_library_test::materializeCoreLibrary(session, identities);
-    ZC_REQUIRE(coreLibrary != zc::none);
+    zc::Maybe<identity::DefinitionKey> copyKey;
+    zc::Maybe<identity::DefinitionKey> linearKey;
+    identity::DefId copyDefId;
+    identity::DefId linearDefId;
+    for (const auto& boundModule : identities.modules()) {
+      for (const auto& definition : boundModule.definitions().definitions()) {
+        if (definition.record.name() == "Copy"_zc) {
+          ZC_REQUIRE(copyKey == zc::none);
+          copyKey = definition.key.clone();
+          copyDefId = definition.definition;
+        } else if (definition.record.name() == "Linear"_zc) {
+          ZC_REQUIRE(linearKey == zc::none);
+          linearKey = definition.key.clone();
+          linearDefId = definition.definition;
+        }
+      }
+    }
+    ZC_REQUIRE(copyKey != zc::none);
+    ZC_REQUIRE(linearKey != zc::none);
+    ZC_REQUIRE(copyDefId.isValid());
+    ZC_REQUIRE(linearDefId.isValid());
+    auto authority = driver::core::VerifiedCoreStandardMarkerAuthority::from(
+        session.getSemanticContextBrand(), contextFingerprint().clone(), copyDefId,
+        zc::mv(ZC_REQUIRE_NONNULL(copyKey)), linearDefId, zc::mv(ZC_REQUIRE_NONNULL(linearKey)));
+    ZC_REQUIRE(authority != zc::none);
+    markerAuthority = zc::mv(ZC_REQUIRE_NONNULL(authority));
     ZC_REQUIRE(driver::core_library_test::userBoundModuleCount(identities) == 1);
     userModule = driver::core_library_test::soleUserBoundModule(identities).module();
 
@@ -276,8 +300,7 @@ public:
 
       zc::Vector<driver::VerifiedInterfaceSource> interfaceSources(interfaces.size());
       for (const auto& interface : interfaces) {
-        interfaceSources.add(
-            driver::VerifiedInterfaceSource(driver::UserVerifiedInterfaceSource{interface}));
+        interfaceSources.add(driver::VerifiedInterfaceSource{interface});
       }
       auto importedResult = driver::ImportedSignatureViewProjector::build(
           admittedModules[candidateIndex], interfaceSources.asPtr(), semanticTypes(), identities);
@@ -479,7 +502,7 @@ private:
   }
 
   const driver::core::VerifiedCoreStandardMarkerAuthority& standardMarkers() const {
-    return ZC_REQUIRE_NONNULL(coreLibrary).authorityLease().capability().authority();
+    return ZC_REQUIRE_NONNULL(markerAuthority);
   }
 
   const signature::VerifiedSignatureFacts& verifiedSignatureFacts() const {
@@ -508,7 +531,7 @@ private:
   driver::CompilerSession session;
   identity::ModuleId userModule;
   zc::Maybe<CheckerIdentityAuthority> identityAuthority;
-  zc::Maybe<driver::core::VerifiedCoreLibrary> coreLibrary;
+  zc::Maybe<driver::core::VerifiedCoreStandardMarkerAuthority> markerAuthority;
   zc::Maybe<signature::VerifiedMarkerShapeInventory> markerShapes;
   zc::Maybe<signature::VerifiedMarkerPolicyRegistry> markerPolicies;
   zc::Maybe<signature::VerifiedSignatureFacts> signatureFacts;
@@ -1132,7 +1155,7 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
       resolution(session.getPackageResolutionMemoryResource(), source), resolvedSnapshots(source));
   ZC_REQUIRE(input != zc::none);
   ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-  driver::core_library_test::installCoreDistribution(session);
+  driver::core_library_test::installCoreSources(session);
   const auto roots = session.getFinalizedCompilationRoots();
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -1142,8 +1165,6 @@ ZC_TEST("LocalWrite.RejectsCallValueWriteAtSurfaceAdmission") {
   auto identityAuthority = session.materializeCheckerIdentityAuthority();
   ZC_REQUIRE(identityAuthority != zc::none);
   const auto& identities = ZC_REQUIRE_NONNULL(identityAuthority);
-  auto coreLibrary = driver::core_library_test::materializeCoreLibrary(session, identities);
-  ZC_REQUIRE(coreLibrary != zc::none);
   const auto& userBound = driver::core_library_test::soleUserBoundModule(identities);
   auto admission = ownership::SurfaceAdmissionBuilder::admit(userBound.retain());
   ZC_EXPECT(admission.is<ownership::SurfaceSourceRejected>());

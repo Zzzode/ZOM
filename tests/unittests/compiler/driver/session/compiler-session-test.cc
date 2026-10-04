@@ -16,7 +16,6 @@
 
 #include "compiler/basic/compiler-opts.h"
 #include "compiler/binder/diagnostics/module-graph-diagnostic-projector.h"
-#include "compiler/driver/core/marker-authority.h"
 #include "compiler/driver/package/manifest-parser.h"
 #include "compiler/driver/package/source-record.h"
 #include "compiler/source/manager.h"
@@ -248,10 +247,7 @@ RetainedPackageSession packageSession(zc::StringPtr mainSource, zc::StringPtr ch
       sessionResolution(session->getPackageResolutionMemoryResource()), zc::mv(snapshots));
   ZC_REQUIRE(input != zc::none);
   ZC_REQUIRE(session->installVerifiedPackageInput(zc::mv(ZC_REQUIRE_NONNULL(input))));
-  if (installCore) {
-    auto distribution = core_library_test::admittedCoreDistribution();
-    ZC_REQUIRE(session->installVerifiedCoreDistribution(distribution));
-  }
+  if (installCore) { core_library_test::installCoreSources(*session); }
   const auto roots = session->getFinalizedCompilationRoots();
   ZC_REQUIRE(roots.size() == 1);
   ZC_REQUIRE(session->addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -420,7 +416,7 @@ ZC_TEST("CompilerSessionTest.PublishesRetainedMissingLookupDiagnosticDuringBindi
   ZC_EXPECT(session->getIncidents().empty());
 }
 
-ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreDistribution") {
+ZC_TEST("CompilerSessionTest.RejectsPackageParsingWithoutCoreSources") {
   auto session = packageSession("let main = 0;\n"_zc, {}, false);
 
   ZC_EXPECT(!session->parseSources());
@@ -469,98 +465,6 @@ ZC_TEST("CompilerSessionTest.PublishesSourceBackedCoreModulesInCompleteSemanticG
   ZC_EXPECT(materialized.crates().size() == 2);
   ZC_EXPECT(materialized.sources().size() == 4);
   ZC_EXPECT(materialized.modules().size() == 4);
-
-  zc::Maybe<identity::CrateKey> coreCrate;
-  zc::Maybe<identity::CrateKey> userCrate;
-  for (const auto& module : graph.modules()) {
-    if (module.key().crate().unit().kind() == identity::CompilationUnitKind::UserPackage) {
-      if (userCrate == zc::none) userCrate = module.key().crate().clone();
-      continue;
-    }
-    if (coreCrate != zc::none) {
-      ZC_EXPECT(ZC_REQUIRE_NONNULL(coreCrate).encode().asPtr() ==
-                module.key().crate().encode().asPtr());
-    } else {
-      coreCrate = module.key().crate().clone();
-    }
-  }
-  ZC_REQUIRE(userCrate != zc::none);
-  ZC_EXPECT(session->materializeCoreLibrary(ZC_REQUIRE_NONNULL(userCrate)) == zc::none);
-  ZC_REQUIRE(coreCrate != zc::none);
-  auto coreLibrary = session->materializeCoreLibrary(ZC_REQUIRE_NONNULL(coreCrate));
-  ZC_REQUIRE(coreLibrary != zc::none);
-  const auto& library = ZC_REQUIRE_NONNULL(coreLibrary);
-  ZC_EXPECT(library.modules().size() == 3);
-  const auto& authorityLease = library.authorityLease();
-  ZC_EXPECT(authorityLease.revision() == library.revision());
-  ZC_EXPECT(authorityLease.arenaRevision() == library.revision());
-  ZC_EXPECT(authorityLease.stableWitness().size() != 0);
-  ZC_EXPECT(authorityLease.retainedDependencyCount() >= 2);
-  auto retainedAuthority = authorityLease.retain();
-  ZC_EXPECT(retainedAuthority.revision() == authorityLease.revision());
-  ZC_EXPECT(retainedAuthority.stableWitness() == authorityLease.stableWitness());
-  ZC_EXPECT(retainedAuthority.capability().encodeCanonical() ==
-            authorityLease.capability().encodeCanonical());
-  ZC_EXPECT(authorityLease.capability().copy() != authorityLease.capability().linear());
-  auto markerConfiguration = core::checkerConfig(authorityLease.capability().policies());
-  ZC_REQUIRE(markerConfiguration != zc::none);
-  ZC_REQUIRE(ZC_REQUIRE_NONNULL(markerConfiguration).entries().size() == 1);
-  const auto& copyPolicy = ZC_REQUIRE_NONNULL(markerConfiguration).entries()[0];
-  ZC_EXPECT(copyPolicy.referenceRequirements.size() == 1);
-  ZC_EXPECT(copyPolicy.referenceRequirements[0].requiredMarker == zc::none);
-  ZC_EXPECT(copyPolicy.rawPointerMutabilities.size() == 2);
-  ZC_EXPECT(copyPolicy.rawPointerMutabilities[0] == type::semantic::Mutability::Const);
-  ZC_EXPECT(copyPolicy.rawPointerMutabilities[1] == type::semantic::Mutability::Mutable);
-  bool foundRoot = false;
-  bool foundMarker = false;
-  bool foundPrelude = false;
-  for (const auto& module : library.modules()) {
-    const auto& interfaceLease = module.interfaceLease();
-    ZC_EXPECT(interfaceLease.revision() == library.revision());
-    ZC_EXPECT(interfaceLease.arenaRevision() == library.revision());
-    ZC_EXPECT(interfaceLease.stableWitness().size() != 0);
-    ZC_EXPECT(interfaceLease.retainedDependencyCount() >= 2);
-    auto retainedInterface = interfaceLease.retain();
-    ZC_EXPECT(retainedInterface.revision() == interfaceLease.revision());
-    ZC_EXPECT(retainedInterface.stableWitness() == interfaceLease.stableWitness());
-    ZC_EXPECT(retainedInterface.capability().encodeCanonical() ==
-              interfaceLease.capability().encodeCanonical());
-    const auto& record = interfaceLease.capability().record();
-    if (module.module().encode().asPtr() == library.prelude().encode().asPtr()) {
-      ZC_EXPECT(record.lookupDefinitions().size() == 2);
-      ZC_EXPECT(record.supportDefinitions().size() == 0);
-      ZC_EXPECT(record.definedRoles().size() == 0);
-      ZC_EXPECT(record.signatureRoots().size() == 2);
-      for (const auto& root : record.signatureRoots()) {
-        ZC_EXPECT(root.sourceModule.encode().asPtr() != record.module().encode().asPtr());
-        ZC_EXPECT(root.bindingSurfaceRevision != record.bindingSurfaceRevision());
-      }
-      foundPrelude = true;
-      continue;
-    }
-    if (record.definedRoles().size() == 2) {
-      ZC_EXPECT(record.lookupDefinitions().size() == 2);
-      ZC_EXPECT(record.supportDefinitions().size() == 0);
-      ZC_EXPECT(record.signatureRoots().size() == 2);
-      ZC_EXPECT(record.definedRoles()[0].role == source::core::CoreSemanticRole::Copy);
-      ZC_EXPECT(record.definedRoles()[1].role == source::core::CoreSemanticRole::Linear);
-      ZC_EXPECT(record.definedRoles()[0].definition != record.definedRoles()[1].definition);
-      for (size_t index = 0; index < record.lookupDefinitions().size(); ++index) {
-        ZC_EXPECT(record.lookupDefinitions()[index].definition() ==
-                  record.definedRoles()[index].definition);
-      }
-      foundMarker = true;
-      continue;
-    }
-    ZC_EXPECT(record.lookupDefinitions().size() == 0);
-    ZC_EXPECT(record.supportDefinitions().size() == 0);
-    ZC_EXPECT(record.signatureRoots().size() == 0);
-    ZC_EXPECT(record.definedRoles().size() == 0);
-    foundRoot = true;
-  }
-  ZC_EXPECT(foundRoot);
-  ZC_EXPECT(foundMarker);
-  ZC_EXPECT(foundPrelude);
 }
 
 ZC_TEST("CompilerSessionTest.CheckerPreflightMaterializesSourceBackedCoreBootstrapInterfaces") {

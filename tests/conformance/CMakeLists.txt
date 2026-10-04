@@ -240,28 +240,6 @@ set_tests_properties(identity-architecture-negative PROPERTIES
 )
 
 add_test(
-  NAME core-library-architecture
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-core-library-architecture.py --check
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
-set_tests_properties(core-library-architecture PROPERTIES
-  LABELS "conformance;core;architecture"
-  TIMEOUT 120
-)
-
-add_test(
-  NAME core-library-architecture-negative
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-core-library-architecture.py --self-test
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-)
-
-set_tests_properties(core-library-architecture-negative PROPERTIES
-  LABELS "conformance;core;architecture;negative"
-  TIMEOUT 120
-)
-
-add_test(
   NAME ownership-architecture
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-ownership-architecture.py --check
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

@@ -5,14 +5,12 @@
 
 #pragma once
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/binder/metadata/binding-metadata.h"
 #include "compiler/checker/facts/signature-facts.h"
-#include "compiler/driver/core/revision.h"
 #include "compiler/identity/crypto/sha256.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::module_interface {
 
@@ -50,16 +48,10 @@ struct UserImportedInterfaceRevision final {
   ModuleInterfaceRevision value;
 };
 
-struct ToolchainCoreImportedInterfaceRevision final {
-  driver::core_library_query::CoreModuleInterfaceRevision value;
-};
-
 /// \brief Exact tagged revision of one source interface accepted by an ordinary consumer.
 class ImportedInterfaceRevision final {
 public:
   explicit ImportedInterfaceRevision(UserImportedInterfaceRevision value) noexcept
-      : value(zc::mv(value)) {}
-  explicit ImportedInterfaceRevision(ToolchainCoreImportedInterfaceRevision value) noexcept
       : value(zc::mv(value)) {}
   ImportedInterfaceRevision(ImportedInterfaceRevision&&) noexcept = default;
   ImportedInterfaceRevision& operator=(ImportedInterfaceRevision&&) noexcept = default;
@@ -69,24 +61,17 @@ public:
   ZC_NODISCARD ImportedInterfaceRevision clone() const;
 
 private:
-  zc::OneOf<UserImportedInterfaceRevision, ToolchainCoreImportedInterfaceRevision> value;
+  UserImportedInterfaceRevision value;
 };
 
 struct UserImportedBindingSurfaceRevision final {
   binder::ExportSurfaceRevision value;
 };
 
-struct ToolchainCoreImportedBindingSurfaceRevision final {
-  driver::core_library_query::CoreBindingSurfaceRevision value;
-};
-
 /// \brief Exact tagged revision of one source binding surface accepted by an ordinary consumer.
 class ImportedBindingSurfaceRevision final {
 public:
   explicit ImportedBindingSurfaceRevision(UserImportedBindingSurfaceRevision value) noexcept
-      : value(zc::mv(value)) {}
-  explicit ImportedBindingSurfaceRevision(
-      ToolchainCoreImportedBindingSurfaceRevision value) noexcept
       : value(zc::mv(value)) {}
   ImportedBindingSurfaceRevision(ImportedBindingSurfaceRevision&&) noexcept = default;
   ImportedBindingSurfaceRevision& operator=(ImportedBindingSurfaceRevision&&) noexcept = default;
@@ -96,7 +81,7 @@ public:
   ZC_NODISCARD ImportedBindingSurfaceRevision clone() const;
 
 private:
-  zc::OneOf<UserImportedBindingSurfaceRevision, ToolchainCoreImportedBindingSurfaceRevision> value;
+  UserImportedBindingSurfaceRevision value;
 };
 
 struct ImportedSignatureAuthorization final {

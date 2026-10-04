@@ -13,13 +13,13 @@
 // the License.
 
 #include "compiler/binder/canonical/canonical-input-payload-digest.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 #include "compiler/driver/query/module-graph/module-graph-query.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
 #include "compiler/ir/target/target-registry.h"
+#include "compiler/source/core-distribution.h"
 #include "query-test-specs.h"
 #include "tests/unittests/compiler/driver/core/core-library-test-fixture.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
@@ -30,7 +30,6 @@
 namespace zomlang::compiler::query::test {
 
 namespace binding_query = driver::incremental_binding_query;
-namespace core_query = driver::core_library_query;
 namespace graph_query = driver::module_graph_query;
 namespace resolution_query = driver::incremental_module_resolution_query;
 namespace source_query = identity::source_query;
@@ -168,10 +167,10 @@ graph_query::CompleteCompilationContextAuthority finalSealAuthority() {
   auto registry = finalSealTargetRegistry();
   auto request = finalSealPackageRequest(registry);
   auto packageRoots = binding_query::PackageRootSetKey::fromVerified(request);
-  auto distribution = source::core::initialCoreDistributionInput();
+  auto policyTemplate = source::core::initialCoreMarkerPolicyTemplate();
   auto options = source_query::CanonicalCompilationOptions::fromVerified(request);
   ZC_REQUIRE(packageRoots != zc::none);
-  ZC_REQUIRE(distribution != zc::none);
+  ZC_REQUIRE(policyTemplate != zc::none);
   ZC_REQUIRE(options != zc::none);
 
   auto user = crate();
@@ -193,7 +192,7 @@ graph_query::CompleteCompilationContextAuthority finalSealAuthority() {
   auto userSearch =
       resolution_query::CanonicalModuleSearchRoots::fromVerified(user, userEnvironment.asPtr());
   auto coreRoot = binder::ModuleSearchRoot::toolchainCore(
-      core.clone(), ZC_REQUIRE_NONNULL(distribution).digest());
+      core.clone(), ZC_REQUIRE_NONNULL(policyTemplate).revision());
   ZC_REQUIRE(userSearch != zc::none);
   ZC_REQUIRE(coreRoot != zc::none);
   zc::Vector<binder::ModuleSearchRoot> coreEnvironment;
@@ -216,7 +215,7 @@ graph_query::CompleteCompilationContextAuthority finalSealAuthority() {
       coreRoots.asPtr(),
       optionEntries.asPtr(),
       searchEntries.asPtr(),
-      ZC_REQUIRE_NONNULL(distribution),
+      ZC_REQUIRE_NONNULL(policyTemplate),
   };
   auto authority = graph_query::CompleteCompilationContextAuthority::fromVerified(sources);
   return zc::mv(ZC_REQUIRE_NONNULL(authority));
@@ -257,33 +256,49 @@ void stageFinalSealModule(query::InputTransaction& transaction, identity::Module
 }
 
 void stageFinalSealCoreInputs(query::InputTransaction& transaction) {
-  auto admitted = driver::core_library_test::admittedCoreDistribution();
-  auto distribution = source::core::CoreDistributionInputRecord::from(
-      admitted.record().clone(), admitted.distributionDigest(), admitted.policyTemplate().clone());
-  ZC_REQUIRE(distribution != zc::none);
   auto core = coreCrate();
-  const zc::StringPtr moduleNames[] = {"core"_zc, "marker"_zc, "prelude"_zc};
+  auto inputs = driver::core_library_test::coreSourceInputs();
   zc::Vector<graph_query::SelectedModuleRecord> catalogEntries;
-  for (size_t index = 0; index < admitted.snapshots().size(); ++index) {
-    zc::Vector<identity::ModulePathSegment> path;
-    path.add(scalar<identity::ModulePathSegment>("core"_zc));
-    if (index != 0) { path.add(scalar<identity::ModulePathSegment>(moduleNames[index])); }
-    auto moduleKey = identity::ModuleKey::from(core.clone(), zc::mv(path));
+  zc::Vector<source_query::StableSourceQueryKey> activeSources;
+  for (auto& input : inputs) {
+    zc::Vector<identity::ModulePathSegment> modulePath;
+    auto moduleSegments = input.modulePath.split('.');
+    for (auto& segment : moduleSegments) {
+      auto canonical = identity::ModulePathSegment::fromCanonical(segment.asPtr());
+      ZC_REQUIRE(canonical != zc::none);
+      modulePath.add(zc::mv(ZC_ASSERT_NONNULL(canonical)));
+    }
+    auto moduleKey = identity::ModuleKey::from(core.clone(), zc::mv(modulePath));
     ZC_REQUIRE(moduleKey != zc::none);
+
+    zc::Vector<identity::CanonicalPathSegment> filePath;
+    auto fileSegments = input.filePath.split('/');
+    for (auto& segment : fileSegments) {
+      auto canonical = identity::CanonicalPathSegment::fromCanonical(segment.asPtr());
+      ZC_REQUIRE(canonical != zc::none);
+      filePath.add(zc::mv(ZC_ASSERT_NONNULL(canonical)));
+    }
     auto sourceKey = identity::SourceFileKey::from(
-        core.clone(),
-        identity::SourceOriginKey::coreFile(identity::ToolchainUnitKey::core(),
-                                            admitted.snapshots()[index].path().clone()));
+        core.clone(), identity::SourceOriginKey::coreFile(
+                          identity::ToolchainUnitKey::core(),
+                          identity::CanonicalRelativePath::from(zc::mv(filePath))));
     stageFinalSealModule(transaction, ZC_REQUIRE_NONNULL(moduleKey).clone(), sourceKey.clone(),
-                         zc::heapArray<uint8_t>(admitted.snapshots()[index].bytes()));
+                         zc::heapArray<uint8_t>(input.bytes.asPtr()));
+    auto stableSource = source_query::StableSourceQueryKey::fromVerified(sourceKey);
+    ZC_REQUIRE(stableSource != zc::none);
+    activeSources.add(zc::mv(ZC_REQUIRE_NONNULL(stableSource)));
     catalogEntries.add(graph_query::SelectedModuleRecord(zc::mv(ZC_REQUIRE_NONNULL(moduleKey)),
                                                          zc::mv(sourceKey)));
   }
   auto catalog = graph_query::SelectedModuleCatalog::from(core.clone(), zc::mv(catalogEntries));
   ZC_REQUIRE(catalog != zc::none);
+  auto stableCrate = binding_query::StableCrateQueryKey::fromVerified(core);
+  ZC_REQUIRE(stableCrate != zc::none);
+  auto sourceSet = binding_query::CanonicalSourceSet::from(zc::mv(activeSources));
+  ZC_REQUIRE(sourceSet != zc::none);
   ZC_REQUIRE(transaction
-                 .set<core_query::CoreDistributionInput>(identity::ToolchainUnitKey::core(),
-                                                         ZC_REQUIRE_NONNULL(distribution))
+                 .set<binding_query::ToolchainCoreActiveSourcesInput>(
+                     ZC_REQUIRE_NONNULL(stableCrate), ZC_REQUIRE_NONNULL(sourceSet))
                  .isApplied());
   ZC_REQUIRE(
       transaction.set<graph_query::SelectedModuleCatalogInput>(core, ZC_REQUIRE_NONNULL(catalog))
@@ -329,8 +344,6 @@ void stageFinalSealUserInputs(query::InputTransaction& transaction) {
 }
 
 void registerProductionFinalSealQueries(QueryDatabase& database) {
-  ZC_REQUIRE(database.registerDescriptor<graph_query::CoreDistributionTransactionWitnessInput>()
-                 .isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleStructureTransactionWitnessInput>()
                  .isRegistered());
   ZC_REQUIRE(
@@ -347,10 +360,11 @@ void registerProductionFinalSealQueries(QueryDatabase& database) {
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleDependencies>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraph>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<graph_query::ModuleGraphScc>().isRegistered());
-  ZC_REQUIRE(database.registerDescriptor<core_query::CoreDistributionInput>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<binding_query::PackageGraphInput>().isRegistered());
   ZC_REQUIRE(
       database.registerDescriptor<binding_query::UserPackageActiveSourcesInput>().isRegistered());
+  ZC_REQUIRE(
+      database.registerDescriptor<binding_query::ToolchainCoreActiveSourcesInput>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveSources>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<binding_query::ActiveCrates>().isRegistered());
   ZC_REQUIRE(database.registerDescriptor<source_query::SourceSnapshotInput>().isRegistered());
@@ -393,19 +407,12 @@ binding_query::CompilationRootSetQueryKey installProductionFinalSealInputs(
                    .isApplied());
   }
   auto authorityBytes = authority.encodeCanonical();
-  auto coreWitness = graph_query::computeCanonicalInputPayloadDigest(
-      "zom.query.input-transaction.core-distribution"_zc, authorityBytes.asPtr());
   auto structureWitness = graph_query::computeCanonicalInputPayloadDigest(
       "zom.query.input-transaction.module-structure"_zc, authorityBytes.asPtr());
   auto identityWitness = graph_query::computeCanonicalInputPayloadDigest(
       "zom.query.input-transaction.contextual-identity-authority"_zc, authorityBytes.asPtr());
-  ZC_REQUIRE(coreWitness != zc::none);
   ZC_REQUIRE(structureWitness != zc::none);
   ZC_REQUIRE(identityWitness != zc::none);
-  ZC_REQUIRE(transaction
-                 .set<graph_query::CoreDistributionTransactionWitnessInput>(
-                     roots, ZC_REQUIRE_NONNULL(coreWitness))
-                 .isApplied());
   ZC_REQUIRE(transaction
                  .set<graph_query::ModuleStructureTransactionWitnessInput>(
                      roots, ZC_REQUIRE_NONNULL(structureWitness))

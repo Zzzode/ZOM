@@ -7,26 +7,26 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/vector.h"
 #include "compiler/binder/canonical/canonical-input-payload-digest.h"
 #include "compiler/binder/graph/parsed-module-graph-input.h"
-#include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
-#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
-#include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/package/canonical-package-compilation-request.h"
+#include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
+#include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
+#include "compiler/driver/query/module-graph/incremental-module-resolution-query.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/query/query-database.h"
 #include "compiler/source/core-distribution.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::binder {
 class StructuralModuleResolver;
 }  // namespace zomlang::compiler::binder
 
-namespace zomlang::compiler::driver::core_library_query {
-class VerifiedCoreDistributionInputTransaction;
-}
+namespace zomlang::compiler::source::core {
+class CoreStandardMarkerPolicyTemplate;
+}  // namespace zomlang::compiler::source::core
 
 namespace zomlang::compiler::driver::package {
 class VerifiedPackageCompilationRequest;
@@ -76,7 +76,7 @@ struct CompleteCompilationContextSources final {
   zc::ArrayPtr<const identity::CrateKey> projectedCoreCrates;
   zc::ArrayPtr<const CompilationOptionsEntry> compilationOptions;
   zc::ArrayPtr<const ModuleSearchRootsEntry> moduleSearchRoots;
-  const source::core::CoreDistributionInputRecord& coreDistribution;
+  const source::core::CoreStandardMarkerPolicyTemplate& corePolicyTemplate;
 };
 
 /// \brief Handle-free canonical authority for one complete compilation context.
@@ -104,8 +104,9 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const identity::CrateKey> completeCrates() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const CompilationOptionsEntry> compilationOptions() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const ModuleSearchRootsEntry> moduleSearchRoots() const noexcept;
-  ZC_NODISCARD const source::core::CoreDistributionRecord& coreDistributionRecord() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& coreDistributionDigest() const noexcept;
+  ZC_NODISCARD const source::core::CoreStandardMarkerPolicyTemplate& corePolicyTemplate()
+      const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& corePolicyTemplateRevision() const noexcept;
   ZC_NODISCARD zc::Array<uint8_t> encodeCanonical() const;
   bool operator==(const CompleteCompilationContextAuthority& other) const;
 
@@ -129,20 +130,6 @@ ZC_NODISCARD zc::Maybe<identity::Sha256Digest> computeCompleteCompilationContext
 /// \brief Computes one transaction witness from its domain and complete payload bytes.
 ZC_NODISCARD zc::Maybe<binder::CanonicalInputPayloadDigest> computeCanonicalInputPayloadDigest(
     zc::StringPtr transactionDomain, zc::ArrayPtr<const uint8_t> payloadBytes);
-
-/// \brief Frozen witness installed by the complete core-distribution transaction.
-struct CoreDistributionTransactionWitnessInput final {
-  using Key = incremental_binding_query::CompilationRootSetQueryKey;
-  using Value = binder::CanonicalInputPayloadDigest;
-
-  static constexpr query::InputDescriptorMetadata descriptor{
-      "CoreDistributionTransactionWitnessInput"_zcc,
-      "zom.query.core-distribution-transaction-witness"_zcc, query::Durability::Frozen};
-  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
-  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
-  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
-  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
-};
 
 /// \brief Frozen witness installed by the complete structural-input transaction.
 struct ModuleStructureTransactionWitnessInput final {
@@ -649,7 +636,7 @@ private:
 /// \brief Immutable authorities from which complete structural inputs are reconstructed.
 struct ModuleGraphInputTransactionAuthority final {
   const package::VerifiedPackageCompilationRequest& packageRequest;
-  const core_library_query::VerifiedCoreDistributionInputTransaction& coreInputs;
+  const source::core::CoreStandardMarkerPolicyTemplate& corePolicyTemplate;
   const binder::StructuralModuleResolver& resolver;
   zc::ArrayPtr<const binder::ParsedModuleGraphInput> parsedModules;
 };

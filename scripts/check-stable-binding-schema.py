@@ -505,7 +505,6 @@ RECORD_TASKS.update(
         "CanonicalLanguageOptionsRecord": ("Q3", "Q3", "R30_13"),
         "CanonicalPackageCompilationRequest": ("Q3", "Q3", "R30_13"),
         "CompleteCompilationContextAuthority": ("I1A", "I1A", "I1A"),
-        "VerifiedCoreDistributionInputPayload": ("T1", "T1", "T1"),
         "VerifiedModuleGraphInputPayload": ("T1", "T1", "T1"),
         "ContextualIdentityAuthorityInputPayload": ("T1", "T1", "T1"),
         "StableMaterializedDependencyWitness": ("M1", "M1", "M1"),
@@ -1749,7 +1748,7 @@ def self_test(text: str) -> list[str]:
         text, "Record", "StableDefinitionHeader", 4, "CanonicalHeaderVerifier")))
     cases.append(("complete context producer identity", mutate_arg(
         text, "Record", "CompleteCompilationContextAuthority", 3,
-        "VerifiedCoreDistributionInputTransaction")))
+        "VerifiedModuleGraphInputTransaction")))
     cases.append(("complete context provider ownership", mutate_arg(
         text, "Input", "CompleteCompilationContextAuthorityInput", 6, "I1A")))
 

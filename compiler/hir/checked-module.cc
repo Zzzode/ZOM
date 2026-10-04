@@ -5,7 +5,7 @@
 
 #include "compiler/hir/checked-module.h"
 
-#include "compiler/driver/core/query.h"
+#include "compiler/driver/interface/interface-source.h"
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/identity/key/source-key.h"
 #include "compiler/ownership/admission/surface-admission.h"
@@ -202,20 +202,10 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
     hasPrevious = true;
 
     bool found = false;
-    const bool coreSource = imported.interfaceRevision()
-                                .variant()
-                                .is<module_interface::ToolchainCoreImportedInterfaceRevision>();
     for (auto& entry : expected) {
       if (entry.module != imported.sourceModule()) continue;
       const auto& bindingRevision = imported.bindingSurfaceRevision().variant();
-      if (entry.matched ||
-          (coreSource &&
-           !bindingRevision.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()) ||
-          (!coreSource &&
-           (!bindingRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
-            entry.bindingRevision !=
-                bindingRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
-                    .value.digest()))) {
+      if (entry.matched || entry.bindingRevision != bindingRevision.value.digest()) {
         return false;
       }
       entry.matched = true;
@@ -224,71 +214,27 @@ bool validateImportedInterfaces(const CheckedModuleBuildInput& input,
     }
     if (!found) return false;
 
-    zc::Maybe<const driver::VerifiedModuleInterface&> selectedUser;
-    zc::Maybe<const driver::core_library_query::VerifiedCoreModuleInterface&> selectedCore;
+    zc::Maybe<const driver::VerifiedModuleInterface&> selected;
     for (const auto& source : input.availableModuleInterfaces) {
+      const auto& interface = source.interface;
+      if (interface.module() != imported.sourceModule()) continue;
       const auto& interfaceRevision = imported.interfaceRevision().variant();
       const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
-      if (source.is<driver::UserVerifiedInterfaceSource>()) {
-        const auto& interface = source.get<driver::UserVerifiedInterfaceSource>().interface;
-        if (interface.module() != imported.sourceModule()) continue;
-        if (coreSource || selectedUser != zc::none ||
-            interface.semanticContext() != input.boundModule.semanticContext() ||
-            interface.module() == input.boundModule.module() ||
-            !interfaceRevision.is<module_interface::UserImportedInterfaceRevision>() ||
-            interface.revision().digest() !=
-                interfaceRevision.get<module_interface::UserImportedInterfaceRevision>()
-                    .value.digest() ||
-            !bindingSurfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
-            interface.bindingSurface().revision().digest() !=
-                bindingSurfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
-                    .value.digest()) {
-          return false;
-        }
-        selectedUser = interface;
-        continue;
-      }
-      const auto& interface = source.get<driver::ToolchainCoreVerifiedInterfaceSource>().interface;
-      if (interface.module() != imported.sourceModule()) continue;
-      if (!coreSource || selectedCore != zc::none ||
-          interface.context() != input.boundModule.semanticContext() ||
-          interface.fingerprint().digest() != input.boundModule.semanticFingerprint().digest() ||
-          !interfaceRevision.is<module_interface::ToolchainCoreImportedInterfaceRevision>() ||
-          interface.record().revision().digest() !=
-              interfaceRevision.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
-                  .value.digest() ||
-          !bindingSurfaceRevision
-               .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() ||
-          interface.record().bindingSurfaceRevision().digest() !=
-              bindingSurfaceRevision
-                  .get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
-                  .value.digest()) {
+      if (selected != zc::none ||
+          interface.semanticContext() != input.boundModule.semanticContext() ||
+          interface.module() == input.boundModule.module() ||
+          interface.revision().digest() != interfaceRevision.value.digest() ||
+          interface.bindingSurface().revision().digest() != bindingSurfaceRevision.value.digest()) {
         return false;
       }
-      for (const auto& signature : imported.lookupDefinitions()) {
-        if (signature.payload.variant().is<checker::signature::CallableSignature>()) return false;
-      }
-      for (const auto& signature : imported.supportDefinitions()) {
-        if (signature.payload.variant().is<checker::signature::CallableSignature>()) return false;
-      }
-      selectedCore = interface;
+      selected = interface;
     }
-    if (coreSource) {
-      if (selectedCore == zc::none) return false;
-      ZC_IF_SOME(interface, selectedCore) {
-        output.add(ModuleInterfaceLineage{
-            interface.module(), module_interface::ImportedInterfaceRevision(
-                                    module_interface::ToolchainCoreImportedInterfaceRevision{
-                                        interface.record().revision().clone()})});
-      }
-    } else {
-      if (selectedUser == zc::none) return false;
-      ZC_IF_SOME(interface, selectedUser) {
-        output.add(ModuleInterfaceLineage{
-            interface.module(),
-            module_interface::ImportedInterfaceRevision(
-                module_interface::UserImportedInterfaceRevision{interface.revision()})});
-      }
+    if (selected == zc::none) return false;
+    ZC_IF_SOME(interface, selected) {
+      output.add(ModuleInterfaceLineage{
+          interface.module(),
+          module_interface::ImportedInterfaceRevision(
+              module_interface::UserImportedInterfaceRevision{interface.revision()})});
     }
   }
   for (const auto& entry : expected) {

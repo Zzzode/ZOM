@@ -88,35 +88,12 @@ NAMED_ITEM_QUERY_HEADER = Path("compiler/driver/query/binding/named-item-query.h
 NAMED_ITEM_QUERY_SOURCE = Path("compiler/driver/query/binding/named-item-query.cc")
 OWNER_BODY_QUERY_HEADER = Path("compiler/driver/query/binding/owner-body-query.h")
 OWNER_BODY_QUERY_SOURCE = Path("compiler/driver/query/binding/owner-body-query.cc")
-CORE_QUERY_HEADER = Path(
-    "compiler/driver/core/query.h"
-)
-CORE_QUERY_SOURCE = Path(
-    "compiler/driver/core/query.cc"
-)
-CORE_VERIFIER_HEADER = Path(
-    "compiler/driver/core/verifier.h"
-)
-CORE_VERIFIER_SOURCE = Path(
-    "compiler/driver/core/verifier.cc"
-)
 CORE_FILES = frozenset(
     {
-        CORE_QUERY_HEADER,
-        CORE_QUERY_SOURCE,
-        CORE_VERIFIER_HEADER,
-        CORE_VERIFIER_SOURCE,
         Path("compiler/driver/core/diagnostic-projector.h"),
         Path("compiler/driver/core/diagnostic-projector.cc"),
-        Path("compiler/driver/core/library.h"),
-        Path("compiler/driver/core/library.cc"),
         Path("compiler/driver/core/marker-authority.h"),
         Path("compiler/driver/core/marker-authority.cc"),
-        Path("compiler/driver/core/revision.h"),
-        Path("compiler/driver/core/role-seed-failure.h"),
-        Path("compiler/driver/core/role-seed-failure.cc"),
-        Path("compiler/driver/core/signature.h"),
-        Path("compiler/driver/core/signature.cc"),
     }
 )
 MODULE_GRAPH_QUERY_INPUT_HEADER = Path(
@@ -233,12 +210,7 @@ DRIVER_BUILD_MARKER = (
     "  query/module-graph/module-graph-query.cc\n"
     "  query/module-graph/module-graph-query-input.cc\n"
     "  core/diagnostic-projector.cc\n"
-    "  core/role-seed-failure.cc\n"
-    "  core/library.cc\n"
-    "  core/marker-authority.cc\n"
-    "  core/signature.cc\n"
-    "  core/query.cc\n"
-    "  core/verifier.cc)"
+    "  core/marker-authority.cc)"
 )
 
 SESSION_HEADER_MARKERS = (
@@ -562,21 +534,6 @@ def check_session_ownership(
         errors.append(f"{SESSION_SOURCE}: session-owned module graph publication is forbidden")
     if source.count("getCapability<module_graph_query::MaterializeModuleGraph>") != 3:
         errors.append(f"{SESSION_SOURCE}: sealed materialized graph demand is missing")
-    if source.count("getCapability<core_library_query::MaterializeCoreAuthority>") != 2:
-        errors.append(f"{SESSION_SOURCE}: final core authority demand is missing")
-    if source.count("FinalizeCoreModuleInterface") != 2:
-        errors.append(f"{SESSION_SOURCE}: source-backed final core-interface demand is missing")
-    for forbidden in (
-        "MaterializeCoreBootstrapModuleInterface",
-        "CoreExportSurface",
-    ):
-        if forbidden in source:
-            errors.append(f"{SESSION_SOURCE}: bootstrap-only core query escapes finalization: {forbidden}")
-    prelude_surface_preflight = (
-        "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>("
-    )
-    if prelude_surface_preflight not in source:
-        errors.append(f"{SESSION_SOURCE}: source-backed core prelude-surface preflight is missing")
     if "resolver.resolve(zc::mv(request))" in source:
         errors.append(f"{SESSION_SOURCE}: batch module resolution authority is forbidden")
     if "identity::ModuleId identity;" in source:
@@ -1163,56 +1120,6 @@ def run_self_test() -> int:
             ),
         ),
         "sealed materialized graph demand is missing",
-    )
-    failures += expect_rejection(
-        baseline, baseline_stripped_sources,
-        "missing final core authority demand",
-        lambda files: files.__setitem__(
-            SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "getCapability<core_library_query::MaterializeCoreAuthority>",
-                "getCapability<core_library_query::RemovedCoreAuthorityQuery>",
-                1,
-            ),
-        ),
-        "final core authority demand is missing",
-    )
-    failures += expect_rejection(
-        baseline, baseline_stripped_sources,
-        "missing final core-interface demand",
-        lambda files: files.__setitem__(
-            SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "FinalizeCoreModuleInterface", "RemovedFinalCoreModuleInterfaceQuery", 1
-            ),
-        ),
-        "source-backed final core-interface demand is missing",
-    )
-    failures += expect_rejection(
-        baseline, baseline_stripped_sources,
-        "bootstrap-only core query escape",
-        lambda files: files.__setitem__(
-            SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "FinalizeCoreModuleInterface",
-                "FinalizeCoreModuleInterface\nMaterializeCoreBootstrapModuleInterfaceQuery",
-                1,
-            ),
-        ),
-        "bootstrap-only core query escapes finalization",
-    )
-    failures += expect_rejection(
-        baseline, baseline_stripped_sources,
-        "missing core prelude-surface preflight",
-        lambda files: files.__setitem__(
-            SESSION_SOURCE,
-            files[SESSION_SOURCE].replace(
-                "auto preludeSurface = finalSnapshot.get<core_library_query::CorePreludeSurface>(",
-                "auto preludeSurface = finalSnapshot.get<core_library_query::RemovedPreludeSurfaceQuery>(",
-                1,
-            ),
-        ),
-        "source-backed core prelude-surface preflight is missing",
     )
     failures += expect_rejection(
         baseline, baseline_stripped_sources,

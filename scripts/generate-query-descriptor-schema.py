@@ -52,21 +52,14 @@ TRANSACTION_WITNESS_OWNER = (
 )
 TRANSACTION_WITNESS_ROWS = (
     (
-        56,
-        "zomlang::compiler::driver::module_graph_query::"
-        "CoreDistributionTransactionWitnessInput",
-        "CoreDistributionTransactionWitnessInput",
-        "zom.query.core-distribution-transaction-witness",
-    ),
-    (
-        57,
+        55,
         "zomlang::compiler::driver::module_graph_query::"
         "ModuleStructureTransactionWitnessInput",
         "ModuleStructureTransactionWitnessInput",
         "zom.query.module-structure-transaction-witness",
     ),
     (
-        58,
+        56,
         "zomlang::compiler::driver::module_graph_query::"
         "ContextualIdentityAuthorityTransactionWitnessInput",
         "ContextualIdentityAuthorityTransactionWitnessInput",
@@ -562,8 +555,8 @@ def run_self_test() -> None:
         for line in production_text.splitlines()
         if "TransactionWitnessInput" in line
     ]
-    if len(witness_lines) != 3:
-        raise SchemaError("self-test requires the exact three witness rows")
+    if len(witness_lines) != 2:
+        raise SchemaError("self-test requires the exact two witness rows")
     test_complete_line = next(
         line
         for line in test_text.splitlines()
@@ -579,7 +572,7 @@ def run_self_test() -> None:
         ),
         (
             "duplicate witness ordinal",
-            production_text.replace("ZOM_INPUT(57,", "ZOM_INPUT(56,", 1),
+            production_text.replace("ZOM_INPUT(56,", "ZOM_INPUT(55,", 1),
         ),
         (
             "reordered witnesses",
@@ -591,7 +584,7 @@ def run_self_test() -> None:
         (
             "renamed witness",
             production_text.replace(
-                '"CoreDistributionTransactionWitnessInput"',
+                '"ModuleStructureTransactionWitnessInput"',
                 '"OtherTransactionWitnessInput"',
                 1,
             ),
@@ -599,7 +592,7 @@ def run_self_test() -> None:
         (
             "wrong witness domain",
             production_text.replace(
-                "zom.query.core-distribution-transaction-witness",
+                "zom.query.module-structure-transaction-witness",
                 "zom.query.other-transaction-witness",
                 1,
             ),
@@ -607,7 +600,7 @@ def run_self_test() -> None:
         (
             "wrong witness type",
             production_text.replace(
-                "::CoreDistributionTransactionWitnessInput,",
+                "::ModuleStructureTransactionWitnessInput,",
                 "::OtherTransactionWitnessInput,",
                 1,
             ),

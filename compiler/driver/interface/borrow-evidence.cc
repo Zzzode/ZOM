@@ -5,7 +5,6 @@
 
 #include "compiler/driver/interface/borrow-evidence.h"
 
-#include "compiler/driver/core/query.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 
 namespace zomlang::compiler::driver::borrow_evidence {
@@ -168,60 +167,16 @@ ExpectedInventoryResult deriveExpectedInventory(const BorrowEvidenceBuildInput& 
       }
     }
 
-    const bool coreSource = imported.interfaceRevision()
-                                .variant()
-                                .is<module_interface::ToolchainCoreImportedInterfaceRevision>();
-    if (coreSource) {
-      zc::Maybe<const core_library_query::VerifiedCoreModuleInterface&> selected;
-      const auto& interfaceRevision = imported.interfaceRevision().variant();
-      const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
-      for (const auto& source : input.availableInterfaces) {
-        if (!source.is<ToolchainCoreVerifiedInterfaceSource>()) continue;
-        const auto& available = source.get<ToolchainCoreVerifiedInterfaceSource>().interface;
-        if (available.module() != imported.sourceModule()) continue;
-        if (selected != zc::none || available.context() != context ||
-            available.fingerprint().digest() !=
-                input.localSignatureFacts.contextFingerprint().digest() ||
-            !interfaceRevision.is<module_interface::ToolchainCoreImportedInterfaceRevision>() ||
-            available.record().revision().digest() !=
-                interfaceRevision.get<module_interface::ToolchainCoreImportedInterfaceRevision>()
-                    .value.digest() ||
-            !bindingSurfaceRevision
-                 .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>() ||
-            available.record().bindingSurfaceRevision().digest() !=
-                bindingSurfaceRevision
-                    .get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
-                    .value.digest()) {
-          return reject(ir::IrFailureKind::InputRevisionMismatch, 7, 1);
-        }
-        selected = available;
-      }
-      if (selected == zc::none) { return reject(ir::IrFailureKind::MissingRequiredFact, 8, 1); }
-      for (const auto& signature : imported.lookupDefinitions()) {
-        if (isCallable(signature)) { return reject(ir::IrFailureKind::InvalidFact, 9, 1); }
-      }
-      for (const auto& signature : imported.supportDefinitions()) {
-        if (isCallable(signature)) { return reject(ir::IrFailureKind::InvalidFact, 10, 1); }
-      }
-      continue;
-    }
-
     zc::Maybe<const VerifiedModuleInterface&> selected;
     for (const auto& source : input.availableInterfaces) {
-      if (!source.is<UserVerifiedInterfaceSource>()) continue;
-      const auto& available = source.get<UserVerifiedInterfaceSource>().interface;
+      const auto& available = source.interface;
       if (available.module() != imported.sourceModule()) continue;
       if (selected != zc::none) { return reject(ir::IrFailureKind::AdditionalFact, 6, 1); }
       const auto& interfaceRevision = imported.interfaceRevision().variant();
       const auto& bindingSurfaceRevision = imported.bindingSurfaceRevision().variant();
       if (available.semanticContext() != context ||
-          !interfaceRevision.is<module_interface::UserImportedInterfaceRevision>() ||
-          interfaceRevision.get<module_interface::UserImportedInterfaceRevision>().value.digest() !=
-              available.revision().digest() ||
-          !bindingSurfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>() ||
-          available.bindingSurface().revision().digest() !=
-              bindingSurfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
-                  .value.digest()) {
+          interfaceRevision.value.digest() != available.revision().digest() ||
+          available.bindingSurface().revision().digest() != bindingSurfaceRevision.value.digest()) {
         return reject(ir::IrFailureKind::InputRevisionMismatch, 7, 1);
       }
       selected = available;
@@ -524,8 +479,7 @@ VerifiedBorrowEvidence VerifiedBorrowEvidence::clone() const {
 identity::SemanticContextBrand VerifiedBorrowEvidence::semanticContext() const noexcept {
   return impl->semanticContext;
 }
-const identity::ContextFingerprint& VerifiedBorrowEvidence::contextFingerprint()
-    const noexcept {
+const identity::ContextFingerprint& VerifiedBorrowEvidence::contextFingerprint() const noexcept {
   return impl->contextFingerprint;
 }
 identity::ModuleId VerifiedBorrowEvidence::module() const noexcept { return impl->module; }

@@ -282,7 +282,7 @@ public:
         resolvedSnapshots(importCount));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    core_library_test::installCoreDistribution(session);
+    core_library_test::installCoreSources(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -376,8 +376,7 @@ public:
 
                 zc::Vector<VerifiedInterfaceSource> interfaceSources(moduleInterfaces.size());
                 for (const auto& interface : moduleInterfaces) {
-                  interfaceSources.add(
-                      VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+                  interfaceSources.add(VerifiedInterfaceSource{interface});
                 }
                 auto imported = ImportedSignatureViewProjector::build(admittedModules[boundIndex],
                                                                       interfaceSources.asPtr(),
@@ -411,8 +410,7 @@ public:
     ZC_REQUIRE(importedViews.size() == importCount + 4);
     ZC_REQUIRE(moduleInterfaces.size() == importCount + 4);
     for (const auto& interface : moduleInterfaces) {
-      availableInterfaceSources.add(
-          VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+      availableInterfaceSources.add(VerifiedInterfaceSource{interface});
     }
     zc::Maybe<size_t> userRequester;
     for (size_t index = 0; index < signatureFactModules.size(); ++index) {
@@ -535,7 +533,7 @@ public:
         resolution(session.getPackageResolutionMemoryResource(), 0, 2), resolvedSnapshots(0, 2));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    core_library_test::installCoreDistribution(session);
+    core_library_test::installCoreSources(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 3);
     for (const auto& root : roots) { ZC_REQUIRE(session.addVerifiedPackageRoot(root) != zc::none); }
@@ -547,8 +545,7 @@ public:
     ZC_REQUIRE(session.getImportedSignatureViews().size() == 3);
     ZC_REQUIRE(session.getVerifiedModuleInterfaces().size() == 3);
     for (const auto& interface : session.getVerifiedModuleInterfaces()) {
-      availableInterfaceSources.add(
-          VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+      availableInterfaceSources.add(VerifiedInterfaceSource{interface});
     }
     checkerIdentityAuthority = session.materializeCheckerIdentityAuthority();
     ZC_REQUIRE(checkerIdentityAuthority != zc::none);

@@ -22,12 +22,7 @@ set(DRIVER_SRC
   query/module-graph/module-graph-query.cc
   query/module-graph/module-graph-query-input.cc
   core/diagnostic-projector.cc
-  core/role-seed-failure.cc
-  core/library.cc
-  core/marker-authority.cc
-  core/signature.cc
-  core/query.cc
-  core/verifier.cc)
+  core/marker-authority.cc)
 
 enable_language(C)
 add_subdirectory(package/vendor)

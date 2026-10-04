@@ -2,75 +2,52 @@
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and limitations under
+// the License.
 
 #pragma once
 
-#include "zc/core/filesystem.h"
-#include "zc/core/time.h"
-#include "zc/ztest/test.h"
 #include "compiler/checker/checker-identity-authority.h"
 #include "compiler/driver/session/compiler-session.h"
-#include "compiler/driver/package/source-snapshot.h"
-#include "compiler/source/core-source-admission.h"
+#include "zc/core/string.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::driver::core_library_test {
 
-class CoreLibraryFreshDirectory final : public package::FreshSourceDirectory {
-public:
-  explicit CoreLibraryFreshDirectory(zc::Own<const zc::Directory>&& root) noexcept
-      : rootValue(zc::mv(root)) {}
-  ~CoreLibraryFreshDirectory() noexcept override = default;
-
-  const zc::Directory& root() const override { return *rootValue; }
-  zc::Maybe<package::MaterializationIssue> finish() override { return zc::none; }
-
-private:
-  zc::Own<const zc::Directory> rootValue;
-};
-
-class CoreLibraryFreshDirectoryFactory final : public package::FreshSourceDirectoryFactory {
-public:
-  package::FreshSourceDirectoryResult create() override {
-    zc::Own<const zc::Directory> root = zc::newInMemoryDirectory(zc::nullClock());
-    return zc::Own<package::FreshSourceDirectory>(
-        zc::heap<CoreLibraryFreshDirectory>(zc::mv(root)));
-  }
-};
-
-inline source::core::VerifiedCoreDistribution admittedCoreDistribution() {
-  auto root = zc::newInMemoryDirectory(zc::nullClock());
-  root->openFile(zc::Path("core.zom"_zc), zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
-      ->writeAll("module core;\n"_zc);
-  root->openFile(zc::Path({"core"_zc, "marker.zom"_zc}),
-                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
-      ->writeAll("module marker;\n\nexport interface Copy {}\nexport interface Linear {}\n"_zc);
-  root->openFile(zc::Path({"core"_zc, "prelude.zom"_zc}),
-                 zc::WriteMode::CREATE | zc::WriteMode::CREATE_PARENT)
-      ->writeAll("module prelude;\n\nexport core::marker::{Copy, Linear};\n"_zc);
-  auto expected = source::core::initialCoreDistributionInput();
-  ZC_REQUIRE(expected != zc::none);
-  CoreLibraryFreshDirectoryFactory factory;
-  source::core::CoreDistributionAdmission admission;
-  auto admitted = admission.admit(*root, factory, ZC_REQUIRE_NONNULL(expected), 2026);
-  ZC_REQUIRE(admitted.is<source::core::VerifiedCoreDistribution>());
-  return zc::mv(admitted.get<source::core::VerifiedCoreDistribution>());
+/// \brief Returns the three core source inputs used by session tests.
+inline zc::Vector<CoreSourceInput> coreSourceInputs() {
+  zc::Vector<CoreSourceInput> inputs(3);
+  inputs.add(CoreSourceInput{zc::heapString("core"_zc), zc::heapString("core.zom"_zc),
+                             zc::heapArray<zc::byte>(zc::StringPtr("module core;\n").asBytes())});
+  inputs.add(CoreSourceInput{
+      zc::heapString("core.marker"_zc), zc::heapString("core/marker.zom"_zc),
+      zc::heapArray<zc::byte>(
+          zc::StringPtr("module marker;\n\nexport interface Copy {}\nexport interface Linear {}\n")
+              .asBytes())});
+  inputs.add(CoreSourceInput{
+      zc::heapString("core.prelude"_zc), zc::heapString("core/prelude.zom"_zc),
+      zc::heapArray<zc::byte>(
+          zc::StringPtr("module prelude;\n\nexport core::marker::{Copy, Linear};\n").asBytes())});
+  return inputs;
 }
 
-inline void installCoreDistribution(CompilerSession& session) {
-  auto distribution = admittedCoreDistribution();
-  ZC_REQUIRE(session.installVerifiedCoreDistribution(distribution));
+/// \brief Installs the standard core sources into one session.
+inline void installCoreSources(CompilerSession& session) {
+  auto inputs = coreSourceInputs();
+  ZC_REQUIRE(session.installCoreSources(zc::mv(inputs)));
 }
 
-inline zc::Maybe<core::VerifiedCoreLibrary> materializeCoreLibrary(
-    CompilerSession& session, const checker::CheckerIdentityAuthority& authority) {
-  for (const auto& crate : authority.graphLease().capability().crates()) {
-    if (crate.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
-        crate.key().unit().toolchain().component() != identity::ToolchainComponent::Core) {
-      continue;
-    }
-    return session.materializeCoreLibrary(crate.key());
-  }
-  return zc::none;
+/// \brief Returns the verified standard marker authority after successful checking.
+inline zc::Maybe<const core::VerifiedCoreStandardMarkerAuthority&> standardMarkerAuthority(
+    CompilerSession& session) {
+  return session.getStandardMarkerAuthority();
 }
 
 inline bool isUserPackageModule(const checker::CheckerIdentityAuthority& authority,

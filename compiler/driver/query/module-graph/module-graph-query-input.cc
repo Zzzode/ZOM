@@ -5,21 +5,21 @@
 
 #include "compiler/driver/query/module-graph/module-graph-query-input.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/encoding.h"
-#include "zc/core/map.h"
-#include "zc/core/string.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/ast/schema-verifier.h"
 #include "compiler/binder/graph/module-resolution.h"
+#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/module-graph/materialized-module-graph-query.h"
 #include "compiler/driver/query/module-graph/module-dependency-provenance-query.h"
-#include "compiler/driver/package/package-compilation-request.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "compiler/source/core-distribution.h"
+#include "zc/core/debug.h"
+#include "zc/core/encoding.h"
+#include "zc/core/map.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::driver::module_graph_query {
 namespace {
@@ -1046,25 +1046,24 @@ bool validateCompleteContextProducerSources(
         !sameCrate(entry.key(), entry.value().crate()) || entry.value().roots().size() == 0) {
       return false;
     }
-    bool foundCoreDistribution = false;
+    bool foundCorePolicyTemplate = false;
     for (const auto& root : entry.value().roots()) {
       if (!sameCrate(root.crate(), entry.key())) { return false; }
       if (root.kind() == binder::ModuleSearchRootKind::ToolchainCore) {
         if (entry.key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
             entry.key().unit().toolchain().component() != identity::ToolchainComponent::Core ||
-            root.toolchainCoreDistributionDigest() != sources.coreDistribution.digest()) {
+            root.toolchainCorePolicyTemplateRevision() != sources.corePolicyTemplate.revision()) {
           return false;
         }
-        foundCoreDistribution = true;
+        foundCorePolicyTemplate = true;
       }
     }
     const bool isCore =
         entry.key().unit().kind() == identity::CompilationUnitKind::Toolchain &&
         entry.key().unit().toolchain().component() == identity::ToolchainComponent::Core;
-    if (foundCoreDistribution != isCore) { return false; }
+    if (foundCorePolicyTemplate != isCore) { return false; }
   }
-  auto digest = source::core::computeCoreDistributionDigest(sources.coreDistribution.record());
-  return digest != zc::none && ZC_ASSERT_NONNULL(digest) == sources.coreDistribution.digest();
+  return true;
 }
 
 void encodeCrateSequence(identity::CanonicalEncoder& encoder,
@@ -1184,8 +1183,8 @@ struct CompleteCompilationContextAuthority::Impl final {
        zc::Vector<identity::CrateKey>&& completeCrates,
        zc::Vector<CompilationOptionsEntry>&& compilationOptions,
        zc::Vector<ModuleSearchRootsEntry>&& moduleSearchRoots,
-       source::core::CoreDistributionRecord&& coreDistributionRecord,
-       const identity::Sha256Digest& coreDistributionDigest) noexcept
+       source::core::CoreStandardMarkerPolicyTemplate&& corePolicyTemplate,
+       const identity::Sha256Digest& corePolicyTemplateRevision) noexcept
       : contextRoots(zc::mv(contextRoots)),
         packageRequest(zc::mv(packageRequest)),
         packageRootSet(zc::mv(packageRootSet)),
@@ -1196,8 +1195,8 @@ struct CompleteCompilationContextAuthority::Impl final {
         completeCrates(zc::mv(completeCrates)),
         compilationOptions(zc::mv(compilationOptions)),
         moduleSearchRoots(zc::mv(moduleSearchRoots)),
-        coreDistributionRecord(zc::mv(coreDistributionRecord)),
-        coreDistributionDigest(coreDistributionDigest) {}
+        corePolicyTemplate(zc::mv(corePolicyTemplate)),
+        corePolicyTemplateRevision(corePolicyTemplateRevision) {}
 
   incremental_binding_query::CompilationRootSetQueryKey contextRoots;
   package::CanonicalPackageCompilationRequest packageRequest;
@@ -1209,8 +1208,8 @@ struct CompleteCompilationContextAuthority::Impl final {
   zc::Vector<identity::CrateKey> completeCrates;
   zc::Vector<CompilationOptionsEntry> compilationOptions;
   zc::Vector<ModuleSearchRootsEntry> moduleSearchRoots;
-  source::core::CoreDistributionRecord coreDistributionRecord;
-  identity::Sha256Digest coreDistributionDigest;
+  source::core::CoreStandardMarkerPolicyTemplate corePolicyTemplate;
+  identity::Sha256Digest corePolicyTemplateRevision;
 };
 
 CompleteCompilationContextAuthority::CompleteCompilationContextAuthority(
@@ -1265,7 +1264,7 @@ zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthori
       sources.packageRootSet.clone(), sources.packageGraph.clone(), zc::mv(userRoots),
       zc::mv(projectedCore), zc::mv(ZC_ASSERT_NONNULL(expectedRoots)),
       zc::mv(ZC_ASSERT_NONNULL(completeCrates)), zc::mv(options), zc::mv(searchRoots),
-      sources.coreDistribution.record().clone(), sources.coreDistribution.digest()));
+      sources.corePolicyTemplate.clone(), sources.corePolicyTemplate.revision()));
   return zc::mv(result);
 }
 
@@ -1276,8 +1275,8 @@ CompleteCompilationContextAuthority CompleteCompilationContextAuthority::clone()
       cloneCrates(impl->projectedCoreCrates.asPtr()), cloneCrates(impl->expectedRootCrates.asPtr()),
       cloneCrates(impl->completeCrates.asPtr()),
       cloneCompilationOptions(impl->compilationOptions.asPtr()),
-      cloneSearchRoots(impl->moduleSearchRoots.asPtr()), impl->coreDistributionRecord.clone(),
-      impl->coreDistributionDigest));
+      cloneSearchRoots(impl->moduleSearchRoots.asPtr()), impl->corePolicyTemplate.clone(),
+      impl->corePolicyTemplateRevision));
 }
 
 const incremental_binding_query::CompilationRootSetQueryKey&
@@ -1320,13 +1319,13 @@ zc::ArrayPtr<const ModuleSearchRootsEntry> CompleteCompilationContextAuthority::
     const noexcept {
   return impl->moduleSearchRoots.asPtr();
 }
-const source::core::CoreDistributionRecord&
-CompleteCompilationContextAuthority::coreDistributionRecord() const noexcept {
-  return impl->coreDistributionRecord;
+const source::core::CoreStandardMarkerPolicyTemplate&
+CompleteCompilationContextAuthority::corePolicyTemplate() const noexcept {
+  return impl->corePolicyTemplate;
 }
-const identity::Sha256Digest& CompleteCompilationContextAuthority::coreDistributionDigest()
+const identity::Sha256Digest& CompleteCompilationContextAuthority::corePolicyTemplateRevision()
     const noexcept {
-  return impl->coreDistributionDigest;
+  return impl->corePolicyTemplateRevision;
 }
 
 zc::Array<uint8_t> CompleteCompilationContextAuthority::encodeCanonical() const {
@@ -1359,9 +1358,9 @@ zc::Array<uint8_t> CompleteCompilationContextAuthority::encodeCanonical() const 
       [](const incremental_module_resolution_query::CanonicalModuleSearchRoots& value) {
         return incremental_module_resolution_query::ModuleSearchRootsInput::encodeValue(value);
       });
-  auto distributionBytes = impl->coreDistributionRecord.encode();
-  encoder.encodeByteString(distributionBytes.asPtr());
-  encoder.encodeDigest(impl->coreDistributionDigest);
+  auto policyBytes = impl->corePolicyTemplate.encode();
+  encoder.encodeByteString(policyBytes.asPtr());
+  encoder.encodeDigest(impl->corePolicyTemplateRevision);
   return frame(kCompleteContextAuthorityDomain, encoder.finish().asPtr());
 }
 
@@ -1397,18 +1396,18 @@ zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthori
   auto completeCrates = decodeCrateSequence(decoder);
   auto options = decodeCompilationOptions(decoder);
   auto searchRoots = decodeSearchRoots(decoder);
-  auto distributionBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
-  auto distributionDigest = decoder.decodeDigest();
+  auto policyBytes = decoder.decodeByteString(kMaximumCanonicalInputValueBytes);
+  auto policyRevision = decoder.decodeDigest();
   if (contextRoots == zc::none || packageRequest == zc::none || packageRootSet == zc::none ||
       packageGraph == zc::none || userRoots == zc::none || projectedCore == zc::none ||
       expectedRoots == zc::none || completeCrates == zc::none || options == zc::none ||
-      searchRoots == zc::none || distributionBytes == zc::none || distributionDigest == zc::none ||
+      searchRoots == zc::none || policyBytes == zc::none || policyRevision == zc::none ||
       !decoder.finished()) {
     return zc::none;
   }
-  auto distribution = source::core::CoreDistributionRecord::decodeCanonical(
-      ZC_ASSERT_NONNULL(distributionBytes).asPtr());
-  if (distribution == zc::none) { return zc::none; }
+  auto policyTemplate = source::core::CoreStandardMarkerPolicyTemplate::decodeCanonical(
+      ZC_ASSERT_NONNULL(policyBytes).asPtr());
+  if (policyTemplate == zc::none) { return zc::none; }
   auto expectedUnion = canonicalCrateUnion(ZC_ASSERT_NONNULL(userRoots).asPtr(),
                                            ZC_ASSERT_NONNULL(projectedCore).asPtr());
   zc::Vector<identity::CrateKey> packageCrates(ZC_ASSERT_NONNULL(packageGraph).crates().size());
@@ -1419,16 +1418,14 @@ zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthori
   }
   auto completeUnion =
       canonicalCrateUnion(packageCrates.asPtr(), ZC_ASSERT_NONNULL(projectedCore).asPtr());
-  auto computedDigest =
-      source::core::computeCoreDistributionDigest(ZC_ASSERT_NONNULL(distribution));
-  if (expectedUnion == zc::none || completeUnion == zc::none || computedDigest == zc::none ||
+  if (expectedUnion == zc::none || completeUnion == zc::none ||
       !sameCrates(ZC_ASSERT_NONNULL(expectedUnion).asPtr(),
                   ZC_ASSERT_NONNULL(expectedRoots).asPtr()) ||
       !sameCrates(ZC_ASSERT_NONNULL(completeUnion).asPtr(),
                   ZC_ASSERT_NONNULL(completeCrates).asPtr()) ||
       ZC_ASSERT_NONNULL(options).size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
       ZC_ASSERT_NONNULL(searchRoots).size() != ZC_ASSERT_NONNULL(completeCrates).size() ||
-      ZC_ASSERT_NONNULL(computedDigest) != ZC_ASSERT_NONNULL(distributionDigest)) {
+      ZC_ASSERT_NONNULL(policyTemplate).revision() != ZC_ASSERT_NONNULL(policyRevision)) {
     return zc::none;
   }
   for (const auto& core : ZC_ASSERT_NONNULL(projectedCore)) {
@@ -1500,7 +1497,7 @@ zc::Maybe<CompleteCompilationContextAuthority> CompleteCompilationContextAuthori
       zc::mv(ZC_ASSERT_NONNULL(userRoots)), zc::mv(ZC_ASSERT_NONNULL(projectedCore)),
       zc::mv(ZC_ASSERT_NONNULL(expectedRoots)), zc::mv(ZC_ASSERT_NONNULL(completeCrates)),
       zc::mv(ZC_ASSERT_NONNULL(options)), zc::mv(ZC_ASSERT_NONNULL(searchRoots)),
-      zc::mv(ZC_ASSERT_NONNULL(distribution)), ZC_ASSERT_NONNULL(distributionDigest)));
+      zc::mv(ZC_ASSERT_NONNULL(policyTemplate)), ZC_ASSERT_NONNULL(policyRevision)));
   if (result.encodeCanonical().asPtr() != bytes) { return zc::none; }
   return zc::mv(result);
 }
@@ -1556,9 +1553,9 @@ bool CompleteCompilationContextAuthorityInputVerifier::verify(
       !sameCrates(candidate.completeCrates(), ZC_ASSERT_NONNULL(completeCrates).asPtr()) ||
       candidate.compilationOptions().size() != options.size() ||
       candidate.moduleSearchRoots().size() != searchRoots.size() ||
-      candidate.coreDistributionRecord().encode().asPtr() !=
-          sources.coreDistribution.record().encode().asPtr() ||
-      candidate.coreDistributionDigest() != sources.coreDistribution.digest()) {
+      candidate.corePolicyTemplate().encode().asPtr() !=
+          sources.corePolicyTemplate.encode().asPtr() ||
+      candidate.corePolicyTemplateRevision() != sources.corePolicyTemplate.revision()) {
     return false;
   }
   const auto resolvedPackages = sources.packageGraph.resolvedPackages();
@@ -1688,24 +1685,24 @@ bool CompleteCompilationContextAuthorityInputVerifier::verify(
         searchRoots[index].value().roots().size() == 0) {
       return false;
     }
-    bool foundCoreDistribution = false;
+    bool foundCorePolicyTemplate = false;
     for (const auto& root : searchRoots[index].value().roots()) {
       if (!sameCrate(root.crate(), searchRoots[index].key())) { return false; }
       if (root.kind() == binder::ModuleSearchRootKind::ToolchainCore) {
         if (searchRoots[index].key().unit().kind() != identity::CompilationUnitKind::Toolchain ||
             searchRoots[index].key().unit().toolchain().component() !=
                 identity::ToolchainComponent::Core ||
-            root.toolchainCoreDistributionDigest() != sources.coreDistribution.digest()) {
+            root.toolchainCorePolicyTemplateRevision() != sources.corePolicyTemplate.revision()) {
           return false;
         }
-        foundCoreDistribution = true;
+        foundCorePolicyTemplate = true;
       }
     }
     const bool isCore =
         searchRoots[index].key().unit().kind() == identity::CompilationUnitKind::Toolchain &&
         searchRoots[index].key().unit().toolchain().component() ==
             identity::ToolchainComponent::Core;
-    if (foundCoreDistribution != isCore ||
+    if (foundCorePolicyTemplate != isCore ||
         incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(
             candidate.moduleSearchRoots()[index].key())
                 .asPtr() != incremental_module_resolution_query::ModuleSearchRootsInput::encodeKey(
@@ -1720,8 +1717,7 @@ bool CompleteCompilationContextAuthorityInputVerifier::verify(
       return false;
     }
   }
-  auto digest = source::core::computeCoreDistributionDigest(sources.coreDistribution.record());
-  return digest != zc::none && ZC_ASSERT_NONNULL(digest) == sources.coreDistribution.digest();
+  return true;
 }
 
 zc::Maybe<identity::Sha256Digest> computeCompleteCompilationContextWitness(
@@ -1780,7 +1776,6 @@ zc::Maybe<binder::CanonicalInputPayloadDigest> decodeTransactionWitnessValue(
     return decodeTransactionWitnessValue(bytes);                                        \
   }
 
-ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(CoreDistributionTransactionWitnessInput)
 ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(ModuleStructureTransactionWitnessInput)
 ZOM_DEFINE_TRANSACTION_WITNESS_INPUT(ContextualIdentityAuthorityTransactionWitnessInput)
 
@@ -1791,8 +1786,6 @@ namespace {
 zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
     const query::QuerySnapshot& snapshot,
     const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
-  auto distributionWitness =
-      snapshot.probeInput<CoreDistributionTransactionWitnessInput>(contextRoots);
   auto structureWitness = snapshot.probeInput<ModuleStructureTransactionWitnessInput>(contextRoots);
   auto identityWitness =
       snapshot.probeInput<ContextualIdentityAuthorityTransactionWitnessInput>(contextRoots);
@@ -1805,10 +1798,9 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
   auto readiness =
       snapshot.probeInput<incremental_binding_query::CompleteRootIdentityReadinessInput>(
           contextRoots);
-  if (distributionWitness.isRuntimeFailure() || structureWitness.isRuntimeFailure() ||
-      identityWitness.isRuntimeFailure() || authority.isRuntimeFailure() ||
-      graph.isRuntimeFailure() || scc.isRuntimeFailure() || authorityMap.isRuntimeFailure() ||
-      readiness.isRuntimeFailure() || distributionWitness.kind() != query::QueryValueKind::Value ||
+  if (structureWitness.isRuntimeFailure() || identityWitness.isRuntimeFailure() ||
+      authority.isRuntimeFailure() || graph.isRuntimeFailure() || scc.isRuntimeFailure() ||
+      authorityMap.isRuntimeFailure() || readiness.isRuntimeFailure() ||
       structureWitness.kind() != query::QueryValueKind::Value ||
       identityWitness.kind() != query::QueryValueKind::Value ||
       authority.kind() != query::QueryValueKind::Value ||
@@ -1829,7 +1821,6 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
       incremental_binding_query::ActiveDefinitionAuthorityReadyInput::encodeValue(
           authorityMap.value());
   auto readinessBytes = readiness.value().encodeCanonical();
-  payload.encodeByteString(distributionWitness.value().bytes());
   payload.encodeByteString(structureWitness.value().bytes());
   payload.encodeByteString(identityWitness.value().bytes());
   payload.encodeByteString(authorityBytes.asPtr());
@@ -1845,8 +1836,6 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotSuccessWitness(
 zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
     const query::QuerySnapshot& snapshot,
     const incremental_binding_query::CompilationRootSetQueryKey& contextRoots) {
-  auto distributionWitness =
-      snapshot.probeInput<CoreDistributionTransactionWitnessInput>(contextRoots);
   auto structureWitness = snapshot.probeInput<ModuleStructureTransactionWitnessInput>(contextRoots);
   auto identityWitness =
       snapshot.probeInput<ContextualIdentityAuthorityTransactionWitnessInput>(contextRoots);
@@ -1854,10 +1843,9 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
   const bool identityWitnessMissing =
       identityWitness.isRuntimeFailure() &&
       identityWitness.runtimeFailure() == query::QueryRuntimeFailure::MissingInput;
-  if (distributionWitness.isRuntimeFailure() || structureWitness.isRuntimeFailure() ||
+  if (structureWitness.isRuntimeFailure() ||
       (!identityWitnessMissing && identityWitness.isRuntimeFailure()) ||
-      authority.isRuntimeFailure() || distributionWitness.kind() != query::QueryValueKind::Value ||
-      structureWitness.kind() != query::QueryValueKind::Value ||
+      authority.isRuntimeFailure() || structureWitness.kind() != query::QueryValueKind::Value ||
       (!identityWitnessMissing && identityWitness.kind() != query::QueryValueKind::Value &&
        identityWitness.kind() != query::QueryValueKind::Absence) ||
       authority.kind() != query::QueryValueKind::Value ||
@@ -1870,7 +1858,6 @@ zc::Maybe<identity::Sha256Digest> computeFinalSnapshotFailureWitness(
   const auto basePayload = [&]() {
     identity::CanonicalEncoder payload;
     payload.encodeByteString(rootsBytes.asPtr());
-    payload.encodeByteString(distributionWitness.value().bytes());
     payload.encodeByteString(structureWitness.value().bytes());
     if (!identityWitnessMissing && identityWitness.kind() == query::QueryValueKind::Value) {
       payload.encodeByteString("value"_zcc.asBytes());
@@ -2644,9 +2631,7 @@ zc::Maybe<SelectedModuleSource::Key> SelectedModuleSource::decodeKey(
   return decodeModule(bytes);
 }
 
-zc::Array<uint8_t> SelectedModuleSource::encodeValue(const Value& value) {
-  return value.encode();
-}
+zc::Array<uint8_t> SelectedModuleSource::encodeValue(const Value& value) { return value.encode(); }
 
 zc::Maybe<SelectedModuleSource::Value> SelectedModuleSource::decodeValue(
     zc::ArrayPtr<const uint8_t> bytes) {
@@ -2673,7 +2658,7 @@ query::TypedQueryResult<SelectedModuleSource::Value> SelectedModuleSource::provi
 }
 
 bool SelectedModuleSource::verify(query::QueryContext& context, const Key& key,
-                                       const query::TypedQueryResult<Value>& result) {
+                                  const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto catalog = context.get<SelectedModuleCatalogInput>(key.crate());
   if (catalog.isRuntimeFailure() || catalog.kind() != query::QueryValueKind::Value ||
@@ -2696,8 +2681,7 @@ bool SelectedModuleSource::verify(query::QueryContext& context, const Key& key,
 
 zc::Array<uint8_t> ActiveModules::encodeKey(const Key& key) { return key.encode(); }
 
-zc::Maybe<ActiveModules::Key> ActiveModules::decodeKey(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveModules::Key> ActiveModules::decodeKey(zc::ArrayPtr<const uint8_t> bytes) {
   return decodeCrate(bytes);
 }
 
@@ -2705,20 +2689,18 @@ zc::Array<uint8_t> ActiveModules::encodeValue(const Value& value) {
   return value.encodeCanonical();
 }
 
-zc::Maybe<ActiveModules::Value> ActiveModules::decodeValue(
-    zc::ArrayPtr<const uint8_t> bytes) {
+zc::Maybe<ActiveModules::Value> ActiveModules::decodeValue(zc::ArrayPtr<const uint8_t> bytes) {
   return ActiveModuleSetRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ActiveModules::Value> ActiveModules::provide(
-    query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<ActiveModules::Value> ActiveModules::provide(query::QueryContext& context,
+                                                                     const Key& key) {
   auto stable = incremental_binding_query::StableCrateQueryKey::fromVerified(key);
   if (stable == zc::none) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-  auto sources =
-      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
+  auto sources = context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
   if (sources.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(sources.runtimeFailure());
   }
@@ -2748,13 +2730,12 @@ query::TypedQueryResult<ActiveModules::Value> ActiveModules::provide(
 }
 
 bool ActiveModules::verify(query::QueryContext& context, const Key& key,
-                                const query::TypedQueryResult<Value>& result) {
+                           const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure() || result.kind() != query::QueryValueKind::Value) { return false; }
   auto stable = incremental_binding_query::StableCrateQueryKey::fromVerified(key);
   if (stable == zc::none) { return false; }
   auto catalog = context.get<SelectedModuleCatalogInput>(key);
-  auto sources =
-      context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
+  auto sources = context.get<incremental_binding_query::ActiveSources>(ZC_ASSERT_NONNULL(stable));
   if (catalog.isRuntimeFailure() || sources.isRuntimeFailure() ||
       catalog.kind() != query::QueryValueKind::Value ||
       sources.kind() != query::QueryValueKind::Value ||
@@ -2828,7 +2809,7 @@ query::TypedQueryResult<ModuleDependencySites::Value> ModuleDependencySites::pro
 }
 
 bool ModuleDependencySites::verify(query::QueryContext& context, const Key& key,
-                                        const query::TypedQueryResult<Value>& result) {
+                                   const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto selected = context.get<SelectedModuleSource>(key);
   if (selected.isRuntimeFailure()) { return false; }
@@ -2868,8 +2849,8 @@ zc::Maybe<ModuleDependencyRequests::Value> ModuleDependencyRequests::decodeValue
   return ModuleDependencyRequestSetRecord::decodeCanonical(bytes);
 }
 
-query::TypedQueryResult<ModuleDependencyRequests::Value>
-ModuleDependencyRequests::provide(query::QueryContext& context, const Key& key) {
+query::TypedQueryResult<ModuleDependencyRequests::Value> ModuleDependencyRequests::provide(
+    query::QueryContext& context, const Key& key) {
   auto sites = context.get<ModuleDependencySites>(key);
   if (sites.isRuntimeFailure()) {
     return query::TypedQueryResult<Value>::runtimeFailure(sites.runtimeFailure());
@@ -2890,7 +2871,7 @@ ModuleDependencyRequests::provide(query::QueryContext& context, const Key& key) 
 }
 
 bool ModuleDependencyRequests::verify(query::QueryContext& context, const Key& key,
-                                           const query::TypedQueryResult<Value>& result) {
+                                      const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto sites = context.get<ModuleDependencySites>(key);
   if (sites.isRuntimeFailure()) { return false; }
@@ -2939,7 +2920,7 @@ query::TypedQueryResult<ModuleDependencies::Value> ModuleDependencies::provide(
 }
 
 bool ModuleDependencies::verify(query::QueryContext& context, const Key& key,
-                                     const query::TypedQueryResult<Value>& result) {
+                                const query::TypedQueryResult<Value>& result) {
   if (result.isRuntimeFailure()) { return false; }
   auto requests = context.get<ModuleDependencyRequests>(key);
   if (requests.isRuntimeFailure()) { return false; }
@@ -3395,10 +3376,8 @@ bool ModuleGraphInputTransactionVerifier::verify(
       authority.parsedModules.size() != authority.resolver.catalog().size()) {
     return false;
   }
-  zc::Vector<identity::CrateKey> expectedCoreCrates(authority.coreInputs.projections().size());
-  for (const auto& projection : authority.coreInputs.projections()) {
-    expectedCoreCrates.add(projection.crate().clone());
-  }
+  zc::Vector<identity::CrateKey> expectedCoreCrates(value.projectedCoreCrates.size());
+  for (const auto& crate : value.projectedCoreCrates) { expectedCoreCrates.add(crate.clone()); }
   sortByBytes(expectedCoreCrates, [](const identity::CrateKey& crate) { return crate.encode(); });
   auto expectedRoots = incremental_binding_query::CompilationRootSetQueryKey::fromVerified(
       authority.packageRequest, expectedCoreCrates.asPtr());
@@ -3672,15 +3651,6 @@ bool ModuleGraphInputTransactionVerifier::verify(
     if (expected == zc::none ||
         ZC_ASSERT_NONNULL(expected).encode().asPtr() != roots.encode().asPtr()) {
       return false;
-    }
-    if (isCoreCrate(roots.crate())) {
-      size_t matches = 0;
-      for (const auto& projection : authority.coreInputs.projections()) {
-        if (!sameCrate(projection.crate(), roots.crate())) { continue; }
-        if (projection.searchRoots().encode().asPtr() != roots.encode().asPtr()) { return false; }
-        ++matches;
-      }
-      if (matches != 1) { return false; }
     }
   }
   for (const auto& prelude : value.configuredPreludes) {
@@ -4144,8 +4114,7 @@ query::InputCommitResult VerifiedModuleGraphInputTransaction::commit(
 }
 
 bool registerModuleGraphQueries(query::QueryDatabase& database) {
-  return database.registerDescriptor<CoreDistributionTransactionWitnessInput>().isRegistered() &&
-         database.registerDescriptor<ModuleStructureTransactionWitnessInput>().isRegistered() &&
+  return database.registerDescriptor<ModuleStructureTransactionWitnessInput>().isRegistered() &&
          database.registerDescriptor<ContextualIdentityAuthorityTransactionWitnessInput>()
              .isRegistered() &&
          database.registerDescriptor<CompleteCompilationContextAuthorityInput>().isRegistered() &&

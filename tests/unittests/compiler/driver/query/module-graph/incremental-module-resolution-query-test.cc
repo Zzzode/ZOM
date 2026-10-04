@@ -171,7 +171,7 @@ ZC_TEST("Module search roots input preserves the toolchain core alternative") {
   ZC_REQUIRE(ZC_REQUIRE_NONNULL(decoded).roots().size() == 1);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).roots()[0].kind() ==
             binder::ModuleSearchRootKind::ToolchainCore);
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).roots()[0].toolchainCoreDistributionDigest() ==
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).roots()[0].toolchainCorePolicyTemplateRevision() ==
             digest(0x5a));
 
   auto mutated = zc::heapArray<uint8_t>(encoded.asPtr());

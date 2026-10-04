@@ -27,8 +27,7 @@
 #include "compiler/diagnostics/consumer/diagnostic-policy.h"
 #include "compiler/diagnostics/consumer/diagnostic-presentation.h"
 #include "compiler/driver/core/diagnostic-projector.h"
-#include "compiler/driver/core/library.h"
-#include "compiler/driver/core/query.h"
+#include "compiler/driver/core/marker-authority.h"
 #include "compiler/driver/graph/crate-graph.h"
 #include "compiler/driver/interface/borrow-evidence.h"
 #include "compiler/driver/interface/module-interface.h"
@@ -60,9 +59,6 @@ namespace compiler {
 namespace source {
 class BufferId;
 class SourceManager;
-namespace core {
-class VerifiedCoreDistribution;
-}
 }  // namespace source
 
 namespace checker {
@@ -134,6 +130,13 @@ private:
   friend class CompilerSession;
 };
 
+/// \brief One core library source file and its module path.
+struct CoreSourceInput final {
+  zc::String modulePath;
+  zc::String filePath;
+  zc::Array<zc::byte> bytes;
+};
+
 class CompilerSession : public diagnostics::DiagnosticPresentationResolver {
 public:
   CompilerSession(identity::SemanticContextFactory& contextFactory,
@@ -183,9 +186,9 @@ public:
       query::QueryCapabilityLease<const module_graph_query::MaterializedModuleGraph>;
   /// \brief Demands the final-sealed retained module graph for this session.
   ZC_NODISCARD zc::Maybe<MaterializedModuleGraphLease> materializeModuleGraph() const;
-  /// \brief Assembles one source-backed core library from final interface and authority leases.
-  ZC_NODISCARD zc::Maybe<core::VerifiedCoreLibrary> materializeCoreLibrary(
-      const identity::CrateKey& coreCrate);
+  /// \brief Returns the verified standard marker authority after successful checking.
+  ZC_NODISCARD zc::Maybe<const core::VerifiedCoreStandardMarkerAuthority&>
+  getStandardMarkerAuthority() const noexcept;
   /// \brief Materializes retained Checker identity authority from the sealed binding snapshot.
   ZC_NODISCARD zc::Maybe<checker::CheckerIdentityAuthority> materializeCheckerIdentityAuthority()
       const;
@@ -263,9 +266,6 @@ public:
       const noexcept;
   /// \brief Returns request-local internal incidents; never exposed as ZOM diagnostics.
   ZC_NODISCARD const basic::BoundedIncidentSet& getIncidents() const noexcept;
-  /// \brief Returns an operational core-query failure retained by this request.
-  ZC_NODISCARD zc::Maybe<core_library_query::CoreOperationalFailureKind> getCoreOperationalFailure()
-      const noexcept;
 
   /// Get the string pool used by the compiler.
   /// \return A reference to the string pool
@@ -299,9 +299,8 @@ public:
   /// `InstalledPackageInputs` bundle directly (the CLI and the IDE workspace
   /// service).
   ZC_NODISCARD bool installVerifiedPackageInput(package::InstalledPackageInputs&& inputs);
-  /// \brief Atomically installs the verified source-backed core distribution for this context.
-  ZC_NODISCARD bool installVerifiedCoreDistribution(
-      const source::core::VerifiedCoreDistribution& distribution);
+  /// \brief Installs core library source files for this compilation context.
+  ZC_NODISCARD bool installCoreSources(zc::Vector<CoreSourceInput>&& coreSources);
 
   /// \brief Returns session-owned storage for package resolution inputs and outputs.
   /// \return A resource that outlives the installed package graph.

@@ -25,16 +25,8 @@ void appendDigest(zc::Vector<char>& output, const identity::Sha256Digest& digest
 
 void appendInterfaceRevision(zc::Vector<char>& output,
                              const module_interface::ImportedInterfaceRevision& revision) {
-  const auto& value = revision.variant();
-  if (value.is<module_interface::UserImportedInterfaceRevision>()) {
-    append(output, "user:"_zc);
-    appendDigest(output,
-                 value.get<module_interface::UserImportedInterfaceRevision>().value.digest());
-    return;
-  }
-  append(output, "core:"_zc);
-  appendDigest(
-      output, value.get<module_interface::ToolchainCoreImportedInterfaceRevision>().value.digest());
+  append(output, "user:"_zc);
+  appendDigest(output, revision.variant().value.digest());
 }
 
 }  // namespace

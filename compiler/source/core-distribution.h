@@ -16,15 +16,12 @@
 
 #include <cstdint>
 
+#include "compiler/identity/crypto/sha256.h"
+#include "compiler/type/semantic-type-data.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
-#include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/identity/key/definition-key.h"
-#include "compiler/identity/key/package-key.h"
-#include "compiler/identity/crypto/sha256.h"
-#include "compiler/type/semantic-type-data.h"
 
 namespace zomlang::compiler::identity {
 class CanonicalDecoder;
@@ -78,59 +75,6 @@ struct CoreMarkerReferenceTemplateEntry final {
 
   ZC_NODISCARD CoreMarkerReferenceTemplateEntry clone() const;
   void encode(identity::CanonicalEncoder& encoder) const;
-};
-
-/// \brief Canonical role identity template independent from one compilation projection.
-class CoreRoleIdentityTemplate final {
-public:
-  ZC_NODISCARD static zc::Maybe<CoreRoleIdentityTemplate> from(
-      CoreSemanticRole role, zc::Vector<identity::ModulePathSegment>&& module,
-      zc::Vector<identity::EnclosingStableOwnerKey>&& owners, identity::DefinitionKind kind,
-      identity::DefinitionNamespace nameSpace, identity::DeclaredDefinitionName&& declaredName,
-      zc::Maybe<identity::OverloadHeaderDigest>&& overloadHeader);
-
-  ~CoreRoleIdentityTemplate() noexcept(false);
-  CoreRoleIdentityTemplate(CoreRoleIdentityTemplate&&) noexcept;
-  CoreRoleIdentityTemplate& operator=(CoreRoleIdentityTemplate&&) noexcept;
-  ZC_DISALLOW_COPY(CoreRoleIdentityTemplate);
-
-  ZC_NODISCARD CoreRoleIdentityTemplate clone() const;
-  ZC_NODISCARD CoreSemanticRole role() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::ModulePathSegment> module() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const identity::EnclosingStableOwnerKey> owners() const noexcept;
-  ZC_NODISCARD identity::DefinitionKind kind() const noexcept;
-  ZC_NODISCARD identity::DefinitionNamespace nameSpace() const noexcept;
-  ZC_NODISCARD zc::StringPtr declaredName() const noexcept;
-  ZC_NODISCARD zc::Maybe<const identity::OverloadHeaderDigest&> overloadHeader() const noexcept;
-  void encode(identity::CanonicalEncoder& encoder) const;
-
-private:
-  struct Impl;
-  explicit CoreRoleIdentityTemplate(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
-};
-
-/// \brief One canonical core source path and exact content digest.
-class CoreSourceFile final {
-public:
-  ZC_NODISCARD static CoreSourceFile from(identity::CanonicalRelativePath&& path,
-                                          const identity::Sha256Digest& digest);
-
-  CoreSourceFile(CoreSourceFile&&) noexcept = default;
-  CoreSourceFile& operator=(CoreSourceFile&&) noexcept = default;
-  ZC_DISALLOW_COPY(CoreSourceFile);
-
-  ZC_NODISCARD CoreSourceFile clone() const;
-  ZC_NODISCARD const identity::CanonicalRelativePath& path() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
-  void encode(identity::CanonicalEncoder& encoder) const;
-
-private:
-  CoreSourceFile(identity::CanonicalRelativePath&& path,
-                 const identity::Sha256Digest& digest) noexcept;
-
-  identity::CanonicalRelativePath pathValue;
-  identity::Sha256Digest digestValue;
 };
 
 /// \brief One role policy before semantic definitions are resolved.
@@ -197,76 +141,7 @@ private:
   zc::Own<Impl> impl;
 };
 
-/// \brief Canonical source, role, and edition authority for one compiler core distribution.
-class CoreDistributionRecord final {
-public:
-  ZC_NODISCARD static zc::Maybe<CoreDistributionRecord> from(
-      uint32_t editionYear, identity::CanonicalRelativePath&& rootModule,
-      identity::CanonicalRelativePath&& preludeModule, zc::Vector<CoreSourceFile>&& files,
-      zc::Vector<CoreRoleIdentityTemplate>&& roles);
-  ZC_NODISCARD static zc::Maybe<CoreDistributionRecord> decodeCanonical(
-      identity::CanonicalDecoder& decoder);
-  ZC_NODISCARD static zc::Maybe<CoreDistributionRecord> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
-
-  ~CoreDistributionRecord() noexcept(false);
-  CoreDistributionRecord(CoreDistributionRecord&&) noexcept;
-  CoreDistributionRecord& operator=(CoreDistributionRecord&&) noexcept;
-  ZC_DISALLOW_COPY(CoreDistributionRecord);
-
-  ZC_NODISCARD CoreDistributionRecord clone() const;
-  ZC_NODISCARD uint32_t editionYear() const noexcept;
-  ZC_NODISCARD const identity::CanonicalRelativePath& rootModule() const noexcept;
-  ZC_NODISCARD const identity::CanonicalRelativePath& preludeModule() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const CoreSourceFile> files() const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const CoreRoleIdentityTemplate> roles() const noexcept;
-  void encode(identity::CanonicalEncoder& encoder) const;
-  ZC_NODISCARD zc::Array<uint8_t> encode() const;
-
-private:
-  struct Impl;
-  explicit CoreDistributionRecord(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
-};
-
-/// \brief Stable typed input value for distribution and policy query publication.
-class CoreDistributionInputRecord final {
-public:
-  ZC_NODISCARD static zc::Maybe<CoreDistributionInputRecord> from(
-      CoreDistributionRecord&& record, const identity::Sha256Digest& digest,
-      CoreStandardMarkerPolicyTemplate&& policyTemplate);
-  ZC_NODISCARD static zc::Maybe<CoreDistributionInputRecord> decodeCanonical(
-      zc::ArrayPtr<const uint8_t> bytes);
-
-  ~CoreDistributionInputRecord() noexcept(false);
-  CoreDistributionInputRecord(CoreDistributionInputRecord&&) noexcept;
-  CoreDistributionInputRecord& operator=(CoreDistributionInputRecord&&) noexcept;
-  ZC_DISALLOW_COPY(CoreDistributionInputRecord);
-
-  ZC_NODISCARD CoreDistributionInputRecord clone() const;
-  ZC_NODISCARD const CoreDistributionRecord& record() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& digest() const noexcept;
-  ZC_NODISCARD const CoreStandardMarkerPolicyTemplate& policyTemplate() const noexcept;
-  void encode(identity::CanonicalEncoder& encoder) const;
-  ZC_NODISCARD zc::Array<uint8_t> encode() const;
-
-private:
-  struct Impl;
-  explicit CoreDistributionInputRecord(zc::Own<Impl>&& impl) noexcept;
-  zc::Own<Impl> impl;
-};
-
-/// \brief Computes SHA-256("zom.core-distribution" || 0x00 || Encode(record)).
-ZC_NODISCARD zc::Maybe<identity::Sha256Digest> computeCoreDistributionDigest(
-    const CoreDistributionRecord& record);
-
-/// \brief Constructs the fixed RFC 0025 initial distribution record.
-ZC_NODISCARD zc::Maybe<CoreDistributionRecord> initialCoreDistributionRecord();
-
-/// \brief Constructs the fixed RFC 0025 initial marker policy template.
+/// \brief Constructs the fixed initial marker policy template.
 ZC_NODISCARD zc::Maybe<CoreStandardMarkerPolicyTemplate> initialCoreMarkerPolicyTemplate();
-
-/// \brief Constructs the complete fixed RFC 0025 initial distribution input.
-ZC_NODISCARD zc::Maybe<CoreDistributionInputRecord> initialCoreDistributionInput();
 
 }  // namespace zomlang::compiler::source::core

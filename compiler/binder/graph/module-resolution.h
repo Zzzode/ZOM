@@ -5,15 +5,15 @@
 
 #pragma once
 
+#include "compiler/ast/node-id.h"
+#include "compiler/identity/brand.h"
+#include "compiler/identity/handle.h"
+#include "compiler/identity/key/module-resolution-key.h"
 #include "zc/core/array.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/ast/node-id.h"
-#include "compiler/identity/brand.h"
-#include "compiler/identity/handle.h"
-#include "compiler/identity/key/module-resolution-key.h"
 
 namespace zomlang::compiler::binder {
 
@@ -36,7 +36,7 @@ struct GeneratedModuleSearchRoot final {
 
 struct ToolchainCoreModuleSearchRoot final {
   identity::CrateKey crate;
-  identity::Sha256Digest distributionDigest;
+  identity::Sha256Digest policyTemplateRevision;
 };
 
 enum class ModuleSearchRootKind : uint8_t {
@@ -62,13 +62,13 @@ public:
                                                  identity::BuildScriptProducerKey producer,
                                                  identity::CanonicalRelativePath&& root);
   ZC_NODISCARD static zc::Maybe<ModuleSearchRoot> toolchainCore(
-      identity::CrateKey&& crate, const identity::Sha256Digest& distributionDigest);
+      identity::CrateKey&& crate, const identity::Sha256Digest& policyTemplateRevision);
   ZC_NODISCARD ModuleSearchRoot clone() const;
   ZC_NODISCARD static zc::Maybe<ModuleSearchRoot> decodeCanonical(
       identity::CanonicalDecoder& decoder);
   ZC_NODISCARD ModuleSearchRootKind kind() const noexcept;
   ZC_NODISCARD const identity::CrateKey& crate() const noexcept;
-  ZC_NODISCARD const identity::Sha256Digest& toolchainCoreDistributionDigest() const noexcept;
+  ZC_NODISCARD const identity::Sha256Digest& toolchainCorePolicyTemplateRevision() const noexcept;
   void encode(identity::CanonicalEncoder& encoder) const;
 
 private:

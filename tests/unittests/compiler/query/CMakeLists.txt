@@ -34,7 +34,6 @@ add_custom_target(query-test-descriptor-inventory
 add_library(
   query-capability-production-fixture STATIC
   ${CMAKE_SOURCE_DIR}/compiler/driver/query/binding/active-definition-authority-query.cc
-  ${CMAKE_SOURCE_DIR}/compiler/driver/core/query.cc
   ${CMAKE_SOURCE_DIR}/compiler/driver/query/binding/incremental-binding-query-adapter.cc
   ${CMAKE_SOURCE_DIR}/compiler/driver/query/module-graph/incremental-module-resolution-query.cc
   ${CMAKE_SOURCE_DIR}/compiler/driver/query/binding/incremental-package-graph-query-input.cc

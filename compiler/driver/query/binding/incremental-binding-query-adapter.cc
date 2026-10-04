@@ -6,7 +6,6 @@
 #include "compiler/driver/query/binding/incremental-binding-query-adapter.h"
 
 #include "compiler/binder/graph/module-skeleton-query.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/active-definition-authority-query.h"
 #include "compiler/driver/query/binding/active-identity-membership-query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
@@ -649,6 +648,24 @@ zc::Maybe<UserPackageActiveSourcesInput::Value> UserPackageActiveSourcesInput::d
   return CanonicalSourceSet::decodeCanonical(bytes);
 }
 
+zc::Array<uint8_t> ToolchainCoreActiveSourcesInput::encodeKey(const Key& key) {
+  return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
+}
+
+zc::Maybe<ToolchainCoreActiveSourcesInput::Key> ToolchainCoreActiveSourcesInput::decodeKey(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return StableCrateQueryKey::decodeBounded(bytes);
+}
+
+zc::Array<uint8_t> ToolchainCoreActiveSourcesInput::encodeValue(const Value& value) {
+  return value.encodeCanonical();
+}
+
+zc::Maybe<ToolchainCoreActiveSourcesInput::Value> ToolchainCoreActiveSourcesInput::decodeValue(
+    zc::ArrayPtr<const uint8_t> bytes) {
+  return CanonicalSourceSet::decodeCanonical(bytes);
+}
+
 zc::Array<uint8_t> ActiveSources::encodeKey(const Key& key) {
   return zc::heapArray<uint8_t>(key.canonicalCrateBytes());
 }
@@ -691,48 +708,15 @@ query::TypedQueryResult<ActiveSources::Value> ActiveSources::provide(query::Quer
         query::QueryRuntimeFailure::ProviderRejected);
   }
 
-  auto distribution =
-      context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  if (distribution.isRuntimeFailure()) {
-    return query::TypedQueryResult<Value>::runtimeFailure(distribution.runtimeFailure());
+  auto coreSources = context.get<ToolchainCoreActiveSourcesInput>(key);
+  if (coreSources.isRuntimeFailure()) {
+    return query::TypedQueryResult<Value>::runtimeFailure(coreSources.runtimeFailure());
   }
-  if (distribution.kind() != query::QueryValueKind::Value ||
-      ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
-          distribution.value().record().editionYear()) {
+  if (coreSources.kind() != query::QueryValueKind::Value) {
     return query::TypedQueryResult<Value>::runtimeFailure(
         query::QueryRuntimeFailure::ProviderRejected);
   }
-
-  zc::Vector<identity::source_query::StableSourceQueryKey> sources;
-  for (const auto& file : distribution.value().record().files()) {
-    auto source =
-        identity::SourceFileKey::from(ZC_ASSERT_NONNULL(crate).clone(),
-                                      identity::SourceOriginKey::coreFile(
-                                          identity::ToolchainUnitKey::core(), file.path().clone()));
-    auto stable = identity::source_query::StableSourceQueryKey::fromVerified(source);
-    if (stable == zc::none) {
-      return query::TypedQueryResult<Value>::runtimeFailure(
-          query::QueryRuntimeFailure::ProviderRejected);
-    }
-    sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
-  }
-  for (size_t index = 0; index < sources.size(); ++index) {
-    auto snapshot = context.get<identity::source_query::SourceSnapshotInput>(sources[index]);
-    if (snapshot.isRuntimeFailure()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(snapshot.runtimeFailure());
-    }
-    if (snapshot.kind() != query::QueryValueKind::Value ||
-        snapshot.value().contentDigest() != distribution.value().record().files()[index].digest()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(
-          query::QueryRuntimeFailure::ProviderRejected);
-    }
-  }
-  auto result = CanonicalSourceSet::from(zc::mv(sources));
-  if (result == zc::none) {
-    return query::TypedQueryResult<Value>::runtimeFailure(
-        query::QueryRuntimeFailure::ProviderRejected);
-  }
-  return query::TypedQueryResult<Value>::value(zc::mv(ZC_ASSERT_NONNULL(result)));
+  return query::TypedQueryResult<Value>::value(coreSources.value().clone());
 }
 
 bool ActiveSources::verify(query::QueryContext& context, const Key& key,
@@ -753,32 +737,9 @@ bool ActiveSources::verify(query::QueryContext& context, const Key& key,
     return false;
   }
 
-  auto distribution =
-      context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
-  if (distribution.isRuntimeFailure() || distribution.kind() != query::QueryValueKind::Value ||
-      ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
-          distribution.value().record().editionYear()) {
-    return false;
-  }
-  zc::Vector<identity::source_query::StableSourceQueryKey> sources;
-  for (const auto& file : distribution.value().record().files()) {
-    auto source =
-        identity::SourceFileKey::from(ZC_ASSERT_NONNULL(crate).clone(),
-                                      identity::SourceOriginKey::coreFile(
-                                          identity::ToolchainUnitKey::core(), file.path().clone()));
-    auto stable = identity::source_query::StableSourceQueryKey::fromVerified(source);
-    if (stable == zc::none) { return false; }
-    sources.add(zc::mv(ZC_ASSERT_NONNULL(stable)));
-  }
-  for (size_t index = 0; index < sources.size(); ++index) {
-    auto snapshot = context.get<identity::source_query::SourceSnapshotInput>(sources[index]);
-    if (snapshot.isRuntimeFailure() || snapshot.kind() != query::QueryValueKind::Value ||
-        snapshot.value().contentDigest() != distribution.value().record().files()[index].digest()) {
-      return false;
-    }
-  }
-  auto expected = CanonicalSourceSet::from(zc::mv(sources));
-  return expected != zc::none && ZC_ASSERT_NONNULL(expected) == result.value();
+  auto coreSources = context.get<ToolchainCoreActiveSourcesInput>(key);
+  return !coreSources.isRuntimeFailure() && coreSources.kind() == query::QueryValueKind::Value &&
+         coreSources.value() == result.value();
 }
 
 zc::Array<uint8_t> ActiveCrates::encodeKey(const Key& key) { return key.encodeCanonical(); }
@@ -827,26 +788,7 @@ query::TypedQueryResult<ActiveCrates::Value> ActiveCrates::provide(query::QueryC
   }
 
   if (!coreCrates.empty()) {
-    auto distribution =
-        context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
-    if (distribution.isRuntimeFailure()) {
-      return query::TypedQueryResult<Value>::runtimeFailure(distribution.runtimeFailure());
-    }
-    if (distribution.kind() != query::QueryValueKind::Value) {
-      return query::TypedQueryResult<Value>::runtimeFailure(
-          query::QueryRuntimeFailure::ProviderRejected);
-    }
-    for (const auto& stable : coreCrates) {
-      identity::CanonicalDecoder decoder(stable.canonicalCrateBytes());
-      auto crate = identity::CrateKey::decodeCanonical(decoder);
-      if (crate == zc::none || !decoder.finished() ||
-          ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
-              distribution.value().record().editionYear()) {
-        return query::TypedQueryResult<Value>::runtimeFailure(
-            query::QueryRuntimeFailure::ProviderRejected);
-      }
-      crates.add(stable.clone());
-    }
+    for (const auto& stable : coreCrates) { crates.add(stable.clone()); }
   }
 
   auto result = CanonicalCrateSet::from(zc::mv(crates));
@@ -885,21 +827,7 @@ bool ActiveCrates::verify(query::QueryContext& context, const Key& key,
   }
 
   if (!coreCrates.empty()) {
-    auto distribution =
-        context.get<core_library_query::CoreDistributionInput>(identity::ToolchainUnitKey::core());
-    if (distribution.isRuntimeFailure() || distribution.kind() != query::QueryValueKind::Value) {
-      return false;
-    }
-    for (const auto& stable : coreCrates) {
-      identity::CanonicalDecoder decoder(stable.canonicalCrateBytes());
-      auto crate = identity::CrateKey::decodeCanonical(decoder);
-      if (crate == zc::none || !decoder.finished() ||
-          ZC_ASSERT_NONNULL(crate).semanticOptions().editionYear() !=
-              distribution.value().record().editionYear()) {
-        return false;
-      }
-      expectedCrates.add(stable.clone());
-    }
+    for (const auto& stable : coreCrates) { expectedCrates.add(stable.clone()); }
   }
 
   auto expected = CanonicalCrateSet::from(zc::mv(expectedCrates));
@@ -912,6 +840,9 @@ bool registerIncrementalBindingQueryAdapter(query::QueryDatabase& database) {
     return false;
   }
   if (!database.registerDescriptor<UserPackageActiveSourcesInput>().isRegistered()) {
+    return false;
+  }
+  if (!database.registerDescriptor<ToolchainCoreActiveSourcesInput>().isRegistered()) {
     return false;
   }
   if (!database.registerDescriptor<ActiveSources>().isRegistered()) { return false; }

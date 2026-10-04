@@ -94,6 +94,7 @@ private:
   friend class CanonicalCrateSet;
   friend class CompilationRootKey;
   friend struct UserPackageActiveSourcesInput;
+  friend struct ToolchainCoreActiveSourcesInput;
   friend struct ActiveSources;
 };
 
@@ -250,6 +251,7 @@ private:
   zc::Vector<identity::source_query::StableSourceQueryKey> sourceFields;
 
   friend struct UserPackageActiveSourcesInput;
+  friend struct ToolchainCoreActiveSourcesInput;
   friend struct ActiveSources;
 };
 
@@ -260,6 +262,20 @@ struct UserPackageActiveSourcesInput final {
 
   static constexpr query::InputDescriptorMetadata descriptor{
       "UserPackageActiveSourcesInput"_zcc, "zom.query.user-package-active-sources"_zcc,
+      query::Durability::Low};
+  ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
+  ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);
+  ZC_NODISCARD static zc::Array<uint8_t> encodeValue(const Value& value);
+  ZC_NODISCARD static zc::Maybe<Value> decodeValue(zc::ArrayPtr<const uint8_t> bytes);
+};
+
+/// \brief Low-durability explicit active source set for one toolchain-core crate.
+struct ToolchainCoreActiveSourcesInput final {
+  using Key = StableCrateQueryKey;
+  using Value = CanonicalSourceSet;
+
+  static constexpr query::InputDescriptorMetadata descriptor{
+      "ToolchainCoreActiveSourcesInput"_zcc, "zom.query.toolchain-core-active-sources"_zcc,
       query::Durability::Low};
   ZC_NODISCARD static zc::Array<uint8_t> encodeKey(const Key& key);
   ZC_NODISCARD static zc::Maybe<Key> decodeKey(zc::ArrayPtr<const uint8_t> bytes);

@@ -55,7 +55,6 @@
 #include "compiler/lsp/json-serialize.h"
 #include "compiler/lsp/lifecycle.h"
 #include "compiler/source/core-distribution.h"
-#include "compiler/source/core-source-admission.h"
 #include "compiler/source/manager.h"
 #include "zc/core/common.h"
 #include "zc/core/encoding.h"
@@ -189,27 +188,6 @@ HostTargetConfiguration hostTargetConfiguration() {
 #error "The compiler host target must have a registered profile."
 #endif
 }
-
-class TransientCoreSourceDirectory final : public package::FreshSourceDirectory {
-public:
-  explicit TransientCoreSourceDirectory(zc::Own<const zc::Directory>&& root)
-      : rootValue(zc::mv(root)) {}
-  ~TransientCoreSourceDirectory() noexcept override = default;
-  const zc::Directory& root() const override { return *rootValue; }
-  zc::Maybe<package::MaterializationIssue> finish() override { return zc::none; }
-
-private:
-  zc::Own<const zc::Directory> rootValue;
-};
-
-class TransientCoreSourceDirectoryFactory final : public package::FreshSourceDirectoryFactory {
-public:
-  package::FreshSourceDirectoryResult create() override {
-    zc::Own<const zc::Directory> root = zc::newInMemoryDirectory(zc::nullClock());
-    return zc::Own<package::FreshSourceDirectory>(
-        zc::heap<TransientCoreSourceDirectory>(zc::mv(root)));
-  }
-};
 
 class CompilerMain {
 public:
@@ -826,36 +804,40 @@ public:
     return true;
   }
 
-  source::core::CoreDistributionAdmissionResult admitCoreDistribution(
+  zc::Maybe<zc::Vector<driver::CoreSourceInput>> readCoreSources(
       const zc::Filesystem& filesystem) const {
     try {
       auto executable = currentExecutablePath(filesystem);
-      if (executable == zc::none) {
-        return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
-            source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
-      }
+      if (executable == zc::none) { return zc::none; }
       const auto coreRoot = ZC_ASSERT_NONNULL(executable)
                                 .parent()
                                 .parent()
                                 .append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
       auto directory = filesystem.getRoot().tryOpenSubdir(coreRoot);
-      auto expected = source::core::initialCoreDistributionInput();
-      if (directory == zc::none) {
-        return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
-            source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
+      if (directory == zc::none) { return zc::none; }
+      zc::Vector<driver::CoreSourceInput> sources;
+      ZC_IF_SOME(root, directory) { collectCoreSources(*root, ""_zc, sources); }
+      if (sources.empty()) { return zc::none; }
+      return zc::mv(sources);
+    } catch (const zc::Exception&) { return zc::none; }
+  }
+
+  void collectCoreSources(const zc::ReadableDirectory& directory, zc::StringPtr prefix,
+                          zc::Vector<driver::CoreSourceInput>& sources) const {
+    for (const auto& entry : directory.listEntries()) {
+      auto path = prefix.size() == 0 ? zc::str(entry.name) : zc::str(prefix, "/"_zc, entry.name);
+      if (entry.type == zc::FsNode::Type::DIRECTORY) {
+        auto subdir = directory.tryOpenSubdir(zc::Path::parse(entry.name));
+        ZC_IF_SOME(child, subdir) { collectCoreSources(*child, path, sources); }
+        continue;
       }
-      if (expected == zc::none) {
-        return source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch;
-      }
-      TransientCoreSourceDirectoryFactory factory;
-      source::core::CoreDistributionAdmission admission;
-      ZC_IF_SOME(root, directory) {
-        ZC_IF_SOME(authority, expected) { return admission.admit(*root, factory, authority, 2026); }
-      }
-      return source::core::CoreDistributionAdmissionInvariantKind::VerifiedStateMismatch;
-    } catch (const zc::Exception&) {
-      return source::core::CoreDistributionAdmissionFailure::withoutCoordinate(
-          source::core::CoreDistributionAdmissionFailureKind::ReadFailed);
+      if (entry.type != zc::FsNode::Type::FILE) { continue; }
+      if (!path.endsWith(".zom"_zc)) { continue; }
+      auto file = directory.openFile(zc::Path::parse(entry.name));
+      auto bytes = file->readAllBytes();
+      auto modulePath = zc::heapString(path.slice(0, path.size() - 4));
+      auto dottedModulePath = modulePath.replace("/"_zc, "."_zc);
+      sources.add(driver::CoreSourceInput{zc::mv(dottedModulePath), zc::mv(path), zc::mv(bytes)});
     }
   }
 
@@ -1044,25 +1026,11 @@ public:
           return operationalFailure("package-session"_zc, "input-installation-failed"_zc);
         }
       }
-      auto coreAdmission = admitCoreDistribution(*filesystem);
-      if (coreAdmission.is<source::core::CoreDistributionAdmissionFailure>()) {
-        return operationalFailure(
-            "core-distribution"_zc,
-            source::core::coreDistributionAdmissionFailureDisplay(
-                coreAdmission.get<source::core::CoreDistributionAdmissionFailure>().kind()));
+      auto coreSources = readCoreSources(*filesystem);
+      if (coreSources == zc::none) {
+        return operationalFailure("core-distribution"_zc, "core-source-read-failed"_zc);
       }
-      if (coreAdmission.is<source::core::CoreDistributionAdmissionInvariantKind>()) {
-        ZC_REQUIRE(
-            commandIncidents.add(driver::core_library_query::CoreDiagnosticProjector::project(
-                coreAdmission.get<source::core::CoreDistributionAdmissionInvariantKind>(),
-                driver::core_library_query::CoreIncidentPhase::DistributionAdmission,
-                driver::core_library_query::CoreIncidentProducer::SourceAdmission)),
-            "core admission incident must fit the registered inventory");
-        reportSessionIncident();
-        return true;
-      }
-      auto distribution = zc::mv(coreAdmission).get<source::core::VerifiedCoreDistribution>();
-      if (!session->installVerifiedCoreDistribution(distribution)) {
+      if (!session->installCoreSources(zc::mv(ZC_ASSERT_NONNULL(coreSources)))) {
         if (reportSessionIncident()) return true;
         return operationalFailure("core-distribution"_zc, "installation-unavailable"_zc);
       }
@@ -1104,7 +1072,6 @@ public:
     if (!session->checkSources() || session->hasDiagnosticErrors()) {
       if (reportSessionIncident()) { return true; }
       if (session->hasDiagnosticErrors()) return publishDiagnostics();
-      if (reportCoreOperationalFailure()) return true;
       if (reportIrOperationalFailures()) return true;
       return zc::str("Compilation failed due to type checking errors.");
     }
@@ -2061,15 +2028,6 @@ private:
     for (const auto& group : groups) {
       reportOperationalFailure("ir"_zc, ir::irOperationalFailureDisplay(group.facts()[0].kind()));
     }
-    return true;
-  }
-
-  bool reportCoreOperationalFailure() {
-    auto failure = session->getCoreOperationalFailure();
-    if (failure == zc::none) return false;
-    reportOperationalFailure(
-        "core-query"_zc,
-        driver::core_library_query::coreOperationalFailureDisplay(ZC_ASSERT_NONNULL(failure)));
     return true;
   }
 

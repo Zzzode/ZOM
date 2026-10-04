@@ -47,12 +47,6 @@ ORDINARY_CORE_INTERFACE_CONSUMERS = (
     Path("compiler/ownership/overlay/ownership-event-overlay.h"),
     OWNERSHIP_OVERLAY_SOURCE,
 )
-BOOTSTRAP_CORE_INTERFACE_TYPES = (
-    "CoreBootstrapModuleInterface",
-    "MaterializeCoreBootstrapModuleInterface",
-    "CoreBootstrapModuleInterfaceRecord",
-    "VerifiedCoreBootstrapModuleInterface",
-)
 COHERENCE_BUILDER_HEADER = Path("compiler/driver/interface/coherence-builder.h")
 COHERENCE_BUILDER_SOURCE = Path("compiler/driver/interface/coherence-builder.cc")
 OPERATOR_KIND_HEADER = CHECKER_ROOT / "operator-kind.h"
@@ -646,9 +640,7 @@ def check_marker_proof_authority(files: dict[Path, str], errors: list[str]) -> N
             f"{BODY_CHECKER_HEADER}: standard marker authority must be carried by BodyCheckingInput"
         )
     for marker in (
-        "zc::Maybe<core::VerifiedCoreLibrary> coreLibrary;",
-        "impl->coreLibrary = zc::mv(coreLibraries[0]);",
-        ".authorityLease().capability().authority()",
+        "zc::Maybe<driver::core::VerifiedCoreStandardMarkerAuthority> standardMarkerAuthority;",
     ):
         if marker not in session:
             errors.append(f"{SESSION_SOURCE}: missing retained standard marker authority {marker}")
@@ -1212,16 +1204,6 @@ def check_checked_module_admission(files: dict[Path, str], errors: list[str]) ->
             errors.append(f"{path}: retained ownership admission chain is incomplete")
 
 
-def check_final_core_interface_boundary(files: dict[Path, str], errors: list[str]) -> None:
-    for path in ORDINARY_CORE_INTERFACE_CONSUMERS:
-        code = strip_cpp_comments_and_literals(files.get(path, ""))
-        for forbidden in BOOTSTRAP_CORE_INTERFACE_TYPES:
-            if forbidden in code:
-                errors.append(
-                    f"{path}: bootstrap-only core interface escapes finalization: {forbidden}"
-                )
-
-
 def analyze(files: dict[Path, str]) -> list[str]:
     errors: list[str] = []
     check_removed_rail(files, errors)
@@ -1238,7 +1220,6 @@ def analyze(files: dict[Path, str]) -> list[str]:
     check_production_session(files, errors)
     check_rfc0015_interface_cutover(files, errors)
     check_checked_module_admission(files, errors)
-    check_final_core_interface_boundary(files, errors)
     check_wiring(files, errors)
     return sorted(set(errors))
 
@@ -1895,16 +1876,6 @@ def run_self_test() -> int:
             "const ownership::AdmittedBoundModule& boundModule;",
         ),
         "retained ownership admission chain is incomplete",
-    )
-    failures += expect_rejection(
-        baseline,
-        "bootstrap core interface escape",
-        lambda files: append_source(
-            files,
-            Path("compiler/driver/interface/borrow-evidence.cc"),
-            "\nMaterializeCoreBootstrapModuleInterfaceQuery escaped;\n",
-        ),
-        "bootstrap-only core interface escapes finalization",
     )
     failures += expect_rejection(
         baseline,

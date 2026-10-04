@@ -83,10 +83,8 @@ CompilationUnitIdentity coreCompilationUnit() {
   return CompilationUnitIdentity::toolchain(ToolchainUnitKey::core());
 }
 
-ToolchainSemanticContextInput coreContextInput(uint8_t distributionByte = 0x21,
-                                               uint8_t policyByte = 0x31) {
-  return ToolchainSemanticContextInput::from(
-      ToolchainUnitKey::core(), repeatedDigest(distributionByte), repeatedDigest(policyByte));
+ToolchainSemanticContextInput coreContextInput(uint8_t policyByte = 0x31) {
+  return ToolchainSemanticContextInput::from(ToolchainUnitKey::core(), repeatedDigest(policyByte));
 }
 
 PackageDependencyEdgeKey packageEdge() {
@@ -150,9 +148,9 @@ zc::Maybe<ContextFingerprint> fingerprint(
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<SourceContentIdentity> sourceContents;
   zc::Vector<ModuleKey> modules;
-  return ContextFingerprint::compute(
-      compilationUnits.asPtr(), toolchainInputs.asPtr(), packageEdges.asPtr(), crates.asPtr(),
-      crateEdges.asPtr(), sourceContents.asPtr(), modules.asPtr());
+  return ContextFingerprint::compute(compilationUnits.asPtr(), toolchainInputs.asPtr(),
+                                     packageEdges.asPtr(), crates.asPtr(), crateEdges.asPtr(),
+                                     sourceContents.asPtr(), modules.asPtr());
 }
 
 zc::Maybe<ContextFingerprint> fingerprintWithSources(
@@ -163,9 +161,9 @@ zc::Maybe<ContextFingerprint> fingerprintWithSources(
   zc::Vector<CrateKey> crates;
   zc::Vector<CrateDependencyEdgeKey> crateEdges;
   zc::Vector<ModuleKey> modules;
-  return ContextFingerprint::compute(
-      compilationUnits.asPtr(), toolchainInputs.asPtr(), packageEdges.asPtr(), crates.asPtr(),
-      crateEdges.asPtr(), sourceContents.asPtr(), modules.asPtr());
+  return ContextFingerprint::compute(compilationUnits.asPtr(), toolchainInputs.asPtr(),
+                                     packageEdges.asPtr(), crates.asPtr(), crateEdges.asPtr(),
+                                     sourceContents.asPtr(), modules.asPtr());
 }
 
 void expectFingerprint(zc::Maybe<ContextFingerprint>& result, zc::StringPtr expected) {
@@ -300,7 +298,7 @@ ZC_TEST("Semantic context fingerprint requires exactly one input per toolchain u
   ZC_EXPECT(fingerprint(userUnits, extraInputs, packageEdges) == zc::none);
 }
 
-ZC_TEST("Semantic context fingerprint changes with core distribution and policy lineage") {
+ZC_TEST("Semantic context fingerprint changes with core policy lineage") {
   zc::Vector<CompilationUnitIdentity> baselineUnits;
   baselineUnits.add(coreCompilationUnit());
   zc::Vector<ToolchainSemanticContextInput> baselineInputs;
@@ -308,26 +306,16 @@ ZC_TEST("Semantic context fingerprint changes with core distribution and policy 
   zc::Vector<PackageDependencyEdgeKey> baselineEdges;
   auto baseline = fingerprint(baselineUnits, baselineInputs, baselineEdges);
 
-  zc::Vector<CompilationUnitIdentity> distributionUnits;
-  distributionUnits.add(coreCompilationUnit());
-  zc::Vector<ToolchainSemanticContextInput> distributionInputs;
-  distributionInputs.add(coreContextInput(0x22, 0x31));
-  zc::Vector<PackageDependencyEdgeKey> distributionEdges;
-  auto distributionMutation = fingerprint(distributionUnits, distributionInputs, distributionEdges);
-  ZC_EXPECT(!sameFingerprint(baseline, distributionMutation));
-
   zc::Vector<CompilationUnitIdentity> policyUnits;
   policyUnits.add(coreCompilationUnit());
   zc::Vector<ToolchainSemanticContextInput> policyInputs;
-  policyInputs.add(coreContextInput(0x21, 0x32));
+  policyInputs.add(coreContextInput(0x32));
   zc::Vector<PackageDependencyEdgeKey> policyEdges;
   auto policyMutation = fingerprint(policyUnits, policyInputs, policyEdges);
   ZC_EXPECT(!sameFingerprint(baseline, policyMutation));
 
   auto stableToolchain = ToolchainUnitKey::core().encode();
-  auto mutatedDistributionToolchain = coreContextInput(0x22, 0x31).toolchain().encode();
-  auto mutatedPolicyToolchain = coreContextInput(0x21, 0x32).toolchain().encode();
-  ZC_EXPECT(stableToolchain.asPtr() == mutatedDistributionToolchain.asPtr());
+  auto mutatedPolicyToolchain = coreContextInput(0x32).toolchain().encode();
   ZC_EXPECT(stableToolchain.asPtr() == mutatedPolicyToolchain.asPtr());
 }
 

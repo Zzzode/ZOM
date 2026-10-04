@@ -891,10 +891,7 @@ private:
   zc::StringPtr generatedSource;
 };
 
-void installCore(CompilerSession& session) {
-  auto distribution = core_library_test::admittedCoreDistribution();
-  ZC_REQUIRE(session.installVerifiedCoreDistribution(distribution));
-}
+void installCore(CompilerSession& session) { core_library_test::installCoreSources(session); }
 
 bool isToolchainCore(const identity::CrateKey& crate) {
   return crate.unit().kind() == identity::CompilationUnitKind::Toolchain &&
@@ -1938,7 +1935,7 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
 
         zc::Vector<VerifiedInterfaceSource> interfaceSources(interfaces.size());
         for (const auto& interface : interfaces) {
-          interfaceSources.add(VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+          interfaceSources.add(VerifiedInterfaceSource{interface});
         }
         auto importedResult = ImportedSignatureViewProjector::build(
             admitted, interfaceSources.asPtr(), semanticTypes, identities);
@@ -1975,9 +1972,7 @@ ZC_TEST("CompilerSession retains empty prelude signature lineage after local sha
         ZC_IF_SOME(surface, boundView.preludeSurface()) {
           ZC_EXPECT(prelude.sourceModule() == surface.module);
           const auto& surfaceRevision = prelude.bindingSurfaceRevision().variant();
-          ZC_REQUIRE(surfaceRevision.is<module_interface::UserImportedBindingSurfaceRevision>());
-          ZC_EXPECT(surfaceRevision.get<module_interface::UserImportedBindingSurfaceRevision>()
-                        .value.digest() == surface.surface.revision().digest());
+          ZC_EXPECT(surfaceRevision.value.digest() == surface.surface.revision().digest());
         }
         ZC_EXPECT(prelude.origin() == checker::cross_module::SignatureViewOrigin::Prelude);
         ZC_EXPECT(prelude.authorizedRoots().size() == 0);
@@ -2022,22 +2017,13 @@ ZC_TEST("CompilerSession projects core prelude re-exports through the prelude su
   ZC_REQUIRE(boundView.preludeSurface() != zc::none);
   ZC_IF_SOME(surface, boundView.preludeSurface()) {
     ZC_EXPECT(prelude.sourceModule() == surface.module);
-    const auto& importedSurfaceRevision = prelude.bindingSurfaceRevision().variant();
-    ZC_REQUIRE(importedSurfaceRevision
-                   .is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>());
-    const auto& preludeRevision =
-        importedSurfaceRevision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
-            .value;
+    const auto& preludeRevision = prelude.bindingSurfaceRevision().variant().value;
     ZC_REQUIRE(prelude.authorizedRoots().size() == 2);
     ZC_REQUIRE(prelude.lookupDefinitions().size() == 2);
     for (const auto& root : prelude.authorizedRoots()) {
       ZC_EXPECT(root.sourceModule != prelude.sourceModule());
       const auto& rootSurfaceRevision = root.bindingSurfaceRevision.variant();
-      ZC_REQUIRE(
-          rootSurfaceRevision.is<module_interface::ToolchainCoreImportedBindingSurfaceRevision>());
-      ZC_EXPECT(
-          rootSurfaceRevision.get<module_interface::ToolchainCoreImportedBindingSurfaceRevision>()
-              .value.digest() == preludeRevision.digest());
+      ZC_EXPECT(rootSurfaceRevision.value.digest() == preludeRevision.digest());
     }
   }
 }
@@ -2070,8 +2056,8 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
     ZC_REQUIRE(coreBoundModuleCount(identities) == 3);
     const auto& boundModule = soleUserBoundModule(identities);
     ZC_REQUIRE(session.checkSources());
-    auto coreLibrary = core_library_test::materializeCoreLibrary(session, identities);
-    ZC_REQUIRE(coreLibrary != zc::none);
+    auto standardMarkers = core_library_test::standardMarkerAuthority(session);
+    ZC_REQUIRE(standardMarkers != zc::none);
     auto checkerBound = identities.boundModule(boundModule.module());
     ZC_REQUIRE(checkerBound != zc::none);
     const auto& boundView = ZC_REQUIRE_NONNULL(checkerBound);
@@ -2155,7 +2141,7 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
 
           zc::Vector<VerifiedInterfaceSource> interfaceSources(interfaces.size());
           for (const auto& interface : interfaces) {
-            interfaceSources.add(VerifiedInterfaceSource(UserVerifiedInterfaceSource{interface}));
+            interfaceSources.add(VerifiedInterfaceSource{interface});
           }
           auto importedResult = ImportedSignatureViewProjector::build(
               admitted, interfaceSources.asPtr(), semanticTypes, identities);
@@ -2254,17 +2240,16 @@ ZC_TEST("MarkerProofEngine resolves explicit builtin and structural evidence") {
           auto crate = identities.crate(boundModule.crate());
           ZC_REQUIRE(crate != zc::none);
           ZC_IF_SOME(value, crate) {
-            checker::body::BodyCheckingInput bodyInput{
-                boundView.retain(),
-                identities,
-                policy,
-                ZC_REQUIRE_NONNULL(coreLibrary).authorityLease().capability().authority(),
-                signatures,
-                imported,
-                coherence.view,
-                semanticTypes,
-                inventory,
-                value.key().semanticOptions()};
+            checker::body::BodyCheckingInput bodyInput{boundView.retain(),
+                                                       identities,
+                                                       policy,
+                                                       ZC_REQUIRE_NONNULL(standardMarkers),
+                                                       signatures,
+                                                       imported,
+                                                       coherence.view,
+                                                       semanticTypes,
+                                                       inventory,
+                                                       value.key().semanticOptions()};
             auto proofInput = checker::marker::MarkerProofInput::from(bodyInput);
             ZC_REQUIRE(proofInput != zc::none);
             ZC_IF_SOME(value, proofInput) {

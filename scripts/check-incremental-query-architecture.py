@@ -63,12 +63,6 @@ QUERY_CAPABILITY_TEST = Path(
 ACTIVE_IDENTITY_MATERIALIZATION = (
     COMPILER_ROOT / "driver/active-identity-materialization.h"
 )
-CORE_LIBRARY_QUERY_PROVIDER_HEADER = (
-    COMPILER_ROOT / "driver/core/query.h"
-)
-CORE_LIBRARY_QUERY_PROVIDER_SOURCE = (
-    COMPILER_ROOT / "driver/core/query.cc"
-)
 DRIVER_AUTHORITY_SESSION_TEST = Path(
     "tests/unittests/compiler/driver/query/binding/active-definition-authority-session-test.cc"
 )

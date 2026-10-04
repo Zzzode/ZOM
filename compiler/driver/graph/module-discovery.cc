@@ -16,12 +16,12 @@
 
 #include <cstdint>
 
-#include "zc/core/encoding.h"
-#include "zc/core/map.h"
 #include "compiler/ast/generated/node-payload.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/ast/schema-verifier.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/encoding.h"
+#include "zc/core/map.h"
 
 namespace zomlang::compiler::driver {
 namespace {
@@ -252,23 +252,6 @@ zc::ArrayPtr<const identity::CanonicalRelativePath> AmbiguousModuleSource::paths
   return pathValues.asPtr();
 }
 
-ResolvedCoreModuleSource::ResolvedCoreModuleSource(
-    identity::SourceFileKey&& source, const identity::Sha256Digest& contentDigest) noexcept
-    : sourceValue(zc::mv(source)), contentDigestValue(contentDigest) {}
-
-ResolvedCoreModuleSource ResolvedCoreModuleSource::from(
-    identity::SourceFileKey&& source, const identity::Sha256Digest& contentDigest) {
-  return ResolvedCoreModuleSource(zc::mv(source), contentDigest);
-}
-
-const identity::SourceFileKey& ResolvedCoreModuleSource::source() const noexcept {
-  return sourceValue;
-}
-
-const identity::Sha256Digest& ResolvedCoreModuleSource::contentDigest() const noexcept {
-  return contentDigestValue;
-}
-
 ModuleSourceDiscoveryResult discoverModuleSource(
     const package::SourceTreeRecord& sourceTree, const identity::CanonicalRelativePath& searchRoot,
     zc::ArrayPtr<const identity::ModulePathSegment> modulePath) {
@@ -283,16 +266,6 @@ ModuleSourceDiscoveryResult discoverModuleSource(
   }
   if (hasDirect) { return ResolvedModuleSource::from(zc::mv(direct)); }
   if (hasNested) { return ResolvedModuleSource::from(zc::mv(nested)); }
-  return MissingModuleSource();
-}
-
-CoreModuleSourceDiscoveryResult discoverCoreModuleSource(
-    const source::core::AdmittedCoreSourceCatalog& catalog,
-    zc::ArrayPtr<const identity::ModulePathSegment> modulePath) {
-  if (modulePath.size() == 0) { return InvalidModuleSourceRequest(); }
-  ZC_IF_SOME(entry, catalog.find(modulePath)) {
-    return ResolvedCoreModuleSource::from(entry.source().clone(), entry.contentDigest());
-  }
   return MissingModuleSource();
 }
 

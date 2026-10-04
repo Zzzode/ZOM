@@ -26,7 +26,7 @@ class ModuleGraphDiagnosticProjector;
 
 namespace zomlang::compiler::driver {
 class ModuleInterfaceDiagnosticProjector;
-namespace core_library_query {
+namespace core {
 class CoreDiagnosticProjector;
 }
 }  // namespace zomlang::compiler::driver
@@ -74,7 +74,7 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
-  friend class driver::core_library_query::CoreDiagnosticProjector;
+  friend class driver::core::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
   friend class diagnostics::DiagnosticIncidentProjector;
 };
@@ -98,7 +98,7 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
-  friend class driver::core_library_query::CoreDiagnosticProjector;
+  friend class driver::core::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
   friend class diagnostics::DiagnosticIncidentProjector;
 };
@@ -122,7 +122,7 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
-  friend class driver::core_library_query::CoreDiagnosticProjector;
+  friend class driver::core::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
   friend class diagnostics::DiagnosticIncidentProjector;
 };
@@ -169,7 +169,7 @@ private:
   friend class binder::BinderDiagnosticProjector;
   friend class binder::ModuleGraphDiagnosticProjector;
   friend class driver::ModuleInterfaceDiagnosticProjector;
-  friend class driver::core_library_query::CoreDiagnosticProjector;
+  friend class driver::core::CoreDiagnosticProjector;
   friend class ir::IrDiagnosticProjector;
   friend class diagnostics::DiagnosticIncidentProjector;
 };

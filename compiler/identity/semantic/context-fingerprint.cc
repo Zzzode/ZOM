@@ -14,8 +14,8 @@
 
 #include "compiler/identity/semantic/context-fingerprint.h"
 
-#include "zc/core/vector.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -98,29 +98,20 @@ zc::Array<uint8_t> SourceContentIdentity::encode() const {
 }
 
 ToolchainSemanticContextInput::ToolchainSemanticContextInput(
-    ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
-    const Sha256Digest& policyTemplateRevision) noexcept
-    : toolchainValue(toolchain),
-      distributionDigestValue(distributionDigest),
-      policyTemplateRevisionValue(policyTemplateRevision) {}
+    ToolchainUnitKey toolchain, const Sha256Digest& policyTemplateRevision) noexcept
+    : toolchainValue(toolchain), policyTemplateRevisionValue(policyTemplateRevision) {}
 
 ToolchainSemanticContextInput ToolchainSemanticContextInput::from(
-    ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
-    const Sha256Digest& policyTemplateRevision) noexcept {
-  return ToolchainSemanticContextInput(toolchain, distributionDigest, policyTemplateRevision);
+    ToolchainUnitKey toolchain, const Sha256Digest& policyTemplateRevision) noexcept {
+  return ToolchainSemanticContextInput(toolchain, policyTemplateRevision);
 }
 
 ToolchainSemanticContextInput ToolchainSemanticContextInput::clone() const noexcept {
-  return ToolchainSemanticContextInput(toolchainValue, distributionDigestValue,
-                                       policyTemplateRevisionValue);
+  return ToolchainSemanticContextInput(toolchainValue, policyTemplateRevisionValue);
 }
 
 const ToolchainUnitKey& ToolchainSemanticContextInput::toolchain() const noexcept {
   return toolchainValue;
-}
-
-const Sha256Digest& ToolchainSemanticContextInput::distributionDigest() const noexcept {
-  return distributionDigestValue;
 }
 
 const Sha256Digest& ToolchainSemanticContextInput::policyTemplateRevision() const noexcept {
@@ -130,7 +121,6 @@ const Sha256Digest& ToolchainSemanticContextInput::policyTemplateRevision() cons
 zc::Array<uint8_t> ToolchainSemanticContextInput::encode() const {
   CanonicalEncoder encoder;
   toolchainValue.encode(encoder);
-  encoder.encodeDigest(distributionDigestValue);
   encoder.encodeDigest(policyTemplateRevisionValue);
   return encoder.finish();
 }
@@ -170,11 +160,9 @@ void CoreSemanticContextFingerprint::encode(CanonicalEncoder& encoder) const {
   encoder.encodeDigest(value);
 }
 
-ContextFingerprint::ContextFingerprint(const Sha256Digest& digest) noexcept
-    : value(digest) {}
+ContextFingerprint::ContextFingerprint(const Sha256Digest& digest) noexcept : value(digest) {}
 
-ContextFingerprint ContextFingerprint::fromCanonicalDigest(
-    const Sha256Digest& digest) noexcept {
+ContextFingerprint ContextFingerprint::fromCanonicalDigest(const Sha256Digest& digest) noexcept {
   return ContextFingerprint(digest);
 }
 
@@ -228,8 +216,6 @@ zc::Maybe<ContextFingerprint> ContextFingerprint::compute(
 
 const Sha256Digest& ContextFingerprint::digest() const noexcept { return value; }
 
-ContextFingerprint ContextFingerprint::clone() const noexcept {
-  return ContextFingerprint(value);
-}
+ContextFingerprint ContextFingerprint::clone() const noexcept { return ContextFingerprint(value); }
 
 }  // namespace zomlang::compiler::identity

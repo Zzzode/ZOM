@@ -111,21 +111,11 @@ SignatureAuthorizationOrigin SignatureAuthorizationOrigin::clone() const {
 }
 
 ImportedInterfaceRevision ImportedInterfaceRevision::clone() const {
-  if (value.is<UserImportedInterfaceRevision>()) {
-    return ImportedInterfaceRevision(
-        UserImportedInterfaceRevision{value.get<UserImportedInterfaceRevision>().value});
-  }
-  return ImportedInterfaceRevision(ToolchainCoreImportedInterfaceRevision{
-      value.get<ToolchainCoreImportedInterfaceRevision>().value.clone()});
+  return ImportedInterfaceRevision(UserImportedInterfaceRevision{value.value});
 }
 
 ImportedBindingSurfaceRevision ImportedBindingSurfaceRevision::clone() const {
-  if (value.is<UserImportedBindingSurfaceRevision>()) {
-    return ImportedBindingSurfaceRevision(
-        UserImportedBindingSurfaceRevision{value.get<UserImportedBindingSurfaceRevision>().value});
-  }
-  return ImportedBindingSurfaceRevision(ToolchainCoreImportedBindingSurfaceRevision{
-      value.get<ToolchainCoreImportedBindingSurfaceRevision>().value.clone()});
+  return ImportedBindingSurfaceRevision(UserImportedBindingSurfaceRevision{value.value});
 }
 
 bool isSignatureRootBinding(const binder::BindingTarget& binding) noexcept {

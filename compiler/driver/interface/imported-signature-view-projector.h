@@ -25,16 +25,6 @@ public:
       zc::ArrayPtr<const VerifiedInterfaceSource> dependencyInterfaces,
       const type::SemanticTypeStore& semanticTypes,
       const checker::CheckerIdentityAuthority& identities);
-
-private:
-  ZC_NODISCARD static zc::Maybe<checker::cross_module::ImportedSignatureModule> projectCore(
-      const ownership::AdmittedBoundModule& requester,
-      const core_library_query::VerifiedCoreModuleInterface& source,
-      checker::cross_module::SignatureViewOrigin origin,
-      zc::ArrayPtr<const checker::cross_module::ImportedDefinitionBindingSelection>
-          definitionBindings,
-      zc::ArrayPtr<const checker::cross_module::ImportedModuleTargetSelection> moduleTargetNames,
-      const checker::CheckerIdentityAuthority& identities);
 };
 
 }  // namespace zomlang::compiler::driver

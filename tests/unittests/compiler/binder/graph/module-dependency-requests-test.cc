@@ -446,7 +446,7 @@ ZC_TEST("ModuleSearchRoot admits only an exact unversioned toolchain core root")
   ZC_EXPECT(ZC_REQUIRE_NONNULL(root).kind() == ModuleSearchRootKind::ToolchainCore);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(root).crate().unit().kind() ==
             identity::CompilationUnitKind::Toolchain);
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(root).toolchainCoreDistributionDigest() ==
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(root).toolchainCorePolicyTemplateRevision() ==
             ZC_REQUIRE_NONNULL(digest));
 
   identity::CanonicalEncoder encoder;
@@ -460,7 +460,7 @@ ZC_TEST("ModuleSearchRoot admits only an exact unversioned toolchain core root")
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).kind() == ModuleSearchRootKind::ToolchainCore);
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).crate().encode().asPtr() ==
             ZC_REQUIRE_NONNULL(root).crate().encode().asPtr());
-  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).toolchainCoreDistributionDigest() ==
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).toolchainCorePolicyTemplateRevision() ==
             ZC_REQUIRE_NONNULL(digest));
 
   ZC_EXPECT(ModuleSearchRoot::toolchainCore(crateKey(), ZC_REQUIRE_NONNULL(digest)) == zc::none);

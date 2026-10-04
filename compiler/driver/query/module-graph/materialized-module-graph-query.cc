@@ -10,7 +10,6 @@
 #include "compiler/binder/graph/module-skeleton-query.h"
 #include "compiler/binder/stable/stable-binding-codec.h"
 #include "compiler/binder/stable/stable-binding-diagnostic-fact.h"
-#include "compiler/driver/core/query.h"
 #include "compiler/driver/query/binding/incremental-package-graph-query-input.h"
 #include "compiler/driver/query/binding/named-item-query.h"
 #include "compiler/driver/query/binding/owner-body-query.h"
@@ -22,6 +21,7 @@
 #include "compiler/identity/source/source-query-input.h"
 #include "compiler/identity/source/source-snapshot.h"
 #include "compiler/parser/query/parse-source-query.h"
+#include "compiler/source/core-distribution.h"
 
 namespace zomlang::compiler {
 namespace {
@@ -491,21 +491,9 @@ query::TypedQueryResult<ProviderAcquisition> acquireProviderContext(
           query::QueryRuntimeFailure::InvariantViolation);
     }
   }
-  auto core = requireValue<core_library_query::CoreDistributionInput>(
-      context, projectedCore.unit().toolchain());
-  if (core.isRuntimeFailure()) {
-    return query::TypedQueryResult<ProviderAcquisition>::runtimeFailure(core.runtimeFailure());
-  }
-  if (core.value().record().encode().asPtr() !=
-          authority.value().coreDistributionRecord().encode().asPtr() ||
-      core.value().digest() != authority.value().coreDistributionDigest()) {
-    return query::TypedQueryResult<ProviderAcquisition>::runtimeFailure(
-        query::QueryRuntimeFailure::InvariantViolation);
-  }
   zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   toolchainInputs.add(identity::ToolchainSemanticContextInput::from(
-      projectedCore.unit().toolchain(), core.value().digest(),
-      core.value().policyTemplate().revision()));
+      projectedCore.unit().toolchain(), authority.value().corePolicyTemplateRevision()));
 
   for (const auto& crate : crates) {
     auto expectedOptions = inputEntryFor(authority.value().compilationOptions(), crate);
@@ -1203,18 +1191,9 @@ zc::Maybe<VerifierContextAcquisition> acquireVerifierContext(
   for (const auto& crate : authority.value().projectedCoreCrates()) {
     if (crate.unit().encode().asPtr() != projectedCore.unit().encode().asPtr()) { return zc::none; }
   }
-  auto core =
-      context.get<core_library_query::CoreDistributionInput>(projectedCore.unit().toolchain());
-  if (core.isRuntimeFailure() || core.kind() != query::QueryValueKind::Value ||
-      core.value().record().encode().asPtr() !=
-          authority.value().coreDistributionRecord().encode().asPtr() ||
-      core.value().digest() != authority.value().coreDistributionDigest()) {
-    return zc::none;
-  }
   zc::Vector<identity::ToolchainSemanticContextInput> toolchainInputs;
   toolchainInputs.add(identity::ToolchainSemanticContextInput::from(
-      projectedCore.unit().toolchain(), core.value().digest(),
-      core.value().policyTemplate().revision()));
+      projectedCore.unit().toolchain(), authority.value().corePolicyTemplateRevision()));
 
   for (const auto& crate : crates) {
     auto expectedOptions = verifierInputEntryFor(authority.value().compilationOptions(), crate);

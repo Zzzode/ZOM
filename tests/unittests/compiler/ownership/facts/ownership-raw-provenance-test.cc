@@ -80,7 +80,8 @@ ZC_TEST("cloneRawProvenanceOrigin clones RawInputOrigin") {
   auto cloned = cloneRawProvenanceOrigin(origin);
 
   ZC_REQUIRE(cloned.is<RawInputOrigin>());
-  ZC_EXPECT(cloned.get<RawInputOrigin>() == RawInputOrigin(false, 3));
+  const auto expected = RawInputOrigin{false, 3};
+  ZC_EXPECT(cloned.get<RawInputOrigin>() == expected);
 }
 
 ZC_TEST("cloneRawProvenanceOrigin clones RawStaticAddressOrigin") {
@@ -146,7 +147,8 @@ ZC_TEST("RawProvenanceFact clone deep-copies predecessors and origins") {
   ZC_EXPECT(cloned.predecessors[1].introduction == fact.predecessors[1].introduction);
   ZC_REQUIRE(cloned.origins.size() == fact.origins.size());
   ZC_REQUIRE(cloned.origins[0].is<RawInputOrigin>());
-  ZC_EXPECT(cloned.origins[0].get<RawInputOrigin>() == RawInputOrigin(true, 0));
+  const auto expectedInput = RawInputOrigin{true, 0};
+  ZC_EXPECT(cloned.origins[0].get<RawInputOrigin>() == expectedInput);
   ZC_REQUIRE(cloned.origins[1].is<RawStaticAddressOrigin>());
   ZC_EXPECT(cloned.origins[1].get<RawStaticAddressOrigin>() ==
             RawStaticAddressOrigin{makeEventKey(4)});

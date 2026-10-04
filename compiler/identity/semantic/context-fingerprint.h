@@ -39,24 +39,21 @@ private:
   Sha256Digest digestValue;
 };
 
-/// \brief Exact distribution and policy lineage for one toolchain compilation unit.
+/// \brief Exact policy lineage for one toolchain compilation unit.
 class ToolchainSemanticContextInput final {
 public:
   ZC_NODISCARD static ToolchainSemanticContextInput from(
-      ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
-      const Sha256Digest& policyTemplateRevision) noexcept;
+      ToolchainUnitKey toolchain, const Sha256Digest& policyTemplateRevision) noexcept;
   ZC_NODISCARD ToolchainSemanticContextInput clone() const noexcept;
   ZC_NODISCARD const ToolchainUnitKey& toolchain() const noexcept;
-  ZC_NODISCARD const Sha256Digest& distributionDigest() const noexcept;
   ZC_NODISCARD const Sha256Digest& policyTemplateRevision() const noexcept;
   ZC_NODISCARD zc::Array<uint8_t> encode() const;
 
 private:
-  ToolchainSemanticContextInput(ToolchainUnitKey toolchain, const Sha256Digest& distributionDigest,
+  ToolchainSemanticContextInput(ToolchainUnitKey toolchain,
                                 const Sha256Digest& policyTemplateRevision) noexcept;
 
   ToolchainUnitKey toolchainValue;
-  Sha256Digest distributionDigestValue;
   Sha256Digest policyTemplateRevisionValue;
 };
 

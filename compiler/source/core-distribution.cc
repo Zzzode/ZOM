@@ -14,25 +14,19 @@
 
 #include "compiler/source/core-distribution.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/encoding.h"
-#include "zom/core/core-library-inventory.inc"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
+#include "zc/core/encoding.h"
 
 namespace zomlang::compiler::source::core {
 namespace {
 
-constexpr uint64_t kCoreFileCount = 3;
-constexpr uint64_t kCoreRoleCount = 2;
-constexpr uint64_t kMaximumModulePathSegments = 128;
-constexpr uint64_t kMaximumOwnerCount = 128;
 constexpr uint64_t kMaximumPolicyEntries = 2;
 constexpr uint64_t kMaximumPolicySubjects = 5;
 constexpr uint64_t kMaximumPolicyPrimitives = 19;
 constexpr uint64_t kMaximumPolicyReferenceRules = 2;
 constexpr uint64_t kMaximumPolicyPointerRules = 2;
-constexpr uint64_t kMaximumCoreDistributionRecordBytes = 4096;
 constexpr uint64_t kMaximumCorePolicyTemplateBytes = 4096;
 
 bool isCoreRole(CoreSemanticRole role) {
@@ -54,74 +48,14 @@ bool isMutability(type::semantic::Mutability mutability) {
          mutability == type::semantic::Mutability::Mutable;
 }
 
-bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
-  return left < right;
-}
-
 bool sameBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) {
   return left == right;
-}
-
-zc::Array<uint8_t> encodePath(const identity::CanonicalRelativePath& path) {
-  identity::CanonicalEncoder encoder;
-  path.encode(encoder);
-  return encoder.finish();
-}
-
-zc::Array<uint8_t> encodeRole(const CoreRoleIdentityTemplate& role) {
-  identity::CanonicalEncoder encoder;
-  role.encode(encoder);
-  return encoder.finish();
 }
 
 zc::Array<uint8_t> encodePolicyEntry(const CoreMarkerPolicyTemplateEntry& entry) {
   identity::CanonicalEncoder encoder;
   entry.encode(encoder);
   return encoder.finish();
-}
-
-zc::Maybe<CoreSourceFile> decodeCoreSourceFile(identity::CanonicalDecoder& decoder) {
-  auto path = identity::CanonicalRelativePath::decodeCanonical(decoder);
-  auto digest = decoder.decodeDigest();
-  if (path == zc::none || digest == zc::none) { return zc::none; }
-  return CoreSourceFile::from(zc::mv(ZC_ASSERT_NONNULL(path)), ZC_ASSERT_NONNULL(digest));
-}
-
-zc::Maybe<CoreRoleIdentityTemplate> decodeCoreRole(identity::CanonicalDecoder& decoder) {
-  auto roleTag = decoder.decodeUint8();
-  auto moduleCount = decoder.decodeSequenceSize(kMaximumModulePathSegments);
-  if (roleTag == zc::none || moduleCount == zc::none) { return zc::none; }
-  zc::Vector<identity::ModulePathSegment> module(
-      static_cast<size_t>(ZC_ASSERT_NONNULL(moduleCount)));
-  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(moduleCount); ++index) {
-    auto segment = identity::ModulePathSegment::decodeCanonical(decoder);
-    if (segment == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, segment) { module.add(zc::mv(value)); }
-  }
-  auto ownerCount = decoder.decodeSequenceSize(kMaximumOwnerCount);
-  if (ownerCount == zc::none || ZC_ASSERT_NONNULL(ownerCount) != 0) { return zc::none; }
-  zc::Vector<identity::EnclosingStableOwnerKey> owners;
-  auto kind = decoder.decodeUint8();
-  auto nameSpace = decoder.decodeUint8();
-  auto name = identity::DeclaredDefinitionName::decodeCanonical(decoder);
-  auto overloadPresence = decoder.decodeUint8();
-  if (kind == zc::none || nameSpace == zc::none || name == zc::none ||
-      overloadPresence == zc::none) {
-    return zc::none;
-  }
-  zc::Maybe<identity::OverloadHeaderDigest> overload;
-  if (ZC_ASSERT_NONNULL(overloadPresence) == 0x01) {
-    auto digest = decoder.decodeDigest();
-    if (digest == zc::none) { return zc::none; }
-    overload = identity::OverloadHeaderDigest::fromBytes(ZC_ASSERT_NONNULL(digest).bytes());
-  } else if (ZC_ASSERT_NONNULL(overloadPresence) != 0x00) {
-    return zc::none;
-  }
-  return CoreRoleIdentityTemplate::from(
-      static_cast<CoreSemanticRole>(ZC_ASSERT_NONNULL(roleTag)), zc::mv(module), zc::mv(owners),
-      static_cast<identity::DefinitionKind>(ZC_ASSERT_NONNULL(kind)),
-      static_cast<identity::DefinitionNamespace>(ZC_ASSERT_NONNULL(nameSpace)),
-      zc::mv(ZC_ASSERT_NONNULL(name)), zc::mv(overload));
 }
 
 zc::Maybe<CoreMarkerReferenceTemplateRule> decodeReferenceRule(
@@ -190,24 +124,6 @@ zc::Maybe<CoreMarkerPolicyTemplate> decodePolicy(identity::CanonicalDecoder& dec
                                         zc::mv(pointers));
 }
 
-bool isInitialRole(const CoreRoleIdentityTemplate& role, CoreSemanticRole expectedRole,
-                   zc::StringPtr expectedName) {
-  return role.role() == expectedRole && role.module().size() == 2 &&
-         role.module()[0].text() == "core"_zc && role.module()[1].text() == "marker"_zc &&
-         role.owners().size() == 0 && role.kind() == identity::DefinitionKind::Interface &&
-         role.nameSpace() == identity::DefinitionNamespace::Type &&
-         role.declaredName() == expectedName && role.overloadHeader() == zc::none;
-}
-
-bool hasPath(const identity::CanonicalRelativePath& path,
-             zc::ArrayPtr<const zc::StringPtr> expected) {
-  if (path.segments().size() != expected.size()) { return false; }
-  for (size_t index = 0; index < expected.size(); ++index) {
-    if (path.segments()[index].text() != expected[index]) { return false; }
-  }
-  return true;
-}
-
 }  // namespace
 
 CoreMarkerReferenceTemplateRule::CoreMarkerReferenceTemplateRule(
@@ -248,118 +164,6 @@ CoreMarkerReferenceTemplateEntry CoreMarkerReferenceTemplateEntry::clone() const
 void CoreMarkerReferenceTemplateEntry::encode(identity::CanonicalEncoder& encoder) const {
   encoder.encodeUint8(static_cast<uint8_t>(mutability));
   rule.encode(encoder);
-}
-
-struct CoreRoleIdentityTemplate::Impl final {
-  Impl(CoreSemanticRole role, zc::Vector<identity::ModulePathSegment>&& module,
-       zc::Vector<identity::EnclosingStableOwnerKey>&& owners, identity::DefinitionKind kind,
-       identity::DefinitionNamespace nameSpace, identity::DeclaredDefinitionName&& declaredName,
-       zc::Maybe<identity::OverloadHeaderDigest>&& overloadHeader)
-      : role(role),
-        module(zc::mv(module)),
-        owners(zc::mv(owners)),
-        kind(kind),
-        nameSpace(nameSpace),
-        declaredName(zc::mv(declaredName)),
-        overloadHeader(zc::mv(overloadHeader)) {}
-
-  CoreSemanticRole role;
-  zc::Vector<identity::ModulePathSegment> module;
-  zc::Vector<identity::EnclosingStableOwnerKey> owners;
-  identity::DefinitionKind kind;
-  identity::DefinitionNamespace nameSpace;
-  identity::DeclaredDefinitionName declaredName;
-  zc::Maybe<identity::OverloadHeaderDigest> overloadHeader;
-};
-
-CoreRoleIdentityTemplate::CoreRoleIdentityTemplate(zc::Own<Impl>&& value) noexcept
-    : impl(zc::mv(value)) {}
-CoreRoleIdentityTemplate::~CoreRoleIdentityTemplate() noexcept(false) = default;
-CoreRoleIdentityTemplate::CoreRoleIdentityTemplate(CoreRoleIdentityTemplate&&) noexcept = default;
-CoreRoleIdentityTemplate& CoreRoleIdentityTemplate::operator=(CoreRoleIdentityTemplate&&) noexcept =
-    default;
-
-zc::Maybe<CoreRoleIdentityTemplate> CoreRoleIdentityTemplate::from(
-    CoreSemanticRole role, zc::Vector<identity::ModulePathSegment>&& module,
-    zc::Vector<identity::EnclosingStableOwnerKey>&& owners, identity::DefinitionKind kind,
-    identity::DefinitionNamespace nameSpace, identity::DeclaredDefinitionName&& declaredName,
-    zc::Maybe<identity::OverloadHeaderDigest>&& overloadHeader) {
-  if (!isCoreRole(role) || module.empty() || !owners.empty() ||
-      kind != identity::DefinitionKind::Interface ||
-      nameSpace != identity::DefinitionNamespace::Type || overloadHeader != zc::none) {
-    return zc::none;
-  }
-  return CoreRoleIdentityTemplate(zc::heap<Impl>(role, zc::mv(module), zc::mv(owners), kind,
-                                                 nameSpace, zc::mv(declaredName),
-                                                 zc::mv(overloadHeader)));
-}
-
-CoreRoleIdentityTemplate CoreRoleIdentityTemplate::clone() const {
-  zc::Vector<identity::ModulePathSegment> moduleValue(impl->module.size());
-  for (const auto& segment : impl->module) { moduleValue.add(segment.clone()); }
-  zc::Vector<identity::EnclosingStableOwnerKey> ownerValues(impl->owners.size());
-  for (const auto& owner : impl->owners) { ownerValues.add(owner.clone()); }
-  zc::Maybe<identity::OverloadHeaderDigest> overload;
-  ZC_IF_SOME(value, impl->overloadHeader) { overload = value.clone(); }
-  auto result = from(impl->role, zc::mv(moduleValue), zc::mv(ownerValues), impl->kind,
-                     impl->nameSpace, impl->declaredName.clone(), zc::mv(overload));
-  return zc::mv(ZC_ASSERT_NONNULL(result));
-}
-
-CoreSemanticRole CoreRoleIdentityTemplate::role() const noexcept { return impl->role; }
-zc::ArrayPtr<const identity::ModulePathSegment> CoreRoleIdentityTemplate::module() const noexcept {
-  return impl->module.asPtr();
-}
-zc::ArrayPtr<const identity::EnclosingStableOwnerKey> CoreRoleIdentityTemplate::owners()
-    const noexcept {
-  return impl->owners.asPtr();
-}
-identity::DefinitionKind CoreRoleIdentityTemplate::kind() const noexcept { return impl->kind; }
-identity::DefinitionNamespace CoreRoleIdentityTemplate::nameSpace() const noexcept {
-  return impl->nameSpace;
-}
-zc::StringPtr CoreRoleIdentityTemplate::declaredName() const noexcept {
-  return impl->declaredName.text();
-}
-zc::Maybe<const identity::OverloadHeaderDigest&> CoreRoleIdentityTemplate::overloadHeader()
-    const noexcept {
-  ZC_IF_SOME(value, impl->overloadHeader) { return value; }
-  return zc::none;
-}
-
-void CoreRoleIdentityTemplate::encode(identity::CanonicalEncoder& encoder) const {
-  encoder.encodeUint8(static_cast<uint8_t>(impl->role));
-  encoder.encodeSequenceSize(impl->module.size());
-  for (const auto& segment : impl->module) { segment.encode(encoder); }
-  encoder.encodeSequenceSize(impl->owners.size());
-  for (const auto& owner : impl->owners) { owner.encode(encoder); }
-  encoder.encodeUint8(static_cast<uint8_t>(impl->kind));
-  encoder.encodeUint8(static_cast<uint8_t>(impl->nameSpace));
-  impl->declaredName.encode(encoder);
-  ZC_IF_SOME(value, impl->overloadHeader) {
-    encoder.encodeSome();
-    value.encode(encoder);
-  } else {
-    encoder.encodeNone();
-  }
-}
-
-CoreSourceFile::CoreSourceFile(identity::CanonicalRelativePath&& path,
-                               const identity::Sha256Digest& digest) noexcept
-    : pathValue(zc::mv(path)), digestValue(digest) {}
-
-CoreSourceFile CoreSourceFile::from(identity::CanonicalRelativePath&& path,
-                                    const identity::Sha256Digest& digest) {
-  return CoreSourceFile(zc::mv(path), digest);
-}
-CoreSourceFile CoreSourceFile::clone() const {
-  return CoreSourceFile(pathValue.clone(), digestValue);
-}
-const identity::CanonicalRelativePath& CoreSourceFile::path() const noexcept { return pathValue; }
-const identity::Sha256Digest& CoreSourceFile::digest() const noexcept { return digestValue; }
-void CoreSourceFile::encode(identity::CanonicalEncoder& encoder) const {
-  pathValue.encode(encoder);
-  encoder.encodeDigest(digestValue);
 }
 
 struct CoreMarkerPolicyTemplate::Impl final {
@@ -575,220 +379,6 @@ zc::Maybe<CoreStandardMarkerPolicyTemplate> CoreStandardMarkerPolicyTemplate::de
   return zc::mv(result);
 }
 
-struct CoreDistributionRecord::Impl final {
-  Impl(uint32_t editionYear, identity::CanonicalRelativePath&& rootModule,
-       identity::CanonicalRelativePath&& preludeModule, zc::Vector<CoreSourceFile>&& files,
-       zc::Vector<CoreRoleIdentityTemplate>&& roles)
-      : editionYear(editionYear),
-        rootModule(zc::mv(rootModule)),
-        preludeModule(zc::mv(preludeModule)),
-        files(zc::mv(files)),
-        roles(zc::mv(roles)) {}
-  uint32_t editionYear;
-  identity::CanonicalRelativePath rootModule;
-  identity::CanonicalRelativePath preludeModule;
-  zc::Vector<CoreSourceFile> files;
-  zc::Vector<CoreRoleIdentityTemplate> roles;
-};
-
-CoreDistributionRecord::CoreDistributionRecord(zc::Own<Impl>&& value) noexcept
-    : impl(zc::mv(value)) {}
-CoreDistributionRecord::~CoreDistributionRecord() noexcept(false) = default;
-CoreDistributionRecord::CoreDistributionRecord(CoreDistributionRecord&&) noexcept = default;
-CoreDistributionRecord& CoreDistributionRecord::operator=(CoreDistributionRecord&&) noexcept =
-    default;
-
-zc::Maybe<CoreDistributionRecord> CoreDistributionRecord::from(
-    uint32_t editionYear, identity::CanonicalRelativePath&& rootModule,
-    identity::CanonicalRelativePath&& preludeModule, zc::Vector<CoreSourceFile>&& files,
-    zc::Vector<CoreRoleIdentityTemplate>&& roles) {
-  const zc::StringPtr rootPath[] = {"core.zom"_zc};
-  const zc::StringPtr preludePath[] = {"core"_zc, "prelude.zom"_zc};
-  if (editionYear != 2026 || !hasPath(rootModule, rootPath) ||
-      !hasPath(preludeModule, preludePath) || files.size() != kCoreFileCount ||
-      roles.size() != kCoreRoleCount) {
-    return zc::none;
-  }
-  for (size_t index = 1; index < files.size(); ++index) {
-    if (!lessBytes(encodePath(files[index - 1].path()).asPtr(),
-                   encodePath(files[index].path()).asPtr())) {
-      return zc::none;
-    }
-  }
-  for (size_t index = 1; index < roles.size(); ++index) {
-    if (!lessBytes(encodeRole(roles[index - 1]).asPtr(), encodeRole(roles[index]).asPtr())) {
-      return zc::none;
-    }
-  }
-  if (!isInitialRole(roles[0], CoreSemanticRole::Copy, "Copy"_zc) ||
-      !isInitialRole(roles[1], CoreSemanticRole::Linear, "Linear"_zc)) {
-    return zc::none;
-  }
-  return CoreDistributionRecord(zc::heap<Impl>(
-      editionYear, zc::mv(rootModule), zc::mv(preludeModule), zc::mv(files), zc::mv(roles)));
-}
-
-CoreDistributionRecord CoreDistributionRecord::clone() const {
-  zc::Vector<CoreSourceFile> filesValue(impl->files.size());
-  for (const auto& file : impl->files) { filesValue.add(file.clone()); }
-  zc::Vector<CoreRoleIdentityTemplate> rolesValue(impl->roles.size());
-  for (const auto& role : impl->roles) { rolesValue.add(role.clone()); }
-  auto result = from(impl->editionYear, impl->rootModule.clone(), impl->preludeModule.clone(),
-                     zc::mv(filesValue), zc::mv(rolesValue));
-  return zc::mv(ZC_ASSERT_NONNULL(result));
-}
-uint32_t CoreDistributionRecord::editionYear() const noexcept { return impl->editionYear; }
-const identity::CanonicalRelativePath& CoreDistributionRecord::rootModule() const noexcept {
-  return impl->rootModule;
-}
-const identity::CanonicalRelativePath& CoreDistributionRecord::preludeModule() const noexcept {
-  return impl->preludeModule;
-}
-zc::ArrayPtr<const CoreSourceFile> CoreDistributionRecord::files() const noexcept {
-  return impl->files.asPtr();
-}
-zc::ArrayPtr<const CoreRoleIdentityTemplate> CoreDistributionRecord::roles() const noexcept {
-  return impl->roles.asPtr();
-}
-void CoreDistributionRecord::encode(identity::CanonicalEncoder& encoder) const {
-  encoder.encodeUint32(impl->editionYear);
-  impl->rootModule.encode(encoder);
-  impl->preludeModule.encode(encoder);
-  encoder.encodeSequenceSize(impl->files.size());
-  for (const auto& file : impl->files) { file.encode(encoder); }
-  encoder.encodeSequenceSize(impl->roles.size());
-  for (const auto& role : impl->roles) { role.encode(encoder); }
-}
-zc::Array<uint8_t> CoreDistributionRecord::encode() const {
-  identity::CanonicalEncoder encoder;
-  encode(encoder);
-  return encoder.finish();
-}
-zc::Maybe<CoreDistributionRecord> CoreDistributionRecord::decodeCanonical(
-    identity::CanonicalDecoder& decoder) {
-  auto edition = decoder.decodeUint32();
-  auto root = identity::CanonicalRelativePath::decodeCanonical(decoder);
-  auto prelude = identity::CanonicalRelativePath::decodeCanonical(decoder);
-  auto fileCount = decoder.decodeSequenceSize(kCoreFileCount);
-  if (edition == zc::none || root == zc::none || prelude == zc::none || fileCount == zc::none) {
-    return zc::none;
-  }
-  zc::Vector<CoreSourceFile> files(static_cast<size_t>(ZC_ASSERT_NONNULL(fileCount)));
-  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(fileCount); ++index) {
-    auto file = decodeCoreSourceFile(decoder);
-    if (file == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, file) { files.add(zc::mv(value)); }
-  }
-  auto roleCount = decoder.decodeSequenceSize(kCoreRoleCount);
-  if (roleCount == zc::none) { return zc::none; }
-  zc::Vector<CoreRoleIdentityTemplate> roles(static_cast<size_t>(ZC_ASSERT_NONNULL(roleCount)));
-  for (uint64_t index = 0; index < ZC_ASSERT_NONNULL(roleCount); ++index) {
-    auto role = decodeCoreRole(decoder);
-    if (role == zc::none) { return zc::none; }
-    ZC_IF_SOME(value, role) { roles.add(zc::mv(value)); }
-  }
-  return from(ZC_ASSERT_NONNULL(edition), zc::mv(ZC_ASSERT_NONNULL(root)),
-              zc::mv(ZC_ASSERT_NONNULL(prelude)), zc::mv(files), zc::mv(roles));
-}
-
-zc::Maybe<CoreDistributionRecord> CoreDistributionRecord::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  if (bytes.size() == 0 || bytes.size() > kMaximumCoreDistributionRecordBytes) { return zc::none; }
-  identity::CanonicalDecoder decoder(bytes);
-  auto result = decodeCanonical(decoder);
-  if (!decoder.finished()) { return zc::none; }
-  if (result == zc::none || !sameBytes(ZC_ASSERT_NONNULL(result).encode().asPtr(), bytes)) {
-    return zc::none;
-  }
-  return zc::mv(result);
-}
-
-struct CoreDistributionInputRecord::Impl final {
-  Impl(CoreDistributionRecord&& record, const identity::Sha256Digest& digest,
-       CoreStandardMarkerPolicyTemplate&& policyTemplate)
-      : record(zc::mv(record)), digest(digest), policyTemplate(zc::mv(policyTemplate)) {}
-  CoreDistributionRecord record;
-  identity::Sha256Digest digest;
-  CoreStandardMarkerPolicyTemplate policyTemplate;
-};
-CoreDistributionInputRecord::CoreDistributionInputRecord(zc::Own<Impl>&& value) noexcept
-    : impl(zc::mv(value)) {}
-CoreDistributionInputRecord::~CoreDistributionInputRecord() noexcept(false) = default;
-CoreDistributionInputRecord::CoreDistributionInputRecord(CoreDistributionInputRecord&&) noexcept =
-    default;
-CoreDistributionInputRecord& CoreDistributionInputRecord::operator=(
-    CoreDistributionInputRecord&&) noexcept = default;
-
-zc::Maybe<CoreDistributionInputRecord> CoreDistributionInputRecord::from(
-    CoreDistributionRecord&& record, const identity::Sha256Digest& digest,
-    CoreStandardMarkerPolicyTemplate&& policyTemplate) {
-  auto computed = computeCoreDistributionDigest(record);
-  if (computed == zc::none || ZC_ASSERT_NONNULL(computed) != digest) { return zc::none; }
-  return CoreDistributionInputRecord(
-      zc::heap<Impl>(zc::mv(record), digest, zc::mv(policyTemplate)));
-}
-zc::Maybe<CoreDistributionInputRecord> CoreDistributionInputRecord::decodeCanonical(
-    zc::ArrayPtr<const uint8_t> bytes) {
-  if (bytes.size() == 0 ||
-      bytes.size() > kMaximumCoreDistributionRecordBytes + 32 + kMaximumCorePolicyTemplateBytes) {
-    return zc::none;
-  }
-  identity::CanonicalDecoder decoder(bytes);
-  auto record = CoreDistributionRecord::decodeCanonical(decoder);
-  auto digest = decoder.decodeDigest();
-  auto policy = CoreStandardMarkerPolicyTemplate::decodeCanonical(decoder);
-  if (record == zc::none || digest == zc::none || policy == zc::none || !decoder.finished()) {
-    return zc::none;
-  }
-  auto result = from(zc::mv(ZC_ASSERT_NONNULL(record)), ZC_ASSERT_NONNULL(digest),
-                     zc::mv(ZC_ASSERT_NONNULL(policy)));
-  if (result == zc::none || !sameBytes(ZC_ASSERT_NONNULL(result).encode().asPtr(), bytes)) {
-    return zc::none;
-  }
-  return zc::mv(result);
-}
-CoreDistributionInputRecord CoreDistributionInputRecord::clone() const {
-  auto result = from(impl->record.clone(), impl->digest, impl->policyTemplate.clone());
-  return zc::mv(ZC_ASSERT_NONNULL(result));
-}
-const CoreDistributionRecord& CoreDistributionInputRecord::record() const noexcept {
-  return impl->record;
-}
-const identity::Sha256Digest& CoreDistributionInputRecord::digest() const noexcept {
-  return impl->digest;
-}
-const CoreStandardMarkerPolicyTemplate& CoreDistributionInputRecord::policyTemplate()
-    const noexcept {
-  return impl->policyTemplate;
-}
-void CoreDistributionInputRecord::encode(identity::CanonicalEncoder& encoder) const {
-  impl->record.encode(encoder);
-  encoder.encodeDigest(impl->digest);
-  impl->policyTemplate.encode(encoder);
-}
-zc::Array<uint8_t> CoreDistributionInputRecord::encode() const {
-  identity::CanonicalEncoder encoder;
-  encode(encoder);
-  return encoder.finish();
-}
-
-zc::Maybe<identity::Sha256Digest> computeCoreDistributionDigest(
-    const CoreDistributionRecord& record) {
-  auto bytes = record.encode();
-  identity::Sha256Hasher hasher;
-  const uint8_t separator = 0;
-  if (!hasher.update("zom.core-distribution"_zc.asBytes()) ||
-      !hasher.update(zc::arrayPtr(&separator, 1)) || !hasher.update(bytes.asPtr())) {
-    return zc::none;
-  }
-  return hasher.finish();
-}
-
-zc::Maybe<CoreDistributionRecord> initialCoreDistributionRecord() {
-  return CoreDistributionRecord::decodeCanonical(
-      zc::arrayPtr(kGeneratedCoreDistributionRecord, sizeof(kGeneratedCoreDistributionRecord)));
-}
-
 zc::Maybe<CoreStandardMarkerPolicyTemplate> initialCoreMarkerPolicyTemplate() {
   zc::Vector<CoreMarkerStructuralSubject> subjects(5);
   subjects.add(CoreMarkerStructuralSubject::Tuple);
@@ -819,22 +409,6 @@ zc::Maybe<CoreStandardMarkerPolicyTemplate> initialCoreMarkerPolicyTemplate() {
   entries.add(
       CoreMarkerPolicyTemplateEntry{CoreSemanticRole::Copy, zc::mv(ZC_ASSERT_NONNULL(policy))});
   return CoreStandardMarkerPolicyTemplate::from(zc::mv(entries));
-}
-
-zc::Maybe<CoreDistributionInputRecord> initialCoreDistributionInput() {
-  auto record = initialCoreDistributionRecord();
-  auto policy = initialCoreMarkerPolicyTemplate();
-  if (record == zc::none || policy == zc::none) { return zc::none; }
-  auto digest = computeCoreDistributionDigest(ZC_ASSERT_NONNULL(record));
-  auto embeddedDigest = identity::Sha256Digest::fromBytes(
-      zc::arrayPtr(kGeneratedCoreDistributionDigest, sizeof(kGeneratedCoreDistributionDigest)));
-  if (digest == zc::none || embeddedDigest == zc::none ||
-      ZC_ASSERT_NONNULL(digest) != ZC_ASSERT_NONNULL(embeddedDigest)) {
-    return zc::none;
-  }
-  return CoreDistributionInputRecord::from(zc::mv(ZC_ASSERT_NONNULL(record)),
-                                           ZC_ASSERT_NONNULL(embeddedDigest),
-                                           zc::mv(ZC_ASSERT_NONNULL(policy)));
 }
 
 }  // namespace zomlang::compiler::source::core

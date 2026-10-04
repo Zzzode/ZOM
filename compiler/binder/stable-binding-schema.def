@@ -647,13 +647,6 @@ ZOM_STABLE_BINDING_RECORD(
     "distribution|fingerprint|max-count|max-bytes",
     "SessionInputTransactionTest.ContextAuthorityRejectsIncompleteAndUnequalInputs")
 ZOM_STABLE_BINDING_RECORD(
-    VerifiedCoreDistributionInputPayload, "zom.query.input-transaction.core-distribution",
-    CanonicalInputValueBytes, VerifiedCoreDistributionInputTransaction,
-    VerifiedCoreDistributionInputVerifier, T1, T1, T1,
-    "domain|field|missing|additional|duplicate|reordered|context|distribution|policy|source|"
-    "options|search-roots|coverage|digest|max-count|max-bytes",
-    "SessionInputTransactionTest.CorePayloadRejectsAuthorityAndProjectionMutations")
-ZOM_STABLE_BINDING_RECORD(
     VerifiedModuleGraphInputPayload, "zom.query.input-transaction.module-structure",
     CanonicalInputValueBytes, VerifiedModuleGraphInputTransaction, VerifiedModuleGraphInputVerifier,
     T1, T1, T1,
@@ -1367,30 +1360,10 @@ ZOM_STABLE_BINDING_FIELD(
 ZOM_STABLE_BINDING_FIELD(
     CompleteCompilationContextAuthority, 9, moduleSearchRoots,
     CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalModuleSearchRoots>>)
-ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 10, coreDistributionRecord,
-                         CoreDistributionRecord)
-ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 11, coreDistributionDigest,
-                         Sha256Digest)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 0, contextRoots,
-                         CompilationRootSetQueryKey)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 1, distributionRecord,
-                         CoreDistributionRecord)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 2, distributionDigest, Sha256Digest)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 3, policyTemplate,
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 10, corePolicyTemplate,
                          CoreStandardMarkerPolicyTemplate)
-ZOM_STABLE_BINDING_FIELD(
-    VerifiedCoreDistributionInputPayload, 4, projectedCoreSources,
-    CanonicalNonEmptySequence<CanonicalInputEntry<StableSourceQueryKey, CanonicalSourceSnapshot>>)
-ZOM_STABLE_BINDING_FIELD(
-    VerifiedCoreDistributionInputPayload, 5, compilationOptions,
-    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalCompilationOptions>>)
-ZOM_STABLE_BINDING_FIELD(
-    VerifiedCoreDistributionInputPayload, 6, moduleSearchRoots,
-    CanonicalNonEmptySequence<CanonicalInputEntry<CrateKey, CanonicalModuleSearchRoots>>)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 7, projectedCoreInventory,
-                         CanonicalNonEmptySequence<CrateKey>)
-ZOM_STABLE_BINDING_FIELD(VerifiedCoreDistributionInputPayload, 8, contextAuthority,
-                         CompleteCompilationContextAuthority)
+ZOM_STABLE_BINDING_FIELD(CompleteCompilationContextAuthority, 11, corePolicyTemplateRevision,
+                         Sha256Digest)
 ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 0, contextRoots,
                          CompilationRootSetQueryKey)
 ZOM_STABLE_BINDING_FIELD(VerifiedModuleGraphInputPayload, 1, projectedCoreCrates,
@@ -1576,14 +1549,6 @@ ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.completeCrat
 ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.compilationOptions",
                                CanonicalInputSequenceRecords)
 ZOM_STABLE_BINDING_FIELD_LIMIT("CompleteCompilationContextAuthority.moduleSearchRoots",
-                               CanonicalInputSequenceRecords)
-ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.projectedCoreSources",
-                               CanonicalInputSequenceRecords)
-ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.compilationOptions",
-                               CanonicalInputSequenceRecords)
-ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.moduleSearchRoots",
-                               CanonicalInputSequenceRecords)
-ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedCoreDistributionInputPayload.projectedCoreInventory",
                                CanonicalInputSequenceRecords)
 ZOM_STABLE_BINDING_FIELD_LIMIT("VerifiedModuleGraphInputPayload.projectedCoreCrates",
                                CanonicalInputSequenceRecords)

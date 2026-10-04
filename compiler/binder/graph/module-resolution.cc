@@ -5,10 +5,10 @@
 
 #include "compiler/binder/graph/module-resolution.h"
 
-#include "zc/core/encoding.h"
-#include "zc/core/map.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/encoding.h"
+#include "zc/core/map.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -191,15 +191,15 @@ ModuleSearchRoot ModuleSearchRoot::generated(identity::CrateKey&& crate,
   return ModuleSearchRoot(GeneratedModuleSearchRoot{zc::mv(crate), producer, zc::mv(root)});
 }
 zc::Maybe<ModuleSearchRoot> ModuleSearchRoot::toolchainCore(
-    identity::CrateKey&& crate, const identity::Sha256Digest& distributionDigest) {
+    identity::CrateKey&& crate, const identity::Sha256Digest& policyTemplateRevision) {
   if (crate.unit().kind() != identity::CompilationUnitKind::Toolchain ||
       crate.unit().toolchain().component() != identity::ToolchainComponent::Core ||
       crate.targetKind() != identity::CrateTargetKind::Library || crate.targetName() != "core"_zc ||
       crate.semanticOptions().editionYear() != 2026 ||
-      crate.compilation().hasBuildScriptProducer() || !nonzero(distributionDigest)) {
+      crate.compilation().hasBuildScriptProducer() || !nonzero(policyTemplateRevision)) {
     return zc::none;
   }
-  return ModuleSearchRoot(ToolchainCoreModuleSearchRoot{zc::mv(crate), distributionDigest});
+  return ModuleSearchRoot(ToolchainCoreModuleSearchRoot{zc::mv(crate), policyTemplateRevision});
 }
 ModuleSearchRoot ModuleSearchRoot::clone() const {
   if (value.is<WorkspaceModuleSearchRoot>()) {
@@ -217,7 +217,7 @@ ModuleSearchRoot ModuleSearchRoot::clone() const {
                      root.root.clone());
   }
   const auto& root = value.get<ToolchainCoreModuleSearchRoot>();
-  auto cloned = toolchainCore(root.crate.clone(), root.distributionDigest);
+  auto cloned = toolchainCore(root.crate.clone(), root.policyTemplateRevision);
   ZC_IF_SOME(result, cloned) { return zc::mv(result); }
   ZC_UNREACHABLE
 }
@@ -295,8 +295,9 @@ const identity::CrateKey& ModuleSearchRoot::crate() const noexcept {
   }
   return value.get<ToolchainCoreModuleSearchRoot>().crate;
 }
-const identity::Sha256Digest& ModuleSearchRoot::toolchainCoreDistributionDigest() const noexcept {
-  return value.get<ToolchainCoreModuleSearchRoot>().distributionDigest;
+const identity::Sha256Digest& ModuleSearchRoot::toolchainCorePolicyTemplateRevision()
+    const noexcept {
+  return value.get<ToolchainCoreModuleSearchRoot>().policyTemplateRevision;
 }
 void ModuleSearchRoot::encode(identity::CanonicalEncoder& encoder) const {
   if (value.is<WorkspaceModuleSearchRoot>()) {
@@ -325,7 +326,7 @@ void ModuleSearchRoot::encode(identity::CanonicalEncoder& encoder) const {
   const auto& root = value.get<ToolchainCoreModuleSearchRoot>();
   encoder.encodeUint8(0x04);
   root.crate.encode(encoder);
-  encoder.encodeDigest(root.distributionDigest);
+  encoder.encodeDigest(root.policyTemplateRevision);
 }
 
 ModuleSourceSnapshotRevision::ModuleSourceSnapshotRevision(
@@ -570,7 +571,7 @@ StructuralModuleResolver::FreezeResult StructuralModuleResolver::freeze(
             value.crate.targetName() != "core"_zc ||
             value.crate.semanticOptions().editionYear() != 2026 ||
             value.crate.compilation().hasBuildScriptProducer() ||
-            !nonzero(value.distributionDigest)) {
+            !nonzero(value.policyTemplateRevision)) {
           return failure(ModuleResolutionInvariantKind::InvalidEnvironment);
         }
         bool foundCoreModule = false;

@@ -216,7 +216,7 @@ public:
         resolvedSnapshots(sourceText));
     ZC_REQUIRE(input != zc::none);
     ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
-    driver::core_library_test::installCoreDistribution(session);
+    driver::core_library_test::installCoreSources(session);
     const auto roots = session.getFinalizedCompilationRoots();
     ZC_REQUIRE(roots.size() == 1);
     ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
@@ -309,8 +309,7 @@ ZC_TEST("CheckedModuleBuilder rejects a foreign checker identity authority") {
       const auto leases = session.getCheckedEvidenceLeases();
       zc::Vector<driver::VerifiedInterfaceSource> interfaceSources(interfaces.size());
       for (const auto& interface : interfaces) {
-        interfaceSources.add(
-            driver::VerifiedInterfaceSource(driver::UserVerifiedInterfaceSource{interface}));
+        interfaceSources.add(driver::VerifiedInterfaceSource{interface});
       }
       auto checkedRepository = session.getCheckedFactsRepository();
       auto borrowRepository = session.getBorrowEvidenceRepository();
@@ -374,10 +373,7 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
   ZC_EXPECT(module.sourceContentDigest() == checkerBound.parsedModule().contentDigest());
   ZC_EXPECT(module.parsedModuleReceiptDigest() == checkerBound.parsedModule().receipt().digest());
   const auto& ownInterfaceRevision = module.ownInterface().revision.variant();
-  ZC_REQUIRE(ownInterfaceRevision.is<module_interface::UserImportedInterfaceRevision>());
-  ZC_EXPECT(
-      ownInterfaceRevision.get<module_interface::UserImportedInterfaceRevision>().value.digest() ==
-      interface.revision().digest());
+  ZC_EXPECT(ownInterfaceRevision.value.digest() == interface.revision().digest());
   ZC_EXPECT(module.checkedEvidenceLease().revision().digest() ==
             module.checkedFactsRevision().digest());
   ZC_EXPECT(module.borrowEvidenceLease().key().revision.digest() ==
@@ -399,9 +395,6 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
   ZC_IF_SOME(prelude, checkerBound.preludeSurface()) {
     ZC_EXPECT(module.visibleImportedInterfaces()[0].module == prelude.module);
   }
-  ZC_EXPECT(module.visibleImportedInterfaces()[0]
-                .revision.variant()
-                .is<module_interface::ToolchainCoreImportedInterfaceRevision>());
   ZC_EXPECT(module.declarations().size() == 0);
   ZC_EXPECT(module.patterns().size() == 0);
   ZC_EXPECT(module.expressions().size() == 0);
@@ -414,7 +407,7 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
       ZC_EXPECT(left == right);
       ZC_EXPECT(left.startsWith("zom.hir\n"_zc));
       ZC_EXPECT(left.contains("\ninterface user:"_zc));
-      ZC_EXPECT(left.contains(" core:"_zc));
+      ZC_EXPECT(left.contains("import-interface"_zc));
     }
   }
 }
