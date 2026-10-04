@@ -1,4 +1,11 @@
-set(ZOMCORE_SOURCE_ROOT "${CMAKE_CURRENT_SOURCE_DIR}")
+# Core library build-tree materialization and installation.
+#
+# The core library is a standard ZOM package under core/ with its own
+# Zom.toml manifest. This module copies the package into the build tree
+# so the compiler can find it relative to the executable, and installs
+# it alongside the compiler for end-user distributions.
+
+set(ZOMCORE_SOURCE_ROOT "${ZOM_ROOT}/core")
 set(ZOMCORE_BUILD_ROOT
     "${CMAKE_BINARY_DIR}/${CMAKE_INSTALL_DATADIR}/zom/core")
 set(ZOMCORE_BUILD_MANIFEST "${ZOMCORE_BUILD_ROOT}/Zom.toml")

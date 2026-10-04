@@ -34,7 +34,7 @@ endif()
 
 add_subdirectory(thirdparty)
 add_subdirectory(libraries)
-add_subdirectory(core)
+include(${ZOM_CMAKE_DIR}/utils/core-library.cmake)
 add_subdirectory(compiler)
 add_subdirectory(runtime)
 add_subdirectory(utils)

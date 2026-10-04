@@ -46,7 +46,7 @@ compiler/basic/CMakeLists.txt
 compiler/trace/CMakeLists.txt
 utils/CMakeLists.txt
 utils/zomc/**
-core/CMakeLists.txt
+cmake/utils/core-library.cmake
 ```
 
 `compiler/hir`, `compiler/mir`, and `compiler/ir` are the only production IR
