@@ -1,4 +1,34 @@
+// Marker interfaces that control ownership and move semantics.
+//
+// A marker interface declares no required members. Its sole purpose is to
+// opt a type into a compiler behavior. The two markers below are recognized
+// by name during type checking: the compiler looks them up in the checked
+// `core::marker` module and builds the marker policy from their definitions.
 module marker;
 
+// Types whose values are implicitly copied on use.
+//
+// When a value of a `Copy` type is used in a context that would otherwise
+// move it, the compiler duplicates the value instead. All primitive scalar
+// types (integers, booleans, floats) are `Copy`.
+//
+// A type becomes `Copy` by implementing this interface:
+//
+//   struct Point { x: i32, y: i32 }
+//   impl Copy for Point {}
+//
 export interface Copy {}
+
+// Types that must be used exactly once.
+//
+// A `Linear` type cannot be implicitly copied or silently dropped. Every
+// value of a `Linear` type must be consumed (moved or explicitly destroyed)
+// before it goes out of scope. This is the foundation of ZOM's ownership
+// system: resources like file handles and heap allocations are `Linear`.
+//
+// A type becomes `Linear` by implementing this interface:
+//
+//   struct FileHandle { fd: i32 }
+//   impl Linear for FileHandle {}
+//
 export interface Linear {}

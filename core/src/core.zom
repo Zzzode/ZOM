@@ -1,1 +1,11 @@
+// The ZOM core library.
+//
+// This module is the root of the standard library that ships with the ZOM
+// compiler. Every ZOM program implicitly depends on it: the prelude is
+// automatically imported, and the marker interfaces declared under
+// `core::marker` drive the compiler's ownership and move semantics.
+//
+// The core library is a regular ZOM package. Its manifest lives at
+// `Zom.toml` in the package root, and its sources follow the same module
+// and visibility rules as any user project.
 module core;

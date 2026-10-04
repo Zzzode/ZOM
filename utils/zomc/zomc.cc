@@ -809,14 +809,43 @@ public:
     try {
       auto executable = currentExecutablePath(filesystem);
       if (executable == zc::none) { return zc::none; }
-      const auto coreRoot = ZC_ASSERT_NONNULL(executable)
-                                .parent()
-                                .parent()
-                                .append(zc::Path({"share"_zc, "zom"_zc, "core"_zc, "src"_zc}));
-      auto directory = filesystem.getRoot().tryOpenSubdir(coreRoot);
-      if (directory == zc::none) { return zc::none; }
+      // The core library is a standard ZOM package rooted at share/zom/core/.
+      // Its Zom.toml manifest declares the lib target whose path locates the
+      // source tree, so the compiler discovers core sources the same way it
+      // would for any user project.
+      const auto packageRoot = ZC_ASSERT_NONNULL(executable)
+                                   .parent()
+                                   .parent()
+                                   .append(zc::Path({"share"_zc, "zom"_zc, "core"_zc}));
+      auto packageDir = filesystem.getRoot().tryOpenSubdir(packageRoot);
+      if (packageDir == zc::none) { return zc::none; }
+      auto& dir = ZC_ASSERT_NONNULL(packageDir);
+      auto manifestSource = dir->openFile(zc::Path("Zom.toml"_zc))->readAllText();
+      auto inventory = package::PackageSourceInventory::walk(*dir);
+      if (inventory == zc::none) { return zc::none; }
+      zc::Vector<identity::CanonicalPathSegment> manifestSegments;
+      auto manifestSegment = identity::CanonicalPathSegment::fromSource("Zom.toml"_zc);
+      if (manifestSegment == zc::none) { return zc::none; }
+      manifestSegments.add(zc::mv(ZC_ASSERT_NONNULL(manifestSegment)));
+      auto manifestPath =
+          identity::CanonicalWorkspaceRelativePath::from(0, zc::mv(manifestSegments));
+      package::ManifestParser parser;
+      auto parsed = parser.parseWorkspaceManifest(zc::mv(manifestPath), manifestSource,
+                                                  ZC_ASSERT_NONNULL(inventory));
+      if (parsed.is<package::ManifestFailure>()) { return zc::none; }
+      const auto& manifest = parsed.get<package::NormalizedManifest>();
+      if (!manifest.hasLibrary()) { return zc::none; }
+      // The lib path is package-root-relative (e.g. "src/core.zom"). Its
+      // parent directory is the source root for recursive collection.
+      zc::Path libRelativePath(nullptr);
+      for (const auto& segment : manifest.library().path().segments()) {
+        libRelativePath = zc::mv(libRelativePath).append(segment.text());
+      }
+      auto sourceRoot = packageRoot.append(libRelativePath.parent());
+      auto sourceDir = filesystem.getRoot().tryOpenSubdir(sourceRoot);
+      if (sourceDir == zc::none) { return zc::none; }
       zc::Vector<driver::CoreSourceInput> sources;
-      ZC_IF_SOME(root, directory) { collectCoreSources(*root, ""_zc, sources); }
+      ZC_IF_SOME(root, sourceDir) { collectCoreSources(*root, ""_zc, sources); }
       if (sources.empty()) { return zc::none; }
       return zc::mv(sources);
     } catch (const zc::Exception&) { return zc::none; }

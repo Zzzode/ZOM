@@ -188,9 +188,10 @@ for binding and checking: provenance queries
 `ModuleBodyProvenanceQuery`, `NamedItemProvenanceQuery`,
 `OwnerBodyProvenanceQuery`, `ModuleDependencyProvenance`), module graph
 materialization (`MaterializeModuleGraph`, `MaterializeModuleSkeleton`,
-`MaterializeOwnerBody`, `VerifyBoundModule`), and the core library family
-(`MaterializeCoreRoleSeed`, `MaterializeCoreBootstrapModuleInterface`,
-`MaterializeCoreAuthority`, `FinalizeCoreModuleInterface`). Fourteen
+`MaterializeOwnerBody`, `VerifyBoundModule`). Core library modules are
+standard ZOM packages and go through the same module graph materialization
+path as user code; the compiler discovers `Copy` and `Linear` by name in
+the checked `core::marker` module during two-phase checking. Fourteen
 capability rows in total require `FinalSealedSnapshot`; the remaining
 capabilities admit any snapshot.
 

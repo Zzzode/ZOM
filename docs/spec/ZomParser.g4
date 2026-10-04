@@ -847,7 +847,7 @@ markerImplPath
 // Individual bound: an optional crate-root anchor followed by one or more
 // identifier segments, plus optional generic instantiation args (Foo<T>).
 //   * 1-segment  -> local/imported interface name, e.g. `Serialize`, `Debug`
-//   * 2+ segment -> fully qualified marker/interface name, e.g. `core::marker::Send`
+//   * 2+ segment -> fully qualified marker/interface name, e.g. `core::marker::Copy`
 qualifiedPathOrIdent
     : colonColon? identifier ( colonColon identifier )*
     ;

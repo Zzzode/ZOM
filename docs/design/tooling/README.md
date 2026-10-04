@@ -31,7 +31,7 @@ repository.
 | Top-level dir | State |
 |---|---|
 | `compiler/` `runtime/` `tools/` `utils/` `tests/` | The compiler, runtime, tools, the single front-end CLI `zomc` (`utils/zomc/`), and tests. Real and substantial. |
-| `core/` | The `.zom` core library, source-backed. Real `src/`. RFC 0025 (IMPLEMENTING). |
+| `core/` | The `.zom` core library, a standard ZOM package with `Zom.toml` manifest and real `src/`. RFC 0025 (IMPLEMENTING). |
 
 `zomc` is one binary (`utils/zomc/zomc.cc`) built on
 `zc::MainBuilder`; the registered subcommands are `compile`, `build`, `run`,

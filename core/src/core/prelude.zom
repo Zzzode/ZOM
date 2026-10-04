@@ -1,3 +1,16 @@
+// The ZOM prelude.
+//
+// This module is automatically imported into every ZOM program. Names
+// re-exported here are available without an explicit `import` declaration.
+//
+// The prelude re-exports the marker interfaces from `core::marker` so that
+// user code can write `Copy` and `Linear` directly, without qualifying
+// them as `core::marker::Copy` and `core::marker::Linear`.
+//
+// To use a prelude name explicitly, import it like any other module:
+//
+//   import core::prelude::{Copy, Linear};
+//
 module prelude;
 
 export core::marker::{Copy, Linear};

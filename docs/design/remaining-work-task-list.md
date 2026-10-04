@@ -301,8 +301,11 @@ in-repo corpus that must become source diagnostics.
 
 ## Phase J — Standard / core library
 
-- J1. Source-backed core library (RFC 0025): today core::prelude marker
-  names are recognized but there are zero self-hosted .zom library sources.
+- J1. Source-backed core library (RFC 0025): done. The core library ships
+  as a standard ZOM package with a `Zom.toml` manifest and self-hosted
+  `.zom` sources under `core/src/` (`core`, `core::marker`, `core::prelude`).
+  The CLI reads the manifest to discover the source root and compiles core
+  through the same pipeline as user code.
 - J2. Primitive methods (int arithmetic full set, string, array, slice,
   option/result combinators).
 - J3. Collections: Vector, String, HashMap implemented in ZOM.
