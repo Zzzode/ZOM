@@ -1,0 +1,14 @@
+// Arithmetic conditional-arm fixture: a one-level subtraction binary
+// expression in the true arm of a conditional diamond, with a bare
+// parameter reference as the right leaf operand. The false arm returns
+// the parameter directly. This exercises the arithmetic-conditional-arm
+// lowering slice (checker call fact -> HIR binary -> MIR -> LIR -> LLVM)
+// with a parameterized symbol, so it is object-emittable but not runnable
+// through the reserved zom.module_init entry.
+fn entry(x: i32) -> i32 {
+  if (x < 0) {
+    return 0 - x;
+  } else {
+    return x;
+  }
+}
