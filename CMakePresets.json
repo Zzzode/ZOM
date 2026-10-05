@@ -39,7 +39,8 @@
         "CMAKE_BUILD_TYPE": "Debug",
         "ZOM_ENABLE_ADDRESS_SANITIZER": "ON",
         "ZOM_ENABLE_PERFORMANCE_TESTS": "OFF",
-        "ZOM_ENABLE_UNDEFINED_SANITIZER": "ON"
+        "ZOM_ENABLE_UNDEFINED_SANITIZER": "ON",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=/home/linuxbrew/.linuxbrew/bin/ld"
       }
     },
     {
@@ -60,7 +61,8 @@
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "ZOM_ENABLE_LLVM_BACKEND": "ON",
-        "LLVM_DIR": "$env{LLVM_DIR}"
+        "LLVM_DIR": "$env{LLVM_DIR}",
+        "CMAKE_EXE_LINKER_FLAGS": "-fuse-ld=/home/linuxbrew/.linuxbrew/bin/ld"
       }
     }
   ],
