@@ -4453,6 +4453,33 @@ checked::CheckedFactsSourceRejected rejectInvalidUnaryOperands(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4031: a postfix increment/decrement on a non-numeric operand (bool, char,
+// str, unit, or an aggregate). The display argument is (Type), matching the
+// checked-facts projector contract. Float operands are a capability gap (the
+// desugaring uses integer literal 1, not 1.0) and keep the ZOM4099 drain.
+checked::CheckedFactsSourceRejected rejectPostfixUpdateRequiresNumeric(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId operandType) {
+  zc::Maybe<identity::SemanticIdentifier> noOperandAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{operandType, zc::mv(noOperandAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::PostfixUpdateRequiresNumeric(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Operator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 checked::CheckedFactsSourceRejected rejectUnsupportedBinaryOperator(const BodyProductionSite& site,
                                                                     uint32_t ownerPreorder,
                                                                     PrimitiveOperation operation) {
@@ -5742,13 +5769,16 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             production = BodyProductionKind::ErrorOperator;
           } else if (operation == ast::PostfixOperatorKind::Increment ||
                      operation == ast::PostfixOperatorKind::Decrement) {
-            // Admit postfix increment/decrement on a mutable owner local. The
-            // HIR builder desugars the write to `x = x + 1` (or `x = x - 1`),
-            // reusing the binary-write path. The operand type is verified as an
-            // integer primitive at consumption time.
+            // Admit postfix increment/decrement on a mutable owner local or a
+            // callable parameter reference. The HIR builder desugars the write
+            // to `x = x + 1` (or `x = x - 1`), reusing the binary-write path.
+            // The operand type is verified at consumption time: a non-numeric
+            // operand is a type error (ZOM4031); a numeric parameter that the
+            // HIR builder cannot write yet stays a capability-gap drain.
             const ast::NodeId operand(syntax.payload.words[ast::kPostfixExpressionOperandWord]);
             if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
-                isMutableOwnerLocal(boundModule, operand)) {
+                (isMutableOwnerLocal(boundModule, operand) ||
+                 resolvedCallableParameter(boundModule.bindings(), operand) != zc::none)) {
               production = BodyProductionKind::PostfixIncrement;
             }
           }
@@ -6088,6 +6118,24 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // Unsupported fallthrough does not reject it.
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::MatchStmt) {
           continue;
+        }
+        // An ExpressionStatement wraps an inner expression that has its own
+        // production site. When the inner expression is admitted (e.g. a
+        // postfix increment on a mutable owner local), skip the wrapper so
+        // the inner site can be processed instead of draining the function.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::ExpressionStatement) {
+          const ast::NodeId innerExpr(input.boundModule.tree()
+                                          .node(site.node)
+                                          .payload.words[ast::kExpressionStatementExpressionWord]);
+          bool innerAdmitted = false;
+          for (const auto& candidate : input.requirements.impl->productionSiteValues) {
+            if (candidate.node == innerExpr &&
+                candidate.production != BodyProductionKind::Unsupported) {
+              innerAdmitted = true;
+              break;
+            }
+          }
+          if (innerAdmitted) { continue; }
         }
         // A binary operator the checker does not implement yet reaches here as
         // Unsupported, because body admission classifies only the six relational,
@@ -7061,22 +7109,65 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Array<uint8_t>()});
         }
       } else if (site.production == BodyProductionKind::PostfixIncrement) {
-        // A postfix increment/decrement on a mutable owner local with an
-        // integer primitive type. The HIR builder desugars the write to
+        // A postfix increment/decrement on a mutable owner local or callable
+        // parameter reference. The HIR builder desugars the write to
         // `x = x + 1` (or `x = x - 1`), reusing the binary-write path. The
         // call fact records the primitive operation for downstream
-        // verification; the result type is the operand type.
+        // verification; the result type is the operand type. A non-numeric
+        // operand is a type error (ZOM4031); a numeric parameter that the
+        // HIR builder cannot write yet stays a capability-gap drain.
         const auto& postfix = input.boundModule.tree().node(site.node);
         const auto postfixOperator = static_cast<ast::PostfixOperatorKind>(
             postfix.payload.words[ast::kPostfixExpressionOpWord]);
         const ast::NodeId operand(postfix.payload.words[ast::kPostfixExpressionOperandWord]);
         auto operandType = ownerLocalReferenceType(input, operand, nodeTypes.asPtr());
-        if (operandType == zc::none ||
-            integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType)) == zc::none) {
-          // A postfix increment/decrement on a mutable owner local whose type
-          // is not an integer primitive (bool, float, or an aggregate) is legal
-          // source the body slice cannot lower yet. Drain it as
-          // ZOM4099/ZOM4125 rather than a missing-fact invariant.
+        if (operandType == zc::none) {
+          operandType = callableParameterReferenceType(input, operand);
+        }
+        if (operandType == zc::none) {
+          // A postfix increment/decrement whose operand type cannot be
+          // resolved is legal source the body slice cannot lower yet. Drain
+          // it as ZOM4099/ZOM4125 rather than a missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        if (integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType)) == zc::none) {
+          // The operand is not an integer primitive. Float operands are a
+          // capability gap (the desugaring uses integer literal 1, not 1.0)
+          // and keep the drain. Non-numeric operands (bool, char, str, unit,
+          // aggregate) are a type error: report ZOM4031.
+          const auto kind = primitiveKindOf(input.semanticTypes, ZC_ASSERT_NONNULL(operandType));
+          const bool isFloat =
+              kind != zc::none && (ZC_ASSERT_NONNULL(kind) == type::semantic::PrimitiveKind::F32 ||
+                                   ZC_ASSERT_NONNULL(kind) == type::semantic::PrimitiveKind::F64);
+          if (isFloat) {
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(rejectPostfixUpdateRequiresNumeric(
+                                              site, ownerOrdinal, ZC_ASSERT_NONNULL(operandType)),
+                                          input, factStoreBrands);
+            }
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        // An integer operand on a parameter (not a mutable owner local) is a
+        // capability gap: the HIR binary-write path cannot write to
+        // parameters yet. Drain as ZOM4099 rather than admitting a write the
+        // backend cannot lower.
+        if (!isMutableOwnerLocal(input.boundModule, operand)) {
           ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
             return zc::mv(drained);
           }
@@ -7260,11 +7351,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           if (firstArmType == zc::none) {
             firstArmType = ZC_ASSERT_NONNULL(bodyType).value;
           } else if (ZC_ASSERT_NONNULL(firstArmType) != ZC_ASSERT_NONNULL(bodyType).value) {
-            // A match expression whose arms carry different types is legal
-            // source the body slice cannot lower yet. Drain it as
-            // ZOM4099/ZOM4125 rather than an invalid-fact invariant.
-            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
-              return zc::mv(drained);
+            // A match expression whose arms carry different types is a type
+            // error. Report it as ZOM4009 instead of a compiler invariant.
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectTypeMismatch(site, ownerOrdinal, ZC_ASSERT_NONNULL(firstArmType),
+                                       ZC_ASSERT_NONNULL(bodyType).value),
+                    input, factStoreBrands);
+              }
             }
             return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,

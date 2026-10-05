@@ -1704,6 +1704,27 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
          !isAdmittedExpressionStatement(tree, syntax))) {
       found = true;
     }
+    // A postfix increment/decrement on an identifier operand is admitted by
+    // isAdmittedExpressionStatement; the body checker performs the type check
+    // and emits ZOM4031 for non-numeric operands. Suppress the generic ZOM4099
+    // so the body checker runs instead of the surface admission draining the
+    // entire function body as a capability gap.
+    if (syntax.kind == ast::SyntaxKind::ExpressionStatement) {
+      const ast::NodeId expression(syntax.payload.words[ast::kExpressionStatementExpressionWord]);
+      if (tree.contains(expression) &&
+          tree.node(expression).kind == ast::SyntaxKind::PostfixExpression) {
+        const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+            tree.node(expression).payload.words[ast::kPostfixExpressionOpWord]);
+        if (postfixOp == ast::PostfixOperatorKind::Increment ||
+            postfixOp == ast::PostfixOperatorKind::Decrement) {
+          const ast::NodeId operand(
+              tree.node(expression).payload.words[ast::kPostfixExpressionOperandWord]);
+          if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+            found = true;
+          }
+        }
+      }
+    }
   });
   return found;
 }

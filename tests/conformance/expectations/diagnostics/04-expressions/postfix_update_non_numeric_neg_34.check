@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/postfix_update_non_numeric_neg_34.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A postfix increment on a bool parameter is a type error, not a capability
+// gap. The surface admission admits the expression statement shape so the
+// body checker runs; the body checker resolves the parameter type and emits
+// ZOM4031 instead of draining the entire function body as ZOM4099.
+
+// CHECK-LITERAL: Error [ZOM4031]: Postfix update requires a numeric operand, got bool
+// CHECK:   --> {{.*}}04-expressions/postfix_update_non_numeric_neg_34.zom:2:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     flag++;
+// CHECK-LITERAL:   |     ^~~~~~
+// CHECK-LITERAL: 1 error generated.
