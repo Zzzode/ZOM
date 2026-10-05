@@ -3021,9 +3021,25 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       return false;
     }
     const auto& operand = assignment.value.useValue().operand;
-    if (operand.kind() != mir::MirOperandKind::Constant ||
-        operand.constantValue().type != function.resultType) {
-      return false;
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      if (operand.constantValue().type != function.resultType) { return false; }
+    } else {
+      // Local-reference arm: the operand is a place-use of a leading user
+      // local. The place must reference one of the leading locals so the
+      // value is live at the arm block.
+      const auto localOrdinal = operand.place().local().ordinal();
+      bool isLeadingLocal = false;
+      for (size_t i = 0; i < leadingLocalCount; ++i) {
+        if (function.locals[parameterCount + i].id.ordinal() == localOrdinal) {
+          isLeadingLocal = true;
+          break;
+        }
+      }
+      if (!isLeadingLocal || operand.place().projections().size() != 0 ||
+          operand.place().rootType() != function.resultType ||
+          operand.place().resultType() != function.resultType) {
+        return false;
+      }
     }
     auto lowered = lirOperandFor(operand, resultCarrierValue);
     if (lowered == zc::none) { return false; }

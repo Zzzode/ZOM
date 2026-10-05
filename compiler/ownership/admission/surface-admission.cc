@@ -1293,9 +1293,10 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   // shape above) leading `let id = <scalar literal | identifier>;` statements
   // followed by a single explicit-else `if` whose relational comparison reads
   // identifiers or scalar literals (at least one identifier) and whose arms
-  // each tail-return a scalar literal. Every other leading-let + if shape
-  // (non-comparison condition, non-literal arms, other initializer kinds)
-  // fails closed to its existing drain.
+  // each tail-return a scalar literal, a bare identifier (parameter or local
+  // reference), or a binary expression with leaf operands. Every other
+  // leading-let + if shape (non-comparison condition, unsupported arm shapes,
+  // other initializer kinds) fails closed to its existing drain.
   if (statements.size >= 2) {
     auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
     if (tailItem != zc::none) {
@@ -1324,7 +1325,12 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
           const ast::NodeId condition(tree.node(tailStmt).payload.words[ast::kIfStmtCondWord]);
           const ast::NodeId thenStmt(tree.node(tailStmt).payload.words[ast::kIfStmtThenStmtWord]);
           const ast::NodeId elseStmt(tree.node(tailStmt).payload.words[ast::kIfStmtElseStmtWord]);
-          auto armTailLiteral = [&](ast::NodeId branch) -> bool {
+          // Arm tail-return admission mirrors the HIR shape guard's
+          // isAdmittedArm: scalar literal, bare identifier (parameter or local
+          // reference), or a binary expression whose operands are leaves
+          // (identifier or scalar literal). The operator/type support is a
+          // checker decision kept out of surface admission.
+          auto armTailAdmitted = [&](ast::NodeId branch) -> bool {
             const auto& branchNode = tree.node(branch);
             const ast::NodeList branchStmts{branchNode.payload.words[ast::kBlockStmtStmtsFirstWord],
                                             branchNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
@@ -1336,7 +1342,21 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
             if (tree.node(tailReturn).kind != ast::SyntaxKind::ReturnStmt) return false;
             const ast::NodeId returnValue(
                 tree.node(tailReturn).payload.words[ast::kReturnStmtValueWord]);
-            return tree.contains(returnValue) && isScalarLiteral(tree.node(returnValue).kind);
+            if (!tree.contains(returnValue)) return false;
+            if (isScalarLiteral(tree.node(returnValue).kind)) return true;
+            if (tree.node(returnValue).kind == ast::SyntaxKind::IdentExpr) return true;
+            if (tree.node(returnValue).kind == ast::SyntaxKind::BinaryExpr) {
+              const ast::NodeId left(tree.node(returnValue).payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId right(
+                  tree.node(returnValue).payload.words[ast::kBinaryExprRhsWord]);
+              if (!tree.contains(left) || !tree.contains(right)) return false;
+              auto isLeaf = [&](ast::NodeId leaf) -> bool {
+                return tree.node(leaf).kind == ast::SyntaxKind::IdentExpr ||
+                       isScalarLiteral(tree.node(leaf).kind);
+              };
+              return isLeaf(left) && isLeaf(right);
+            }
+            return false;
           };
           if (tree.contains(condition) &&
               (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr ||
@@ -1344,7 +1364,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
                 static_cast<ast::UnaryOperatorKind>(
                     tree.node(condition).payload.words[ast::kUnaryExpressionOpWord]) ==
                     ast::UnaryOperatorKind::LogicalNot)) &&
-              armTailLiteral(thenStmt) && armTailLiteral(elseStmt)) {
+              armTailAdmitted(thenStmt) && armTailAdmitted(elseStmt)) {
             return true;
           }
         }

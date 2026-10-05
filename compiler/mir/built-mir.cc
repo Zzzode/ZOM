@@ -3219,11 +3219,9 @@ bool validLeadingLocalConditionalReturnFunction(
     const MirFunction& function, const hir::VerifiedHirModule& hirModule,
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
     const hir::HirReturnStatement& sourceReturn, const hir::HirConditionalExpression& conditional,
-    const hir::HirPrimitiveBinaryExpression& equality,
-    const hir::HirScalarLiteralExpression& thenLiteral,
-    const hir::HirScalarLiteralExpression& elseLiteral, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copy, identity::ModuleId module,
-    const checker::CheckerIdentityAuthority& identities,
+    const hir::HirPrimitiveBinaryExpression& equality, hir::HirNodeId thenArm,
+    hir::HirNodeId elseArm, checker::marker::MarkerProofEngine& proofs, identity::DefId copy,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   const size_t bindingCount = sourceBlock.statements.size() - 1;
   if (bindingCount < 1 || declaration.receiver != zc::none) return false;
@@ -3236,10 +3234,8 @@ bool validLeadingLocalConditionalReturnFunction(
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != bindingCount + 1 ||
       sourceBlock.statements[bindingCount] != sourceReturn.node ||
       sourceReturn.value != conditional.node || sourceReturn.resultType != declaration.resultType ||
-      conditional.condition != equality.node || conditional.thenReturnValue != thenLiteral.node ||
-      conditional.elseReturnValue != elseLiteral.node ||
-      conditional.type != declaration.resultType || thenLiteral.type != declaration.resultType ||
-      elseLiteral.type != declaration.resultType) {
+      conditional.condition != equality.node || conditional.thenReturnValue != thenArm ||
+      conditional.elseReturnValue != elseArm || conditional.type != declaration.resultType) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
@@ -3542,24 +3538,46 @@ bool validLeadingLocalConditionalReturnFunction(
       switchInt.discriminant.place().projections().size() != 0) {
     return false;
   }
-  auto branchInitializesResult = [&](const MirBasicBlock& branch,
-                                     const hir::HirScalarLiteralExpression& literal) -> bool {
+  auto branchInitializesResult = [&](const MirBasicBlock& branch, hir::HirNodeId armNode) -> bool {
     if (branch.statements[0].kind() != MirStatementKind::Assign) return false;
     const auto& assignment = branch.statements[0].assignmentValue();
-    return assignment.initialization == MirInitializationKind::Initialize &&
-           assignment.destination.local() == resultLocal &&
-           assignment.destination.rootType() == declaration.resultType &&
-           assignment.destination.resultType() == declaration.resultType &&
-           assignment.destination.projections().size() == 0 &&
-           assignment.value.kind() == MirRvalueKind::Use &&
-           assignment.value.useValue().operand.kind() == MirOperandKind::Constant &&
-           assignment.value.useValue().operand.constantValue().type == literal.type &&
-           sameConstant(assignment.value.useValue().operand.constantValue().value, literal.value,
-                        module, identities, semanticTypes) &&
-           sameSpan(branch.statements[0].sourceSpan(), literal.sourceSpan);
+    if (assignment.initialization != MirInitializationKind::Initialize ||
+        assignment.destination.local() != resultLocal ||
+        assignment.destination.rootType() != declaration.resultType ||
+        assignment.destination.resultType() != declaration.resultType ||
+        assignment.destination.projections().size() != 0 ||
+        assignment.value.kind() != MirRvalueKind::Use) {
+      return false;
+    }
+    const auto& operand = assignment.value.useValue().operand;
+    // Literal arm: the operand is a constant matching the HIR literal.
+    if (auto armLiteral = expressionFor(hirModule, armNode); armLiteral != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(armLiteral);
+      return value.type == declaration.resultType && operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == value.type &&
+             sameConstant(operand.constantValue().value, value.value, module, identities,
+                          semanticTypes) &&
+             sameSpan(branch.statements[0].sourceSpan(), value.sourceSpan);
+    }
+    // Local-reference arm: the operand is a place-use of the leading user local.
+    if (auto armLocal = localReferenceFor(hirModule, armNode); armLocal != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(armLocal);
+      return value.type == declaration.resultType &&
+             value.category == hir::HirValueCategory::Place && value.local.ordinal() >= 1 &&
+             value.local.ordinal() <= static_cast<uint32_t>(bindingCount) &&
+             matchesPlaceUse(operand, proofs, copy, declaration.resultType) &&
+             operand.kind() != MirOperandKind::Constant &&
+             operand.place().local() ==
+                 localId(static_cast<uint32_t>(parameterCount + value.local.ordinal())) &&
+             operand.place().rootType() == declaration.resultType &&
+             operand.place().resultType() == declaration.resultType &&
+             operand.place().projections().size() == 0 &&
+             sameSpan(branch.statements[0].sourceSpan(), value.sourceSpan);
+    }
+    return false;
   };
-  if (!branchInitializesResult(thenBlock, thenLiteral) ||
-      !branchInitializesResult(elseBlock, elseLiteral)) {
+  if (!branchInitializesResult(thenBlock, thenArm) ||
+      !branchInitializesResult(elseBlock, elseArm)) {
     return false;
   }
   ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
@@ -8947,6 +8965,17 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
               ++valueNodes;
             }
           }
+        }
+      }
+      // Conditional arms that are local references do not materialize value
+      // nodes on the RHS, so each one subtracts one credit from the
+      // conditional*2 LHS term.
+      const auto& cond = ZC_ASSERT_NONNULL(conditional);
+      for (const auto armValue : {cond.thenReturnValue, cond.elseReturnValue}) {
+        if (expressionFor(hirModule, armValue) == zc::none &&
+            aggregateFor(hirModule, armValue) == zc::none &&
+            parameterReferenceFor(hirModule, armValue) == zc::none) {
+          --valueNodes;
         }
       }
       leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings - 1;
@@ -16304,19 +16333,25 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           }
           ZC_IF_SOME(sourceConditional, conditional) {
             // K leading scalar locals followed by the comparison conditional:
-            // both arms are literal constants and the condition is the
-            // comparison whose operands may read the leading locals.
+            // both arms are scalar constants or local references and the
+            // condition is the comparison whose operands may read the leading
+            // locals.
             if (isLeadingLocalConditional) {
               auto leadingThenLiteral = expressionFor(hirModule, sourceConditional.thenReturnValue);
               auto leadingElseLiteral = expressionFor(hirModule, sourceConditional.elseReturnValue);
+              auto leadingThenLocal =
+                  localReferenceFor(hirModule, sourceConditional.thenReturnValue);
+              auto leadingElseLocal =
+                  localReferenceFor(hirModule, sourceConditional.elseReturnValue);
               auto leadingEquality = primitiveBinaryFor(hirModule, sourceConditional.condition);
-              if (leadingThenLiteral != zc::none && leadingElseLiteral != zc::none &&
-                  leadingEquality != zc::none) {
+              const bool thenOk = leadingThenLiteral != zc::none || leadingThenLocal != zc::none;
+              const bool elseOk = leadingElseLiteral != zc::none || leadingElseLocal != zc::none;
+              if (thenOk && elseOk && leadingEquality != zc::none) {
                 valid = validLeadingLocalConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
                     sourceConditional, ZC_ASSERT_NONNULL(leadingEquality),
-                    ZC_ASSERT_NONNULL(leadingThenLiteral), ZC_ASSERT_NONNULL(leadingElseLiteral),
-                    proofs, copy, module, identities, semanticTypes);
+                    sourceConditional.thenReturnValue, sourceConditional.elseReturnValue, proofs,
+                    copy, module, identities, semanticTypes);
               }
             }
             // Chained conditional return: a nested chain of equality

@@ -1205,24 +1205,205 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             operation = selected.get<checker::checked::PrimitiveCallable>().operation;
           }
-          auto thenLiteralIndex = factIndex(facts.literals(), shape.thenReturnValue);
-          auto elseLiteralIndex = factIndex(facts.literals(), shape.elseReturnValue);
-          if (thenLiteralIndex == zc::none || elseLiteralIndex == zc::none) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::MissingRequiredFact, module,
-                                                 registries, ordinal + 2);
-          }
-          size_t thenLiteralSlot = 0;
-          size_t elseLiteralSlot = 0;
-          ZC_IF_SOME(index, thenLiteralIndex) { thenLiteralSlot = index; }
-          ZC_IF_SOME(index, elseLiteralIndex) { elseLiteralSlot = index; }
-          const auto& thenLiteralFact = facts.literals().entries()[thenLiteralSlot].value;
-          const auto& elseLiteralFact = facts.literals().entries()[elseLiteralSlot].value;
-          if (thenLiteralFact.type != callable.success ||
-              elseLiteralFact.type != callable.success) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+          // Build one conditional arm from its return-value node. A scalar-
+          // literal arm carries the checked literal fact; a bare-identifier
+          // arm resolves to a leading local reference or a function parameter
+          // reference; a binary arm resolves the checked call fact and lowers
+          // its two leaf operands into a primitive binary operation.
+          bool armRejected = false;
+          auto buildLeadingArm =
+              [&](ast::NodeId armNode, identity::SemanticTypeId armType,
+                  const identity::SourceSpan& armSpan) -> zc::Maybe<PendingConditionalArm> {
+            if (tree.node(armNode).kind == ast::SyntaxKind::IdentExpr) {
+              auto ownerBinding = resolvedOwnerLocal(bound.bindings(), armNode);
+              if (ownerBinding != zc::none) {
+                for (size_t bindingIndex = 0; bindingIndex < localBindingIds.size();
+                     ++bindingIndex) {
+                  if (ZC_ASSERT_NONNULL(ownerBinding) == localBindingIds[bindingIndex]) {
+                    auto reference = HirLocalReferenceExpression{
+                        HirNodeId(), hirLocalId(static_cast<uint32_t>(bindingIndex + 1)), armType,
+                        HirValueCategory::Place, armSpan.clone()};
+                    return PendingConditionalArm{zc::none, zc::none, zc::mv(reference), armType,
+                                                 armSpan.clone()};
+                  }
+                }
+              }
+              auto parameter = resolvedCallableParameter(bound.bindings(), armNode);
+              if (parameter == zc::none) {
+                armRejected = true;
+                return zc::none;
+              }
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                armRejected = true;
+                return zc::none;
+              }
+              zc::Maybe<PendingConditionalArm> built;
+              ZC_IF_SOME(entry, authority) {
+                bool matches = false;
+                for (const auto& parameterCandidate : parameters) {
+                  if (parameterCandidate.key == entry.key() && parameterCandidate.type == armType) {
+                    matches = true;
+                  }
+                }
+                if (!matches) {
+                  armRejected = true;
+                } else {
+                  auto reference =
+                      HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), armType,
+                                                      HirValueCategory::Place, armSpan.clone()};
+                  built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, armType,
+                                                armSpan.clone()};
+                }
+              }
+              return built;
+            }
+            if (tree.node(armNode).kind == ast::SyntaxKind::BinaryExpr) {
+              auto armCallIndex = factIndex(facts.calls(), armNode);
+              if (armCallIndex == zc::none) {
+                armRejected = true;
+                return zc::none;
+              }
+              size_t armCallSlot = 0;
+              ZC_IF_SOME(index, armCallIndex) { armCallSlot = index; }
+              const auto& armCallFact = facts.calls().entries()[armCallSlot].value;
+              const auto& armCall = armCallFact.invocation;
+              const auto& armSelected = armCall.selected.variant();
+              if (!armSelected.is<checker::checked::PrimitiveCallable>()) {
+                armRejected = true;
+                return zc::none;
+              }
+              const auto armOperation =
+                  armSelected.get<checker::checked::PrimitiveCallable>().operation;
+              if (!isScalarArithmeticOperation(armOperation) &&
+                  !isScalarComparisonOperation(armOperation)) {
+                armRejected = true;
+                return zc::none;
+              }
+              if (armCall.arguments.size() != 2 || armCall.resultType != armType ||
+                  armCall.successType != armType || armCall.receiver != zc::none ||
+                  armCall.receiverMode != zc::none || armCall.receiverAdjustment != zc::none) {
+                armRejected = true;
+                return zc::none;
+              }
+              const auto armOperandType = armCall.arguments[0].sourceType;
+              if (armCall.arguments[1].sourceType != armOperandType ||
+                  armCall.calleeType != armOperandType) {
+                armRejected = true;
+                return zc::none;
+              }
+              auto buildLeaf = [&](ast::NodeId operandNode) -> zc::Maybe<PendingConditionalArm> {
+                if (tree.node(operandNode).kind == ast::SyntaxKind::IdentExpr) {
+                  auto leafOwnerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
+                  if (leafOwnerBinding != zc::none) {
+                    for (size_t bindingIndex = 0; bindingIndex < localBindingIds.size();
+                         ++bindingIndex) {
+                      if (ZC_ASSERT_NONNULL(leafOwnerBinding) == localBindingIds[bindingIndex]) {
+                        auto leafSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+                        if (leafSpan == zc::none) {
+                          armRejected = true;
+                          return zc::none;
+                        }
+                        auto reference = HirLocalReferenceExpression{
+                            HirNodeId(), hirLocalId(static_cast<uint32_t>(bindingIndex + 1)),
+                            armOperandType, HirValueCategory::Place,
+                            ZC_ASSERT_NONNULL(leafSpan).clone()};
+                        return PendingConditionalArm{zc::none, zc::none, zc::mv(reference),
+                                                     armOperandType,
+                                                     ZC_ASSERT_NONNULL(leafSpan).clone()};
+                      }
+                    }
+                  }
+                  auto leafParameter = resolvedCallableParameter(bound.bindings(), operandNode);
+                  if (leafParameter == zc::none) {
+                    armRejected = true;
+                    return zc::none;
+                  }
+                  identity::CallableParameterId leafHandle;
+                  ZC_IF_SOME(value, leafParameter) { leafHandle = value; }
+                  auto leafAuthority = registries.callableParameter(leafHandle);
+                  if (leafAuthority == zc::none) {
+                    armRejected = true;
+                    return zc::none;
+                  }
+                  zc::Maybe<PendingConditionalArm> leafBuilt;
+                  ZC_IF_SOME(entry, leafAuthority) {
+                    bool leafMatches = false;
+                    for (const auto& parameterCandidate : parameters) {
+                      if (parameterCandidate.key == entry.key() &&
+                          parameterCandidate.type == armOperandType) {
+                        leafMatches = true;
+                      }
+                    }
+                    auto leafSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+                    if (!leafMatches || leafSpan == zc::none) {
+                      armRejected = true;
+                    } else {
+                      auto reference = HirParameterReferenceExpression{
+                          HirNodeId(), entry.key().clone(), armOperandType, HirValueCategory::Place,
+                          ZC_ASSERT_NONNULL(leafSpan).clone()};
+                      leafBuilt = PendingConditionalArm{zc::none, zc::mv(reference), zc::none,
+                                                        armOperandType,
+                                                        ZC_ASSERT_NONNULL(leafSpan).clone()};
+                    }
+                  }
+                  return leafBuilt;
+                }
+                if (!isScalarLiteral(tree.node(operandNode).kind)) {
+                  armRejected = true;
+                  return zc::none;
+                }
+                auto leafLiteralIndex = factIndex(facts.literals(), operandNode);
+                if (leafLiteralIndex == zc::none) {
+                  armRejected = true;
+                  return zc::none;
+                }
+                size_t leafLiteralSlot = 0;
+                ZC_IF_SOME(index, leafLiteralIndex) { leafLiteralSlot = index; }
+                const auto& leafLiteralFact = facts.literals().entries()[leafLiteralSlot].value;
+                auto leafSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+                if (leafSpan == zc::none) {
+                  armRejected = true;
+                  return zc::none;
+                }
+                return PendingConditionalArm{leafLiteralFact.literal.clone(), zc::none, zc::none,
+                                             armOperandType, ZC_ASSERT_NONNULL(leafSpan).clone()};
+              };
+              auto armLeft = buildLeaf(armCall.arguments[0].sourceNode);
+              auto armRight = buildLeaf(armCall.arguments[1].sourceNode);
+              if (armRejected || armLeft == zc::none || armRight == zc::none) { return zc::none; }
+              auto armBinary = PendingConditionalArmBinary{
+                  zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armLeft))),
+                  zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armRight))),
+                  armOperandType, armOperation};
+              return PendingConditionalArm{zc::none, zc::none,        zc::none,
+                                           armType,  armSpan.clone(), zc::mv(armBinary)};
+            }
+            auto literalIndex = factIndex(facts.literals(), armNode);
+            if (literalIndex == zc::none) {
+              armRejected = true;
+              return zc::none;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            if (literalFact.type != armType) {
+              armRejected = true;
+              return zc::none;
+            }
+            return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, armType,
+                                         armSpan.clone()};
+          };
+          auto thenArm =
+              buildLeadingArm(shape.thenReturnValue, callable.success, ZC_ASSERT_NONNULL(thenSpan));
+          auto elseArm =
+              buildLeadingArm(shape.elseReturnValue, callable.success, ZC_ASSERT_NONNULL(elseSpan));
+          if (armRejected || thenArm == zc::none || elseArm == zc::none) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
           }
           auto leadingPending =
               PendingLeadingLocalConditionalReturn{zc::mv(pendingBindings),
@@ -1232,8 +1413,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    conditionType,
                                                    operation,
                                                    ZC_ASSERT_NONNULL(conditionSpan).clone(),
-                                                   thenLiteralFact.literal.clone(),
-                                                   elseLiteralFact.literal.clone(),
+                                                   zc::mv(ZC_ASSERT_NONNULL(thenArm)),
+                                                   zc::mv(ZC_ASSERT_NONNULL(elseArm)),
                                                    callable.success,
                                                    ZC_ASSERT_NONNULL(thenSpan).clone(),
                                                    ZC_ASSERT_NONNULL(elseSpan).clone(),
@@ -8823,13 +9004,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.leadingLocalConditionalReturn != zc::none) {
       // Meets the conditionalReturn classification so the shape shares the
       // equality-conditional node credit (comparison expression plus two arm
-      // literals), then adds the leading bindings and the local references the
+      // values), then adds the leading bindings and the local references the
       // comparison operands read.
       ++conditionalCount;
       ++equalityConditionalCount;
-      ++conditionalLiteralArmCount;
-      ++conditionalLiteralArmCount;
       ZC_IF_SOME(leading, function.leadingLocalConditionalReturn) {
+        if (leading.thenArm.literal != zc::none) ++conditionalLiteralArmCount;
+        if (leading.elseArm.literal != zc::none) ++conditionalLiteralArmCount;
         for (const auto& binding : leading.bindings) {
           if (binding.kind != SequentialInitializerKind::PrimitiveBinary) {
             ++leadingLocalConditionalBindingCount;

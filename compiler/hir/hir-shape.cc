@@ -1366,12 +1366,34 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   ZC_IF_SOME(value, tailItem) { tailStatement = value; }
   if (tree.node(tailStatement).kind != ast::SyntaxKind::IfStmt) return zc::none;
   auto conditional = conditionalReturnShape(tree, body, tailStatement);
-  if (conditional == zc::none || (!ZC_ASSERT_NONNULL(conditional).conditionIsEquality &&
-                                  !ZC_ASSERT_NONNULL(conditional).conditionIsUnary)) {
+  if (conditional == zc::none) return zc::none;
+  if (!ZC_ASSERT_NONNULL(conditional).conditionIsEquality &&
+      !ZC_ASSERT_NONNULL(conditional).conditionIsUnary) {
     return zc::none;
   }
-  if (!isScalarLiteral(tree.node(ZC_ASSERT_NONNULL(conditional).thenReturnValue).kind) ||
-      !isScalarLiteral(tree.node(ZC_ASSERT_NONNULL(conditional).elseReturnValue).kind)) {
+  // Arms must be one of: scalar literal, bare identifier (parameter or local
+  // reference), or a binary expression with leaf operands (literal, parameter,
+  // or local reference). The builder resolves the identifier and leaf kinds.
+  auto isAdmittedArm = [&](ast::NodeId armValue) -> bool {
+    if (isScalarLiteral(tree.node(armValue).kind)) return true;
+    if (tree.node(armValue).kind == ast::SyntaxKind::IdentExpr) return true;
+    if (tree.node(armValue).kind == ast::SyntaxKind::BinaryExpr) {
+      const auto op = static_cast<ast::BinaryOperatorKind>(
+          tree.node(armValue).payload.words[ast::kBinaryExprOpWord]);
+      if (!isArithmeticBinaryOperator(op) && !isRelationalBinaryOperator(op)) return false;
+      const ast::NodeId left(tree.node(armValue).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId right(tree.node(armValue).payload.words[ast::kBinaryExprRhsWord]);
+      if (!tree.contains(left) || !tree.contains(right)) return false;
+      auto isLeaf = [&](ast::NodeId leaf) -> bool {
+        return tree.node(leaf).kind == ast::SyntaxKind::IdentExpr ||
+               isScalarLiteral(tree.node(leaf).kind);
+      };
+      return isLeaf(left) && isLeaf(right);
+    }
+    return false;
+  };
+  if (!isAdmittedArm(ZC_ASSERT_NONNULL(conditional).thenReturnValue) ||
+      !isAdmittedArm(ZC_ASSERT_NONNULL(conditional).elseReturnValue)) {
     return zc::none;
   }
   shape.ifStatement = tailStatement;

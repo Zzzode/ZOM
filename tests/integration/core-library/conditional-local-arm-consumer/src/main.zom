@@ -1,0 +1,10 @@
+// Leading-local conditional with local-reference arms: both arms return the
+// same leading local. The comparison reads the local; the arms copy it.
+fn entry() -> i32 {
+  let x: i32 = 5;
+  if (x < 0) {
+    return x;
+  } else {
+    return x;
+  }
+}

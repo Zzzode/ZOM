@@ -117,7 +117,9 @@ struct SequentialLocalShape final {
 // return. Each binding initializer is a scalar literal, a parameter copy, or a
 // copy of an earlier binding (only the reference part of
 // SequentialLocalBinding is populated); the trailing IfStmt is a relational
-// comparison whose arms each return a scalar literal.
+// comparison whose arms each return a scalar literal, a bare identifier
+// (parameter or local reference), or a one-level binary expression with leaf
+// operands (literal, parameter, or local reference).
 struct LeadingLocalConditionalShape final {
   ast::NodeId body;
   ast::NodeId ifStatement;

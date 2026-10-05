@@ -189,8 +189,9 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
   const size_t bindingCount = leading.bindings.size();
 
   // Source-preorder layout: function, body, per binding (local, initializer),
-  // then left operand, right operand, comparison, then arm, else arm,
-  // conditional, return.
+  // then left operand, right operand, comparison, then arm value(s), else arm
+  // value(s), conditional, return. A binary arm materializes three nodes
+  // (left operand, right operand, binary); a leaf arm materializes one.
   const HirNodeId functionId = ctx.allocNode();
   const HirNodeId bodyId = ctx.allocNode();
   zc::Vector<HirNodeId> localIds;
@@ -208,8 +209,11 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
   const HirNodeId leftId = ctx.allocNode();
   const HirNodeId rightId = ctx.allocNode();
   const HirNodeId equalityId = ctx.allocNode();
-  const HirNodeId thenValueId = ctx.allocNode();
-  const HirNodeId elseValueId = ctx.allocNode();
+  // Arm nodes must be allocated before conditional and return to match the
+  // verifier's fixed-id layout: equality, then arm(s), else arm(s),
+  // conditional, return.
+  const HirNodeId thenValueId = ctx.lowerArmValue(leading.thenArm);
+  const HirNodeId elseValueId = ctx.lowerArmValue(leading.elseArm);
   const HirNodeId conditionalId = ctx.allocNode();
   const HirNodeId returnId = ctx.allocNode();
 
@@ -331,12 +335,6 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
   ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
       equalityId, leftId, rightId, leading.operandType, leading.conditionType,
       HirValueCategory::Value, leading.operation, leading.conditionSpan.clone()});
-  ctx.addExpression(HirScalarLiteralExpression{thenValueId, leading.resultType,
-                                               leading.thenLiteral.clone(), HirValueCategory::Value,
-                                               leading.thenSpan.clone()});
-  ctx.addExpression(HirScalarLiteralExpression{elseValueId, leading.resultType,
-                                               leading.elseLiteral.clone(), HirValueCategory::Value,
-                                               leading.elseSpan.clone()});
   ctx.addConditional(HirConditionalExpression{conditionalId, equalityId, thenValueId, elseValueId,
                                               leading.resultType, HirValueCategory::Value,
                                               leading.returnSpan.clone()});

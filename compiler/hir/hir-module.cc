@@ -1251,6 +1251,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   int64_t leadingLocalConditionalArithmeticLiteralCount = 0;
   int64_t leadingLocalConditionalArithmeticParameterCount = 0;
   int64_t leadingLocalConditionalArithmeticLocalCount = 0;
+  // Non-literal arms in leading-local conditionals replace literal arm
+  // expressions with parameter references, local references, or binary
+  // operations. The expressions/literals equations subtract one per non-literal
+  // arm; the localReferences equation subtracts local arm references; the
+  // parameterReferences baseline adds parameter arm references.
+  int64_t leadingLocalConditionalArmNonLiteralCount = 0;
+  int64_t leadingLocalConditionalArmLocalCount = 0;
+  int64_t leadingLocalConditionalArmParameterCount = 0;
   {
     const auto& tree = bound.tree();
     // Classify one arithmetic leaf operand: literal, parameter reference, or
@@ -1346,6 +1354,34 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         classifyArithmeticLeaf(ZC_ASSERT_NONNULL(shape).nestedArithmeticRight,
                                ZC_ASSERT_NONNULL(shape).nestedArithmeticRightIsLiteral);
       }
+      // Classify conditional arms: literal, parameter reference, local
+      // reference, or binary with leaf operands. Non-literal arms replace
+      // literal arm expressions with parameter/local references or binary
+      // operations, so the fact-count equations need per-kind corrections.
+      auto classifyArmLeaf = [&](ast::NodeId leafNode) {
+        if (isScalarLiteral(tree.node(leafNode).kind)) return;
+        if (resolvedCallableParameter(bound.bindings(), leafNode) != zc::none) {
+          ++leadingLocalConditionalArmParameterCount;
+          return;
+        }
+        if (resolvedOwnerLocal(bound.bindings(), leafNode) != zc::none) {
+          ++leadingLocalConditionalArmLocalCount;
+        }
+      };
+      auto classifyArm = [&](ast::NodeId armNode) {
+        if (isScalarLiteral(tree.node(armNode).kind)) return;
+        ++leadingLocalConditionalArmNonLiteralCount;
+        if (tree.node(armNode).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId left(tree.node(armNode).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId right(tree.node(armNode).payload.words[ast::kBinaryExprRhsWord]);
+          if (tree.contains(left)) classifyArmLeaf(left);
+          if (tree.contains(right)) classifyArmLeaf(right);
+          return;
+        }
+        classifyArmLeaf(armNode);
+      };
+      classifyArm(ZC_ASSERT_NONNULL(shape).thenReturnValue);
+      classifyArm(ZC_ASSERT_NONNULL(shape).elseReturnValue);
     }
   }
   // Receiver field-arithmetic methods (`return this.<field> OP
@@ -1575,7 +1611,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   if (static_cast<int64_t>(candidate.impl->localReferences.size() + localFieldProjectionCount +
                            localAliasReborrowCount + localBorrowCount) +
           sequentialLocalReferenceCorrection + leadingLocalConditionalCorrection -
-          leadingLocalConditionalArithmeticLocalCount + forLoopAccumulatorCorrection !=
+          leadingLocalConditionalArithmeticLocalCount - leadingLocalConditionalArmLocalCount +
+          forLoopAccumulatorCorrection !=
       static_cast<int64_t>(localReturnCount) + discardedStatementCallCount -
           directAggregateCallCount - directScalarLocalCallCount + binaryWriteLocalOperands +
           forLoopBreakConditionCount) {
@@ -1587,7 +1624,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       functionCount + localAliasReborrowCount + effectiveConditionalCount * 2 +
           equalityConditionalCount * 2 + loopCount + sequentialParameterInitializers +
           sequentialParameterReturns + sequentialBinaryParameterOperands +
-          binaryWriteParameterOperands) {
+          binaryWriteParameterOperands + leadingLocalConditionalArmParameterCount) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
@@ -1610,7 +1647,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           sequentialLiteralCorrection + sequentialTernaryParameterConditions +
           leadingLocalConditionalCorrection + leadingLocalConditionalArithmeticParameterCount +
           leadingLocalConditionalArithmeticLiteralCount - leadingLocalConditionalArithmeticCount -
-          binaryWriteLocalOperands + forLoopAccumulatorCorrection) {
+          leadingLocalConditionalArmNonLiteralCount - binaryWriteLocalOperands +
+          forLoopAccumulatorCorrection) {
     return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                         ir::IrFailureKind::InputRevisionMismatch, module,
                                         registries, 0);
@@ -1659,9 +1697,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalCorrection - leadingLocalConditionalUnaryCount +
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
-              leadingLocalConditionalArithmeticCount - binaryWriteLocalOperands -
-              postfixIncrementWriteCount + deadLiterals + forLoopAccumulatorCorrection +
-              static_cast<int64_t>(chainedMatchLiteralExcess) +
+              leadingLocalConditionalArithmeticCount - leadingLocalConditionalArmNonLiteralCount -
+              binaryWriteLocalOperands - postfixIncrementWriteCount + deadLiterals +
+              forLoopAccumulatorCorrection + static_cast<int64_t>(chainedMatchLiteralExcess) +
               static_cast<int64_t>(chainedEnumMatchLiteralExcess) +
               static_cast<int64_t>(foldedStringConcatCount) * 2 +
               static_cast<int64_t>(sequentialFoldedStringConcatCount) * 2 +
@@ -4172,10 +4210,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (source.isConditional) {
         if (source.isLeadingLocalConditional) {
           // K leading scalar-local bindings followed by one comparison
-          // conditional with two literal arms. Fixed-id layout relative to the
+          // conditional with two arms. Each arm is a scalar literal, a bare
+          // identifier (parameter or local reference), or a one-level binary
+          // expression with leaf operands. Fixed-id layout relative to the
           // function id: function, body, per binding (local, initializer), then
-          // left operand, right operand, comparison, then arm, else arm,
-          // conditional, return: 9 + 2K nodes.
+          // left operand, right operand, comparison, then arm value(s), else
+          // arm value(s), conditional, return: 7 + 2K + thenArmNodes +
+          // elseArmNodes nodes (a binary arm materializes three nodes, a leaf
+          // arm one).
           const bool isArithmetic =
               source.conditionLeftIsNestedArithmetic || source.conditionRightIsNestedArithmetic;
           LeadingLocalConditionalShape leading{};
@@ -4282,11 +4324,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.condition);
           auto thenTypeIndex = factIndex(facts.nodeTypes(), source.thenReturnValue);
           auto elseTypeIndex = factIndex(facts.nodeTypes(), source.elseReturnValue);
-          auto thenLiteralIndex = factIndex(facts.literals(), source.thenReturnValue);
-          auto elseLiteralIndex = factIndex(facts.literals(), source.elseReturnValue);
+          // Literal arms require a checked literal fact; identifier and binary
+          // arms are verified through their parameter/local or call facts.
+          const bool thenArmIsLiteral = isScalarLiteral(tree.node(source.thenReturnValue).kind);
+          const bool elseArmIsLiteral = isScalarLiteral(tree.node(source.elseReturnValue).kind);
+          auto thenLiteralIndex =
+              thenArmIsLiteral ? factIndex(facts.literals(), source.thenReturnValue) : zc::none;
+          auto elseLiteralIndex =
+              elseArmIsLiteral ? factIndex(facts.literals(), source.elseReturnValue) : zc::none;
           if (conditionTypeIndex == zc::none || thenTypeIndex == zc::none ||
-              elseTypeIndex == zc::none || thenLiteralIndex == zc::none ||
-              elseLiteralIndex == zc::none) {
+              elseTypeIndex == zc::none || (thenArmIsLiteral && thenLiteralIndex == zc::none) ||
+              (elseArmIsLiteral && elseLiteralIndex == zc::none)) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
@@ -4304,23 +4352,33 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          // Fixed-id layout: bindings first, then the seven tail nodes. Each
-          // arithmetic binding allocates two extra leaf-operand nodes.
+          // Fixed-id layout: bindings first, then the tail nodes. Each
+          // arithmetic binding allocates two extra leaf-operand nodes. Each
+          // binary arm allocates three nodes (left operand, right operand,
+          // binary); a leaf arm allocates one.
           uint32_t arithmeticBindingCount = 0;
           for (size_t i = 0; i < bindingCount; ++i) {
             if (leading.bindings[i].initializerKind == SequentialInitializerKind::PrimitiveBinary) {
               ++arithmeticBindingCount;
             }
           }
+          const bool thenIsBinary =
+              tree.node(source.thenReturnValue).kind == ast::SyntaxKind::BinaryExpr;
+          const bool elseIsBinary =
+              tree.node(source.elseReturnValue).kind == ast::SyntaxKind::BinaryExpr;
+          const uint32_t thenArmNodes = thenIsBinary ? 3u : 1u;
+          const uint32_t elseArmNodes = elseIsBinary ? 3u : 1u;
           const uint32_t tailBase =
               2u + static_cast<uint32_t>(bindingCount) * 2u + arithmeticBindingCount * 2u;
           const HirNodeId leftId = hirId(expectedFunction + tailBase);
           const HirNodeId rightId = hirId(expectedFunction + tailBase + 1);
           const HirNodeId equalityId = hirId(expectedFunction + tailBase + 2);
           const HirNodeId thenId = hirId(expectedFunction + tailBase + 3);
-          const HirNodeId elseId = hirId(expectedFunction + tailBase + 4);
-          const HirNodeId conditionalId = hirId(expectedFunction + tailBase + 5);
-          const HirNodeId returnId = hirId(expectedFunction + tailBase + 6);
+          const HirNodeId elseId = hirId(expectedFunction + tailBase + 3 + thenArmNodes);
+          const HirNodeId conditionalId =
+              hirId(expectedFunction + tailBase + 3 + thenArmNodes + elseArmNodes);
+          const HirNodeId returnId =
+              hirId(expectedFunction + tailBase + 4 + thenArmNodes + elseArmNodes);
           bool structureOk = function.node == hirId(expectedFunction) &&
                              block.node == hirId(expectedFunction + 1) &&
                              function.body == block.node &&
@@ -4771,22 +4829,115 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
           }
-          const auto armLiteralOk = [&](HirNodeId armId, ast::NodeId armSourceNode,
-                                        const identity::SourceSpan& armSpan) -> bool {
-            auto literalIndex = factIndex(facts.literals(), armSourceNode);
-            if (literalIndex == zc::none) return false;
-            size_t literalSlot = 0;
-            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-            const auto& literalFact = facts.literals().entries()[literalSlot].value;
-            for (const auto& expression : candidate.impl->expressions) {
-              if (expression.node != armId) continue;
-              return expression.type == function.resultType &&
-                     expression.category == HirValueCategory::Value &&
-                     sameConstant(expression.value, literalFact.literal, module, registries,
-                                  semanticTypes) &&
-                     sameSpan(expression.sourceSpan, armSpan);
+          // Verify one conditional arm: a scalar-literal expression, a bare
+          // identifier (parameter or leading-local reference), or a one-level
+          // binary expression with leaf operands.
+          auto verifyLeadingLeaf = [&](ast::NodeId leafSourceNode, HirNodeId leafId,
+                                       identity::SemanticTypeId leafType,
+                                       const identity::SourceSpan& leafSpan) -> bool {
+            if (isScalarLiteral(tree.node(leafSourceNode).kind)) {
+              auto literalIndex = factIndex(facts.literals(), leafSourceNode);
+              if (literalIndex == zc::none) return false;
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              for (const auto& expression : candidate.impl->expressions) {
+                if (expression.node != leafId) continue;
+                return expression.type == leafType &&
+                       expression.category == HirValueCategory::Value &&
+                       sameConstant(expression.value, literalFact.literal, module, registries,
+                                    semanticTypes) &&
+                       sameSpan(expression.sourceSpan, leafSpan);
+              }
+              return false;
+            }
+            // Identifier: try local binding first, then parameter.
+            auto ownerBinding = resolvedOwnerLocal(bound.bindings(), leafSourceNode);
+            if (ownerBinding != zc::none) {
+              for (size_t bindingIndex = 0; bindingIndex < localBindingIds.size(); ++bindingIndex) {
+                if (ZC_ASSERT_NONNULL(ownerBinding) != localBindingIds[bindingIndex]) continue;
+                for (const auto& reference : candidate.impl->localReferences) {
+                  if (reference.node != leafId) continue;
+                  return reference.local == hirLocalId(static_cast<uint32_t>(bindingIndex + 1)) &&
+                         reference.type == leafType &&
+                         reference.category == HirValueCategory::Place &&
+                         sameSpan(reference.sourceSpan, leafSpan);
+                }
+                return false;
+              }
+              return false;
+            }
+            auto parameter = resolvedCallableParameter(bound.bindings(), leafSourceNode);
+            if (parameter == zc::none) return false;
+            identity::CallableParameterId handle;
+            ZC_IF_SOME(value, parameter) { handle = value; }
+            auto authority = registries.callableParameter(handle);
+            if (authority == zc::none) return false;
+            for (const auto& reference : candidate.impl->parameterReferences) {
+              if (reference.node != leafId) continue;
+              ZC_IF_SOME(entry, authority) {
+                return reference.parameter == entry.key() && reference.type == leafType &&
+                       reference.category == HirValueCategory::Place &&
+                       sameSpan(reference.sourceSpan, leafSpan);
+              }
             }
             return false;
+          };
+          auto verifyLeadingArm = [&](ast::NodeId armSourceNode, HirNodeId armId,
+                                      const identity::SourceSpan& armSpan) -> bool {
+            if (tree.node(armSourceNode).kind == ast::SyntaxKind::BinaryExpr) {
+              auto armCallIndex = factIndex(facts.calls(), armSourceNode);
+              if (armCallIndex == zc::none) return false;
+              size_t armCallSlot = 0;
+              ZC_IF_SOME(index, armCallIndex) { armCallSlot = index; }
+              const auto& armCallFact = facts.calls().entries()[armCallSlot].value;
+              const auto& armCall = armCallFact.invocation;
+              const auto& armSelected = armCall.selected.variant();
+              if (!armSelected.is<checker::checked::PrimitiveCallable>()) return false;
+              const auto armOperation =
+                  armSelected.get<checker::checked::PrimitiveCallable>().operation;
+              if (!isScalarArithmeticOperation(armOperation) &&
+                  !isScalarComparisonOperation(armOperation)) {
+                return false;
+              }
+              if (armCall.arguments.size() != 2 || armCall.resultType != function.resultType ||
+                  armCall.successType != function.resultType) {
+                return false;
+              }
+              const auto armOperandType = armCall.arguments[0].sourceType;
+              if (armCall.arguments[1].sourceType != armOperandType) return false;
+              const ast::NodeId leftNode = armCall.arguments[0].sourceNode;
+              const ast::NodeId rightNode = armCall.arguments[1].sourceNode;
+              auto leftSpan = bound.parsedModule().spanFor(tree.node(leftNode).range);
+              auto rightSpan = bound.parsedModule().spanFor(tree.node(rightNode).range);
+              if (leftSpan == zc::none || rightSpan == zc::none) return false;
+              const HirNodeId leftLeafId = armId;
+              const HirNodeId rightLeafId = hirId(armId.ordinal() + 1);
+              const HirNodeId binaryId = hirId(armId.ordinal() + 2);
+              if (!verifyLeadingLeaf(leftNode, leftLeafId, armOperandType,
+                                     ZC_ASSERT_NONNULL(leftSpan)) ||
+                  !verifyLeadingLeaf(rightNode, rightLeafId, armOperandType,
+                                     ZC_ASSERT_NONNULL(rightSpan))) {
+                return false;
+              }
+              zc::Maybe<const HirPrimitiveBinaryExpression&> binaryValue;
+              for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+                if (binary.node != binaryId) continue;
+                if (binaryValue != zc::none) return false;
+                binaryValue = binary;
+              }
+              if (binaryValue == zc::none) return false;
+              bool binaryOk = false;
+              ZC_IF_SOME(binary, binaryValue) {
+                binaryOk = binary.left == leftLeafId && binary.right == rightLeafId &&
+                           binary.operandType == armOperandType &&
+                           binary.type == function.resultType &&
+                           binary.category == HirValueCategory::Value &&
+                           binary.operation == armOperation && sameSpan(binary.sourceSpan, armSpan);
+              }
+              return binaryOk;
+            }
+            return verifyLeadingLeaf(armSourceNode, armId, function.resultType, armSpan);
           };
           zc::Maybe<const HirConditionalExpression&> conditionalRecord;
           for (const auto& candidateConditional : candidate.impl->conditionals) {
@@ -4799,21 +4950,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             conditionalRecord = candidateConditional;
           }
           const auto& equality = ZC_ASSERT_NONNULL(equalityRecord);
-          bool tailOk = equality.left == leftId && equality.right == rightId &&
-                        equality.operandType == operandType && equality.type == conditionType &&
-                        equality.category == HirValueCategory::Value &&
-                        equality.operation == hirOperation &&
-                        sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan)) &&
-                        armLiteralOk(thenId, source.thenReturnValue, ZC_ASSERT_NONNULL(thenSpan)) &&
-                        armLiteralOk(elseId, source.elseReturnValue, ZC_ASSERT_NONNULL(elseSpan));
+          const bool equalityOk =
+              equality.left == leftId && equality.right == rightId &&
+              equality.operandType == operandType && equality.type == conditionType &&
+              equality.category == HirValueCategory::Value && equality.operation == hirOperation &&
+              sameSpan(equality.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan));
+          const bool thenArmOk =
+              verifyLeadingArm(source.thenReturnValue, thenId, ZC_ASSERT_NONNULL(thenSpan));
+          const bool elseArmOk =
+              verifyLeadingArm(source.elseReturnValue, elseId, ZC_ASSERT_NONNULL(elseSpan));
+          bool tailOk = equalityOk && thenArmOk && elseArmOk;
           if (conditionalRecord != zc::none) {
             const auto& conditional = ZC_ASSERT_NONNULL(conditionalRecord);
-            tailOk = tailOk && conditional.condition == equalityId &&
-                     conditional.thenReturnValue == thenId &&
-                     conditional.elseReturnValue == elseId &&
-                     conditional.type == function.resultType &&
-                     conditional.category == HirValueCategory::Value &&
-                     sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+            const bool condOk =
+                conditional.condition == equalityId && conditional.thenReturnValue == thenId &&
+                conditional.elseReturnValue == elseId && conditional.type == function.resultType &&
+                conditional.category == HirValueCategory::Value &&
+                sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+            tailOk = tailOk && condOk;
           } else {
             tailOk = false;
           }
@@ -4829,9 +4983,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           if (returnRecord != zc::none) {
             const auto& returnValue = ZC_ASSERT_NONNULL(returnRecord);
-            tailOk = tailOk && returnValue.value == conditionalId &&
-                     returnValue.resultType == function.resultType &&
-                     sameSpan(returnValue.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+            const bool retOk = returnValue.value == conditionalId &&
+                               returnValue.resultType == function.resultType &&
+                               sameSpan(returnValue.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+            tailOk = tailOk && retOk;
           } else {
             tailOk = false;
           }
@@ -4841,8 +4996,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          nextFunction +=
-              9u + static_cast<uint32_t>(bindingCount) * 2u + arithmeticBindingCount * 2u;
+          nextFunction += 7u + static_cast<uint32_t>(bindingCount) * 2u +
+                          arithmeticBindingCount * 2u + thenArmNodes + elseArmNodes;
           continue;
         }
         if (source.isMatchChainedEquality) {

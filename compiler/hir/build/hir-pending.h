@@ -138,8 +138,7 @@ struct PendingConditionalArmBinary final {
 // function parameter, a reference to the function's user local, or a primitive
 // binary operation over two such leaves. Exactly one of `literal`, `parameter`,
 // `local`, and `binary` is populated; the arm kind is discriminated by which
-// one is set. The local alternative is reachable only from a binary write
-// operand (`x = x + 1`); conditional and comparison arms never populate it.
+// one is set.
 // `binary` is declared last so the pre-existing five-field aggregate
 // initializers (literal, parameter, local, type, sourceSpan) keep compiling
 // with a defaulted none.
@@ -308,8 +307,12 @@ struct PendingLeadingLocalBinding final {
 };
 
 // K leading scalar-local bindings followed by one comparison conditional with
-// two literal arms. The comparison operands may name the leading locals; the
-// bool result drives the conditional exactly like the sole-if equality shape.
+// two arms. The comparison operands may name the leading locals; the bool
+// result drives the conditional exactly like the sole-if equality shape. Each
+// arm is a scalar literal, a bare identifier (parameter or local reference),
+// or a one-level binary expression with leaf operands, carried as a
+// PendingConditionalArm so the materialization and MIR lowering reuse the same
+// arm abstraction as the bare conditional path.
 struct PendingLeadingLocalConditionalReturn final {
   zc::Vector<PendingLeadingLocalBinding> bindings;
   PendingLeadingConditionOperand left;
@@ -318,8 +321,8 @@ struct PendingLeadingLocalConditionalReturn final {
   identity::SemanticTypeId conditionType;
   checker::PrimitiveOperation operation;
   identity::SourceSpan conditionSpan;
-  checker::checked::CanonicalConstValue thenLiteral;
-  checker::checked::CanonicalConstValue elseLiteral;
+  PendingConditionalArm thenArm;
+  PendingConditionalArm elseArm;
   identity::SemanticTypeId resultType;
   identity::SourceSpan thenSpan;
   identity::SourceSpan elseSpan;

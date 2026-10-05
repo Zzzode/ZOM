@@ -2148,34 +2148,43 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   auto comparison = comparisonOperatorFor(comparisonValue.operation);
   auto arithmetic = arithmeticOperatorFor(comparisonValue.operation);
   if (comparison == zc::none && arithmetic == zc::none) return zc::none;
-  // Resolve one conditional arm: a scalar literal, a parameter place-use, or a
-  // primitive binary (arithmetic/comparison) operation over two leaf operands.
+  // Resolve one conditional arm: a scalar literal, a parameter place-use, a
+  // leading-local place-use, or a primitive binary (arithmetic/comparison)
+  // operation over two leaf operands.
   struct ArmValue {
-    enum class Kind { Literal, Parameter, Binary };
+    enum class Kind { Literal, Parameter, Local, Binary };
     Kind kind;
     const hir::HirScalarLiteralExpression* literal = nullptr;
     const hir::HirParameterReferenceExpression* parameter = nullptr;
+    const hir::HirLocalReferenceExpression* local = nullptr;
     const hir::HirPrimitiveBinaryExpression* binary = nullptr;
   };
   auto resolveArm = [&](hir::HirNodeId armNode) -> zc::Maybe<ArmValue> {
     if (auto literal = expressionFor(hirModule, armNode); literal != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(literal);
       if (value.type != declaration.resultType) return zc::none;
-      return ArmValue{ArmValue::Kind::Literal, &value, nullptr, nullptr};
+      return ArmValue{ArmValue::Kind::Literal, &value, nullptr, nullptr, nullptr};
     }
     if (auto parameter = parameterReferenceFor(hirModule, armNode); parameter != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(parameter);
       if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
         return zc::none;
       }
-      return ArmValue{ArmValue::Kind::Parameter, nullptr, &value, nullptr};
+      return ArmValue{ArmValue::Kind::Parameter, nullptr, &value, nullptr, nullptr};
+    }
+    if (auto local = localReferenceFor(hirModule, armNode); local != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(local);
+      if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      return ArmValue{ArmValue::Kind::Local, nullptr, nullptr, &value, nullptr};
     }
     if (auto binary = primitiveBinaryFor(hirModule, armNode); binary != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(binary);
       if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Value) {
         return zc::none;
       }
-      return ArmValue{ArmValue::Kind::Binary, nullptr, nullptr, &value};
+      return ArmValue{ArmValue::Kind::Binary, nullptr, nullptr, nullptr, &value};
     }
     return zc::none;
   };
@@ -2333,8 +2342,9 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
                                               blockId(3), conditionalValue.sourceSpan.clone()));
   // Resolve one arm to its MIR rvalue and source span. A literal arm lowers to
   // a constant use; a parameter arm lowers to a place-use of the parameter
-  // local; a binary arm lowers to an arithmetic or comparison rvalue over two
-  // leaf operands resolved via binaryLeafOperand.
+  // local; a local arm lowers to a place-use of the leading user local; a
+  // binary arm lowers to an arithmetic or comparison rvalue over two leaf
+  // operands resolved via binaryLeafOperand.
   auto armRvalue = [&](const ArmValue& arm) -> zc::Maybe<MirRvalue> {
     switch (arm.kind) {
       case ArmValue::Kind::Literal: {
@@ -2350,6 +2360,17 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
             placeUse(proofs, copyMarker,
                      MirPlace(parameterLocals[ZC_ASSERT_NONNULL(parameterIndex)],
                               declaration.resultType, zc::mv(projections), declaration.resultType));
+        if (operand == zc::none) return zc::none;
+        return MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+      }
+      case ArmValue::Kind::Local: {
+        const auto& local = ZC_ASSERT_NONNULL(arm.local);
+        if (local.local.ordinal() == 0 || local.local.ordinal() > bindingCount) return zc::none;
+        zc::Vector<MirProjection> projections;
+        auto operand =
+            placeUse(proofs, copyMarker,
+                     MirPlace(userLocals[local.local.ordinal() - 1], declaration.resultType,
+                              zc::mv(projections), declaration.resultType));
         if (operand == zc::none) return zc::none;
         return MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
       }
@@ -2383,6 +2404,8 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
         return ZC_ASSERT_NONNULL(arm.literal).sourceSpan;
       case ArmValue::Kind::Parameter:
         return ZC_ASSERT_NONNULL(arm.parameter).sourceSpan;
+      case ArmValue::Kind::Local:
+        return ZC_ASSERT_NONNULL(arm.local).sourceSpan;
       case ArmValue::Kind::Binary:
         return ZC_ASSERT_NONNULL(arm.binary).sourceSpan;
     }

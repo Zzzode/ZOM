@@ -254,6 +254,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arith-arm-consumer/Zom.toml::conditional_arith_arm_consumer::conditional_arith_arm_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-local-arm-consumer/Zom.toml::conditional_local_arm_consumer::conditional_local_arm_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer"
@@ -432,6 +434,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::0"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer::0"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-local-arm-consumer/Zom.toml::conditional_local_arm_consumer::conditional_local_arm_consumer::5"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case
