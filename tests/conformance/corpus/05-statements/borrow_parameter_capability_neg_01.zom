@@ -1,0 +1,1 @@
+fn borrow(a: i32) -> i32 { let r = &a; return 0; }

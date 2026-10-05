@@ -1,0 +1,91 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/borrow_local_capability_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #36 @1:1..3:1 file_name="borrow_local_capability_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #10 @1:1..1:39
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #9 @1:1..1:39 name="callee"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:10..1:18 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:11..1:17 name="a"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:14..1:17 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:22..1:25 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #8 @1:26..1:39
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #7 @1:28..1:37
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #6 @1:28..1:37
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #5 @1:35..1:36 name="a"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #35 @2:1..2:70
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #34 @2:1..2:70 name="borrow"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #13 @2:10..2:18 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #12 @2:11..2:17 name="a"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #11 @2:14..2:17 kind=I32
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #14 @2:22..2:25 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #33 @2:26..2:70
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #22 @2:28..2:46
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #21 @2:28..2:46 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #20 @2:32..2:45 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #19 @2:32..2:45
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #15 @2:32..2:33 name="x"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 CallExpression #18 @2:36..2:45
+// CHECK-NEXT:                                   callee:
+// CHECK-NEXT:                                     IdentExpr #16 @2:36..2:42 name="callee"
+// CHECK-NEXT:                                   type_args: []
+// CHECK-NEXT:                                   args:
+// CHECK-NEXT:                                     IdentExpr #17 @2:43..2:44 name="a"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #29 @2:47..2:58
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #28 @2:47..2:58 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #27 @2:51..2:57 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #26 @2:51..2:57
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #23 @2:51..2:52 name="r"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 UnaryExpression #25 @2:55..2:57 op=Ref
+// CHECK-NEXT:                                   operand:
+// CHECK-NEXT:                                     IdentExpr #24 @2:56..2:57 name="x"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #32 @2:59..2:68
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #31 @2:59..2:68
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IntLiteral #30 @2:66..2:67 base=10 value="0"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

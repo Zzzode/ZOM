@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 11-error/error_propagate_non_union_neg_14.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4032]: Error propagation requires an error union, got i32
+// CHECK-LITERAL:   --> conformance/11-error/error_propagate_non_union_neg_14.zom:4:12

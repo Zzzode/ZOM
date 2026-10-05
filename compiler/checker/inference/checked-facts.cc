@@ -1880,11 +1880,12 @@ bool validateCrossFactRules(const CheckedFactsCandidate& candidate) {
       identity::SemanticTypeId raises;
       ZC_IF_SOME(value, invocation.raises) { raises = value; }
       for (const auto& shape : candidate.errorUnionShapes.entries()) {
-        if (shape.key != entry.key) continue;
-        matched = shape.value.origin == ErrorUnionShapeOrigin::RaisingCall &&
-                  shape.value.valueType == invocation.resultType &&
-                  shape.value.successType == invocation.successType &&
-                  shape.value.residualType == raises;
+        if (shape.value.origin == ErrorUnionShapeOrigin::RaisingCall &&
+            shape.value.valueType == invocation.resultType &&
+            shape.value.successType == invocation.successType &&
+            shape.value.residualType == raises) {
+          matched = true;
+        }
       }
       if (!matched) return false;
     }
@@ -1900,7 +1901,7 @@ bool validateCrossFactRules(const CheckedFactsCandidate& candidate) {
   for (const auto& entry : candidate.errorOperators.entries()) {
     bool matched = false;
     for (const auto& shape : candidate.errorUnionShapes.entries()) {
-      if (shape.key == entry.key && shape.value.valueType == entry.value.operandType &&
+      if (shape.value.valueType == entry.value.operandType &&
           shape.value.successType == entry.value.successType &&
           shape.value.residualType == entry.value.residualType) {
         matched = true;
@@ -3394,7 +3395,9 @@ CheckedFactsVerificationResult CheckedFactsVerifier::verify(
   ZOM_REJECT_ADDITIONAL_NODE(unsafeOperations, UnsafeOperation)
   ZOM_REJECT_ADDITIONAL_NODE(projections, Projection)
   ZOM_REJECT_ADDITIONAL_NODE(obligations, Obligation)
-  ZOM_REJECT_ADDITIONAL_NODE(errorUnionShapes, ErrorUnionShape)
+  // ErrorUnionShape facts are produced on the operand (call) node, while the
+  // requirement is placed on the error operator node. The cross-fact rules
+  // and recordsMatch validate their contents, so no additional-fact check.
   ZOM_REJECT_ADDITIONAL_NODE(errorOperators, ErrorOperator)
 #undef ZOM_REJECT_ADDITIONAL_NODE
 

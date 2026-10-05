@@ -1,0 +1,2 @@
+fn callee(a: i32) -> i32 { return a; }
+fn borrow(a: i32) -> i32 { let x = callee(a); let r = &x; return 0; }

@@ -321,6 +321,129 @@ zc::Maybe<identity::SemanticTypeId> callableSuccess(const signature::VerifiedSig
   return result;
 }
 
+zc::Maybe<identity::SemanticTypeId> callableRaises(const signature::VerifiedSignatureFacts& facts,
+                                                   identity::DefId callable) {
+  zc::Maybe<identity::SemanticTypeId> result;
+  bool found = false;
+  for (const auto& semanticSignature : facts.signatures()) {
+    if (semanticSignature.definition != callable) continue;
+    if (found || !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      return zc::none;
+    }
+    found = true;
+    result = semanticSignature.payload.variant().get<signature::CallableSignature>().raises;
+  }
+  return result;
+}
+
+/// \brief Constructs the canonical error-union type `success | raises` for a
+/// raising call. Flattens nested unions, sorts alternatives by their canonical
+/// key encoding, and deduplicates. Returns none when canonicalization fails.
+zc::Maybe<identity::SemanticTypeId> canonicalErrorUnionType(const BodyCheckingInput& input,
+                                                            identity::SemanticTypeId success,
+                                                            identity::SemanticTypeId raises) {
+  zc::Vector<identity::SemanticTypeId> flat;
+  auto appendFlat = [&](identity::SemanticTypeId id) {
+    auto lookup = input.semanticTypes.get(id);
+    if (!lookup.is<type::SemanticTypeLookup>()) { return false; }
+    const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+    if (data.is<type::semantic::UnionTypeData>()) {
+      for (const auto alternative : data.get<type::semantic::UnionTypeData>().alternatives) {
+        flat.add(alternative);
+      }
+    } else {
+      flat.add(id);
+    }
+    return true;
+  };
+  if (!appendFlat(success) || !appendFlat(raises)) return zc::none;
+  // Deduplicate by semantic type id before sorting.
+  zc::Vector<identity::SemanticTypeId> unique;
+  for (const auto id : flat) {
+    bool duplicate = false;
+    for (const auto existing : unique) {
+      if (existing == id) {
+        duplicate = true;
+        break;
+      }
+    }
+    if (!duplicate) unique.add(id);
+  }
+  if (unique.size() < 2) return zc::none;
+  // Sort by canonical key encoding so the union is in canonical order.
+  zc::Vector<zc::Array<uint8_t>> keys;
+  for (const auto id : unique) {
+    auto lookup = input.semanticTypes.get(id);
+    if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+    auto bytesPtr = lookup.get<type::SemanticTypeLookup>().key().bytes();
+    auto bytes = zc::heapArray<uint8_t>(bytesPtr.size());
+    for (size_t k = 0; k < bytesPtr.size(); ++k) bytes[k] = bytesPtr[k];
+    keys.add(zc::mv(bytes));
+  }
+  // Insertion sort by key bytes in ascending order. The canonical union
+  // encoding requires strictly ascending alternatives (encodeSet rejects
+  // anything else), so the comparison must place the smaller key first.
+  for (size_t i = 1; i < unique.size(); ++i) {
+    for (size_t j = i; j > 0; --j) {
+      const auto& prev = keys[j - 1];
+      const auto& cur = keys[j];
+      bool greater = false;
+      const size_t minSize = prev.size() < cur.size() ? prev.size() : cur.size();
+      for (size_t k = 0; k < minSize; ++k) {
+        if (prev[k] > cur[k]) {
+          greater = true;
+          break;
+        }
+        if (prev[k] < cur[k]) break;
+      }
+      if (!greater && prev.size() > cur.size()) greater = true;
+      if (!greater && prev.size() < cur.size()) greater = false;
+      if (!greater && prev.size() == cur.size()) {
+        bool equal = true;
+        for (size_t k = 0; k < minSize; ++k) {
+          if (prev[k] != cur[k]) {
+            equal = false;
+            break;
+          }
+        }
+        if (equal) greater = false;
+      }
+      if (!greater) break;
+      auto tmpId = unique[j - 1];
+      unique[j - 1] = unique[j];
+      unique[j] = tmpId;
+      auto tmpKey = zc::mv(keys[j - 1]);
+      keys[j - 1] = zc::mv(keys[j]);
+      keys[j] = zc::mv(tmpKey);
+    }
+  }
+  zc::Vector<identity::SemanticTypeId> sortedAlternatives;
+  for (const auto id : unique) sortedAlternatives.add(id);
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::UnionTypeData{zc::mv(sortedAlternatives)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+
+/// \brief True when the residual type is accepted by the enclosing raises
+/// type: either identical, or the enclosing raises is a union containing the
+/// residual as an alternative.
+bool residualAcceptedByRaises(const BodyCheckingInput& input, identity::SemanticTypeId residual,
+                              identity::SemanticTypeId enclosingRaises) {
+  if (residual == enclosingRaises) return true;
+  auto lookup = input.semanticTypes.get(enclosingRaises);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::UnionTypeData>()) return false;
+  for (const auto alternative : data.get<type::semantic::UnionTypeData>().alternatives) {
+    if (alternative == residual) return true;
+  }
+  return false;
+}
+
 zc::Maybe<identity::SemanticTypeId> valueType(const signature::VerifiedSignatureFacts& facts,
                                               identity::DefId definition) {
   zc::Maybe<identity::SemanticTypeId> result;
@@ -3466,6 +3589,7 @@ struct DirectCallableShape final {
   identity::DefId callee;
   identity::SemanticTypeId calleeType;
   identity::SemanticTypeId success;
+  zc::Maybe<identity::SemanticTypeId> raises;
   zc::Vector<identity::SemanticTypeId> parameters;
 };
 
@@ -3475,6 +3599,7 @@ zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& inpu
   if (callee == zc::none) return zc::none;
 
   zc::Maybe<identity::SemanticTypeId> success;
+  zc::Maybe<identity::SemanticTypeId> raises;
   zc::Vector<identity::SemanticTypeId> parameters;
   for (const auto& semanticSignature : input.signatureFacts.signatures()) {
     ZC_IF_SOME(definition, callee) {
@@ -3486,7 +3611,7 @@ zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& inpu
       const auto& callable =
           semanticSignature.payload.variant().get<signature::CallableSignature>();
       if (callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
-          callable.raises != zc::none || callable.abi != zc::none) {
+          callable.abi != zc::none) {
         return zc::none;
       }
       for (const auto& parameter : callable.parameters) {
@@ -3494,23 +3619,23 @@ zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& inpu
         parameters.add(parameter.type);
       }
       success = callable.success;
+      raises = callable.raises;
     }
   }
   if (success == zc::none) return zc::none;
 
   zc::Vector<identity::SemanticTypeId> canonicalParameters;
   for (const auto parameter : parameters) canonicalParameters.add(parameter);
-  zc::Maybe<identity::SemanticTypeId> noRaises;
   auto canonical = input.semanticTypes.canonicalizeClosed(
       type::semantic::TypeData(type::semantic::FunctionTypeData{
-          zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+          zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), raises}));
   if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
   auto interned =
       input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
   if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
   ZC_IF_SOME(definition, callee) {
     return DirectCallableShape{definition, interned.get<type::SemanticTypeInterned>().id,
-                               ZC_ASSERT_NONNULL(success), zc::mv(parameters)};
+                               ZC_ASSERT_NONNULL(success), raises, zc::mv(parameters)};
   }
   ZC_UNREACHABLE
 }
@@ -4607,6 +4732,60 @@ checked::CheckedFactsSourceRejected rejectNonUnionErrorOperator(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4025: error propagation produces a residual type that the enclosing
+// raises clause does not accept. The two display arguments are the residual
+// type and the enclosing raises type, matching the checked-facts projector
+// contract (Type, Type).
+checked::CheckedFactsSourceRejected rejectErrorPropagateOutsideRaises(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId residual,
+    identity::SemanticTypeId enclosingRaises) {
+  zc::Maybe<identity::SemanticIdentifier> noResidualAlias;
+  zc::Maybe<identity::SemanticIdentifier> noRaisesAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{residual, zc::mv(noResidualAlias)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::TypeDisplayArg{enclosingRaises, zc::mv(noRaisesAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::ErrorPropagateOutsideRaises(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::ErrorOperator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4033: a postfix error operator was applied to a degenerate union with
+// fewer than two alternatives. No display arguments, matching the
+// checked-facts projector contract (empty).
+checked::CheckedFactsSourceRejected rejectErrorUnionEmpty(const BodyProductionSite& site,
+                                                          uint32_t ownerPreorder) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::ErrorUnionEmpty(), checked::CheckerDiagnosticStage::Body, site.node,
+      site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::ErrorOperator,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 inference::RecoveryClass inferenceRecoveryClass(checked::CheckerRecoveryClass recovery) noexcept {
   switch (recovery) {
     case checked::CheckerRecoveryClass::TypeMismatch:
@@ -4994,7 +5173,9 @@ bool addOperatorRequirements(const ast::Node& syntax, ast::NodeId node,
     if (operation == zc::none) return false;
     ZC_IF_SOME(value, operation) {
       if (value.variant().is<checker::ErrorOperatorKind>()) {
-        addNodeRequirement(requirements, CheckedFactGroup::ErrorUnionShape, node, key);
+        // ErrorUnionShapeFact is produced on the operand (call) node by the
+        // DirectCall production and validated through cross-fact rules, not
+        // through the requirement system.
         addNodeRequirement(requirements, CheckedFactGroup::ErrorOperator, node, key);
       } else {
         addNodeRequirement(requirements, CheckedFactGroup::Call, node, key);
@@ -6069,6 +6250,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<checked::IndexFactMap::Entry> indexes;
   zc::Vector<checked::MarkerObligationFactMap::Entry> markerObligations;
   zc::Vector<checked::ExhaustivenessFactMap::Entry> exhaustiveness;
+  zc::Vector<checked::ErrorUnionShapeFactMap::Entry> errorUnionShapes;
+  zc::Vector<checked::ErrorOperatorFactMap::Entry> errorOperators;
   // Concrete-to-dyn erasures selected at annotated initializer sites, one per
   // initializer expression node. Consumed into the coercion fact map and the
   // witness store after every production site has been checked.
@@ -6084,6 +6267,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<SelectedDynErase> dynErases;
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
+      if (site.production == BodyProductionKind::ErrorOperator ||
+          site.production == BodyProductionKind::DirectCall) {}
       bool deferredLocalReference = false;
       if (site.production == BodyProductionKind::IdentifierReference) {
         deferredLocalReference = dependsOnStructuredLocalInitializer(input, site.node) ||
@@ -6120,6 +6305,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           (stage == 4 && !errorOperator)) {
         continue;
       }
+      if (site.production == BodyProductionKind::ErrorOperator ||
+          site.production == BodyProductionKind::DirectCall) {}
       if (site.production == BodyProductionKind::Unsupported) {
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::IdentifierPattern) {
           continue;
@@ -6704,6 +6891,19 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                    site.key.sourceSpan.clone(), factPath(site.primaryGroup));
           }
           producedType = value.success;
+          // A raising call produces the error-union type `success | raises`
+          // as its result. The union is canonicalized (flattened, sorted,
+          // deduplicated) so downstream consumers see a single closed type.
+          zc::Maybe<identity::SemanticTypeId> raisingResultType;
+          ZC_IF_SOME(raises, value.raises) {
+            raisingResultType = canonicalErrorUnionType(input, value.success, raises);
+            if (raisingResultType == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            ZC_IF_SOME(unionType, raisingResultType) { producedType = unionType; }
+          }
           zc::Maybe<checked::CheckedArgumentFact> noReceiver;
           zc::Maybe<signature::ReceiverMode> noReceiverMode;
           zc::Maybe<checked::ReceiverAdjustment> noReceiverAdjustment;
@@ -6785,6 +6985,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             if ((!isLiteralArgument && !isParameterArgument &&
                  !(isLocalOrGlobalArgument && hasArgumentType) && enumVariantType == zc::none) ||
                 !hasArgumentType || (isLiteralArgument && literal == zc::none)) {
+              // A call argument whose shape the direct-call slice does not
+              // admit (e.g. a binary expression) is legal source the body
+              // slice cannot lower yet. Drain it as ZOM4099/ZOM4125 rather
+              // than a missing-fact invariant.
+              ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+                return zc::mv(drained);
+              }
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -6892,7 +7099,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           }
           zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
           zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
-          zc::Maybe<identity::SemanticTypeId> noRaises;
+          const identity::SemanticTypeId resultType =
+              raisingResultType != zc::none ? ZC_ASSERT_NONNULL(raisingResultType) : value.success;
           calls.add(checked::CallFactMap::Entry{
               site.node,
               checked::TypedCallFact{
@@ -6901,10 +7109,22 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                       checked::SelectedCallable(checked::DirectCallable{value.callee}),
                       value.calleeType, zc::mv(noReceiver), zc::mv(noReceiverMode),
                       zc::mv(noReceiverAdjustment), zc::mv(checkedArguments), value.success,
-                      value.success, zc::mv(noSubstitutions), zc::mv(noWitnesses),
-                      zc::mv(noRaises)},
+                      resultType, zc::mv(noSubstitutions), zc::mv(noWitnesses), value.raises},
                   site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
+          // A raising call produces an ErrorUnionShapeFact so the error
+          // operator checker can validate `?!` and `!!` against the call's
+          // success and residual types.
+          ZC_IF_SOME(raises, value.raises) {
+            ZC_IF_SOME(unionType, raisingResultType) {
+              errorUnionShapes.add(checked::ErrorUnionShapeFactMap::Entry{
+                  site.node,
+                  checked::ErrorUnionShapeFact{site.node, unionType, value.success, raises,
+                                               checked::ErrorUnionShapeOrigin::RaisingCall,
+                                               site.key.sourceSpan.clone()},
+                  zc::Array<uint8_t>()});
+            }
+          }
         }
       } else if (site.production == BodyProductionKind::ReadIndex) {
         auto shape = readIndexShape(input, site.node, nodeTypes.asPtr());
@@ -7627,6 +7847,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::ReferenceReborrow) {
         auto shape = referenceReborrowShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
+          // A plain `&param` or `&mut param` borrow is legal source the body
+          // slice cannot lower yet (only the `&*x` reborrow shape is admitted).
+          // Drain it as ZOM4099/ZOM4125 rather than a missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -7635,6 +7861,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::LocalBorrow) {
         auto shape = localBorrowShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
+          // A borrow of an owner local whose initializer type cannot be
+          // resolved at the borrow's stage is legal source the body slice
+          // cannot lower yet. Drain it as ZOM4099/ZOM4125 rather than a
+          // missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -7769,30 +8002,98 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             postfix.payload.words[ast::kPostfixExpressionOpWord]);
         const ast::NodeId operand(postfix.payload.words[ast::kPostfixExpressionOperandWord]);
         auto operandFact = factEntry(nodeTypes.asPtr(), operand);
-        auto callable = returnValueOwner(input.boundModule, site.node);
-        if (operandFact == zc::none || callable == zc::none) {
+        if (operandFact == zc::none) {
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
-        ZC_IF_SOME(operand, operandFact) {
-          ZC_IF_SOME(owner, callable) {
-            auto ownerPreorder = definitionPreorder(input.boundModule, owner);
+        ZC_IF_SOME(operandType, operandFact) {
+          auto owner = enclosingBodyOwner(input.boundModule, site.node);
+          if (owner != zc::none) {
+            ZC_IF_SOME(ownerDef, owner) {
+              auto ownerEntry = input.identities.definition(ownerDef);
+              if (ownerEntry != zc::none) {}
+            }
+          }
+          if (owner == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          ZC_IF_SOME(ownerDef, owner) {
+            auto ownerPreorder = definitionPreorder(input.boundModule, ownerDef);
             if (ownerPreorder == zc::none) {
               return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                     site.key.schemaPreorder, owner, site.node,
+                                     site.key.schemaPreorder, ownerDef, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
             }
             ZC_IF_SOME(ownerOrdinal, ownerPreorder) {
-              return attachRecoveryLedger(
-                  rejectNonUnionErrorOperator(site, ownerOrdinal, operand.value, operation), input,
-                  factStoreBrands);
+              // Look up the ErrorUnionShapeFact produced by the operand (a
+              // raising call). A missing shape means the operand is not an
+              // error union, which is a user error (ZOM4032 or ZOM4026).
+              auto shapeFact = factEntry(errorUnionShapes.asPtr(), operand);
+              if (shapeFact == zc::none) {
+                return attachRecoveryLedger(
+                    rejectNonUnionErrorOperator(site, ownerOrdinal, operandType.value, operation),
+                    input, factStoreBrands);
+              }
+              ZC_IF_SOME(shape, shapeFact) {
+                // A degenerate union (fewer than two alternatives) is a user
+                // error (ZOM4033).
+                auto unionLookup = input.semanticTypes.get(shape.value.valueType);
+                if (!unionLookup.is<type::SemanticTypeLookup>()) {
+                  return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                         site.key.schemaPreorder, zc::none, site.node,
+                                         site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                }
+                const auto& unionData = unionLookup.get<type::SemanticTypeLookup>().data();
+                if (!unionData.is<type::semantic::UnionTypeData>() ||
+                    unionData.get<type::semantic::UnionTypeData>().alternatives.size() < 2) {
+                  return attachRecoveryLedger(rejectErrorUnionEmpty(site, ownerOrdinal), input,
+                                              factStoreBrands);
+                }
+                zc::Maybe<identity::SemanticTypeId> enclosingRaises;
+                if (operation == ast::PostfixOperatorKind::ErrorPropagate) {
+                  // `?!` requires the enclosing function to declare a raises
+                  // clause that accepts the residual type.
+                  enclosingRaises = callableRaises(input.signatureFacts, ownerDef);
+                  if (enclosingRaises == zc::none) {
+                    // The enclosing function has no raises clause at all.
+                    // Use the residual type as the "produced" type for the
+                    // diagnostic since there is no enclosing raises to compare
+                    // against.
+                    return attachRecoveryLedger(
+                        rejectErrorPropagateOutsideRaises(
+                            site, ownerOrdinal, shape.value.residualType, shape.value.residualType),
+                        input, factStoreBrands);
+                  }
+                  ZC_IF_SOME(raises, enclosingRaises) {
+                    bool accepted =
+                        residualAcceptedByRaises(input, shape.value.residualType, raises);
+                    if (!accepted) {
+                      return attachRecoveryLedger(
+                          rejectErrorPropagateOutsideRaises(site, ownerOrdinal,
+                                                            shape.value.residualType, raises),
+                          input, factStoreBrands);
+                    }
+                  }
+                }
+                // The operator is valid. Produce the ErrorOperatorFact and set
+                // the produced type to the success type.
+                producedType = shape.value.successType;
+                const auto opKind = operation == ast::PostfixOperatorKind::ErrorPropagate
+                                        ? checked::ErrorOperatorKind::Propagate
+                                        : checked::ErrorOperatorKind::ForcedUnwrap;
+                errorOperators.add(checked::ErrorOperatorFactMap::Entry{
+                    site.node,
+                    checked::ErrorOperatorFact{site.node, opKind, shape.value.valueType,
+                                               shape.value.successType, shape.value.residualType,
+                                               enclosingRaises, site.key.sourceSpan.clone()},
+                    zc::Array<uint8_t>()});
+              }
             }
           }
         }
-        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                               site.key.schemaPreorder, zc::none, site.node,
-                               site.key.sourceSpan.clone(), factPath(site.primaryGroup));
       } else if (site.production == BodyProductionKind::EnumVariantValue) {
         // A qualified enum variant access `Enum::Variant`. The variant must be
         // a unit variant (empty payload); the enum type is the produced type.
@@ -8750,7 +9051,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         requirement.group != CheckedFactGroup::Index &&
         requirement.group != CheckedFactGroup::MarkerObligation &&
         requirement.group != CheckedFactGroup::Pattern &&
-        requirement.group != CheckedFactGroup::Exhaustiveness) {
+        requirement.group != CheckedFactGroup::Exhaustiveness &&
+        requirement.group != CheckedFactGroup::ErrorUnionShape &&
+        requirement.group != CheckedFactGroup::ErrorOperator) {
       return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                              requirement.key.schemaPreorder, zc::none, requirement.node,
                              requirement.key.sourceSpan.clone(), factPath(requirement.group));
@@ -8792,6 +9095,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           requirementCount(input.requirements.nodeRequirements(), CheckedFactGroup::Pattern) ||
       exhaustiveness.size() != requirementCount(input.requirements.nodeRequirements(),
                                                 CheckedFactGroup::Exhaustiveness) ||
+      errorOperators.size() != requirementCount(input.requirements.nodeRequirements(),
+                                                CheckedFactGroup::ErrorOperator) ||
       definitionTypes.size() !=
           definitionRequirementCount(input.requirements.definitionRequirements(),
                                      CheckedFactGroup::DefinitionType) ||
@@ -8960,8 +9265,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           emptyFactMap<checked::UnsafeOperationFactMap>(),
           emptyFactMap<checked::ProjectionFactMap>(),
           emptyFactMap<checked::ObligationFactMap>(),
-          emptyFactMap<checked::ErrorUnionShapeFactMap>(),
-          emptyFactMap<checked::ErrorOperatorFactMap>(),
+          checked::ErrorUnionShapeFactMap::fromEntries(zc::mv(errorUnionShapes)),
+          checked::ErrorOperatorFactMap::fromEntries(zc::mv(errorOperators)),
           zc::Vector<checked::FrozenRecoveryLedger>(),
           zc::Vector<checked::CheckerFailureRef>(),
           zc::Vector<checked::CheckerAdvisoryRef>()};

@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 11-error/error_propagate_matching_raises_pos_13.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/11-error/error_propagate_matching_raises_pos_13.zom:8:12

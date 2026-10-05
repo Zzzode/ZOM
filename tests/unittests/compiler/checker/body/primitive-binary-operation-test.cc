@@ -1642,4 +1642,48 @@ ZC_TEST("LeadingLocalConditional.AdmitsComparisonOverTwoLeadingI32Locals") {
   ZC_EXPECT(comparisons == 1);
 }
 
+ZC_TEST("BodyCapabilityDrain.BorrowOfByValueParameterDrainsAsZOM4099") {
+  // A plain `&a` borrow of a by-value parameter is legal source the body slice
+  // cannot lower yet (only the `&*x` reborrow shape is admitted). The body
+  // checker drains it as ZOM4099 rather than a missing-fact invariant.
+  PrimitiveBinaryFixture fixture("fn borrow(a: i32) -> i32 { let r = &a; return 0; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+}
+
+ZC_TEST("BodyCapabilityDrain.BorrowOfOwnerLocalDrainsAsZOM4099") {
+  // A borrow of an owner local whose initializer is a direct call cannot be
+  // resolved at the borrow's stage (the call is typed at a later stage). The
+  // body checker drains it as ZOM4099 rather than a missing-fact invariant.
+  PrimitiveBinaryFixture fixture(
+      "fn callee(a: i32) -> i32 { return a; }\n"
+      "fn borrow(a: i32) -> i32 { let x = callee(a); let r = &x; return 0; }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+}
+
+ZC_TEST("BodyCapabilityDrain.BinaryExpressionCallArgumentDrainsAsZOM4099") {
+  // A call argument that is a binary expression (`a + 1`) is legal source the
+  // direct-call slice does not admit yet (only literal/parameter/local/enum-
+  // variant arguments lower). The body checker drains it as ZOM4099 rather
+  // than a missing-fact invariant.
+  PrimitiveBinaryFixture fixture(
+      "fn callee(a: i32) -> i32 { return a; }\n"
+      "fn caller(a: i32) -> i32 { return callee(a + 1); }\n"_zc);
+  auto result = fixture.runBodyChecker();
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic ==
+            checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
+}
+
 }  // namespace zomlang::compiler::checker::body

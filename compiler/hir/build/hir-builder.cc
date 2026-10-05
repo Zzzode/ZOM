@@ -366,6 +366,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                      adjustment.sourceSpan.clone());
     }
   }
+  // Error operators (`?!`, `!!`) are now validated and verified by the checker,
+  // but the HIR/MIR lowering carrier (RFC 0006: tag tests, cleanup edges, panic
+  // boundaries) is not built yet. Fail closed as a per-definition capability
+  // rejection projected to ZOM4099, never as an invariant and never silently
+  // scalar-lowered. The ErrorUnionShapeFact alone (a raising call with no
+  // operator) is admitted: the union type is a closed scalar type that flows
+  // through the existing lowering paths.
+  for (const auto& entry : facts.errorOperators().entries()) {
+    const auto owner = enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key);
+    if (owner == zc::none) {
+      return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                           ir::IrFailureKind::InvalidFact, module, registries, 6);
+    }
+    return rejectHirCapability<HirModuleCandidate>(ZC_ASSERT_NONNULL(owner), registries,
+                                                   ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                   entry.value.sourceSpan.clone());
+  }
 
   const auto definitions = bound.definitions().definitions();
   if (definitions.size() > UINT32_MAX / 4) {

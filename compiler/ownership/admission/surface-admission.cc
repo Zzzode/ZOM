@@ -1793,6 +1793,19 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
         }
       }
     }
+    // A borrow expression (`&x` or `&mut x`) inside a let initializer is a
+    // construct the body checker drains as ZOM4099. Suppress the generic
+    // surface-admission ZOM4099 so the body checker runs instead of the
+    // surface admission draining the entire function body as a capability
+    // gap. A reborrow (`&*x`) in a return is admitted by
+    // isAdmittedFunctionBody and never reaches this check.
+    if (syntax.kind == ast::SyntaxKind::UnaryExpression) {
+      const auto unaryOp =
+          static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]);
+      if (unaryOp == ast::UnaryOperatorKind::Ref || unaryOp == ast::UnaryOperatorKind::RefMut) {
+        found = true;
+      }
+    }
   });
   return found;
 }

@@ -1,0 +1,2 @@
+fn callee(a: i32) -> i32 { return a; }
+fn caller(a: i32) -> i32 { return callee(a + 1); }

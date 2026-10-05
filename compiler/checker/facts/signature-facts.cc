@@ -980,36 +980,34 @@ zc::Maybe<SignatureScope> signatureScope(
 
 bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
                            identity::DefinitionKind definitionKind, ast::NodeId& parameters,
-                           ast::NodeId& returnType) {
+                           ast::NodeId& returnType, ast::NodeId& raisesType) {
   if (!tree.contains(declaration)) { return false; }
   const auto& syntax = tree.node(declaration);
+  raisesType = ast::NodeId();
   if (definitionKind == identity::DefinitionKind::Function &&
       syntax.kind == ast::SyntaxKind::FunctionDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kFunctionDeclRaisesTyWord]))) {
-      return false;
+      raisesType = ast::NodeId(syntax.payload.words[ast::kFunctionDeclRaisesTyWord]);
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kFunctionDeclParamsIdWord]);
     returnType = ast::NodeId(syntax.payload.words[ast::kFunctionDeclRetTyWord]);
   } else if (definitionKind == identity::DefinitionKind::Method &&
              syntax.kind == ast::SyntaxKind::MethodDecl) {
-    // A method may declare its own type parameters; object safety decides later
-    // whether such a method is admissible behind `dyn`. Error-union results
-    // remain gated on RFC 0006.
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kMethodDeclRaisesTyWord]))) {
-      return false;
+      raisesType = ast::NodeId(syntax.payload.words[ast::kMethodDeclRaisesTyWord]);
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kMethodDeclParamsIdWord]);
     returnType = ast::NodeId(syntax.payload.words[ast::kMethodDeclRetTyWord]);
   } else if (definitionKind == identity::DefinitionKind::Constructor &&
              syntax.kind == ast::SyntaxKind::ConstructorDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kConstructorDeclRaisesTyWord]))) {
-      return false;
+      raisesType = ast::NodeId(syntax.payload.words[ast::kConstructorDeclRaisesTyWord]);
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kConstructorDeclParamsIdWord]);
   } else if (definitionKind == identity::DefinitionKind::Destructor &&
              syntax.kind == ast::SyntaxKind::DestructorDecl) {
     if (tree.contains(ast::NodeId(syntax.payload.words[ast::kDestructorDeclRaisesTyWord]))) {
-      return false;
+      raisesType = ast::NodeId(syntax.payload.words[ast::kDestructorDeclRaisesTyWord]);
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
   } else {
@@ -8781,6 +8779,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
       ast::NodeId parameters;
       ast::NodeId returnType;
+      ast::NodeId raisesType;
       if (tree.node(definition.node).kind == ast::SyntaxKind::ExternDecl) {
         // An `extern "abi" { fn ... }` member is grammar the parser and binder
         // accept, but the FFI call ABI (RFC 0006) is not implemented yet. The
@@ -8801,7 +8800,8 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
            definitionKind != identity::DefinitionKind::Method &&
            definitionKind != identity::DefinitionKind::Constructor &&
            definitionKind != identity::DefinitionKind::Destructor) ||
-          !isCallableDeclaration(tree, definition.node, definitionKind, parameters, returnType)) {
+          !isCallableDeclaration(tree, definition.node, definitionKind, parameters, returnType,
+                                 raisesType)) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             definition.node.value));
       }
@@ -8887,17 +8887,30 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       ZC_IF_SOME(success, returnSemanticType) {
         ZC_IF_SOME(signatureScopeValue, scope) {
           auto receiver = buildCallableReceiver(input, definition.definition);
-          zc::Maybe<identity::SemanticTypeId> noRaises;
+          zc::Maybe<identity::SemanticTypeId> raisesSemanticType;
+          if (tree.contains(raisesType)) {
+            SourceTypeBuilder raisesTypeBuilder(input.boundModule, input.identities,
+                                                input.semanticTypes, genericParameterIds.asPtr(),
+                                                sourceFailures, contextualInterface);
+            auto builtRaises = raisesTypeBuilder.build(raisesType);
+            if (builtRaises == zc::none) {
+              if (!sourceFailures.empty()) { continue; }
+              return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                                  raisesType.value));
+            }
+            ZC_IF_SOME(value, builtRaises) { raisesSemanticType = value.type; }
+          }
           zc::Maybe<ExternAbi> noAbi;
           zc::Vector<ParameterSignature> parameterSignatures = zc::mv(callableParameterSignatures);
           built.add(BuiltSignature{
-              SemanticSignature{
-                  definition.definition, definitionKind, zc::mv(signatureScopeValue),
-                  zc::Vector<SignatureModifier>(), zc::Vector<NormalizedAttributeFact>(),
-                  SemanticSignaturePayload(CallableSignature{
-                      zc::mv(genericParameterSignatures), zc::mv(receiver),
-                      zc::mv(parameterSignatures), success, zc::mv(noRaises), zc::mv(noAbi)}),
-                  bound.source.clone()},
+              SemanticSignature{definition.definition, definitionKind, zc::mv(signatureScopeValue),
+                                zc::Vector<SignatureModifier>(),
+                                zc::Vector<NormalizedAttributeFact>(),
+                                SemanticSignaturePayload(CallableSignature{
+                                    zc::mv(genericParameterSignatures), zc::mv(receiver),
+                                    zc::mv(parameterSignatures), success,
+                                    zc::mv(raisesSemanticType), zc::mv(noAbi)}),
+                                bound.source.clone()},
               SignatureDefinitionRequirement{definition.definition, definitionKind,
                                              zc::Array<uint8_t>()},
               definition.key.encode()});

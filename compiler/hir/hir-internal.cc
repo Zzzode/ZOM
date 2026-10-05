@@ -290,14 +290,17 @@ bool isScalarUnaryOperation(checker::PrimitiveOperation operation) {
 // return position. Strict identity and the logical short-circuit operators are
 // excluded.
 
-// True when every unsupported family other than coercions is empty. Coercions
-// are handled separately so a single concrete-to-dyn erasure can fail closed as
-// a per-definition capability rejection instead of a module invariant.
+// True when every unsupported family other than coercions and error facts is
+// empty. Coercions are handled separately so a single concrete-to-dyn erasure
+// can fail closed as a per-definition capability rejection instead of a
+// module invariant. Error facts are handled the same way: the checker now
+// validates and verifies them, but the HIR/MIR lowering carrier (RFC 0006)
+// is not built yet, so each error operator drains as a per-definition
+// capability rejection.
 bool unsupportedNonErasureFacts(const checker::checked::VerifiedCheckedFacts& facts) {
   return facts.compoundAssignments().size() == 0 && facts.observedOperations().size() == 0 &&
          facts.captures().size() == 0 && facts.unsafeOperations().size() == 0 &&
-         facts.projections().size() == 0 && facts.obligations().size() == 0 &&
-         facts.errorUnionShapes().size() == 0 && facts.errorOperators().size() == 0;
+         facts.projections().size() == 0 && facts.obligations().size() == 0;
 }
 
 // A concrete-to-dyn erasure the lowering carrier does not implement yet:

@@ -1,3 +1,5 @@
+error Error {}
+
 fn fail() -> i32 raises Error {
     return 1;
 }
