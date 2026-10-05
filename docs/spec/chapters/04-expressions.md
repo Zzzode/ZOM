@@ -209,9 +209,13 @@ let decremented = --y;  // Pre-decrement
 
 ### Logical NOT Operator
 
+The `!` operator is defined only for `bool` operands. There is no implicit
+conversion from numeric or pointer types to `bool`; test for zero or null
+explicitly with a comparison.
+
 ```zom
 let isNotValid = !isValid;
-let isEmpty = !array.length;
+let isEmpty = array.length == 0;
 ```
 
 ### Bitwise NOT Operator
