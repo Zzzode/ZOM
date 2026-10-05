@@ -145,35 +145,39 @@ ZC_TEST("CoreDiagnosticProjector preserves registered session invariant identiti
   using driver::core::CoreDiagnosticProjector;
   using driver::core::CoreSessionInvariantKind;
 
+  // The projector encodes the session-invariant kind in the incident kind key
+  // with a 0x0600 sub-range offset, matching the registered allocation.
+  constexpr uint32_t kKindOffset = 0x0600U;
+
   const auto invalidState =
       CoreDiagnosticProjector::project(CoreSessionInvariantKind::InvalidInstallationState);
   ZC_EXPECT(invalidState.domain() == basic::CompilerIncidentDomain::Driver);
   ZC_EXPECT(invalidState.kind().tag() ==
-            static_cast<uint32_t>(CoreSessionInvariantKind::InvalidInstallationState));
+            kKindOffset + static_cast<uint32_t>(CoreSessionInvariantKind::InvalidInstallationState));
 
   const auto crateRejected =
       CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreCrateProjectionRejected);
   ZC_EXPECT(crateRejected.domain() == basic::CompilerIncidentDomain::Driver);
   ZC_EXPECT(crateRejected.kind().tag() ==
-            static_cast<uint32_t>(CoreSessionInvariantKind::CoreCrateProjectionRejected));
+            kKindOffset + static_cast<uint32_t>(CoreSessionInvariantKind::CoreCrateProjectionRejected));
 
   const auto sourceRejected =
       CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreSourceRegistrationRejected);
   ZC_EXPECT(sourceRejected.domain() == basic::CompilerIncidentDomain::Driver);
   ZC_EXPECT(sourceRejected.kind().tag() ==
-            static_cast<uint32_t>(CoreSessionInvariantKind::CoreSourceRegistrationRejected));
+            kKindOffset + static_cast<uint32_t>(CoreSessionInvariantKind::CoreSourceRegistrationRejected));
 
   const auto markerNotFound =
       CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreMarkerNotFound);
   ZC_EXPECT(markerNotFound.domain() == basic::CompilerIncidentDomain::Driver);
   ZC_EXPECT(markerNotFound.kind().tag() ==
-            static_cast<uint32_t>(CoreSessionInvariantKind::CoreMarkerNotFound));
+            kKindOffset + static_cast<uint32_t>(CoreSessionInvariantKind::CoreMarkerNotFound));
 
   const auto authorityRejected =
       CoreDiagnosticProjector::project(CoreSessionInvariantKind::CoreAuthorityRejected);
   ZC_EXPECT(authorityRejected.domain() == basic::CompilerIncidentDomain::Driver);
   ZC_EXPECT(authorityRejected.kind().tag() ==
-            static_cast<uint32_t>(CoreSessionInvariantKind::CoreAuthorityRejected));
+            kKindOffset + static_cast<uint32_t>(CoreSessionInvariantKind::CoreAuthorityRejected));
 }
 
 }  // namespace zomlang::compiler
