@@ -101,6 +101,21 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
         tree.node(expression).payload.words[ast::kPostfixExpressionOperandWord]);
     return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
   }
+  // A prefix increment/decrement (`++x` / `--x`) on an identifier operand
+  // desugars to a binary write (`x = x + 1` / `x = x - 1`), the same as the
+  // postfix form. The operand mutability and integer type are checker
+  // decisions kept out of surface admission.
+  if (tree.node(expression).kind == ast::SyntaxKind::UnaryExpression) {
+    const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(expression).payload.words[ast::kUnaryExpressionOpWord]);
+    if (unaryOp != ast::UnaryOperatorKind::PreIncrement &&
+        unaryOp != ast::UnaryOperatorKind::PreDecrement) {
+      return false;
+    }
+    const ast::NodeId operand(
+        tree.node(expression).payload.words[ast::kUnaryExpressionOperandWord]);
+    return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+  }
   if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) return false;
   const auto& assignment = tree.node(expression);
   const auto assignmentOp = static_cast<ast::AssignmentOperatorKind>(
@@ -1664,6 +1679,26 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
       }
       continue;
     }
+    // A prefix increment/decrement (`++x` / `--x`) desugars to a binary write
+    // (`x = x + 1` / `x = x - 1`), the same as the postfix form. The operand
+    // must name the declared local; the mutability and integer type are
+    // checker decisions.
+    if (tree.node(assignment).kind == ast::SyntaxKind::UnaryExpression) {
+      const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+          tree.node(assignment).payload.words[ast::kUnaryExpressionOpWord]);
+      if (unaryOp != ast::UnaryOperatorKind::PreIncrement &&
+          unaryOp != ast::UnaryOperatorKind::PreDecrement) {
+        return false;
+      }
+      const ast::NodeId unaryOperand(
+          tree.node(assignment).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (!tree.contains(unaryOperand) ||
+          tree.node(unaryOperand).kind != ast::SyntaxKind::IdentExpr ||
+          !matchesLocalReference(tree, pattern, unaryOperand)) {
+        return false;
+      }
+      continue;
+    }
     if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr) return false;
     const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
         tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]);
@@ -1724,11 +1759,11 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
          !isAdmittedExpressionStatement(tree, syntax))) {
       found = true;
     }
-    // A postfix increment/decrement on an identifier operand is admitted by
-    // isAdmittedExpressionStatement; the body checker performs the type check
-    // and emits ZOM4031 for non-numeric operands. Suppress the generic ZOM4099
-    // so the body checker runs instead of the surface admission draining the
-    // entire function body as a capability gap.
+    // A postfix or prefix increment/decrement on an identifier operand is
+    // admitted by isAdmittedExpressionStatement; the body checker performs the
+    // type check and emits ZOM4031 for non-numeric operands. Suppress the
+    // generic ZOM4099 so the body checker runs instead of the surface
+    // admission draining the entire function body as a capability gap.
     if (syntax.kind == ast::SyntaxKind::ExpressionStatement) {
       const ast::NodeId expression(syntax.payload.words[ast::kExpressionStatementExpressionWord]);
       if (tree.contains(expression) &&
@@ -1739,6 +1774,19 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
             postfixOp == ast::PostfixOperatorKind::Decrement) {
           const ast::NodeId operand(
               tree.node(expression).payload.words[ast::kPostfixExpressionOperandWord]);
+          if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+            found = true;
+          }
+        }
+      }
+      if (tree.contains(expression) &&
+          tree.node(expression).kind == ast::SyntaxKind::UnaryExpression) {
+        const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+            tree.node(expression).payload.words[ast::kUnaryExpressionOpWord]);
+        if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
+            unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+          const ast::NodeId operand(
+              tree.node(expression).payload.words[ast::kUnaryExpressionOperandWord]);
           if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
             found = true;
           }

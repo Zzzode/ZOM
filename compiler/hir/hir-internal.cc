@@ -50,6 +50,10 @@ bool isCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
   }
 }
 
+bool isPrefixIncrementOrDecrement(ast::UnaryOperatorKind op) noexcept {
+  return op == ast::UnaryOperatorKind::PreIncrement || op == ast::UnaryOperatorKind::PreDecrement;
+}
+
 zc::Maybe<checker::PrimitiveOperation> compoundAssignmentBinaryOperation(
     ast::AssignmentOperatorKind op) noexcept {
   switch (op) {

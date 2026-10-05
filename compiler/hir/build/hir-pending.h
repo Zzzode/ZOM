@@ -170,12 +170,13 @@ struct PendingLocalWriteBinary final {
   identity::SemanticTypeId type;
   checker::PrimitiveOperation operation;
   identity::SourceSpan sourceSpan;
-  // True when this binary write is the desugared form of a postfix
-  // increment/decrement (`x++` -> `x = x + 1`). The PostfixExpression node
-  // replaces the assignment plus binary nodes (two node-type facts instead of
-  // five) and the synthetic literal 1 has no checked literal fact, so the
-  // digest equations subtract one per desugared write.
-  bool isPostfixDesugar = false;
+  // True when this binary write is the desugared form of a prefix or postfix
+  // increment/decrement (`++x` / `x++` -> `x = x + 1`). The UnaryExpression or
+  // PostfixExpression node replaces the assignment plus binary nodes (two
+  // node-type facts instead of five) and the synthetic literal 1 has no
+  // checked literal fact, so the digest equations subtract one per desugared
+  // write.
+  bool isIncrementDesugar = false;
   // True when this binary write is the desugared form of a compound
   // assignment (`x += 1` -> `x = x + 1`). The AssignmentExpr node carries
   // the target and value node-type facts (three instead of five) and the

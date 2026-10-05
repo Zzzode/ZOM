@@ -3348,6 +3348,15 @@ zc::Maybe<PrimitiveUnaryOperationShape> primitiveUnaryOperationShape(
       !primitiveUnaryOperationAdmits(operation, ZC_ASSERT_NONNULL(operandKind))) {
     return zc::none;
   }
+  // Prefix increment/decrement (`++x` / `--x`) writes to its operand, so the
+  // operand must be a mutable owner local. Parameters and non-mut locals are
+  // capability gaps the HIR write path cannot lower yet; the postfix path
+  // applies the same gate.
+  if ((operation == PrimitiveOperation::PreIncrement ||
+       operation == PrimitiveOperation::PreDecrement) &&
+      !isMutableOwnerLocal(input.boundModule, operand)) {
+    return zc::none;
+  }
   // LogicalNot produces bool; the arithmetic unary operators produce the
   // operand type.
   if (operation == PrimitiveOperation::LogicalNot) {
@@ -5744,12 +5753,14 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           } else if (operation == ast::UnaryOperatorKind::Plus ||
                      operation == ast::UnaryOperatorKind::Minus ||
                      operation == ast::UnaryOperatorKind::LogicalNot ||
-                     operation == ast::UnaryOperatorKind::BitNot) {
-            // Admit the four primitive unary operators (`+` `-` `~` `!`) where
-            // the operand is a scalar value reference (a parameter or an owner
-            // local). A literal-only unary has no reference to anchor the
-            // operand type and no place to lower, so it stays unsupported and
-            // its existing rejection stands.
+                     operation == ast::UnaryOperatorKind::BitNot ||
+                     operation == ast::UnaryOperatorKind::PreIncrement ||
+                     operation == ast::UnaryOperatorKind::PreDecrement) {
+            // Admit the primitive unary operators (`+` `-` `~` `!` `++` `--`)
+            // where the operand is a scalar value reference (a parameter or an
+            // owner local). A literal-only unary has no reference to anchor
+            // the operand type and no place to lower, so it stays unsupported
+            // and its existing rejection stands.
             const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
             if (tree.contains(operand)) {
               const bool operandIsReference =

@@ -2759,6 +2759,26 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
         continue;
       }
+      // A prefix increment/decrement (`++x` / `--x`) desugars to a binary
+      // write (`x = x + 1` / `x = x - 1`), the same as the postfix form.
+      // The operand must be an identifier reference to the same mutable
+      // local as the return value; the binding match is verified downstream
+      // by the builder.
+      if (tree.node(assignment).kind == ast::SyntaxKind::UnaryExpression) {
+        const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+            tree.node(assignment).payload.words[ast::kUnaryExpressionOpWord]);
+        if (unaryOp != ast::UnaryOperatorKind::PreIncrement &&
+            unaryOp != ast::UnaryOperatorKind::PreDecrement) {
+          return zc::none;
+        }
+        const ast::NodeId unaryOperand(
+            tree.node(assignment).payload.words[ast::kUnaryExpressionOperandWord]);
+        if (!tree.contains(unaryOperand) ||
+            tree.node(unaryOperand).kind != ast::SyntaxKind::IdentExpr) {
+          return zc::none;
+        }
+        continue;
+      }
       if (tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr) return zc::none;
       const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
           tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]);

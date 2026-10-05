@@ -169,6 +169,11 @@ bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
 /// compound operators stay unsupported.
 bool isCompoundAssignment(ast::AssignmentOperatorKind op) noexcept;
 
+/// \brief Returns true when the syntactic unary operator is a prefix
+/// increment (`++x`) or decrement (`--x`) that desugars to a primitive binary
+/// write (`x = x + 1` / `x = x - 1`).
+bool isPrefixIncrementOrDecrement(ast::UnaryOperatorKind op) noexcept;
+
 /// \brief Maps a syntactic compound assignment operator to the primitive
 /// binary operation its desugared write applies. Returns none for an operator
 /// that is not an admitted compound assignment.

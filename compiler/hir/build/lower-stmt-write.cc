@@ -101,7 +101,7 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
       ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
           writeValueIds[index], leftId, rightId, binary.operandType, binary.type,
           HirValueCategory::Value, binary.operation, binary.sourceSpan.clone(), false,
-          binary.isPostfixDesugar, binary.isCompoundAssignmentDesugar});
+          binary.isIncrementDesugar, binary.isCompoundAssignmentDesugar});
     }
     ctx.addLocalWrite(HirLocalWriteStatement{writeIds[index], hirLocalId(1), write.field,
                                              write.type, writeValueIds[index], write.kind,

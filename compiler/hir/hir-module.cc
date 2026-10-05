@@ -1534,14 +1534,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
     if (operation.isUnaryDesugar) ++unaryReturnCount;
   }
-  // Postfix increment/decrement writes (`x++` -> `x = x + 1`) pool into
-  // primitiveBinaryOperations like binary writes, but the PostfixExpression
-  // source node replaces the assignment plus binary nodes (two node-type facts
-  // instead of five) and the synthetic literal 1 has no checked literal fact.
-  // Subtract three per postfix write from nodeTypes and one from literals.
-  size_t postfixIncrementWriteCount = 0;
+  // Increment/decrement writes (`x++` / `++x` -> `x = x + 1`) pool into
+  // primitiveBinaryOperations like binary writes, but the PostfixExpression or
+  // UnaryExpression source node replaces the assignment plus binary nodes (two
+  // node-type facts instead of five) and the synthetic literal 1 has no
+  // checked literal fact. Subtract three per increment write from nodeTypes
+  // and one from literals.
+  size_t incrementWriteCount = 0;
   for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
-    if (operation.isPostfixDesugar) ++postfixIncrementWriteCount;
+    if (operation.isIncrementDesugar) ++incrementWriteCount;
   }
   // Compound assignment writes (`x += 1` -> `x = x + 1`) pool into
   // primitiveBinaryOperations like binary writes, but the AssignmentExpr source
@@ -1678,7 +1679,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
               sequentialMatchExprDefaultArmCount - leadingLocalConditionalUnaryCount -
               leadingLocalConditionalArithmeticCount + leadingLocalConditionalArithmeticCount * 2 -
-              postfixIncrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
+              incrementWriteCount * 3 - compoundAssignmentWriteCount * 2 +
               forLoopBreakConditionCount ||
       static_cast<int64_t>(facts.literals().size()) !=
           static_cast<int64_t>(
@@ -1698,7 +1699,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               leadingLocalConditionalArithmeticParameterCount +
               leadingLocalConditionalArithmeticLiteralCount -
               leadingLocalConditionalArithmeticCount - leadingLocalConditionalArmNonLiteralCount -
-              binaryWriteLocalOperands - postfixIncrementWriteCount + deadLiterals +
+              binaryWriteLocalOperands - incrementWriteCount + deadLiterals +
               forLoopAccumulatorCorrection + static_cast<int64_t>(chainedMatchLiteralExcess) +
               static_cast<int64_t>(chainedEnumMatchLiteralExcess) +
               static_cast<int64_t>(foldedStringConcatCount) * 2 +
@@ -8063,7 +8064,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(value, sourceStatement) {
             const ast::NodeId writeNode(
                 tree.node(value).payload.words[ast::kExpressionStatementExpressionWord]);
-            if (tree.node(writeNode).kind == ast::SyntaxKind::PostfixExpression) {
+            if (tree.node(writeNode).kind == ast::SyntaxKind::PostfixExpression ||
+                (tree.node(writeNode).kind == ast::SyntaxKind::UnaryExpression &&
+                 isPrefixIncrementOrDecrement(static_cast<ast::UnaryOperatorKind>(
+                     tree.node(writeNode).payload.words[ast::kUnaryExpressionOpWord])))) {
               binaryWriteNodes += 2;
               continue;
             }
@@ -12450,19 +12454,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, sourceStatement) { sourceStatementNode = value; }
       const ast::NodeId sourceWrite(
           tree.node(sourceStatementNode).payload.words[ast::kExpressionStatementExpressionWord]);
-      // A postfix increment/decrement (`x++` / `x--`) desugars to a binary write
-      // (`x = x + 1` / `x = x - 1`). The PostfixExpression node replaces the
-      // assignment plus binary nodes: the target is the postfix operand and the
-      // write value is the postfix node itself, whose call fact records the
-      // PostIncrement/PostDecrement operation. The synthetic literal 1 has no
-      // AST node and therefore no checked literal fact.
+      // An increment/decrement (`x++` / `++x` / `x--` / `--x`) desugars to a
+      // binary write (`x = x + 1` / `x = x - 1`). The PostfixExpression or
+      // UnaryExpression node replaces the assignment plus binary nodes: the
+      // target is the operand and the write value is the expression node
+      // itself, whose call fact records the increment/decrement operation.
+      // The synthetic literal 1 has no AST node and therefore no checked
+      // literal fact.
       const bool isPostfixWrite = tree.node(sourceWrite).kind == ast::SyntaxKind::PostfixExpression;
+      const bool isPrefixWrite =
+          tree.node(sourceWrite).kind == ast::SyntaxKind::UnaryExpression &&
+          isPrefixIncrementOrDecrement(static_cast<ast::UnaryOperatorKind>(
+              tree.node(sourceWrite).payload.words[ast::kUnaryExpressionOpWord]));
+      const bool isIncrementWrite = isPostfixWrite || isPrefixWrite;
       // A compound assignment (`x += 1`) desugars to a binary write
       // (`x = x + 1`) in the HIR builder, so the HIR value is a
       // HirPrimitiveBinaryExpression even though the source RHS is a scalar
       // literal, not a BinaryExpr.
       const bool isCompoundWrite =
-          !isPostfixWrite && tree.node(sourceWrite).kind == ast::SyntaxKind::AssignmentExpr &&
+          !isIncrementWrite && tree.node(sourceWrite).kind == ast::SyntaxKind::AssignmentExpr &&
           isCompoundAssignment(static_cast<ast::AssignmentOperatorKind>(
               tree.node(sourceWrite).payload.words[ast::kAssignmentExprOpWord]));
       // For a compound assignment the binary operation is derived from the
@@ -12476,9 +12486,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           isPostfixWrite
               ? ast::NodeId(
                     tree.node(sourceWrite).payload.words[ast::kPostfixExpressionOperandWord])
+          : isPrefixWrite
+              ? ast::NodeId(tree.node(sourceWrite).payload.words[ast::kUnaryExpressionOperandWord])
               : ast::NodeId(tree.node(sourceWrite).payload.words[ast::kAssignmentExprLhsWord]));
       const ast::NodeId sourceWriteValue(
-          isPostfixWrite
+          isIncrementWrite
               ? sourceWrite
               : ast::NodeId(tree.node(sourceWrite).payload.words[ast::kAssignmentExprRhsWord]));
       auto sourceWriteSpan = bound.parsedModule().spanFor(tree.node(sourceWrite).range);
@@ -12487,13 +12499,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto targetType = factIndex(facts.nodeTypes(), sourceTarget);
       auto valueType = factIndex(facts.nodeTypes(), sourceWriteValue);
       // A reference or binary write value has no literal fact; a literal write
-      // value does. A postfix or compound-assignment write always has a binary
-      // HIR value.
+      // value does. An increment/decrement or compound-assignment write always
+      // has a binary HIR value.
       const bool sourceReferenceValue =
-          !isPostfixWrite && !isCompoundWrite && tree.contains(sourceWriteValue) &&
+          !isIncrementWrite && !isCompoundWrite && tree.contains(sourceWriteValue) &&
           tree.node(sourceWriteValue).kind == ast::SyntaxKind::IdentExpr;
       const bool sourceBinaryValue =
-          isPostfixWrite || isCompoundWrite ||
+          isIncrementWrite || isCompoundWrite ||
           (tree.contains(sourceWriteValue) &&
            tree.node(sourceWriteValue).kind == ast::SyntaxKind::BinaryExpr);
       auto valueLiteral = (sourceReferenceValue || sourceBinaryValue)
@@ -12641,19 +12653,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             // node after the function's return value / unsafe block, then each
             // earlier binary write consumes two ids.
             //
-            // A postfix write (`x++` -> `x = x + 1`) has no RHS binary node in
-            // the source: the left operand is the postfix target and the right
-            // operand is a synthetic literal 1 with no AST node. The call fact is
-            // keyed on the PostfixExpression node and records PostIncrement or
-            // PostDecrement, not the desugared Add/Sub.
+            // An increment/decrement write (`x++` / `++x` -> `x = x + 1`) has
+            // no RHS binary node in the source: the left operand is the target
+            // and the right operand is a synthetic literal 1 with no AST node.
+            // The call fact is keyed on the PostfixExpression or UnaryExpression
+            // node and records the increment/decrement operation, not the
+            // desugared Add/Sub.
             const ast::NodeId binaryLeftNode(
-                isPostfixWrite ? sourceTarget
+                isIncrementWrite ? sourceTarget
                 : isCompoundWrite
                     ? sourceTarget
                     : ast::NodeId(
                           tree.node(sourceWriteValue).payload.words[ast::kBinaryExprLhsWord]));
             const ast::NodeId binaryRightNode(
-                isPostfixWrite ? ast::NodeId()
+                isIncrementWrite ? ast::NodeId()
                 : isCompoundWrite
                     ? sourceWriteValue
                     : ast::NodeId(
@@ -12667,7 +12680,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               ZC_IF_SOME(earlierValue, earlierStatement) {
                 const ast::NodeId earlierWrite(
                     tree.node(earlierValue).payload.words[ast::kExpressionStatementExpressionWord]);
-                if (tree.node(earlierWrite).kind == ast::SyntaxKind::PostfixExpression) {
+                if (tree.node(earlierWrite).kind == ast::SyntaxKind::PostfixExpression ||
+                    (tree.node(earlierWrite).kind == ast::SyntaxKind::UnaryExpression &&
+                     isPrefixIncrementOrDecrement(static_cast<ast::UnaryOperatorKind>(
+                         tree.node(earlierWrite).payload.words[ast::kUnaryExpressionOpWord])))) {
                   ++priorBinaryWrites;
                   continue;
                 }
@@ -12800,21 +12816,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                      referenceValue.category == HirValueCategory::Place &&
                      sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
             };
-            if (isPostfixWrite) {
-              // Postfix desugaring: the call fact records PostIncrement or
-              // PostDecrement with one argument (the postfix target), and the
-              // binary lowers to Add or Sub. The right operand is a synthetic
-              // literal 1 with no AST node and no checked literal fact.
-              const bool postfixIncrement = operation == checker::PrimitiveOperation::PostIncrement;
-              const bool postfixDecrement = operation == checker::PrimitiveOperation::PostDecrement;
-              if (!postfixIncrement && !postfixDecrement) {
+            if (isIncrementWrite) {
+              // Increment/decrement desugaring: the call fact records
+              // PreIncrement, PreDecrement, PostIncrement, or PostDecrement
+              // with one argument (the target), and the binary lowers to Add
+              // or Sub. The right operand is a synthetic literal 1 with no
+              // AST node and no checked literal fact.
+              const bool isIncrement = operation == checker::PrimitiveOperation::PreIncrement ||
+                                       operation == checker::PrimitiveOperation::PostIncrement;
+              const bool isDecrement = operation == checker::PrimitiveOperation::PreDecrement ||
+                                       operation == checker::PrimitiveOperation::PostDecrement;
+              if (!isIncrement && !isDecrement) {
                 return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                     ir::IrFailureKind::InvalidFact, module,
                                                     registries, index + 1);
               }
-              const auto expectedBinaryOperation = postfixIncrement
-                                                       ? checker::PrimitiveOperation::Add
-                                                       : checker::PrimitiveOperation::Sub;
+              const auto expectedBinaryOperation =
+                  isIncrement ? checker::PrimitiveOperation::Add : checker::PrimitiveOperation::Sub;
               ZC_IF_SOME(binaryValue, binary) {
                 if (binaryValue.node != expectedValue || binaryValue.left != leftOperandId ||
                     binaryValue.right != rightOperandId || binaryValue.type != writeValue.type ||
@@ -13754,7 +13772,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(statementValue, sourceStatement) {
             const ast::NodeId sourceWrite(
                 tree.node(statementValue).payload.words[ast::kExpressionStatementExpressionWord]);
-            if (tree.node(sourceWrite).kind == ast::SyntaxKind::PostfixExpression) {
+            if (tree.node(sourceWrite).kind == ast::SyntaxKind::PostfixExpression ||
+                (tree.node(sourceWrite).kind == ast::SyntaxKind::UnaryExpression &&
+                 isPrefixIncrementOrDecrement(static_cast<ast::UnaryOperatorKind>(
+                     tree.node(sourceWrite).payload.words[ast::kUnaryExpressionOpWord])))) {
               binaryWriteOperandIds += 2;
               continue;
             }

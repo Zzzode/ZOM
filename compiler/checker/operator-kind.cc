@@ -256,7 +256,10 @@ bool primitiveUnaryOperationAdmits(PrimitiveOperation operation,
     // Logical unary is defined for bool only.
     case PrimitiveOperation::LogicalNot:
       return isBool;
-    // Postfix increment/decrement is defined for integer types only.
+    // Increment/decrement (prefix and postfix) is defined for integer types
+    // only.
+    case PrimitiveOperation::PreIncrement:
+    case PrimitiveOperation::PreDecrement:
     case PrimitiveOperation::PostIncrement:
     case PrimitiveOperation::PostDecrement:
       return isInteger;

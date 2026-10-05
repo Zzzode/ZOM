@@ -4989,12 +4989,117 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             postfixWriteValue.binary = PendingLocalWriteBinary{
                 zc::mv(leftArm),   zc::mv(rightArm), postfixTargetType,
                 postfixTargetType, binaryOperation,  ZC_ASSERT_NONNULL(postfixSpan).clone()};
-            ZC_ASSERT_NONNULL(postfixWriteValue.binary).isPostfixDesugar = true;
+            ZC_ASSERT_NONNULL(postfixWriteValue.binary).isIncrementDesugar = true;
             localWrites.add(HirLocalWriteStatement{
                 HirNodeId(), HirLocalId(), zc::none, postfixTargetType, HirNodeId(),
                 HirLocalWriteKind::Overwrite, ZC_ASSERT_NONNULL(postfixSpan).clone(),
                 ZC_ASSERT_NONNULL(postfixSpan).clone()});
             localWriteValues.add(zc::mv(postfixWriteValue));
+            continue;
+          }
+          // A prefix increment/decrement (`++x` / `--x`) desugars to a binary
+          // write (`x = x + 1` / `x = x - 1`), the same as the postfix form.
+          // The UnaryExpression node carries the call fact; the binary and its
+          // literal operand are synthetic, so the write contributes two
+          // node-type facts (the unary node and its operand) instead of five
+          // and no literal fact.
+          if (tree.node(write).kind == ast::SyntaxKind::UnaryExpression) {
+            const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+                tree.node(write).payload.words[ast::kUnaryExpressionOpWord]);
+            if (unaryOp != ast::UnaryOperatorKind::PreIncrement &&
+                unaryOp != ast::UnaryOperatorKind::PreDecrement) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const ast::NodeId unaryTarget(
+                tree.node(write).payload.words[ast::kUnaryExpressionOperandWord]);
+            auto unaryTypeIndex = factIndex(facts.nodeTypes(), write);
+            auto unaryTargetTypeIndex = factIndex(facts.nodeTypes(), unaryTarget);
+            auto unaryCallIndex = factIndex(facts.calls(), write);
+            auto unarySpan = bound.parsedModule().spanFor(tree.node(write).range);
+            auto unaryTargetBinding = resolvedOwnerLocal(bound.bindings(), unaryTarget);
+            auto unaryReturnBinding = resolvedOwnerLocal(bound.bindings(), shape.localReference);
+            if (unaryTypeIndex == zc::none || unaryTargetTypeIndex == zc::none ||
+                unaryCallIndex == zc::none || unarySpan == zc::none ||
+                unaryTargetBinding == zc::none || unaryReturnBinding == zc::none ||
+                unaryTargetBinding != unaryReturnBinding) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t unaryTypeSlot = 0;
+            size_t unaryTargetSlot = 0;
+            ZC_IF_SOME(index, unaryTypeIndex) { unaryTypeSlot = index; }
+            ZC_IF_SOME(index, unaryTargetTypeIndex) { unaryTargetSlot = index; }
+            const auto& unaryType = facts.nodeTypes().entries()[unaryTypeSlot].value;
+            const auto& unaryTargetType = facts.nodeTypes().entries()[unaryTargetSlot].value;
+            if (local == zc::none || unaryType != unaryTargetType) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t unaryCallSlot = 0;
+            ZC_IF_SOME(index, unaryCallIndex) { unaryCallSlot = index; }
+            const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+            const auto& unaryCall = unaryCallFact.invocation;
+            const auto& unarySelected = unaryCall.selected.variant();
+            if (!unarySelected.is<checker::checked::PrimitiveCallable>() ||
+                unaryCallFact.node != write || unaryCall.calleeType != unaryTargetType ||
+                unaryCall.receiver != zc::none || unaryCall.receiverMode != zc::none ||
+                unaryCall.receiverAdjustment != zc::none || unaryCall.arguments.size() != 1 ||
+                unaryCall.arguments[0].sourceNode != unaryTarget ||
+                unaryCall.arguments[0].sourceType != unaryTargetType ||
+                unaryCall.successType != unaryTargetType ||
+                unaryCall.resultType != unaryTargetType || unaryCall.substitutions != zc::none ||
+                unaryCall.witnesses != zc::none || unaryCall.raises != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto unaryOperation =
+                unarySelected.get<checker::checked::PrimitiveCallable>().operation;
+            if (unaryOperation != checker::PrimitiveOperation::PreIncrement &&
+                unaryOperation != checker::PrimitiveOperation::PreDecrement) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto binaryOperation = unaryOperation == checker::PrimitiveOperation::PreIncrement
+                                             ? checker::PrimitiveOperation::Add
+                                             : checker::PrimitiveOperation::Sub;
+            // The synthetic literal 1 of the operand's integer type. It has no
+            // AST node and therefore no checked literal fact.
+            auto unitMagnitude = zc::heapArray<uint8_t>(1);
+            unitMagnitude[0] = 1;
+            auto syntheticOne =
+                checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                    checker::signature::IntegerSign::NonNegative, zc::mv(unitMagnitude)});
+            auto unaryTargetSpan = bound.parsedModule().spanFor(tree.node(unaryTarget).range);
+            if (unaryTargetSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto leftReference = HirLocalReferenceExpression{
+                HirNodeId(), hirLocalId(1), unaryTargetType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+            auto leftArm =
+                PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), unaryTargetType,
+                                      ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+            auto rightArm =
+                PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, unaryTargetType,
+                                      ZC_ASSERT_NONNULL(unarySpan).clone()};
+            PendingLocalWriteValue unaryWriteValue;
+            unaryWriteValue.binary = PendingLocalWriteBinary{
+                zc::mv(leftArm), zc::mv(rightArm), unaryTargetType,
+                unaryTargetType, binaryOperation,  ZC_ASSERT_NONNULL(unarySpan).clone()};
+            ZC_ASSERT_NONNULL(unaryWriteValue.binary).isIncrementDesugar = true;
+            localWrites.add(HirLocalWriteStatement{
+                HirNodeId(), HirLocalId(), zc::none, unaryTargetType, HirNodeId(),
+                HirLocalWriteKind::Overwrite, ZC_ASSERT_NONNULL(unarySpan).clone(),
+                ZC_ASSERT_NONNULL(unarySpan).clone()});
+            localWriteValues.add(zc::mv(unaryWriteValue));
             continue;
           }
           ast::NodeId target;
@@ -8739,12 +8844,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // Each materializes a localReference, not a literal or parameterReference, so
   // it joins the literals equation as a subtraction like parameterReferenceCount.
   size_t binaryWriteLocalOperandCount = 0;
-  // Postfix increment/decrement writes (`x++` / `x--`). Each desugars to a
-  // binary write, but the PostfixExpression node replaces the assignment plus
-  // binary nodes (two node-type facts instead of five) and the synthetic
-  // literal 1 has no checked literal fact. The nodeTypes and literals
-  // equations subtract this count to stay in balance.
-  size_t postfixIncrementWriteCount = 0;
+  // Increment/decrement writes (`x++` / `++x` / `x--` / `--x`). Each desugars
+  // to a binary write, but the PostfixExpression or UnaryExpression node
+  // replaces the assignment plus binary nodes (two node-type facts instead of
+  // five) and the synthetic literal 1 has no checked literal fact. The
+  // nodeTypes and literals equations subtract this count to stay in balance.
+  size_t incrementWriteCount = 0;
   // Compound assignment writes (`x += 1`). Each desugars to a binary write
   // (`x = x + 1`), but the AssignmentExpr node carries only three node-type
   // facts (assignment, target, value) instead of five and the binary operation
@@ -9398,7 +9503,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (value.parameter != zc::none) ++parameterReferenceCount;
         ZC_IF_SOME(binary, value.binary) {
           ++binaryWriteCount;
-          if (binary.isPostfixDesugar) { ++postfixIncrementWriteCount; }
+          if (binary.isIncrementDesugar) { ++incrementWriteCount; }
           if (binary.isCompoundAssignmentDesugar) { ++compoundAssignmentWriteCount; }
           // Each binary-write parameter operand materializes a parameter
           // reference, so it joins the same parameterReferenceCount balance as a
@@ -9459,7 +9564,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       foldedStringConcatCount * 2 + foldedFloatCastCount + sequentialFoldedStringConcatCount * 2 +
       sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
       sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - postfixIncrementWriteCount * 3 -
+      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 -
       compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
@@ -9485,7 +9590,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
           directScalarLocalCallCount + leadingLocalConditionalBindingCount +
           leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
-          leadingLocalConditionalBinaryLiteralOperandCount - postfixIncrementWriteCount +
+          leadingLocalConditionalBinaryLiteralOperandCount - incrementWriteCount +
           static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +
           static_cast<int64_t>(forLoopAccumulatorCount) +
