@@ -286,14 +286,19 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   zc::Vector<zc::Maybe<HirNodeId>> ternaryConditionIds;
   zc::Vector<zc::Maybe<HirNodeId>> ternaryThenIds;
   zc::Vector<zc::Maybe<HirNodeId>> ternaryElseIds;
-  // Increment bindings allocate a write and a binary node (the write's value)
-  // before the local/initializer pair to preserve source preorder. The
-  // binary's left/right operands reuse the leftOperandIds/rightOperandIds
-  // vectors below.
+  // Prefix increment bindings allocate a write and a binary node (the write's
+  // value) before the local/initializer pair to preserve source preorder.
+  // Postfix increment bindings allocate them after the pair (the binding reads
+  // the old value first, then the write fires). The binary's left/right
+  // operands reuse the leftOperandIds/rightOperandIds vectors below.
   zc::Vector<zc::Maybe<HirNodeId>> incrementWriteIds;
   zc::Vector<zc::Maybe<HirNodeId>> incrementBinaryIds;
   for (size_t index = 0; index < bindingCount; ++index) {
-    if (sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
+    const bool isPrefixIncrement =
+        sequential.bindings[index].kind == SequentialInitializerKind::Increment;
+    const bool isPostfixIncrement =
+        sequential.bindings[index].kind == SequentialInitializerKind::PostfixIncrement;
+    if (isPrefixIncrement) {
       incrementWriteIds.add(ctx.allocNode(ast::NodeId()));
       incrementBinaryIds.add(ctx.allocNode(ast::NodeId()));
     } else {
@@ -302,6 +307,10 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     }
     localNodeIds.add(ctx.allocNode(ast::NodeId()));
     initializerNodeIds.add(ctx.allocNode(ast::NodeId()));
+    if (isPostfixIncrement) {
+      incrementWriteIds[index] = ctx.allocNode(ast::NodeId());
+      incrementBinaryIds[index] = ctx.allocNode(ast::NodeId());
+    }
     zc::Maybe<HirNodeId> leftOperandId;
     zc::Maybe<HirNodeId> rightOperandId;
     zc::Maybe<HirNodeId> leftNestedLeafLeftId;
@@ -310,7 +319,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     zc::Maybe<HirNodeId> rightNestedLeafRightId;
     if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary ||
         sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary ||
-        sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
+        sequential.bindings[index].kind == SequentialInitializerKind::Increment ||
+        isPostfixIncrement) {
       leftOperandId = ctx.allocNode(ast::NodeId());
       rightOperandId = ctx.allocNode(ast::NodeId());
       ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
@@ -360,8 +370,15 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
       zc::mv(unsafeBlockId)});
   zc::Vector<HirNodeId> statements;
   for (size_t index = 0; index < bindingCount; ++index) {
-    ZC_IF_SOME(writeId, incrementWriteIds[index]) { statements.add(writeId); }
+    // Prefix writes precede the binding (write first, then read the new value);
+    // postfix writes follow it (read the old value first, then write).
+    if (sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
+      ZC_IF_SOME(writeId, incrementWriteIds[index]) { statements.add(writeId); }
+    }
     statements.add(localNodeIds[index]);
+    if (sequential.bindings[index].kind == SequentialInitializerKind::PostfixIncrement) {
+      ZC_IF_SOME(writeId, incrementWriteIds[index]) { statements.add(writeId); }
+    }
   }
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
@@ -512,6 +529,12 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         }
         break;
       }
+      case SequentialInitializerKind::PostfixIncrement:
+        // A postfix increment/decrement binding desugars to a local-reference
+        // initializer (reading the old value) followed by a binary write
+        // (`x = x +/- 1`). The node content is identical to the prefix case;
+        // only the allocation and statement order differ (handled above).
+        [[fallthrough]];
       case SequentialInitializerKind::Increment: {
         // A prefix increment/decrement binding desugars to a binary write
         // (`x = x +/- 1`) followed by a local-reference initializer. The

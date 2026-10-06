@@ -1296,10 +1296,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const size_t bindingCount = source.bindings.size();
       // Increment bindings contribute an extra write statement to the block
-      // before their local node.
+      // before their local node. Postfix increment bindings contribute an
+      // extra write statement after their local node.
       uint32_t incrementBindingCount = 0;
       for (const auto& binding : source.bindings) {
-        if (binding.initializerKind == SequentialInitializerKind::Increment) {
+        if (binding.initializerKind == SequentialInitializerKind::Increment ||
+            binding.initializerKind == SequentialInitializerKind::PostfixIncrement) {
           ++incrementBindingCount;
         }
       }
@@ -1378,7 +1380,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // local + conditional + condition + then-branch + else-branch
           return 5u;
         }
-        if (binding.initializerKind == SequentialInitializerKind::Increment) {
+        if (binding.initializerKind == SequentialInitializerKind::Increment ||
+            binding.initializerKind == SequentialInitializerKind::PostfixIncrement) {
           // write + binary + left + right + local + initializer
           return 6u;
         }
@@ -1420,15 +1423,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       for (size_t bindingIndex = 0; bindingIndex < bindingCount && bindingsValid; ++bindingIndex) {
         const auto& binding = source.bindings[bindingIndex];
         const bool isIncrement = binding.initializerKind == SequentialInitializerKind::Increment;
+        const bool isPostfixIncrement =
+            binding.initializerKind == SequentialInitializerKind::PostfixIncrement;
         const uint32_t bindingStart = bindingOrdinal;
-        // Increment bindings allocate write + binary nodes before the
-        // local/initializer pair to preserve source preorder.
+        // Prefix increment bindings allocate write + binary nodes before the
+        // local/initializer pair to preserve source preorder. Postfix
+        // increment bindings allocate the pair first, then write + binary.
         const uint32_t localOffset = isIncrement ? 2u : 0u;
         const uint32_t localNodeOrdinal = bindingStart + localOffset;
         const uint32_t initializerNodeOrdinal = localNodeOrdinal + 1;
         bindingOrdinal = bindingStart + bindingWidth(binding);
         const uint32_t localStatementIndex = statementIndex + (isIncrement ? 1u : 0u);
-        statementIndex += isIncrement ? 2u : 1u;
+        statementIndex += (isIncrement || isPostfixIncrement) ? 2u : 1u;
         zc::Maybe<const HirLocalBinding&> localBinding;
         for (const auto& local : candidate.impl->locals) {
           if (local.node != hirId(localNodeOrdinal)) continue;
@@ -1913,6 +1919,175 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           const auto& syntheticValue = ZC_ASSERT_NONNULL(syntheticLiteral);
           if (syntheticValue.type != unaryOperandType ||
+              syntheticValue.category != HirValueCategory::Value) {
+            bindingsValid = false;
+            break;
+          }
+        } else if (binding.initializerKind == SequentialInitializerKind::PostfixIncrement) {
+          // Postfix increment: a postfix increment/decrement binding desugars
+          // to a local-reference initializer (reading the old value) followed
+          // by a binary write (`x = x +/- 1`). The local/initializer pair
+          // precedes the write and binary nodes; the binary's left operand is
+          // a local reference to the incremented local and its right operand
+          // is a synthetic literal 1 with no checker-produced fact. The
+          // checked call fact keys on the postfix expression node and carries
+          // one argument.
+          if (binding.unaryOperation == zc::none || binding.unaryOperand == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const uint32_t writeOrdinal = bindingStart + 2;
+          const uint32_t binaryOrdinal = bindingStart + 3;
+          const uint32_t leftOperandOrdinal = bindingStart + 4;
+          const uint32_t rightOperandOrdinal = bindingStart + 5;
+          zc::Maybe<const HirLocalWriteStatement&> write;
+          for (const auto& candidateWrite : candidate.impl->localWrites) {
+            if (candidateWrite.node != hirId(writeOrdinal)) continue;
+            if (write != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            write = candidateWrite;
+          }
+          zc::Maybe<const HirPrimitiveBinaryExpression&> binary;
+          for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+            if (operation.node != hirId(binaryOrdinal)) continue;
+            if (binary != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            binary = operation;
+          }
+          auto callIndex = factIndex(facts.calls(), binding.initializer);
+          if (!bindingsValid || write == zc::none || binary == zc::none || callIndex == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& binaryValue = ZC_ASSERT_NONNULL(binary);
+          const auto& writeValue = ZC_ASSERT_NONNULL(write);
+          size_t callSlot = 0;
+          ZC_IF_SOME(value, callIndex) { callSlot = value; }
+          const auto& callFact = facts.calls().entries()[callSlot].value;
+          const auto& call = callFact.invocation;
+          const auto& selected = call.selected.variant();
+          if (!selected.is<checker::checked::PrimitiveCallable>()) {
+            bindingsValid = false;
+            break;
+          }
+          const auto postfixOperation =
+              selected.get<checker::checked::PrimitiveCallable>().operation;
+          const auto postfixOperandType =
+              call.arguments.size() == 1 ? call.arguments[0].sourceType : bindingType;
+          const ast::NodeId postfixOperandNode(
+              tree.node(binding.initializer).payload.words[ast::kPostfixExpressionOperandWord]);
+          const auto binaryOperation =
+              postfixOperation == checker::PrimitiveOperation::PostIncrement
+                  ? checker::PrimitiveOperation::Add
+                  : checker::PrimitiveOperation::Sub;
+          if (postfixOperation != ZC_ASSERT_NONNULL(binding.unaryOperation) ||
+              (postfixOperation != checker::PrimitiveOperation::PostIncrement &&
+               postfixOperation != checker::PrimitiveOperation::PostDecrement) ||
+              !binaryValue.isIncrementDesugar || binaryValue.isUnaryDesugar ||
+              binaryValue.node != hirId(binaryOrdinal) ||
+              binaryValue.left != hirId(leftOperandOrdinal) ||
+              binaryValue.right != hirId(rightOperandOrdinal) ||
+              binaryValue.operation != binaryOperation || binaryValue.type != bindingType ||
+              binaryValue.operandType != postfixOperandType ||
+              binaryValue.category != HirValueCategory::Value ||
+              !sameSpan(binaryValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+              writeValue.node != hirId(writeOrdinal) ||
+              writeValue.local != hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)) ||
+              writeValue.field != zc::none || writeValue.type != postfixOperandType ||
+              writeValue.value != hirId(binaryOrdinal) ||
+              writeValue.kind != HirLocalWriteKind::Overwrite ||
+              !sameSpan(writeValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+              !sameSpan(writeValue.valueSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+              callFact.node != binding.initializer || call.calleeType != postfixOperandType ||
+              call.receiver != zc::none || call.receiverMode != zc::none ||
+              call.receiverAdjustment != zc::none || call.arguments.size() != 1 ||
+              call.arguments[0].sourceNode != postfixOperandNode ||
+              call.arguments[0].sourceType != postfixOperandType ||
+              call.successType != bindingType || call.resultType != bindingType ||
+              call.substitutions != zc::none || call.witnesses != zc::none ||
+              call.raises != zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the initializer: a local reference to the incremented
+          // local (reading its old value).
+          zc::Maybe<const HirLocalReferenceExpression&> initReference;
+          for (const auto& localReference : candidate.impl->localReferences) {
+            if (localReference.node != hirId(initializerNodeOrdinal)) continue;
+            if (initReference != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            initReference = localReference;
+          }
+          if (!bindingsValid || initReference == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& initRefValue = ZC_ASSERT_NONNULL(initReference);
+          if (initRefValue.local !=
+                  hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)) ||
+              initRefValue.type != bindingType ||
+              initRefValue.category != HirValueCategory::Place ||
+              !sameSpan(initRefValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the left operand: a local reference to the incremented
+          // local.
+          const auto& classified = ZC_ASSERT_NONNULL(binding.unaryOperand);
+          auto operandSpan = bound.parsedModule().spanFor(tree.node(classified.node).range);
+          if (operandSpan == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          zc::Maybe<const HirLocalReferenceExpression&> leftReference;
+          for (const auto& localReference : candidate.impl->localReferences) {
+            if (localReference.node != hirId(leftOperandOrdinal)) continue;
+            if (leftReference != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            leftReference = localReference;
+          }
+          if (!bindingsValid || leftReference == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& leftRefValue = ZC_ASSERT_NONNULL(leftReference);
+          auto referenceBinding = resolvedOwnerLocal(bound.bindings(), classified.node);
+          if (referenceBinding == zc::none ||
+              classified.referencedLocal >= localBindingIds.size() ||
+              ZC_ASSERT_NONNULL(referenceBinding) != localBindingIds[classified.referencedLocal] ||
+              leftRefValue.local !=
+                  hirLocalId(static_cast<uint32_t>(classified.referencedLocal + 1)) ||
+              leftRefValue.type != postfixOperandType ||
+              leftRefValue.category != HirValueCategory::Place ||
+              !sameSpan(leftRefValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+            bindingsValid = false;
+            break;
+          }
+          // Verify the right operand: a synthetic scalar literal 1 with no
+          // checker-produced literal fact.
+          zc::Maybe<const HirScalarLiteralExpression&> syntheticLiteral;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != hirId(rightOperandOrdinal)) continue;
+            if (syntheticLiteral != zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            syntheticLiteral = expression;
+          }
+          if (syntheticLiteral == zc::none) {
+            bindingsValid = false;
+            break;
+          }
+          const auto& syntheticValue = ZC_ASSERT_NONNULL(syntheticLiteral);
+          if (syntheticValue.type != postfixOperandType ||
               syntheticValue.category != HirValueCategory::Value) {
             bindingsValid = false;
             break;
@@ -11209,9 +11384,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto aggregateSpan = bound.parsedModule().spanFor(tree.node(initializer).range);
       auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
       if (!source.returnsLocal || source.returnsLocalField || source.returnsLocalIncrement ||
-          source.localWrites.size != 0 || ownerBinding == zc::none || aggregateIndex == zc::none ||
-          initializerType == zc::none || returnType == zc::none || aggregateSpan == zc::none ||
-          returnValueSpan == zc::none ||
+          source.returnsLocalPostfixIncrement || source.localWrites.size != 0 ||
+          ownerBinding == zc::none || aggregateIndex == zc::none || initializerType == zc::none ||
+          returnType == zc::none || aggregateSpan == zc::none || returnValueSpan == zc::none ||
           !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
                              tree)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -12793,7 +12968,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, source.localInitializer) { localInitializer = value; }
       auto initializerTypeIndex = factIndex(facts.nodeTypes(), localInitializer);
       auto returnTypeIndex = factIndex(facts.nodeTypes(), sourceReturnValueNode);
-      auto binding = resolvedOwnerLocal(bound.bindings(), sourceReturnValueNode);
+      // A postfix increment/decrement return (`return x++;`) elides the dead
+      // write and lowers to a local reference return. The binder resolves the
+      // operand identifier, not the PostfixExpression node, so extract the
+      // operand before resolving the owner local.
+      ast::NodeId sourceReturnReference = sourceReturnValueNode;
+      if (tree.node(sourceReturnValueNode).kind == ast::SyntaxKind::PostfixExpression) {
+        sourceReturnReference = ast::NodeId(
+            tree.node(sourceReturnValueNode).payload.words[ast::kPostfixExpressionOperandWord]);
+      }
+      auto binding = resolvedOwnerLocal(bound.bindings(), sourceReturnReference);
       auto patternSpan = bound.parsedModule().spanFor(tree.node(source.localPattern).range);
       auto initializerSpan = bound.parsedModule().spanFor(tree.node(localInitializer).range);
       auto referenceSpan = bound.parsedModule().spanFor(tree.node(sourceReturnValueNode).range);

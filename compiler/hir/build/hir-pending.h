@@ -657,6 +657,13 @@ struct PendingFunctionDeclaration final {
   // so the per-function localReturnCount node-type credit has no
   // corresponding AST node and must be subtracted.
   bool returnsLocalIncrement = false;
+  // True when the return value is a postfix increment/decrement on a mutable
+  // owner local (`return x++;`). The increment write is dead (the local is
+  // destroyed after return) and elides to a local reference return; the
+  // PostfixExpression node carries the call fact, so the per-function
+  // localReturnCount node-type credit has no corresponding AST node and must
+  // be subtracted, and the call fact has no corresponding HIR call node.
+  bool returnsLocalPostfixIncrement = false;
 };
 
 }  // namespace detail

@@ -1,0 +1,9 @@
+// Postfix decrement in return position: a parameter-free entry that initializes
+// a mutable local, postfix-decrements it (`x--`) in the return statement, and
+// returns the old value. The decrement write is dead (the local is destroyed
+// after return), so it elides to a local reference return; `zomc run` executes
+// it natively and exits 40.
+fn entry() -> i32 {
+  mut x = 40;
+  return x--;
+}

@@ -6953,11 +6953,13 @@ bool validSequentialLocalReturnFunction(
   auto userLocalId = [&](size_t index) {
     return localId(parameterCount + static_cast<uint32_t>(index) + 1);
   };
-  // Resolve the HIR bindings. An Increment binding contributes an extra write
-  // statement before its local binding in the HIR block, so scan statements to
-  // separate writes from locals.
+  // Resolve the HIR bindings. A prefix Increment binding contributes an extra
+  // write statement before its local binding in the HIR block; a postfix
+  // Increment binding contributes one after it. Scan statements to separate
+  // writes from locals and track which writes are postfix.
   zc::Vector<const hir::HirLocalBinding*> bindings;
   zc::Vector<const hir::HirLocalWriteStatement*> bindingWrites;
+  zc::Vector<bool> bindingWriteIsPostfix;
   {
     const hir::HirLocalWriteStatement* pendingWrite = nullptr;
     for (size_t i = 0; i + 1 < sourceBlock.statements.size(); ++i) {
@@ -6977,6 +6979,15 @@ bool validSequentialLocalReturnFunction(
       }
       bindings.add(&local);
       bindingWrites.add(pendingWrite);
+      bindingWriteIsPostfix.add(false);
+      pendingWrite = nullptr;
+    }
+    // A trailing write (after the last binding, before the return) is a
+    // postfix increment write for the last binding.
+    if (pendingWrite != nullptr) {
+      if (bindings.empty()) return false;
+      bindingWrites[bindings.size() - 1] = pendingWrite;
+      bindingWriteIsPostfix[bindings.size() - 1] = true;
       pendingWrite = nullptr;
     }
     if (pendingWrite != nullptr) return false;
@@ -7089,10 +7100,10 @@ bool validSequentialLocalReturnFunction(
   size_t cursor = 0;
   for (size_t i = 0; i < bindingCount; ++i) {
     const auto& local = *bindings[i];
-    // An Increment binding emits an Overwrite Assign (arithmetic rvalue) before
-    // its own StorageLive + Assign pair.
-    if (bindingWrites[i] != nullptr) {
-      const auto& write = *bindingWrites[i];
+    // Verify an increment write's Overwrite Assign (arithmetic rvalue). A
+    // prefix write precedes the binding's own pair; a postfix write follows
+    // it. The write verification is shared between both positions.
+    auto verifyIncrementWrite = [&](const hir::HirLocalWriteStatement& write) -> bool {
       auto writeBinary = primitiveBinaryFor(hirModule, write.value);
       if (writeBinary == zc::none) return false;
       const auto& binaryValue = ZC_ASSERT_NONNULL(writeBinary);
@@ -7165,6 +7176,12 @@ bool validSequentialLocalReturnFunction(
           !writeLeafMatches(writeRvalue.right, binaryValue.right)) {
         return false;
       }
+      return true;
+    };
+    // A prefix Increment binding emits an Overwrite Assign (arithmetic rvalue)
+    // before its own StorageLive + Assign pair.
+    if (bindingWrites[i] != nullptr && !bindingWriteIsPostfix[i]) {
+      if (!verifyIncrementWrite(*bindingWrites[i])) return false;
     }
     // A nested operand emits StorageLive(temp) + Assign(temp = inner rvalue)
     // before the binding's own pair.
@@ -7445,6 +7462,11 @@ bool validSequentialLocalReturnFunction(
                         (localReference != zc::none ? 1 : 0) +
                         (parameterReference != zc::none ? 1 : 0) + (binary != zc::none ? 1 : 0);
     if (present != 1) { return false; }
+    // A postfix Increment binding emits an Overwrite Assign (arithmetic
+    // rvalue) after its own StorageLive + Assign pair.
+    if (bindingWrites[i] != nullptr && bindingWriteIsPostfix[i]) {
+      if (!verifyIncrementWrite(*bindingWrites[i])) return false;
+    }
   }
   // Unsafe boundary pair.
   if (hasUnsafeBlock) {

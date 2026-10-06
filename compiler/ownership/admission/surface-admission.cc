@@ -48,6 +48,7 @@ bool isAdmittedFieldComparisonBinary(const ast::Tree& tree, ast::NodeId value,
                                      ast::NodeId receiver);
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedIncrementUnary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedPostfixIncrement(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedEnumVariant(const ast::Tree& tree, ast::NodeId value);
@@ -460,6 +461,20 @@ bool isAdmittedIncrementUnary(const ast::Tree& tree, ast::NodeId value) {
   return tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
 }
 
+bool isAdmittedPostfixIncrement(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::PostfixExpression) {
+    return false;
+  }
+  const auto op = static_cast<ast::PostfixOperatorKind>(
+      tree.node(value).payload.words[ast::kPostfixExpressionOpWord]);
+  if (op != ast::PostfixOperatorKind::Increment && op != ast::PostfixOperatorKind::Decrement) {
+    return false;
+  }
+  const ast::NodeId operand(tree.node(value).payload.words[ast::kPostfixExpressionOperandWord]);
+  if (!tree.contains(operand)) return false;
+  return tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::CastExpression) {
     return false;
@@ -729,7 +744,8 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
       isAdmittedDirectCall(tree, initializer) ||
       isAdmittedAggregateInitializer(tree, initializer) ||
       isAdmittedPrimitiveBinary(tree, initializer) || isAdmittedPrimitiveUnary(tree, initializer) ||
-      isAdmittedIncrementUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
+      isAdmittedIncrementUnary(tree, initializer) ||
+      isAdmittedPostfixIncrement(tree, initializer) || isAdmittedCast(tree, initializer) ||
       isAdmittedTernary(tree, initializer) || isAdmittedMatchExpression(tree, initializer) ||
       isAdmittedEnumVariant(tree, initializer) ||
       isAdmittedEnumVariantConstruction(tree, initializer)) {
@@ -1632,6 +1648,23 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         returnReference = unaryOperand;
       }
     }
+  } else if (tree.node(returnValue).kind == ast::SyntaxKind::PostfixExpression) {
+    // A postfix increment/decrement return (`return x++;` / `return x--;`)
+    // returns the old value. The increment write is dead (the local is
+    // destroyed after return), so it elides to a local reference return. The
+    // operand must name the declared local; the mutability and integer type
+    // are checker decisions.
+    const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+        tree.node(returnValue).payload.words[ast::kPostfixExpressionOpWord]);
+    if (postfixOp == ast::PostfixOperatorKind::Increment ||
+        postfixOp == ast::PostfixOperatorKind::Decrement) {
+      const ast::NodeId postfixOperand(
+          tree.node(returnValue).payload.words[ast::kPostfixExpressionOperandWord]);
+      if (tree.contains(postfixOperand) &&
+          tree.node(postfixOperand).kind == ast::SyntaxKind::IdentExpr) {
+        returnReference = postfixOperand;
+      }
+    }
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
   (void)returnsDirectLocalCall;
@@ -1838,11 +1871,11 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
         found = true;
       }
     }
-    // A prefix increment/decrement in a return value (`return ++x;`) is
-    // admitted by isAdmittedFunctionBody when the operand is an identifier
-    // naming the declared local. When the operand is not an identifier, the
-    // body checker performs the type check and emits ZOM4031. Suppress the
-    // generic ZOM4099 so the body checker runs instead.
+    // A prefix or postfix increment/decrement in a return value (`return ++x;`
+    // / `return x++;`) is admitted by isAdmittedFunctionBody when the operand
+    // is an identifier naming the declared local. When the operand is not an
+    // identifier, the body checker performs the type check and emits ZOM4031.
+    // Suppress the generic ZOM4099 so the body checker runs instead.
     if (syntax.kind == ast::SyntaxKind::ReturnStmt) {
       const ast::NodeId returnValue(syntax.payload.words[ast::kReturnStmtValueWord]);
       if (tree.contains(returnValue) &&
@@ -1851,6 +1884,15 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
             tree.node(returnValue).payload.words[ast::kUnaryExpressionOpWord]);
         if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
             unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+          found = true;
+        }
+      }
+      if (tree.contains(returnValue) &&
+          tree.node(returnValue).kind == ast::SyntaxKind::PostfixExpression) {
+        const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+            tree.node(returnValue).payload.words[ast::kPostfixExpressionOpWord]);
+        if (postfixOp == ast::PostfixOperatorKind::Increment ||
+            postfixOp == ast::PostfixOperatorKind::Decrement) {
           found = true;
         }
       }

@@ -1,0 +1,1 @@
+fn entry() -> i32 { mut x = 40; let y = x--; return y; }

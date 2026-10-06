@@ -269,12 +269,16 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
   if (sourceReturn == zc::none) return zc::none;
 
   // Resolve every leading binding; layer-local ordinals must be dense 1..N and
-  // every binding carries an initializer. An Increment binding contributes a
-  // write statement immediately before its local binding node; the write
-  // targets the incremented local (an earlier binding), and the local
-  // binding's initializer is a local reference to that incremented local.
+  // every binding carries an initializer. A prefix Increment binding
+  // contributes a write statement immediately before its local binding node;
+  // the write targets the incremented local (an earlier binding), and the
+  // local binding's initializer is a local reference to that incremented
+  // local. A postfix Increment binding contributes a write statement
+  // immediately after its local binding node; the binding reads the old value
+  // first, then the write fires.
   zc::Vector<const hir::HirLocalBinding*> bindings;
   zc::Vector<const hir::HirLocalWriteStatement*> bindingWrites;
+  zc::Vector<bool> bindingWriteIsPostfix;
   {
     const hir::HirLocalWriteStatement* pendingWrite = nullptr;
     for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
@@ -293,6 +297,15 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
       }
       bindings.add(&binding);
       bindingWrites.add(pendingWrite);
+      bindingWriteIsPostfix.add(false);
+      pendingWrite = nullptr;
+    }
+    // A trailing write (after the last binding, before the return) is a
+    // postfix increment write for the last binding.
+    if (pendingWrite != nullptr) {
+      if (bindings.empty()) return zc::none;
+      bindingWrites[bindings.size() - 1] = pendingWrite;
+      bindingWriteIsPostfix[bindings.size() - 1] = true;
       pendingWrite = nullptr;
     }
     if (pendingWrite != nullptr) return zc::none;
@@ -527,20 +540,19 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
   (void)entry;
   for (size_t i = 0; i < bindingCount; ++i) {
     const auto& binding = *bindings[i];
-    // Lower the increment write if this binding has one. The write
-    // overwrites the incremented local (an earlier binding) with an
-    // arithmetic rvalue; the binding's initializer then reads the updated
-    // value through a local reference.
-    if (bindingWrites[i] != nullptr) {
-      const auto& write = *bindingWrites[i];
+    // Lower the increment write for this binding. A prefix write overwrites
+    // the incremented local (an earlier binding) with an arithmetic rvalue
+    // before the binding's initializer reads the updated value. A postfix
+    // write fires after the binding reads the old value.
+    auto lowerIncrementWrite = [&](const hir::HirLocalWriteStatement& write) -> bool {
       auto writeBinary = primitiveBinaryFor(hirModule, write.value);
-      if (writeBinary == zc::none) return zc::none;
+      if (writeBinary == zc::none) return false;
       const auto& binaryValue = ZC_ASSERT_NONNULL(writeBinary);
-      if (!binaryValue.isIncrementDesugar) return zc::none;
+      if (!binaryValue.isIncrementDesugar) return false;
       auto arithmetic = arithmeticOperatorFor(binaryValue.operation);
-      if (arithmetic == zc::none) return zc::none;
+      if (arithmetic == zc::none) return false;
       if (binaryValue.type != binding.type || binaryValue.operandType != binding.type) {
-        return zc::none;
+        return false;
       }
       auto left =
           binaryLeafOperand(hirModule, declaration, binaryValue.left, parameterLocals,
@@ -548,18 +560,23 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
       auto right =
           binaryLeafOperand(hirModule, declaration, binaryValue.right, parameterLocals,
                             userLocals.asPtr(), i, binaryValue.operandType, proofs, copyMarker);
-      if (left == zc::none || right == zc::none) return zc::none;
+      if (left == zc::none || right == zc::none) return false;
       auto rvalue =
           MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
                                 zc::mv(ZC_ASSERT_NONNULL(right)), binaryValue.type);
       if (write.local.ordinal() == 0 || write.local.ordinal() > static_cast<uint32_t>(i)) {
-        return zc::none;
+        return false;
       }
       zc::Vector<MirProjection> writeProjections;
       ctx.appendStatement(MirStatement::assign(
           MirPlace(userLocals[write.local.ordinal() - 1], write.type, zc::mv(writeProjections),
                    write.type),
           zc::mv(rvalue), MirInitializationKind::Overwrite, write.sourceSpan.clone()));
+      return true;
+    };
+    // Prefix write: lower before the binding's assignment.
+    if (bindingWrites[i] != nullptr && !bindingWriteIsPostfix[i]) {
+      if (!lowerIncrementWrite(*bindingWrites[i])) return zc::none;
     }
     hir::HirNodeId initializerNode;
     ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
@@ -659,6 +676,11 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
     ctx.appendStatement(MirStatement::assign(
         MirPlace(userLocals[i], binding.type, zc::mv(destinationProjections), binding.type),
         zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize, zc::mv(assignSpan)));
+    // Postfix write: lower after the binding's assignment so the binding
+    // reads the old value before the write fires.
+    if (bindingWrites[i] != nullptr && bindingWriteIsPostfix[i]) {
+      if (!lowerIncrementWrite(*bindingWrites[i])) return zc::none;
+    }
   }
 
   zc::Maybe<MirOperand> returnOperand;

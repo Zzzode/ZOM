@@ -1,0 +1,9 @@
+// Postfix increment in return position: a parameter-free entry that initializes
+// a mutable local, postfix-increments it (`x++`) in the return statement, and
+// returns the old value. The increment write is dead (the local is destroyed
+// after return), so it elides to a local reference return; `zomc run` executes
+// it natively and exits 42.
+fn entry() -> i32 {
+  mut x = 42;
+  return x++;
+}

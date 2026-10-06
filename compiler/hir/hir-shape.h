@@ -24,6 +24,7 @@ enum class SequentialInitializerKind : uint8_t {
   PrimitiveBinary,
   PrimitiveUnary,
   Increment,
+  PostfixIncrement,
   Cast,
   Ternary,
   EnumVariant,
@@ -142,6 +143,11 @@ struct FunctionReturnShape final {
   // synthetic (no AST expression statement) and pools into the same
   // increment-write digest as the expression-statement form.
   bool returnsLocalIncrement = false;
+  // Two-statement local-return shape: `mut x = <lit>; return x++;` (or
+  // `x--`). The postfix increment/decrement returns the old value; the write
+  // is dead (the local is destroyed after return) and elides to a local
+  // reference return. The PostfixExpression node carries the call fact.
+  bool returnsLocalPostfixIncrement = false;
   bool returnsLocalField = false;
   // Single-statement free-function shape: `return <ordinary-parameter>.<field>;`
   // reading one field of a by-value struct parameter with one field projection.

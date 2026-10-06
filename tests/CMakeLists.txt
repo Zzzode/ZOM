@@ -238,6 +238,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/prefix-let-decrement-consumer/Zom.toml::prefix_let_decrement_consumer::prefix_let_decrement_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-return-increment-consumer/Zom.toml::postfix_return_increment_consumer::postfix_return_increment_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-return-decrement-consumer/Zom.toml::postfix_return_decrement_consumer::postfix_return_decrement_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-increment-consumer/Zom.toml::postfix_let_increment_consumer::postfix_let_increment_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-decrement-consumer/Zom.toml::postfix_let_decrement_consumer::postfix_let_decrement_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
@@ -398,6 +406,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/prefix-let-increment-consumer/Zom.toml::prefix_let_increment_consumer::prefix_let_increment_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/prefix-let-decrement-consumer/Zom.toml::prefix_let_decrement_consumer::prefix_let_decrement_consumer::40"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-return-increment-consumer/Zom.toml::postfix_return_increment_consumer::postfix_return_increment_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-return-decrement-consumer/Zom.toml::postfix_return_decrement_consumer::postfix_return_decrement_consumer::40"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-increment-consumer/Zom.toml::postfix_let_increment_consumer::postfix_let_increment_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-decrement-consumer/Zom.toml::postfix_let_decrement_consumer::postfix_let_decrement_consumer::40"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --run-case
