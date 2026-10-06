@@ -30,7 +30,7 @@ struct PendingValueDeclaration final {
   /// correspondence validator can anchor each pooled node to its checked fact.
   ast::NodeId declarationNode;
   ast::NodeId patternNode;
-  ast::NodeId initializerNode;
+  ast::NodeId initializerNode{};
 };
 
 struct PendingSequentialBinaryLeafOperand final {
@@ -40,6 +40,9 @@ struct PendingSequentialBinaryLeafOperand final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<identity::CallableParameterKey> parameter;
   size_t referencedLocal;
+  /// The AST node this operand was lowered from, threaded to the HIR
+  /// side-table so the per-node correspondence validator can anchor it.
+  ast::NodeId sourceNode{};
 };
 
 struct PendingSequentialBinaryOperand final {
@@ -55,6 +58,8 @@ struct PendingSequentialBinaryOperand final {
   zc::Maybe<checker::PrimitiveOperation> nestedOperation;
   zc::Maybe<PendingSequentialBinaryLeafOperand> nestedLeft;
   zc::Maybe<PendingSequentialBinaryLeafOperand> nestedRight;
+  /// The AST node this operand was lowered from.
+  ast::NodeId sourceNode{};
 };
 
 // One materialized binding in a sequential N-local body. Exactly one payload is
@@ -106,6 +111,10 @@ struct PendingSequentialBinding final {
   // checker still produces node-type and literal facts for it, which the
   // count equations must credit.
   bool matchHasDefaultArm = false;
+  /// The AST VariableDeclarator and initializer expression nodes, threaded to
+  /// the HIR side-table.
+  ast::NodeId declaratorNode{};
+  ast::NodeId initializerNode{};
 };
 
 struct PendingSequentialLocalReturn final {
@@ -137,6 +146,8 @@ struct PendingConditionalArmBinary final {
   zc::Own<PendingConditionalArm> right;
   identity::SemanticTypeId operandType;
   checker::PrimitiveOperation operation;
+  /// The AST BinaryExpr node this operation was lowered from.
+  ast::NodeId sourceNode{};
 };
 
 // One conditional arm carries a scalar literal value, a reference to a
@@ -154,6 +165,9 @@ struct PendingConditionalArm final {
   identity::SemanticTypeId type;
   identity::SourceSpan sourceSpan;
   zc::Maybe<PendingConditionalArmBinary> binary = zc::none;
+  /// The AST node this arm was lowered from (literal, identifier, or binary
+  /// expression), threaded to the HIR side-table.
+  ast::NodeId sourceNode{};
 };
 
 // One mutable-local write value. It is a scalar literal (`literal` populated), a
@@ -188,6 +202,9 @@ struct PendingLocalWriteBinary final {
   // binary operation has no checked call fact, so the digest equations
   // subtract two node-type facts and one call fact per desugared write.
   bool isCompoundAssignmentDesugar = false;
+  /// The AST node this binary write was lowered from (AssignmentExpr,
+  /// UnaryExpression, or PostfixExpression), threaded to the HIR side-table.
+  ast::NodeId sourceNode{};
 };
 
 struct PendingLocalWriteValue final {
@@ -213,6 +230,9 @@ struct PendingEqualityCondition final {
   // operand has no AST node and therefore no checker-produced node-type fact,
   // so the nodeTypes counting equation subtracts one per unary return.
   bool isUnaryDesugar = false;
+  /// The AST BinaryExpr node this comparison was lowered from. Empty for
+  /// synthetic comparisons (match-equality, unary desugar).
+  ast::NodeId sourceNode{};
 };
 
 // One conjunctive condition: a bare bool parameter ANDed with a relational
@@ -224,6 +244,9 @@ struct PendingConjunctiveCondition final {
   HirParameterReferenceExpression parameter;
   PendingEqualityCondition guard;
   identity::SourceSpan sourceSpan;
+  /// The AST BinaryExpr node of the guard comparison. The conjunction
+  /// (BitAnd) is synthetic and carries no AST node.
+  ast::NodeId sourceNode{};
 };
 
 // One conditional condition is either a bare bool parameter reference, an
@@ -262,6 +285,8 @@ struct PendingConditionalReturn final {
   // count equations credit the guard facts and subtract the phantom
   // conjunction call and comparison-result node-types.
   bool hasMatchGuard = false;
+  /// The AST IfStmt (or MatchStmt) node this conditional was lowered from.
+  ast::NodeId conditionalNode{};
 };
 
 // A chained conditional return lowers a match with two or more integer literal
@@ -278,6 +303,8 @@ struct PendingChainedConditionalReturn final {
   zc::Vector<Entry> entries;
   PendingConditionalArm elseArm;
   identity::SourceSpan matchSpan;
+  /// The AST MatchStmt node this chain was lowered from.
+  ast::NodeId matchNode{};
 };
 
 // One comparison-condition operand in a leading-local conditional body: a
@@ -291,6 +318,8 @@ struct PendingLeadingConditionOperand final {
   zc::Maybe<identity::CallableParameterKey> parameter;
   size_t referencedLocal = 0;
   bool isLocal = false;
+  /// The AST node this operand was lowered from.
+  ast::NodeId sourceNode{};
 };
 
 // One leading scalar-local binding in a leading-local conditional body. The
@@ -310,6 +339,9 @@ struct PendingLeadingLocalBinding final {
   zc::Maybe<checker::PrimitiveOperation> arithmeticOperation;
   zc::Maybe<PendingLeadingConditionOperand> arithmeticLeft;
   zc::Maybe<PendingLeadingConditionOperand> arithmeticRight;
+  /// The AST VariableDeclarator and initializer expression nodes.
+  ast::NodeId declaratorNode{};
+  ast::NodeId initializerNode{};
 };
 
 // K leading scalar-local bindings followed by one comparison conditional with
@@ -334,6 +366,8 @@ struct PendingLeadingLocalConditionalReturn final {
   identity::SourceSpan elseSpan;
   identity::SourceSpan returnSpan;
   bool isUnaryDesugar;
+  /// The AST IfStmt node this conditional was lowered from.
+  ast::NodeId conditionalNode{};
 };
 
 struct PendingLoopReturn final {
@@ -342,6 +376,8 @@ struct PendingLoopReturn final {
   identity::SemanticTypeId returnType;
   identity::SourceSpan loopSpan;
   identity::SourceSpan returnValueSpan;
+  /// The AST WhileStmt node this loop was lowered from.
+  ast::NodeId loopNode{};
 };
 
 // One admitted `while` loop whose non-empty body writes a mutable local, fused
@@ -360,6 +396,8 @@ struct PendingLoopBodyReturn final {
   identity::SourceSpan loopSpan;
   zc::Maybe<identity::SourceSpan> breakSpan;
   zc::Maybe<identity::SourceSpan> continueSpan;
+  /// The AST WhileStmt node this loop was lowered from.
+  ast::NodeId loopNode{};
 };
 
 // One admitted C-style `for` loop return: `for (let id = <lit>; <ident> <cmp>
@@ -401,6 +439,10 @@ struct PendingForLoopReturn final {
   // both are none for an empty body.
   zc::Maybe<identity::SourceSpan> breakSpan;
   zc::Maybe<identity::SourceSpan> continueSpan;
+  /// The AST ForStmt node this loop was lowered from.
+  ast::NodeId loopNode{};
+  /// The AST ReturnStmt node of the trailing scalar return.
+  ast::NodeId returnNode{};
 };
 
 // One accumulator in a for-loop multi-write body: the local binding, its
@@ -430,6 +472,10 @@ struct PendingForLoopAccumulator final {
   // The body arithmetic's right operand as a scalar literal (populated when
   // bodyWriteRightIsLiteral is true).
   zc::Maybe<HirScalarLiteralExpression> bodyWriteRightLiteral;
+  /// The AST VariableDeclarator node of the accumulator binding.
+  ast::NodeId bindingNode{};
+  /// The AST AssignmentExpr node of the body write.
+  ast::NodeId writeNode{};
 };
 
 // One admitted C-style `for` loop accumulator return: N leading scalar `mut`
@@ -482,6 +528,10 @@ struct PendingForLoopAccumulatorReturn final {
   zc::Maybe<HirPrimitiveBinaryExpression> breakCondition;
   zc::Maybe<HirLocalReferenceExpression> breakConditionLeft;
   zc::Maybe<HirScalarLiteralExpression> breakConditionRight;
+  /// The AST ForStmt node this loop was lowered from.
+  ast::NodeId loopNode{};
+  /// The AST ReturnStmt node of the trailing scalar return.
+  ast::NodeId returnNode{};
 };
 
 // One admitted nested C-style `for` loop accumulator return: N leading scalar
@@ -523,6 +573,12 @@ struct PendingNestedForLoopAccumulatorReturn final {
   zc::Vector<PendingForLoopAccumulator> accumulators;
   // The return value: a place reference to the first accumulator local.
   HirLocalReferenceExpression returnReference;
+  /// The AST outer ForStmt node.
+  ast::NodeId outerLoopNode{};
+  /// The AST inner ForStmt node.
+  ast::NodeId innerLoopNode{};
+  /// The AST ReturnStmt node of the trailing scalar return.
+  ast::NodeId returnNode{};
 };
 
 // One receiver field-arithmetic return: `return this.<field> OP
@@ -541,6 +597,12 @@ struct PendingReceiverFieldArithmetic final {
   // Source operand order: true when the field projection is the binary's left
   // operand and the literal is the right operand.
   bool fieldIsLeft;
+  /// The AST MemberExpression node of the field projection.
+  ast::NodeId fieldNode{};
+  /// The AST literal node of the non-field operand.
+  ast::NodeId literalNode{};
+  /// The AST BinaryExpr node of the arithmetic operation.
+  ast::NodeId binaryNode{};
 };
 
 struct PendingFunctionDeclaration final {
@@ -548,7 +610,7 @@ struct PendingFunctionDeclaration final {
   /// The AST node of the function/method declaration this pending record
   /// lowers. Threaded from the binder definition so the HIR side-table can
   /// anchor each function's node range to its source.
-  ast::NodeId sourceNode;
+  ast::NodeId sourceNode{};
   identity::SemanticTypeId resultType;
   zc::Vector<HirParameter> parameters;
   // Set only for an inherent method: its implicit `this` receiver, kept
@@ -664,6 +726,13 @@ struct PendingFunctionDeclaration final {
   // localReturnCount node-type credit has no corresponding AST node and must
   // be subtracted, and the call fact has no corresponding HIR call node.
   bool returnsLocalPostfixIncrement = false;
+  /// The AST BlockStmt node of the function body, threaded to the HIR
+  /// side-table so the per-node correspondence validator can anchor it.
+  ast::NodeId bodyNode{};
+  /// The AST ReturnStmt node of the trailing return. Empty for void bodies.
+  ast::NodeId returnNode{};
+  /// The AST expression node of the return value. Empty for void bodies.
+  ast::NodeId returnValueNode{};
 };
 
 }  // namespace detail

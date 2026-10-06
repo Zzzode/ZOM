@@ -773,7 +773,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 if (leafLiteralFact.type != arithType) return zc::none;
                 return PendingLeadingConditionOperand{
                     arithType, leafSpan.clone(), leafLiteralFact.literal.clone(), zc::none, 0,
-                    false};
+                    false,     leafNode};
               }
               auto parameterHandle = resolvedCallableParameter(bound.bindings(), leafNode);
               if (parameterHandle == zc::none) return zc::none;
@@ -790,7 +790,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               if (resolvedKey == zc::none) return zc::none;
               return PendingLeadingConditionOperand{
-                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false};
+                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false, leafNode};
             };
             auto arithLeftSpan =
                 bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticLeft).range);
@@ -815,7 +815,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             pendingBindings.add(PendingLeadingLocalBinding{
                 arithType, ZC_ASSERT_NONNULL(arithSpan).clone(),
                 ZC_ASSERT_NONNULL(arithSpan).clone(), SequentialInitializerKind::PrimitiveBinary,
-                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight)});
+                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight),
+                ast::NodeId{}, arithNode});
           }
           if (leadingShapeMaybe != zc::none) {
             for (size_t bindingIndex = 0; bindingIndex < leadingShape.bindings.size();
@@ -906,7 +907,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
                   ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
                   zc::mv(bindingLiteral), zc::mv(bindingParameter), referencedLocal, zc::none,
-                  zc::none, zc::none});
+                  zc::none, zc::none, binding.declarator, binding.initializer});
             }
           }
           if (synthesizedArithmetic && leadingShapeMaybe != zc::none) {
@@ -965,7 +966,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 if (leafLiteralFact.type != arithType) return zc::none;
                 return PendingLeadingConditionOperand{
                     arithType, leafSpan.clone(), leafLiteralFact.literal.clone(), zc::none, 0,
-                    false};
+                    false,     leafNode};
               }
               auto ownerBinding = resolvedOwnerLocal(bound.bindings(), leafNode);
               if (ownerBinding != zc::none) {
@@ -973,7 +974,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      ++bindingIndex) {
                   if (ZC_ASSERT_NONNULL(ownerBinding) == localBindingIds[bindingIndex]) {
                     return PendingLeadingConditionOperand{arithType, leafSpan.clone(), zc::none,
-                                                          zc::none,  bindingIndex,     true};
+                                                          zc::none,  bindingIndex,     true,
+                                                          leafNode};
                   }
                 }
               }
@@ -992,7 +994,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               if (resolvedKey == zc::none) return zc::none;
               return PendingLeadingConditionOperand{
-                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false};
+                  arithType, leafSpan.clone(), zc::none, zc::mv(resolvedKey), 0, false, leafNode};
             };
             auto arithLeftSpan =
                 bound.parsedModule().spanFor(tree.node(shape.nestedArithmeticLeft).range);
@@ -1017,7 +1019,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             pendingBindings.add(PendingLeadingLocalBinding{
                 arithType, ZC_ASSERT_NONNULL(arithSpan).clone(),
                 ZC_ASSERT_NONNULL(arithSpan).clone(), SequentialInitializerKind::PrimitiveBinary,
-                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight)});
+                zc::none, zc::none, 0, arithOperation, zc::mv(arithLeft), zc::mv(arithRight),
+                ast::NodeId{}, arithNode});
           }
           // Resolve one comparison operand to a leading local, a parameter, or
           // a scalar literal.
@@ -1036,7 +1039,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      ++bindingIndex) {
                   if (ZC_ASSERT_NONNULL(ownerBinding) == localBindingIds[bindingIndex]) {
                     return PendingLeadingConditionOperand{
-                        resolvedType, operandSpan.clone(), zc::none, zc::none, bindingIndex, true};
+                        resolvedType, operandSpan.clone(), zc::none, zc::none, bindingIndex,
+                        true,         operandNode};
                   }
                 }
               }
@@ -1050,7 +1054,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     if (parameter.key == entry.key()) {
                       return PendingLeadingConditionOperand{
                           parameter.type, operandSpan.clone(), zc::none, entry.key().clone(), 0,
-                          false};
+                          false,          operandNode};
                     }
                   }
                 }
@@ -1068,7 +1072,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                   literalFact.literal.clone(),
                                                   zc::none,
                                                   0,
-                                                  false};
+                                                  false,
+                                                  operandNode};
           };
           // The operand types and comparison call fact are validated below once
           // both operands resolve; placeholder kept out-of-line by computing the
@@ -1192,16 +1197,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             // normally.
             if (synthesizedArithmetic && shape.conditionLeftIsNestedArithmetic) {
               leftOperand = PendingLeadingConditionOperand{
-                  operandType, ZC_ASSERT_NONNULL(leftSpan).clone(), zc::none,
-                  zc::none,    pendingBindings.size() - 1,          true};
+                  operandType,        ZC_ASSERT_NONNULL(leftSpan).clone(), zc::none,
+                  zc::none,           pendingBindings.size() - 1,          true,
+                  shape.conditionLeft};
             } else {
               leftOperand = resolveConditionOperand(
                   shape.conditionLeft, shape.conditionLeftIsLiteral, ZC_ASSERT_NONNULL(leftSpan));
             }
             if (synthesizedArithmetic && shape.conditionRightIsNestedArithmetic) {
-              rightOperand = PendingLeadingConditionOperand{
-                  operandType, ZC_ASSERT_NONNULL(rightSpan).clone(), zc::none,
-                  zc::none,    pendingBindings.size() - 1,           true};
+              rightOperand = PendingLeadingConditionOperand{operandType,
+                                                            ZC_ASSERT_NONNULL(rightSpan).clone(),
+                                                            zc::none,
+                                                            zc::none,
+                                                            pendingBindings.size() - 1,
+                                                            true,
+                                                            shape.conditionRight};
             } else {
               rightOperand =
                   resolveConditionOperand(shape.conditionRight, shape.conditionRightIsLiteral,
@@ -1240,8 +1250,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     auto reference = HirLocalReferenceExpression{
                         HirNodeId(), hirLocalId(static_cast<uint32_t>(bindingIndex + 1)), armType,
                         HirValueCategory::Place, armSpan.clone()};
-                    return PendingConditionalArm{zc::none, zc::none, zc::mv(reference), armType,
-                                                 armSpan.clone()};
+                    return PendingConditionalArm{zc::none, zc::none,        zc::mv(reference),
+                                                 armType,  armSpan.clone(), zc::none,
+                                                 armNode};
                   }
                 }
               }
@@ -1271,8 +1282,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   auto reference =
                       HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), armType,
                                                       HirValueCategory::Place, armSpan.clone()};
-                  built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, armType,
-                                                armSpan.clone()};
+                  built =
+                      PendingConditionalArm{zc::none,        zc::mv(reference), zc::none, armType,
+                                            armSpan.clone(), zc::none,          armNode};
                 }
               }
               return built;
@@ -1327,9 +1339,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                             HirNodeId(), hirLocalId(static_cast<uint32_t>(bindingIndex + 1)),
                             armOperandType, HirValueCategory::Place,
                             ZC_ASSERT_NONNULL(leafSpan).clone()};
-                        return PendingConditionalArm{zc::none, zc::none, zc::mv(reference),
+                        return PendingConditionalArm{zc::none,
+                                                     zc::none,
+                                                     zc::mv(reference),
                                                      armOperandType,
-                                                     ZC_ASSERT_NONNULL(leafSpan).clone()};
+                                                     ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                     zc::none,
+                                                     operandNode};
                       }
                     }
                   }
@@ -1361,9 +1377,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                       auto reference = HirParameterReferenceExpression{
                           HirNodeId(), entry.key().clone(), armOperandType, HirValueCategory::Place,
                           ZC_ASSERT_NONNULL(leafSpan).clone()};
-                      leafBuilt = PendingConditionalArm{zc::none, zc::mv(reference), zc::none,
+                      leafBuilt = PendingConditionalArm{zc::none,
+                                                        zc::mv(reference),
+                                                        zc::none,
                                                         armOperandType,
-                                                        ZC_ASSERT_NONNULL(leafSpan).clone()};
+                                                        ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                        zc::none,
+                                                        operandNode};
                     }
                   }
                   return leafBuilt;
@@ -1385,8 +1405,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   armRejected = true;
                   return zc::none;
                 }
-                return PendingConditionalArm{leafLiteralFact.literal.clone(), zc::none, zc::none,
-                                             armOperandType, ZC_ASSERT_NONNULL(leafSpan).clone()};
+                return PendingConditionalArm{
+                    leafLiteralFact.literal.clone(),     zc::none, zc::none,   armOperandType,
+                    ZC_ASSERT_NONNULL(leafSpan).clone(), zc::none, operandNode};
               };
               auto armLeft = buildLeaf(armCall.arguments[0].sourceNode);
               auto armRight = buildLeaf(armCall.arguments[1].sourceNode);
@@ -1395,8 +1416,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armLeft))),
                   zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armRight))),
                   armOperandType, armOperation};
-              return PendingConditionalArm{zc::none, zc::none,        zc::none,
-                                           armType,  armSpan.clone(), zc::mv(armBinary)};
+              return PendingConditionalArm{zc::none,        zc::none,          zc::none, armType,
+                                           armSpan.clone(), zc::mv(armBinary), armNode};
             }
             auto literalIndex = factIndex(facts.literals(), armNode);
             if (literalIndex == zc::none) {
@@ -1410,8 +1431,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               armRejected = true;
               return zc::none;
             }
-            return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, armType,
-                                         armSpan.clone()};
+            return PendingConditionalArm{literalFact.literal.clone(),
+                                         zc::none,
+                                         zc::none,
+                                         armType,
+                                         armSpan.clone(),
+                                         zc::none,
+                                         armNode};
           };
           auto thenArm =
               buildLeadingArm(shape.thenReturnValue, callable.success, ZC_ASSERT_NONNULL(thenSpan));
@@ -1436,7 +1462,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ZC_ASSERT_NONNULL(thenSpan).clone(),
                                                    ZC_ASSERT_NONNULL(elseSpan).clone(),
                                                    returnSpanValue.clone(),
-                                                   shape.conditionIsUnary};
+                                                   shape.conditionIsUnary,
+                                                   leadingShape.ifStatement};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           definition.node,
                                                           callable.success,
@@ -1482,7 +1509,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           false,
                                                           false,
-                                                          zc::mv(leadingPending)});
+                                                          zc::mv(leadingPending),
+                                                          shape.returnsFoldedStringConcat,
+                                                          shape.returnsFoldedFloatCast,
+                                                          shape.returnsLocalIncrement,
+                                                          shape.returnsLocalPostfixIncrement,
+                                                          shape.body,
+                                                          shape.returnStatement,
+                                                          shape.value});
           continue;
         }
         if (shape.isMatchChainedEquality) {
@@ -1561,12 +1595,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto leftReference = HirParameterReferenceExpression{
                 HirNodeId(), ZC_ASSERT_NONNULL(parameterKey).clone(), operandType,
                 HirValueCategory::Place, ZC_ASSERT_NONNULL(conditionSpan).clone()};
-            auto leftOperand =
-                PendingConditionalArm{zc::none, zc::mv(leftReference), zc::none, operandType,
-                                      ZC_ASSERT_NONNULL(conditionSpan).clone()};
-            auto rightOperand =
-                PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, operandType,
-                                      ZC_ASSERT_NONNULL(literalSpan).clone()};
+            auto leftOperand = PendingConditionalArm{zc::none,
+                                                     zc::mv(leftReference),
+                                                     zc::none,
+                                                     operandType,
+                                                     ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                     zc::none,
+                                                     shape.condition};
+            auto rightOperand = PendingConditionalArm{literalFact.literal.clone(),
+                                                      zc::none,
+                                                      zc::none,
+                                                      operandType,
+                                                      ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                                      zc::none,
+                                                      literalNode};
             auto equalityCondition =
                 PendingEqualityCondition{zc::mv(leftOperand),
                                          zc::mv(rightOperand),
@@ -1585,9 +1627,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             size_t thenLiteralSlot = 0;
             ZC_IF_SOME(index, thenLiteralIndex) { thenLiteralSlot = index; }
             const auto& thenLiteralFact = facts.literals().entries()[thenLiteralSlot].value;
-            auto thenArm =
-                PendingConditionalArm{thenLiteralFact.literal.clone(), zc::none, zc::none, thenType,
-                                      ZC_ASSERT_NONNULL(thenSpan).clone()};
+            auto thenArm = PendingConditionalArm{
+                thenLiteralFact.literal.clone(),     zc::none, zc::none,     thenType,
+                ZC_ASSERT_NONNULL(thenSpan).clone(), zc::none, thenValueNode};
             entries.add(
                 PendingChainedConditionalReturn::Entry{zc::mv(equalityCondition), zc::mv(thenArm)});
           }
@@ -1602,10 +1644,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           size_t elseLiteralSlot = 0;
           ZC_IF_SOME(index, elseLiteralIndex) { elseLiteralSlot = index; }
           const auto& elseLiteralFact = facts.literals().entries()[elseLiteralSlot].value;
-          auto elseArm = PendingConditionalArm{elseLiteralFact.literal.clone(), zc::none, zc::none,
-                                               elseType, ZC_ASSERT_NONNULL(elseSpan).clone()};
-          auto chainedReturn = PendingChainedConditionalReturn{zc::mv(entries), zc::mv(elseArm),
-                                                               valueSpanValue.clone()};
+          auto elseArm = PendingConditionalArm{elseLiteralFact.literal.clone(),
+                                               zc::none,
+                                               zc::none,
+                                               elseType,
+                                               ZC_ASSERT_NONNULL(elseSpan).clone(),
+                                               zc::none,
+                                               shape.matchChainedElseValue};
+          auto chainedReturn = PendingChainedConditionalReturn{
+              zc::mv(entries), zc::mv(elseArm), valueSpanValue.clone(), shape.matchStatement};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           definition.node,
                                                           callable.success,
@@ -1651,7 +1698,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           false,
                                                           false,
-                                                          zc::none});
+                                                          zc::none,
+                                                          shape.returnsFoldedStringConcat,
+                                                          shape.returnsFoldedFloatCast,
+                                                          shape.returnsLocalIncrement,
+                                                          shape.returnsLocalPostfixIncrement,
+                                                          shape.body,
+                                                          shape.returnStatement,
+                                                          shape.value});
           continue;
         }
         PendingConditionalCondition pendingCondition;
@@ -1723,12 +1777,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto reference = HirParameterReferenceExpression{
                 HirNodeId(), entry.key().clone(), operandType, HirValueCategory::Place,
                 ZC_ASSERT_NONNULL(conditionSpan).clone()};
-            leftOperand = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
-                                                ZC_ASSERT_NONNULL(conditionSpan).clone()};
+            leftOperand = PendingConditionalArm{zc::none,
+                                                zc::mv(reference),
+                                                zc::none,
+                                                operandType,
+                                                ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                zc::none,
+                                                shape.condition};
           }
-          auto rightOperand =
-              PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, operandType,
-                                    ZC_ASSERT_NONNULL(literalSpan).clone()};
+          auto rightOperand = PendingConditionalArm{literalFact.literal.clone(),
+                                                    zc::none,
+                                                    zc::none,
+                                                    operandType,
+                                                    ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                                    zc::none,
+                                                    shape.matchEqualityLiteral};
           pendingCondition.equality =
               PendingEqualityCondition{zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
                                        zc::mv(rightOperand),
@@ -1822,8 +1885,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   auto reference =
                       HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), operandType,
                                                       HirValueCategory::Place, operandSpan.clone()};
-                  built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
-                                                operandSpan.clone()};
+                  built = PendingConditionalArm{zc::none,    zc::mv(reference),   zc::none,
+                                                operandType, operandSpan.clone(), zc::none,
+                                                operandNode};
                 }
               }
               return built;
@@ -1836,8 +1900,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             size_t literalSlot = 0;
             ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
             const auto& literalFact = facts.literals().entries()[literalSlot].value;
-            return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none,
-                                         operandType, operandSpan.clone()};
+            return PendingConditionalArm{
+                literalFact.literal.clone(), zc::none, zc::none,   operandType,
+                operandSpan.clone(),         zc::none, operandNode};
           };
           auto leftOperand = buildOperand(shape.conditionLeft, shape.conditionLeftIsLiteral,
                                           ZC_ASSERT_NONNULL(leftSpan));
@@ -1854,7 +1919,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               operandType,
               conditionType,
               selected.get<checker::checked::PrimitiveCallable>().operation,
-              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+              ZC_ASSERT_NONNULL(conditionSpan).clone(),
+              false,
+              shape.condition};
         } else if (shape.conditionIsUnary) {
           // The unary `!x` condition desugars to `x == false`. The operand is
           // a parameter reference or a scalar literal; the synthetic false
@@ -1923,9 +1990,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     auto reference = HirParameterReferenceExpression{
                         HirNodeId(), entry.key().clone(), operandType, HirValueCategory::Place,
                         ZC_ASSERT_NONNULL(operandSpan).clone()};
-                    realOperand =
-                        PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
-                                              ZC_ASSERT_NONNULL(operandSpan).clone()};
+                    realOperand = PendingConditionalArm{zc::none,
+                                                        zc::mv(reference),
+                                                        zc::none,
+                                                        operandType,
+                                                        ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                        zc::none,
+                                                        shape.conditionUnaryOperand};
                   }
                 }
               }
@@ -1938,9 +2009,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               size_t literalSlot = 0;
               ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
               const auto& literalFact = facts.literals().entries()[literalSlot].value;
-              realOperand =
-                  PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none,
-                                        operandType, ZC_ASSERT_NONNULL(operandSpan).clone()};
+              realOperand = PendingConditionalArm{literalFact.literal.clone(),
+                                                  zc::none,
+                                                  zc::none,
+                                                  operandType,
+                                                  ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                  zc::none,
+                                                  shape.conditionUnaryOperand};
             }
           }
           if (operandRejected || realOperand == zc::none) {
@@ -2086,10 +2161,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                   : ZC_ASSERT_NONNULL(guardRightSpan))
                     .clone()};
             guardParamArm =
-                PendingConditionalArm{zc::none, zc::mv(reference), zc::none, guardOperandType,
+                PendingConditionalArm{zc::none,
+                                      zc::mv(reference),
+                                      zc::none,
+                                      guardOperandType,
                                       (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardLeftSpan)
                                                         : ZC_ASSERT_NONNULL(guardRightSpan))
-                                          .clone()};
+                                          .clone(),
+                                      zc::none,
+                                      guardParamNode};
           }
           if (guardParamArm == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -2106,11 +2186,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           size_t guardLiteralSlot = 0;
           ZC_IF_SOME(index, guardLiteralIndex) { guardLiteralSlot = index; }
           const auto& guardLiteralFact = facts.literals().entries()[guardLiteralSlot].value;
-          auto guardLiteralArm = PendingConditionalArm{
-              guardLiteralFact.literal.clone(), zc::none, zc::none, guardOperandType,
-              (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardRightSpan)
-                                : ZC_ASSERT_NONNULL(guardLeftSpan))
-                  .clone()};
+          auto guardLiteralArm =
+              PendingConditionalArm{guardLiteralFact.literal.clone(),
+                                    zc::none,
+                                    zc::none,
+                                    guardOperandType,
+                                    (guardLeftIsIdent ? ZC_ASSERT_NONNULL(guardRightSpan)
+                                                      : ZC_ASSERT_NONNULL(guardLeftSpan))
+                                        .clone(),
+                                    zc::none,
+                                    guardLiteralNode};
           // The guard comparison condition. The left operand is the parameter
           // and the right operand is the literal when the guard source is
           // `param <op> literal`; the roles swap for `literal <op> param`.
@@ -2120,10 +2205,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               guardOperandType,
               conditionType,
               guardOp,
-              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+              ZC_ASSERT_NONNULL(conditionSpan).clone(),
+              false,
+              shape.matchGuard};
           pendingCondition.conjunctive = PendingConjunctiveCondition{
               zc::mv(ZC_ASSERT_NONNULL(scrutineeRef)), zc::mv(guardEquality),
-              ZC_ASSERT_NONNULL(conditionSpan).clone()};
+              ZC_ASSERT_NONNULL(conditionSpan).clone(), shape.matchGuard};
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
           if (conditionParameter == zc::none) {
@@ -2181,8 +2268,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 auto reference =
                     HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), armType,
                                                     HirValueCategory::Place, armSpan.clone()};
-                built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, armType,
-                                              armSpan.clone()};
+                built = PendingConditionalArm{zc::none,        zc::mv(reference), zc::none, armType,
+                                              armSpan.clone(), zc::none,          armNode};
               }
             }
             return built;
@@ -2255,9 +2342,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     auto reference = HirParameterReferenceExpression{
                         HirNodeId(), entry.key().clone(), armOperandType, HirValueCategory::Place,
                         ZC_ASSERT_NONNULL(leafSpan).clone()};
-                    leafBuilt =
-                        PendingConditionalArm{zc::none, zc::mv(reference), zc::none, armOperandType,
-                                              ZC_ASSERT_NONNULL(leafSpan).clone()};
+                    leafBuilt = PendingConditionalArm{zc::none,
+                                                      zc::mv(reference),
+                                                      zc::none,
+                                                      armOperandType,
+                                                      ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                      zc::none,
+                                                      operandNode};
                   }
                 }
                 return leafBuilt;
@@ -2279,8 +2370,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 armRejected = true;
                 return zc::none;
               }
-              return PendingConditionalArm{leafLiteralFact.literal.clone(), zc::none, zc::none,
-                                           armOperandType, ZC_ASSERT_NONNULL(leafSpan).clone()};
+              return PendingConditionalArm{
+                  leafLiteralFact.literal.clone(),     zc::none, zc::none,   armOperandType,
+                  ZC_ASSERT_NONNULL(leafSpan).clone(), zc::none, operandNode};
             };
             auto armLeft = buildLeaf(armCall.arguments[0].sourceNode);
             auto armRight = buildLeaf(armCall.arguments[1].sourceNode);
@@ -2289,8 +2381,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armLeft))),
                 zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(armRight))),
                 armOperandType, armOperation};
-            return PendingConditionalArm{zc::none, zc::none,        zc::none,
-                                         armType,  armSpan.clone(), zc::mv(armBinary)};
+            return PendingConditionalArm{zc::none,        zc::none,          zc::none, armType,
+                                         armSpan.clone(), zc::mv(armBinary), armNode};
           }
           auto literalIndex = factIndex(facts.literals(), armNode);
           if (literalIndex == zc::none) {
@@ -2300,8 +2392,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           size_t literalSlot = 0;
           ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
           const auto& literalFact = facts.literals().entries()[literalSlot].value;
-          return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, armType,
-                                       armSpan.clone()};
+          return PendingConditionalArm{literalFact.literal.clone(),
+                                       zc::none,
+                                       zc::none,
+                                       armType,
+                                       armSpan.clone(),
+                                       zc::none,
+                                       armNode};
         };
         auto thenArm = buildArm(shape.thenReturnValue, thenType, ZC_ASSERT_NONNULL(thenSpan));
         auto elseArm = buildArm(shape.elseReturnValue, elseType, ZC_ASSERT_NONNULL(elseSpan));
@@ -2316,14 +2413,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               definition.source.clone());
         }
         {
-          auto conditionalReturn = PendingConditionalReturn{zc::mv(pendingCondition),
-                                                            zc::mv(ZC_ASSERT_NONNULL(thenArm)),
-                                                            zc::mv(ZC_ASSERT_NONNULL(elseArm)),
-                                                            valueSpanValue.clone(),
-                                                            shape.isMatchReturn,
-                                                            shape.matchHasDefaultArm,
-                                                            shape.isMatchEquality,
-                                                            shape.hasMatchGuard};
+          auto conditionalReturn = PendingConditionalReturn{
+              zc::mv(pendingCondition),
+              zc::mv(ZC_ASSERT_NONNULL(thenArm)),
+              zc::mv(ZC_ASSERT_NONNULL(elseArm)),
+              valueSpanValue.clone(),
+              shape.isMatchReturn,
+              shape.matchHasDefaultArm,
+              shape.isMatchEquality,
+              shape.hasMatchGuard,
+              shape.isMatchReturn ? shape.matchStatement : shape.condition};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           definition.node,
                                                           callable.success,
@@ -2369,7 +2468,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           false,
                                                           false,
-                                                          zc::none});
+                                                          zc::none,
+                                                          shape.returnsFoldedStringConcat,
+                                                          shape.returnsFoldedFloatCast,
+                                                          shape.returnsLocalIncrement,
+                                                          shape.returnsLocalPostfixIncrement,
+                                                          shape.body,
+                                                          shape.returnStatement,
+                                                          shape.value});
         }
         continue;
       }
@@ -2503,9 +2609,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           auto conditionRef = HirParameterReferenceExpression{
               HirNodeId(), entry.key().clone(), conditionType, HirValueCategory::Place,
               ZC_ASSERT_NONNULL(conditionSpan).clone()};
-          auto loopReturn =
-              PendingLoopReturn{zc::mv(conditionRef), returnLiteral.literal.clone(), returnType,
-                                ZC_ASSERT_NONNULL(loopSpan).clone(), valueSpanValue.clone()};
+          auto loopReturn = PendingLoopReturn{zc::mv(conditionRef),
+                                              returnLiteral.literal.clone(),
+                                              returnType,
+                                              ZC_ASSERT_NONNULL(loopSpan).clone(),
+                                              valueSpanValue.clone(),
+                                              shape.loopStatement};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           definition.node,
                                                           callable.success,
@@ -2551,7 +2660,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           false,
                                                           false,
-                                                          zc::none});
+                                                          zc::none,
+                                                          shape.returnsFoldedStringConcat,
+                                                          shape.returnsFoldedFloatCast,
+                                                          shape.returnsLocalIncrement,
+                                                          shape.returnsLocalPostfixIncrement,
+                                                          shape.body,
+                                                          shape.returnStatement,
+                                                          shape.value});
         }
         continue;
       }
@@ -2799,8 +2915,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 auto reference =
                     HirParameterReferenceExpression{HirNodeId(), entry.key().clone(), operandType,
                                                     HirValueCategory::Place, operandSpan.clone()};
-                built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
-                                              operandSpan.clone()};
+                built = PendingConditionalArm{zc::none,    zc::mv(reference),   zc::none,
+                                              operandType, operandSpan.clone(), zc::none,
+                                              operandNode};
               }
             }
             return built;
@@ -2813,8 +2930,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           size_t literalSlot = 0;
           ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
           const auto& literalFact = facts.literals().entries()[literalSlot].value;
-          return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none, operandType,
-                                       operandSpan.clone()};
+          return PendingConditionalArm{
+              literalFact.literal.clone(), zc::none, zc::none,   operandType,
+              operandSpan.clone(),         zc::none, operandNode};
         };
         auto leftOperand = buildOperand(shape.comparisonLeft, shape.comparisonLeftIsLiteral,
                                         ZC_ASSERT_NONNULL(leftSpan));
@@ -2831,7 +2949,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      operandType,
                                      resultType,
                                      selected.get<checker::checked::PrimitiveCallable>().operation,
-                                     ZC_ASSERT_NONNULL(valueSpan).clone()};
+                                     ZC_ASSERT_NONNULL(valueSpan).clone(),
+                                     false,
+                                     shape.condition};
         pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                         definition.node,
                                                         callable.success,
@@ -2877,7 +2997,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         false,
                                                         false,
-                                                        zc::none});
+                                                        zc::none,
+                                                        shape.returnsFoldedStringConcat,
+                                                        shape.returnsFoldedFloatCast,
+                                                        shape.returnsLocalIncrement,
+                                                        shape.returnsLocalPostfixIncrement,
+                                                        shape.body,
+                                                        shape.returnStatement,
+                                                        shape.value});
         continue;
       }
       if (shape.returnsUnary) {
@@ -3193,8 +3320,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           auto reference = HirParameterReferenceExpression{HirNodeId(), entry.key().clone(),
                                                            operandType, HirValueCategory::Place,
                                                            ZC_ASSERT_NONNULL(operandSpan).clone()};
-          realOperand = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, operandType,
-                                              ZC_ASSERT_NONNULL(operandSpan).clone()};
+          realOperand = PendingConditionalArm{zc::none,
+                                              zc::mv(reference),
+                                              zc::none,
+                                              operandType,
+                                              ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                              zc::none,
+                                              shape.unaryOperand};
         }
         if (realOperand == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3264,7 +3396,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         false,
                                                         false,
-                                                        zc::none});
+                                                        zc::none,
+                                                        shape.returnsFoldedStringConcat,
+                                                        shape.returnsFoldedFloatCast,
+                                                        shape.returnsLocalIncrement,
+                                                        shape.returnsLocalPostfixIncrement,
+                                                        shape.body,
+                                                        shape.returnStatement,
+                                                        shape.value});
         continue;
       }
       auto nodeTypeIndex = factIndex(facts.nodeTypes(), shape.value);
@@ -3654,7 +3793,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::mv(parameterFieldWriteParameter),
                                                         true,
                                                         false,
-                                                        zc::none});
+                                                        zc::none,
+                                                        shape.returnsFoldedStringConcat,
+                                                        shape.returnsFoldedFloatCast,
+                                                        shape.returnsLocalIncrement,
+                                                        shape.returnsLocalPostfixIncrement,
+                                                        shape.body,
+                                                        shape.returnStatement,
+                                                        shape.value});
         continue;
       }
       zc::Maybe<checker::checked::CanonicalConstValue> literal;
@@ -4027,7 +4173,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  classified.referencedLocal,
                                                  zc::mv(noNested),
                                                  zc::mv(noNestedLeft),
-                                                 zc::mv(noNestedRight)};
+                                                 zc::mv(noNestedRight),
+                                                 classified.node};
             } else if (classified.kind == SequentialBinaryOperandKind::ParameterReference) {
               auto parameterHandle = resolvedCallableParameter(bound.bindings(), classified.node);
               if (parameterHandle == zc::none) {
@@ -4058,7 +4205,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  0,
                                                  zc::mv(noNested),
                                                  zc::mv(noNestedLeft),
-                                                 zc::mv(noNestedRight)};
+                                                 zc::mv(noNestedRight),
+                                                 classified.node};
             } else {
               rejected = true;
               break;
@@ -4169,7 +4317,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                classified.referencedLocal,
                                                zc::mv(noNested),
                                                zc::mv(noNestedLeft),
-                                               zc::mv(noNestedRight)};
+                                               zc::mv(noNestedRight),
+                                               classified.node};
             auto unitMagnitude = zc::heapArray<uint8_t>(1);
             unitMagnitude[0] = 1;
             auto syntheticOne =
@@ -4190,7 +4339,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                0,
                                                zc::mv(noNested2),
                                                zc::mv(noNestedLeft2),
-                                               zc::mv(noNestedRight2)};
+                                               zc::mv(noNestedRight2),
+                                               ast::NodeId()};
             bindingLeftOperand = zc::mv(resolvedReal);
             bindingRightOperand = zc::mv(syntheticOperand);
             bindingOperation = binaryOperation;
@@ -4277,7 +4427,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                classified.referencedLocal,
                                                zc::mv(noNested),
                                                zc::mv(noNestedLeft),
-                                               zc::mv(noNestedRight)};
+                                               zc::mv(noNestedRight),
+                                               classified.node};
             auto unitMagnitude = zc::heapArray<uint8_t>(1);
             unitMagnitude[0] = 1;
             auto syntheticOne =
@@ -4298,7 +4449,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                0,
                                                zc::mv(noNested2),
                                                zc::mv(noNestedLeft2),
-                                               zc::mv(noNestedRight2)};
+                                               zc::mv(noNestedRight2),
+                                               ast::NodeId()};
             bindingLeftOperand = zc::mv(resolvedReal);
             bindingRightOperand = zc::mv(syntheticOperand);
             bindingOperation = binaryOperation;
@@ -4373,7 +4525,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           ZC_ASSERT_NONNULL(leafSpan).clone(),
                                                           zc::mv(literalValue),
                                                           zc::mv(noParameter),
-                                                          0};
+                                                          0,
+                                                          leaf.node};
               }
               if (leaf.kind == SequentialBinaryOperandKind::LocalReference) {
                 if (leaf.referencedLocal >= localBindingIds.size()) return zc::none;
@@ -4390,7 +4543,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     ZC_ASSERT_NONNULL(leafSpan).clone(),
                     zc::mv(noLiteral),
                     zc::mv(noParameter),
-                    leaf.referencedLocal};
+                    leaf.referencedLocal,
+                    leaf.node};
               }
               auto parameterHandle = resolvedCallableParameter(bound.bindings(), leaf.node);
               if (parameterHandle == zc::none) return zc::none;
@@ -4413,7 +4567,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   ZC_ASSERT_NONNULL(leafSpan).clone(),
                   zc::mv(noLiteral),
                   zc::mv(resolvedKey),
-                  0};
+                  0,
+                  leaf.node};
             };
             auto resolveOperand = [&](const SequentialBinaryOperand& operand)
                 -> zc::Maybe<PendingSequentialBinaryOperand> {
@@ -4489,7 +4644,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       0,
                                                       zc::mv(nestedOperation),
                                                       zc::mv(resolvedNestedLeft),
-                                                      zc::mv(resolvedNestedRight)};
+                                                      zc::mv(resolvedNestedRight),
+                                                      operand.node};
               }
               if (operand.kind == SequentialBinaryOperandKind::Literal) {
                 auto operandLiteral = factIndex(facts.literals(), operand.node);
@@ -4509,7 +4665,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       0,
                                                       zc::mv(noNestedOperation),
                                                       zc::mv(noNestedLeft),
-                                                      zc::mv(noNestedRight)};
+                                                      zc::mv(noNestedRight),
+                                                      operand.node};
               }
               if (operand.kind == SequentialBinaryOperandKind::LocalReference) {
                 if (operand.referencedLocal >= localBindingIds.size()) return zc::none;
@@ -4528,7 +4685,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       operand.referencedLocal,
                                                       zc::mv(noNestedOperation),
                                                       zc::mv(noNestedLeft),
-                                                      zc::mv(noNestedRight)};
+                                                      zc::mv(noNestedRight),
+                                                      operand.node};
               }
               auto parameterHandle = resolvedCallableParameter(bound.bindings(), operand.node);
               if (parameterHandle == zc::none) return zc::none;
@@ -4553,7 +4711,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                     0,
                                                     zc::mv(noNestedOperation),
                                                     zc::mv(noNestedLeft),
-                                                    zc::mv(noNestedRight)};
+                                                    zc::mv(noNestedRight),
+                                                    operand.node};
             };
             ZC_IF_SOME(leftClassified, binding.leftOperand) {
               ZC_IF_SOME(rightClassified, binding.rightOperand) {
@@ -4708,7 +4867,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               zc::mv(bindingTernaryThenSpan),
               zc::mv(bindingTernaryElseSpan),
               tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr,
-              binding.matchHasDefaultArm});
+              binding.matchHasDefaultArm,
+              binding.declarator,
+              binding.initializer});
         }
         if (rejected) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -4801,7 +4962,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         false,
                                                         false,
-                                                        zc::none});
+                                                        zc::none,
+                                                        shape.returnsFoldedStringConcat,
+                                                        shape.returnsFoldedFloatCast,
+                                                        shape.returnsLocalIncrement,
+                                                        shape.returnsLocalPostfixIncrement,
+                                                        shape.body,
+                                                        shape.returnStatement,
+                                                        shape.value});
         continue;
       }
       if (shape.returnsLocal) {  // A scalar-local method body is admitted only through a shared
@@ -5218,16 +5386,27 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto leftReference = HirLocalReferenceExpression{
                 HirNodeId(), hirLocalId(1), postfixTargetType, HirValueCategory::Place,
                 ZC_ASSERT_NONNULL(postfixTargetSpan).clone()};
-            auto leftArm =
-                PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), postfixTargetType,
-                                      ZC_ASSERT_NONNULL(postfixTargetSpan).clone()};
+            auto leftArm = PendingConditionalArm{zc::none,
+                                                 zc::none,
+                                                 zc::mv(leftReference),
+                                                 postfixTargetType,
+                                                 ZC_ASSERT_NONNULL(postfixTargetSpan).clone(),
+                                                 zc::none,
+                                                 postfixTarget};
             auto rightArm =
                 PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, postfixTargetType,
                                       ZC_ASSERT_NONNULL(postfixSpan).clone()};
             PendingLocalWriteValue postfixWriteValue;
-            postfixWriteValue.binary = PendingLocalWriteBinary{
-                zc::mv(leftArm),   zc::mv(rightArm), postfixTargetType,
-                postfixTargetType, binaryOperation,  ZC_ASSERT_NONNULL(postfixSpan).clone()};
+            postfixWriteValue.binary =
+                PendingLocalWriteBinary{zc::mv(leftArm),
+                                        zc::mv(rightArm),
+                                        postfixTargetType,
+                                        postfixTargetType,
+                                        binaryOperation,
+                                        ZC_ASSERT_NONNULL(postfixSpan).clone(),
+                                        false,
+                                        false,
+                                        write};
             ZC_ASSERT_NONNULL(postfixWriteValue.binary).isIncrementDesugar = true;
             localWrites.add(HirLocalWriteStatement{
                 HirNodeId(), HirLocalId(), zc::none, postfixTargetType, HirNodeId(),
@@ -5323,16 +5502,26 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto leftReference = HirLocalReferenceExpression{
                 HirNodeId(), hirLocalId(1), unaryTargetType, HirValueCategory::Place,
                 ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
-            auto leftArm =
-                PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), unaryTargetType,
-                                      ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+            auto leftArm = PendingConditionalArm{zc::none,
+                                                 zc::none,
+                                                 zc::mv(leftReference),
+                                                 unaryTargetType,
+                                                 ZC_ASSERT_NONNULL(unaryTargetSpan).clone(),
+                                                 zc::none,
+                                                 unaryTarget};
             auto rightArm =
                 PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, unaryTargetType,
                                       ZC_ASSERT_NONNULL(unarySpan).clone()};
             PendingLocalWriteValue unaryWriteValue;
-            unaryWriteValue.binary = PendingLocalWriteBinary{
-                zc::mv(leftArm), zc::mv(rightArm), unaryTargetType,
-                unaryTargetType, binaryOperation,  ZC_ASSERT_NONNULL(unarySpan).clone()};
+            unaryWriteValue.binary = PendingLocalWriteBinary{zc::mv(leftArm),
+                                                             zc::mv(rightArm),
+                                                             unaryTargetType,
+                                                             unaryTargetType,
+                                                             binaryOperation,
+                                                             ZC_ASSERT_NONNULL(unarySpan).clone(),
+                                                             false,
+                                                             false,
+                                                             write};
             ZC_ASSERT_NONNULL(unaryWriteValue.binary).isIncrementDesugar = true;
             localWrites.add(HirLocalWriteStatement{
                 HirNodeId(), HirLocalId(), zc::none, unaryTargetType, HirNodeId(),
@@ -5446,8 +5635,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             auto leftReference = HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), writeType,
                                                              HirValueCategory::Place,
                                                              ZC_ASSERT_NONNULL(targetSpan).clone()};
-            auto leftArm = PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference),
-                                                 writeType, ZC_ASSERT_NONNULL(targetSpan).clone()};
+            auto leftArm = PendingConditionalArm{zc::none,
+                                                 zc::none,
+                                                 zc::mv(leftReference),
+                                                 writeType,
+                                                 ZC_ASSERT_NONNULL(targetSpan).clone(),
+                                                 zc::none,
+                                                 target};
             zc::Maybe<PendingConditionalArm> rightArm;
             if (referenceValue) {
               auto parameter = resolvedCallableParameter(bound.bindings(), writeValue);
@@ -5478,8 +5672,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   auto reference = HirParameterReferenceExpression{
                       HirNodeId(), entry.key().clone(), writeType, HirValueCategory::Place,
                       ZC_ASSERT_NONNULL(valueSpan).clone()};
-                  rightArm = PendingConditionalArm{zc::none, zc::mv(reference), zc::none, writeType,
-                                                   ZC_ASSERT_NONNULL(valueSpan).clone()};
+                  rightArm = PendingConditionalArm{zc::none,
+                                                   zc::mv(reference),
+                                                   zc::none,
+                                                   writeType,
+                                                   ZC_ASSERT_NONNULL(valueSpan).clone(),
+                                                   zc::none,
+                                                   writeValue};
                 }
               }
             } else {
@@ -5496,8 +5695,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                      ir::IrFailureKind::InvalidFact, module,
                                                      registries, ordinal + 2);
               }
-              rightArm = PendingConditionalArm{rhsLiteral.literal.clone(), zc::none, zc::none,
-                                               writeType, ZC_ASSERT_NONNULL(valueSpan).clone()};
+              rightArm = PendingConditionalArm{
+                  rhsLiteral.literal.clone(),           zc::none, zc::none,  writeType,
+                  ZC_ASSERT_NONNULL(valueSpan).clone(), zc::none, writeValue};
             }
             if (rightArm == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5510,7 +5710,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                         writeType,
                                         writeType,
                                         ZC_ASSERT_NONNULL(compoundOperation),
-                                        ZC_ASSERT_NONNULL(assignmentSpan).clone()};
+                                        ZC_ASSERT_NONNULL(assignmentSpan).clone(),
+                                        false,
+                                        false,
+                                        write};
             ZC_ASSERT_NONNULL(writeValueRecord.binary).isCompoundAssignmentDesugar = true;
           } else if (binaryWriteValue) {
             if (field != zc::none) {
@@ -5650,7 +5853,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                zc::none,
                                                binaryOperandType,
                                                operandSpan.clone(),
-                                               zc::mv(nestedBinary)};
+                                               zc::mv(nestedBinary),
+                                               operandNode};
                 }
                 auto parameter = resolvedCallableParameter(bound.bindings(), operandNode);
                 if (parameter != zc::none) {
@@ -5676,8 +5880,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                       auto reference = HirParameterReferenceExpression{
                           HirNodeId(), entry.key().clone(), binaryOperandType,
                           HirValueCategory::Place, operandSpan.clone()};
-                      built = PendingConditionalArm{zc::none, zc::mv(reference), zc::none,
-                                                    binaryOperandType, operandSpan.clone()};
+                      built =
+                          PendingConditionalArm{zc::none,          zc::mv(reference),   zc::none,
+                                                binaryOperandType, operandSpan.clone(), zc::none,
+                                                operandNode};
                     }
                   }
                   return built;
@@ -5691,8 +5897,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   auto reference =
                       HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), binaryOperandType,
                                                   HirValueCategory::Place, operandSpan.clone()};
-                  return PendingConditionalArm{zc::none, zc::none, zc::mv(reference),
-                                               binaryOperandType, operandSpan.clone()};
+                  return PendingConditionalArm{zc::none,
+                                               zc::none,
+                                               zc::mv(reference),
+                                               binaryOperandType,
+                                               operandSpan.clone(),
+                                               zc::none,
+                                               operandNode};
                 }
                 operandRejected = true;
                 return zc::none;
@@ -5709,8 +5920,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 operandRejected = true;
                 return zc::none;
               }
-              return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none,
-                                           binaryOperandType, operandSpan.clone()};
+              return PendingConditionalArm{
+                  literalFact.literal.clone(), zc::none, zc::none,   binaryOperandType,
+                  operandSpan.clone(),         zc::none, operandNode};
             };
             auto buildWriteOperand = [&](ast::NodeId node, const identity::SourceSpan& span) {
               return buildWriteOperandImpl(buildWriteOperandImpl, node, span);
@@ -5728,7 +5940,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                         binaryOperandType,
                                         writeType,
                                         operation,
-                                        ZC_ASSERT_NONNULL(valueSpan).clone()};
+                                        ZC_ASSERT_NONNULL(valueSpan).clone(),
+                                        false,
+                                        false,
+                                        writeValue};
           } else if (referenceValue) {
             auto parameter = resolvedCallableParameter(bound.bindings(), writeValue);
             if (parameter == zc::none) {
@@ -5881,16 +6096,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           auto leftReference = HirLocalReferenceExpression{
               HirNodeId(), hirLocalId(1), unaryTargetType, HirValueCategory::Place,
               ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
-          auto leftArm =
-              PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), unaryTargetType,
-                                    ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+          auto leftArm = PendingConditionalArm{zc::none,
+                                               zc::none,
+                                               zc::mv(leftReference),
+                                               unaryTargetType,
+                                               ZC_ASSERT_NONNULL(unaryTargetSpan).clone(),
+                                               zc::none,
+                                               unaryTarget};
           auto rightArm =
               PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, unaryTargetType,
                                     ZC_ASSERT_NONNULL(unarySpan).clone()};
           PendingLocalWriteValue unaryWriteValue;
-          unaryWriteValue.binary = PendingLocalWriteBinary{
-              zc::mv(leftArm), zc::mv(rightArm), unaryTargetType,
-              unaryTargetType, binaryOperation,  ZC_ASSERT_NONNULL(unarySpan).clone()};
+          unaryWriteValue.binary =
+              PendingLocalWriteBinary{zc::mv(leftArm), zc::mv(rightArm),
+                                      unaryTargetType, unaryTargetType,
+                                      binaryOperation, ZC_ASSERT_NONNULL(unarySpan).clone(),
+                                      false,           false,
+                                      shape.value};
           ZC_ASSERT_NONNULL(unaryWriteValue.binary).isIncrementDesugar = true;
           localWrites.add(HirLocalWriteStatement{
               HirNodeId(), HirLocalId(), zc::none, unaryTargetType, HirNodeId(),
@@ -6449,7 +6671,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            ZC_ASSERT_NONNULL(literalSpan).clone(),
                                            ZC_ASSERT_NONNULL(fieldSpan).clone(),
                                            valueSpanValue.clone(),
-                                           fieldIsLeft};
+                                           fieldIsLeft,
+                                           fieldNode,
+                                           literalNode,
+                                           shape.value};
       } else if (tree.node(shape.value).kind == ast::SyntaxKind::IndexExpression) {
         const auto& sourceIndex = tree.node(shape.value);
         const ast::NodeId base(sourceIndex.payload.words[ast::kIndexExpressionObjectWord]);
@@ -7704,7 +7929,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ZC_ASSERT_NONNULL(conditionSpan).clone()};
           loopBodyReturn =
               PendingLoopBodyReturn{zc::mv(conditionRef), ZC_ASSERT_NONNULL(loopSpan).clone(),
-                                    zc::mv(breakSpan), zc::mv(continueSpan)};
+                                    zc::mv(breakSpan), zc::mv(continueSpan), shape.loopStatement};
         }
         if (loopBodyReturn == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7941,7 +8166,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 HirNodeId(), updateRhsType, updateRhsLiteralFact.literal.clone(),
                 HirValueCategory::Value, ZC_ASSERT_NONNULL(updateRhsSpan).clone()},
             zc::mv(breakSpan),
-            zc::mv(continueSpan)};
+            zc::mv(continueSpan),
+            shape.forLoopStatement,
+            shape.returnStatement};
       }
       // For-loop accumulator shape: N leading scalar `mut` accumulator locals,
       // a `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>) {
@@ -8251,7 +8478,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 true, zc::none,
                 zc::some(HirScalarLiteralExpression{
                     HirNodeId(), bodyWriteRhsType, bodyWriteRhsLiteralFact.literal.clone(),
-                    HirValueCategory::Value, ZC_ASSERT_NONNULL(bodyWriteRhsSpan).clone()})});
+                    HirValueCategory::Value, ZC_ASSERT_NONNULL(bodyWriteRhsSpan).clone()}),
+                accPattern, bodyWriteExpr});
           } else {
             accumulators.add(PendingForLoopAccumulator{
                 HirLocalBinding{HirNodeId(), hirLocalId(static_cast<uint32_t>(accIndex + 1)),
@@ -8277,7 +8505,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     HirNodeId(), hirLocalId(static_cast<uint32_t>(accumulatorCount + 1)),
                     bodyWriteRhsType, HirValueCategory::Place,
                     ZC_ASSERT_NONNULL(bodyWriteRhsSpan).clone()}),
-                zc::none});
+                zc::none, accPattern, bodyWriteExpr});
           }
         }
         if (!accumulatorOk || accumulators.size() != accumulatorCount) {
@@ -8504,7 +8732,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             zc::mv(continueSpan),
             zc::mv(breakCondition),
             zc::mv(breakConditionLeft),
-            zc::mv(breakConditionRight)};
+            zc::mv(breakConditionRight),
+            shape.forLoopStatement,
+            shape.returnStatement};
       }
       // Nested for-loop accumulator shape: N leading scalar `mut` accumulator
       // locals, an outer `for` loop whose sole body statement is an inner
@@ -8924,7 +9154,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              HirValueCategory::Value, bodyWriteOperation,
                                              ZC_ASSERT_NONNULL(bodyWriteValueSpan).clone()},
                 zc::mv(bodyWriteLeft), rhsIsLiteral, zc::mv(bodyWriteRight),
-                zc::mv(bodyWriteRightLiteral)});
+                zc::mv(bodyWriteRightLiteral), accPattern, bodyWriteExpr});
           }
         }
         if (accumulatorsOk) {
@@ -8962,7 +9192,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               zc::mv(nestedAccumulators),
               HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), returnType,
                                           HirValueCategory::Place,
-                                          ZC_ASSERT_NONNULL(returnSpan).clone()}};
+                                          ZC_ASSERT_NONNULL(returnSpan).clone()},
+              shape.forLoopStatement,
+              shape.nestedForLoopInnerStatement,
+              shape.returnStatement};
         }
       }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
@@ -9014,7 +9247,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       returnsFoldedStringConcat,
                                                       returnsFoldedFloatCast,
                                                       shape.returnsLocalIncrement,
-                                                      shape.returnsLocalPostfixIncrement});
+                                                      shape.returnsLocalPostfixIncrement,
+                                                      shape.body,
+                                                      shape.returnStatement,
+                                                      shape.value});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&

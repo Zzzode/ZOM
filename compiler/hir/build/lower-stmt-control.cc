@@ -14,7 +14,7 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
   PendingConditionalReturn conditional = zc::mv(ZC_ASSERT_NONNULL(function.conditionalReturn));
 
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
 
   ZC_IF_SOME(equality, conditional.condition.equality) {
     // Comparison-condition stride (9 + 2K nodes, where K is the count of binary
@@ -23,13 +23,13 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     // materializes three nodes (left operand, right operand, binary); a leaf arm
     // materializes one. The conditional takes the equality node as its
     // condition and each arm's value node (the binary node for a binary arm).
-    const HirNodeId leftId = ctx.allocNode(ast::NodeId());
-    const HirNodeId rightId = ctx.allocNode(ast::NodeId());
-    const HirNodeId equalityId = ctx.allocNode(ast::NodeId());
+    const HirNodeId leftId = ctx.allocNode(equality.left.sourceNode);
+    const HirNodeId rightId = ctx.allocNode(equality.right.sourceNode);
+    const HirNodeId equalityId = ctx.allocNode(equality.sourceNode);
     const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
     const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
-    const HirNodeId conditionalId = ctx.allocNode(ast::NodeId());
-    const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+    const HirNodeId conditionalId = ctx.allocNode(conditional.conditionalNode);
+    const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
     ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                            zc::mv(function.parameters), zc::mv(function.receiver),
@@ -59,14 +59,14 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     // conjunction is the conditional's condition; the guard comparison is the
     // conjunction's right operand.
     const HirNodeId conditionId = ctx.allocNode(ast::NodeId());
-    const HirNodeId guardLeftId = ctx.allocNode(ast::NodeId());
-    const HirNodeId guardRightId = ctx.allocNode(ast::NodeId());
-    const HirNodeId guardComparisonId = ctx.allocNode(ast::NodeId());
+    const HirNodeId guardLeftId = ctx.allocNode(conjunctive.guard.left.sourceNode);
+    const HirNodeId guardRightId = ctx.allocNode(conjunctive.guard.right.sourceNode);
+    const HirNodeId guardComparisonId = ctx.allocNode(conjunctive.guard.sourceNode);
     const HirNodeId conjunctionId = ctx.allocNode(ast::NodeId());
     const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
     const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
-    const HirNodeId conditionalId = ctx.allocNode(ast::NodeId());
-    const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+    const HirNodeId conditionalId = ctx.allocNode(conditional.conditionalNode);
+    const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
     ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                            zc::mv(function.parameters), zc::mv(function.receiver),
@@ -102,8 +102,8 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
   const HirNodeId conditionId = ctx.allocNode(ast::NodeId());
   const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
   const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
-  const HirNodeId conditionalId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId conditionalId = ctx.allocNode(conditional.conditionalNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),
@@ -129,7 +129,7 @@ void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function
       zc::mv(ZC_ASSERT_NONNULL(function.chainedConditionalReturn));
 
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const size_t armCount = chained.entries.size();
 
   // Per-arm node IDs: left operand, right operand, equality, then value.
@@ -138,16 +138,16 @@ void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function
   zc::Vector<HirNodeId> equalityIds;
   zc::Vector<HirNodeId> thenIds;
   for (size_t i = 0; i < armCount; ++i) {
-    leftIds.add(ctx.allocNode(ast::NodeId()));
-    rightIds.add(ctx.allocNode(ast::NodeId()));
-    equalityIds.add(ctx.allocNode(ast::NodeId()));
-    thenIds.add(ctx.allocNode(ast::NodeId()));
+    leftIds.add(ctx.allocNode(chained.entries[i].condition.left.sourceNode));
+    rightIds.add(ctx.allocNode(chained.entries[i].condition.right.sourceNode));
+    equalityIds.add(ctx.allocNode(chained.entries[i].condition.sourceNode));
+    thenIds.add(ctx.allocNode(chained.entries[i].thenArm.sourceNode));
   }
-  const HirNodeId elseId = ctx.allocNode(ast::NodeId());
+  const HirNodeId elseId = ctx.allocNode(chained.elseArm.sourceNode);
   // Conditional IDs: innermost first, outermost last.
   zc::Vector<HirNodeId> conditionalIds;
-  for (size_t i = armCount; i-- > 0;) { conditionalIds.add(ctx.allocNode(ast::NodeId())); }
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  for (size_t i = armCount; i-- > 0;) { conditionalIds.add(ctx.allocNode(chained.matchNode)); }
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),
@@ -193,29 +193,31 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
   // value(s), conditional, return. A binary arm materializes three nodes
   // (left operand, right operand, binary); a leaf arm materializes one.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   zc::Vector<HirNodeId> localIds;
   zc::Vector<HirNodeId> initializerIds;
   zc::Vector<HirNodeId> arithLeftIds;
   zc::Vector<HirNodeId> arithRightIds;
   for (size_t index = 0; index < bindingCount; ++index) {
-    localIds.add(ctx.allocNode(ast::NodeId()));
-    initializerIds.add(ctx.allocNode(ast::NodeId()));
+    localIds.add(ctx.allocNode(leading.bindings[index].declaratorNode));
+    initializerIds.add(ctx.allocNode(leading.bindings[index].initializerNode));
     if (leading.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary) {
-      arithLeftIds.add(ctx.allocNode(ast::NodeId()));
-      arithRightIds.add(ctx.allocNode(ast::NodeId()));
+      arithLeftIds.add(
+          ctx.allocNode(ZC_ASSERT_NONNULL(leading.bindings[index].arithmeticLeft).sourceNode));
+      arithRightIds.add(
+          ctx.allocNode(ZC_ASSERT_NONNULL(leading.bindings[index].arithmeticRight).sourceNode));
     }
   }
-  const HirNodeId leftId = ctx.allocNode(ast::NodeId());
-  const HirNodeId rightId = ctx.allocNode(ast::NodeId());
+  const HirNodeId leftId = ctx.allocNode(leading.left.sourceNode);
+  const HirNodeId rightId = ctx.allocNode(leading.right.sourceNode);
   const HirNodeId equalityId = ctx.allocNode(ast::NodeId());
   // Arm nodes must be allocated before conditional and return to match the
   // verifier's fixed-id layout: equality, then arm(s), else arm(s),
   // conditional, return.
   const HirNodeId thenValueId = ctx.lowerArmValue(leading.thenArm);
   const HirNodeId elseValueId = ctx.lowerArmValue(leading.elseArm);
-  const HirNodeId conditionalId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId conditionalId = ctx.allocNode(leading.conditionalNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),
@@ -349,11 +351,11 @@ void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   // reference, return literal, loop statement, return. The body block lists the
   // loop statement followed by the return.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId conditionId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
-  const HirNodeId loopId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
+  const HirNodeId loopId = ctx.allocNode(loop.loopNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -392,19 +394,21 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   // per-binary left+right. The body block lists [local, loop, return]; the
   // loop statement carries the write node ids as its body.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
   zc::Vector<HirNodeId> writeIds;
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
-    writeIds.add(ctx.allocNode(ast::NodeId()));
-    writeValueIds.add(ctx.allocNode(ast::NodeId()));
+    ast::NodeId writeSource;
+    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    writeIds.add(ctx.allocNode(writeSource));
+    writeValueIds.add(ctx.allocNode(writeSource));
   }
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
   const HirNodeId loopConditionId = ctx.allocNode(ast::NodeId());
-  const HirNodeId loopId = ctx.allocNode(ast::NodeId());
+  const HirNodeId loopId = ctx.allocNode(loopBody.loopNode);
   // Binary operand nodes trail after the loop node, matching the verifier's
   // fixed-id layout (function, body, local, initializer, per-write write+value,
   // return, value, condition, loop, then per-binary left+right).
@@ -414,8 +418,8 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
     zc::Maybe<HirNodeId> leftId;
     zc::Maybe<HirNodeId> rightId;
     if (writeValue.binary != zc::none) {
-      leftId = ctx.allocNode(ast::NodeId());
-      rightId = ctx.allocNode(ast::NodeId());
+      leftId = ctx.allocNode(ZC_ASSERT_NONNULL(writeValue.binary).left.sourceNode);
+      rightId = ctx.allocNode(ZC_ASSERT_NONNULL(writeValue.binary).right.sourceNode);
     }
     binaryLeftIds.add(zc::mv(leftId));
     binaryRightIds.add(zc::mv(rightId));
@@ -502,7 +506,7 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
   // lists [local, loop, return]; the loop statement carries the write node id
   // as its body.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
   const HirNodeId comparisonLeftId = ctx.allocNode(ast::NodeId());
@@ -512,9 +516,9 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
   const HirNodeId writeValueRightId = ctx.allocNode(ast::NodeId());
   const HirNodeId writeValueId = ctx.allocNode(ast::NodeId());
   const HirNodeId writeId = ctx.allocNode(ast::NodeId());
-  const HirNodeId loopId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId loopId = ctx.allocNode(forLoop.loopNode);
+  const HirNodeId returnId = ctx.allocNode(forLoop.returnNode);
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -588,7 +592,7 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
   // locals..., loop-init local, loop, return]; the loop statement carries the
   // body-write and update-write node ids as its body.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -601,7 +605,7 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
   // Accumulator local bindings: `mut x = 0` with scalar literal initializers.
   for (size_t k = 0; k < accumulatorCount; ++k) {
     auto& acc = forLoop.accumulators[k];
-    const HirNodeId accLocalId = ctx.allocNode(ast::NodeId());
+    const HirNodeId accLocalId = ctx.allocNode(acc.bindingNode);
     const HirNodeId accInitId = ctx.allocNode(ast::NodeId());
     ctx.addExpression(
         HirScalarLiteralExpression{accInitId, acc.initLiteral.type, zc::mv(acc.initLiteral.value),
@@ -646,7 +650,7 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
     const HirNodeId bodyWriteLeftId = ctx.allocNode(ast::NodeId());
     const HirNodeId bodyWriteRightId = ctx.allocNode(ast::NodeId());
     const HirNodeId bodyWriteValueId = ctx.allocNode(ast::NodeId());
-    const HirNodeId bodyWriteId = ctx.allocNode(ast::NodeId());
+    const HirNodeId bodyWriteId = ctx.allocNode(acc.writeNode);
     ctx.addLocalReference(HirLocalReferenceExpression{
         bodyWriteLeftId, acc.bodyWriteLeft.local, acc.bodyWriteLeft.type,
         acc.bodyWriteLeft.category, acc.bodyWriteLeft.sourceSpan.clone()});
@@ -713,9 +717,9 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
         breakCond.category, breakCond.operation, breakCond.sourceSpan.clone()});
   }
 
-  const HirNodeId loopId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId loopId = ctx.allocNode(forLoop.loopNode);
+  const HirNodeId returnId = ctx.allocNode(forLoop.returnNode);
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
   bodyStatements.add(loopId);
   bodyStatements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(bodyStatements), function.bodySpan.clone()});
@@ -745,7 +749,7 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
   // inner loop, then outer update (left, right, value, write), outer loop,
   // return, return value reference. Total: 24 + 6N nodes.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -759,7 +763,7 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
   // Accumulator local bindings: `mut x = 0` with scalar literal initializers.
   for (size_t k = 0; k < accumulatorCount; ++k) {
     auto& acc = nested.accumulators[k];
-    const HirNodeId accLocalId = ctx.allocNode(ast::NodeId());
+    const HirNodeId accLocalId = ctx.allocNode(acc.bindingNode);
     const HirNodeId accInitId = ctx.allocNode(ast::NodeId());
     ctx.addExpression(
         HirScalarLiteralExpression{accInitId, acc.initLiteral.type, zc::mv(acc.initLiteral.value),
@@ -831,7 +835,7 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
     const HirNodeId bodyWriteLeftId = ctx.allocNode(ast::NodeId());
     const HirNodeId bodyWriteRightId = ctx.allocNode(ast::NodeId());
     const HirNodeId bodyWriteValueId = ctx.allocNode(ast::NodeId());
-    const HirNodeId bodyWriteId = ctx.allocNode(ast::NodeId());
+    const HirNodeId bodyWriteId = ctx.allocNode(acc.writeNode);
     ctx.addLocalReference(HirLocalReferenceExpression{
         bodyWriteLeftId, acc.bodyWriteLeft.local, acc.bodyWriteLeft.type,
         acc.bodyWriteLeft.category, acc.bodyWriteLeft.sourceSpan.clone()});
@@ -879,7 +883,7 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
   innerLoopStatements.add(innerWriteId);
 
   // Inner loop statement.
-  const HirNodeId innerLoopId = ctx.allocNode(ast::NodeId());
+  const HirNodeId innerLoopId = ctx.allocNode(nested.innerLoopNode);
   ctx.addLoop(HirLoopStatement{innerLoopId, innerConditionId, zc::mv(innerLoopStatements),
                                nested.innerCondition.type, HirValueCategory::Place,
                                zc::mv(nested.innerLoopSpan), zc::none, zc::none});
@@ -911,9 +915,9 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
   outerLoopStatements.add(outerWriteId);
 
   // Outer loop statement.
-  const HirNodeId outerLoopId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId outerLoopId = ctx.allocNode(nested.outerLoopNode);
+  const HirNodeId returnId = ctx.allocNode(nested.returnNode);
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
   bodyStatements.add(outerLoopId);
   bodyStatements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(bodyStatements), function.bodySpan.clone()});

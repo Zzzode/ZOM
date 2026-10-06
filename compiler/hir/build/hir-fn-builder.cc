@@ -140,8 +140,8 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
     // A nested binary arm: allocate child ids and recursively lower them. The
     // desugar flags are false for nested binaries; only the top-level write
     // binary carries them.
-    const HirNodeId leftId = allocNode(ast::NodeId());
-    const HirNodeId rightId = allocNode(ast::NodeId());
+    const HirNodeId leftId = allocNode(binary.left->sourceNode);
+    const HirNodeId rightId = allocNode(binary.right->sourceNode);
     lowerArmLeaf(leftId, *binary.left);
     lowerArmLeaf(rightId, *binary.right);
     addPrimitiveBinary(HirPrimitiveBinaryExpression{
@@ -157,9 +157,9 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
 
 HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
   ZC_IF_SOME(binary, arm.binary) {
-    const HirNodeId leftId = allocNode(ast::NodeId());
-    const HirNodeId rightId = allocNode(ast::NodeId());
-    const HirNodeId binaryId = allocNode(ast::NodeId());
+    const HirNodeId leftId = allocNode(binary.left->sourceNode);
+    const HirNodeId rightId = allocNode(binary.right->sourceNode);
+    const HirNodeId binaryId = allocNode(arm.sourceNode);
     lowerArmLeaf(leftId, *binary.left);
     lowerArmLeaf(rightId, *binary.right);
     addPrimitiveBinary(HirPrimitiveBinaryExpression{binaryId, leftId, rightId, binary.operandType,
@@ -167,7 +167,7 @@ HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
                                                     binary.operation, arm.sourceSpan.clone()});
     return binaryId;
   }
-  const HirNodeId valueId = allocNode(ast::NodeId());
+  const HirNodeId valueId = allocNode(arm.sourceNode);
   lowerArmLeaf(valueId, arm);
   return valueId;
 }
@@ -214,9 +214,9 @@ HirFunctionDeclaration lowerFunctionHeader(HirNodeId functionId, HirNodeId bodyI
 
 void lowerScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -242,11 +242,11 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
   // generic materializer: function F, body F+1, local F+2, initializer F+3,
   // return F+4, value F+5. The block lists [local, return].
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -274,7 +274,7 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   // each binding its local and initializer plus a binary binding's two operand
   // nodes and each nested operand's two leaf nodes, then return and value.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   zc::Vector<HirNodeId> localNodeIds;
   zc::Vector<HirNodeId> initializerNodeIds;
   zc::Vector<zc::Maybe<HirNodeId>> leftOperandIds;
@@ -305,8 +305,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
       incrementWriteIds.add(zc::none);
       incrementBinaryIds.add(zc::none);
     }
-    localNodeIds.add(ctx.allocNode(ast::NodeId()));
-    initializerNodeIds.add(ctx.allocNode(ast::NodeId()));
+    localNodeIds.add(ctx.allocNode(sequential.bindings[index].declaratorNode));
+    initializerNodeIds.add(ctx.allocNode(sequential.bindings[index].initializerNode));
     if (isPostfixIncrement) {
       incrementWriteIds[index] = ctx.allocNode(ast::NodeId());
       incrementBinaryIds[index] = ctx.allocNode(ast::NodeId());
@@ -321,18 +321,20 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary ||
         sequential.bindings[index].kind == SequentialInitializerKind::Increment ||
         isPostfixIncrement) {
-      leftOperandId = ctx.allocNode(ast::NodeId());
-      rightOperandId = ctx.allocNode(ast::NodeId());
+      leftOperandId =
+          ctx.allocNode(ZC_ASSERT_NONNULL(sequential.bindings[index].leftOperand).sourceNode);
+      rightOperandId =
+          ctx.allocNode(ZC_ASSERT_NONNULL(sequential.bindings[index].rightOperand).sourceNode);
       ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
         if (left.kind == SequentialBinaryOperandKind::NestedBinary) {
-          leftNestedLeafLeftId = ctx.allocNode(ast::NodeId());
-          leftNestedLeafRightId = ctx.allocNode(ast::NodeId());
+          leftNestedLeafLeftId = ctx.allocNode(ZC_ASSERT_NONNULL(left.nestedLeft).sourceNode);
+          leftNestedLeafRightId = ctx.allocNode(ZC_ASSERT_NONNULL(left.nestedRight).sourceNode);
         }
       }
       ZC_IF_SOME(right, sequential.bindings[index].rightOperand) {
         if (right.kind == SequentialBinaryOperandKind::NestedBinary) {
-          rightNestedLeafLeftId = ctx.allocNode(ast::NodeId());
-          rightNestedLeafRightId = ctx.allocNode(ast::NodeId());
+          rightNestedLeafLeftId = ctx.allocNode(ZC_ASSERT_NONNULL(right.nestedLeft).sourceNode);
+          rightNestedLeafRightId = ctx.allocNode(ZC_ASSERT_NONNULL(right.nestedRight).sourceNode);
         }
       }
     }
@@ -354,8 +356,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     ternaryThenIds.add(zc::mv(ternaryThenId));
     ternaryElseIds.add(zc::mv(ternaryElseId));
   }
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
   zc::Maybe<HirNodeId> unsafeBlockId;
   if (function.unsafeBlockSpan != zc::none) {
     unsafeBlockId = ctx.allocNode(ast::NodeId());
@@ -657,9 +659,9 @@ void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, Hir
   const HirValueCategory category = projection.category;
 
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -684,11 +686,11 @@ void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function
   // return, returned parameter field projection. The block lists the write
   // before the return; the write names the literal node as its value.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId writeId = ctx.allocNode(ast::NodeId());
   const HirNodeId writeValueId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;

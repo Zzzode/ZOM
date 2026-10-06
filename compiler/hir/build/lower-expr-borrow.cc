@@ -36,9 +36,9 @@ void lowerParameterReborrowReturnFunction(PendingFunctionDeclaration&& function,
   // function F, body F+1, return F+2, reborrow value F+3, and a trailing
   // unsafe block F+4 when the return is wrapped in `unsafe { ... }`.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
   zc::Maybe<HirNodeId> unsafeBlockId = lowerTrailingUnsafeBlock(function, valueId, ctx);
 
   ctx.addFunction(HirFunctionDeclaration{
@@ -62,9 +62,9 @@ void lowerUnsafeScalarReturnFunction(PendingFunctionDeclaration&& function, HirF
   // function F, body F+1, return F+2, scalar value F+3, trailing unsafe block
   // F+4 whose body is the scalar value.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
   zc::Maybe<HirNodeId> unsafeBlockId = lowerTrailingUnsafeBlock(function, valueId, ctx);
 
   ctx.addFunction(HirFunctionDeclaration{
@@ -99,11 +99,11 @@ void lowerLocalAliasReborrowReturnFunction(PendingFunctionDeclaration&& function
   // return F+4, reborrow value F+5, and a trailing unsafe block F+6 when
   // wrapped. The block lists [local, return].
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
   zc::Maybe<HirNodeId> unsafeBlockId = lowerTrailingUnsafeBlock(function, valueId, ctx);
 
   ctx.addFunction(HirFunctionDeclaration{
@@ -138,11 +138,11 @@ void lowerLocalBorrowReturnFunction(PendingFunctionDeclaration&& function, HirFn
   // value F+5, and a trailing unsafe block F+6 when wrapped. The initializer is
   // a scalar literal or a parameter reference; the block lists [local, return].
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
   zc::Maybe<HirNodeId> unsafeBlockId = lowerTrailingUnsafeBlock(function, valueId, ctx);
 
   ctx.addFunction(HirFunctionDeclaration{

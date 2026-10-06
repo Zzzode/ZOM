@@ -17,9 +17,9 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   // function F, body F+1, return F+2, call F+3. The call node is the return
   // value destination.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId callId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -48,11 +48,11 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, call initializer F+3, return F+4, local reference F+5.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -86,11 +86,11 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
   // F+5. The call is the return value; its sole argument references local 1
   // inline and allocates no extra node.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId callId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -124,11 +124,11 @@ void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, H
   // call F+5. The call is the return value; its sole argument references local
   // 1 inline and allocates no extra node.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId callId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -166,12 +166,12 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   // body F+1, local F+2, initializer F+3, return F+4, receiver
   // reference F+5, receiver call F+6. The receiver call is the return value.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId receiverId = ctx.allocNode(ast::NodeId());
-  const HirNodeId callId = ctx.allocNode(ast::NodeId());
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -211,9 +211,9 @@ void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnC
   // header parameter, so it allocates no body node: the call's receiver slot is
   // unset and MIR forwards the leading receiver parameter local directly.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId callId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),

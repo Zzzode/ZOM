@@ -20,11 +20,13 @@ void lowerReceiverFieldArithmeticFunction(PendingFunctionDeclaration&& function,
   // source operand order. The return takes the binary node directly (no result
   // temporary).
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
-  const HirNodeId leftId = ctx.allocNode(ast::NodeId());
-  const HirNodeId rightId = ctx.allocNode(ast::NodeId());
-  const HirNodeId binaryId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId leftId =
+      ctx.allocNode(arithmetic.fieldIsLeft ? arithmetic.fieldNode : arithmetic.literalNode);
+  const HirNodeId rightId =
+      ctx.allocNode(arithmetic.fieldIsLeft ? arithmetic.literalNode : arithmetic.fieldNode);
+  const HirNodeId binaryId = ctx.allocNode(arithmetic.binaryNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId fieldId = arithmetic.fieldIsLeft ? leftId : rightId;
   const HirNodeId literalId = arithmetic.fieldIsLeft ? rightId : leftId;
 

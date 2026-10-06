@@ -27,17 +27,19 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   // nested binary operand allocates additional child ids). No
   // receiver/unsafe/loop ids in this family.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
   zc::Vector<HirNodeId> writeIds;
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
-    writeIds.add(ctx.allocNode(ast::NodeId()));
-    writeValueIds.add(ctx.allocNode(ast::NodeId()));
+    ast::NodeId writeSource;
+    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    writeIds.add(ctx.allocNode(writeSource));
+    writeValueIds.add(ctx.allocNode(writeSource));
   }
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -80,8 +82,8 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
           parameter.sourceSpan.clone()});
     }
     ZC_IF_SOME(binary, writeValue.binary) {
-      const HirNodeId leftId = ctx.allocNode(ast::NodeId());
-      const HirNodeId rightId = ctx.allocNode(ast::NodeId());
+      const HirNodeId leftId = ctx.allocNode(binary.left.sourceNode);
+      const HirNodeId rightId = ctx.allocNode(binary.right.sourceNode);
       ctx.lowerArmLeaf(leftId, binary.left);
       ctx.lowerArmLeaf(rightId, binary.right);
       ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
@@ -122,7 +124,7 @@ void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCt
   // field-projection value. The write values are scalar literals; checker
   // admission makes parameter or binary field-write values unreachable.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
   zc::Maybe<HirNodeId> initializerId;
   if (initialized) { initializerId = ctx.allocNode(ast::NodeId()); }
@@ -132,8 +134,8 @@ void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCt
     writeIds.add(ctx.allocNode(ast::NodeId()));
     writeValueIds.add(ctx.allocNode(ast::NodeId()));
   }
-  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
-  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
