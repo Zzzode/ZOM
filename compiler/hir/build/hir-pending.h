@@ -26,6 +26,11 @@ struct PendingValueDeclaration final {
   checker::checked::CanonicalConstValue literal;
   zc::Maybe<checker::checked::CanonicalConstValue> constant;
   zc::Array<uint8_t> orderingKey;
+  /// Source AST nodes threaded to the HIR side-table so the per-node
+  /// correspondence validator can anchor each pooled node to its checked fact.
+  ast::NodeId declarationNode;
+  ast::NodeId patternNode;
+  ast::NodeId initializerNode;
 };
 
 struct PendingSequentialBinaryLeafOperand final {

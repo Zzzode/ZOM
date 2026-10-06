@@ -8904,7 +8904,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         definition.definition, definition.record.kind(), valueSignature.type, definitionType.value,
         valueSignature.mutability, zc::mv(visibilityValue), linkageValue,
         declarationSpanValue.clone(), definition.source.clone(), literal.sourceSpan.clone(),
-        literal.literal.clone(), zc::mv(constant), zc::mv(orderingKey)});
+        literal.literal.clone(), zc::mv(constant), zc::mv(orderingKey), bindingSite.introducer,
+        patternNode, initializer});
   }
 
   size_t directCallCount = 0;
@@ -9962,11 +9963,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     const auto declarationId = hirId(next++);
     const auto patternId = hirId(next++);
     const auto initializerId = hirId(next++);
-    // Value declarations allocate three node ids outside HirFnCtx; push
-    // sentinels to keep the side-table aligned with the shared ordinal counter.
-    sourceNodes.add(ast::NodeId());
-    sourceNodes.add(ast::NodeId());
-    sourceNodes.add(ast::NodeId());
+    // Value declarations allocate three node ids outside HirFnCtx; push the
+    // source AST nodes so the side-table stays aligned with the shared ordinal
+    // counter and the per-node correspondence validator can anchor each node.
+    sourceNodes.add(value.declarationNode);
+    sourceNodes.add(value.patternNode);
+    sourceNodes.add(value.initializerNode);
     zc::Maybe<checker::checked::CanonicalConstValue> constant;
     ZC_IF_SOME(constantValue, value.constant) { constant = constantValue.clone(); }
     declarations.add(HirValueDeclaration{
@@ -10651,6 +10653,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
+    // The generic materializer allocates node ids directly; push side-table
+    // entries to stay aligned with the shared ordinal counter.
+    sourceNodes.add(value.sourceNode);
+    sourceNodes.add(ast::NodeId());
     ZC_IF_SOME(comparison, value.comparisonReturn) {
       // Comparison-return materialization fixed-id layout, relative to the
       // function id (6 nodes):
@@ -10681,6 +10687,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       const auto rightId = hirId(next++);
       const auto comparisonId = hirId(next++);
       const auto returnId = hirId(next++);
+      sourceNodes.add(ast::NodeId());
+      sourceNodes.add(ast::NodeId());
+      sourceNodes.add(ast::NodeId());
+      sourceNodes.add(ast::NodeId());
       functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
                                            zc::mv(value.parameters), zc::none,
                                            value.visibility.clone(), value.linkage,
@@ -10701,8 +10711,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     zc::Maybe<HirNodeId> initializerId;
     if (value.local != zc::none) {
       localId = hirId(next++);
+      sourceNodes.add(ast::NodeId());
       ZC_IF_SOME(local, value.local) {
-        if (local.initializer != zc::none) { initializerId = hirId(next++); }
+        if (local.initializer != zc::none) {
+          initializerId = hirId(next++);
+          sourceNodes.add(ast::NodeId());
+        }
       }
     }
     ZC_IF_SOME(aggregate, value.aggregate) {
@@ -10722,12 +10736,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     for (size_t index = 0; index < value.localWrites.size(); ++index) {
       writeIds.add(hirId(next++));
       writeValueIds.add(hirId(next++));
+      sourceNodes.add(ast::NodeId());
+      sourceNodes.add(ast::NodeId());
     }
     const auto returnId = hirId(next++);
     const auto valueId = hirId(next++);
+    sourceNodes.add(ast::NodeId());
+    sourceNodes.add(ast::NodeId());
     zc::Maybe<HirNodeId> unsafeBlockId;
     if (value.unsafeBlockSpan != zc::none) {
       unsafeBlockId = hirId(next++);
+      sourceNodes.add(ast::NodeId());
       unsafeBlocks.add(HirUnsafeBlockExpression{ZC_ASSERT_NONNULL(unsafeBlockId), valueId,
                                                 value.resultType,
                                                 ZC_ASSERT_NONNULL(value.unsafeBlockSpan).clone()});
@@ -10745,6 +10764,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (value.localWriteValues[index].binary != zc::none) {
         leftId = hirId(next++);
         rightId = hirId(next++);
+        sourceNodes.add(ast::NodeId());
+        sourceNodes.add(ast::NodeId());
       }
       writeBinaryLeftIds.add(zc::mv(leftId));
       writeBinaryRightIds.add(zc::mv(rightId));

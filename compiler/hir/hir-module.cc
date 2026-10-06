@@ -1808,6 +1808,143 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                         ir::IrFailureKind::AdditionalFact, module, registries, 0);
   }
 
+  // Per-node correspondence validator. For each HIR node that carries a
+  // non-sentinel source AST node, validate the node's fields against the
+  // checker facts keyed by that AST node. Also assert injectivity: no two HIR
+  // nodes may claim the same AST node. This runs alongside the count equations
+  // and will replace them once every node carries a real mapping.
+  {
+    const auto& sourceNodes = candidate.impl->sourceNodes;
+    const auto& tree = bound.tree();
+    auto sourceFor = [&](HirNodeId id) -> ast::NodeId {
+      if (id.ordinal() == 0 || id.ordinal() >= sourceNodes.size()) return ast::NodeId();
+      return sourceNodes[id.ordinal()];
+    };
+    auto rejectNode = [&](ir::IrFailureKind kind, uint32_t ordinal) {
+      return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification, kind, module,
+                                          registries, ordinal);
+    };
+    // Side-table alignment: every pooled node that carries a real mapping must
+    // index the table. A misaligned table means the builder and verifier
+    // disagree on the node count, which is an input-revision mismatch.
+    for (const auto& declaration : candidate.impl->declarations) {
+      if (declaration.node.ordinal() >= sourceNodes.size()) {
+        return rejectNode(ir::IrFailureKind::InputRevisionMismatch, declaration.node.ordinal());
+      }
+    }
+    for (const auto& pattern : candidate.impl->patterns) {
+      if (pattern.node.ordinal() >= sourceNodes.size()) {
+        return rejectNode(ir::IrFailureKind::InputRevisionMismatch, pattern.node.ordinal());
+      }
+    }
+    for (const auto& expression : candidate.impl->expressions) {
+      if (expression.node.ordinal() >= sourceNodes.size()) {
+        return rejectNode(ir::IrFailureKind::InputRevisionMismatch, expression.node.ordinal());
+      }
+    }
+    for (const auto& function : candidate.impl->functions) {
+      if (function.node.ordinal() >= sourceNodes.size()) {
+        return rejectNode(ir::IrFailureKind::InputRevisionMismatch, function.node.ordinal());
+      }
+    }
+    // Collect claimed AST nodes for the injectivity check.
+    zc::Vector<ast::NodeId> claimedNodes;
+    // Validate value declarations against definitionTypes facts.
+    for (const auto& declaration : candidate.impl->declarations) {
+      const auto sourceNode = sourceFor(declaration.node);
+      if (!sourceNode) continue;
+      claimedNodes.add(sourceNode);
+      if (!tree.contains(sourceNode)) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, declaration.node.ordinal());
+      }
+      auto defTypeIndex = factIndex(facts.definitionTypes(), declaration.definition);
+      if (defTypeIndex == zc::none) {
+        return rejectNode(ir::IrFailureKind::MissingRequiredFact, declaration.node.ordinal());
+      }
+      size_t defTypeSlot = 0;
+      ZC_IF_SOME(value, defTypeIndex) { defTypeSlot = value; }
+      if (facts.definitionTypes().entries()[defTypeSlot].value != declaration.inferredType) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, declaration.node.ordinal());
+      }
+    }
+    // Validate binding patterns against patterns facts.
+    for (const auto& pattern : candidate.impl->patterns) {
+      const auto sourceNode = sourceFor(pattern.node);
+      if (!sourceNode) continue;
+      claimedNodes.add(sourceNode);
+      if (!tree.contains(sourceNode)) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, pattern.node.ordinal());
+      }
+      auto patternFactIndex = factIndex(facts.patterns(), sourceNode);
+      if (patternFactIndex == zc::none) {
+        return rejectNode(ir::IrFailureKind::MissingRequiredFact, pattern.node.ordinal());
+      }
+      size_t patternSlot = 0;
+      ZC_IF_SOME(value, patternFactIndex) { patternSlot = value; }
+      const auto& patternFact = facts.patterns().entries()[patternSlot].value;
+      if (patternFact.bindings.size() != 1 || patternFact.bindings[0].binding != pattern.binding ||
+          patternFact.bindings[0].type != pattern.type ||
+          patternFact.scrutineeType != pattern.scrutineeType ||
+          patternFact.reachable != pattern.reachable) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, pattern.node.ordinal());
+      }
+    }
+    // Validate scalar literal expressions against nodeTypes and literals facts.
+    for (const auto& expression : candidate.impl->expressions) {
+      const auto sourceNode = sourceFor(expression.node);
+      if (!sourceNode) continue;
+      claimedNodes.add(sourceNode);
+      if (!tree.contains(sourceNode)) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, expression.node.ordinal());
+      }
+      auto nodeTypeIndex = factIndex(facts.nodeTypes(), sourceNode);
+      auto literalFactIndex = factIndex(facts.literals(), sourceNode);
+      if (nodeTypeIndex == zc::none || literalFactIndex == zc::none) {
+        return rejectNode(ir::IrFailureKind::MissingRequiredFact, expression.node.ordinal());
+      }
+      size_t nodeTypeSlot = 0;
+      size_t literalSlot = 0;
+      ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
+      ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+      const auto& nodeType = facts.nodeTypes().entries()[nodeTypeSlot].value;
+      const auto& literalFact = facts.literals().entries()[literalSlot].value;
+      if (nodeType != expression.type || literalFact.type != expression.type ||
+          !sameConstant(literalFact.literal, expression.value, module, registries, semanticTypes)) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, expression.node.ordinal());
+      }
+    }
+    // Validate function declarations against the AST tree.
+    for (const auto& function : candidate.impl->functions) {
+      const auto sourceNode = sourceFor(function.node);
+      if (!sourceNode) continue;
+      claimedNodes.add(sourceNode);
+      if (!tree.contains(sourceNode)) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, function.node.ordinal());
+      }
+      const auto& sourceNodeData = tree.node(sourceNode);
+      if (sourceNodeData.kind != ast::SyntaxKind::FunctionDecl &&
+          sourceNodeData.kind != ast::SyntaxKind::MethodDecl) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, function.node.ordinal());
+      }
+    }
+    // Injectivity: no two HIR nodes may claim the same AST node. Sort the
+    // claimed nodes and check for adjacent duplicates.
+    for (size_t i = 1; i < claimedNodes.size(); ++i) {
+      const auto current = claimedNodes[i];
+      size_t j = i;
+      while (j > 0 && claimedNodes[j - 1].value > current.value) {
+        claimedNodes[j] = claimedNodes[j - 1];
+        --j;
+      }
+      claimedNodes[j] = current;
+    }
+    for (size_t i = 1; i < claimedNodes.size(); ++i) {
+      if (claimedNodes[i] == claimedNodes[i - 1]) {
+        return rejectNode(ir::IrFailureKind::InvalidFact, claimedNodes[i].value);
+      }
+    }
+  }
+
   for (size_t sourceIndex = 0; sourceIndex < declarationCount; ++sourceIndex) {
     const auto index = static_cast<uint32_t>(sourceIndex);
     const auto& declaration = candidate.impl->declarations[index];
