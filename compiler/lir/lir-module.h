@@ -223,6 +223,37 @@ private:
   uint32_t localSlot = 0;
 };
 
+/// \brief One immutable aggregate constant carried by a LIR aggregate type.
+///
+/// The fields are ordered constant operands whose carriers match the
+/// aggregate type's field types one-to-one. This is the literal aggregate
+/// value that an aggregate-returning terminator or an aggregate-construction
+/// operation materializes. Field values are scalar (integer or float) in
+/// this slice; nested aggregate constants are a later step.
+class AggregateConstant final {
+public:
+  /// \brief Builds an aggregate constant for an aggregate carrier.
+  /// \param carrier Aggregate SSA carrier occupying the value.
+  /// \param fields Ordered constant field values; each must be a constant
+  ///        (never a local use) whose carrier matches the corresponding
+  ///        aggregate field type.
+  /// \return The constant, or none when the carrier is not an aggregate,
+  ///         the field count differs, a field is a local use, or a field
+  ///         carrier does not match.
+  ZC_NODISCARD static zc::Maybe<AggregateConstant> from(ValueType carrier,
+                                                        zc::Vector<Operand>&& fields) noexcept;
+
+  ZC_NODISCARD const ValueType& carrier() const noexcept { return carrierValue; }
+  ZC_NODISCARD zc::ArrayPtr<const Operand> fields() const noexcept { return fieldsValue.asPtr(); }
+
+private:
+  AggregateConstant(ValueType carrier, zc::Vector<Operand>&& fields) noexcept
+      : carrierValue(zc::mv(carrier)), fieldsValue(zc::mv(fields)) {}
+
+  ValueType carrierValue;
+  zc::Vector<Operand> fieldsValue;
+};
+
 /// \brief Closed LIR statement kind.
 enum class StatementKind : uint8_t {
   Assign = 0x01,
@@ -231,11 +262,15 @@ enum class StatementKind : uint8_t {
   LoadField = 0x04,
   StoreField = 0x05,
   Arithmetic = 0x06,
+  ExtractField = 0x07,
+  InsertField = 0x08,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
 /// take the address of a whole slot, load one field of a folded aggregate
-/// addressed through a pointer slot, or store one operand into such a field.
+/// addressed through a pointer slot, store one operand into such a field,
+/// extract one field of an aggregate-typed local into a destination, or
+/// insert one operand into an aggregate-typed local producing a new aggregate.
 ///
 /// `Assign` stores `value` into `destinationOrdinal`. `Compare` stores the
 /// one-bit result of `op` applied to `left` and `right` into the destination.
@@ -247,7 +282,12 @@ enum class StatementKind : uint8_t {
 /// slot (a shared-receiver `this` field read). `StoreField` has no destination
 /// slot: it stores `storedValue` `fieldOffsetBytes` bytes into the aggregate
 /// addressed by the opaque pointer held in the base slot (a mutating-receiver
-/// `this.field = value` write). Locals are addressed by one-based ordinal.
+/// `this.field = value` write).
+/// `ExtractField` stores into the destination the value of field
+/// `fieldIndex` of the aggregate-typed `sourceOrdinal` slot. `InsertField`
+/// stores into the destination a new aggregate equal to `sourceOrdinal` with
+/// field `fieldIndex` replaced by `storedValue`. Locals are addressed by
+/// one-based ordinal.
 class Statement final {
 public:
   ZC_NODISCARD static Statement assign(uint32_t destinationOrdinal, Operand value) noexcept;
@@ -278,6 +318,17 @@ public:
   /// names no destination slot.
   ZC_NODISCARD static Statement storeField(uint32_t basePointerOrdinal, Operand value,
                                            uint32_t fieldOffsetBytes) noexcept;
+  /// \brief Extracts one field of an aggregate-typed local into a destination
+  /// slot. The source must be a declared local whose carrier is an aggregate;
+  /// the destination carrier must match the named field's type.
+  ZC_NODISCARD static Statement extractField(uint32_t destinationOrdinal, uint32_t sourceOrdinal,
+                                             uint32_t fieldIndex) noexcept;
+  /// \brief Inserts one operand into an aggregate-typed local, producing a new
+  /// aggregate in the destination. The aggregate operand and destination must
+  /// share one aggregate carrier; the inserted value's carrier must match the
+  /// named field's type.
+  ZC_NODISCARD static Statement insertField(uint32_t destinationOrdinal, uint32_t aggregateOrdinal,
+                                            uint32_t fieldIndex, Operand value) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
@@ -287,6 +338,10 @@ public:
   ZC_NODISCARD uint32_t basePointerOrdinal() const noexcept { return leftValue.localOrdinal(); }
   ZC_NODISCARD const Operand& storedValue() const noexcept { return rightValue; }
   ZC_NODISCARD uint32_t fieldOffsetBytes() const noexcept { return fieldOffsetValue; }
+  /// \brief The zero-based field index for an ExtractField or InsertField
+  /// statement. This reuses the field-offset storage; the two accessors name
+  /// the same slot with the semantics each statement kind requires.
+  ZC_NODISCARD uint32_t fieldIndex() const noexcept { return fieldOffsetValue; }
   ZC_NODISCARD ComparisonOp comparisonOp() const noexcept { return opValue; }
   ZC_NODISCARD ArithmeticOp arithmeticOp() const noexcept { return arithmeticOpValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }

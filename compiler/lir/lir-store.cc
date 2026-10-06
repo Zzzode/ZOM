@@ -74,6 +74,45 @@ ValueType ValueType::unit() noexcept {
   return type;
 }
 
+zc::Maybe<ValueType> ValueType::aggregate(zc::Vector<AggregateField>&& fields) noexcept {
+  if (fields.size() == 0 || fields.size() > kMaxAggregateFields) { return zc::none; }
+  ValueType type;
+  type.kindValue = ValueTypeKind::Aggregate;
+  type.aggregateFieldsValue = zc::mv(fields);
+  return type;
+}
+
+ValueType::ValueType() noexcept = default;
+ValueType::~ValueType() = default;
+
+ValueType::ValueType(const ValueType& other)
+    : kindValue(other.kindValue),
+      integerValue(other.integerValue),
+      floatValue(other.floatValue),
+      addressSpaceValue(other.addressSpaceValue),
+      aggregateFieldsValue(other.aggregateFieldsValue.size()) {
+  for (const auto& field : other.aggregateFieldsValue) {
+    aggregateFieldsValue.add(AggregateField{zc::str(field.name), field.type});
+  }
+}
+
+ValueType& ValueType::operator=(const ValueType& other) {
+  if (this != &other) {
+    kindValue = other.kindValue;
+    integerValue = other.integerValue;
+    floatValue = other.floatValue;
+    addressSpaceValue = other.addressSpaceValue;
+    aggregateFieldsValue = zc::Vector<AggregateField>(other.aggregateFieldsValue.size());
+    for (const auto& field : other.aggregateFieldsValue) {
+      aggregateFieldsValue.add(AggregateField{zc::str(field.name), field.type});
+    }
+  }
+  return *this;
+}
+
+ValueType::ValueType(ValueType&& other) noexcept = default;
+ValueType& ValueType::operator=(ValueType&& other) noexcept = default;
+
 bool ValueType::operator==(const ValueType& other) const noexcept {
   if (kindValue != other.kindValue) { return false; }
   switch (kindValue) {
@@ -85,6 +124,13 @@ bool ValueType::operator==(const ValueType& other) const noexcept {
       return addressSpaceValue == other.addressSpaceValue;
     case ValueTypeKind::Unit:
       return true;
+    case ValueTypeKind::Aggregate: {
+      if (aggregateFieldsValue.size() != other.aggregateFieldsValue.size()) { return false; }
+      for (size_t i = 0; i < aggregateFieldsValue.size(); ++i) {
+        if (aggregateFieldsValue[i] != other.aggregateFieldsValue[i]) { return false; }
+      }
+      return true;
+    }
   }
   return false;
 }

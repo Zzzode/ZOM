@@ -32,6 +32,18 @@ zc::Maybe<StringConstant> StringConstant::from(ValueType carrier,
   return StringConstant(carrier, zc::mv(bytes));
 }
 
+zc::Maybe<AggregateConstant> AggregateConstant::from(ValueType carrier,
+                                                     zc::Vector<Operand>&& fields) noexcept {
+  if (carrier.kind() != ValueTypeKind::Aggregate) { return zc::none; }
+  auto fieldTypes = carrier.aggregateFields();
+  if (fields.size() != fieldTypes.size()) { return zc::none; }
+  for (size_t i = 0; i < fields.size(); ++i) {
+    if (!fields[i].isConstant()) { return zc::none; }
+    if (fields[i].constantCarrier() != fieldTypes[i].type) { return zc::none; }
+  }
+  return AggregateConstant(zc::mv(carrier), zc::mv(fields));
+}
+
 Operand Operand::constant(IntegerConstant value) noexcept { return Operand(value); }
 Operand Operand::constant(FloatConstant value) noexcept { return Operand(zc::mv(value)); }
 Operand Operand::localUse(uint32_t localOrdinal) noexcept { return Operand(localOrdinal); }
@@ -76,6 +88,20 @@ Statement Statement::storeField(uint32_t basePointerOrdinal, Operand value,
   Operand base = Operand::localUse(basePointerOrdinal);
   return Statement(StatementKind::StoreField, /*destinationOrdinal=*/0, ComparisonOp::Eq, base,
                    zc::mv(value), fieldOffsetBytes);
+}
+
+Statement Statement::extractField(uint32_t destinationOrdinal, uint32_t sourceOrdinal,
+                                  uint32_t fieldIndex) noexcept {
+  Operand source = Operand::localUse(sourceOrdinal);
+  return Statement(StatementKind::ExtractField, destinationOrdinal, ComparisonOp::Eq, source,
+                   source, fieldIndex);
+}
+
+Statement Statement::insertField(uint32_t destinationOrdinal, uint32_t aggregateOrdinal,
+                                 uint32_t fieldIndex, Operand value) noexcept {
+  Operand aggregate = Operand::localUse(aggregateOrdinal);
+  return Statement(StatementKind::InsertField, destinationOrdinal, ComparisonOp::Eq, aggregate,
+                   zc::mv(value), fieldIndex);
 }
 
 // A never-read placeholder constant for terminators that carry no integer

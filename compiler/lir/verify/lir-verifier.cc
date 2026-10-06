@@ -386,6 +386,74 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             }
             break;
           }
+          case StatementKind::ExtractField: {
+            // The destination holds the extracted field's carrier; the source
+            // must be a declared aggregate local and the field index must be
+            // in range.
+            const Operand& source = statement.source();
+            if (source.isConstant()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            auto sourceSlotFinding =
+                requireSlot(source.localOrdinal(), blockOrdinal, statementIndex);
+            if (sourceSlotFinding != zc::none) return sourceSlotFinding;
+            const ValueType* sourceCarrier = declaredSlotCarrier(function, source.localOrdinal());
+            if (sourceCarrier == nullptr || sourceCarrier->kind() != ValueTypeKind::Aggregate) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const auto fields = sourceCarrier->aggregateFields();
+            if (statement.fieldIndex() >= fields.size()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            if (destinationCarrier != fields[statement.fieldIndex()].type) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            break;
+          }
+          case StatementKind::InsertField: {
+            // The destination and the aggregate operand must share one
+            // aggregate carrier; the inserted value's carrier must match the
+            // named field's type.
+            const Operand& aggregate = statement.source();
+            if (aggregate.isConstant()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            auto aggregateSlotFinding =
+                requireSlot(aggregate.localOrdinal(), blockOrdinal, statementIndex);
+            if (aggregateSlotFinding != zc::none) return aggregateSlotFinding;
+            const ValueType* aggregateCarrier =
+                declaredSlotCarrier(function, aggregate.localOrdinal());
+            if (aggregateCarrier == nullptr || *aggregateCarrier != destinationCarrier ||
+                destinationCarrier.kind() != ValueTypeKind::Aggregate) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const auto fields = destinationCarrier.aggregateFields();
+            if (statement.fieldIndex() >= fields.size()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const Operand& value = statement.storedValue();
+            const ValueType* valueCarrier = nullptr;
+            if (value.isConstant()) {
+              valueCarrier = &value.constantCarrier();
+            } else {
+              auto valueSlotFinding =
+                  requireSlot(value.localOrdinal(), blockOrdinal, statementIndex);
+              if (valueSlotFinding != zc::none) return valueSlotFinding;
+              valueCarrier = operandSlotCarrier(function, value);
+            }
+            if (valueCarrier == nullptr || *valueCarrier != fields[statement.fieldIndex()].type) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            break;
+          }
           case StatementKind::StoreField:
             // Validated before the destination-oriented switch; unreachable here.
             return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,

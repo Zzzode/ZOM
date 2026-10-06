@@ -33,7 +33,15 @@ enum class ValueTypeKind : uint8_t {
   Float = 0x02,
   Pointer = 0x03,
   Unit = 0x04,
+  Aggregate = 0x05,
 };
+
+/// \brief Upper bound on the field count of an aggregate SSA carrier.
+///
+/// An aggregate carrier packs its fields into a literal struct. This first
+/// slice caps the field count so the carrier cannot describe an unbounded
+/// struct; a wider bound is a later step.
+inline constexpr uint32_t kMaxAggregateFields = 64;
 
 /// \brief Closed integer carrier width in bits (RFC 0021 `IntegerBitWidth`).
 enum class IntegerBitWidth : uint8_t {
@@ -50,13 +58,35 @@ enum class FloatFormat : uint8_t {
   Binary64 = 0x02,
 };
 
+/// \brief One immutable aggregate field descriptor: a field name and its
+/// carrier type. Defined after `ValueType` because the field carries a
+/// `ValueType` directly.
+struct AggregateField;
+
 /// \brief One immutable SSA carrier type record.
 ///
 /// `Integer` has no signedness and `Pointer` is opaque, carrying only an
-/// address space, exactly as RFC 0021 requires. Construction fails closed on an
-/// out-of-domain width or format.
+/// address space, exactly as RFC 0021 requires. `Aggregate` carries an
+/// ordered sequence of named fields, each with its own carrier type.
+/// Construction fails closed on an out-of-domain width or format, an empty
+/// aggregate, or an aggregate above the field cap.
+///
+/// The aggregate field vector makes this type move-only by default; an
+/// explicit deep-copy constructor and copy assignment keep the scalar
+/// carrier copy semantics that the LIR module, constants, and translator
+/// rely on. The destructor and move operations are defined out-of-line so
+/// the incomplete `AggregateField` type is complete when the vector's
+/// owning operations are instantiated.
 class ValueType final {
 public:
+  ValueType() noexcept;
+  ~ValueType();
+
+  ValueType(const ValueType& other);
+  ValueType& operator=(const ValueType& other);
+  ValueType(ValueType&& other) noexcept;
+  ValueType& operator=(ValueType&& other) noexcept;
+
   /// \brief Builds an integer carrier of the given closed bit width.
   ZC_NODISCARD static zc::Maybe<ValueType> integer(IntegerBitWidth width) noexcept;
   /// \brief Builds a floating-point carrier of the given closed format.
@@ -66,11 +96,21 @@ public:
   /// \brief Builds the zero-sized unit carrier of a void/unit-returning
   /// function or a discarded call result.
   ZC_NODISCARD static ValueType unit() noexcept;
+  /// \brief Builds an aggregate carrier from ordered named fields.
+  /// \param fields Ordered field descriptors; each names a field and its
+  ///        carrier type. Must be non-empty and within `kMaxAggregateFields`.
+  /// \return The carrier, or none for an empty or over-cap field vector.
+  ZC_NODISCARD static zc::Maybe<ValueType> aggregate(zc::Vector<AggregateField>&& fields) noexcept;
 
   ZC_NODISCARD ValueTypeKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD IntegerBitWidth integerWidth() const noexcept { return integerValue; }
   ZC_NODISCARD FloatFormat floatFormat() const noexcept { return floatValue; }
   ZC_NODISCARD uint32_t pointerAddressSpace() const noexcept { return addressSpaceValue; }
+  /// \brief The ordered fields of an aggregate carrier. Empty for every
+  /// scalar kind.
+  ZC_NODISCARD zc::ArrayPtr<const AggregateField> aggregateFields() const noexcept {
+    return aggregateFieldsValue.asPtr();
+  }
 
   bool operator==(const ValueType& other) const noexcept;
   bool operator!=(const ValueType& other) const noexcept { return !(*this == other); }
@@ -80,6 +120,27 @@ private:
   IntegerBitWidth integerValue = IntegerBitWidth::Bit1;
   FloatFormat floatValue = FloatFormat::Binary32;
   uint32_t addressSpaceValue = 0;
+  zc::Vector<AggregateField> aggregateFieldsValue;
+};
+
+/// \brief One immutable aggregate field descriptor: a field name and its
+/// carrier type.
+///
+/// Fields are ordered; the name is metadata for debugging and field lookup.
+/// The carrier is the SSA type of the field's value. The copy constructor is
+/// deleted because `zc::String` is move-only; construct a new field with
+/// `zc::str(name)` to deep-copy.
+struct AggregateField final {
+  zc::String name;
+  ValueType type;
+
+  AggregateField(zc::String&& fieldName, ValueType fieldType) noexcept
+      : name(zc::mv(fieldName)), type(zc::mv(fieldType)) {}
+
+  bool operator==(const AggregateField& other) const noexcept {
+    return name == other.name && type == other.type;
+  }
+  bool operator!=(const AggregateField& other) const noexcept { return !(*this == other); }
 };
 
 /// \brief One immutable scalar storage-layout record (RFC 0021 layout model).
