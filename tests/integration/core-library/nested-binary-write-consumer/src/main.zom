@@ -1,0 +1,11 @@
+// Nested binary write fixture: a parameter-free entry that initializes a
+// mutable local, overwrites it with a nested binary expression whose left
+// operand is itself a binary (`x = (x + 1) * 2`), and returns the result.
+// The nested binary lowers to a MIR temporary; the function folds to the
+// reserved no-argument `zom.module_init` entry the runtime `_start` calls,
+// so `zomc run` executes it natively and exits 4.
+fn entry() -> i32 {
+  mut x = 1;
+  x = (x + 1) * 2;
+  return x;
+}

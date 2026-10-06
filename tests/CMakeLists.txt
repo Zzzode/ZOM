@@ -218,6 +218,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-multiply-consumer/Zom.toml::binary_write_multiply_consumer::binary_write_multiply_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-binary-write-consumer/Zom.toml::nested_binary_write_consumer::nested_binary_write_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/multi-compound-assign-consumer/Zom.toml::multi_compound_assign_consumer::multi_compound_assign_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-increment-consumer/Zom.toml::postfix_increment_consumer::postfix_increment_consumer"
@@ -376,6 +378,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-subtraction-consumer/Zom.toml::binary_write_subtraction_consumer::binary_write_subtraction_consumer::1"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-write-multiply-consumer/Zom.toml::binary_write_multiply_consumer::binary_write_multiply_consumer::9"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-binary-write-consumer/Zom.toml::nested_binary_write_consumer::nested_binary_write_consumer::4"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/multi-compound-assign-consumer/Zom.toml::multi_compound_assign_consumer::multi_compound_assign_consumer::41"
       --run-case

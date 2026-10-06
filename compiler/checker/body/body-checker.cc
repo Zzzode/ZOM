@@ -1023,7 +1023,8 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
   // A write value is a scalar literal, an identifier reference (a parameter or
   // an earlier local, resolved downstream and lowered to a copy/move place-use),
   // or a primitive binary operation whose operands each follow the same rule
-  // (each a scalar literal or an identifier reference, with at least one
+  // (each a scalar literal, an identifier reference, or a one-level nested
+  // binary with leaf operands and at least one identifier, with at least one
   // reference). Every form keeps the write's target-type fact intact. Operator
   // support is decided at the RHS binary's own production site; this structural
   // check only admits the write shape.
@@ -1039,11 +1040,32 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
       const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
       const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
       if (tree.contains(binaryLeft) && tree.contains(binaryRight)) {
+        auto isLeaf = [&](ast::NodeId operand) {
+          return tree.node(operand).kind == ast::SyntaxKind::IdentExpr ||
+                 isScalarLiteral(tree.node(operand).kind);
+        };
+        auto isNested = [&](ast::NodeId operand) {
+          if (tree.node(operand).kind != ast::SyntaxKind::BinaryExpr) return false;
+          const ast::NodeId innerLeft(tree.node(operand).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId innerRight(tree.node(operand).payload.words[ast::kBinaryExprRhsWord]);
+          if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return false;
+          const bool innerLeftIdent = tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr;
+          const bool innerRightIdent = tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr;
+          return isLeaf(innerLeft) && isLeaf(innerRight) && (innerLeftIdent || innerRightIdent);
+        };
         const bool leftIdent = tree.node(binaryLeft).kind == ast::SyntaxKind::IdentExpr;
         const bool rightIdent = tree.node(binaryRight).kind == ast::SyntaxKind::IdentExpr;
-        const bool leftOk = leftIdent || isScalarLiteral(tree.node(binaryLeft).kind);
-        const bool rightOk = rightIdent || isScalarLiteral(tree.node(binaryRight).kind);
-        binary = leftOk && rightOk && (leftIdent || rightIdent);
+        const bool leftNested = isNested(binaryLeft);
+        const bool rightNested = isNested(binaryRight);
+        if (leftNested && rightNested) {
+          binary = false;
+        } else {
+          const bool leftOk =
+              leftIdent || isScalarLiteral(tree.node(binaryLeft).kind) || leftNested;
+          const bool rightOk =
+              rightIdent || isScalarLiteral(tree.node(binaryRight).kind) || rightNested;
+          binary = leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
+        }
       }
     }
   }
@@ -3277,7 +3299,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const bool rightIsNested = tree.node(right).kind == ast::SyntaxKind::BinaryExpr;
   // Exactly one operand may be nested in this slice; both operands nested stays
   // unsupported so its existing rejection stands.
-  if (leftIsNested && rightIsNested) return zc::none;
+  if (leftIsNested && rightIsNested) { return zc::none; }
   const bool leftIsReference =
       tree.node(left).kind == ast::SyntaxKind::IdentExpr && referenceType(left) != zc::none;
   const bool rightIsReference =
@@ -3292,8 +3314,8 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
       receiverFieldType(right) != zc::none;
   auto leftNestedType = leftIsNested ? nestedBinaryResultType(left) : zc::none;
   auto rightNestedType = rightIsNested ? nestedBinaryResultType(right) : zc::none;
-  if (leftIsNested && leftNestedType == zc::none) return zc::none;
-  if (rightIsNested && rightNestedType == zc::none) return zc::none;
+  if (leftIsNested && leftNestedType == zc::none) { return zc::none; }
+  if (rightIsNested && rightNestedType == zc::none) { return zc::none; }
   if ((!leftIsReference && !leftIsLiteral && !leftIsNested && !leftIsReceiverField) ||
       (!rightIsReference && !rightIsLiteral && !rightIsNested && !rightIsReceiverField)) {
     return zc::none;
@@ -3333,7 +3355,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     operandType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
                                                     input.semanticTypes, node);
   }
-  if (operandType == zc::none) return zc::none;
+  if (operandType == zc::none) { return zc::none; }
   identity::SemanticTypeId operand;
   ZC_IF_SOME(value, operandType) { operand = value; }
   {

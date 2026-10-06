@@ -365,7 +365,6 @@ bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   const ast::NodeId left(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return false;
-  // A leaf operand is an identifier or a scalar literal, never a further binary.
   auto isLeaf = [&](ast::NodeId operand) {
     return tree.node(operand).kind == ast::SyntaxKind::IdentExpr ||
            isScalarLiteral(tree.node(operand).kind);
@@ -389,7 +388,8 @@ bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value) {
   const bool rightIdent = tree.node(right).kind == ast::SyntaxKind::IdentExpr;
   const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind) || leftNested;
   const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind) || rightNested;
-  return leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
+  const bool result = leftOk && rightOk && (leftIdent || rightIdent || leftNested || rightNested);
+  return result;
 }
 
 // A field-comparison binary is a binary expression whose one operand is a dot
@@ -1860,9 +1860,11 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
 }
 
 bool requiresFunctionBodyFailure(const ast::Tree& tree, const ast::Node& function) {
-  if (isAdmittedFunctionBody(tree, function)) return false;
+  const bool admitted = isAdmittedFunctionBody(tree, function);
+  if (admitted) return false;
   const ast::NodeId body(function.payload.words[ast::kFunctionDeclBodyWord]);
-  return !tree.contains(body) || !hasSpecificSurfaceFailure(tree, body);
+  const bool hasSpecific = tree.contains(body) && hasSpecificSurfaceFailure(tree, body);
+  return !hasSpecific;
 }
 
 }  // namespace

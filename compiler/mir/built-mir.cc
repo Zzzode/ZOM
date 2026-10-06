@@ -6518,13 +6518,31 @@ bool validLocalBinaryOverwriteReturnFunction(
   return false;
 }
 
+/// \brief Counts the nested binary operands under a HIR binary node.
+///
+/// Each nested HirPrimitiveBinaryExpression in the left or right subtree
+/// (excluding the root) requires one temporary local in the MIR body.
+size_t countNestedBinaryOperands(const hir::HirPrimitiveBinaryExpression& binary,
+                                 const hir::VerifiedHirModule& hirModule) {
+  size_t count = 0;
+  auto countOperand = [&](hir::HirNodeId node) {
+    if (auto nested = primitiveBinaryFor(hirModule, node); nested != zc::none) {
+      count += 1 + countNestedBinaryOperands(ZC_ASSERT_NONNULL(nested), hirModule);
+    }
+  };
+  countOperand(binary.left);
+  countOperand(binary.right);
+  return count;
+}
+
 /// \brief Validates a single user-local body with one or more overwrite writes.
 ///
 /// `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`. The MIR body
 /// has one user local, one entry block with StorageLive, an Initialize Assign,
 /// one Overwrite Assign per write, and a Return terminator. A binary write value
 /// lowers to an Arithmetic rvalue whose operands are constants, parameter
-/// place-uses, or a place-use of the user local.
+/// place-uses, a place-use of the user local, or place-uses of temporary
+/// locals assigned by nested arithmetic rvalues.
 bool validLocalWriteReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -6536,12 +6554,25 @@ bool validLocalWriteReturnFunction(
   const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
   const auto userLocalId = localId(parameterCount + 1);
   const size_t writeCount = sourceBlock.statements.size() - 2;
+  // Count the total number of nested binary operands (temporaries) across all
+  // writes. Each nested HirPrimitiveBinaryExpression in a write binary's
+  // operand tree requires one temporary local and two statements
+  // (StorageLive + Initialize Assign).
+  size_t tempCount = 0;
+  for (size_t i = 0; i < writeCount; ++i) {
+    auto sourceWrite = localWriteFor(hirModule, sourceBlock.statements[1 + i]);
+    if (sourceWrite == zc::none) return false;
+    if (auto writeBinary = primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(sourceWrite).value);
+        writeBinary != zc::none) {
+      tempCount += countNestedBinaryOperands(ZC_ASSERT_NONNULL(writeBinary), hirModule);
+    }
+  }
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
-      function.locals.size() != parameterCount + 1u || function.blocks.size() != 1 ||
-      declaration.body != sourceBlock.node || sourceBlock.statements.size() < 3 ||
-      sourceBlock.statements[0] != sourceLocal.node ||
+      function.locals.size() != parameterCount + 1u + static_cast<uint32_t>(tempCount) ||
+      function.blocks.size() != 1 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() < 3 || sourceBlock.statements[0] != sourceLocal.node ||
       sourceBlock.statements[sourceBlock.statements.size() - 1] != sourceReturn.node ||
       sourceReturn.value != reference.node || sourceLocal.local != reference.local ||
       sourceLocal.type != declaration.resultType || reference.type != sourceLocal.type ||
@@ -6566,7 +6597,7 @@ bool validLocalWriteReturnFunction(
   if (local.id != userLocalId || local.kind != MirLocalKind::UserLocal ||
       local.type != sourceLocal.type || local.sourceScope != scope.id ||
       !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) || block.id != blockId(1) ||
-      block.sourceScope != scope.id || block.statements.size() != 2 + writeCount ||
+      block.sourceScope != scope.id || block.statements.size() != 2 + writeCount + 2 * tempCount ||
       block.statements[0].kind() != MirStatementKind::StorageLive ||
       block.statements[0].storageLocal() != userLocalId ||
       !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
@@ -6576,6 +6607,29 @@ bool validLocalWriteReturnFunction(
       block.terminator.returnValue().value == zc::none ||
       !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
+  }
+  // Validate that the additional locals are temporaries.
+  for (size_t t = 0; t < tempCount; ++t) {
+    const auto& temp = function.locals[parameterCount + 1 + t];
+    if (temp.kind != MirLocalKind::Temporary) return false;
+  }
+  // Build a map from temporary local id to the Initialize Assign statement
+  // that writes to it. Used by operandMatches to validate nested binary
+  // operands.
+  zc::Vector<const MirStatement*> tempAssign;
+  tempAssign.resize(function.locals.size() + 1);
+  for (size_t i = 0; i < tempAssign.size(); ++i) { tempAssign[i] = nullptr; }
+  for (size_t s = 0; s < block.statements.size(); ++s) {
+    const auto& stmt = block.statements[s];
+    if (stmt.kind() == MirStatementKind::Assign) {
+      const auto& assign = stmt.assignmentValue();
+      if (assign.initialization == MirInitializationKind::Initialize) {
+        const auto ordinal = assign.destination.local().ordinal();
+        if (ordinal > parameterCount + 1 && ordinal <= function.locals.size()) {
+          tempAssign[ordinal] = &stmt;
+        }
+      }
+    }
   }
   // The initialize assignment writes the initializer into the user local.
   const auto& initializeAssign = block.statements[1].assignmentValue();
@@ -6624,8 +6678,8 @@ bool validLocalWriteReturnFunction(
     return false;
   }
   // Validate each overwrite write.
-  auto operandMatches = [&](const MirOperand& operand, hir::HirNodeId operandNode,
-                            identity::SemanticTypeId operandType) -> bool {
+  auto operandMatchesImpl = [&](auto&& self, const MirOperand& operand, hir::HirNodeId operandNode,
+                                identity::SemanticTypeId operandType) -> bool {
     auto operandLiteral = expressionFor(hirModule, operandNode);
     ZC_IF_SOME(literalValue, operandLiteral) {
       return operand.kind() == MirOperandKind::Constant &&
@@ -6659,8 +6713,56 @@ bool validLocalWriteReturnFunction(
              operand.place().resultType() == operandType &&
              operand.place().projections().size() == 0;
     }
+    // A nested binary operand: the MIR operand is a place-use of a temporary
+    // local assigned by an Arithmetic rvalue. Validate the temporary's
+    // assignment and recursively match the rvalue's operands.
+    auto nestedBinary = primitiveBinaryFor(hirModule, operandNode);
+    ZC_IF_SOME(binary, nestedBinary) {
+      if (binary.type != operandType) return false;
+      if (operand.kind() != MirOperandKind::Copy && operand.kind() != MirOperandKind::Move) {
+        return false;
+      }
+      const auto& place = operand.place();
+      if (place.rootType() != operandType || place.resultType() != operandType ||
+          place.projections().size() != 0) {
+        return false;
+      }
+      const auto tempOrdinal = place.local().ordinal();
+      if (tempOrdinal <= parameterCount + 1 || tempOrdinal > function.locals.size()) {
+        return false;
+      }
+      const auto& tempLocal = function.locals[tempOrdinal - 1];
+      if (tempLocal.kind != MirLocalKind::Temporary || tempLocal.type != binary.type) {
+        return false;
+      }
+      const auto* assignStmt = tempAssign[tempOrdinal];
+      if (assignStmt == nullptr) return false;
+      if (assignStmt->kind() != MirStatementKind::Assign) return false;
+      const auto& tempAssignValue = assignStmt->assignmentValue();
+      if (tempAssignValue.initialization != MirInitializationKind::Initialize ||
+          tempAssignValue.destination.local() != place.local() ||
+          tempAssignValue.destination.rootType() != binary.type ||
+          tempAssignValue.destination.resultType() != binary.type ||
+          tempAssignValue.destination.projections().size() != 0) {
+        return false;
+      }
+      auto arithmetic = mirArithmeticOperatorFor(binary.operation);
+      if (arithmetic == zc::none) return false;
+      if (tempAssignValue.value.kind() != MirRvalueKind::Arithmetic) return false;
+      const auto& rvalue = tempAssignValue.value.arithmeticValue();
+      return rvalue.op == ZC_ASSERT_NONNULL(arithmetic) && rvalue.resultType == binary.type &&
+             self(self, rvalue.left, binary.left, binary.operandType) &&
+             self(self, rvalue.right, binary.right, binary.operandType);
+    }
     return false;
   };
+  auto operandMatches = [&](const MirOperand& operand, hir::HirNodeId node,
+                            identity::SemanticTypeId type) {
+    return operandMatchesImpl(operandMatchesImpl, operand, node, type);
+  };
+  // Walk the statements, skipping temporary StorageLive + Assign pairs and
+  // validating each Overwrite Assign.
+  size_t stmtCursor = 2;  // Start after StorageLive(userLocal) + Initialize Assign.
   for (size_t i = 0; i < writeCount; ++i) {
     auto sourceWrite = localWriteFor(hirModule, sourceBlock.statements[1 + i]);
     if (sourceWrite == zc::none) { return false; }
@@ -6669,13 +6771,36 @@ bool validLocalWriteReturnFunction(
         write.local != sourceLocal.local || write.type != sourceLocal.type) {
       return false;
     }
-    const auto& assign = block.statements[2 + i].assignmentValue();
-    if (block.statements[2 + i].kind() != MirStatementKind::Assign ||
+    // Count and skip temporary statements for this write.
+    size_t writeTempCount = 0;
+    if (auto writeBinary = primitiveBinaryFor(hirModule, write.value); writeBinary != zc::none) {
+      writeTempCount = countNestedBinaryOperands(ZC_ASSERT_NONNULL(writeBinary), hirModule);
+    }
+    for (size_t t = 0; t < writeTempCount; ++t) {
+      if (stmtCursor >= block.statements.size()) return false;
+      const auto& liveStmt = block.statements[stmtCursor];
+      if (liveStmt.kind() != MirStatementKind::StorageLive) return false;
+      const auto tempId = liveStmt.storageLocal();
+      if (tempId.ordinal() <= parameterCount + 1) return false;
+      ++stmtCursor;
+      if (stmtCursor >= block.statements.size()) return false;
+      const auto& assignStmt = block.statements[stmtCursor];
+      if (assignStmt.kind() != MirStatementKind::Assign) return false;
+      const auto& assign = assignStmt.assignmentValue();
+      if (assign.destination.local() != tempId ||
+          assign.initialization != MirInitializationKind::Initialize) {
+        return false;
+      }
+      ++stmtCursor;
+    }
+    if (stmtCursor >= block.statements.size()) return false;
+    const auto& assign = block.statements[stmtCursor].assignmentValue();
+    if (block.statements[stmtCursor].kind() != MirStatementKind::Assign ||
         assign.initialization != MirInitializationKind::Overwrite ||
         assign.destination.local() != userLocalId || assign.destination.rootType() != local.type ||
         assign.destination.resultType() != local.type ||
         assign.destination.projections().size() != 0 ||
-        !sameSpan(block.statements[2 + i].sourceSpan(), write.sourceSpan)) {
+        !sameSpan(block.statements[stmtCursor].sourceSpan(), write.sourceSpan)) {
       return false;
     }
     auto writeLiteral = expressionFor(hirModule, write.value);
@@ -6726,6 +6851,7 @@ bool validLocalWriteReturnFunction(
     } else {
       return false;
     }
+    ++stmtCursor;
   }
   ZC_IF_SOME(value, block.terminator.returnValue().value) {
     bool result = matchesPlaceUse(value, proofs, copy, local.type) &&
@@ -9090,12 +9216,25 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // Binary-write local operands: each local reference that is an operand of a
   // binary write value (`x = x + 1`) materializes a localReference, not a value
   // node, so it joins the RHS checksum as a credit like parameterReturnCount.
+  // A nested binary operand is recursively inspected for local references.
   int64_t binaryWriteLocalOperandCount = 0;
   for (const auto& write : hirModule.localWrites()) {
     auto binary = primitiveBinaryFor(hirModule, write.value);
     ZC_IF_SOME(binaryValue, binary) {
-      for (const auto operand : {binaryValue.left, binaryValue.right}) {
-        if (localReferenceFor(hirModule, operand) != zc::none) { ++binaryWriteLocalOperandCount; }
+      zc::Vector<hir::HirNodeId> pending;
+      pending.add(binaryValue.left);
+      pending.add(binaryValue.right);
+      for (size_t i = 0; i < pending.size(); ++i) {
+        const auto operand = pending[i];
+        if (localReferenceFor(hirModule, operand) != zc::none) {
+          ++binaryWriteLocalOperandCount;
+          continue;
+        }
+        auto nested = primitiveBinaryFor(hirModule, operand);
+        ZC_IF_SOME(nestedValue, nested) {
+          pending.add(nestedValue.left);
+          pending.add(nestedValue.right);
+        }
       }
     }
   }
@@ -16373,7 +16512,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             // `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`.
             // The dedicated verifier re-validates every write and operand.
             if (!valid && sourceBlock != zc::none &&
-                ZC_ASSERT_NONNULL(sourceBlock).statements.size() > 3 &&
+                ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 3 &&
                 sourceOverwrite != zc::none && local.initializer != zc::none) {
               ZC_IF_SOME(reference, localReference) {
                 valid = validLocalWriteReturnFunction(function, sourceDeclaration, block, local,

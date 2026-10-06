@@ -7177,7 +7177,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);
                 }
-                auto verifyWriteOperand = [&](HirNodeId operandId,
+                auto verifyWriteOperand = [&](auto&& self, HirNodeId operandId,
                                               ast::NodeId operandNode) -> bool {
                   auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
                   if (operandSpan == zc::none) return false;
@@ -7201,6 +7201,29 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                            sameConstant(literalValue.value, operandLiteralFact.literal, module,
                                         registries, semanticTypes) &&
                            sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+                  }
+                  // A nested binary operand: find the HirPrimitiveBinaryExpression
+                  // at operandId and recursively verify its two operands.
+                  if (tree.node(operandNode).kind == ast::SyntaxKind::BinaryExpr) {
+                    zc::Maybe<const HirPrimitiveBinaryExpression&> nestedBinary;
+                    for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+                      if (operation.node != operandId) continue;
+                      if (nestedBinary != zc::none) return false;
+                      nestedBinary = operation;
+                    }
+                    if (nestedBinary == zc::none) return false;
+                    const auto& nested = ZC_ASSERT_NONNULL(nestedBinary);
+                    if (nested.type != binaryOperandType ||
+                        nested.category != HirValueCategory::Value ||
+                        !sameSpan(nested.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+                      return false;
+                    }
+                    const ast::NodeId nestedLeft(
+                        tree.node(operandNode).payload.words[ast::kBinaryExprLhsWord]);
+                    const ast::NodeId nestedRight(
+                        tree.node(operandNode).payload.words[ast::kBinaryExprRhsWord]);
+                    return self(self, nested.left, nestedLeft) &&
+                           self(self, nested.right, nestedRight);
                   }
                   // A non-literal operand that names the written user local
                   // (`x = x + 1`) materializes a localReference, not a
@@ -7241,8 +7264,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                          referenceValue.category == HirValueCategory::Place &&
                          sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
                 };
-                if (!verifyWriteOperand(leftOperandId, binaryLeftNode) ||
-                    !verifyWriteOperand(rightOperandId, binaryRightNode)) {
+                if (!verifyWriteOperand(verifyWriteOperand, leftOperandId, binaryLeftNode) ||
+                    !verifyWriteOperand(verifyWriteOperand, rightOperandId, binaryRightNode)) {
                   return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);
@@ -11548,7 +11571,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
     }
     if ((!uninitializedLocal && !returnsParameter && !returnsParameterReborrow &&
-         !initializesFromParameter &&
+         !initializesFromParameter && !hasLocalWrite &&
          (literalExpression == zc::none) == (directCall == zc::none)) ||
         (uninitializedLocal && (literalExpression != zc::none || directCall != zc::none)) ||
         (returnsParameter &&
@@ -11983,10 +12006,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               operationSupported =
                   comparison || (arithmetic && writeValue.type == binaryOperandType);
             }
-            // Verify one operand at a fixed node id against its classification: a
-            // scalar literal or a parameter reference of the operand type. Shared
-            // by the compound-assignment and regular binary write paths.
-            auto verifyWriteOperand = [&](HirNodeId operandId, ast::NodeId operandNode) -> bool {
+            // Verify one operand at a fixed node id against its classification:
+            // a scalar literal, a local/parameter reference, or a nested binary
+            // whose operands are recursively verified. Shared by the
+            // compound-assignment and regular binary write paths.
+            auto verifyWriteOperand = [&](auto&& self, HirNodeId operandId,
+                                          ast::NodeId operandNode) -> bool {
               auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
               if (operandSpan == zc::none) return false;
               if (isScalarLiteral(tree.node(operandNode).kind)) {
@@ -12009,6 +12034,28 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        sameConstant(literalValue.value, operandLiteralFact.literal, module,
                                     registries, semanticTypes) &&
                        sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+              }
+              // A nested binary operand: find the HirPrimitiveBinaryExpression
+              // at operandId and recursively verify its two operands.
+              if (tree.node(operandNode).kind == ast::SyntaxKind::BinaryExpr) {
+                zc::Maybe<const HirPrimitiveBinaryExpression&> nestedBinary;
+                for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+                  if (operation.node != operandId) continue;
+                  if (nestedBinary != zc::none) return false;
+                  nestedBinary = operation;
+                }
+                if (nestedBinary == zc::none) return false;
+                const auto& nested = ZC_ASSERT_NONNULL(nestedBinary);
+                if (nested.type != binaryOperandType ||
+                    nested.category != HirValueCategory::Value ||
+                    !sameSpan(nested.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+                  return false;
+                }
+                const ast::NodeId nestedLeft(
+                    tree.node(operandNode).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId nestedRight(
+                    tree.node(operandNode).payload.words[ast::kBinaryExprRhsWord]);
+                return self(self, nested.left, nestedLeft) && self(self, nested.right, nestedRight);
               }
               // A non-literal operand that names the written user local
               // (`x = x + 1`) materializes a localReference, not a
@@ -12173,8 +12220,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);
                 }
-                if (!verifyWriteOperand(leftOperandId, binaryLeftNode) ||
-                    !verifyWriteOperand(rightOperandId, binaryRightNode)) {
+                if (!verifyWriteOperand(verifyWriteOperand, leftOperandId, binaryLeftNode) ||
+                    !verifyWriteOperand(verifyWriteOperand, rightOperandId, binaryRightNode)) {
                   return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);
@@ -12203,8 +12250,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);
                 }
-                if (!verifyWriteOperand(leftOperandId, binaryLeftNode) ||
-                    !verifyWriteOperand(rightOperandId, binaryRightNode)) {
+                if (!verifyWriteOperand(verifyWriteOperand, leftOperandId, binaryLeftNode) ||
+                    !verifyWriteOperand(verifyWriteOperand, rightOperandId, binaryRightNode)) {
                   return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                       ir::IrFailureKind::InvalidFact, module,
                                                       registries, index + 1);

@@ -21,11 +21,11 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
       ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
   const size_t writeCount = function.localWrites.size();
 
-  // Source-preorder stride matching the generic materializer: function, body,
-  // local, initializer leaf, then per write (write node, write value node),
-  // then return and returned value. A binary write reserves two trailing
-  // operand node ids after the return value (in write order); the write's value
-  // node is the binary node. No receiver/unsafe/loop ids in this family.
+  // Source-preorder stride: function, body, local, initializer leaf, then per
+  // write (write node, write value node), then return and returned value. A
+  // binary write allocates its operand node ids lazily during lowering (a
+  // nested binary operand allocates additional child ids). No
+  // receiver/unsafe/loop ids in this family.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
@@ -38,18 +38,6 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   }
   const HirNodeId returnId = ctx.allocNode(ast::NodeId());
   const HirNodeId valueId = ctx.allocNode(ast::NodeId());
-  zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
-  zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
-  for (const auto& writeValue : function.localWriteValues) {
-    zc::Maybe<HirNodeId> leftId;
-    zc::Maybe<HirNodeId> rightId;
-    if (writeValue.binary != zc::none) {
-      leftId = ctx.allocNode(ast::NodeId());
-      rightId = ctx.allocNode(ast::NodeId());
-    }
-    binaryLeftIds.add(zc::mv(leftId));
-    binaryRightIds.add(zc::mv(rightId));
-  }
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
@@ -92,10 +80,8 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
           parameter.sourceSpan.clone()});
     }
     ZC_IF_SOME(binary, writeValue.binary) {
-      HirNodeId leftId;
-      HirNodeId rightId;
-      ZC_IF_SOME(id, binaryLeftIds[index]) { leftId = id; }
-      ZC_IF_SOME(id, binaryRightIds[index]) { rightId = id; }
+      const HirNodeId leftId = ctx.allocNode(ast::NodeId());
+      const HirNodeId rightId = ctx.allocNode(ast::NodeId());
       ctx.lowerArmLeaf(leftId, binary.left);
       ctx.lowerArmLeaf(rightId, binary.right);
       ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{

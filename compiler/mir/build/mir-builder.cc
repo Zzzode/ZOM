@@ -1284,10 +1284,11 @@ zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(
   const MirLocalId userLocal =
       ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
 
-  // Operand resolver for binary write values: literal, parameter, or the user
-  // local itself (compound assignment desugar).
-  auto operandFor = [&](hir::HirNodeId operandNode,
-                        identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
+  // Operand resolver for binary write values: literal, parameter, the user
+  // local itself (compound assignment desugar), or a nested binary operation
+  // lowered to a temporary local.
+  auto operandForImpl = [&](auto&& self, hir::HirNodeId operandNode,
+                            identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
     if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
       if (ZC_ASSERT_NONNULL(literal).type != operandType) return zc::none;
       return MirOperand::constant(operandType, ZC_ASSERT_NONNULL(literal).value.clone());
@@ -1314,7 +1315,33 @@ zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(
       return placeUse(proofs, copyMarker,
                       MirPlace(userLocal, operandType, zc::mv(projections), operandType));
     }
+    // A nested binary operand: lower it to a temporary local assigned an
+    // arithmetic rvalue, then return a place-use of that temporary.
+    if (auto nestedBinary = primitiveBinaryFor(hirModule, operandNode); nestedBinary != zc::none) {
+      const auto& binary = ZC_ASSERT_NONNULL(nestedBinary);
+      if (binary.type != operandType) return zc::none;
+      auto arithmetic = arithmeticOperatorFor(binary.operation);
+      if (arithmetic == zc::none) return zc::none;
+      auto left = self(self, binary.left, binary.operandType);
+      auto right = self(self, binary.right, binary.operandType);
+      if (left == zc::none || right == zc::none) return zc::none;
+      const MirLocalId temp =
+          ctx.declareLocal(MirLocalKind::Temporary, binary.type, scope, binary.sourceSpan.clone());
+      ctx.appendStatement(MirStatement::storageLive(temp, binary.sourceSpan.clone()));
+      zc::Vector<MirProjection> projections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(temp, binary.type, zc::mv(projections), binary.type),
+          MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                zc::mv(ZC_ASSERT_NONNULL(right)), binary.type),
+          MirInitializationKind::Initialize, binary.sourceSpan.clone()));
+      zc::Vector<MirProjection> tempProjections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(temp, operandType, zc::mv(tempProjections), operandType));
+    }
     return zc::none;
+  };
+  auto operandFor = [&](hir::HirNodeId node, identity::SemanticTypeId type) {
+    return operandForImpl(operandForImpl, node, type);
   };
 
   const MirBlockId entry = ctx.beginBlock(scope);

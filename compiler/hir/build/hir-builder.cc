@@ -5458,16 +5458,92 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            // Build one binary operand: a parameter operand resolves to a
-            // parameter reference; a literal operand consumes its checked literal
-            // fact. Both operands share the derived operand type; at least one is
-            // a parameter (a literal-vs-literal binary is rejected at admission).
+            // Build one binary operand recursively. A leaf operand is a scalar
+            // literal, a resolved parameter, or the written user local
+            // (`x = x + 1`). A nested binary operand (`x = (a + b) * c`)
+            // validates its own call fact and recurses into its children,
+            // producing a PendingConditionalArmBinary. Both operands share the
+            // derived operand type; at least one is a non-literal (a
+            // literal-vs-literal binary is rejected at admission).
             bool operandRejected = false;
-            auto buildWriteOperand =
-                [&](ast::NodeId operandNode,
+            auto buildWriteOperandImpl =
+                [&](auto&& self, ast::NodeId operandNode,
                     const identity::SourceSpan& operandSpan) -> zc::Maybe<PendingConditionalArm> {
               const bool operandIsLiteral = isScalarLiteral(tree.node(operandNode).kind);
               if (!operandIsLiteral) {
+                // A nested binary operand: validate its call fact and recurse
+                // into its operands.
+                if (tree.node(operandNode).kind == ast::SyntaxKind::BinaryExpr) {
+                  auto nestedCallIndex = factIndex(facts.calls(), operandNode);
+                  if (nestedCallIndex == zc::none) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  size_t nestedCallSlot = 0;
+                  ZC_IF_SOME(index, nestedCallIndex) { nestedCallSlot = index; }
+                  const auto& nestedCallFact = facts.calls().entries()[nestedCallSlot].value;
+                  const auto& nestedCall = nestedCallFact.invocation;
+                  const auto& nestedSelected = nestedCall.selected.variant();
+                  if (!nestedSelected.is<checker::checked::PrimitiveCallable>()) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  const auto nestedOperation =
+                      nestedSelected.get<checker::checked::PrimitiveCallable>().operation;
+                  const bool nestedComparison = isScalarComparisonOperation(nestedOperation);
+                  const bool nestedArithmetic = isScalarArithmeticOperation(nestedOperation);
+                  if (!nestedComparison && !nestedArithmetic) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  const auto nestedOperandType = nestedCall.arguments.size() == 2
+                                                     ? nestedCall.arguments[0].sourceType
+                                                     : binaryOperandType;
+                  const bool nestedOperationSupported =
+                      nestedComparison ||
+                      (nestedArithmetic && binaryOperandType == nestedOperandType);
+                  if (!nestedOperationSupported || nestedCallFact.node != operandNode ||
+                      nestedCall.calleeType != nestedOperandType ||
+                      nestedCall.receiver != zc::none || nestedCall.receiverMode != zc::none ||
+                      nestedCall.receiverAdjustment != zc::none ||
+                      nestedCall.arguments.size() != 2 ||
+                      nestedCall.arguments[0].sourceType != nestedOperandType ||
+                      nestedCall.arguments[1].sourceType != nestedOperandType ||
+                      nestedCall.successType != binaryOperandType ||
+                      nestedCall.resultType != binaryOperandType ||
+                      nestedCall.substitutions != zc::none || nestedCall.witnesses != zc::none ||
+                      nestedCall.raises != zc::none) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  const ast::NodeId nestedLeft(
+                      tree.node(operandNode).payload.words[ast::kBinaryExprLhsWord]);
+                  const ast::NodeId nestedRight(
+                      tree.node(operandNode).payload.words[ast::kBinaryExprRhsWord]);
+                  auto nestedLeftSpan = bound.parsedModule().spanFor(tree.node(nestedLeft).range);
+                  auto nestedRightSpan = bound.parsedModule().spanFor(tree.node(nestedRight).range);
+                  if (nestedLeftSpan == zc::none || nestedRightSpan == zc::none ||
+                      !tree.contains(nestedLeft) || !tree.contains(nestedRight)) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  auto nestedLeftArm = self(self, nestedLeft, ZC_ASSERT_NONNULL(nestedLeftSpan));
+                  auto nestedRightArm = self(self, nestedRight, ZC_ASSERT_NONNULL(nestedRightSpan));
+                  if (operandRejected || nestedLeftArm == zc::none || nestedRightArm == zc::none) {
+                    operandRejected = true;
+                    return zc::none;
+                  }
+                  auto nestedBinary = PendingConditionalArmBinary{
+                      zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(nestedLeftArm))),
+                      zc::heap<PendingConditionalArm>(zc::mv(ZC_ASSERT_NONNULL(nestedRightArm))),
+                      nestedOperandType, nestedOperation};
+                  return PendingConditionalArm{zc::none,
+                                               zc::none,
+                                               zc::none,
+                                               binaryOperandType,
+                                               operandSpan.clone(),
+                                               zc::mv(nestedBinary)};
+                }
                 auto parameter = resolvedCallableParameter(bound.bindings(), operandNode);
                 if (parameter != zc::none) {
                   identity::CallableParameterId handle;
@@ -5498,8 +5574,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   }
                   return built;
                 }
-                // A non-literal, non-parameter operand resolves to the written
-                // user local (`x = x + 1`): build a local-reference arm.
+                // A non-literal, non-parameter, non-binary operand resolves to
+                // the written user local (`x = x + 1`): build a local-reference
+                // arm.
                 auto ownerBinding = resolvedOwnerLocal(bound.bindings(), operandNode);
                 if (ownerBinding != zc::none &&
                     ZC_ASSERT_NONNULL(ownerBinding) == ZC_ASSERT_NONNULL(targetBinding)) {
@@ -5526,6 +5603,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               }
               return PendingConditionalArm{literalFact.literal.clone(), zc::none, zc::none,
                                            binaryOperandType, operandSpan.clone()};
+            };
+            auto buildWriteOperand = [&](ast::NodeId node, const identity::SourceSpan& span) {
+              return buildWriteOperandImpl(buildWriteOperandImpl, node, span);
             };
             auto leftOperand = buildWriteOperand(binaryLeft, ZC_ASSERT_NONNULL(leftSpan));
             auto rightOperand = buildWriteOperand(binaryRight, ZC_ASSERT_NONNULL(rightSpan));
@@ -7389,7 +7469,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
       } else if (!shape.isForLoopAccumulator && !shape.isNestedForLoopAccumulator &&
                  literal == zc::none && aggregate == zc::none && parameterReference == zc::none &&
-                 parameterIndex == zc::none && shape.localInitializer != zc::none) {
+                 parameterIndex == zc::none && localReference == zc::none &&
+                 shape.localInitializer != zc::none) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
                                              registries, ordinal + 2);
@@ -9080,6 +9161,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // Each materializes a localReference, not a literal or parameterReference, so
   // it joins the literals equation as a subtraction like parameterReferenceCount.
   size_t binaryWriteLocalOperandCount = 0;
+  // Nested binary operands inside a binary write value (`x = (x + 1) * 2`).
+  // Each nested binary contributes two additional node-type facts for its own
+  // operands beyond the two the root binary's operands already account for.
+  size_t nestedBinaryWriteOperandCount = 0;
   // Increment/decrement writes (`x++` / `++x` / `x--` / `--x`). Each desugars
   // to a binary write, but the PostfixExpression or UnaryExpression node
   // replaces the assignment plus binary nodes (two node-type facts instead of
@@ -9785,6 +9870,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           for (const auto* arm : {&binary.left, &binary.right}) {
             if (arm->parameter != zc::none) { ++parameterReferenceCount; }
             if (arm->local != zc::none) { ++binaryWriteLocalOperandCount; }
+            // A nested binary operand contributes two additional node-type
+            // facts for its own operands beyond the one the root binary's
+            // operand count already accounts for.
+            if (arm->binary != zc::none) { ++nestedBinaryWriteOperandCount; }
           }
         }
       }
@@ -9830,14 +9919,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       conditionalBinaryArmCount * 2 - matchEqualityReturnCount * 2 - matchGuardPhantomCount +
       matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
       unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
-      parameterFieldWriteCount * 4 + discardedStatementCallCount +
-      leadingLocalConditionalBindingCount + castCount + foldedStringLengthCount +
-      foldedStringConcatCount * 2 + foldedFloatCastCount + sequentialFoldedStringConcatCount * 2 +
-      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount -
-      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      nestedBinaryWriteOperandCount * 2 + parameterFieldProjectionCount +
+      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
+      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
+      foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
+      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
+      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      incrementWriteCount * 3 - incrementReturnCount - sequentialIncrementBindingCount -
+      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
@@ -9882,9 +9972,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
       equalityConditionalCount + conditionalBinaryArmCount - matchEqualityReturnCount -
       matchGuardPhantomCount + comparisonReturnCount + sequentialBinaryCount +
-      receiverFieldArithmeticCount + binaryWriteCount - compoundAssignmentWriteCount +
-      leadingLocalConditionalBinaryCount + receiverCallComparisonArgumentCount +
-      forLoopReturnCount * 2 + forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
+      receiverFieldArithmeticCount + binaryWriteCount + nestedBinaryWriteOperandCount -
+      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
+      receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
+      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
       forLoopAccumulatorGuardedBreakCount + nestedForLoopAccumulatorReturnCount * 2;
   if (facts.calls().size() != expectedCalls ||
       checkedModule.dispatchFacts().facts().size() != expectedCalls) {

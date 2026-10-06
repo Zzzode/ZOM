@@ -3598,9 +3598,12 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
     ++parameterCount;
   }
   const size_t bodyLocalCount = function.locals.size() - parameterCount;
-  if (bodyLocalCount != 1) { return zc::none; }
+  if (bodyLocalCount < 1) { return zc::none; }
   const auto& localDecl = function.locals[parameterCount];
   if (localDecl.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  for (size_t i = parameterCount + 1; i < function.locals.size(); ++i) {
+    if (function.locals[i].kind != mir::MirLocalKind::Temporary) { return zc::none; }
+  }
 
   auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
   if (resultCarrier == zc::none) {
@@ -3664,23 +3667,69 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   if (initLowered == zc::none) { return zc::none; }
   statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
 
-  // Lower each overwrite write (statements 2 through end-1).
+  // Lower each overwrite write (statements 2 through end-1). Nested binary
+  // operands are lowered to temporary locals: StorageLive plus an Initialize
+  // Assign of an arithmetic rvalue, then the outer write uses the temporary
+  // as a place-use operand.
   for (size_t i = 2; i < block.statements.size(); ++i) {
-    const auto& overwriteStatement = block.statements[i];
-    if (overwriteStatement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
-    const auto& overwriteAssign = overwriteStatement.assignmentValue();
-    if (overwriteAssign.destination.local() != localDecl.id ||
-        overwriteAssign.destination.projections().size() != 0 ||
-        overwriteAssign.initialization != mir::MirInitializationKind::Overwrite) {
+    const auto& stmt = block.statements[i];
+    if (stmt.kind() == mir::MirStatementKind::StorageLive) {
+      // LIR locals are always-live slots; StorageLive is a borrow-checker
+      // marker with no LIR counterpart. Skip it after validating the local
+      // is a declared temporary.
+      const auto liveLocal = stmt.storageLocal();
+      bool isTemp = false;
+      for (size_t t = parameterCount + 1; t < function.locals.size(); ++t) {
+        if (function.locals[t].id == liveLocal) {
+          isTemp = true;
+          break;
+        }
+      }
+      if (!isTemp) { return zc::none; }
+      continue;
+    }
+    if (stmt.kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& assign = stmt.assignmentValue();
+    if (assign.destination.projections().size() != 0) { return zc::none; }
+    const bool isTempDest = [&]() {
+      for (size_t t = parameterCount + 1; t < function.locals.size(); ++t) {
+        if (function.locals[t].id == assign.destination.local()) return true;
+      }
+      return false;
+    }();
+    if (isTempDest) {
+      if (assign.initialization != mir::MirInitializationKind::Initialize) { return zc::none; }
+      if (assign.value.kind() == mir::MirRvalueKind::Arithmetic) {
+        const auto& arithmetic = assign.value.arithmeticValue();
+        auto op = lirArithmeticOpFor(arithmetic.op);
+        if (op == zc::none) { return zc::none; }
+        auto left = leafOperand(arithmetic.left);
+        auto right = leafOperand(arithmetic.right);
+        if (left == zc::none || right == zc::none) { return zc::none; }
+        statements.add(Statement::arithmetic(assign.destination.local().ordinal(),
+                                             ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
+                                             ZC_REQUIRE_NONNULL(right)));
+      } else if (assign.value.kind() == mir::MirRvalueKind::Use) {
+        auto lowered = leafOperand(assign.value.useValue().operand);
+        if (lowered == zc::none) { return zc::none; }
+        statements.add(
+            Statement::assign(assign.destination.local().ordinal(), ZC_REQUIRE_NONNULL(lowered)));
+      } else {
+        return zc::none;
+      }
+      continue;
+    }
+    if (assign.destination.local() != localDecl.id ||
+        assign.initialization != mir::MirInitializationKind::Overwrite) {
       return zc::none;
     }
 
-    if (overwriteAssign.value.kind() == mir::MirRvalueKind::Use) {
-      auto lowered = leafOperand(overwriteAssign.value.useValue().operand);
+    if (assign.value.kind() == mir::MirRvalueKind::Use) {
+      auto lowered = leafOperand(assign.value.useValue().operand);
       if (lowered == zc::none) { return zc::none; }
       statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
-    } else if (overwriteAssign.value.kind() == mir::MirRvalueKind::Arithmetic) {
-      const auto& arithmetic = overwriteAssign.value.arithmeticValue();
+    } else if (assign.value.kind() == mir::MirRvalueKind::Arithmetic) {
+      const auto& arithmetic = assign.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
       if (op == zc::none) { return zc::none; }
       if (arithmetic.resultType != localDecl.type) { return zc::none; }
@@ -3689,8 +3738,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
       if (left == zc::none || right == zc::none) { return zc::none; }
       statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
                                            ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
-    } else if (overwriteAssign.value.kind() == mir::MirRvalueKind::Comparison) {
-      const auto& comparison = overwriteAssign.value.comparisonValue();
+    } else if (assign.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assign.value.comparisonValue();
       auto op = lirComparisonOpFor(comparison.op);
       if (comparison.resultType != localDecl.type) { return zc::none; }
       auto left = leafOperand(comparison.left);
@@ -3725,6 +3774,9 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   }
   zc::Vector<Local> locals;
   locals.add(Local(destinationOrdinal, resultCarrierValue));
+  for (size_t t = parameterCount + 1; t < function.locals.size(); ++t) {
+    locals.add(Local(function.locals[t].id.ordinal(), resultCarrierValue));
+  }
 
   // A parameter-free overwrite body folds to the reserved no-argument
   // `zom.module_init` entry the runtime `_start` calls; a parameterized body
