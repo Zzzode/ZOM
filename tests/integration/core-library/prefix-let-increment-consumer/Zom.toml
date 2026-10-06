@@ -1,0 +1,8 @@
+[package]
+name = "prefix_let_increment_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "prefix_let_increment_consumer"
+path = "src/main.zom"

@@ -299,6 +299,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
       }
       case SequentialInitializerKind::Aggregate:
       case SequentialInitializerKind::PrimitiveUnary:
+      case SequentialInitializerKind::Increment:
       case SequentialInitializerKind::Cast:
       case SequentialInitializerKind::Ternary:
       case SequentialInitializerKind::EnumVariantConstruction:

@@ -47,6 +47,7 @@ bool isAdmittedPrimitiveBinary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedFieldComparisonBinary(const ast::Tree& tree, ast::NodeId value,
                                      ast::NodeId receiver);
 bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value);
+bool isAdmittedIncrementUnary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedTernary(const ast::Tree& tree, ast::NodeId value);
 bool isAdmittedEnumVariant(const ast::Tree& tree, ast::NodeId value);
@@ -445,6 +446,20 @@ bool isAdmittedPrimitiveUnary(const ast::Tree& tree, ast::NodeId value) {
          isScalarLiteral(tree.node(operand).kind);
 }
 
+bool isAdmittedIncrementUnary(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::UnaryExpression) {
+    return false;
+  }
+  const auto op = static_cast<ast::UnaryOperatorKind>(
+      tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
+  if (op != ast::UnaryOperatorKind::PreIncrement && op != ast::UnaryOperatorKind::PreDecrement) {
+    return false;
+  }
+  const ast::NodeId operand(tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand)) return false;
+  return tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+}
+
 bool isAdmittedCast(const ast::Tree& tree, ast::NodeId value) {
   if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::CastExpression) {
     return false;
@@ -714,8 +729,9 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
       isAdmittedDirectCall(tree, initializer) ||
       isAdmittedAggregateInitializer(tree, initializer) ||
       isAdmittedPrimitiveBinary(tree, initializer) || isAdmittedPrimitiveUnary(tree, initializer) ||
-      isAdmittedCast(tree, initializer) || isAdmittedTernary(tree, initializer) ||
-      isAdmittedMatchExpression(tree, initializer) || isAdmittedEnumVariant(tree, initializer) ||
+      isAdmittedIncrementUnary(tree, initializer) || isAdmittedCast(tree, initializer) ||
+      isAdmittedTernary(tree, initializer) || isAdmittedMatchExpression(tree, initializer) ||
+      isAdmittedEnumVariant(tree, initializer) ||
       isAdmittedEnumVariantConstruction(tree, initializer)) {
     return true;
   }
@@ -1600,6 +1616,22 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   } else if (isAdmittedLocalBorrow(tree, returnValue)) {
     returnReference =
         ast::NodeId(tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
+  } else if (tree.node(returnValue).kind == ast::SyntaxKind::UnaryExpression) {
+    // A prefix increment/decrement return (`return ++x;` / `return --x;`)
+    // desugars to a binary write (`x = x +/- 1`) followed by a local
+    // reference return. The operand must name the declared local; the
+    // mutability and integer type are checker decisions.
+    const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(returnValue).payload.words[ast::kUnaryExpressionOpWord]);
+    if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
+        unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+      const ast::NodeId unaryOperand(
+          tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (tree.contains(unaryOperand) &&
+          tree.node(unaryOperand).kind == ast::SyntaxKind::IdentExpr) {
+        returnReference = unaryOperand;
+      }
+    }
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
   (void)returnsDirectLocalCall;
@@ -1804,6 +1836,23 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
           static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]);
       if (unaryOp == ast::UnaryOperatorKind::Ref || unaryOp == ast::UnaryOperatorKind::RefMut) {
         found = true;
+      }
+    }
+    // A prefix increment/decrement in a return value (`return ++x;`) is
+    // admitted by isAdmittedFunctionBody when the operand is an identifier
+    // naming the declared local. When the operand is not an identifier, the
+    // body checker performs the type check and emits ZOM4031. Suppress the
+    // generic ZOM4099 so the body checker runs instead.
+    if (syntax.kind == ast::SyntaxKind::ReturnStmt) {
+      const ast::NodeId returnValue(syntax.payload.words[ast::kReturnStmtValueWord]);
+      if (tree.contains(returnValue) &&
+          tree.node(returnValue).kind == ast::SyntaxKind::UnaryExpression) {
+        const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+            tree.node(returnValue).payload.words[ast::kUnaryExpressionOpWord]);
+        if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
+            unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+          found = true;
+        }
       }
     }
   });

@@ -1424,6 +1424,126 @@ ZC_TEST("HIR pipeline lowers a binary mutable local write") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a return-position prefix increment") {
+  // `return ++x;` desugars to a binary write (`x = x + 1`) followed by a local
+  // reference return. The synthetic write pools into the same increment-write
+  // digest as the expression-statement form.
+  HirPipelineFixture fixture("fn g() -> i32 { mut x = 41; return ++x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // Two literals: the initializer `41` and the synthetic literal `1` for the
+  // increment desugar. The synthetic literal has no checked literal fact.
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // Two local references: the return value and the binary left operand.
+  ZC_REQUIRE(module.localReferences().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& initializer = module.expressions()[0];
+  const auto& writeBinary = module.primitiveBinaryOperations()[0];
+  // Fixed-id layout: function 1, block 2, local 3, initializer 4, write 5,
+  // write value (the binary node) 6, return 7, return value 8; the binary's
+  // two operands are trailing ids 9 (left) and 10 (right).
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(writeBinary.node.ordinal() == 6);
+  ZC_EXPECT(writeBinary.left.ordinal() == 9);
+  ZC_EXPECT(writeBinary.right.ordinal() == 10);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(local.initializer == initializer.node);
+  ZC_EXPECT(write.value == writeBinary.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(writeBinary.type == local.type);
+  ZC_EXPECT(writeBinary.operandType == local.type);
+  ZC_EXPECT(writeBinary.category == HirValueCategory::Value);
+  ZC_EXPECT(writeBinary.operation == checker::PrimitiveOperation::Add);
+  ZC_EXPECT(writeBinary.isIncrementDesugar);
+  // The left operand is a local reference; the right operand is a synthetic
+  // literal 1 with no checked literal fact.
+  bool sawLeft = false;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node == writeBinary.left) sawLeft = reference.type == local.type;
+  }
+  ZC_EXPECT(sawLeft);
+}
+
+ZC_TEST("HIR pipeline lowers a let-binding prefix increment") {
+  // `let y = ++x;` desugars to a binary write (`x = x + 1`) followed by a
+  // local-reference binding (`let y = x;`). The write pools into the same
+  // increment-write digest as the expression-statement form.
+  HirPipelineFixture fixture("fn g() -> i32 { mut x = 41; let y = ++x; return y; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  // Two literals: the initializer `41` and the synthetic literal `1` for the
+  // increment desugar. The synthetic literal has no checked literal fact.
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // Three local references: y's initializer (ref to x), the binary left
+  // operand (ref to x), and the return value (ref to y).
+  ZC_REQUIRE(module.localReferences().size() == 3);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& localX = module.locals()[0];
+  const auto& localY = module.locals()[1];
+  const auto& write = module.localWrites()[0];
+  const auto& initializer = module.expressions()[0];
+  const auto& writeBinary = module.primitiveBinaryOperations()[0];
+  // Fixed-id layout: function 1, block 2, binding 0 (literal) local 3 +
+  // initializer 4, binding 1 (increment) write 5 + binary 6 + local 7 +
+  // initializer 8 + left 9 + right 10, return 11, return value 12.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(localX.node.ordinal() == 3);
+  ZC_EXPECT(initializer.node.ordinal() == 4);
+  ZC_EXPECT(write.node.ordinal() == 5);
+  ZC_EXPECT(writeBinary.node.ordinal() == 6);
+  ZC_EXPECT(localY.node.ordinal() == 7);
+  ZC_EXPECT(block.statements.size() == 4);
+  ZC_EXPECT(block.statements[0] == localX.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(block.statements[2] == localY.node);
+  ZC_EXPECT(block.statements[3] == module.returns()[0].node);
+  ZC_EXPECT(localX.initializer == initializer.node);
+  ZC_EXPECT(write.value == writeBinary.node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(write.local == localX.local);
+  ZC_EXPECT(writeBinary.type == localX.type);
+  ZC_EXPECT(writeBinary.operandType == localX.type);
+  ZC_EXPECT(writeBinary.category == HirValueCategory::Value);
+  ZC_EXPECT(writeBinary.operation == checker::PrimitiveOperation::Add);
+  ZC_EXPECT(writeBinary.isIncrementDesugar);
+  ZC_EXPECT(writeBinary.left.ordinal() == 9);
+  ZC_EXPECT(writeBinary.right.ordinal() == 10);
+  // y's initializer is a local reference to x.
+  bool sawYInit = false;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node == localY.initializer) sawYInit = reference.local == localX.local;
+  }
+  ZC_EXPECT(sawYInit);
+  // The binary left operand is a local reference to x.
+  bool sawLeft = false;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node == writeBinary.left) sawLeft = reference.local == localX.local;
+  }
+  ZC_EXPECT(sawLeft);
+}
+
 ZC_TEST("HIR pipeline lowers a binary mutable local write with a literal operand") {
   // A binary write with one literal operand `x = a + 1`: the left operand is a
   // parameter reference and the right operand is a scalar literal, so the write

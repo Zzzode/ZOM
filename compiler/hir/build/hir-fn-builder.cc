@@ -270,7 +270,20 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   zc::Vector<zc::Maybe<HirNodeId>> ternaryConditionIds;
   zc::Vector<zc::Maybe<HirNodeId>> ternaryThenIds;
   zc::Vector<zc::Maybe<HirNodeId>> ternaryElseIds;
+  // Increment bindings allocate a write and a binary node (the write's value)
+  // before the local/initializer pair to preserve source preorder. The
+  // binary's left/right operands reuse the leftOperandIds/rightOperandIds
+  // vectors below.
+  zc::Vector<zc::Maybe<HirNodeId>> incrementWriteIds;
+  zc::Vector<zc::Maybe<HirNodeId>> incrementBinaryIds;
   for (size_t index = 0; index < bindingCount; ++index) {
+    if (sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
+      incrementWriteIds.add(ctx.allocNode());
+      incrementBinaryIds.add(ctx.allocNode());
+    } else {
+      incrementWriteIds.add(zc::none);
+      incrementBinaryIds.add(zc::none);
+    }
     localNodeIds.add(ctx.allocNode());
     initializerNodeIds.add(ctx.allocNode());
     zc::Maybe<HirNodeId> leftOperandId;
@@ -280,7 +293,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     zc::Maybe<HirNodeId> rightNestedLeafLeftId;
     zc::Maybe<HirNodeId> rightNestedLeafRightId;
     if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary ||
-        sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary) {
+        sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary ||
+        sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
       leftOperandId = ctx.allocNode();
       rightOperandId = ctx.allocNode();
       ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
@@ -329,7 +343,10 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
       function.visibility.clone(), function.linkage, function.declarationSpan.clone(), bodyId,
       zc::mv(unsafeBlockId)});
   zc::Vector<HirNodeId> statements;
-  for (const auto localNodeId : localNodeIds) { statements.add(localNodeId); }
+  for (size_t index = 0; index < bindingCount; ++index) {
+    ZC_IF_SOME(writeId, incrementWriteIds[index]) { statements.add(writeId); }
+    statements.add(localNodeIds[index]);
+  }
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
@@ -477,6 +494,43 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
               HirValueCategory::Value, operation, binding.initializerSpan.clone(),
               binding.isUnaryDesugar});
         }
+        break;
+      }
+      case SequentialInitializerKind::Increment: {
+        // A prefix increment/decrement binding desugars to a binary write
+        // (`x = x +/- 1`) followed by a local-reference initializer. The
+        // write and binary nodes were allocated before the local/initializer
+        // pair; the binary's operands reuse the left/right operand slots.
+        HirNodeId leftOperandId;
+        HirNodeId rightOperandId;
+        ZC_IF_SOME(id, leftOperandIds[index]) { leftOperandId = id; }
+        ZC_IF_SOME(id, rightOperandIds[index]) { rightOperandId = id; }
+        ZC_IF_SOME(left, binding.leftOperand) {
+          lowerBinaryOperand(leftOperandId, left, leftNestedLeafLeftIds[index],
+                             leftNestedLeafRightIds[index]);
+        }
+        ZC_IF_SOME(right, binding.rightOperand) {
+          lowerBinaryOperand(rightOperandId, right, rightNestedLeafLeftIds[index],
+                             rightNestedLeafRightIds[index]);
+        }
+        HirNodeId binaryId;
+        HirNodeId writeId;
+        ZC_IF_SOME(id, incrementBinaryIds[index]) { binaryId = id; }
+        ZC_IF_SOME(id, incrementWriteIds[index]) { writeId = id; }
+        ZC_IF_SOME(operation, binding.operation) {
+          ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+              binaryId, leftOperandId, rightOperandId, binding.operandType, binding.type,
+              HirValueCategory::Value, operation, binding.initializerSpan.clone(), false, true});
+        }
+        ctx.addLocalWrite(HirLocalWriteStatement{
+            writeId, hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)), zc::none,
+            binding.operandType, binaryId, HirLocalWriteKind::Overwrite,
+            binding.initializerSpan.clone(), binding.initializerSpan.clone()});
+        // The binding's initializer is a local reference to the incremented
+        // local (the write's new value is read back through the reference).
+        ctx.addLocalReference(HirLocalReferenceExpression{
+            initializerNodeId, hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
+            binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
         break;
       }
       case SequentialInitializerKind::Cast:

@@ -262,26 +262,42 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
     checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
   if (declaration.unsafeBlock != zc::none) return zc::none;
   if (block.statements.size() < 2) return zc::none;
-  const size_t bindingCount = block.statements.size() - 1;
 
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
-  auto sourceReturn = returnFor(hirModule, block.statements[bindingCount]);
+  auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
   if (sourceReturn == zc::none) return zc::none;
 
   // Resolve every leading binding; layer-local ordinals must be dense 1..N and
-  // every binding carries an initializer.
+  // every binding carries an initializer. An Increment binding contributes a
+  // write statement immediately before its local binding node; the write
+  // targets the incremented local (an earlier binding), and the local
+  // binding's initializer is a local reference to that incremented local.
   zc::Vector<const hir::HirLocalBinding*> bindings;
-  for (size_t i = 0; i < bindingCount; ++i) {
-    auto sourceLocal = localFor(hirModule, block.statements[i]);
-    if (sourceLocal == zc::none) return zc::none;
-    const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-    if (binding.local.ordinal() != static_cast<uint32_t>(i + 1) ||
-        binding.initializer == zc::none) {
-      return zc::none;
+  zc::Vector<const hir::HirLocalWriteStatement*> bindingWrites;
+  {
+    const hir::HirLocalWriteStatement* pendingWrite = nullptr;
+    for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
+      auto write = localWriteFor(hirModule, block.statements[i]);
+      if (write != zc::none) {
+        if (pendingWrite != nullptr) return zc::none;
+        pendingWrite = &ZC_ASSERT_NONNULL(write);
+        continue;
+      }
+      auto sourceLocal = localFor(hirModule, block.statements[i]);
+      if (sourceLocal == zc::none) return zc::none;
+      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+      if (binding.local.ordinal() != static_cast<uint32_t>(bindings.size() + 1) ||
+          binding.initializer == zc::none) {
+        return zc::none;
+      }
+      bindings.add(&binding);
+      bindingWrites.add(pendingWrite);
+      pendingWrite = nullptr;
     }
-    bindings.add(&binding);
+    if (pendingWrite != nullptr) return zc::none;
   }
+  const size_t bindingCount = bindings.size();
 
   const hir::HirNodeId returnNode = ZC_ASSERT_NONNULL(sourceReturn).value;
   auto returnLocalReference = localReferenceFor(hirModule, returnNode);
@@ -306,6 +322,11 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
     if (conditional != zc::none && returnLocalReference != zc::none &&
         ZC_ASSERT_NONNULL(returnLocalReference).local.ordinal() ==
             static_cast<uint32_t>(ternaryIndex + 1)) {
+      // The ternary path does not lower increment writes; reject if any binding
+      // has an associated write.
+      for (size_t i = 0; i < bindingCount; ++i) {
+        if (bindingWrites[i] != nullptr) return zc::none;
+      }
       const auto& cond = ZC_ASSERT_NONNULL(conditional);
       if (cond.type == declaration.resultType && cond.category == hir::HirValueCategory::Value) {
         auto conditionParameter = parameterReferenceFor(hirModule, cond.condition);
@@ -506,6 +527,40 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
   (void)entry;
   for (size_t i = 0; i < bindingCount; ++i) {
     const auto& binding = *bindings[i];
+    // Lower the increment write if this binding has one. The write
+    // overwrites the incremented local (an earlier binding) with an
+    // arithmetic rvalue; the binding's initializer then reads the updated
+    // value through a local reference.
+    if (bindingWrites[i] != nullptr) {
+      const auto& write = *bindingWrites[i];
+      auto writeBinary = primitiveBinaryFor(hirModule, write.value);
+      if (writeBinary == zc::none) return zc::none;
+      const auto& binaryValue = ZC_ASSERT_NONNULL(writeBinary);
+      if (!binaryValue.isIncrementDesugar) return zc::none;
+      auto arithmetic = arithmeticOperatorFor(binaryValue.operation);
+      if (arithmetic == zc::none) return zc::none;
+      if (binaryValue.type != binding.type || binaryValue.operandType != binding.type) {
+        return zc::none;
+      }
+      auto left =
+          binaryLeafOperand(hirModule, declaration, binaryValue.left, parameterLocals,
+                            userLocals.asPtr(), i, binaryValue.operandType, proofs, copyMarker);
+      auto right =
+          binaryLeafOperand(hirModule, declaration, binaryValue.right, parameterLocals,
+                            userLocals.asPtr(), i, binaryValue.operandType, proofs, copyMarker);
+      if (left == zc::none || right == zc::none) return zc::none;
+      auto rvalue =
+          MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                zc::mv(ZC_ASSERT_NONNULL(right)), binaryValue.type);
+      if (write.local.ordinal() == 0 || write.local.ordinal() > static_cast<uint32_t>(i)) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> writeProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(userLocals[write.local.ordinal() - 1], write.type, zc::mv(writeProjections),
+                   write.type),
+          zc::mv(rvalue), MirInitializationKind::Overwrite, write.sourceSpan.clone()));
+    }
     hir::HirNodeId initializerNode;
     ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
     auto literal = expressionFor(hirModule, initializerNode);

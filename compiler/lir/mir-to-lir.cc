@@ -3416,7 +3416,16 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
   }
 
   const auto& block = function.blocks[0];
-  if (block.statements.size() != bodyLocalCount * 2) { return zc::none; }
+  // Count Overwrite assigns (increment writes) so the statement count check
+  // admits the extra arithmetic assigns they contribute.
+  size_t overwriteCount = 0;
+  for (const auto& stmt : block.statements) {
+    if (stmt.kind() == mir::MirStatementKind::Assign &&
+        stmt.assignmentValue().initialization == mir::MirInitializationKind::Overwrite) {
+      ++overwriteCount;
+    }
+  }
+  if (block.statements.size() != bodyLocalCount * 2 + overwriteCount) { return zc::none; }
 
   auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
@@ -3436,10 +3445,37 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
   };
 
   zc::Vector<Statement> statements;
+  size_t cursor = 0;
   for (size_t j = 0; j < bodyLocalCount; ++j) {
     const auto& localDecl = function.locals[parameterCount + j];
-    const auto& liveStatement = block.statements[2 * j];
-    const auto& assignStatement = block.statements[2 * j + 1];
+    // Lower any Overwrite assigns (increment writes) that precede this local's
+    // StorageLive + Initialize pair.
+    while (cursor < block.statements.size()) {
+      const auto& stmt = block.statements[cursor];
+      if (stmt.kind() != mir::MirStatementKind::Assign ||
+          stmt.assignmentValue().initialization != mir::MirInitializationKind::Overwrite) {
+        break;
+      }
+      const auto& overwrite = stmt.assignmentValue();
+      if (overwrite.destination.projections().size() != 0 ||
+          overwrite.value.kind() != mir::MirRvalueKind::Arithmetic) {
+        return zc::none;
+      }
+      const auto& arithmetic = overwrite.value.arithmeticValue();
+      auto op = lirArithmeticOpFor(arithmetic.op);
+      if (op == zc::none) { return zc::none; }
+      if (arithmetic.resultType != overwrite.destination.rootType()) { return zc::none; }
+      auto left = leafOperand(arithmetic.left);
+      auto right = leafOperand(arithmetic.right);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::arithmetic(overwrite.destination.local().ordinal(),
+                                           ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
+                                           ZC_REQUIRE_NONNULL(right)));
+      ++cursor;
+    }
+    const auto& liveStatement = block.statements[cursor];
+    const auto& assignStatement = block.statements[cursor + 1];
+    cursor += 2;
     if (liveStatement.kind() != mir::MirStatementKind::StorageLive ||
         liveStatement.storageLocal() != localDecl.id ||
         assignStatement.kind() != mir::MirStatementKind::Assign) {
@@ -3478,6 +3514,31 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
     } else {
       return zc::none;
     }
+  }
+  // Lower any trailing Overwrite assigns (increment writes that follow the last
+  // Initialize pair, as in `mut x = 41; ++x; return x;`).
+  while (cursor < block.statements.size()) {
+    const auto& stmt = block.statements[cursor];
+    if (stmt.kind() != mir::MirStatementKind::Assign ||
+        stmt.assignmentValue().initialization != mir::MirInitializationKind::Overwrite) {
+      return zc::none;
+    }
+    const auto& overwrite = stmt.assignmentValue();
+    if (overwrite.destination.projections().size() != 0 ||
+        overwrite.value.kind() != mir::MirRvalueKind::Arithmetic) {
+      return zc::none;
+    }
+    const auto& arithmetic = overwrite.value.arithmeticValue();
+    auto op = lirArithmeticOpFor(arithmetic.op);
+    if (op == zc::none) { return zc::none; }
+    if (arithmetic.resultType != overwrite.destination.rootType()) { return zc::none; }
+    auto left = leafOperand(arithmetic.left);
+    auto right = leafOperand(arithmetic.right);
+    if (left == zc::none || right == zc::none) { return zc::none; }
+    statements.add(Statement::arithmetic(overwrite.destination.local().ordinal(),
+                                         ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
+                                         ZC_REQUIRE_NONNULL(right)));
+    ++cursor;
   }
 
   if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }

@@ -830,39 +830,74 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       leftOperand = zc::mv(left);
       rightOperand = zc::mv(right);
     } else if (tree.node(initializer).kind == ast::SyntaxKind::UnaryExpression) {
-      // A primitive unary operation (`+` `-` `~` `!`) over one operand that is
-      // an identifier naming an earlier local or a parameter. The builder
-      // desugars the unary to an equivalent binary operation.
       const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
           tree.node(initializer).payload.words[ast::kUnaryExpressionOpWord]);
-      const bool isPrimitiveUnary = unaryOp == ast::UnaryOperatorKind::Plus ||
-                                    unaryOp == ast::UnaryOperatorKind::Minus ||
-                                    unaryOp == ast::UnaryOperatorKind::LogicalNot ||
-                                    unaryOp == ast::UnaryOperatorKind::BitNot;
-      if (!isPrimitiveUnary) return zc::none;
-      const ast::NodeId unaryOperandNode(
-          tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
-      if (!tree.contains(unaryOperandNode) ||
-          tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
-        return zc::none;
-      }
-      SequentialBinaryOperand classified{};
-      classified.node = unaryOperandNode;
-      classified.kind = SequentialBinaryOperandKind::ParameterReference;
-      for (size_t earlier = 0; earlier < index; ++earlier) {
-        if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
-          classified.kind = SequentialBinaryOperandKind::LocalReference;
-          classified.referencedLocal = earlier;
-          break;
+      const bool isIncrement = unaryOp == ast::UnaryOperatorKind::PreIncrement ||
+                               unaryOp == ast::UnaryOperatorKind::PreDecrement;
+      if (isIncrement) {
+        // A prefix increment/decrement (`++x` / `--x`) over one operand that is
+        // an identifier naming an earlier local. The builder desugars this to
+        // a binary write (`x = x +/- 1`) followed by a local-reference
+        // initializer for the binding. The operand must be a local (never a
+        // parameter) because the desugar writes to it.
+        const ast::NodeId unaryOperandNode(
+            tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+        if (!tree.contains(unaryOperandNode) ||
+            tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
+          return zc::none;
         }
+        SequentialBinaryOperand classified{};
+        classified.node = unaryOperandNode;
+        classified.kind = SequentialBinaryOperandKind::ParameterReference;
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
+            classified.kind = SequentialBinaryOperandKind::LocalReference;
+            classified.referencedLocal = earlier;
+            break;
+          }
+        }
+        if (classified.kind != SequentialBinaryOperandKind::LocalReference) return zc::none;
+        auto operation = checker::OperatorKind::fromUnary(unaryOp);
+        if (operation == zc::none) return zc::none;
+        if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
+          return zc::none;
+        kind = SequentialInitializerKind::Increment;
+        referencedLocal = classified.referencedLocal;
+        unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
+        unaryOperand = zc::mv(classified);
+      } else {
+        // A primitive unary operation (`+` `-` `~` `!`) over one operand that is
+        // an identifier naming an earlier local or a parameter. The builder
+        // desugars the unary to an equivalent binary operation.
+        const bool isPrimitiveUnary = unaryOp == ast::UnaryOperatorKind::Plus ||
+                                      unaryOp == ast::UnaryOperatorKind::Minus ||
+                                      unaryOp == ast::UnaryOperatorKind::LogicalNot ||
+                                      unaryOp == ast::UnaryOperatorKind::BitNot;
+        if (!isPrimitiveUnary) return zc::none;
+        const ast::NodeId unaryOperandNode(
+            tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+        if (!tree.contains(unaryOperandNode) ||
+            tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
+          return zc::none;
+        }
+        SequentialBinaryOperand classified{};
+        classified.node = unaryOperandNode;
+        classified.kind = SequentialBinaryOperandKind::ParameterReference;
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
+            classified.kind = SequentialBinaryOperandKind::LocalReference;
+            classified.referencedLocal = earlier;
+            break;
+          }
+        }
+        auto operation = checker::OperatorKind::fromUnary(unaryOp);
+        if (operation == zc::none) return zc::none;
+        if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
+          return zc::none;
+        kind = SequentialInitializerKind::PrimitiveUnary;
+        unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
+        unaryOperand = zc::mv(classified);
       }
-      auto operation = checker::OperatorKind::fromUnary(unaryOp);
-      if (operation == zc::none) return zc::none;
-      if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
-        return zc::none;
-      kind = SequentialInitializerKind::PrimitiveUnary;
-      unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
-      unaryOperand = zc::mv(classified);
     } else if (tree.node(initializer).kind == ast::SyntaxKind::CastExpression) {
       // An integer `as` cast whose inner expression is a scalar literal. The
       // builder lowers the inner literal with the cast result type; the cast
@@ -2597,6 +2632,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsReceiverCall = false;
   bool returnsDirectAggregateCall = false;
   bool returnsDirectScalarLocalCall = false;
+  bool returnsLocalIncrement = false;
   const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
@@ -2637,6 +2673,24 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     ZC_IF_SOME(reference, reborrow) { localReference = reference; }
   } else if (localBorrow != zc::none) {
     ZC_IF_SOME(reference, localBorrow) { localReference = reference; }
+  } else if (tree.node(value).kind == ast::SyntaxKind::UnaryExpression) {
+    // A prefix increment/decrement return (`return ++x;` / `return --x;`)
+    // desugars to a binary write (`x = x +/- 1`) followed by a local
+    // reference return. The operand must be an identifier naming the
+    // declared local; the binding match is verified downstream by the
+    // builder.
+    const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
+    if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
+        unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+      const ast::NodeId unaryOperand(
+          tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (tree.contains(unaryOperand) &&
+          tree.node(unaryOperand).kind == ast::SyntaxKind::IdentExpr) {
+        localReference = unaryOperand;
+        returnsLocalIncrement = true;
+      }
+    }
   }
   if (!tree.contains(localReference) ||
       tree.node(localReference).kind != ast::SyntaxKind::IdentExpr) {
@@ -2718,6 +2772,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.localInitializer = initializer;
     shape.returnsLocal = true;
     shape.localReference = localReference;
+    shape.returnsLocalIncrement = returnsLocalIncrement;
     shape.returnsLocalField = returnsLocalField;
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;

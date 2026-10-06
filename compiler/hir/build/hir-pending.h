@@ -642,6 +642,12 @@ struct PendingFunctionDeclaration final {
   // the cast node; the inner FloatLiteralExpr node carries an extra node-type
   // and literal fact beyond the per-function baseline.
   bool returnsFoldedFloatCast = false;
+  // True when the return value is a prefix increment/decrement on a mutable
+  // owner local (`return ++x;`). The desugared binary write pools into the
+  // increment-write digest; the return value is the UnaryExpression itself,
+  // so the per-function localReturnCount node-type credit has no
+  // corresponding AST node and must be subtracted.
+  bool returnsLocalIncrement = false;
 };
 
 }  // namespace detail

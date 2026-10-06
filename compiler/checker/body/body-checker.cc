@@ -3463,7 +3463,7 @@ zc::Maybe<PrimitiveUnaryOperationShape> primitiveUnaryOperationShape(
   } else if (isScalarLiteral(tree.node(operand).kind)) {
     ZC_IF_SOME(entry, factEntry(nodeTypes, operand)) { operandType = entry.value; }
   }
-  if (operandType == zc::none) return zc::none;
+  if (operandType == zc::none) { return zc::none; }
   identity::SemanticTypeId operandTypeValue;
   ZC_IF_SOME(value, operandType) { operandTypeValue = value; }
   auto operandKind = primitiveKindOf(input.semanticTypes, operandTypeValue);

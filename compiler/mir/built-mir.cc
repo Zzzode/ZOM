@@ -1243,22 +1243,32 @@ zc::Maybe<const hir::HirPrimitiveBinaryExpression&> primitiveBinaryFor(
 bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
                                   const hir::HirBlockStatement& block) {
   if (block.statements.size() < 2) return false;
-  const size_t bindingCount = block.statements.size() - 1;
-  for (size_t i = 0; i < bindingCount; ++i) {
-    if (localFor(module, block.statements[i]) == zc::none) return false;
+  // Scan leading statements: each must be a local binding or an increment
+  // write. At least one must be a local binding. The trailing statement is
+  // the return.
+  size_t localCount = 0;
+  for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
+    if (localFor(module, block.statements[i]) != zc::none) {
+      ++localCount;
+      continue;
+    }
+    if (localWriteFor(module, block.statements[i]) != zc::none) continue;
+    return false;
   }
-  if (returnFor(module, block.statements[bindingCount]) == zc::none) return false;
+  if (localCount == 0) return false;
+  const size_t lastIndex = block.statements.size() - 1;
+  if (returnFor(module, block.statements[lastIndex]) == zc::none) return false;
   // A trailing conditional return is the leading-local comparison shape, not a
   // sequential-local return. Both have K leading locals, but the leading-local
   // shape pools its comparison into the shared conditional term and reads its
   // operands as the comparison's leaves, so it is not a sequential body.
   {
-    auto tailReturn = returnFor(module, block.statements[bindingCount]);
+    auto tailReturn = returnFor(module, block.statements[lastIndex]);
     ZC_IF_SOME(statement, tailReturn) {
       if (conditionalFor(module, statement.value) != zc::none) return false;
     }
   }
-  if (bindingCount >= 2) return true;
+  if (localCount >= 2) return true;
   auto localBinding = localFor(module, block.statements[0]);
   bool binaryInitializer = false;
   ZC_IF_SOME(local, localBinding) {
@@ -6807,7 +6817,6 @@ bool validSequentialLocalReturnFunction(
   (void)identities;
   (void)semanticTypes;
   if (!isSequentialLocalReturnBlock(hirModule, sourceBlock)) return false;
-  const size_t bindingCount = sourceBlock.statements.size() - 1;
   const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
   zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
   ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
@@ -6818,23 +6827,41 @@ bool validSequentialLocalReturnFunction(
   auto userLocalId = [&](size_t index) {
     return localId(parameterCount + static_cast<uint32_t>(index) + 1);
   };
-  // Resolve the HIR bindings.
+  // Resolve the HIR bindings. An Increment binding contributes an extra write
+  // statement before its local binding in the HIR block, so scan statements to
+  // separate writes from locals.
   zc::Vector<const hir::HirLocalBinding*> bindings;
-  for (size_t i = 0; i < bindingCount; ++i) {
-    auto localBinding = localFor(hirModule, sourceBlock.statements[i]);
-    if (localBinding == zc::none) return false;
-    ZC_IF_SOME(local, localBinding) {
-      // A leading local carries its own binding's type; mixed-type locals
-      // (e.g. a bool local in an i32 function) are legal. The returned local
-      // is separately checked against the function result type at the return.
+  zc::Vector<const hir::HirLocalWriteStatement*> bindingWrites;
+  {
+    const hir::HirLocalWriteStatement* pendingWrite = nullptr;
+    for (size_t i = 0; i + 1 < sourceBlock.statements.size(); ++i) {
+      auto write = localWriteFor(hirModule, sourceBlock.statements[i]);
+      if (write != zc::none) {
+        if (pendingWrite != nullptr) return false;
+        pendingWrite = &ZC_ASSERT_NONNULL(write);
+        continue;
+      }
+      auto sourceLocal = localFor(hirModule, sourceBlock.statements[i]);
+      if (sourceLocal == zc::none) return false;
+      const auto& local = ZC_ASSERT_NONNULL(sourceLocal);
       if (local.node != sourceBlock.statements[i] ||
-          local.local.ordinal() != static_cast<uint32_t>(i + 1) || local.initializer == zc::none) {
+          local.local.ordinal() != static_cast<uint32_t>(bindings.size() + 1) ||
+          local.initializer == zc::none) {
         return false;
       }
       bindings.add(&local);
+      bindingWrites.add(pendingWrite);
+      pendingWrite = nullptr;
     }
+    if (pendingWrite != nullptr) return false;
   }
-  auto sourceReturn = returnFor(hirModule, sourceBlock.statements[bindingCount]);
+  const size_t bindingCount = bindings.size();
+  size_t incrementWriteCount = 0;
+  for (size_t i = 0; i < bindingCount; ++i) {
+    if (bindingWrites[i] != nullptr) ++incrementWriteCount;
+  }
+  auto sourceReturn =
+      returnFor(hirModule, sourceBlock.statements[sourceBlock.statements.size() - 1]);
   if (sourceReturn == zc::none) return false;
   // A nested operand (`a + b * c`) lowers to a synthesized Temporary local plus
   // an extra StorageLive + Assign emitted before the outer binding's assignment.
@@ -6925,15 +6952,94 @@ bool validSequentialLocalReturnFunction(
     }
   }
   // Each binding contributes StorageLive + Assign for its user local, preceded by
-  // an extra StorageLive(temp) + Assign(temp) pair for a nested operand. The
-  // optional unsafe boundary pair follows the last binding.
-  const size_t expectedStatements = bindingCount * 2 + nestedCount * 2 + (hasUnsafeBlock ? 2u : 0u);
+  // an extra StorageLive(temp) + Assign(temp) pair for a nested operand. An
+  // Increment binding contributes an extra Overwrite Assign before its own pair.
+  // The optional unsafe boundary pair follows the last binding.
+  const size_t expectedStatements =
+      bindingCount * 2 + nestedCount * 2 + incrementWriteCount + (hasUnsafeBlock ? 2u : 0u);
   if (block.statements.size() != expectedStatements) { return false; }
   // Verify each binding's statements, tracking the running statement cursor since
   // a nested operand inserts a temp pair before the binding's own pair.
   size_t cursor = 0;
   for (size_t i = 0; i < bindingCount; ++i) {
     const auto& local = *bindings[i];
+    // An Increment binding emits an Overwrite Assign (arithmetic rvalue) before
+    // its own StorageLive + Assign pair.
+    if (bindingWrites[i] != nullptr) {
+      const auto& write = *bindingWrites[i];
+      auto writeBinary = primitiveBinaryFor(hirModule, write.value);
+      if (writeBinary == zc::none) return false;
+      const auto& binaryValue = ZC_ASSERT_NONNULL(writeBinary);
+      if (!binaryValue.isIncrementDesugar) return false;
+      const auto writeArithmetic = mirArithmeticOperatorFor(binaryValue.operation);
+      if (writeArithmetic == zc::none) return false;
+      if (binaryValue.type != local.type || binaryValue.operandType != local.type) { return false; }
+      if (write.local.ordinal() == 0 || write.local.ordinal() > static_cast<uint32_t>(i)) {
+        return false;
+      }
+      const auto& writeAssign = block.statements[cursor];
+      ++cursor;
+      if (writeAssign.kind() != MirStatementKind::Assign) return false;
+      const auto& writeAssignment = writeAssign.assignmentValue();
+      if (writeAssignment.initialization != MirInitializationKind::Overwrite ||
+          writeAssignment.destination.local() != userLocalId(write.local.ordinal() - 1) ||
+          writeAssignment.destination.rootType() != local.type ||
+          writeAssignment.destination.resultType() != local.type ||
+          writeAssignment.destination.projections().size() != 0 ||
+          writeAssignment.value.kind() != MirRvalueKind::Arithmetic) {
+        return false;
+      }
+      const auto& writeRvalue = writeAssignment.value.arithmeticValue();
+      if (writeRvalue.op != ZC_ASSERT_NONNULL(writeArithmetic) ||
+          writeRvalue.resultType != local.type) {
+        return false;
+      }
+      // Validate the write's operands: a constant matches a scalar literal, a
+      // copy place matches a parameter or earlier user local.
+      auto writeLeafMatches = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
+        auto operandLiteral = expressionFor(hirModule, operandNode);
+        ZC_IF_SOME(literalValue, operandLiteral) {
+          return operand.kind() == MirOperandKind::Constant &&
+                 operand.constantValue().type == binaryValue.operandType &&
+                 literalValue.type == binaryValue.operandType &&
+                 sameConstant(operand.constantValue().value, literalValue.value, module, identities,
+                              semanticTypes);
+        }
+        auto operandParameter = parameterReferenceFor(hirModule, operandNode);
+        ZC_IF_SOME(parameter, operandParameter) {
+          size_t parameterIndex = 0;
+          bool found = false;
+          for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+            if (declaration.parameters[p].key == parameter.parameter) {
+              parameterIndex = p;
+              found = true;
+              break;
+            }
+          }
+          return found && parameter.type == binaryValue.operandType &&
+                 matchesPlaceUse(operand, proofs, copy, binaryValue.operandType) &&
+                 operand.place().local() == localId(static_cast<uint32_t>(parameterIndex) + 1) &&
+                 operand.place().rootType() == binaryValue.operandType &&
+                 operand.place().resultType() == binaryValue.operandType &&
+                 operand.place().projections().size() == 0;
+        }
+        auto operandLocal = localReferenceFor(hirModule, operandNode);
+        ZC_IF_SOME(reference, operandLocal) {
+          return reference.type == binaryValue.operandType && reference.local.ordinal() != 0 &&
+                 reference.local.ordinal() <= static_cast<uint32_t>(i) &&
+                 matchesPlaceUse(operand, proofs, copy, binaryValue.operandType) &&
+                 operand.place().local() == userLocalId(reference.local.ordinal() - 1) &&
+                 operand.place().rootType() == binaryValue.operandType &&
+                 operand.place().resultType() == binaryValue.operandType &&
+                 operand.place().projections().size() == 0;
+        }
+        return false;
+      };
+      if (!writeLeafMatches(writeRvalue.left, binaryValue.left) ||
+          !writeLeafMatches(writeRvalue.right, binaryValue.right)) {
+        return false;
+      }
+    }
     // A nested operand emits StorageLive(temp) + Assign(temp = inner rvalue)
     // before the binding's own pair.
     ZC_IF_SOME(nestedNode, bindingNested[i]) {
@@ -15641,7 +15747,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         ZC_IF_SOME(block, sourceBlock) {
           bool allLeadingLocals = true;
           for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
-            if (localFor(hirModule, block.statements[i]) == zc::none) {
+            if (localFor(hirModule, block.statements[i]) == zc::none &&
+                localWriteFor(hirModule, block.statements[i]) == zc::none) {
               allLeadingLocals = false;
               break;
             }

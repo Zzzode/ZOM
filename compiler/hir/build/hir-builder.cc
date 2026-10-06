@@ -4083,6 +4083,112 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             bindingOperation = ZC_ASSERT_NONNULL(desugar).binaryOperation;
             bindingOperandType = unaryOperandType;
             bindingIsUnaryDesugar = true;
+          } else if (binding.initializerKind == SequentialInitializerKind::Increment) {
+            // A prefix increment/decrement initializer (`let y = ++x;`)
+            // desugars to a binary write (`x = x +/- 1`) followed by a
+            // local-reference initializer. Validate the checked call fact,
+            // resolve the operand local, and build the synthetic literal 1.
+            if (binding.unaryOperation == zc::none || binding.unaryOperand == zc::none) {
+              rejected = true;
+              break;
+            }
+            auto callIndex = factIndex(facts.calls(), binding.initializer);
+            if (callIndex == zc::none) {
+              rejected = true;
+              break;
+            }
+            size_t callSlot = 0;
+            ZC_IF_SOME(index, callIndex) { callSlot = index; }
+            const auto& callFact = facts.calls().entries()[callSlot].value;
+            const auto& call = callFact.invocation;
+            const auto& selected = call.selected.variant();
+            if (!selected.is<checker::checked::PrimitiveCallable>()) {
+              rejected = true;
+              break;
+            }
+            const auto operation = selected.get<checker::checked::PrimitiveCallable>().operation;
+            if (operation != checker::PrimitiveOperation::PreIncrement &&
+                operation != checker::PrimitiveOperation::PreDecrement) {
+              rejected = true;
+              break;
+            }
+            const auto binaryOperation = operation == checker::PrimitiveOperation::PreIncrement
+                                             ? checker::PrimitiveOperation::Add
+                                             : checker::PrimitiveOperation::Sub;
+            const auto unaryOperandType =
+                call.arguments.size() == 1 ? call.arguments[0].sourceType : bindingType;
+            const ast::NodeId unaryOperandNode(
+                tree.node(binding.initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+            if (callFact.node != binding.initializer || call.calleeType != unaryOperandType ||
+                call.receiver != zc::none || call.receiverMode != zc::none ||
+                call.receiverAdjustment != zc::none || call.arguments.size() != 1 ||
+                call.arguments[0].sourceNode != unaryOperandNode ||
+                call.arguments[0].sourceType != unaryOperandType ||
+                call.successType != bindingType || call.resultType != bindingType ||
+                call.substitutions != zc::none || call.witnesses != zc::none ||
+                call.raises != zc::none) {
+              rejected = true;
+              break;
+            }
+            // The operand must be an earlier local (never a parameter).
+            const auto& classified = ZC_ASSERT_NONNULL(binding.unaryOperand);
+            if (classified.kind != SequentialBinaryOperandKind::LocalReference ||
+                classified.referencedLocal >= localBindingIds.size()) {
+              rejected = true;
+              break;
+            }
+            auto referenceBinding = resolvedOwnerLocal(bound.bindings(), classified.node);
+            if (referenceBinding == zc::none || ZC_ASSERT_NONNULL(referenceBinding) !=
+                                                    localBindingIds[classified.referencedLocal]) {
+              rejected = true;
+              break;
+            }
+            auto operandSpan = bound.parsedModule().spanFor(tree.node(classified.node).range);
+            if (operandSpan == zc::none) {
+              rejected = true;
+              break;
+            }
+            zc::Maybe<checker::checked::CanonicalConstValue> noLiteral;
+            zc::Maybe<identity::CallableParameterKey> noParameter;
+            zc::Maybe<checker::PrimitiveOperation> noNested;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+            auto resolvedReal =
+                PendingSequentialBinaryOperand{SequentialBinaryOperandKind::LocalReference,
+                                               unaryOperandType,
+                                               ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                               zc::mv(noLiteral),
+                                               zc::mv(noParameter),
+                                               classified.referencedLocal,
+                                               zc::mv(noNested),
+                                               zc::mv(noNestedLeft),
+                                               zc::mv(noNestedRight)};
+            auto unitMagnitude = zc::heapArray<uint8_t>(1);
+            unitMagnitude[0] = 1;
+            auto syntheticOne =
+                checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                    checker::signature::IntegerSign::NonNegative, zc::mv(unitMagnitude)});
+            zc::Maybe<checker::checked::CanonicalConstValue> syntheticLiteral =
+                zc::mv(syntheticOne);
+            zc::Maybe<identity::CallableParameterKey> noParameter2;
+            zc::Maybe<checker::PrimitiveOperation> noNested2;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft2;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight2;
+            auto syntheticOperand =
+                PendingSequentialBinaryOperand{SequentialBinaryOperandKind::Literal,
+                                               unaryOperandType,
+                                               ZC_ASSERT_NONNULL(initializerSpan).clone(),
+                                               zc::mv(syntheticLiteral),
+                                               zc::mv(noParameter2),
+                                               0,
+                                               zc::mv(noNested2),
+                                               zc::mv(noNestedLeft2),
+                                               zc::mv(noNestedRight2)};
+            bindingLeftOperand = zc::mv(resolvedReal);
+            bindingRightOperand = zc::mv(syntheticOperand);
+            bindingOperation = binaryOperation;
+            bindingOperandType = unaryOperandType;
+            bindingIsUnaryDesugar = true;
           } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveBinary) {
             // A primitive binary initializer: validate its checked call fact and
             // resolve each operand to a literal, a parameter, or an earlier local.
@@ -5493,6 +5599,108 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               HirNodeId(), HirLocalId(), zc::mv(field), writeType, HirNodeId(), kind,
               ZC_ASSERT_NONNULL(assignmentSpan).clone(), ZC_ASSERT_NONNULL(valueSpan).clone()});
           localWriteValues.add(zc::mv(writeValueRecord));
+        }
+        // A prefix increment/decrement in return position (`return ++x;`)
+        // desugars to a binary write (`x = x +/- 1`) followed by a local
+        // reference return. The UnaryExpression node carries the call fact;
+        // the binary and its literal operand are synthetic, so the write
+        // pools into the same increment-write digest as the
+        // expression-statement form.
+        if (shape.returnsLocalIncrement) {
+          const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+              tree.node(shape.value).payload.words[ast::kUnaryExpressionOpWord]);
+          if (unaryOp != ast::UnaryOperatorKind::PreIncrement &&
+              unaryOp != ast::UnaryOperatorKind::PreDecrement) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const ast::NodeId unaryTarget(
+              tree.node(shape.value).payload.words[ast::kUnaryExpressionOperandWord]);
+          auto unaryTypeIndex = factIndex(facts.nodeTypes(), shape.value);
+          auto unaryTargetTypeIndex = factIndex(facts.nodeTypes(), unaryTarget);
+          auto unaryCallIndex = factIndex(facts.calls(), shape.value);
+          auto unarySpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
+          auto unaryTargetBinding = resolvedOwnerLocal(bound.bindings(), unaryTarget);
+          auto unaryReturnBinding = resolvedOwnerLocal(bound.bindings(), shape.localReference);
+          if (unaryTypeIndex == zc::none || unaryTargetTypeIndex == zc::none ||
+              unaryCallIndex == zc::none || unarySpan == zc::none ||
+              unaryTargetBinding == zc::none || unaryReturnBinding == zc::none ||
+              unaryTargetBinding != unaryReturnBinding) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t unaryTypeSlot = 0;
+          size_t unaryTargetSlot = 0;
+          ZC_IF_SOME(index, unaryTypeIndex) { unaryTypeSlot = index; }
+          ZC_IF_SOME(index, unaryTargetTypeIndex) { unaryTargetSlot = index; }
+          const auto& unaryType = facts.nodeTypes().entries()[unaryTypeSlot].value;
+          const auto& unaryTargetType = facts.nodeTypes().entries()[unaryTargetSlot].value;
+          if (local == zc::none || unaryType != unaryTargetType) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          size_t unaryCallSlot = 0;
+          ZC_IF_SOME(index, unaryCallIndex) { unaryCallSlot = index; }
+          const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+          const auto& unaryCall = unaryCallFact.invocation;
+          const auto& unarySelected = unaryCall.selected.variant();
+          if (!unarySelected.is<checker::checked::PrimitiveCallable>() ||
+              unaryCallFact.node != shape.value || unaryCall.calleeType != unaryTargetType ||
+              unaryCall.receiver != zc::none || unaryCall.receiverMode != zc::none ||
+              unaryCall.receiverAdjustment != zc::none || unaryCall.arguments.size() != 1 ||
+              unaryCall.arguments[0].sourceNode != unaryTarget ||
+              unaryCall.arguments[0].sourceType != unaryTargetType ||
+              unaryCall.successType != unaryTargetType || unaryCall.resultType != unaryTargetType ||
+              unaryCall.substitutions != zc::none || unaryCall.witnesses != zc::none ||
+              unaryCall.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto unaryOperation =
+              unarySelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (unaryOperation != checker::PrimitiveOperation::PreIncrement &&
+              unaryOperation != checker::PrimitiveOperation::PreDecrement) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto binaryOperation = unaryOperation == checker::PrimitiveOperation::PreIncrement
+                                           ? checker::PrimitiveOperation::Add
+                                           : checker::PrimitiveOperation::Sub;
+          auto unitMagnitude = zc::heapArray<uint8_t>(1);
+          unitMagnitude[0] = 1;
+          auto syntheticOne =
+              checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                  checker::signature::IntegerSign::NonNegative, zc::mv(unitMagnitude)});
+          auto unaryTargetSpan = bound.parsedModule().spanFor(tree.node(unaryTarget).range);
+          if (unaryTargetSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          auto leftReference = HirLocalReferenceExpression{
+              HirNodeId(), hirLocalId(1), unaryTargetType, HirValueCategory::Place,
+              ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+          auto leftArm =
+              PendingConditionalArm{zc::none, zc::none, zc::mv(leftReference), unaryTargetType,
+                                    ZC_ASSERT_NONNULL(unaryTargetSpan).clone()};
+          auto rightArm =
+              PendingConditionalArm{zc::mv(syntheticOne), zc::none, zc::none, unaryTargetType,
+                                    ZC_ASSERT_NONNULL(unarySpan).clone()};
+          PendingLocalWriteValue unaryWriteValue;
+          unaryWriteValue.binary = PendingLocalWriteBinary{
+              zc::mv(leftArm), zc::mv(rightArm), unaryTargetType,
+              unaryTargetType, binaryOperation,  ZC_ASSERT_NONNULL(unarySpan).clone()};
+          ZC_ASSERT_NONNULL(unaryWriteValue.binary).isIncrementDesugar = true;
+          localWrites.add(HirLocalWriteStatement{
+              HirNodeId(), HirLocalId(), zc::none, unaryTargetType, HirNodeId(),
+              HirLocalWriteKind::Overwrite, ZC_ASSERT_NONNULL(unarySpan).clone(),
+              ZC_ASSERT_NONNULL(unarySpan).clone()});
+          localWriteValues.add(zc::mv(unaryWriteValue));
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
                  shape.returnsFoldedFloatCast) {
@@ -8537,7 +8745,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       byValueParameterField,
                                                       zc::none,
                                                       returnsFoldedStringConcat,
-                                                      returnsFoldedFloatCast});
+                                                      returnsFoldedFloatCast,
+                                                      shape.returnsLocalIncrement});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -8867,6 +9076,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // five) and the synthetic literal 1 has no checked literal fact. The
   // nodeTypes and literals equations subtract this count to stay in balance.
   size_t incrementWriteCount = 0;
+  // Sequential let-binding increment/decrement (`let y = ++x;`). The
+  // localReturnCount credit counts the UnaryExpression node-type fact, but
+  // the net write contribution (localWrite*3 + binaryWrite*2 -
+  // incrementWrite*3 = 2) already covers both the UnaryExpression and its
+  // operand, so the localReturnCount credit double-counts one node-type
+  // fact per Increment binding. Subtract one per binding to rebalance.
+  size_t sequentialIncrementBindingCount = 0;
+  // Return-position increment/decrement (`return ++x;`). The desugared write
+  // pools into incrementWriteCount, but the return value is the UnaryExpression
+  // itself rather than a separate local-reference node, so the per-function
+  // localReturnCount node-type credit has no corresponding AST node and must
+  // be subtracted.
+  size_t incrementReturnCount = 0;
   // Compound assignment writes (`x += 1`). Each desugars to a binary write
   // (`x = x + 1`), but the AssignmentExpr node carries only three node-type
   // facts (assignment, target, value) instead of five and the binary operation
@@ -8921,6 +9143,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.voidBody) ++voidFunctionCount;
     if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     if (function.returnsFoldedFloatCast) ++foldedFloatCastCount;
+    if (function.returnsLocalIncrement) ++incrementReturnCount;
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
       ZC_IF_SOME(sequential, function.sequentialLocalReturn) {
@@ -8974,6 +9197,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++sequentialBinaryCount;
               ++literalBearingSlots;
               ++unaryReturnCount;
+              break;
+            case SequentialInitializerKind::Increment:
+              // The binding desugars to a binary write (`x = x +/- 1`)
+              // followed by a local-reference initializer. The write and
+              // its local-reference operand are counted by the
+              // binaryWrite/incrementWrite tallies; the local-reference
+              // initializer is not a literal-bearing slot.
+              ++localWriteCount;
+              ++binaryWriteCount;
+              ++incrementWriteCount;
+              ++binaryWriteLocalOperandCount;
+              ++sequentialIncrementBindingCount;
               break;
             case SequentialInitializerKind::PrimitiveBinary:
               ++sequentialBinaryCount;
@@ -9070,6 +9305,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++sequentialBinaryCount;
               ++literalBearingSlots;
               ++unaryReturnCount;
+              break;
+            case SequentialInitializerKind::Increment:
+              // A dead increment binding's write/binary nodes are not
+              // emitted, but the checker still produces the
+              // UnaryExpression and IdentExpr node-type facts and the
+              // call fact. The write tallies mirror the live case so
+              // the incrementWriteCount subtraction stays in balance.
+              ++binaryWriteCount;
+              ++incrementWriteCount;
+              ++binaryWriteLocalOperandCount;
               break;
             case SequentialInitializerKind::PrimitiveBinary:
               ++sequentialBinaryCount;
@@ -9581,8 +9826,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       foldedStringConcatCount * 2 + foldedFloatCastCount + sequentialFoldedStringConcatCount * 2 +
       sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
       sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 -
-      compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount -
+      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {

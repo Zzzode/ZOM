@@ -23,6 +23,7 @@ enum class SequentialInitializerKind : uint8_t {
   ParameterReference,
   PrimitiveBinary,
   PrimitiveUnary,
+  Increment,
   Cast,
   Ternary,
   EnumVariant,
@@ -135,6 +136,12 @@ struct FunctionReturnShape final {
   ast::NodeList localWrites;
   bool returnsLocal = false;
   ast::NodeId localReference;
+  // Two-statement local-return shape: `mut x = <lit>; return ++x;` (or
+  // `--x`). The prefix increment/decrement desugars to a binary write
+  // (`x = x +/- 1`) followed by a local reference return; the write is
+  // synthetic (no AST expression statement) and pools into the same
+  // increment-write digest as the expression-statement form.
+  bool returnsLocalIncrement = false;
   bool returnsLocalField = false;
   // Single-statement free-function shape: `return <ordinary-parameter>.<field>;`
   // reading one field of a by-value struct parameter with one field projection.
