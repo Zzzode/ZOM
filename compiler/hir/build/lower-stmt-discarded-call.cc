@@ -17,10 +17,10 @@ void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, 
   // Fixed source-preorder stride: function F, body F+1, write statement F+2,
   // write value parameter reference F+3. The block lists only the write; no
   // return is materialized for the Unit result.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId writeId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId writeId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),
@@ -56,15 +56,15 @@ void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, H
   // F+1, local F+2, aggregate initializer F+3, set receiver reference F+4, set
   // call F+5, get receiver reference F+6, get call F+7, return F+8. The block
   // lists the local, the set call node (statement position), and the return.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId localId = ctx.allocNode();
-  const HirNodeId initializerId = ctx.allocNode();
-  const HirNodeId setReceiverId = ctx.allocNode();
-  const HirNodeId setCallId = ctx.allocNode();
-  const HirNodeId getReceiverId = ctx.allocNode();
-  const HirNodeId getCallId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  const HirNodeId setReceiverId = ctx.allocNode(ast::NodeId());
+  const HirNodeId setCallId = ctx.allocNode(ast::NodeId());
+  const HirNodeId getReceiverId = ctx.allocNode(ast::NodeId());
+  const HirNodeId getCallId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,

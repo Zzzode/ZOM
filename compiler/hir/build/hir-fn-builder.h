@@ -42,11 +42,13 @@ public:
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
            zc::Vector<HirDirectCallExpression>& calls,
            zc::Vector<HirReceiverCallExpression>& receiverCalls,
-           zc::Vector<HirConditionalExpression>& conditionals,
-           zc::Vector<HirLoopStatement>& loops) noexcept;
+           zc::Vector<HirConditionalExpression>& conditionals, zc::Vector<HirLoopStatement>& loops,
+           zc::Vector<ast::NodeId>& sourceNodes) noexcept;
 
-  /// \brief Allocates the next deterministic source-preorder node id.
-  HirNodeId allocNode();
+  /// \brief Allocates the next deterministic source-preorder node id and
+  /// records its source AST node in the side-table. A default-constructed
+  /// ast::NodeId (value 0) marks a synthetic node with no AST correspondence.
+  HirNodeId allocNode(ast::NodeId source);
 
   void addFunction(HirFunctionDeclaration declaration);
   void addBlock(HirBlockStatement block);
@@ -101,6 +103,7 @@ private:
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
   zc::Vector<HirConditionalExpression>* conditionals;
   zc::Vector<HirLoopStatement>* loops;
+  zc::Vector<ast::NodeId>* sourceNodes;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive

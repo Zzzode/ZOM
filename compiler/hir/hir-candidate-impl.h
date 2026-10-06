@@ -5,6 +5,7 @@
 
 #pragma once
 
+#include "compiler/ast/node-id.h"
 #include "compiler/hir/hir-module.h"
 
 namespace zomlang::compiler::hir {
@@ -28,8 +29,8 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirReceiverCallExpression>&& receiverCalls,
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
        zc::Vector<HirPrimitiveBinaryExpression>&& primitiveBinaryOperations,
-       zc::Vector<HirConditionalExpression>&& conditionals,
-       zc::Vector<HirLoopStatement>&& loops) noexcept
+       zc::Vector<HirConditionalExpression>&& conditionals, zc::Vector<HirLoopStatement>&& loops,
+       zc::Vector<ast::NodeId>&& sourceNodes) noexcept
       : checkedModule(zc::mv(checkedModule)),
         declarations(zc::mv(declarations)),
         functions(zc::mv(functions)),
@@ -53,7 +54,8 @@ struct HirModuleCandidate::Impl final {
         unsafeBlocks(zc::mv(unsafeBlocks)),
         primitiveBinaryOperations(zc::mv(primitiveBinaryOperations)),
         conditionals(zc::mv(conditionals)),
-        loops(zc::mv(loops)) {}
+        loops(zc::mv(loops)),
+        sourceNodes(zc::mv(sourceNodes)) {}
 
   VerifiedCheckedModule checkedModule;
   zc::Vector<HirValueDeclaration> declarations;
@@ -79,6 +81,11 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
+  /// Side-table mapping HirNodeId ordinal to the source AST node. Index 0 is a
+  /// dummy so the one-based HirNodeId ordinal is the direct vector index. A
+  /// default-constructed ast::NodeId (value 0) marks a synthetic HIR node with
+  /// no AST correspondence; the per-node validator skips sentinel entries.
+  zc::Vector<ast::NodeId> sourceNodes;
 };
 
 }  // namespace zomlang::compiler::hir

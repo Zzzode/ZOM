@@ -18,12 +18,12 @@ void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, left F+2, right F+3, binary F+4, return F+5. The
   // return takes the binary node directly (no result temporary).
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId leftId = ctx.allocNode();
-  const HirNodeId rightId = ctx.allocNode();
-  const HirNodeId binaryId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId leftId = ctx.allocNode(ast::NodeId());
+  const HirNodeId rightId = ctx.allocNode(ast::NodeId());
+  const HirNodeId binaryId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),

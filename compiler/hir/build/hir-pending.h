@@ -540,6 +540,10 @@ struct PendingReceiverFieldArithmetic final {
 
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
+  /// The AST node of the function/method declaration this pending record
+  /// lowers. Threaded from the binder definition so the HIR side-table can
+  /// anchor each function's node range to its source.
+  ast::NodeId sourceNode;
   identity::SemanticTypeId resultType;
   zc::Vector<HirParameter> parameters;
   // Set only for an inherent method: its implicit `this` receiver, kept

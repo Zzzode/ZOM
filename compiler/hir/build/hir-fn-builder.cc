@@ -28,7 +28,8 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirDirectCallExpression>& calls,
                    zc::Vector<HirReceiverCallExpression>& receiverCalls,
                    zc::Vector<HirConditionalExpression>& conditionals,
-                   zc::Vector<HirLoopStatement>& loops) noexcept
+                   zc::Vector<HirLoopStatement>& loops,
+                   zc::Vector<ast::NodeId>& sourceNodes) noexcept
     : nextNode(&nextNode),
       functions(&functions),
       blocks(&blocks),
@@ -49,11 +50,13 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       calls(&calls),
       receiverCalls(&receiverCalls),
       conditionals(&conditionals),
-      loops(&loops) {}
+      loops(&loops),
+      sourceNodes(&sourceNodes) {}
 
-HirNodeId HirFnCtx::allocNode() {
+HirNodeId HirFnCtx::allocNode(ast::NodeId source) {
   HirNodeId id = hirId(*nextNode);
   ++(*nextNode);
+  sourceNodes->add(source);
   return id;
 }
 
@@ -141,9 +144,9 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
 
 HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
   ZC_IF_SOME(binary, arm.binary) {
-    const HirNodeId leftId = allocNode();
-    const HirNodeId rightId = allocNode();
-    const HirNodeId binaryId = allocNode();
+    const HirNodeId leftId = allocNode(ast::NodeId());
+    const HirNodeId rightId = allocNode(ast::NodeId());
+    const HirNodeId binaryId = allocNode(ast::NodeId());
     lowerArmLeaf(leftId, *binary.left);
     lowerArmLeaf(rightId, *binary.right);
     addPrimitiveBinary(HirPrimitiveBinaryExpression{binaryId, leftId, rightId, binary.operandType,
@@ -151,7 +154,7 @@ HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
                                                     binary.operation, arm.sourceSpan.clone()});
     return binaryId;
   }
-  const HirNodeId valueId = allocNode();
+  const HirNodeId valueId = allocNode(ast::NodeId());
   lowerArmLeaf(valueId, arm);
   return valueId;
 }
@@ -197,10 +200,10 @@ HirFunctionDeclaration lowerFunctionHeader(HirNodeId functionId, HirNodeId bodyI
 }  // namespace
 
 void lowerScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -225,12 +228,12 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
   // Fixed source-preorder stride for the one-binding shape, matching the
   // generic materializer: function F, body F+1, local F+2, initializer F+3,
   // return F+4, value F+5. The block lists [local, return].
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId localId = ctx.allocNode();
-  const HirNodeId initializerId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -257,8 +260,8 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   // the generic materializer's two-pass allocation: function, body, then for
   // each binding its local and initializer plus a binary binding's two operand
   // nodes and each nested operand's two leaf nodes, then return and value.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
   zc::Vector<HirNodeId> localNodeIds;
   zc::Vector<HirNodeId> initializerNodeIds;
   zc::Vector<zc::Maybe<HirNodeId>> leftOperandIds;
@@ -278,14 +281,14 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   zc::Vector<zc::Maybe<HirNodeId>> incrementBinaryIds;
   for (size_t index = 0; index < bindingCount; ++index) {
     if (sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
-      incrementWriteIds.add(ctx.allocNode());
-      incrementBinaryIds.add(ctx.allocNode());
+      incrementWriteIds.add(ctx.allocNode(ast::NodeId()));
+      incrementBinaryIds.add(ctx.allocNode(ast::NodeId()));
     } else {
       incrementWriteIds.add(zc::none);
       incrementBinaryIds.add(zc::none);
     }
-    localNodeIds.add(ctx.allocNode());
-    initializerNodeIds.add(ctx.allocNode());
+    localNodeIds.add(ctx.allocNode(ast::NodeId()));
+    initializerNodeIds.add(ctx.allocNode(ast::NodeId()));
     zc::Maybe<HirNodeId> leftOperandId;
     zc::Maybe<HirNodeId> rightOperandId;
     zc::Maybe<HirNodeId> leftNestedLeafLeftId;
@@ -295,18 +298,18 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     if (sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveBinary ||
         sequential.bindings[index].kind == SequentialInitializerKind::PrimitiveUnary ||
         sequential.bindings[index].kind == SequentialInitializerKind::Increment) {
-      leftOperandId = ctx.allocNode();
-      rightOperandId = ctx.allocNode();
+      leftOperandId = ctx.allocNode(ast::NodeId());
+      rightOperandId = ctx.allocNode(ast::NodeId());
       ZC_IF_SOME(left, sequential.bindings[index].leftOperand) {
         if (left.kind == SequentialBinaryOperandKind::NestedBinary) {
-          leftNestedLeafLeftId = ctx.allocNode();
-          leftNestedLeafRightId = ctx.allocNode();
+          leftNestedLeafLeftId = ctx.allocNode(ast::NodeId());
+          leftNestedLeafRightId = ctx.allocNode(ast::NodeId());
         }
       }
       ZC_IF_SOME(right, sequential.bindings[index].rightOperand) {
         if (right.kind == SequentialBinaryOperandKind::NestedBinary) {
-          rightNestedLeafLeftId = ctx.allocNode();
-          rightNestedLeafRightId = ctx.allocNode();
+          rightNestedLeafLeftId = ctx.allocNode(ast::NodeId());
+          rightNestedLeafRightId = ctx.allocNode(ast::NodeId());
         }
       }
     }
@@ -314,9 +317,9 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     zc::Maybe<HirNodeId> ternaryThenId;
     zc::Maybe<HirNodeId> ternaryElseId;
     if (sequential.bindings[index].kind == SequentialInitializerKind::Ternary) {
-      ternaryConditionId = ctx.allocNode();
-      ternaryThenId = ctx.allocNode();
-      ternaryElseId = ctx.allocNode();
+      ternaryConditionId = ctx.allocNode(ast::NodeId());
+      ternaryThenId = ctx.allocNode(ast::NodeId());
+      ternaryElseId = ctx.allocNode(ast::NodeId());
     }
     leftOperandIds.add(zc::mv(leftOperandId));
     rightOperandIds.add(zc::mv(rightOperandId));
@@ -328,11 +331,11 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     ternaryThenIds.add(zc::mv(ternaryThenId));
     ternaryElseIds.add(zc::mv(ternaryElseId));
   }
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId returnValueId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnValueId = ctx.allocNode(ast::NodeId());
   zc::Maybe<HirNodeId> unsafeBlockId;
   if (function.unsafeBlockSpan != zc::none) {
-    unsafeBlockId = ctx.allocNode();
+    unsafeBlockId = ctx.allocNode(ast::NodeId());
     ctx.addUnsafeBlock(HirUnsafeBlockExpression{
         ZC_ASSERT_NONNULL(unsafeBlockId), returnValueId, function.resultType,
         ZC_ASSERT_NONNULL(function.unsafeBlockSpan).clone()});
@@ -617,10 +620,10 @@ void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, Hir
   const identity::SemanticTypeId resultType = projection.type;
   const HirValueCategory category = projection.category;
 
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;
@@ -644,12 +647,12 @@ void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function
   // Source preorder: function, body, write statement, write value literal,
   // return, returned parameter field projection. The block lists the write
   // before the return; the write names the literal node as its value.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId writeId = ctx.allocNode();
-  const HirNodeId writeValueId = ctx.allocNode();
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId writeId = ctx.allocNode(ast::NodeId());
+  const HirNodeId writeValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
   zc::Vector<HirNodeId> statements;

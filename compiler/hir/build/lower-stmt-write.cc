@@ -26,26 +26,26 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   // then return and returned value. A binary write reserves two trailing
   // operand node ids after the return value (in write order); the write's value
   // node is the binary node. No receiver/unsafe/loop ids in this family.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId localId = ctx.allocNode();
-  const HirNodeId initializerId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
   zc::Vector<HirNodeId> writeIds;
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
-    writeIds.add(ctx.allocNode());
-    writeValueIds.add(ctx.allocNode());
+    writeIds.add(ctx.allocNode(ast::NodeId()));
+    writeValueIds.add(ctx.allocNode(ast::NodeId()));
   }
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
   zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
   zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
   for (const auto& writeValue : function.localWriteValues) {
     zc::Maybe<HirNodeId> leftId;
     zc::Maybe<HirNodeId> rightId;
     if (writeValue.binary != zc::none) {
-      leftId = ctx.allocNode();
-      rightId = ctx.allocNode();
+      leftId = ctx.allocNode(ast::NodeId());
+      rightId = ctx.allocNode(ast::NodeId());
     }
     binaryLeftIds.add(zc::mv(leftId));
     binaryRightIds.add(zc::mv(rightId));
@@ -135,19 +135,19 @@ void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCt
   // then per write (write node, write value node), then return and the returned
   // field-projection value. The write values are scalar literals; checker
   // admission makes parameter or binary field-write values unreachable.
-  const HirNodeId functionId = ctx.allocNode();
-  const HirNodeId bodyId = ctx.allocNode();
-  const HirNodeId localId = ctx.allocNode();
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(ast::NodeId());
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
   zc::Maybe<HirNodeId> initializerId;
-  if (initialized) { initializerId = ctx.allocNode(); }
+  if (initialized) { initializerId = ctx.allocNode(ast::NodeId()); }
   zc::Vector<HirNodeId> writeIds;
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
-    writeIds.add(ctx.allocNode());
-    writeValueIds.add(ctx.allocNode());
+    writeIds.add(ctx.allocNode(ast::NodeId()));
+    writeValueIds.add(ctx.allocNode(ast::NodeId()));
   }
-  const HirNodeId returnId = ctx.allocNode();
-  const HirNodeId valueId = ctx.allocNode();
+  const HirNodeId returnId = ctx.allocNode(ast::NodeId());
+  const HirNodeId valueId = ctx.allocNode(ast::NodeId());
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::none,
