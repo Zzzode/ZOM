@@ -126,20 +126,6 @@ bool hasExecutableBody(const binder::MaterializedDefinitionInventoryEntry& defin
   return false;
 }
 
-size_t executableDefinitionCount(const binder::ImmutableDefinitionInventory& definitions) {
-  size_t count = 0;
-  for (const auto& definition : definitions.definitions()) {
-    if (hasExecutableBody(definition, definitions) &&
-        (definition.record.kind() == identity::DefinitionKind::Function ||
-         definition.record.kind() == identity::DefinitionKind::Method ||
-         definition.record.kind() == identity::DefinitionKind::Static ||
-         definition.record.kind() == identity::DefinitionKind::Constant)) {
-      ++count;
-    }
-  }
-  return count;
-}
-
 bool sameConstant(const checker::checked::CanonicalConstValue& left,
                   const checker::checked::CanonicalConstValue& right, identity::ModuleId module,
                   const checker::CheckerIdentityAuthority& identities,

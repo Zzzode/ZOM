@@ -190,8 +190,6 @@ zc::Maybe<const binder::PatternBindingSite&> patternBindingSite(
 bool hasExecutableBody(const binder::MaterializedDefinitionInventoryEntry& definition,
                        const binder::ImmutableDefinitionInventory& definitions);
 
-size_t executableDefinitionCount(const binder::ImmutableDefinitionInventory& definitions);
-
 bool sameConstant(const checker::checked::CanonicalConstValue& left,
                   const checker::checked::CanonicalConstValue& right, identity::ModuleId module,
                   const checker::CheckerIdentityAuthority& identities,
