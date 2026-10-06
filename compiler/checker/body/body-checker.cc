@@ -6320,7 +6320,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             primitiveBinary || integerCast || conditionalExpr || matchExpr)) ||
           (stage == 1 &&
            (((!structured && !directCall && !enumConstruction) || errorOperator || indexed) &&
-            !unsafeBlock && !primitiveBinary && !integerCast && !conditionalExpr && !matchExpr)) ||
+            !primitiveBinary && !integerCast && !conditionalExpr && !matchExpr)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
           (stage == 3 &&
            (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
@@ -6489,49 +6489,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                site.key.sourceSpan.clone(), factPath(site.primaryGroup));
       }
       zc::Maybe<identity::SemanticTypeId> producedType;
-      if (site.production == BodyProductionKind::UnsafeBlock) {
-        const auto& unsafeBlock = input.boundModule.tree().node(site.node);
-        const ast::NodeId body(unsafeBlock.payload.words[ast::kUnsafeBlockExprBodyWord]);
-        if (!input.boundModule.tree().contains(body) ||
-            input.boundModule.tree().node(body).kind != ast::SyntaxKind::BlockStmt) {
-          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-        }
-        const auto& blockNode = input.boundModule.tree().node(body);
-        const ast::NodeList statements{blockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
-                                       blockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
-        if (!input.boundModule.tree().contains(statements) || statements.empty()) {
-          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-        }
-        ast::NodeId tailStatement = input.boundModule.tree().list(statements)[statements.size - 1];
-        if (input.boundModule.tree().node(tailStatement).kind ==
-            ast::SyntaxKind::StatementListItem) {
-          tailStatement = ast::NodeId(input.boundModule.tree()
-                                          .node(tailStatement)
-                                          .payload.words[ast::kStatementListItemItemWord]);
-        }
-        if (!input.boundModule.tree().contains(tailStatement) ||
-            input.boundModule.tree().node(tailStatement).kind !=
-                ast::SyntaxKind::ExpressionStatement) {
-          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-        }
-        const ast::NodeId tailExpression(
-            input.boundModule.tree()
-                .node(tailStatement)
-                .payload.words[ast::kExpressionStatementExpressionWord]);
-        auto tailType = factEntry(nodeTypes.asPtr(), tailExpression);
-        if (tailType == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-        }
-        ZC_IF_SOME(value, tailType) { producedType = value.value; }
-      } else if (site.production == BodyProductionKind::IdentifierReference) {
+      if (site.production == BodyProductionKind::IdentifierReference) {
         auto shape = directCallableShape(input, site.node);
         ZC_IF_SOME(value, shape) { producedType = value.calleeType; }
         if (producedType == zc::none) {
@@ -8579,6 +8537,54 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Place));
         }
       }
+    }
+  }
+
+  // Unsafe block tail expressions depend on the tail expression's type, which
+  // may itself be an unsafe block (nested). Process in reverse source order so
+  // inner blocks are resolved before their enclosing block.
+  for (size_t idx = input.requirements.impl->productionSiteValues.size(); idx > 0; --idx) {
+    const auto& site = input.requirements.impl->productionSiteValues[idx - 1];
+    if (site.production != BodyProductionKind::UnsafeBlock) { continue; }
+    const auto& unsafeBlock = input.boundModule.tree().node(site.node);
+    const ast::NodeId body(unsafeBlock.payload.words[ast::kUnsafeBlockExprBodyWord]);
+    if (!input.boundModule.tree().contains(body) ||
+        input.boundModule.tree().node(body).kind != ast::SyntaxKind::BlockStmt) {
+      return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+    }
+    const auto& blockNode = input.boundModule.tree().node(body);
+    const ast::NodeList statements{blockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                   blockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!input.boundModule.tree().contains(statements) || statements.empty()) {
+      return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+    }
+    ast::NodeId tailStatement = input.boundModule.tree().list(statements)[statements.size - 1];
+    if (input.boundModule.tree().node(tailStatement).kind == ast::SyntaxKind::StatementListItem) {
+      tailStatement = ast::NodeId(input.boundModule.tree()
+                                      .node(tailStatement)
+                                      .payload.words[ast::kStatementListItemItemWord]);
+    }
+    if (!input.boundModule.tree().contains(tailStatement) ||
+        input.boundModule.tree().node(tailStatement).kind != ast::SyntaxKind::ExpressionStatement) {
+      return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+    }
+    const ast::NodeId tailExpression(input.boundModule.tree()
+                                         .node(tailStatement)
+                                         .payload.words[ast::kExpressionStatementExpressionWord]);
+    auto tailType = factEntry(nodeTypes.asPtr(), tailExpression);
+    if (tailType == zc::none) {
+      return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+    }
+    ZC_IF_SOME(value, tailType) {
+      nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.value, zc::Array<uint8_t>()});
     }
   }
 

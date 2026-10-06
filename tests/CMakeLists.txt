@@ -305,6 +305,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-struct-update-consumer/Zom.toml::reject_struct_update_consumer::reject_struct_update_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-for-break-only-consumer/Zom.toml::reject_for_break_only_consumer::reject_for_break_only_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-unsafe-block-consumer/Zom.toml::reject_unsafe_block_consumer::reject_unsafe_block_consumer"
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
       --string-case

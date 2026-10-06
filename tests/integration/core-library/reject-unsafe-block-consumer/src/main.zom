@@ -1,0 +1,10 @@
+// Fail-closed fixture: an unsafe block whose tail expression is a binary
+// operation cannot be lowered by the HIR builder yet. The body checker must
+// resolve the unsafe block type fact (no ICE) and the IR layer drains the
+// unsupported shape to ZOM4099 instead of crashing.
+fn entry() -> i32 {
+    let v = unsafe {
+        41 + 1
+    };
+    return v;
+}
