@@ -35,6 +35,9 @@ public:
   /// \brief Allocates the function root source scope with no parent.
   MirSourceScopeId pushRootScope(identity::SourceSpan sourceSpan);
 
+  /// \brief Allocates a child source scope with the given parent.
+  MirSourceScopeId pushScope(MirSourceScopeId parent, identity::SourceSpan sourceSpan);
+
   /// \brief Declares the next dense local on the given source scope.
   MirLocalId declareLocal(MirLocalKind kind, identity::SemanticTypeId type, MirSourceScopeId scope,
                           identity::SourceSpan sourceSpan);

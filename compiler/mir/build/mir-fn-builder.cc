@@ -21,6 +21,16 @@ MirSourceScopeId MirFnCtx::pushRootScope(identity::SourceSpan sourceSpan) {
   ZC_UNREACHABLE
 }
 
+MirSourceScopeId MirFnCtx::pushScope(MirSourceScopeId parent, identity::SourceSpan sourceSpan) {
+  const auto id = MirSourceScopeId::fromOrdinal(nextScope);
+  ZC_IF_SOME(value, id) {
+    ++nextScope;
+    scopes.add(MirSourceScope{value, parent, zc::mv(sourceSpan)});
+    return value;
+  }
+  ZC_UNREACHABLE
+}
+
 MirLocalId MirFnCtx::declareLocal(MirLocalKind kind, identity::SemanticTypeId type,
                                   MirSourceScopeId scope, identity::SourceSpan sourceSpan) {
   const auto id = MirLocalId::fromOrdinal(nextLocal);

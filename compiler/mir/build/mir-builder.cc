@@ -723,10 +723,12 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
 /// to the legacy fallthrough scalar construction. An inherent method
 /// (`fn m(this) -> T { return <literal>; }`) additionally declares its
 /// implicit `this` receiver as the leading parameter local, which the admitted
-/// scalar body never reads.
+/// scalar body never reads. When the body is wrapped in an unsafe block, the
+/// entry block carries Enter/Exit unsafe-scope boundary statements on a child
+/// source scope so the ownership overlay can acknowledge the unsafe region.
 zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
     const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirScalarLiteralExpression& literal,
+    const hir::HirScalarLiteralExpression& literal, const hir::VerifiedHirModule& hirModule,
     const checker::CheckerIdentityAuthority& identities) {
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
@@ -739,6 +741,25 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   }
   const MirBlockId entry = ctx.beginBlock(scope);
   (void)entry;
+
+  // Unsafe blocks wrap the scalar body in Enter/Exit scope boundary statements
+  // so the MIR verifier and ownership overlay can acknowledge the unsafe region.
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+    for (const auto& candidate : hirModule.unsafeBlocks()) {
+      if (candidate.node != unsafeNode) continue;
+      if (unsafeBlock != zc::none) return zc::none;
+      unsafeBlock = candidate;
+    }
+    if (unsafeBlock == zc::none) return zc::none;
+    const auto& unsafe = ZC_ASSERT_NONNULL(unsafeBlock);
+    const auto unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+  }
+
   ctx.terminateBlock(MirTerminator::returnValue(
       MirOperand::constant(declaration.resultType, literal.value.clone()),
       sourceReturn.sourceSpan.clone()));
@@ -3010,13 +3031,13 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     }
 
     // Scalar literal return: exactly one literal expression and no direct call on
-    // the return value, no unsafe tail (that shape stays on the legacy rail).
+    // the return value.  Unsafe blocks are transparent for scalar returns.
     auto literal = expressionFor(hirModule, valueNode);
     auto directCall = callFor(hirModule, valueNode);
-    if (literal != zc::none && directCall == zc::none && declaration.unsafeBlock == zc::none &&
+    if (literal != zc::none && directCall == zc::none &&
         ZC_ASSERT_NONNULL(literal).type == declaration.resultType) {
       return buildScalarReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                               ZC_ASSERT_NONNULL(literal), identities);
+                               ZC_ASSERT_NONNULL(literal), hirModule, identities);
     }
 
     // Receiver field read: a shared- or mutating-receiver method returning

@@ -946,6 +946,10 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       if (!tree.contains(castExpr) || !isScalarLiteral(tree.node(castExpr).kind)) {
         return zc::none;
       }
+      // Float-to-int casts in let position are folded by the body checker into
+      // a Literal fact, but the Cast lowering path expects a Cast fact.  Drain
+      // to ZOM4099; return-position float casts have a dedicated shape.
+      if (tree.node(castExpr).kind == ast::SyntaxKind::FloatLiteralExpr) { return zc::none; }
       kind = SequentialInitializerKind::Cast;
       castInnerNode = castExpr;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::ConditionalExpr) {
@@ -1138,10 +1142,11 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   if (tree.node(returnNode).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
   ast::NodeId returnValue(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(returnValue)) return zc::none;
-  // Unwrap an unsafe-block-wrapped return so `return unsafe { x }` classifies the
+  // Unwrap unsafe-block-wrapped returns so `return unsafe { x }` classifies the
   // same as `return x`; the unsafe boundary itself is retained by the outer
-  // FunctionReturnShape via its own unsafe-block detection.
-  if (tree.node(returnValue).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+  // FunctionReturnShape via its own unsafe-block detection.  Nested unsafe
+  // blocks are unwrapped layer by layer.
+  while (tree.node(returnValue).kind == ast::SyntaxKind::UnsafeBlockExpr) {
     const ast::NodeId unsafeBody(
         tree.node(returnValue).payload.words[ast::kUnsafeBlockExprBodyWord]);
     if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
@@ -2469,7 +2474,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     }
   }
   zc::Maybe<ast::NodeId> unsafeBlock;
-  if (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+  while (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
     const ast::NodeId unsafeBody(tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
     if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
       return zc::none;
@@ -2487,14 +2492,16 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     const ast::NodeId innerValue(
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(innerValue)) return zc::none;
-    // The scalar-return and parameter-reborrow paths lower unsafe blocks for
-    // single-statement shapes; other single-statement inner expressions keep
-    // the shape but drop the unsafe-block marker.
-    if (statements.size != 1 || isScalarLiteral(tree.node(innerValue).kind) ||
-        reborrowReference(tree, innerValue) != zc::none) {
-      unsafeBlock = value;
-    }
+    // Track the outermost unsafe block; inner layers are transparent.
+    if (unsafeBlock == zc::none) unsafeBlock = value;
     value = innerValue;
+  }
+  // The scalar-return and parameter-reborrow paths lower unsafe blocks for
+  // single-statement shapes; other single-statement inner expressions keep
+  // the shape but drop the unsafe-block marker.
+  if (unsafeBlock != zc::none && statements.size != 1 && !isScalarLiteral(tree.node(value).kind) &&
+      reborrowReference(tree, value) == zc::none) {
+    unsafeBlock = zc::none;
   }
   if (statements.size == 1) {
     // A single `return "a" + "b"` folds the concatenation at compile time.

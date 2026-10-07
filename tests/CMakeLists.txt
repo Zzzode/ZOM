@@ -281,6 +281,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-unsafe-consumer/Zom.toml::nested_unsafe_consumer::nested_unsafe_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -482,6 +484,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer::0"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-local-arm-consumer/Zom.toml::conditional_local_arm_consumer::conditional_local_arm_consumer::5"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-unsafe-consumer/Zom.toml::nested_unsafe_consumer::nested_unsafe_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

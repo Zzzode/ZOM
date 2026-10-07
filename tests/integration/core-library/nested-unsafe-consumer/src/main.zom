@@ -1,0 +1,3 @@
+fn entry() -> i32 {
+    return unsafe { unsafe { 41 } };
+}

@@ -391,21 +391,41 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
 zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit the verified scalar literal-return shape: a standalone function with
-  // no locals, one block, no statements, and a Return of a constant. The
-  // constant is either a string (string literal return) or an integer (scalar
-  // literal return, including compile-time-folded float-to-int casts). This
-  // mirrors the structural facts that mir::validScalarReturnFunction checked;
-  // we re-check them here so lowering is total over its declared input and
-  // fail-closed on anything else.
-  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+  // no locals, one block, no statements (or only Enter/Exit unsafe-scope
+  // boundary statements when the body is wrapped in an unsafe block), and a
+  // Return of a constant. The constant is either a string (string literal
+  // return) or an integer (scalar literal return, including compile-time-folded
+  // float-to-int casts). This mirrors the structural facts that
+  // mir::validScalarReturnFunction checked; we re-check them here so lowering
+  // is total over its declared input and fail-closed on anything else.
+  if (function.kind != mir::MirFunctionKind::Function ||
+      (function.sourceScopes.size() != 1 && function.sourceScopes.size() != 2) ||
       function.locals.size() != 0 || function.blocks.size() != 1) {
     return zc::none;
   }
 
   const auto& block = function.blocks[0];
-  if (block.statements.size() != 0 || block.terminator.kind() != mir::MirTerminatorKind::Return) {
+  // Unsafe scope boundary statements are semantically transparent for code
+  // generation: they are ownership/safety markers with no runtime effect. A
+  // function wrapped in an unsafe block carries exactly one Enter/Exit pair on
+  // a child source scope.
+  const bool hasUnsafeBlock = function.sourceScopes.size() == 2;
+  if (hasUnsafeBlock) {
+    if (block.statements.size() != 2 ||
+        block.statements[0].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
+        block.statements[1].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
+      return zc::none;
+    }
+    const auto& enter = block.statements[0].unsafeScopeBoundaryValue();
+    const auto& exit = block.statements[1].unsafeScopeBoundaryValue();
+    if (enter.kind != mir::MirUnsafeScopeBoundaryKind::Enter ||
+        exit.kind != mir::MirUnsafeScopeBoundaryKind::Exit || enter.scope != exit.scope) {
+      return zc::none;
+    }
+  } else if (block.statements.size() != 0) {
     return zc::none;
   }
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
 
   const auto& returnValue = block.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }

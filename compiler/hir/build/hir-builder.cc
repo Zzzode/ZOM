@@ -9926,7 +9926,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         sequentialLiteralAdjustment += literalBearingSlots - 1;
       }
-      if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
       continue;
     }
     if (function.leadingLocalConditionalReturn != zc::none) {
@@ -10288,7 +10287,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (reborrow.sourceAlias != zc::none) ++localAliasReborrowCount;
     }
     if (hasLocalBorrow) ++localBorrowCount;
-    if (function.unsafeBlockSpan != zc::none) ++unsafeBlockCount;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
         !isDirectAggregateCall && !isDirectScalarLocalCall) {
@@ -10375,6 +10373,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
   }
   matchDefaultArmCount = verifiedMatchDefaultArmCount;
+  // Count unsafe block NodeType facts directly so nested unsafe blocks are
+  // counted correctly (the body checker produces one fact per UnsafeBlockExpr
+  // node, not one per function).
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.nodeTypes().entries()) {
+      if (tree.contains(entry.key) &&
+          tree.node(entry.key).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+        ++unsafeBlockCount;
+      }
+    }
+  }
   const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
       (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -

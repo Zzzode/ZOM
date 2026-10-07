@@ -1,0 +1,8 @@
+[package]
+name = "nested_unsafe_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "nested_unsafe_consumer"
+path = "src/main.zom"
