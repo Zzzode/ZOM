@@ -3767,5 +3767,158 @@ ZC_TEST("Mutating-receiver mismatches fail closed before LIR emission") {
   }
 }
 
+// --- LIR aggregate SSA lowering to LLVM ----------------------------------
+//
+// The aggregate SSA carrier (ValueTypeKind::Aggregate), AggregateConstant,
+// and the ExtractField / InsertField statements lower to LLVM first-class
+// aggregates: a literal StructType, a ConstantStruct, and extractvalue /
+// insertvalue. These tests build the LIR module directly (the same shapes the
+// LIR structural verifier accepts in lir-aggregate-test.cc) and assert the
+// translator emits a verified module plus a native ELF object. Production
+// MIR -> LIR lowering does not yet emit aggregates; this is the translator's
+// readiness for the enum-destructure and dyn live-erase tracks.
+
+// A two-field aggregate carrier {x: i32, y: i32}.
+lir::ValueType aggregatePairCarrier() {
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+  zc::Vector<lir::AggregateField> fields;
+  fields.add(lir::AggregateField{zc::heapString("x"), ZC_REQUIRE_NONNULL(i32)});
+  fields.add(lir::AggregateField{zc::heapString("y"), ZC_REQUIRE_NONNULL(i32)});
+  auto aggregate = lir::ValueType::aggregate(zc::mv(fields));
+  ZC_REQUIRE(aggregate != zc::none);
+  return ZC_REQUIRE_NONNULL(aggregate);
+}
+
+lir::IntegerConstant constantI32(uint64_t bits) {
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+  auto value = lir::IntegerConstant::from(ZC_REQUIRE_NONNULL(i32), bits);
+  ZC_REQUIRE(value != zc::none);
+  return ZC_REQUIRE_NONNULL(value);
+}
+
+lir::LirBlockId entryBlockId() {
+  auto id = lir::LirBlockId::fromOrdinal(1);
+  ZC_REQUIRE(id != zc::none);
+  return ZC_REQUIRE_NONNULL(id);
+}
+
+// Asserts the translation succeeded and the object bytes begin with the ELF
+// magic, the same host-object contract the scalar translation tests pin.
+void expectVerifiedElf(const LlvmTranslationResult& result) {
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
+ZC_TEST("ExtractField on an aggregate parameter lowers to LLVM extractvalue") {
+  auto aggregate = aggregatePairCarrier();
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+
+  zc::Vector<lir::Local> parameters;
+  parameters.add(lir::Local(1, zc::mv(aggregate)));
+  zc::Vector<lir::Local> locals;
+  locals.add(lir::Local(2, ZC_REQUIRE_NONNULL(i32)));
+  zc::Vector<lir::Statement> statements;
+  statements.add(lir::Statement::extractField(/*destinationOrdinal=*/2, /*sourceOrdinal=*/1,
+                                              /*fieldIndex=*/0));
+  zc::Vector<lir::BasicBlock> blocks;
+  blocks.add(lir::BasicBlock(entryBlockId(), zc::mv(statements), lir::Terminator::returnLocal(2)));
+  zc::Vector<lir::Function> functions;
+  functions.add(lir::Function(tests::testDefinition(80), zc::heapString("zom.extract"),
+                              ZC_REQUIRE_NONNULL(i32), zc::mv(parameters), zc::mv(locals),
+                              zc::mv(blocks)));
+  lir::Module module(zc::mv(functions));
+
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(module) == zc::none);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  expectVerifiedElf(result);
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("{ i32, i32 }"_zc));
+  ZC_EXPECT(ir.contains("extractvalue"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+}
+
+ZC_TEST("InsertField on an aggregate parameter lowers to insertvalue and an aggregate return") {
+  auto aggregate = aggregatePairCarrier();
+  zc::Vector<lir::Local> parameters;
+  parameters.add(lir::Local(1, aggregate));
+  zc::Vector<lir::Local> locals;
+  locals.add(lir::Local(2, aggregate));
+  zc::Vector<lir::Statement> statements;
+  statements.add(lir::Statement::insertField(/*destinationOrdinal=*/2, /*aggregateOrdinal=*/1,
+                                             /*fieldIndex=*/0,
+                                             lir::Operand::constant(constantI32(42))));
+  zc::Vector<lir::BasicBlock> blocks;
+  blocks.add(lir::BasicBlock(entryBlockId(), zc::mv(statements), lir::Terminator::returnLocal(2)));
+  zc::Vector<lir::Function> functions;
+  functions.add(lir::Function(tests::testDefinition(81), zc::heapString("zom.insert"), aggregate,
+                              zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  lir::Module module(zc::mv(functions));
+
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(module) == zc::none);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  expectVerifiedElf(result);
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("{ i32, i32 }"_zc));
+  ZC_EXPECT(ir.contains("insertvalue"_zc));
+  ZC_EXPECT(ir.contains("i32 42, 0"_zc));
+  ZC_EXPECT(ir.contains("ret { i32, i32 }"_zc));
+}
+
+ZC_TEST("AggregateConstant assign lowers to a literal LLVM struct then extractvalue") {
+  auto aggregate = aggregatePairCarrier();
+  auto i32 = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32 != zc::none);
+
+  zc::Vector<lir::Operand> fields;
+  fields.add(lir::Operand::constant(constantI32(42)));
+  fields.add(lir::Operand::constant(constantI32(7)));
+  auto constant = lir::AggregateConstant::from(aggregate, zc::mv(fields));
+  ZC_REQUIRE(constant != zc::none);
+
+  zc::Vector<lir::Local> noParameters;
+  zc::Vector<lir::Local> locals;
+  locals.add(lir::Local(1, aggregate));
+  locals.add(lir::Local(2, ZC_REQUIRE_NONNULL(i32)));
+  zc::Vector<lir::Statement> statements;
+  statements.add(lir::Statement::assign(
+      /*destinationOrdinal=*/1, lir::Operand::constant(ZC_REQUIRE_NONNULL(zc::mv(constant)))));
+  statements.add(lir::Statement::extractField(/*destinationOrdinal=*/2, /*sourceOrdinal=*/1,
+                                              /*fieldIndex=*/0));
+  zc::Vector<lir::BasicBlock> blocks;
+  blocks.add(lir::BasicBlock(entryBlockId(), zc::mv(statements), lir::Terminator::returnLocal(2)));
+  zc::Vector<lir::Function> functions;
+  functions.add(lir::Function(tests::testDefinition(82), zc::heapString("zom.constant"),
+                              ZC_REQUIRE_NONNULL(i32), zc::mv(noParameters), zc::mv(locals),
+                              zc::mv(blocks)));
+  lir::Module module(zc::mv(functions));
+
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(module) == zc::none);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  expectVerifiedElf(result);
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("{ i32 42, i32 7 }"_zc));
+  ZC_EXPECT(ir.contains("extractvalue"_zc));
+  ZC_EXPECT(ir.contains("ret i32"_zc));
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm

@@ -837,7 +837,7 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
       }
       auto lowered = lirOperandFor(operand, resultCarrierValue);
       if (lowered == zc::none) { return false; }
-      out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      out.add(Statement::assign(resultOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
       return true;
     }
     if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
@@ -847,8 +847,9 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
       auto left = lowerArmBinaryOperand(arithmetic.left);
       auto right = lowerArmBinaryOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return false; }
-      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
-                                    ZC_REQUIRE_NONNULL(right)));
+      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op),
+                                    zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                    zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
     if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
@@ -858,7 +859,8 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
       auto right = lowerArmBinaryOperand(comparison.right);
       if (left == zc::none || right == zc::none) { return false; }
       out.add(Statement::compare(resultOrdinal, lirComparisonOpFor(comparison.op),
-                                 ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+                                 zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                 zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
     return false;
@@ -1198,7 +1200,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
     if (assignment.value.kind() == mir::MirRvalueKind::Use) {
       auto lowered = leafOperand(assignment.value.useValue().operand);
       if (lowered == zc::none) { return zc::none; }
-      bodyStatements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      bodyStatements.add(
+          Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     } else if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
       const auto& arithmetic = assignment.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
@@ -1208,8 +1211,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
       auto right = leafOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
       bodyStatements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
-                                               ZC_REQUIRE_NONNULL(left),
-                                               ZC_REQUIRE_NONNULL(right)));
+                                               zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                               zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
       const auto& comparison = assignment.value.comparisonValue();
       auto op = lirComparisonOpFor(comparison.op);
@@ -1217,8 +1220,9 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
       auto left = leafOperand(comparison.left);
       auto right = leafOperand(comparison.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
-      bodyStatements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
-                                            ZC_REQUIRE_NONNULL(right)));
+      bodyStatements.add(Statement::compare(destinationOrdinal, op,
+                                            zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                            zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else {
       return zc::none;
     }
@@ -1248,7 +1252,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> entryStatements;
-    entryStatements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
+    entryStatements.add(
+        Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(initLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
@@ -1515,9 +1520,9 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> entryStatements;
-    entryStatements.add(Statement::assign(localOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
+    entryStatements.add(Statement::assign(localOrdinal, zc::mv(ZC_REQUIRE_NONNULL(initLowered))));
     entryStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
-                                           ZC_REQUIRE_NONNULL(condRightLowered)));
+                                           ZC_REQUIRE_NONNULL(condRightLowered).clone()));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
@@ -1530,16 +1535,16 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
     zc::Vector<Statement> bodyStatements;
     bodyStatements.add(Statement::arithmetic(localOrdinal, ZC_REQUIRE_NONNULL(arithOp),
                                              Operand::localUse(localOrdinal),
-                                             ZC_REQUIRE_NONNULL(arithRightLowered)));
+                                             zc::mv(ZC_REQUIRE_NONNULL(arithRightLowered))));
     bodyStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
-                                          ZC_REQUIRE_NONNULL(condRightLowered)));
+                                          zc::mv(ZC_REQUIRE_NONNULL(condRightLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(bodyStatements),
                           Terminator::gotoBlock(breaksToExit ? ZC_REQUIRE_NONNULL(exitId)
                                                              : ZC_REQUIRE_NONNULL(headerId))));
   }
   {
     zc::Vector<Statement> exitStatements;
-    exitStatements.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(resultLowered)));
+    exitStatements.add(Statement::assign(resultOrdinal, zc::mv(ZC_REQUIRE_NONNULL(resultLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(exitId), zc::mv(exitStatements),
                           Terminator::returnLocal(resultOrdinal)));
   }
@@ -1962,11 +1967,12 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   {
     zc::Vector<Statement> entryStatements;
     for (size_t k = 0; k < accCount; ++k) {
-      entryStatements.add(Statement::assign(accOrdinals[k], ZC_REQUIRE_NONNULL(accInitLowered[k])));
+      entryStatements.add(
+          Statement::assign(accOrdinals[k], zc::mv(ZC_REQUIRE_NONNULL(accInitLowered[k]))));
     }
-    entryStatements.add(Statement::assign(localOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
+    entryStatements.add(Statement::assign(localOrdinal, zc::mv(ZC_REQUIRE_NONNULL(initLowered))));
     entryStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
-                                           ZC_REQUIRE_NONNULL(condRightLowered)));
+                                           ZC_REQUIRE_NONNULL(condRightLowered).clone()));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(headerId))));
   }
@@ -1980,7 +1986,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     zc::Vector<Statement> guardStatements;
     guardStatements.add(Statement::compare(breakTempOrdinal, breakCmpOp,
                                            Operand::localUse(localOrdinal),
-                                           ZC_REQUIRE_NONNULL(breakCondRightLowered)));
+                                           zc::mv(ZC_REQUIRE_NONNULL(breakCondRightLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(guardId), zc::mv(guardStatements),
                           Terminator::condBranch(breakTempOrdinal, ZC_REQUIRE_NONNULL(exitId),
                                                  ZC_REQUIRE_NONNULL(bodyId))));
@@ -1988,17 +1994,18 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   {
     zc::Vector<Statement> bodyStatements;
     for (size_t k = 0; k < accCount; ++k) {
-      Operand rhsOperand = accArithRhsIsLiteral[k] ? ZC_REQUIRE_NONNULL(accArithRhsLowered[k])
-                                                   : Operand::localUse(localOrdinal);
+      Operand rhsOperand = accArithRhsIsLiteral[k]
+                               ? zc::mv(ZC_REQUIRE_NONNULL(accArithRhsLowered[k]))
+                               : Operand::localUse(localOrdinal);
       bodyStatements.add(Statement::arithmetic(accOrdinals[k], ZC_REQUIRE_NONNULL(accArithOps[k]),
                                                Operand::localUse(accOrdinals[k]),
                                                zc::mv(rhsOperand)));
     }
     bodyStatements.add(Statement::arithmetic(localOrdinal, ZC_REQUIRE_NONNULL(arithOp),
                                              Operand::localUse(localOrdinal),
-                                             ZC_REQUIRE_NONNULL(arithRightLowered)));
+                                             zc::mv(ZC_REQUIRE_NONNULL(arithRightLowered))));
     bodyStatements.add(Statement::compare(tempOrdinal, cmpOp, Operand::localUse(localOrdinal),
-                                          ZC_REQUIRE_NONNULL(condRightLowered)));
+                                          zc::mv(ZC_REQUIRE_NONNULL(condRightLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(bodyId), zc::mv(bodyStatements),
                           Terminator::gotoBlock(breaksToExit ? ZC_REQUIRE_NONNULL(exitId)
                                                              : ZC_REQUIRE_NONNULL(headerId))));
@@ -2510,12 +2517,14 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   {
     zc::Vector<Statement> entryStatements;
     for (size_t k = 0; k < accCount; ++k) {
-      entryStatements.add(Statement::assign(accOrdinals[k], ZC_REQUIRE_NONNULL(accInitLowered[k])));
+      entryStatements.add(
+          Statement::assign(accOrdinals[k], zc::mv(ZC_REQUIRE_NONNULL(accInitLowered[k]))));
     }
-    entryStatements.add(Statement::assign(outerInitOrdinal, ZC_REQUIRE_NONNULL(outerInitLowered)));
+    entryStatements.add(
+        Statement::assign(outerInitOrdinal, zc::mv(ZC_REQUIRE_NONNULL(outerInitLowered))));
     entryStatements.add(Statement::compare(outerTempOrdinal, outerCmpOp,
                                            Operand::localUse(outerInitOrdinal),
-                                           ZC_REQUIRE_NONNULL(outerCondRightLowered)));
+                                           ZC_REQUIRE_NONNULL(outerCondRightLowered).clone()));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(outerHeaderId))));
   }
@@ -2529,10 +2538,10 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   {
     zc::Vector<Statement> innerEntryStatements;
     innerEntryStatements.add(
-        Statement::assign(innerInitOrdinal, ZC_REQUIRE_NONNULL(innerInitLowered)));
+        Statement::assign(innerInitOrdinal, zc::mv(ZC_REQUIRE_NONNULL(innerInitLowered))));
     innerEntryStatements.add(Statement::compare(innerTempOrdinal, innerCmpOp,
                                                 Operand::localUse(innerInitOrdinal),
-                                                ZC_REQUIRE_NONNULL(innerCondRightLowered)));
+                                                ZC_REQUIRE_NONNULL(innerCondRightLowered).clone()));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerEntryId), zc::mv(innerEntryStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(innerHeaderId))));
   }
@@ -2546,18 +2555,19 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   {
     zc::Vector<Statement> innerBodyStatements;
     for (size_t k = 0; k < accCount; ++k) {
-      Operand rhsOperand = accArithRhsIsLiteral[k] ? ZC_REQUIRE_NONNULL(accArithRhsLowered[k])
-                                                   : Operand::localUse(innerInitOrdinal);
+      Operand rhsOperand = accArithRhsIsLiteral[k]
+                               ? zc::mv(ZC_REQUIRE_NONNULL(accArithRhsLowered[k]))
+                               : Operand::localUse(innerInitOrdinal);
       innerBodyStatements.add(
           Statement::arithmetic(accOrdinals[k], ZC_REQUIRE_NONNULL(accArithOps[k]),
                                 Operand::localUse(accOrdinals[k]), zc::mv(rhsOperand)));
     }
     innerBodyStatements.add(Statement::arithmetic(
         innerInitOrdinal, ZC_REQUIRE_NONNULL(innerArithOp), Operand::localUse(innerInitOrdinal),
-        ZC_REQUIRE_NONNULL(innerArithRightLowered)));
+        zc::mv(ZC_REQUIRE_NONNULL(innerArithRightLowered))));
     innerBodyStatements.add(Statement::compare(innerTempOrdinal, innerCmpOp,
                                                Operand::localUse(innerInitOrdinal),
-                                               ZC_REQUIRE_NONNULL(innerCondRightLowered)));
+                                               zc::mv(ZC_REQUIRE_NONNULL(innerCondRightLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerBodyId), zc::mv(innerBodyStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(innerHeaderId))));
   }
@@ -2566,10 +2576,10 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
     zc::Vector<Statement> outerContStatements;
     outerContStatements.add(Statement::arithmetic(
         outerInitOrdinal, ZC_REQUIRE_NONNULL(outerArithOp), Operand::localUse(outerInitOrdinal),
-        ZC_REQUIRE_NONNULL(outerArithRightLowered)));
+        zc::mv(ZC_REQUIRE_NONNULL(outerArithRightLowered))));
     outerContStatements.add(Statement::compare(outerTempOrdinal, outerCmpOp,
                                                Operand::localUse(outerInitOrdinal),
-                                               ZC_REQUIRE_NONNULL(outerCondRightLowered)));
+                                               zc::mv(ZC_REQUIRE_NONNULL(outerCondRightLowered))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(outerContId), zc::mv(outerContStatements),
                           Terminator::gotoBlock(ZC_REQUIRE_NONNULL(outerHeaderId))));
   }
@@ -2744,7 +2754,7 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
       }
       auto lowered = lirOperandFor(operand, resultCarrierValue);
       if (lowered == zc::none) { return false; }
-      out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      out.add(Statement::assign(resultOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
       return true;
     }
     if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
@@ -2754,8 +2764,9 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
       auto left = lowerArmBinaryOperand(arithmetic.left);
       auto right = lowerArmBinaryOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return false; }
-      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
-                                    ZC_REQUIRE_NONNULL(right)));
+      out.add(Statement::arithmetic(resultOrdinal, ZC_REQUIRE_NONNULL(op),
+                                    zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                    zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
     if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
@@ -2765,7 +2776,8 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
       auto right = lowerArmBinaryOperand(comparison.right);
       if (left == zc::none || right == zc::none) { return false; }
       out.add(Statement::compare(resultOrdinal, lirComparisonOpFor(comparison.op),
-                                 ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+                                 zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                 zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
     return false;
@@ -2806,12 +2818,12 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
       auto op = lirArithmeticOpFor(tempAssign.value.arithmeticValue().op);
       if (op == zc::none) { return zc::none; }
       entryStatements.add(Statement::arithmetic(tempOrdinal, ZC_REQUIRE_NONNULL(op),
-                                                ZC_REQUIRE_NONNULL(lirLeft),
-                                                ZC_REQUIRE_NONNULL(lirRight)));
+                                                zc::mv(ZC_REQUIRE_NONNULL(lirLeft)),
+                                                zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
     } else {
-      entryStatements.add(
-          Statement::compare(tempOrdinal, lirComparisonOpFor(tempAssign.value.comparisonValue().op),
-                             ZC_REQUIRE_NONNULL(lirLeft), ZC_REQUIRE_NONNULL(lirRight)));
+      entryStatements.add(Statement::compare(
+          tempOrdinal, lirComparisonOpFor(tempAssign.value.comparisonValue().op),
+          zc::mv(ZC_REQUIRE_NONNULL(lirLeft)), zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
     }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
@@ -2957,14 +2969,14 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       auto lirRight = lirOperandFor(arithmetic.right, localCarrierValue);
       if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
       leadingInitializers.add(Statement::arithmetic(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(op),
-                                                    ZC_REQUIRE_NONNULL(lirLeft),
-                                                    ZC_REQUIRE_NONNULL(lirRight)));
+                                                    zc::mv(ZC_REQUIRE_NONNULL(lirLeft)),
+                                                    zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
     } else {
       if (assignment.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
       auto lowered = lirOperandFor(assignment.value.useValue().operand, localCarrierValue);
       if (lowered == zc::none) { return zc::none; }
       leadingInitializers.add(
-          Statement::assign(localDecl.id.ordinal(), ZC_REQUIRE_NONNULL(lowered)));
+          Statement::assign(localDecl.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     }
   }
   if (entry.statements[leadingLocalCount * 2].kind() != mir::MirStatementKind::StorageLive ||
@@ -3043,7 +3055,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     }
     auto lowered = lirOperandFor(operand, resultCarrierValue);
     if (lowered == zc::none) { return false; }
-    out.add(Statement::assign(resultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    out.add(Statement::assign(resultOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     return true;
   };
   zc::Vector<Statement> thenStatements;
@@ -3081,8 +3093,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       entryStatements.add(zc::mv(leadingInitializers[i]));
     }
     entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
-                                           ZC_REQUIRE_NONNULL(lirLeft),
-                                           ZC_REQUIRE_NONNULL(lirRight)));
+                                           zc::mv(ZC_REQUIRE_NONNULL(lirLeft)),
+                                           zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
                                                  ZC_REQUIRE_NONNULL(elseId))));
@@ -3208,7 +3220,7 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     auto lowered =
         lirOperandFor(assignment.value.useValue().operand, ZC_REQUIRE_NONNULL(localCarrier));
     if (lowered == zc::none) { return zc::none; }
-    leadingInitializers.add(ZC_REQUIRE_NONNULL(lowered));
+    leadingInitializers.add(zc::mv(ZC_REQUIRE_NONNULL(lowered)));
   }
   if (entry.statements[leadingLocalCount * 2].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[leadingLocalCount * 2].storageLocal() != ternaryLocalDecl.id) {
@@ -3279,7 +3291,7 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     }
     auto lowered = lirOperandFor(operand, resultCarrierValue);
     if (lowered == zc::none) { return false; }
-    out.add(Statement::assign(ternaryOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    out.add(Statement::assign(ternaryOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     return true;
   };
   zc::Vector<Statement> thenStatements;
@@ -3319,7 +3331,7 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     }
     if (hasConditionTemp) {
       entryStatements.add(Statement::assign(conditionTempDecl->id.ordinal(),
-                                            ZC_REQUIRE_NONNULL(conditionTempInitializer)));
+                                            zc::mv(ZC_REQUIRE_NONNULL(conditionTempInitializer))));
     }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),
@@ -3469,8 +3481,8 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
       auto right = leafOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
       statements.add(Statement::arithmetic(overwrite.destination.local().ordinal(),
-                                           ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
-                                           ZC_REQUIRE_NONNULL(right)));
+                                           ZC_REQUIRE_NONNULL(op), zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                           zc::mv(ZC_REQUIRE_NONNULL(right))));
       ++cursor;
     }
     const auto& liveStatement = block.statements[cursor];
@@ -3491,7 +3503,7 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
     if (assignment.value.kind() == mir::MirRvalueKind::Use) {
       auto lowered = leafOperand(assignment.value.useValue().operand);
       if (lowered == zc::none) { return zc::none; }
-      statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      statements.add(Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     } else if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
       const auto& arithmetic = assignment.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
@@ -3501,7 +3513,8 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
       auto right = leafOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
       statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
-                                           ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+                                           zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                           zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
       const auto& comparison = assignment.value.comparisonValue();
       auto op = lirComparisonOpFor(comparison.op);
@@ -3509,8 +3522,8 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
       auto left = leafOperand(comparison.left);
       auto right = leafOperand(comparison.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
-      statements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
-                                        ZC_REQUIRE_NONNULL(right)));
+      statements.add(Statement::compare(destinationOrdinal, op, zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                        zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else {
       return zc::none;
     }
@@ -3536,8 +3549,8 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
     auto right = leafOperand(arithmetic.right);
     if (left == zc::none || right == zc::none) { return zc::none; }
     statements.add(Statement::arithmetic(overwrite.destination.local().ordinal(),
-                                         ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
-                                         ZC_REQUIRE_NONNULL(right)));
+                                         ZC_REQUIRE_NONNULL(op), zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                         zc::mv(ZC_REQUIRE_NONNULL(right))));
     ++cursor;
   }
 
@@ -3665,7 +3678,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   zc::Vector<Statement> statements;
   auto initLowered = leafOperand(initOperand);
   if (initLowered == zc::none) { return zc::none; }
-  statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(initLowered)));
+  statements.add(Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(initLowered))));
 
   // Lower each overwrite write (statements 2 through end-1). Nested binary
   // operands are lowered to temporary locals: StorageLive plus an Initialize
@@ -3706,14 +3719,14 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
         auto left = leafOperand(arithmetic.left);
         auto right = leafOperand(arithmetic.right);
         if (left == zc::none || right == zc::none) { return zc::none; }
-        statements.add(Statement::arithmetic(assign.destination.local().ordinal(),
-                                             ZC_REQUIRE_NONNULL(op), ZC_REQUIRE_NONNULL(left),
-                                             ZC_REQUIRE_NONNULL(right)));
+        statements.add(Statement::arithmetic(
+            assign.destination.local().ordinal(), ZC_REQUIRE_NONNULL(op),
+            zc::mv(ZC_REQUIRE_NONNULL(left)), zc::mv(ZC_REQUIRE_NONNULL(right))));
       } else if (assign.value.kind() == mir::MirRvalueKind::Use) {
         auto lowered = leafOperand(assign.value.useValue().operand);
         if (lowered == zc::none) { return zc::none; }
-        statements.add(
-            Statement::assign(assign.destination.local().ordinal(), ZC_REQUIRE_NONNULL(lowered)));
+        statements.add(Statement::assign(assign.destination.local().ordinal(),
+                                         zc::mv(ZC_REQUIRE_NONNULL(lowered))));
       } else {
         return zc::none;
       }
@@ -3727,7 +3740,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
     if (assign.value.kind() == mir::MirRvalueKind::Use) {
       auto lowered = leafOperand(assign.value.useValue().operand);
       if (lowered == zc::none) { return zc::none; }
-      statements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+      statements.add(Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     } else if (assign.value.kind() == mir::MirRvalueKind::Arithmetic) {
       const auto& arithmetic = assign.value.arithmeticValue();
       auto op = lirArithmeticOpFor(arithmetic.op);
@@ -3737,7 +3750,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
       auto right = leafOperand(arithmetic.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
       statements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
-                                           ZC_REQUIRE_NONNULL(left), ZC_REQUIRE_NONNULL(right)));
+                                           zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                           zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else if (assign.value.kind() == mir::MirRvalueKind::Comparison) {
       const auto& comparison = assign.value.comparisonValue();
       auto op = lirComparisonOpFor(comparison.op);
@@ -3745,8 +3759,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
       auto left = leafOperand(comparison.left);
       auto right = leafOperand(comparison.right);
       if (left == zc::none || right == zc::none) { return zc::none; }
-      statements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
-                                        ZC_REQUIRE_NONNULL(right)));
+      statements.add(Statement::compare(destinationOrdinal, op, zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                        zc::mv(ZC_REQUIRE_NONNULL(right))));
     } else {
       return zc::none;
     }
@@ -4109,7 +4123,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
     zc::Vector<Operand> argumentOperands;
-    argumentOperands.add(ZC_ASSERT_NONNULL(argumentOperand));
+    argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
     auto callTerminator = Terminator::callFunction(
         /*calleeIndex=*/1, callerShape.destinationOrdinal, zc::mv(argumentOperands),
         ZC_REQUIRE_NONNULL(callerContId));
@@ -4311,7 +4325,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     }
     auto lowered = lirOperandFor(operand, calleeResultCarrierValue);
     if (lowered == zc::none) { return false; }
-    out.add(Statement::assign(calleeResultOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+    out.add(Statement::assign(calleeResultOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     return true;
   };
 
@@ -4579,16 +4593,16 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
       zc::Vector<Statement> entryStatements;
       if (isConjunctiveStride) {
         // Guard comparison into guardTemp, then conjunction into conjTemp.
-        entryStatements.add(
-            Statement::compare(calleeTemp->id.ordinal(), ZC_REQUIRE_NONNULL(guardOp),
-                               ZC_REQUIRE_NONNULL(guardLeft), ZC_REQUIRE_NONNULL(guardRight)));
-        entryStatements.add(
-            Statement::arithmetic(calleeConjTemp->id.ordinal(), ArithmeticOp::BitAnd,
-                                  ZC_REQUIRE_NONNULL(conjLeft), ZC_REQUIRE_NONNULL(conjRight)));
+        entryStatements.add(Statement::compare(
+            calleeTemp->id.ordinal(), ZC_REQUIRE_NONNULL(guardOp),
+            zc::mv(ZC_REQUIRE_NONNULL(guardLeft)), zc::mv(ZC_REQUIRE_NONNULL(guardRight))));
+        entryStatements.add(Statement::arithmetic(
+            calleeConjTemp->id.ordinal(), ArithmeticOp::BitAnd,
+            zc::mv(ZC_REQUIRE_NONNULL(conjLeft)), zc::mv(ZC_REQUIRE_NONNULL(conjRight))));
       } else if (isEqualityStride) {
         entryStatements.add(Statement::compare(
             calleeConditionOrdinal, ZC_REQUIRE_NONNULL(equalityOp),
-            ZC_REQUIRE_NONNULL(equalityLeft), ZC_REQUIRE_NONNULL(equalityRight)));
+            zc::mv(ZC_REQUIRE_NONNULL(equalityLeft)), zc::mv(ZC_REQUIRE_NONNULL(equalityRight))));
       }
       calleeBlocks.add(BasicBlock(
           ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(entryStatements),
@@ -4964,7 +4978,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   {
     zc::Vector<BasicBlock> calleeBlocks;
     for (size_t k = 0; k < armCount; ++k) {
-      const auto& arm = arms[k];
+      // Non-const so the arm's Operand members can be moved into the callee's
+      // statements; each arm is consumed in exactly one iteration.
+      auto& arm = arms[k];
       auto entryId = LirBlockId::fromOrdinal(arm.thenBlockOrdinal - 1);
       auto thenId = LirBlockId::fromOrdinal(arm.thenBlockOrdinal);
       auto elseId = LirBlockId::fromOrdinal(arm.elseBlockOrdinal);
@@ -5148,7 +5164,7 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
     }
     auto lowered = lirOperandFor(elementOperand, resultCarrierValue);
     if (lowered == zc::none) { return zc::none; }
-    argumentOperands.add(ZC_REQUIRE_NONNULL(lowered));
+    argumentOperands.add(zc::mv(ZC_REQUIRE_NONNULL(lowered)));
     if (element.field == projected) { projectedSlotOrdinal = index + 1; }
   }
   if (projectedSlotOrdinal == zc::none) { return zc::none; }
@@ -5374,7 +5390,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
       if (assignment.value.kind() == mir::MirRvalueKind::Use) {
         auto lowered = leafOperand(assignment.value.useValue().operand);
         if (lowered == zc::none) { return zc::none; }
-        calleeStatements.add(Statement::assign(destinationOrdinal, ZC_REQUIRE_NONNULL(lowered)));
+        calleeStatements.add(
+            Statement::assign(destinationOrdinal, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
       } else if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
         const auto& arithmetic = assignment.value.arithmeticValue();
         auto op = lirArithmeticOpFor(arithmetic.op);
@@ -5383,8 +5400,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
         auto right = leafOperand(arithmetic.right);
         if (left == zc::none || right == zc::none) { return zc::none; }
         calleeStatements.add(Statement::arithmetic(destinationOrdinal, ZC_REQUIRE_NONNULL(op),
-                                                   ZC_REQUIRE_NONNULL(left),
-                                                   ZC_REQUIRE_NONNULL(right)));
+                                                   zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                                   zc::mv(ZC_REQUIRE_NONNULL(right))));
       } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
         const auto& comparison = assignment.value.comparisonValue();
         auto op = lirComparisonOpFor(comparison.op);
@@ -5392,8 +5409,9 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
         auto left = leafOperand(comparison.left);
         auto right = leafOperand(comparison.right);
         if (left == zc::none || right == zc::none) { return zc::none; }
-        calleeStatements.add(Statement::compare(destinationOrdinal, op, ZC_REQUIRE_NONNULL(left),
-                                                ZC_REQUIRE_NONNULL(right)));
+        calleeStatements.add(Statement::compare(destinationOrdinal, op,
+                                                zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                                zc::mv(ZC_REQUIRE_NONNULL(right))));
       } else {
         return zc::none;
       }
@@ -5422,7 +5440,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
     entryStatements.add(
-        Statement::assign(scalarLocal.id.ordinal(), ZC_REQUIRE_NONNULL(loweredConstant)));
+        Statement::assign(scalarLocal.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(loweredConstant))));
     zc::Vector<Operand> argumentOperands;
     argumentOperands.add(Operand::localUse(scalarLocal.id.ordinal()));
     auto callTerminator = Terminator::callFunction(
@@ -5559,7 +5577,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     }
     auto lowered = lirOperandFor(argument, calleeParamCarriers[index]);
     if (lowered == zc::none) { return zc::none; }
-    argumentOperands.add(ZC_REQUIRE_NONNULL(lowered));
+    argumentOperands.add(zc::mv(ZC_REQUIRE_NONNULL(lowered)));
   }
 
   if (continuation.statements.size() != 0 ||
@@ -6250,7 +6268,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
     }
     auto argumentOperand = lirOperandFor(argument, ordinaryCarriers[i]);
     if (argumentOperand == zc::none) { return zc::none; }
-    extraArguments.add(ZC_REQUIRE_NONNULL(argumentOperand));
+    extraArguments.add(zc::mv(ZC_REQUIRE_NONNULL(argumentOperand)));
   }
   const auto& returnValue = continuation.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
@@ -6272,7 +6290,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   {
     zc::Vector<Statement> entryStatements;
     entryStatements.add(
-        Statement::assign(ownerLocal.id.ordinal(), ZC_ASSERT_NONNULL(ownerConstant)));
+        Statement::assign(ownerLocal.id.ordinal(), zc::mv(ZC_ASSERT_NONNULL(ownerConstant))));
     entryStatements.add(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     zc::Vector<Operand> arguments;
@@ -6344,10 +6362,10 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       calleeStatements.add(Statement::loadField(calleeFieldArithmeticFieldOrdinal,
                                                 receiverLocal.id.ordinal(),
                                                 /*fieldOffsetBytes=*/0));
-      calleeStatements.add(Statement::arithmetic(calleeFieldArithmeticResultOrdinal,
-                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticOp),
-                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticLeft),
-                                                 ZC_REQUIRE_NONNULL(calleeFieldArithmeticRight)));
+      calleeStatements.add(Statement::arithmetic(
+          calleeFieldArithmeticResultOrdinal, ZC_REQUIRE_NONNULL(calleeFieldArithmeticOp),
+          zc::mv(ZC_REQUIRE_NONNULL(calleeFieldArithmeticLeft)),
+          zc::mv(ZC_REQUIRE_NONNULL(calleeFieldArithmeticRight))));
       zc::Vector<BasicBlock> calleeBlocks;
       calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(calleeStatements),
                                   Terminator::returnLocal(calleeFieldArithmeticResultOrdinal)));
@@ -6362,7 +6380,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
       zc::Vector<Statement> calleeStatements;
       calleeStatements.add(Statement::arithmetic(
           calleeArithmeticResultOrdinal, ZC_REQUIRE_NONNULL(calleeArithmeticOp),
-          ZC_REQUIRE_NONNULL(calleeArithmeticLeft), ZC_REQUIRE_NONNULL(calleeArithmeticRight)));
+          zc::mv(ZC_REQUIRE_NONNULL(calleeArithmeticLeft)),
+          zc::mv(ZC_REQUIRE_NONNULL(calleeArithmeticRight))));
       zc::Vector<BasicBlock> calleeBlocks;
       calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(calleeStatements),
                                   Terminator::returnLocal(calleeArithmeticResultOrdinal)));
@@ -6578,7 +6597,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModuleWithLeaf(
   {
     zc::Vector<Statement> entryStatements;
     entryStatements.add(
-        Statement::assign(ownerLocal.id.ordinal(), ZC_REQUIRE_NONNULL(ownerConstant)));
+        Statement::assign(ownerLocal.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(ownerConstant))));
     entryStatements.add(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     zc::Vector<Operand> arguments;
@@ -6901,7 +6920,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
   {
     zc::Vector<Statement> entryStatements;
     entryStatements.add(
-        Statement::assign(ownerLocal.id.ordinal(), ZC_ASSERT_NONNULL(ownerConstant)));
+        Statement::assign(ownerLocal.id.ordinal(), zc::mv(ZC_ASSERT_NONNULL(ownerConstant))));
     entryStatements.add(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     if (hasComparisonArgument) {
@@ -6910,11 +6929,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
       entryStatements.add(Statement::compare(comparisonTemporary->id.ordinal(),
                                              ZC_REQUIRE_NONNULL(comparisonOp),
                                              Operand::localUse(ownerLocal.id.ordinal()),
-                                             ZC_REQUIRE_NONNULL(comparisonLiteralOperand)));
+                                             zc::mv(ZC_REQUIRE_NONNULL(comparisonLiteralOperand))));
     }
     zc::Vector<Operand> arguments;
     arguments.add(Operand::localUse(borrowTemporary.id.ordinal()));
-    arguments.add(ZC_REQUIRE_NONNULL(boolArgumentOperand));
+    arguments.add(zc::mv(ZC_REQUIRE_NONNULL(boolArgumentOperand)));
     auto callTerminator = Terminator::callFunction(
         /*calleeIndex=*/1, resultTemporary.id.ordinal(), zc::mv(arguments),
         ZC_REQUIRE_NONNULL(callerContId));
@@ -7176,7 +7195,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
   {
     zc::Vector<Statement> entryStatements;
     entryStatements.add(
-        Statement::assign(ownerLocal.id.ordinal(), ZC_REQUIRE_NONNULL(ownerConstant)));
+        Statement::assign(ownerLocal.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(ownerConstant))));
     entryStatements.add(
         Statement::takeAddress(borrowTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     zc::Vector<Operand> arguments;
@@ -7519,7 +7538,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   // getter call stores into the dense result slot (ordinal 4).
   {
     zc::Vector<Statement> bb1Statements;
-    bb1Statements.add(Statement::assign(lirOrdinalFor[0], ZC_ASSERT_NONNULL(ownerConstant)));
+    bb1Statements.add(
+        Statement::assign(lirOrdinalFor[0], zc::mv(ZC_ASSERT_NONNULL(ownerConstant))));
     bb1Statements.add(Statement::takeAddress(lirOrdinalFor[1], lirOrdinalFor[0]));
     zc::Vector<Operand> voidArguments;
     voidArguments.add(Operand::localUse(lirOrdinalFor[1]));
@@ -7788,7 +7808,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   // (ordinal 5) which the tail block returns.
   {
     zc::Vector<Statement> bb1Statements;
-    bb1Statements.add(Statement::assign(ownerLocal.id.ordinal(), ZC_ASSERT_NONNULL(ownerConstant)));
+    bb1Statements.add(
+        Statement::assign(ownerLocal.id.ordinal(), zc::mv(ZC_ASSERT_NONNULL(ownerConstant))));
     bb1Statements.add(
         Statement::takeAddress(borrowOneTemporary.id.ordinal(), ownerLocal.id.ordinal()));
     zc::Vector<Operand> firstArguments;

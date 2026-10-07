@@ -51,6 +51,70 @@ namespace {
 /// \brief Maps a closed LIR integer width to its bit count for LLVM iN types.
 uint32_t bitCountFor(lir::IntegerBitWidth width) noexcept { return static_cast<uint32_t>(width); }
 
+/// \brief Maps one LIR integer width to its LLVM iN type.
+::llvm::IntegerType* integerType(::llvm::LLVMContext& context,
+                                 lir::IntegerBitWidth width) noexcept {
+  return ::llvm::Type::getIntNTy(context, bitCountFor(width));
+}
+
+/// \brief Maps one LIR SSA carrier to its LLVM representation.
+///
+/// An opaque pointer carrier is a target pointer in its declared address space
+/// (opaque-pointer LLVM, no pointee type); a float carrier maps to its
+/// IEEE-754 LLVM type; an aggregate carrier maps to a literal struct whose
+/// element types are the field carriers in declaration order (recursing for a
+/// nested aggregate field); every other carrier is an integer today.
+::llvm::Type* llvmType(::llvm::LLVMContext& context, const lir::ValueType& carrier) noexcept {
+  if (carrier.kind() == lir::ValueTypeKind::Pointer) {
+    return ::llvm::PointerType::get(context, carrier.pointerAddressSpace());
+  }
+  if (carrier.kind() == lir::ValueTypeKind::Unit) { return ::llvm::Type::getVoidTy(context); }
+  if (carrier.kind() == lir::ValueTypeKind::Float) {
+    if (carrier.floatFormat() == lir::FloatFormat::Binary32) {
+      return ::llvm::Type::getFloatTy(context);
+    }
+    return ::llvm::Type::getDoubleTy(context);
+  }
+  if (carrier.kind() == lir::ValueTypeKind::Aggregate) {
+    zc::Vector<::llvm::Type*> fieldTypes;
+    for (const auto& field : carrier.aggregateFields()) {
+      fieldTypes.add(llvmType(context, field.type));
+    }
+    ::llvm::ArrayRef<::llvm::Type*> fieldRef(fieldTypes.begin(), fieldTypes.size());
+    return ::llvm::StructType::get(context, fieldRef);
+  }
+  return integerType(context, carrier.integerWidth());
+}
+
+/// \brief Lowers one constant operand to its LLVM constant.
+///
+/// An aggregate constant lowers to a literal ConstantStruct whose elements are
+/// the lowered field constants, recursing for a nested aggregate. The carrier
+/// is guaranteed aggregate by AggregateConstant::from, so the llvmType result
+/// is a StructType.
+::llvm::Constant* lowerConstant(::llvm::LLVMContext& context,
+                                const lir::Operand& operand) noexcept {
+  if (operand.isFloatConstant()) {
+    const auto& floatConstant = operand.floatConstantValue();
+    const bool isBinary32 = floatConstant.carrier().floatFormat() == lir::FloatFormat::Binary32;
+    ::llvm::APFloat apf(isBinary32 ? ::llvm::APFloat::IEEEsingle() : ::llvm::APFloat::IEEEdouble(),
+                        ::llvm::APInt(isBinary32 ? 32 : 64, floatConstant.bits()));
+    return ::llvm::ConstantFP::get(context, apf);
+  }
+  if (operand.isAggregateConstant()) {
+    const auto& aggregateConstant = operand.aggregateConstantValue();
+    zc::Vector<::llvm::Constant*> fieldValues;
+    for (const auto& field : aggregateConstant.fields()) {
+      fieldValues.add(lowerConstant(context, field));
+    }
+    ::llvm::ArrayRef<::llvm::Constant*> fieldRef(fieldValues.begin(), fieldValues.size());
+    return ::llvm::ConstantStruct::get(
+        ::llvm::cast<::llvm::StructType>(llvmType(context, aggregateConstant.carrier())), fieldRef);
+  }
+  auto* type = integerType(context, operand.constantValue().carrier().integerWidth());
+  return ::llvm::ConstantInt::get(type, operand.constantValue().bits(), /*IsSigned=*/false);
+}
+
 /// \brief Ensures the host target is registered exactly once for this process.
 ///
 /// Registration is idempotent in LLVM. We register the native target, its data
@@ -86,9 +150,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   for (const auto& candidate : functions) {
     if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer &&
         candidate.returnCarrier().kind() != lir::ValueTypeKind::Unit &&
-        candidate.returnCarrier().kind() != lir::ValueTypeKind::Pointer) {
-      return LlvmTranslationResult::failure(
-          zc::heapString("LIR function return carrier must be an integer, unit, or pointer"));
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Pointer &&
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Aggregate) {
+      return LlvmTranslationResult::failure(zc::heapString(
+          "LIR function return carrier must be an integer, unit, pointer, or aggregate"));
     }
   }
   // Each function is one of: the single-block integer-constant return
@@ -166,26 +231,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
   //    its module-local index. Each function's symbol is its LIR symbol name (a
   //    module-local name, the same documented boundary as the reserved
   //    module-initializer symbol); no external/synthetic symbol is invented.
-  auto integerType = [&](lir::IntegerBitWidth width) -> ::llvm::IntegerType* {
-    return ::llvm::Type::getIntNTy(*context, bitCountFor(width));
-  };
-  // Maps one LIR SSA carrier to its LLVM representation. An opaque pointer
-  // carrier is a target pointer in its declared address space (opaque-pointer
-  // LLVM, no pointee type); a float carrier maps to its IEEE-754 LLVM type;
-  // every other carrier is an integer today.
-  auto llvmType = [&](const lir::ValueType& carrier) -> ::llvm::Type* {
-    if (carrier.kind() == lir::ValueTypeKind::Pointer) {
-      return ::llvm::PointerType::get(*context, carrier.pointerAddressSpace());
-    }
-    if (carrier.kind() == lir::ValueTypeKind::Unit) { return ::llvm::Type::getVoidTy(*context); }
-    if (carrier.kind() == lir::ValueTypeKind::Float) {
-      if (carrier.floatFormat() == lir::FloatFormat::Binary32) {
-        return ::llvm::Type::getFloatTy(*context);
-      }
-      return ::llvm::Type::getDoubleTy(*context);
-    }
-    return integerType(carrier.integerWidth());
-  };
+  //    Carrier-to-LLVM-type mapping and constant lowering live in the anonymous
+  //    namespace helpers above (llvmType / lowerConstant), which recurse through
+  //    nested aggregate fields and so cannot be local lambdas.
   // The LLVM return type of one LIR function. A single-block ReturnAggregate
   // returns a literal struct whose element types are the slot carriers in slot
   // order (RFC 0021 carrier bundle); every other shape returns its scalar integer
@@ -203,7 +251,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     ZC_IF_SOME(slots, aggregateReturnSlots(candidate)) {
       zc::Vector<::llvm::Type*> elementTypes(slots.size());
       for (const auto& slot : slots) {
-        elementTypes.add(integerType(slot.carrier().integerWidth()));
+        elementTypes.add(integerType(*context, slot.carrier().integerWidth()));
       }
       ::llvm::ArrayRef<::llvm::Type*> elementRef(elementTypes.begin(), elementTypes.size());
       return ::llvm::StructType::get(*context, elementRef);
@@ -214,14 +262,17 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Pointer) {
       return ::llvm::PointerType::get(*context, candidate.returnCarrier().pointerAddressSpace());
     }
-    return integerType(candidate.returnCarrier().integerWidth());
+    if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Aggregate) {
+      return llvmType(*context, candidate.returnCarrier());
+    }
+    return integerType(*context, candidate.returnCarrier().integerWidth());
   };
   zc::Vector<::llvm::Function*> llvmFunctions;
   for (const auto& candidate : functions) {
     ::llvm::Type* candidateReturn = functionReturnType(candidate);
     zc::Vector<::llvm::Type*> paramTypes;
     for (const auto& parameter : candidate.parameters()) {
-      paramTypes.add(llvmType(parameter.carrier()));
+      paramTypes.add(llvmType(*context, parameter.carrier()));
     }
     ::llvm::ArrayRef<::llvm::Type*> paramTypeRef(paramTypes.begin(), paramTypes.size());
     ::llvm::FunctionType* functionType =
@@ -236,9 +287,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     ::llvm::Function* llvmFunction = llvmFunctions[functionIndex];
     const auto blocks = function.blocks();
 
-    ::llvm::IntegerType* returnType = function.returnCarrier().kind() == lir::ValueTypeKind::Integer
-                                          ? integerType(function.returnCarrier().integerWidth())
-                                          : nullptr;
+    ::llvm::IntegerType* returnType =
+        function.returnCarrier().kind() == lir::ValueTypeKind::Integer
+            ? integerType(*context, function.returnCarrier().integerWidth())
+            : nullptr;
 
     if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnInteger) {
       // Single entry block returning the integer constant.
@@ -265,7 +317,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       }
       ::llvm::Value* aggregate = ::llvm::ConstantAggregateZero::get(structType);
       for (unsigned slotIndex = 0; slotIndex < returnSlots.size(); ++slotIndex) {
-        auto* slotType = integerType(returnSlots[slotIndex].carrier().integerWidth());
+        auto* slotType = integerType(*context, returnSlots[slotIndex].carrier().integerWidth());
         ::llvm::Constant* slotValue =
             ::llvm::ConstantInt::get(slotType, returnSlots[slotIndex].bits(), /*IsSigned=*/false);
         aggregate =
@@ -319,10 +371,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     // the entry block; then store each incoming argument into its slot.
     auto slotType = [&](uint32_t ordinal) -> ::llvm::Type* {
       for (const auto& parameter : parameters) {
-        if (parameter.ordinal() == ordinal) { return llvmType(parameter.carrier()); }
+        if (parameter.ordinal() == ordinal) { return llvmType(*context, parameter.carrier()); }
       }
       for (const auto& local : locals) {
-        if (local.ordinal() == ordinal) { return llvmType(local.carrier()); }
+        if (local.ordinal() == ordinal) { return llvmType(*context, local.carrier()); }
       }
       return returnType;
     };
@@ -346,19 +398,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
 
     auto loadOperand = [&](const lir::Operand& operand,
                            ::llvm::BasicBlock* target) -> ::llvm::Value* {
-      if (operand.isConstant()) {
-        if (operand.isFloatConstant()) {
-          const auto& floatConstant = operand.floatConstantValue();
-          const bool isBinary32 =
-              floatConstant.carrier().floatFormat() == lir::FloatFormat::Binary32;
-          ::llvm::APFloat apf(
-              isBinary32 ? ::llvm::APFloat::IEEEsingle() : ::llvm::APFloat::IEEEdouble(),
-              ::llvm::APInt(isBinary32 ? 32 : 64, floatConstant.bits()));
-          return ::llvm::ConstantFP::get(*context, apf);
-        }
-        auto* type = integerType(operand.constantValue().carrier().integerWidth());
-        return ::llvm::ConstantInt::get(type, operand.constantValue().bits(), /*IsSigned=*/false);
-      }
+      if (operand.isConstant()) { return lowerConstant(*context, operand); }
       auto* slot = slotFor(operand.localOrdinal());
       return new ::llvm::LoadInst(slot->getAllocatedType(), slot, "use", target);
     };
@@ -545,6 +585,27 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
             stored = new ::llvm::LoadInst(destination->getAllocatedType(), fieldPointer, "field",
                                           target);
           }
+        } else if (statement.kind() == lir::StatementKind::ExtractField) {
+          // Load the aggregate-typed source slot, then extract one field at
+          // its zero-based index. The destination carrier matches the field
+          // type (LIR-verifier validated), so the extracted value's LLVM type
+          // matches the destination slot.
+          auto* sourceSlot = slotFor(statement.sourceOrdinal());
+          auto* aggregate =
+              new ::llvm::LoadInst(sourceSlot->getAllocatedType(), sourceSlot, "agg", target);
+          stored = ::llvm::ExtractValueInst::Create(aggregate, {statement.fieldIndex()}, "field",
+                                                    target);
+        } else if (statement.kind() == lir::StatementKind::InsertField) {
+          // Load the aggregate-typed slot, insert the stored value at the
+          // field index, producing a new aggregate in the destination. The
+          // aggregate and destination share one carrier, and the inserted
+          // value's carrier matches the field type (LIR-verifier validated).
+          auto* aggregateSlot = slotFor(statement.sourceOrdinal());
+          auto* aggregate =
+              new ::llvm::LoadInst(aggregateSlot->getAllocatedType(), aggregateSlot, "agg", target);
+          ::llvm::Value* fieldValue = loadOperand(statement.storedValue(), target);
+          stored = ::llvm::InsertValueInst::Create(aggregate, fieldValue, {statement.fieldIndex()},
+                                                   "ins", target);
         } else {
           stored = loadOperand(statement.value(), target);
         }

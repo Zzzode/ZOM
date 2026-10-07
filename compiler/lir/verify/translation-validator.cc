@@ -331,6 +331,9 @@ bool sameConstant(const Operand& actual, const mir::MirOperand& expected,
     return false;
   }
   if (actual.isConstant()) {
+    // MIR constants are scalar; an aggregate LIR constant can never match a
+    // MIR constant, and the integer/float accessors below would reject it.
+    if (actual.isAggregateConstant()) { return false; }
     if (actual.isFloatConstant() != ZC_ASSERT_NONNULL(wanted).isFloatConstant()) { return false; }
     if (actual.isFloatConstant()) {
       return actual.floatConstantValue().bits() ==

@@ -44,9 +44,32 @@ zc::Maybe<AggregateConstant> AggregateConstant::from(ValueType carrier,
   return AggregateConstant(zc::mv(carrier), zc::mv(fields));
 }
 
+AggregateConstant::AggregateConstant(ValueType carrier, zc::Vector<Operand>&& fields) noexcept
+    : carrierValue(zc::mv(carrier)), fieldsValue(zc::mv(fields)) {}
+
+AggregateConstant::AggregateConstant(AggregateConstant&&) noexcept = default;
+AggregateConstant& AggregateConstant::operator=(AggregateConstant&&) noexcept = default;
+AggregateConstant::~AggregateConstant() = default;
+
 Operand Operand::constant(IntegerConstant value) noexcept { return Operand(value); }
 Operand Operand::constant(FloatConstant value) noexcept { return Operand(zc::mv(value)); }
+Operand Operand::constant(AggregateConstant value) noexcept { return Operand(zc::mv(value)); }
 Operand Operand::localUse(uint32_t localOrdinal) noexcept { return Operand(localOrdinal); }
+
+Operand Operand::clone() const noexcept {
+  if (!isConstantValue) { return Operand::localUse(localSlot); }
+  if (constantSlot.is<FloatConstant>()) {
+    return Operand::constant(constantSlot.get<FloatConstant>());
+  }
+  if (constantSlot.is<AggregateConstant>()) {
+    const auto& aggregate = constantSlot.get<AggregateConstant>();
+    zc::Vector<Operand> clonedFields;
+    for (const auto& field : aggregate.fields()) { clonedFields.add(field.clone()); }
+    return Operand::constant(
+        ZC_REQUIRE_NONNULL(AggregateConstant::from(aggregate.carrier(), zc::mv(clonedFields))));
+  }
+  return Operand::constant(constantSlot.get<IntegerConstant>());
+}
 
 // A never-read placeholder constant for a localUse operand, which carries no
 // integer constant. The i1 carrier always exists, so `from` cannot fail.
@@ -57,51 +80,51 @@ IntegerConstant Operand::fallbackConstant() noexcept {
 }
 
 Statement Statement::assign(uint32_t destinationOrdinal, Operand value) noexcept {
-  return Statement(StatementKind::Assign, destinationOrdinal, ComparisonOp::Eq, value, value);
+  // Assign reads only leftValue; rightValue is a never-read placeholder.
+  return Statement(StatementKind::Assign, destinationOrdinal, ComparisonOp::Eq, zc::mv(value),
+                   Operand::localUse(0));
 }
 
 Statement Statement::compare(uint32_t destinationOrdinal, ComparisonOp op, Operand left,
                              Operand right) noexcept {
-  return Statement(StatementKind::Compare, destinationOrdinal, op, left, right);
+  return Statement(StatementKind::Compare, destinationOrdinal, op, zc::mv(left), zc::mv(right));
 }
 
 Statement Statement::arithmetic(uint32_t destinationOrdinal, ArithmeticOp op, Operand left,
                                 Operand right) noexcept {
-  return Statement(StatementKind::Arithmetic, destinationOrdinal, op, left, right);
+  return Statement(StatementKind::Arithmetic, destinationOrdinal, op, zc::mv(left), zc::mv(right));
 }
 
 Statement Statement::takeAddress(uint32_t destinationOrdinal, uint32_t sourceOrdinal) noexcept {
-  Operand source = Operand::localUse(sourceOrdinal);
-  return Statement(StatementKind::TakeAddress, destinationOrdinal, ComparisonOp::Eq, source,
-                   source);
+  // TakeAddress reads only leftValue; rightValue is a never-read placeholder.
+  return Statement(StatementKind::TakeAddress, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(sourceOrdinal), Operand::localUse(0));
 }
 
 Statement Statement::loadField(uint32_t destinationOrdinal, uint32_t basePointerOrdinal,
                                uint32_t fieldOffsetBytes) noexcept {
-  Operand base = Operand::localUse(basePointerOrdinal);
-  return Statement(StatementKind::LoadField, destinationOrdinal, ComparisonOp::Eq, base, base,
-                   fieldOffsetBytes);
+  // LoadField reads only leftValue; rightValue is a never-read placeholder.
+  return Statement(StatementKind::LoadField, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(basePointerOrdinal), Operand::localUse(0), fieldOffsetBytes);
 }
 
 Statement Statement::storeField(uint32_t basePointerOrdinal, Operand value,
                                 uint32_t fieldOffsetBytes) noexcept {
-  Operand base = Operand::localUse(basePointerOrdinal);
-  return Statement(StatementKind::StoreField, /*destinationOrdinal=*/0, ComparisonOp::Eq, base,
-                   zc::mv(value), fieldOffsetBytes);
+  return Statement(StatementKind::StoreField, /*destinationOrdinal=*/0, ComparisonOp::Eq,
+                   Operand::localUse(basePointerOrdinal), zc::mv(value), fieldOffsetBytes);
 }
 
 Statement Statement::extractField(uint32_t destinationOrdinal, uint32_t sourceOrdinal,
                                   uint32_t fieldIndex) noexcept {
-  Operand source = Operand::localUse(sourceOrdinal);
-  return Statement(StatementKind::ExtractField, destinationOrdinal, ComparisonOp::Eq, source,
-                   source, fieldIndex);
+  // ExtractField reads only leftValue; rightValue is a never-read placeholder.
+  return Statement(StatementKind::ExtractField, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(sourceOrdinal), Operand::localUse(0), fieldIndex);
 }
 
 Statement Statement::insertField(uint32_t destinationOrdinal, uint32_t aggregateOrdinal,
                                  uint32_t fieldIndex, Operand value) noexcept {
-  Operand aggregate = Operand::localUse(aggregateOrdinal);
-  return Statement(StatementKind::InsertField, destinationOrdinal, ComparisonOp::Eq, aggregate,
-                   zc::mv(value), fieldIndex);
+  return Statement(StatementKind::InsertField, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(aggregateOrdinal), zc::mv(value), fieldIndex);
 }
 
 // A never-read placeholder constant for terminators that carry no integer

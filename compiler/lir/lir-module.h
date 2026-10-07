@@ -174,62 +174,20 @@ enum class ArithmeticOp : uint8_t {
   BitXor = 0x0c,
 };
 
-/// \brief A LIR operand: an integer or float constant, or a use of a local
-/// slot.
-///
-/// A `localUse` names a one-based local ordinal (a parameter or body local); the
-/// renderer loads that local's storage slot. This is the minimal operand model
-/// the conditional and comparison shapes need.
-class Operand final {
-public:
-  /// \brief An integer-constant operand.
-  ZC_NODISCARD static Operand constant(IntegerConstant value) noexcept;
-  /// \brief A floating-point constant operand.
-  ZC_NODISCARD static Operand constant(FloatConstant value) noexcept;
-  /// \brief A use of the local slot with the given one-based ordinal.
-  ZC_NODISCARD static Operand localUse(uint32_t localOrdinal) noexcept;
-
-  ZC_NODISCARD bool isConstant() const noexcept { return isConstantValue; }
-  /// \brief Whether this constant operand carries a floating-point value.
-  /// Only valid when `isConstant()` is true.
-  ZC_NODISCARD bool isFloatConstant() const noexcept {
-    return isConstantValue && constantSlot.is<FloatConstant>();
-  }
-  ZC_NODISCARD const IntegerConstant& constantValue() const noexcept {
-    return constantSlot.get<IntegerConstant>();
-  }
-  ZC_NODISCARD const FloatConstant& floatConstantValue() const noexcept {
-    return constantSlot.get<FloatConstant>();
-  }
-  /// \brief The carrier of a constant operand, regardless of whether it is an
-  /// integer or float constant. Only valid when `isConstant()` is true.
-  ZC_NODISCARD const ValueType& constantCarrier() const noexcept {
-    if (constantSlot.is<FloatConstant>()) { return constantSlot.get<FloatConstant>().carrier(); }
-    return constantSlot.get<IntegerConstant>().carrier();
-  }
-  ZC_NODISCARD uint32_t localOrdinal() const noexcept { return localSlot; }
-
-private:
-  explicit Operand(IntegerConstant value) noexcept : isConstantValue(true), constantSlot(value) {}
-  explicit Operand(FloatConstant value) noexcept
-      : isConstantValue(true), constantSlot(zc::mv(value)) {}
-  explicit Operand(uint32_t localOrdinal) noexcept
-      : isConstantValue(false), constantSlot(fallbackConstant()), localSlot(localOrdinal) {}
-
-  ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
-
-  bool isConstantValue;
-  zc::OneOf<IntegerConstant, FloatConstant> constantSlot;
-  uint32_t localSlot = 0;
-};
+class Operand;
 
 /// \brief One immutable aggregate constant carried by a LIR aggregate type.
 ///
 /// The fields are ordered constant operands whose carriers match the
 /// aggregate type's field types one-to-one. This is the literal aggregate
-/// value that an aggregate-returning terminator or an aggregate-construction
-/// operation materializes. Field values are scalar (integer or float) in
-/// this slice; nested aggregate constants are a later step.
+/// value that an aggregate-construction operation materializes; the
+/// translator lowers it to a literal LLVM struct. A field may itself be an
+/// aggregate constant, which the translator lowers recursively.
+///
+/// The field vector makes this type move-only. The destructor and move
+/// operations are defined out-of-line so the incomplete `Operand` type is
+/// complete when the vector's owning operations are instantiated, mirroring
+/// the `ValueType` / `AggregateField` recursion in `lir-store.h`.
 class AggregateConstant final {
 public:
   /// \brief Builds an aggregate constant for an aggregate carrier.
@@ -243,15 +201,101 @@ public:
   ZC_NODISCARD static zc::Maybe<AggregateConstant> from(ValueType carrier,
                                                         zc::Vector<Operand>&& fields) noexcept;
 
+  AggregateConstant(AggregateConstant&&) noexcept;
+  AggregateConstant& operator=(AggregateConstant&&) noexcept;
+  ZC_DISALLOW_COPY(AggregateConstant);
+  ~AggregateConstant();
+
   ZC_NODISCARD const ValueType& carrier() const noexcept { return carrierValue; }
   ZC_NODISCARD zc::ArrayPtr<const Operand> fields() const noexcept { return fieldsValue.asPtr(); }
 
 private:
-  AggregateConstant(ValueType carrier, zc::Vector<Operand>&& fields) noexcept
-      : carrierValue(zc::mv(carrier)), fieldsValue(zc::mv(fields)) {}
+  AggregateConstant(ValueType carrier, zc::Vector<Operand>&& fields) noexcept;
 
   ValueType carrierValue;
   zc::Vector<Operand> fieldsValue;
+};
+
+/// \brief A LIR operand: an integer, float, or aggregate constant, or a use
+/// of a local slot.
+///
+/// A `localUse` names a one-based local ordinal (a parameter or body local); the
+/// renderer loads that local's storage slot. This is the minimal operand model
+/// the conditional and comparison shapes need.
+///
+/// The aggregate-constant variant makes this type move-only: the variant's
+/// field vector cannot be copied, so the copy constructor is deleted and the
+/// move operations move the variant slot.
+class Operand final {
+public:
+  /// \brief An integer-constant operand.
+  ZC_NODISCARD static Operand constant(IntegerConstant value) noexcept;
+  /// \brief A floating-point constant operand.
+  ZC_NODISCARD static Operand constant(FloatConstant value) noexcept;
+  /// \brief An aggregate-constant operand.
+  ZC_NODISCARD static Operand constant(AggregateConstant value) noexcept;
+  /// \brief A use of the local slot with the given one-based ordinal.
+  ZC_NODISCARD static Operand localUse(uint32_t localOrdinal) noexcept;
+
+  /// \brief Deep-copies this operand.
+  ///
+  /// Constants are re-created from their carriers and values; a local use is
+  /// duplicated with the same ordinal. The aggregate-constant variant makes
+  /// Operand move-only, so a value the lowering needs in two statements (for
+  /// example a loop-condition right operand reused in the entry and body
+  /// blocks) must be cloned at the first use and moved at the last.
+  ZC_NODISCARD Operand clone() const noexcept;
+
+  Operand(Operand&&) = default;
+  Operand& operator=(Operand&&) = default;
+  ZC_DISALLOW_COPY(Operand);
+
+  ZC_NODISCARD bool isConstant() const noexcept { return isConstantValue; }
+  /// \brief Whether this constant operand carries a floating-point value.
+  /// Only valid when `isConstant()` is true.
+  ZC_NODISCARD bool isFloatConstant() const noexcept {
+    return isConstantValue && constantSlot.is<FloatConstant>();
+  }
+  /// \brief Whether this constant operand carries an aggregate value.
+  /// Only valid when `isConstant()` is true.
+  ZC_NODISCARD bool isAggregateConstant() const noexcept {
+    return isConstantValue && constantSlot.is<AggregateConstant>();
+  }
+  ZC_NODISCARD const IntegerConstant& constantValue() const noexcept {
+    return constantSlot.get<IntegerConstant>();
+  }
+  ZC_NODISCARD const FloatConstant& floatConstantValue() const noexcept {
+    return constantSlot.get<FloatConstant>();
+  }
+  ZC_NODISCARD const AggregateConstant& aggregateConstantValue() const noexcept {
+    return constantSlot.get<AggregateConstant>();
+  }
+  /// \brief The carrier of a constant operand, regardless of whether it is an
+  /// integer, float, or aggregate constant. Only valid when `isConstant()` is
+  /// true.
+  ZC_NODISCARD const ValueType& constantCarrier() const noexcept {
+    if (constantSlot.is<FloatConstant>()) { return constantSlot.get<FloatConstant>().carrier(); }
+    if (constantSlot.is<AggregateConstant>()) {
+      return constantSlot.get<AggregateConstant>().carrier();
+    }
+    return constantSlot.get<IntegerConstant>().carrier();
+  }
+  ZC_NODISCARD uint32_t localOrdinal() const noexcept { return localSlot; }
+
+private:
+  explicit Operand(IntegerConstant value) noexcept : isConstantValue(true), constantSlot(value) {}
+  explicit Operand(FloatConstant value) noexcept
+      : isConstantValue(true), constantSlot(zc::mv(value)) {}
+  explicit Operand(AggregateConstant value) noexcept
+      : isConstantValue(true), constantSlot(zc::mv(value)) {}
+  explicit Operand(uint32_t localOrdinal) noexcept
+      : isConstantValue(false), constantSlot(fallbackConstant()), localSlot(localOrdinal) {}
+
+  ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
+
+  bool isConstantValue;
+  zc::OneOf<IntegerConstant, FloatConstant, AggregateConstant> constantSlot;
+  uint32_t localSlot = 0;
 };
 
 /// \brief Closed LIR statement kind.
@@ -354,8 +398,8 @@ private:
         destinationValue(destinationOrdinal),
         opValue(op),
         arithmeticOpValue(ArithmeticOp::Add),
-        leftValue(left),
-        rightValue(right),
+        leftValue(zc::mv(left)),
+        rightValue(zc::mv(right)),
         fieldOffsetValue(fieldOffsetBytes) {}
 
   Statement(StatementKind kind, uint32_t destinationOrdinal, ArithmeticOp op, Operand left,
@@ -364,8 +408,8 @@ private:
         destinationValue(destinationOrdinal),
         opValue(ComparisonOp::Eq),
         arithmeticOpValue(op),
-        leftValue(left),
-        rightValue(right) {}
+        leftValue(zc::mv(left)),
+        rightValue(zc::mv(right)) {}
 
   StatementKind kindValue;
   uint32_t destinationValue;
