@@ -143,7 +143,9 @@ bool subtreeContains(const ast::Tree& tree, ast::NodeId root, ast::NodeId target
 // A pattern inside a match arm is covered by the arm's exhaustiveness fact, not
 // by a standalone pattern fact. The body-checker only produces pattern facts
 // for identifier patterns in variable declarators, so match-arm patterns must
-// not enter the requirement/production inventory at all.
+// not enter the requirement/production inventory at all. Sub-patterns of an
+// EnumPattern (e.g. `v` in `Result.Ok(v)`) are also covered by the arm's
+// exhaustiveness fact, so they are recognized here too.
 bool isMatchArmPattern(const ast::Tree& tree, ast::NodeId node) {
   bool found = false;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
@@ -152,6 +154,15 @@ bool isMatchArmPattern(const ast::Tree& tree, ast::NodeId node) {
         (syntax.kind == ast::SyntaxKind::MatchArmExpr &&
          ast::NodeId(syntax.payload.words[ast::kMatchArmExprPatternWord]) == node)) {
       found = true;
+    }
+    if (syntax.kind == ast::SyntaxKind::EnumPattern) {
+      const ast::NodeList args{syntax.payload.words[ast::kEnumPatternArgsFirstWord],
+                               syntax.payload.words[ast::kEnumPatternArgsSizeWord]};
+      if (tree.contains(args)) {
+        for (size_t i = 0; i < args.size; ++i) {
+          if (tree.list(args)[i] == node) { found = true; }
+        }
+      }
     }
   });
   return found;
@@ -1203,11 +1214,13 @@ zc::Maybe<NominalFieldShape> nominalFieldShape(const BodyCheckingInput& input,
 /// enum type is the nominal type of the enum definition; the variant is the
 /// resolved enum variant definition; the discriminant is the variant's
 /// explicit integer discriminant when the variant declares one (`Red = 10`),
-/// otherwise its zero-based index within the enum's variant list.
+/// otherwise its zero-based index within the enum's variant list; the payload
+/// carries the variant's declared field types (empty for unit variants).
 struct EnumVariantValueShape final {
   identity::SemanticTypeId enumType;
   identity::DefId variant;
   uint64_t discriminant;
+  zc::Vector<identity::SemanticTypeId> payload;
 };
 
 /// \brief Resolves a qualified enum variant access `Enum::Variant`. The base
@@ -1323,11 +1336,11 @@ zc::Maybe<EnumVariantValueShape> enumVariantValueShape(const BodyCheckingInput& 
   auto interned =
       input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
   if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-  return EnumVariantValueShape{interned.get<type::SemanticTypeInterned>().id,
-                               ZC_ASSERT_NONNULL(variant), discriminant};
+  return EnumVariantValueShape{
+      interned.get<type::SemanticTypeInterned>().id, ZC_ASSERT_NONNULL(variant), discriminant, {}};
 }
 
-/// \brief Resolves a unit enum variant pattern `Enum.Variant` in a match arm.
+/// \brief Resolves an enum variant pattern `Enum.Variant` in a match arm.
 /// The ModulePath must have exactly two segments: the enum name and the
 /// variant name. The enum definition is looked up by name in the bound
 /// module's definitions (the binder does not produce node bindings for
@@ -1415,7 +1428,8 @@ zc::Maybe<EnumVariantValueShape> enumPatternVariantShape(const BodyCheckingInput
     if (!found) return zc::none;
     break;
   }
-  // A unit variant (empty payload) is the only admitted shape in this slice.
+  // Resolve the variant's payload field types and optional explicit discriminant.
+  zc::Vector<identity::SemanticTypeId> payload;
   for (const auto& signature : input.signatureFacts.signatures()) {
     if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
         !signature.payload.variant().is<signature::EnumVariantSignature>()) {
@@ -1423,7 +1437,7 @@ zc::Maybe<EnumVariantValueShape> enumPatternVariantShape(const BodyCheckingInput
     }
     const auto& variantSignature =
         signature.payload.variant().get<signature::EnumVariantSignature>();
-    if (variantSignature.payload.size() != 0) return zc::none;
+    for (const auto field : variantSignature.payload.asPtr()) { payload.add(field); }
     ZC_IF_SOME(explicitDiscriminant, variantSignature.discriminant) {
       if (explicitDiscriminant.magnitude.size() > 8) return zc::none;
       uint64_t explicitValue = 0;
@@ -1440,7 +1454,7 @@ zc::Maybe<EnumVariantValueShape> enumPatternVariantShape(const BodyCheckingInput
       input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
   if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
   return EnumVariantValueShape{interned.get<type::SemanticTypeInterned>().id,
-                               ZC_ASSERT_NONNULL(variant), discriminant};
+                               ZC_ASSERT_NONNULL(variant), discriminant, zc::mv(payload)};
 }
 
 /// \brief Shape of an enum tuple-variant construction such as `Result::Ok(41)`.
