@@ -466,7 +466,10 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       // same scrutinee lower to the equality conditional path (N == 2) or the
       // chained conditional path (N >= 3); the last arm is the "else" branch.
       // The variant discriminant is read from the checker's literal fact by
-      // the builder.
+      // the builder. Tuple-variant patterns (e.g., `Result.Ok(v)`) carry
+      // payload bindings that the equality synthesis cannot populate; reject
+      // them until destructuring lowering exists.
+      if (tree.node(pattern).payload.words[ast::kEnumPatternArgsSizeWord] != 0) { return zc::none; }
       if (intLiteralNodes.size() > 0 || sawDefault) return zc::none;
       sawEnumPattern = true;
       enumPatternNodes.add(pattern);
