@@ -1,0 +1,5 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/object_literal_keyword_property_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/object_literal_keyword_property_neg_01.zom:1:1

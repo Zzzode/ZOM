@@ -5,11 +5,12 @@
 
 #include "compiler/binder/surface/module-body-syntax.h"
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/canonical-scalar.h"
+#include "compiler/lexer/utils.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::binder {
 
@@ -81,7 +82,8 @@ bool validEnumValue(const ast::NodeSchemaFieldEntry& field, uint32_t value) {
 
 bool validCanonicalIdentifier(zc::StringPtr text) {
   return identity::SemanticIdentifier::fromCanonical(text) != zc::none ||
-         identity::DeclaredDefinitionName::fromCanonical(text) != zc::none;
+         identity::DeclaredDefinitionName::fromCanonical(text) != zc::none ||
+         lexer::isValidIdentifier(text);
 }
 
 bool validateCanonicalFields(ast::SyntaxKind kind, zc::ArrayPtr<const uint8_t> encoded,

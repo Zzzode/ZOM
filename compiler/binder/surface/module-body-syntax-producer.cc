@@ -3,13 +3,13 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/metadata/definition-inventory.h"
 #include "compiler/binder/surface/module-body-syntax.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/canonical-scalar.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -88,7 +88,12 @@ bool encodeIdentifier(identity::CanonicalEncoder& encoder, zc::StringPtr source)
     value.encode(encoder);
     return true;
   }
-  return false;
+  // Keyword names (e.g. object literal properties like `{ in: 1 }`) are
+  // accepted by the parser but rejected by the semantic-identifier and
+  // declared-definition-name validators. Encode the raw text so the
+  // projection can proceed; the verifier uses the same fallback.
+  encoder.encodeByteString(source.asBytes());
+  return true;
 }
 
 zc::Maybe<zc::Array<uint8_t>> encodeCanonicalFields(const ast::Tree& tree, const ast::Node& node,

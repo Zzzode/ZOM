@@ -3,12 +3,12 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/core/debug.h"
 #include "compiler/ast/generated/node-schema.h"
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/surface/module-body-syntax.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/canonical/canonical-scalar.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::binder {
 namespace {
@@ -103,7 +103,11 @@ bool appendCanonicalIdentifier(identity::CanonicalEncoder& encoder, zc::StringPt
     identifier.encode(encoder);
     return true;
   }
-  return false;
+  // Keyword names are accepted by the parser but rejected by the
+  // semantic-identifier and declared-definition-name validators. Encode the
+  // raw text so the reconstruction matches the producer's fallback encoding.
+  encoder.encodeByteString(text.asBytes());
+  return true;
 }
 
 zc::StringPtr independentlyReadText(const ast::Tree& tree, const ast::NodeSchemaFieldEntry& field,

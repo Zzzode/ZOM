@@ -1,0 +1,5 @@
+section: "04-expressions object literal keyword property name"
+covers_rule: "objectLiteral, propertyName"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the propertyName rule admits the IN keyword in addition to identifiers. The diagnostics runner checks the unsupported-construct drain for keyword-named properties."
