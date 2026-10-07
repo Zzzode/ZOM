@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check 08-adt/enum_tuple_construction_pos_02.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A live enum tuple-variant construction with multiple payload fields
+// (`Pair::Pair(1, 2)`) lowers through the checker, HIR, MIR, and LIR as a
+// nominal aggregate with a discriminant element and two payload elements.
+// The compiler exits 0.
+
+// CHECK-NOT: Error

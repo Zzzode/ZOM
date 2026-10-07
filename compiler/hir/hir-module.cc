@@ -595,10 +595,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
   // the same checked facts the builder drained. Both the builder and the
   // verifier restrict their dead-binding filter to this erasure cone, so the
   // two derive one identical filtered shape. Enum tuple-variant construction
-  // calls produce no coercion fact; their seeds are identified from the AST.
+  // calls produce no coercion fact; their seeds are identified from the AST
+  // and filtered to bindings that are never read.
   auto deadEraseInitializers = deadEraseInitializerNodes(bound.tree(), definitions, facts);
   for (const auto node : enumConstructionInitializerNodes(bound.tree())) {
-    deadEraseInitializers.add(node);
+    if (isDeadErasedInitializer(bound.tree(), definitions, node)) {
+      deadEraseInitializers.add(node);
+    }
   }
   const auto& signatures = candidate.impl->checkedModule.ownModuleInterface().signatures();
   const auto declarationCount = candidate.impl->declarations.size();

@@ -1,0 +1,7 @@
+enum Result { Ok(i32), Err(i32) }
+
+fn entry() -> Result {
+  let x: i32 = 41;
+  let r: Result = Result::Ok(x);
+  return r;
+}

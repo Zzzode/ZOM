@@ -279,10 +279,15 @@ zc::Vector<ast::NodeId> deadEraseInitializerNodes(
     const checker::checked::VerifiedCheckedFacts& facts);
 
 /// Collects the initializer nodes of enum tuple-variant construction calls
-/// (`Enum::Variant(args)`). A dead construction binding is filtered before MIR
-/// so no aggregate representation is needed. The builder and the verifier both
-/// derive the set from the same AST, guaranteeing one identical filtered shape.
+/// (`Enum::Variant(args)`). The builder and the verifier both derive the set
+/// from the same AST, then filter to bindings that are never read so only
+/// dead constructions are erased; a live construction lowers to a nominal
+/// aggregate.
 zc::Vector<ast::NodeId> enumConstructionInitializerNodes(const ast::Tree& tree);
+
+/// True when `node` is a call expression whose callee is a qualified member
+/// access naming an enum variant (`Enum::Variant(args)`).
+bool isEnumConstructionCall(const ast::Tree& tree, ast::NodeId node);
 
 zc::Maybe<identity::DefId> enclosingExecutableDefinition(
     const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,

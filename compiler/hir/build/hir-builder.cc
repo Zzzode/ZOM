@@ -336,10 +336,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   // Enum tuple-variant construction calls (`Result::Ok(41)`) produce no
   // coercion fact; their dead-erase seeds are identified directly from the
-  // AST. A dead construction binding is filtered before MIR so no aggregate
-  // representation is needed.
+  // AST. A construction whose binding is never read is filtered before MIR;
+  // a live construction lowers to a nominal aggregate.
   for (const auto node : enumConstructionInitializerNodes(bound.tree())) {
-    deadEraseInitializers.add(node);
+    if (isDeadErasedInitializer(bound.tree(), bound.definitions(), node)) {
+      deadEraseInitializers.add(node);
+    }
   }
   // Argument-position concrete-to-dyn erasures ride inside a direct call's
   // CheckedArgumentFact adjustment rather than the top-level coercion map. The
@@ -3808,6 +3810,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirReceiverCallExpression> receiverCall;
       zc::Maybe<HirLocalBinding> local;
       zc::Maybe<HirNominalAggregateExpression> aggregate;
+      bool aggregateIsEnumConstruction = false;
       zc::Vector<HirLocalWriteStatement> localWrites;
       zc::Vector<PendingLocalWriteValue> localWriteValues;
       zc::Maybe<HirLocalReferenceExpression> localReference;
@@ -3931,6 +3934,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if (!typeExists(bindingType, checkedModule.semanticTypes())) {
             rejected = true;
             break;
+          }
+          // A live enum tuple-variant construction in a sequential binding is
+          // not lowered yet; reject the owning definition as a capability
+          // rejection (ZOM4099) rather than falling through to the count
+          // validation.
+          if (binding.initializerKind == SequentialInitializerKind::EnumVariantConstruction) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
           }
           // Locals must be distinct bindings.
           for (const auto existing : localBindingIds) {
@@ -5145,7 +5157,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    registries, ordinal + 2);
             }
             literal = sourceLiteral.literal.clone();
-          } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
+          } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr ||
+                     isEnumConstructionCall(tree, initializer)) {
             auto aggregateIndex = factIndex(facts.aggregates(), initializer);
             if (aggregateIndex == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5220,6 +5233,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::mv(elements),
                 HirValueCategory::Value,
                 ZC_ASSERT_NONNULL(initializerSpan).clone()};
+            aggregateIsEnumConstruction = isEnumConstructionCall(tree, initializer);
           } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
             auto parameter = resolvedCallableParameter(bound.bindings(), initializer);
             if (parameter == zc::none) {
@@ -6969,8 +6983,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       }
       // The receiver self-call branch already assembles its call record from
       // the implicit header receiver; it must not re-enter the owner-local call
-      // machinery below.
-      if (!shape.returnsReceiverSelfCall &&
+      // machinery below. An enum tuple-variant construction has no Call fact
+      // (the constructor is not invoked); its aggregate is already built above,
+      // so it skips the call machinery as well.
+      if (!shape.returnsReceiverSelfCall && !isEnumConstructionCall(tree, callNode) &&
           tree.node(callNode).kind == ast::SyntaxKind::CallExpression) {
         const auto& sourceCall = tree.node(callNode);
         auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
@@ -9250,7 +9266,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       shape.returnsLocalPostfixIncrement,
                                                       shape.body,
                                                       shape.returnStatement,
-                                                      shape.value});
+                                                      shape.value,
+                                                      aggregateIsEnumConstruction});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -9423,6 +9440,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t localBorrowCount = 0;
   size_t aggregateCount = 0;
   size_t aggregateElementCount = 0;
+  // Enum tuple-variant construction aggregates whose discriminant element
+  // reuses the call node as its source, so it contributes no new node-type
+  // fact beyond the one the initializer node already carries.
+  size_t enumConstructionAggregateCount = 0;
   size_t localFieldProjectionCount = 0;
   size_t parameterFieldProjectionCount = 0;
   size_t parameterFieldWriteCount = 0;
@@ -10235,6 +10256,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     ZC_IF_SOME(aggregate, function.aggregate) {
       ++aggregateCount;
       aggregateElementCount += aggregate.elements.size();
+      if (function.aggregateIsEnumConstruction) { ++enumConstructionAggregateCount; }
     }
     if (function.localFieldProjection != zc::none) ++localFieldProjectionCount;
     if (function.parameterFieldProjection != zc::none) ++parameterFieldProjectionCount;
@@ -10337,24 +10359,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
       (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
-      uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount +
-      localFieldProjectionCount + localFieldWriteCount + parameterIndexCount * 2 +
-      parameterReborrowCount * 2 + directCallArgumentCount + receiverCallArgumentCount +
-      receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount * 3 + localBorrowCount +
-      unsafeBlockCount + conditionalCount * 2 + equalityConditionalCount * 2 +
-      conditionalBinaryArmCount * 2 - matchEqualityReturnCount * 2 - matchGuardPhantomCount +
-      matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
-      unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-      nestedBinaryWriteOperandCount * 2 + parameterFieldProjectionCount +
-      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
-      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
-      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
-      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
-      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
-      incrementWriteCount * 3 - incrementReturnCount + postfixReturnCount -
-      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
-      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
+      uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount -
+      enumConstructionAggregateCount + localFieldProjectionCount + localFieldWriteCount +
+      parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
+      receiverCallArgumentCount + receiverCallFieldArgumentCount +
+      receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
+      conditionalCount * 2 + equalityConditionalCount * 2 + conditionalBinaryArmCount * 2 -
+      matchEqualityReturnCount * 2 - matchGuardPhantomCount + matchReturnCount * 2 -
+      matchDefaultArmCount + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
+      sequentialBinaryCount * 2 + binaryWriteCount * 2 + nestedBinaryWriteOperandCount * 2 +
+      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
+      parameterFieldWriteCount * 4 + discardedStatementCallCount +
+      leadingLocalConditionalBindingCount + castCount + foldedStringLengthCount +
+      foldedStringConcatCount * 2 + foldedFloatCastCount + sequentialFoldedStringConcatCount * 2 +
+      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
+      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount +
+      postfixReturnCount - sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 +
+      forLoopReturnCount * 9 + forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

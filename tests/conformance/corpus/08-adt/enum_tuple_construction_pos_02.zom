@@ -1,0 +1,6 @@
+enum Pair { Pair(i32, i32) }
+
+fn entry() -> Pair {
+  let p: Pair = Pair::Pair(1, 2);
+  return p;
+}

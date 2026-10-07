@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check 08-adt/enum_tuple_construction_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A live enum tuple-variant construction (`Result::Ok(41)`) lowers through
+// the checker, HIR, MIR, and LIR as a nominal aggregate with a discriminant
+// element and a payload element. The compiler exits 0.
+
+// CHECK-NOT: Error

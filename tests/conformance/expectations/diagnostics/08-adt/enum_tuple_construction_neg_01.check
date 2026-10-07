@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/enum_tuple_construction_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A live enum tuple-variant construction in a sequential (multi-binding) body
+// is not lowered yet. The compiler rejects it with ZOM4099 (capability
+// rejection) rather than crashing with an internal compiler error.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet

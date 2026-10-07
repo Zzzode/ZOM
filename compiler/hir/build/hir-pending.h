@@ -733,6 +733,11 @@ struct PendingFunctionDeclaration final {
   ast::NodeId returnNode{};
   /// The AST expression node of the return value. Empty for void bodies.
   ast::NodeId returnValueNode{};
+  /// True when the aggregate is an enum tuple-variant construction
+  /// (`Enum::Variant(args)`) rather than a struct literal. The discriminant
+  /// element reuses the call node as its source, so it contributes no new
+  /// node-type fact beyond the one the initializer node already carries.
+  bool aggregateIsEnumConstruction = false;
 };
 
 }  // namespace detail

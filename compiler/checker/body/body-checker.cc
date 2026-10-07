@@ -1444,12 +1444,16 @@ zc::Maybe<EnumVariantValueShape> enumPatternVariantShape(const BodyCheckingInput
 }
 
 /// \brief Shape of an enum tuple-variant construction such as `Result::Ok(41)`.
-/// The enum type is the nominal type of the enum definition; the variant is
-/// the resolved tuple-variant definition; the payload carries the variant's
+/// The enum definition is the resolved enum; the enum type is its nominal
+/// type; the variant is the resolved tuple-variant definition; the
+/// discriminant is the variant's explicit integer discriminant when declared,
+/// otherwise its zero-based source index; the payload carries the variant's
 /// declared field types.
 struct EnumVariantConstructionShape final {
   identity::SemanticTypeId enumType;
+  identity::DefId enumDefinition;
   identity::DefId variant;
+  uint64_t discriminant;
   zc::Vector<identity::SemanticTypeId> payload;
 };
 
@@ -1523,14 +1527,67 @@ zc::Maybe<EnumVariantConstructionShape> enumVariantConstructionShape(const BodyC
     for (const auto field : variantSignature.payload.asPtr()) { payload.add(field); }
   }
   if (payload.size() == 0) return zc::none;
+  // Resolve the source-order discriminant from the enum's AST node. The
+  // variants list in the nominal signature is sorted by canonical digest, so
+  // the discriminant without an explicit override is the variant's source
+  // declaration order, not its index in the sorted list.
+  uint64_t discriminant = 0;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != enumDefId) continue;
+    const auto& enumNode = tree.node(definition.node);
+    if (enumNode.kind != ast::SyntaxKind::EnumDeclaration) return zc::none;
+    const ast::NodeId variantListId(enumNode.payload.words[ast::kEnumDeclarationVariantsIdWord]);
+    if (!tree.contains(variantListId)) return zc::none;
+    const auto& variantList = tree.node(variantListId);
+    if (variantList.kind != ast::SyntaxKind::EnumVariantList) return zc::none;
+    const ast::NodeList variantNodes{
+        variantList.payload.words[ast::kEnumVariantListVariantsFirstWord],
+        variantList.payload.words[ast::kEnumVariantListVariantsSizeWord]};
+    if (!tree.contains(variantNodes)) return zc::none;
+    bool found = false;
+    for (size_t sourceIndex = 0; sourceIndex < variantNodes.size; ++sourceIndex) {
+      const ast::NodeId variantNodeId = tree.list(variantNodes)[sourceIndex];
+      if (!tree.contains(variantNodeId)) continue;
+      const auto& variantNode = tree.node(variantNodeId);
+      if (variantNode.kind != ast::SyntaxKind::UnitVariant &&
+          variantNode.kind != ast::SyntaxKind::TupleVariant) {
+        continue;
+      }
+      const auto variantNodeDef = input.boundModule.definitions().definitionAt(variantNodeId);
+      if (variantNodeDef == zc::none) continue;
+      if (ZC_ASSERT_NONNULL(variantNodeDef) != ZC_ASSERT_NONNULL(variant)) continue;
+      discriminant = static_cast<uint64_t>(sourceIndex);
+      found = true;
+      break;
+    }
+    if (!found) return zc::none;
+    break;
+  }
+  // An explicit discriminant (`Ok = 10`) overrides the zero-based index.
+  for (const auto& signature : input.signatureFacts.signatures()) {
+    if (signature.definition != ZC_ASSERT_NONNULL(variant) ||
+        !signature.payload.variant().is<signature::EnumVariantSignature>()) {
+      continue;
+    }
+    const auto& variantSignature =
+        signature.payload.variant().get<signature::EnumVariantSignature>();
+    ZC_IF_SOME(explicitDiscriminant, variantSignature.discriminant) {
+      if (explicitDiscriminant.magnitude.size() > 8) return zc::none;
+      uint64_t explicitValue = 0;
+      for (const uint8_t byte : explicitDiscriminant.magnitude.asPtr()) {
+        explicitValue = (explicitValue << 8) | byte;
+      }
+      discriminant = explicitValue;
+    }
+  }
   auto admitted = input.semanticTypes.canonicalizeClosed(
       type::semantic::TypeData(type::semantic::NominalTypeData{enumDefId, {}}));
   if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
   auto interned =
       input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
   if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-  return EnumVariantConstructionShape{interned.get<type::SemanticTypeInterned>().id,
-                                      ZC_ASSERT_NONNULL(variant), zc::mv(payload)};
+  return EnumVariantConstructionShape{interned.get<type::SemanticTypeInterned>().id, enumDefId,
+                                      ZC_ASSERT_NONNULL(variant), discriminant, zc::mv(payload)};
 }
 
 zc::Maybe<OwnerLocalFieldShape> ownerLocalFieldShape(
@@ -5669,9 +5726,6 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         }
       } else if (syntax.kind == ast::SyntaxKind::CallExpression ||
                  syntax.kind == ast::SyntaxKind::ImportCallExpression) {
-        // An enum tuple-variant construction (`Result::Ok(41)`) produces only
-        // a NodeType fact; the constructor call has no Call fact because no
-        // callable is invoked.
         bool isConstruction = false;
         if (syntax.kind == ast::SyntaxKind::CallExpression) {
           const ast::NodeId callCallee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
@@ -5682,7 +5736,14 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             }
           }
         }
-        if (!isConstruction) {
+        if (isConstruction) {
+          // An enum tuple-variant construction (`Result::Ok(41)`) produces a
+          // discriminant Literal fact and an Aggregate fact alongside its
+          // NodeType fact; the constructor call has no Call fact because no
+          // callable is invoked.
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Aggregate, node, key);
+        } else {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
         }
       } else if (syntax.kind == ast::SyntaxKind::MemberExpression) {
@@ -8400,6 +8461,53 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
           }
           producedType = value.enumType;
+          // Emit the discriminant as an i32 literal fact keyed by the call
+          // node, and an aggregate fact with [discriminant, payload...]
+          // elements so the HIR builder can lower a live construction to a
+          // nominal aggregate. The discriminant element carries the variant
+          // definition as its field; each payload element carries the enum
+          // definition. The two are distinct, satisfying the LIR field-dedup
+          // constraint for single-field payloads.
+          auto discriminantType = internPrimitiveKind(input, type::semantic::PrimitiveKind::I32);
+          if (discriminantType == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          zc::Vector<uint8_t> discriminantBytes;
+          uint64_t remaining = value.discriminant;
+          while (remaining != 0) {
+            discriminantBytes.add(static_cast<uint8_t>(remaining & 0xff));
+            remaining >>= 8;
+          }
+          auto discriminantMagnitude = zc::heapArray<uint8_t>(discriminantBytes.size());
+          for (size_t index = 0; index < discriminantBytes.size(); ++index) {
+            discriminantMagnitude[index] = discriminantBytes[discriminantBytes.size() - index - 1];
+          }
+          literals.add(checked::LiteralFactMap::Entry{
+              site.node,
+              checked::CheckedLiteralFact{
+                  site.node,
+                  signature::CanonicalConstValue::integer(signature::CanonicalInteger{
+                      signature::IntegerSign::NonNegative, zc::mv(discriminantMagnitude)}),
+                  ZC_ASSERT_NONNULL(discriminantType), site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
+          zc::Vector<checked::AggregateElementFact> elements;
+          elements.add(checked::AggregateElementFact{
+              site.node, value.variant, 0, ZC_ASSERT_NONNULL(discriminantType),
+              ZC_ASSERT_NONNULL(discriminantType), zc::none});
+          for (size_t index = 0; index < argumentNodes.size(); ++index) {
+            elements.add(checked::AggregateElementFact{
+                argumentNodes[index], value.enumDefinition, static_cast<uint32_t>(index + 1),
+                value.payload[index], value.payload[index], zc::none});
+          }
+          aggregates.add(checked::AggregateFactMap::Entry{
+              site.node,
+              checked::CheckedAggregateFact{
+                  site.node,
+                  checked::AggregateKind(checked::NominalAggregate{value.enumDefinition}),
+                  value.enumType, zc::mv(elements), site.key.sourceSpan.clone()},
+              zc::Array<uint8_t>()});
         }
       } else {
         auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
