@@ -232,7 +232,8 @@ enum class MirRvalueKind : uint8_t {
   NominalAggregate = 0x02,
   Comparison = 0x03,
   Arithmetic = 0x04,
-  Erase = 0x05
+  Erase = 0x05,
+  ErrorUnion = 0x06
 };
 
 /// \brief Closed comparison operator produced by primitive comparison lowering.
@@ -316,6 +317,25 @@ struct MirEraseRvalue final {
   identity::SemanticTypeId targetType;
 };
 
+/// \brief Error-union value construction rvalue (RFC 0006).
+///
+/// Constructs an error-union value from a tag constant and a payload operand.
+/// Tag 0 is the verified success alternative; tag 1 is the residual
+/// alternative. The union, success, and residual semantic types record the
+/// error-union layout for verification and downstream lowering; the payload
+/// carries the active alternative's value. The aggregate representation
+/// (tag slot plus payload slot) is a LIR/LLVM concern, not a MIR concern:
+/// MIR only records that an error-union value was constructed and which types
+/// it connects. These bytes flow through `encodeRvalue`; changing a field is
+/// a codec change.
+struct MirErrorUnionRvalue final {
+  identity::SemanticTypeId unionType;
+  identity::SemanticTypeId successType;
+  identity::SemanticTypeId residualType;
+  uint8_t tag;
+  MirOperand payload;
+};
+
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
 public:
@@ -335,6 +355,10 @@ public:
                                            identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD static MirRvalue erase(MirOperand&& source, identity::SemanticTypeId sourceType,
                                       identity::SemanticTypeId targetType) noexcept;
+  ZC_NODISCARD static MirRvalue errorUnion(identity::SemanticTypeId unionType,
+                                           identity::SemanticTypeId successType,
+                                           identity::SemanticTypeId residualType, uint8_t tag,
+                                           MirOperand&& payload) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
@@ -342,6 +366,7 @@ public:
   ZC_NODISCARD const MirComparisonRvalue& comparisonValue() const;
   ZC_NODISCARD const MirArithmeticRvalue& arithmeticValue() const;
   ZC_NODISCARD const MirEraseRvalue& eraseValue() const;
+  ZC_NODISCARD const MirErrorUnionRvalue& errorUnionValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
@@ -349,8 +374,9 @@ private:
   explicit MirRvalue(MirComparisonRvalue&& value) noexcept;
   explicit MirRvalue(MirArithmeticRvalue&& value) noexcept;
   explicit MirRvalue(MirEraseRvalue&& value) noexcept;
+  explicit MirRvalue(MirErrorUnionRvalue&& value) noexcept;
   zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue,
-            MirEraseRvalue>
+            MirEraseRvalue, MirErrorUnionRvalue>
       value;
 };
 

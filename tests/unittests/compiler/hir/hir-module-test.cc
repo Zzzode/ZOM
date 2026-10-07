@@ -398,6 +398,7 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
   ZC_EXPECT(module.declarations().size() == 0);
   ZC_EXPECT(module.patterns().size() == 0);
   ZC_EXPECT(module.expressions().size() == 0);
+  ZC_EXPECT(module.errorUnions().size() == 0);
   auto dump = module.dump();
   auto repeated = module.dump();
   ZC_REQUIRE(dump != zc::none);
@@ -410,6 +411,16 @@ ZC_TEST("HIR pipeline publishes an exact empty module") {
       ZC_EXPECT(left.contains("import-interface"_zc));
     }
   }
+}
+
+ZC_TEST("HIR pipeline wires the error-union value pool through a function body") {
+  HirPipelineFixture fixture("fn answer() -> i32 { return 41; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  // The error-union value shape is wired through candidate, verifier, and
+  // module, but no admitted source construct produces one yet, so the pool
+  // stays empty for every module the pipeline publishes.
+  ZC_EXPECT(module.errorUnions().size() == 0);
 }
 
 ZC_TEST("HIR pipeline lowers one module-scope scalar let without AST identity") {

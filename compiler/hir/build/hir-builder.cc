@@ -10478,6 +10478,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
   zc::Vector<HirNominalAggregateExpression> aggregates;
+  zc::Vector<HirErrorUnionExpression> errorUnions;
   zc::Vector<HirLocalBinding> locals;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<HirLocalReferenceExpression> localReferences;
@@ -11443,12 +11444,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   auto impl = zc::heap<HirModuleCandidate::Impl>(
       zc::mv(checkedModule), zc::mv(declarations), zc::mv(functions), zc::mv(blocks),
-      zc::mv(returns), zc::mv(patterns), zc::mv(expressions), zc::mv(aggregates), zc::mv(locals),
-      zc::mv(localWrites), zc::mv(localReferences), zc::mv(localFieldProjections),
-      zc::mv(parameterFieldProjections), zc::mv(parameterFieldWrites), zc::mv(parameterReferences),
-      zc::mv(parameterIndexes), zc::mv(parameterReborrows), zc::mv(localBorrows), zc::mv(calls),
-      zc::mv(receiverCalls), zc::mv(unsafeBlocks), zc::mv(primitiveBinaryOperations),
-      zc::mv(conditionals), zc::mv(loops), zc::mv(sourceNodes));
+      zc::mv(returns), zc::mv(patterns), zc::mv(expressions), zc::mv(aggregates),
+      zc::mv(errorUnions), zc::mv(locals), zc::mv(localWrites), zc::mv(localReferences),
+      zc::mv(localFieldProjections), zc::mv(parameterFieldProjections),
+      zc::mv(parameterFieldWrites), zc::mv(parameterReferences), zc::mv(parameterIndexes),
+      zc::mv(parameterReborrows), zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls),
+      zc::mv(unsafeBlocks), zc::mv(primitiveBinaryOperations), zc::mv(conditionals), zc::mv(loops),
+      zc::mv(sourceNodes));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 

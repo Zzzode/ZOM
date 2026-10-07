@@ -208,6 +208,42 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(clonedErase.eraseValue().sourceType == sourceType);
   ZC_EXPECT(clonedErase.eraseValue().targetType == targetType);
 
+  // The ErrorUnion rvalue constructs an error-union value (RFC 0006: a tag
+  // constant plus a payload operand) and records the union, success, and
+  // residual semantic types. Tag 0 is the success alternative; tag 1 is the
+  // residual alternative. It retains every field through clone.
+  const auto unionType = tests::testSemanticType(4);
+  const auto successType = tests::testSemanticType(5);
+  const auto residualType = tests::testSemanticType(6);
+  auto errorUnion =
+      MirRvalue::errorUnion(unionType, successType, residualType, 0,
+                            MirOperand::copy(place(firstLocal, type, field, variant)));
+  ZC_EXPECT(errorUnion.kind() == MirRvalueKind::ErrorUnion);
+  ZC_EXPECT(errorUnion.errorUnionValue().unionType == unionType);
+  ZC_EXPECT(errorUnion.errorUnionValue().successType == successType);
+  ZC_EXPECT(errorUnion.errorUnionValue().residualType == residualType);
+  ZC_EXPECT(errorUnion.errorUnionValue().tag == 0);
+  ZC_EXPECT(errorUnion.errorUnionValue().payload.kind() == MirOperandKind::Copy);
+  auto clonedErrorUnion = errorUnion.clone();
+  ZC_EXPECT(clonedErrorUnion.kind() == MirRvalueKind::ErrorUnion);
+  ZC_EXPECT(clonedErrorUnion.errorUnionValue().unionType == unionType);
+  ZC_EXPECT(clonedErrorUnion.errorUnionValue().successType == successType);
+  ZC_EXPECT(clonedErrorUnion.errorUnionValue().residualType == residualType);
+  ZC_EXPECT(clonedErrorUnion.errorUnionValue().tag == 0);
+  ZC_EXPECT(clonedErrorUnion.errorUnionValue().payload.kind() == MirOperandKind::Copy);
+
+  // The residual alternative uses tag 1 and carries a constant payload.
+  auto residual = MirRvalue::errorUnion(
+      unionType, successType, residualType, 1,
+      MirOperand::constant(type, checker::checked::CanonicalConstValue::boolean(false)));
+  ZC_EXPECT(residual.kind() == MirRvalueKind::ErrorUnion);
+  ZC_EXPECT(residual.errorUnionValue().tag == 1);
+  ZC_EXPECT(residual.errorUnionValue().payload.kind() == MirOperandKind::Constant);
+  auto clonedResidual = residual.clone();
+  ZC_EXPECT(clonedResidual.kind() == MirRvalueKind::ErrorUnion);
+  ZC_EXPECT(clonedResidual.errorUnionValue().tag == 1);
+  ZC_EXPECT(clonedResidual.errorUnionValue().payload.kind() == MirOperandKind::Constant);
+
   auto assignment = MirStatement::assign(
       place(firstLocal, type, field, variant),
       MirRvalue::use(MirOperand::copy(place(firstLocal, type, field, variant))),

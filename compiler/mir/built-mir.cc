@@ -245,6 +245,8 @@ MirRvalue::MirRvalue(MirArithmeticRvalue&& value) noexcept : value(zc::mv(value)
 
 MirRvalue::MirRvalue(MirEraseRvalue&& value) noexcept : value(zc::mv(value)) {}
 
+MirRvalue::MirRvalue(MirErrorUnionRvalue&& value) noexcept : value(zc::mv(value)) {}
+
 MirRvalue MirRvalue::use(MirOperand&& operand) noexcept {
   return MirRvalue(MirUseRvalue{zc::mv(operand)});
 }
@@ -269,6 +271,13 @@ MirRvalue MirRvalue::erase(MirOperand&& source, identity::SemanticTypeId sourceT
   return MirRvalue(MirEraseRvalue{zc::mv(source), sourceType, targetType});
 }
 
+MirRvalue MirRvalue::errorUnion(identity::SemanticTypeId unionType,
+                                identity::SemanticTypeId successType,
+                                identity::SemanticTypeId residualType, uint8_t tag,
+                                MirOperand&& payload) noexcept {
+  return MirRvalue(MirErrorUnionRvalue{unionType, successType, residualType, tag, zc::mv(payload)});
+}
+
 MirRvalue MirRvalue::clone() const {
   if (value.is<MirUseRvalue>()) return use(value.get<MirUseRvalue>().operand.clone());
   if (value.is<MirComparisonRvalue>()) {
@@ -285,6 +294,12 @@ MirRvalue MirRvalue::clone() const {
     const auto& erase = value.get<MirEraseRvalue>();
     return MirRvalue::erase(erase.source.clone(), erase.sourceType, erase.targetType);
   }
+  if (value.is<MirErrorUnionRvalue>()) {
+    const auto& errorUnion = value.get<MirErrorUnionRvalue>();
+    return MirRvalue::errorUnion(errorUnion.unionType, errorUnion.successType,
+                                 errorUnion.residualType, errorUnion.tag,
+                                 errorUnion.payload.clone());
+  }
   const auto& aggregate = value.get<MirNominalAggregateRvalue>();
   zc::Vector<MirNominalAggregateElement> elements;
   for (const auto& element : aggregate.elements) {
@@ -298,6 +313,7 @@ MirRvalueKind MirRvalue::kind() const noexcept {
   if (value.is<MirComparisonRvalue>()) return MirRvalueKind::Comparison;
   if (value.is<MirArithmeticRvalue>()) return MirRvalueKind::Arithmetic;
   if (value.is<MirEraseRvalue>()) return MirRvalueKind::Erase;
+  if (value.is<MirErrorUnionRvalue>()) return MirRvalueKind::ErrorUnion;
   return MirRvalueKind::NominalAggregate;
 }
 
@@ -316,6 +332,10 @@ const MirArithmeticRvalue& MirRvalue::arithmeticValue() const {
 }
 
 const MirEraseRvalue& MirRvalue::eraseValue() const { return value.get<MirEraseRvalue>(); }
+
+const MirErrorUnionRvalue& MirRvalue::errorUnionValue() const {
+  return value.get<MirErrorUnionRvalue>();
+}
 
 MirStatement::MirStatement(MirAssignmentStatement&& value,
                            identity::SourceSpan&& sourceSpan) noexcept
@@ -870,6 +890,14 @@ bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
     return encodeOperand(encoder, erase.source, module, identities, semanticTypes) &&
            encodeType(encoder, erase.sourceType, semanticTypes) &&
            encodeType(encoder, erase.targetType, semanticTypes);
+  }
+  if (value.kind() == MirRvalueKind::ErrorUnion) {
+    const auto& errorUnion = value.errorUnionValue();
+    encoder.encodeUint8(errorUnion.tag);
+    return encodeType(encoder, errorUnion.unionType, semanticTypes) &&
+           encodeType(encoder, errorUnion.successType, semanticTypes) &&
+           encodeType(encoder, errorUnion.residualType, semanticTypes) &&
+           encodeOperand(encoder, errorUnion.payload, module, identities, semanticTypes);
   }
   const auto& aggregate = value.nominalAggregateValue();
   if (!encodeDefinition(encoder, aggregate.definition, identities) ||

@@ -99,6 +99,24 @@ struct HirNominalAggregateExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief One verified error-union value expression.
+///
+/// Represents a single error-union value as the aggregate `{ tag, payload }`
+/// defined by RFC 0006. `tag` is 0 for the success arm and 1 for the residual
+/// arm; `payload` references the pooled expression that produces the active
+/// arm value (the success value when `tag` is 0, the residual error otherwise).
+/// `successType` and `residualType` name the two arm types of the union.
+struct HirErrorUnionExpression final {
+  HirNodeId node;
+  identity::SemanticTypeId type;
+  identity::SemanticTypeId successType;
+  identity::SemanticTypeId residualType;
+  uint8_t tag;
+  HirNodeId payload;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One function-owned local binding with a layer-local identity.
 struct HirLocalBinding final {
   HirNodeId node;
@@ -497,6 +515,7 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirBindingPattern> patterns() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirScalarLiteralExpression> expressions() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirNominalAggregateExpression> aggregates() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirErrorUnionExpression> errorUnions() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalBinding> locals() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalWriteStatement> localWrites() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalReferenceExpression> localReferences() const noexcept;

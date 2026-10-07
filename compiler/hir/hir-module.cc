@@ -60,7 +60,8 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirFunctionDeclaration>&& functions, zc::Vector<HirBlockStatement>&& blocks,
        zc::Vector<HirReturnStatement>&& returns, zc::Vector<HirBindingPattern>&& patterns,
        zc::Vector<HirScalarLiteralExpression>&& expressions,
-       zc::Vector<HirNominalAggregateExpression>&& aggregates, zc::Vector<HirLocalBinding>&& locals,
+       zc::Vector<HirNominalAggregateExpression>&& aggregates,
+       zc::Vector<HirErrorUnionExpression>&& errorUnions, zc::Vector<HirLocalBinding>&& locals,
        zc::Vector<HirLocalWriteStatement>&& localWrites,
        zc::Vector<HirLocalReferenceExpression>&& localReferences,
        zc::Vector<HirLocalFieldProjectionExpression>&& localFieldProjections,
@@ -102,6 +103,7 @@ struct VerifiedHirModule::Impl final {
         patterns(zc::mv(patterns)),
         expressions(zc::mv(expressions)),
         aggregates(zc::mv(aggregates)),
+        errorUnions(zc::mv(errorUnions)),
         locals(zc::mv(locals)),
         localWrites(zc::mv(localWrites)),
         localReferences(zc::mv(localReferences)),
@@ -149,6 +151,7 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
   zc::Vector<HirNominalAggregateExpression> aggregates;
+  zc::Vector<HirErrorUnionExpression> errorUnions;
   zc::Vector<HirLocalBinding> locals;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<HirLocalReferenceExpression> localReferences;
@@ -275,6 +278,9 @@ zc::ArrayPtr<const HirScalarLiteralExpression> VerifiedHirModule::expressions() 
 
 zc::ArrayPtr<const HirNominalAggregateExpression> VerifiedHirModule::aggregates() const noexcept {
   return impl->aggregates.asPtr();
+}
+zc::ArrayPtr<const HirErrorUnionExpression> VerifiedHirModule::errorUnions() const noexcept {
+  return impl->errorUnions.asPtr();
 }
 
 zc::ArrayPtr<const HirLocalBinding> VerifiedHirModule::locals() const noexcept {
@@ -13479,9 +13485,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       semanticTypeStore, zc::mv(candidate.impl->declarations), zc::mv(candidate.impl->functions),
       zc::mv(candidate.impl->blocks), zc::mv(candidate.impl->returns),
       zc::mv(candidate.impl->patterns), zc::mv(candidate.impl->expressions),
-      zc::mv(candidate.impl->aggregates), zc::mv(candidate.impl->locals),
-      zc::mv(candidate.impl->localWrites), zc::mv(candidate.impl->localReferences),
-      zc::mv(candidate.impl->localFieldProjections),
+      zc::mv(candidate.impl->aggregates), zc::mv(candidate.impl->errorUnions),
+      zc::mv(candidate.impl->locals), zc::mv(candidate.impl->localWrites),
+      zc::mv(candidate.impl->localReferences), zc::mv(candidate.impl->localFieldProjections),
       zc::mv(candidate.impl->parameterFieldProjections),
       zc::mv(candidate.impl->parameterFieldWrites), zc::mv(candidate.impl->parameterReferences),
       zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),

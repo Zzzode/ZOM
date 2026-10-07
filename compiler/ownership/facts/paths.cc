@@ -151,6 +151,14 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
   if (rvalue.kind() == mir::MirRvalueKind::Erase) {
     return validOperand(function, rvalue.eraseValue().source);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::ErrorUnion) {
+    const auto& errorUnion = rvalue.errorUnionValue();
+    if (!errorUnion.unionType.isValid() || !errorUnion.successType.isValid() ||
+        !errorUnion.residualType.isValid() || errorUnion.tag > 1) {
+      return false;
+    }
+    return validOperand(function, errorUnion.payload);
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {

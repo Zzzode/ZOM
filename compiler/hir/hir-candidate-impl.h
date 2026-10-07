@@ -15,7 +15,8 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirFunctionDeclaration>&& functions, zc::Vector<HirBlockStatement>&& blocks,
        zc::Vector<HirReturnStatement>&& returns, zc::Vector<HirBindingPattern>&& patterns,
        zc::Vector<HirScalarLiteralExpression>&& expressions,
-       zc::Vector<HirNominalAggregateExpression>&& aggregates, zc::Vector<HirLocalBinding>&& locals,
+       zc::Vector<HirNominalAggregateExpression>&& aggregates,
+       zc::Vector<HirErrorUnionExpression>&& errorUnions, zc::Vector<HirLocalBinding>&& locals,
        zc::Vector<HirLocalWriteStatement>&& localWrites,
        zc::Vector<HirLocalReferenceExpression>&& localReferences,
        zc::Vector<HirLocalFieldProjectionExpression>&& localFieldProjections,
@@ -39,6 +40,7 @@ struct HirModuleCandidate::Impl final {
         patterns(zc::mv(patterns)),
         expressions(zc::mv(expressions)),
         aggregates(zc::mv(aggregates)),
+        errorUnions(zc::mv(errorUnions)),
         locals(zc::mv(locals)),
         localWrites(zc::mv(localWrites)),
         localReferences(zc::mv(localReferences)),
@@ -65,6 +67,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirBindingPattern> patterns;
   zc::Vector<HirScalarLiteralExpression> expressions;
   zc::Vector<HirNominalAggregateExpression> aggregates;
+  zc::Vector<HirErrorUnionExpression> errorUnions;
   zc::Vector<HirLocalBinding> locals;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<HirLocalReferenceExpression> localReferences;
