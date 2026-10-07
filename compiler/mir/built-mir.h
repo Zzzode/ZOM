@@ -231,7 +231,8 @@ enum class MirRvalueKind : uint8_t {
   Use = 0x01,
   NominalAggregate = 0x02,
   Comparison = 0x03,
-  Arithmetic = 0x04
+  Arithmetic = 0x04,
+  Erase = 0x05
 };
 
 /// \brief Closed comparison operator produced by primitive comparison lowering.
@@ -300,6 +301,21 @@ struct MirArithmeticRvalue final {
   identity::SemanticTypeId resultType;
 };
 
+/// \brief Live concrete-to-existential erasure rvalue.
+///
+/// Erases a concrete value to an existential (dyn) type. The source operand
+/// carries the concrete value; the source and target semantic types record the
+/// erasure endpoints for verification and downstream lowering. The existential
+/// representation (data pointer plus vtable) is a LIR/LLVM concern, not a MIR
+/// concern: MIR only records that an erasure happened and which types it
+/// connects. These bytes flow through `encodeRvalue`; changing a field is a
+/// codec change.
+struct MirEraseRvalue final {
+  MirOperand source;
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId targetType;
+};
+
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
 public:
@@ -317,19 +333,24 @@ public:
   ZC_NODISCARD static MirRvalue arithmetic(MirArithmeticOperator op, MirOperand&& left,
                                            MirOperand&& right,
                                            identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirRvalue erase(MirOperand&& source, identity::SemanticTypeId sourceType,
+                                      identity::SemanticTypeId targetType) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
   ZC_NODISCARD const MirNominalAggregateRvalue& nominalAggregateValue() const;
   ZC_NODISCARD const MirComparisonRvalue& comparisonValue() const;
   ZC_NODISCARD const MirArithmeticRvalue& arithmeticValue() const;
+  ZC_NODISCARD const MirEraseRvalue& eraseValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
   explicit MirRvalue(MirNominalAggregateRvalue&& value) noexcept;
   explicit MirRvalue(MirComparisonRvalue&& value) noexcept;
   explicit MirRvalue(MirArithmeticRvalue&& value) noexcept;
-  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue>
+  explicit MirRvalue(MirEraseRvalue&& value) noexcept;
+  zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue,
+            MirEraseRvalue>
       value;
 };
 

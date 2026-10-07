@@ -1392,6 +1392,10 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 }
                 break;
               }
+              case mir::MirRvalueKind::Erase:
+                // Live erase has no LIR lowering in the admitted slice.
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
             }
             ++lirStatement;
             break;

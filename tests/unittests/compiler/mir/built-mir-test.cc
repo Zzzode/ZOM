@@ -192,6 +192,22 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(clonedArithmetic.arithmeticValue().op == MirArithmeticOperator::Add);
   ZC_EXPECT(clonedArithmetic.arithmeticValue().resultType == type);
 
+  // The Erase rvalue erases a concrete operand to an existential target type.
+  // It retains the source operand, source type, and target type through clone.
+  const auto sourceType = tests::testSemanticType(2);
+  const auto targetType = tests::testSemanticType(3);
+  auto erase = MirRvalue::erase(MirOperand::copy(place(firstLocal, type, field, variant)),
+                                sourceType, targetType);
+  ZC_EXPECT(erase.kind() == MirRvalueKind::Erase);
+  ZC_EXPECT(erase.eraseValue().source.kind() == MirOperandKind::Copy);
+  ZC_EXPECT(erase.eraseValue().sourceType == sourceType);
+  ZC_EXPECT(erase.eraseValue().targetType == targetType);
+  auto clonedErase = erase.clone();
+  ZC_EXPECT(clonedErase.kind() == MirRvalueKind::Erase);
+  ZC_EXPECT(clonedErase.eraseValue().source.kind() == MirOperandKind::Copy);
+  ZC_EXPECT(clonedErase.eraseValue().sourceType == sourceType);
+  ZC_EXPECT(clonedErase.eraseValue().targetType == targetType);
+
   auto assignment = MirStatement::assign(
       place(firstLocal, type, field, variant),
       MirRvalue::use(MirOperand::copy(place(firstLocal, type, field, variant))),

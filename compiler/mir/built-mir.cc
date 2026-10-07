@@ -243,6 +243,8 @@ MirRvalue::MirRvalue(MirComparisonRvalue&& value) noexcept : value(zc::mv(value)
 
 MirRvalue::MirRvalue(MirArithmeticRvalue&& value) noexcept : value(zc::mv(value)) {}
 
+MirRvalue::MirRvalue(MirEraseRvalue&& value) noexcept : value(zc::mv(value)) {}
+
 MirRvalue MirRvalue::use(MirOperand&& operand) noexcept {
   return MirRvalue(MirUseRvalue{zc::mv(operand)});
 }
@@ -262,6 +264,11 @@ MirRvalue MirRvalue::arithmetic(MirArithmeticOperator op, MirOperand&& left, Mir
   return MirRvalue(MirArithmeticRvalue{op, zc::mv(left), zc::mv(right), resultType});
 }
 
+MirRvalue MirRvalue::erase(MirOperand&& source, identity::SemanticTypeId sourceType,
+                           identity::SemanticTypeId targetType) noexcept {
+  return MirRvalue(MirEraseRvalue{zc::mv(source), sourceType, targetType});
+}
+
 MirRvalue MirRvalue::clone() const {
   if (value.is<MirUseRvalue>()) return use(value.get<MirUseRvalue>().operand.clone());
   if (value.is<MirComparisonRvalue>()) {
@@ -273,6 +280,10 @@ MirRvalue MirRvalue::clone() const {
     const auto& arithmetic = value.get<MirArithmeticRvalue>();
     return MirRvalue::arithmetic(arithmetic.op, arithmetic.left.clone(), arithmetic.right.clone(),
                                  arithmetic.resultType);
+  }
+  if (value.is<MirEraseRvalue>()) {
+    const auto& erase = value.get<MirEraseRvalue>();
+    return MirRvalue::erase(erase.source.clone(), erase.sourceType, erase.targetType);
   }
   const auto& aggregate = value.get<MirNominalAggregateRvalue>();
   zc::Vector<MirNominalAggregateElement> elements;
@@ -286,6 +297,7 @@ MirRvalueKind MirRvalue::kind() const noexcept {
   if (value.is<MirUseRvalue>()) return MirRvalueKind::Use;
   if (value.is<MirComparisonRvalue>()) return MirRvalueKind::Comparison;
   if (value.is<MirArithmeticRvalue>()) return MirRvalueKind::Arithmetic;
+  if (value.is<MirEraseRvalue>()) return MirRvalueKind::Erase;
   return MirRvalueKind::NominalAggregate;
 }
 
@@ -302,6 +314,8 @@ const MirComparisonRvalue& MirRvalue::comparisonValue() const {
 const MirArithmeticRvalue& MirRvalue::arithmeticValue() const {
   return value.get<MirArithmeticRvalue>();
 }
+
+const MirEraseRvalue& MirRvalue::eraseValue() const { return value.get<MirEraseRvalue>(); }
 
 MirStatement::MirStatement(MirAssignmentStatement&& value,
                            identity::SourceSpan&& sourceSpan) noexcept
@@ -850,6 +864,12 @@ bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
     return encodeOperand(encoder, arithmetic.left, module, identities, semanticTypes) &&
            encodeOperand(encoder, arithmetic.right, module, identities, semanticTypes) &&
            encodeType(encoder, arithmetic.resultType, semanticTypes);
+  }
+  if (value.kind() == MirRvalueKind::Erase) {
+    const auto& erase = value.eraseValue();
+    return encodeOperand(encoder, erase.source, module, identities, semanticTypes) &&
+           encodeType(encoder, erase.sourceType, semanticTypes) &&
+           encodeType(encoder, erase.targetType, semanticTypes);
   }
   const auto& aggregate = value.nominalAggregateValue();
   if (!encodeDefinition(encoder, aggregate.definition, identities) ||

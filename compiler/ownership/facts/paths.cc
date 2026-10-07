@@ -148,6 +148,9 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
     const auto& arithmetic = rvalue.arithmeticValue();
     return validOperand(function, arithmetic.left) && validOperand(function, arithmetic.right);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::Erase) {
+    return validOperand(function, rvalue.eraseValue().source);
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {
