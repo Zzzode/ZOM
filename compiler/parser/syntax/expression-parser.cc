@@ -572,6 +572,16 @@ ast::NodeList Parser::Impl::parseObjectLiteralProperties(ParserSyntaxFactory& bu
           if (itemStart + 1 < itemEnd && kindAt(itemStart + 1) == ast::SyntaxKind::Colon) {
             colon = itemStart + 1;
           }
+        } else if (firstKind == ast::SyntaxKind::IntegerLiteral ||
+                   firstKind == ast::SyntaxKind::FloatLiteral ||
+                   firstKind == ast::SyntaxKind::CharacterLiteral) {
+          // Numeric/character literal as property name: invalid syntax.
+          // PropertyName ::= Identifier per the grammar reference.
+          if (!shouldSuppressDiagnostic(itemStart)) {
+            diagnosticEngine.report<diagnostics::DiagID::ObjectLiteralPropertyNameExpected>(
+                diagnosticLoc(itemStart));
+          }
+          skipProperty = true;
         }
         // else: unrecognized key form — treat as shorthand (colon stays at itemEnd)
 
