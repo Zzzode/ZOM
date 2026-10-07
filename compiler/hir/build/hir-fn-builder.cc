@@ -124,6 +124,15 @@ void HirFnCtx::addConditional(HirConditionalExpression conditional) {
 
 void HirFnCtx::addLoop(HirLoopStatement loop) { loops->add(zc::mv(loop)); }
 
+void HirFnCtx::pushLoopContext(LoopContext context) { loopContexts.push(zc::mv(context)); }
+
+void HirFnCtx::popLoopContext() noexcept { loopContexts.pop(); }
+
+zc::Maybe<const LoopContext&> HirFnCtx::resolveLoopTarget(
+    zc::Maybe<ast::IdentId> label) const noexcept {
+  return loopContexts.resolveTarget(label);
+}
+
 void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf) {
   ZC_IF_SOME(reference, leaf.parameter) {
     addParameterReference(HirParameterReferenceExpression{destination, reference.parameter.clone(),

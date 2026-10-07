@@ -9,6 +9,7 @@
 
 #include "compiler/ast/tree.h"
 #include "compiler/hir/build/hir-pending.h"
+#include "compiler/hir/build/loop-context.h"
 #include "compiler/hir/hir-module.h"
 #include "compiler/hir/hir-node-id.h"
 #include "zc/core/vector.h"
@@ -71,6 +72,21 @@ public:
   void addConditional(HirConditionalExpression conditional);
   void addLoop(HirLoopStatement loop);
 
+  /// Pushes a loop context onto the per-function loop context stack, making it
+  /// the innermost active loop. Called when the builder enters a loop so a
+  /// break/continue in the body can resolve its target loop.
+  void pushLoopContext(LoopContext context);
+
+  /// Pops the innermost loop context from the stack. Called when the builder
+  /// leaves a loop.
+  void popLoopContext() noexcept;
+
+  /// Resolves the target loop for a break/continue statement. When `label` is
+  /// empty, returns the innermost loop context. When `label` is set, returns
+  /// the innermost loop context with the matching label. Returns none when no
+  /// matching loop is found.
+  zc::Maybe<const LoopContext&> resolveLoopTarget(zc::Maybe<ast::IdentId> label) const noexcept;
+
   /// \brief Lowers one scalar literal-or-parameter arm leaf into its
   /// destination id. Used by every binary operand and condition arm.
   void lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& leaf);
@@ -104,6 +120,12 @@ private:
   zc::Vector<HirConditionalExpression>* conditionals;
   zc::Vector<HirLoopStatement>* loops;
   zc::Vector<ast::NodeId>* sourceNodes;
+  // Per-function stack of active loop contexts. The builder pushes a context
+  // when it enters a loop and pops it when it leaves, so a break/continue in
+  // the body can resolve its target loop (innermost for unlabeled, innermost
+  // matching label for labeled). This is a per-function value, not a pool
+  // pointer: each function gets a fresh stack.
+  LoopContextStack loopContexts;
 };
 
 /// \brief Lowers one tagged scalar-return function through the recursive
