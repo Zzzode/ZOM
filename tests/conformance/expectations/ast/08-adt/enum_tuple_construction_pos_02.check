@@ -1,0 +1,68 @@
+// RUN: %zomc compile --dump-ast %corpus/08-adt/enum_tuple_construction_pos_02.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #28 @1:1..7:1 file_name="enum_tuple_construction_pos_02.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #6 @1:1..1:29
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         EnumDeclaration #5 @1:1..1:29 name="Pair"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           variants_id:
+// CHECK-NEXT:             EnumVariantList #4 @1:11..1:29 nvars=1
+// CHECK-NEXT:               variants:
+// CHECK-NEXT:                 TupleVariant #3 @1:13..1:27 name="Pair" nfields=2
+// CHECK-NEXT:                   tys:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:18..1:21 kind=I32
+// CHECK-NEXT:                     PredefinedTypeExpr #2 @1:23..1:26 kind=I32
+// CHECK-NEXT:                   discriminant: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #27 @3:1..6:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #26 @3:1..6:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #7 @3:9..3:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             NamedTypeExpr #9 @3:15..3:19
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #8 @3:15..3:19 segments=["Pair"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #25 @3:20..6:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #21 @4:3..4:34
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #20 @4:3..4:34 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #19 @4:7..4:33 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #18 @4:7..4:33
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #10 @4:7..4:8 name="p"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 NamedTypeExpr #12 @4:10..4:14
+// CHECK-NEXT:                                   path:
+// CHECK-NEXT:                                     ModulePath #11 @4:10..4:14 segments=["Pair"] root=Relative
+// CHECK-NEXT:                                   args: []
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 CallExpression #17 @4:17..4:33
+// CHECK-NEXT:                                   callee:
+// CHECK-NEXT:                                     MemberExpression #14 @4:17..4:27 property="Pair" access=Qualified
+// CHECK-NEXT:                                       object:
+// CHECK-NEXT:                                         IdentExpr #13 @4:17..4:21 name="Pair"
+// CHECK-NEXT:                                   type_args: []
+// CHECK-NEXT:                                   args:
+// CHECK-NEXT:                                     IntLiteral #15 @4:28..4:29 base=10 value="1"
+// CHECK-NEXT:                                     IntLiteral #16 @4:31..4:32 base=10 value="2"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #24 @5:3..5:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #23 @5:3..5:12
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #22 @5:10..5:11 name="p"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

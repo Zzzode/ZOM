@@ -9444,6 +9444,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // reuses the call node as its source, so it contributes no new node-type
   // fact beyond the one the initializer node already carries.
   size_t enumConstructionAggregateCount = 0;
+  // Dead-erased enum tuple-variant construction aggregates. The checker
+  // produces a discriminant literal fact keyed by the call node plus one
+  // literal fact per literal argument, but the aggregate itself is filtered
+  // before lowering, so the aggregateCount subtraction in the literal
+  // equation must be cancelled for these entries.
+  size_t deadEnumConstructionAggregateCount = 0;
   size_t localFieldProjectionCount = 0;
   size_t parameterFieldProjectionCount = 0;
   size_t parameterFieldWriteCount = 0;
@@ -9890,7 +9896,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               // The CallExpression node type is counted by the per-binding
               // localReturnCount; each argument carries an additional node-type
               // fact, and a literal argument additionally carries a literal
-              // fact.
+              // fact. The checker also produces an Aggregate fact for the
+              // construction (discriminant plus payload elements), so the
+              // aggregate count must match even when the binding is
+              // dead-erased. The aggregate elements do not carry individual
+              // node-type or literal facts (the discriminant is one literal
+              // keyed by the call node), so neither aggregateElementCount nor
+              // enumConstructionAggregateCount is touched: the two cancel in
+              // the node-type equation only for live constructions that
+              // contribute both. The deadEnumConstructionAggregateCount
+              // cancels the aggregateCount subtraction in the literal
+              // equation and adds one for the discriminant literal fact that
+              // the dead construction still carries.
+              ++aggregateCount;
+              deadEnumConstructionAggregateCount += 2;
               const auto& deadTree = bound.tree();
               const auto& callSyntax = deadTree.node(dead.initializer);
               const ast::NodeList args{callSyntax.payload.words[ast::kCallExpressionArgsFirstWord],
@@ -10389,11 +10408,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   const int64_t expectedLiterals =
       static_cast<int64_t>(
           pending.size() + pendingFunctions.size() - voidFunctionCount - directCallCount -
-          aggregateCount - receiverSelfCallCount - uninitializedLocalReturnCount -
-          parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount -
-          binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
-          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
-          receiverCallFieldArgumentCount + conditionalLiteralArmCount +
+          aggregateCount + deadEnumConstructionAggregateCount - receiverSelfCallCount -
+          uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount -
+          parameterFieldProjectionCount - binaryWriteLocalOperandCount + localAliasReborrowCount +
+          localWriteCount + aggregateElementCount + directCallLiteralArgumentCount +
+          receiverCallArgumentCount - receiverCallFieldArgumentCount + conditionalLiteralArmCount +
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
           comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
