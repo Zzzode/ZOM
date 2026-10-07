@@ -256,6 +256,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-direct-return-consumer/Zom.toml::enum_direct_return_consumer::enum_direct_return_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/raising-function-consumer/Zom.toml::raising_function_consumer::raising_function_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer"

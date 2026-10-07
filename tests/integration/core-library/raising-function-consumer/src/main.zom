@@ -1,0 +1,3 @@
+fn fetch() -> i32 raises str {
+  return 42;
+}

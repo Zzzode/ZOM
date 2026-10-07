@@ -1186,8 +1186,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_ASSERT_NONNULL(
               voidResultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
               type::semantic::PrimitiveKind::Unit;
-      if (memberScope.owner == function.definition || callable.raises != zc::none ||
-          callable.receiver == zc::none ||
+      if (memberScope.owner == function.definition || callable.receiver == zc::none ||
           ZC_ASSERT_NONNULL(callable.receiver).mode != checker::signature::ReceiverMode::Mutable ||
           ZC_ASSERT_NONNULL(callable.receiver).parameter != voidReceiver.key ||
           callable.parameters.size() != function.parameters.size() ||
@@ -1353,9 +1352,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (expectedLinkage == zc::none || signature.definition != function.definition ||
           signature.definitionKind != identity::DefinitionKind::Function ||
           root.canonicalDefinition != function.definition || root.sourceModule != module ||
-          callable.receiver != zc::none || callable.raises != zc::none ||
-          callable.success != function.resultType || function.resultType != sequentialType ||
-          !typeExists(sequentialType, semanticTypes) ||
+          callable.receiver != zc::none || callable.success != function.resultType ||
+          function.resultType != sequentialType || !typeExists(sequentialType, semanticTypes) ||
           !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
           !sameSpan(function.sourceSpan, sourceDefinition.source) ||
           !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -2802,9 +2800,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             signature.payload.variant().get<checker::signature::CallableSignature>();
         const auto expectedVisibility = memberVisibility(memberScope.visibility, module);
         const auto expectedLinkage = linkage(callable);
-        if (memberScope.owner == function.definition || callable.raises != zc::none ||
-            callable.success != function.resultType || callable.parameters.size() != 0 ||
-            function.parameters.size() != 0 || callable.receiver == zc::none ||
+        if (memberScope.owner == function.definition || callable.success != function.resultType ||
+            callable.parameters.size() != 0 || function.parameters.size() != 0 ||
+            callable.receiver == zc::none ||
             ZC_ASSERT_NONNULL(callable.receiver).mode !=
                 checker::signature::ReceiverMode::Mutable ||
             ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
@@ -3041,9 +3039,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             signature.payload.variant().get<checker::signature::CallableSignature>();
         const auto expectedVisibility = memberVisibility(memberScope.visibility, module);
         const auto expectedLinkage = linkage(callable);
-        if (memberScope.owner == function.definition || callable.raises != zc::none ||
-            callable.success != function.resultType || callable.parameters.size() != 0 ||
-            function.parameters.size() != 0 || callable.receiver == zc::none ||
+        if (memberScope.owner == function.definition || callable.success != function.resultType ||
+            callable.parameters.size() != 0 || function.parameters.size() != 0 ||
+            callable.receiver == zc::none ||
             (ZC_ASSERT_NONNULL(callable.receiver).mode !=
                  checker::signature::ReceiverMode::Shared &&
              ZC_ASSERT_NONNULL(callable.receiver).mode !=
@@ -3254,8 +3252,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto expectedVisibility = visibility(root.visibility);
         const auto expectedLinkage = linkage(callable);
         if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType || callable.parameters.size() != 1 ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
+            callable.parameters.size() != 1 ||
             callable.parameters[0].parameter != projection.parameter ||
             callable.parameters[0].type != projection.receiverType ||
             callable.parameters[0].hasDefault ||
@@ -3527,9 +3525,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             signature.payload.variant().get<checker::signature::CallableSignature>();
         const auto expectedVisibility = memberVisibility(memberScope.visibility, module);
         const auto expectedLinkage = linkage(callable);
-        if (memberScope.owner == function.definition || callable.raises != zc::none ||
-            callable.success != function.resultType || callable.parameters.size() != 0 ||
-            function.parameters.size() != 0 || callable.receiver == zc::none ||
+        if (memberScope.owner == function.definition || callable.success != function.resultType ||
+            callable.parameters.size() != 0 || function.parameters.size() != 0 ||
+            callable.receiver == zc::none ||
             ZC_ASSERT_NONNULL(callable.receiver).mode != checker::signature::ReceiverMode::Shared ||
             ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
             expectedLinkage == zc::none ||
@@ -3680,8 +3678,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               signature.definition != function.definition ||
               signature.definitionKind != identity::DefinitionKind::Function ||
               signatures.roots[rootSlot].sourceModule != module || callable.receiver != zc::none ||
-              function.receiver != zc::none || callable.raises != zc::none ||
-              callable.success != function.resultType ||
+              function.receiver != zc::none || callable.success != function.resultType ||
               !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
               !sameSpan(function.sourceSpan, sourceDefinition.source) ||
               !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -4772,7 +4769,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                              : identity::DefinitionKind::Function) &&
             (conditionalIsMethod || signatures.roots[rootSlot].sourceModule == module) &&
             (conditionalIsMethod ? callable.receiver != zc::none : callable.receiver == zc::none) &&
-            callable.raises == zc::none && callable.success == function.resultType &&
+            callable.success == function.resultType &&
             sameSpan(signature.declarationSpan, sourceDefinition.source) &&
             sameSpan(function.sourceSpan, sourceDefinition.source) &&
             sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) &&
@@ -5813,7 +5810,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
              signatures.roots[rootSlot].canonicalDefinition != function.definition) ||
             (!comparisonIsMethod && signatures.roots[rootSlot].sourceModule != module) ||
             (comparisonIsMethod ? callable.receiver == zc::none : callable.receiver != zc::none) ||
-            callable.raises != zc::none || callable.success != function.resultType ||
+            callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -6113,7 +6110,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
              signatures.roots[rootSlot].canonicalDefinition != function.definition) ||
             (!unaryIsMethod && signatures.roots[rootSlot].sourceModule != module) ||
             (unaryIsMethod ? callable.receiver == zc::none : callable.receiver != zc::none) ||
-            callable.raises != zc::none || callable.success != function.resultType ||
+            callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -6521,7 +6518,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 signature.payload.variant().get<checker::signature::CallableSignature>();
             auto expectedVisibility = memberVisibility(memberScope.visibility, module);
             auto expectedLinkage = linkage(callable);
-            if (memberScope.owner == function.definition || callable.raises != zc::none ||
+            if (memberScope.owner == function.definition ||
                 callable.success != function.resultType || callable.parameters.size() != 0 ||
                 function.parameters.size() != 0 || callable.receiver == zc::none ||
                 (ZC_ASSERT_NONNULL(callable.receiver).mode !=
@@ -6743,8 +6740,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (expectedLinkage == zc::none || signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -6967,8 +6963,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (expectedLinkage == zc::none || signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -7567,8 +7562,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (expectedLinkage == zc::none || signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -8090,8 +8084,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (expectedLinkage == zc::none || signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -9218,8 +9211,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (expectedLinkage == zc::none || signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -9504,8 +9496,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Function ||
             root.canonicalDefinition != function.definition || root.sourceModule != module ||
-            callable.receiver != zc::none || callable.raises != zc::none ||
-            callable.success != function.resultType ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -9870,9 +9861,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           signature.definition != function.definition ||
           signature.definitionKind != identity::DefinitionKind::Function ||
           root.canonicalDefinition != function.definition || root.sourceModule != module ||
-          callable.receiver != zc::none || callable.raises != zc::none ||
-          callable.success != function.resultType || callable.parameters.size() != 0 ||
-          function.parameters.size() != 0 ||
+          callable.receiver != zc::none || callable.success != function.resultType ||
+          callable.parameters.size() != 0 || function.parameters.size() != 0 ||
           !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
           !sameSpan(function.sourceSpan, sourceDefinition.source) ||
           !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -10112,9 +10102,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           signature.definition != function.definition ||
           signature.definitionKind != identity::DefinitionKind::Function ||
           root.canonicalDefinition != function.definition || root.sourceModule != module ||
-          callable.receiver != zc::none || callable.raises != zc::none ||
-          callable.success != function.resultType || callable.parameters.size() != 0 ||
-          function.parameters.size() != 0 ||
+          callable.receiver != zc::none || callable.success != function.resultType ||
+          callable.parameters.size() != 0 || function.parameters.size() != 0 ||
           !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
           !sameSpan(function.sourceSpan, sourceDefinition.source) ||
           !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -10577,8 +10566,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           sourceShape == zc::none || signature.definition != function.definition ||
           signature.definitionKind != identity::DefinitionKind::Function ||
           root.canonicalDefinition != function.definition || root.sourceModule != module ||
-          callable.receiver != zc::none || callable.raises != zc::none ||
-          callable.success != function.resultType ||
+          callable.receiver != zc::none || callable.success != function.resultType ||
           !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
           !sameSpan(function.sourceSpan, sourceDefinition.source) ||
           !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
@@ -12677,8 +12665,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     if (signature.definition != function.definition ||
         signature.definitionKind !=
             (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
-        !moduleMembershipValid || callable.raises != zc::none ||
-        callable.success != function.resultType ||
+        !moduleMembershipValid || callable.success != function.resultType ||
         !sameSpan(function.sourceSpan, sourceDefinition.source) ||
         !sameSpan(signature.declarationSpan, sourceDefinition.source) || !visibilityMatches ||
         !linkageMatches || !bodySpanMatches || !returnSpanMatches) {

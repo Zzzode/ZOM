@@ -3522,7 +3522,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (functionVisibility == zc::none || functionLinkage == zc::none ||
           signature.definitionKind !=
               (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
-          !moduleMembershipValid || callable.raises != zc::none || !successTypeValid ||
+          !moduleMembershipValid || !successTypeValid ||
           !sameSpan(signature.declarationSpan, definition.source)) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries,
