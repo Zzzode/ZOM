@@ -151,6 +151,12 @@ void HirFnCtx::lowerArmLeaf(HirNodeId destination, const PendingConditionalArm& 
         HirValueCategory::Value, leaf.sourceSpan.clone()});
     return;
   }
+  ZC_IF_SOME(projection, leaf.parameterFieldProjection) {
+    addParameterFieldProjection(HirParameterFieldProjectionExpression{
+        destination, projection.parameter.clone(), projection.receiverType, projection.field,
+        projection.type, HirValueCategory::Place, leaf.sourceSpan.clone(), projection.fieldIndex});
+    return;
+  }
   ZC_IF_SOME(binary, leaf.binary) {
     // A nested binary arm: allocate child ids and recursively lower them. The
     // desugar flags are false for nested binaries; only the top-level write

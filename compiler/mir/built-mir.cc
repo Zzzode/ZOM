@@ -2084,29 +2084,34 @@ bool validReceiverFieldWriteVoidFunction(const MirFunction& function,
 }
 
 // One conditional arm as seen by the MIR verifier: a scalar-literal
-// expression, a parameter reference, or a primitive binary operation. Exactly
-// one Maybe is populated.
+// expression, a parameter reference, a primitive binary operation, or a
+// parameter field projection (enum tuple-variant destructure). Exactly one
+// Maybe is populated.
 struct ConditionalArmView final {
   zc::Maybe<const hir::HirScalarLiteralExpression&> literal;
   zc::Maybe<const hir::HirParameterReferenceExpression&> parameter;
   zc::Maybe<const hir::HirPrimitiveBinaryExpression&> binary;
+  zc::Maybe<const hir::HirParameterFieldProjectionExpression&> parameterFieldProjection;
 };
 
 // Resolves one arm view to its value node id: the literal/parameter node, or
-// the binary node for a binary arm.
+// the binary node for a binary arm, or the projection node for a parameter
+// field projection arm.
 zc::Maybe<hir::HirNodeId> conditionalArmNode(const ConditionalArmView& arm) {
   ZC_IF_SOME(value, arm.literal) { return value.node; }
   ZC_IF_SOME(value, arm.parameter) { return value.node; }
   ZC_IF_SOME(value, arm.binary) { return value.node; }
+  ZC_IF_SOME(value, arm.parameterFieldProjection) { return value.node; }
   return zc::none;
 }
 
 // Resolves one arm view to its semantic type: the literal/parameter type, or
-// the binary result type for a binary arm.
+// the binary result type for a binary arm, or the projection result type.
 zc::Maybe<identity::SemanticTypeId> conditionalArmType(const ConditionalArmView& arm) {
   ZC_IF_SOME(value, arm.literal) { return value.type; }
   ZC_IF_SOME(value, arm.parameter) { return value.type; }
   ZC_IF_SOME(value, arm.binary) { return value.type; }
+  ZC_IF_SOME(value, arm.parameterFieldProjection) { return value.type; }
   return zc::none;
 }
 
@@ -2217,6 +2222,31 @@ bool branchArmInitializesResult(const MirBasicBlock& branch, const ConditionalAr
       return false;
     };
     return operandMatches(*left, binary.left) && operandMatches(*right, binary.right);
+  }
+  ZC_IF_SOME(projection, arm.parameterFieldProjection) {
+    // Enum tuple-variant destructure: the arm block assigns the result local
+    // from an ExtractField rvalue that reads the payload at the positional
+    // field index from the scrutinee parameter.
+    if (assignment.value.kind() != MirRvalueKind::ExtractField) return false;
+    const auto& extract = assignment.value.extractFieldValue();
+    if (extract.fieldIndex != projection.fieldIndex || extract.resultType != projection.type) {
+      return false;
+    }
+    size_t parameterIndex = 0;
+    bool found = false;
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == projection.parameter) {
+        parameterIndex = i;
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+    return matchesPlaceUse(extract.source, proofs, copy, projection.receiverType) &&
+           extract.source.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
+           extract.source.place().rootType() == projection.receiverType &&
+           extract.source.place().resultType() == projection.receiverType &&
+           extract.source.place().projections().size() == 0;
   }
   return false;
 }
@@ -16796,20 +16826,24 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               }
             }
             // Each arm resolves to a scalar-literal expression, a parameter
-            // reference, or a primitive binary operation; exactly one lookup
-            // succeeds per arm.
+            // reference, a primitive binary operation, or a parameter field
+            // projection; exactly one lookup succeeds per arm.
             ConditionalArmView thenArm{
                 expressionFor(hirModule, sourceConditional.thenReturnValue),
                 parameterReferenceFor(hirModule, sourceConditional.thenReturnValue),
-                primitiveBinaryFor(hirModule, sourceConditional.thenReturnValue)};
+                primitiveBinaryFor(hirModule, sourceConditional.thenReturnValue),
+                parameterFieldProjectionFor(hirModule, sourceConditional.thenReturnValue)};
             ConditionalArmView elseArm{
                 expressionFor(hirModule, sourceConditional.elseReturnValue),
                 parameterReferenceFor(hirModule, sourceConditional.elseReturnValue),
-                primitiveBinaryFor(hirModule, sourceConditional.elseReturnValue)};
+                primitiveBinaryFor(hirModule, sourceConditional.elseReturnValue),
+                parameterFieldProjectionFor(hirModule, sourceConditional.elseReturnValue)};
             const bool thenOk = (thenArm.literal != zc::none) != (thenArm.parameter != zc::none) !=
-                                (thenArm.binary != zc::none);
+                                (thenArm.binary != zc::none) !=
+                                (thenArm.parameterFieldProjection != zc::none);
             const bool elseOk = (elseArm.literal != zc::none) != (elseArm.parameter != zc::none) !=
-                                (elseArm.binary != zc::none);
+                                (elseArm.binary != zc::none) !=
+                                (elseArm.parameterFieldProjection != zc::none);
             // The condition node resolves to either a bare parameter reference or
             // an equality comparison; dispatch to the matching verifier shape.
             auto conditionRef = parameterReferenceFor(hirModule, sourceConditional.condition);

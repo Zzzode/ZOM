@@ -596,8 +596,19 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
         continue;
       }
       const auto& site = local.site.value().get<binder::PatternBindingSite>();
-      if (!tree.contains(site.introducer) ||
-          tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      if (!tree.contains(site.introducer)) { return zc::none; }
+      // A match-arm pattern binding (e.g., `v` in `when Result::Ok(v)`) has no
+      // initializer or annotation; its type is the variant payload type
+      // produced as a NodeType fact on the IdentifierPattern node by the
+      // exhaustiveness pass.
+      if (tree.node(site.introducer).kind == ast::SyntaxKind::MatchArmStmt ||
+          tree.node(site.introducer).kind == ast::SyntaxKind::MatchArmExpr) {
+        for (const auto& entry : nodeTypes) {
+          if (entry.key == local.node) return entry.value;
+        }
+        return zc::none;
+      }
+      if (tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
         return zc::none;
       }
       const ast::NodeId annotation(
@@ -5641,6 +5652,22 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, enumKey);
       return;
     }
+    // IdentifierPattern nodes inside tuple-variant EnumPattern arms carry a
+    // NodeType fact (the variant payload type) produced by the exhaustiveness
+    // pass so the body checker resolves the binding's type when the arm body
+    // references it. Add the requirement before the bodyNode skip.
+    if (syntax.kind == ast::SyntaxKind::IdentifierPattern && isMatchArmPattern(tree, node)) {
+      auto span = parsedModule.spanFor(syntax.range);
+      if (span == zc::none) {
+        failure = rejectInvariant(signature::CheckerInvariantKind::InputReceiptMismatch,
+                                  boundModule.module(), ordinal, zc::none, node);
+        return;
+      }
+      checked::CheckedNodeKey bindingKey{static_cast<uint32_t>(syntax.kind), ordinal,
+                                         ZC_ASSERT_NONNULL(span).clone()};
+      addNodeRequirement(nodeRequirements, CheckedFactGroup::NodeType, node, bindingKey);
+      return;
+    }
     const bool bodyNode = (isExpression(syntax.kind) || isPattern(syntax.kind) ||
                            syntax.kind == ast::SyntaxKind::MatchStmt ||
                            syntax.kind == ast::SyntaxKind::SuspendStatement) &&
@@ -6362,6 +6389,52 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     checked::CoercionSite site;
   };
   zc::Vector<SelectedDynErase> dynErases;
+  // Pre-pass: produce NodeType facts on IdentifierPattern nodes inside
+  // tuple-variant EnumPattern arms. The main production loop resolves
+  // IdentifierReference sites through ownerLocalReferenceType, which reads
+  // the pattern binding's NodeType fact; the exhaustiveness pass that
+  // resolves the variant payload type runs after the main loop, so the
+  // facts must be produced here first.
+  for (const auto& site : input.requirements.impl->productionSiteValues) {
+    if (site.primaryGroup != CheckedFactGroup::Exhaustiveness) continue;
+    const auto& matchNode = input.boundModule.tree().node(site.node);
+    if (matchNode.kind != ast::SyntaxKind::MatchStmt) continue;
+    const ast::NodeList arms{matchNode.payload.words[ast::kMatchStmtArmsFirstWord],
+                             matchNode.payload.words[ast::kMatchStmtArmsSizeWord]};
+    if (!input.boundModule.tree().contains(arms)) continue;
+    for (size_t armIndex = 0; armIndex < arms.size; ++armIndex) {
+      const ast::NodeId armId = input.boundModule.tree().list(arms)[armIndex];
+      if (!input.boundModule.tree().contains(armId)) continue;
+      const auto& arm = input.boundModule.tree().node(armId);
+      if (arm.kind != ast::SyntaxKind::MatchArmStmt) continue;
+      const ast::NodeId pattern(arm.payload.words[ast::kMatchArmStmtPatternWord]);
+      if (!input.boundModule.tree().contains(pattern) ||
+          input.boundModule.tree().node(pattern).kind != ast::SyntaxKind::EnumPattern) {
+        continue;
+      }
+      const uint32_t argsSize =
+          input.boundModule.tree().node(pattern).payload.words[ast::kEnumPatternArgsSizeWord];
+      if (argsSize == 0) continue;
+      auto shape = enumPatternVariantShape(input, pattern);
+      if (shape == zc::none) continue;
+      ZC_IF_SOME(value, shape) {
+        if (value.payload.size() != argsSize) continue;
+        const ast::NodeList args{
+            input.boundModule.tree().node(pattern).payload.words[ast::kEnumPatternArgsFirstWord],
+            argsSize};
+        if (!input.boundModule.tree().contains(args)) continue;
+        for (size_t argIndex = 0; argIndex < args.size; ++argIndex) {
+          const ast::NodeId bindingNode = input.boundModule.tree().list(args)[argIndex];
+          if (input.boundModule.tree().contains(bindingNode) &&
+              input.boundModule.tree().node(bindingNode).kind ==
+                  ast::SyntaxKind::IdentifierPattern) {
+            nodeTypes.add(checked::NodeTypeMap::Entry{bindingNode, value.payload[argIndex],
+                                                      zc::Array<uint8_t>()});
+          }
+        }
+      }
+    }
+  }
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
       if (site.production == BodyProductionKind::ErrorOperator ||

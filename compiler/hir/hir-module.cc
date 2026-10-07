@@ -4916,6 +4916,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                              identity::SemanticTypeId armType, zc::Maybe<size_t> literalSlotIndex,
                              const identity::SourceSpan& armSpan) -> bool {
           if (isParameter) {
+            // An enum-destructure arm lowers to a parameter field projection
+            // (payload extraction off the scrutinee parameter), not a bare
+            // parameter reference. Detect it by the presence of a
+            // HirParameterFieldProjectionExpression at the arm's HIR node.
+            zc::Maybe<const HirParameterFieldProjectionExpression&> projection;
+            for (const auto& candidateProjection : candidate.impl->parameterFieldProjections) {
+              if (candidateProjection.node != armId) continue;
+              if (projection != zc::none) return false;
+              projection = candidateProjection;
+            }
+            if (projection != zc::none) {
+              const auto& projectionValue = ZC_ASSERT_NONNULL(projection);
+              bool ok = projectionValue.type == armType &&
+                        projectionValue.category == HirValueCategory::Place &&
+                        projectionValue.fieldIndex != 0 &&
+                        sameSpan(projectionValue.sourceSpan, armSpan);
+              return ok;
+            }
             auto parameter = resolvedCallableParameter(bound.bindings(), armSourceNode);
             if (parameter == zc::none) return false;
             identity::CallableParameterId handle;

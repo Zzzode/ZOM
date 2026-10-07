@@ -2324,42 +2324,52 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
   auto arithmetic = arithmeticOperatorFor(comparisonValue.operation);
   if (comparison == zc::none && arithmetic == zc::none) return zc::none;
   // Resolve one conditional arm: a scalar literal, a parameter place-use, a
-  // leading-local place-use, or a primitive binary (arithmetic/comparison)
-  // operation over two leaf operands.
+  // leading-local place-use, a primitive binary (arithmetic/comparison)
+  // operation over two leaf operands, or a positional field extraction off a
+  // parameter (enum tuple-variant destructure).
   struct ArmValue {
-    enum class Kind { Literal, Parameter, Local, Binary };
+    enum class Kind { Literal, Parameter, Local, Binary, ParameterFieldProjection };
     Kind kind;
     const hir::HirScalarLiteralExpression* literal = nullptr;
     const hir::HirParameterReferenceExpression* parameter = nullptr;
     const hir::HirLocalReferenceExpression* local = nullptr;
     const hir::HirPrimitiveBinaryExpression* binary = nullptr;
+    const hir::HirParameterFieldProjectionExpression* parameterFieldProjection = nullptr;
   };
   auto resolveArm = [&](hir::HirNodeId armNode) -> zc::Maybe<ArmValue> {
     if (auto literal = expressionFor(hirModule, armNode); literal != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(literal);
       if (value.type != declaration.resultType) return zc::none;
-      return ArmValue{ArmValue::Kind::Literal, &value, nullptr, nullptr, nullptr};
+      return ArmValue{ArmValue::Kind::Literal, &value, nullptr, nullptr, nullptr, nullptr};
     }
     if (auto parameter = parameterReferenceFor(hirModule, armNode); parameter != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(parameter);
       if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
         return zc::none;
       }
-      return ArmValue{ArmValue::Kind::Parameter, nullptr, &value, nullptr, nullptr};
+      return ArmValue{ArmValue::Kind::Parameter, nullptr, &value, nullptr, nullptr, nullptr};
     }
     if (auto local = localReferenceFor(hirModule, armNode); local != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(local);
       if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
         return zc::none;
       }
-      return ArmValue{ArmValue::Kind::Local, nullptr, nullptr, &value, nullptr};
+      return ArmValue{ArmValue::Kind::Local, nullptr, nullptr, &value, nullptr, nullptr};
     }
     if (auto binary = primitiveBinaryFor(hirModule, armNode); binary != zc::none) {
       const auto& value = ZC_ASSERT_NONNULL(binary);
       if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Value) {
         return zc::none;
       }
-      return ArmValue{ArmValue::Kind::Binary, nullptr, nullptr, nullptr, &value};
+      return ArmValue{ArmValue::Kind::Binary, nullptr, nullptr, nullptr, &value, nullptr};
+    }
+    if (auto projection = parameterFieldProjectionFor(hirModule, armNode); projection != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(projection);
+      if (value.type != declaration.resultType || value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      return ArmValue{
+          ArmValue::Kind::ParameterFieldProjection, nullptr, nullptr, nullptr, nullptr, &value};
     }
     return zc::none;
   };
@@ -2570,6 +2580,22 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
                                      zc::mv(ZC_ASSERT_NONNULL(left)),
                                      zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
       }
+      case ArmValue::Kind::ParameterFieldProjection: {
+        // Enum tuple-variant destructure: extract the payload at the
+        // positional field index from the scrutinee parameter.
+        const auto& projection = ZC_ASSERT_NONNULL(arm.parameterFieldProjection);
+        if (projection.fieldIndex == 0) return zc::none;
+        auto parameterIndex = parameterIndexFor(declaration, projection.parameter);
+        if (parameterIndex == zc::none) return zc::none;
+        zc::Vector<MirProjection> projections;
+        auto operand = placeUse(
+            proofs, copyMarker,
+            MirPlace(parameterLocals[ZC_ASSERT_NONNULL(parameterIndex)], projection.receiverType,
+                     zc::mv(projections), projection.receiverType));
+        if (operand == zc::none) return zc::none;
+        return MirRvalue::extractField(zc::mv(ZC_ASSERT_NONNULL(operand)), projection.fieldIndex,
+                                       projection.type);
+      }
     }
     return zc::none;
   };
@@ -2583,6 +2609,8 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
         return ZC_ASSERT_NONNULL(arm.local).sourceSpan;
       case ArmValue::Kind::Binary:
         return ZC_ASSERT_NONNULL(arm.binary).sourceSpan;
+      case ArmValue::Kind::ParameterFieldProjection:
+        return ZC_ASSERT_NONNULL(arm.parameterFieldProjection).sourceSpan;
     }
     ZC_UNREACHABLE
   };

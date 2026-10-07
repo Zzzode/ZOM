@@ -152,17 +152,31 @@ struct PendingConditionalArmBinary final {
 
 // One conditional arm carries a scalar literal value, a reference to a
 // function parameter, a reference to the function's user local, a primitive
-// binary operation over two such leaves, or a field projection off a local.
-// Exactly one of `literal`, `parameter`, `local`, `binary`, and
-// `fieldProjection` is populated; the arm kind is discriminated by which one
-// is set.
-// `binary` and `fieldProjection` are declared last so the pre-existing
-// five-field aggregate initializers (literal, parameter, local, type,
-// sourceSpan) keep compiling with defaulted nones.
+// binary operation over two such leaves, a field projection off a local, or
+// a positional field extraction off a parameter (enum tuple-variant payload
+// extraction). Exactly one of `literal`, `parameter`, `local`, `binary`,
+// `fieldProjection`, and `parameterFieldProjection` is populated; the arm
+// kind is discriminated by which one is set.
+// `binary`, `fieldProjection`, and `parameterFieldProjection` are declared
+// last so the pre-existing five-field aggregate initializers (literal,
+// parameter, local, type, sourceSpan) keep compiling with defaulted nones.
 struct PendingConditionalArmFieldProjection final {
   HirLocalId local;
   identity::DefId field;
   identity::SemanticTypeId receiverType;
+};
+
+// One positional field extraction off a function parameter, used for enum
+// tuple-variant destructure arms. `fieldIndex` is the zero-based aggregate
+// field index (1 for the payload of a single-payload tuple variant; the tag
+// is at index 0). `field` carries the enum definition's DefId for fact
+// correlation; the MIR builder uses `fieldIndex` for positional extraction.
+struct PendingConditionalArmParameterFieldProjection final {
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId receiverType;
+  identity::DefId field;
+  identity::SemanticTypeId type;
+  uint32_t fieldIndex;
 };
 
 struct PendingConditionalArm final {
@@ -176,6 +190,7 @@ struct PendingConditionalArm final {
   /// expression), threaded to the HIR side-table.
   ast::NodeId sourceNode{};
   zc::Maybe<PendingConditionalArmFieldProjection> fieldProjection = zc::none;
+  zc::Maybe<PendingConditionalArmParameterFieldProjection> parameterFieldProjection = zc::none;
 };
 
 // One mutable-local write value. It is a scalar literal (`literal` populated), a

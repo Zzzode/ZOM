@@ -1538,6 +1538,40 @@ private:
             }
           }
         }
+        if (lir == zc::none) {
+          // Standalone multi-function module: no caller/callee pair exists.
+          // Lower each function individually and combine into one LIR module.
+          zc::Vector<lir::Function> loweredFunctions;
+          for (const auto& fn : functions) {
+            zc::Maybe<lir::Module> lowered;
+            if (fn.kind == mir::MirFunctionKind::ModuleInitializer) {
+              lowered = lir::MirToLirLowering::lowerScalarInitializer(fn, types);
+            } else if (fn.kind == mir::MirFunctionKind::Function) {
+              lowered = lir::MirToLirLowering::lowerConditionalReturn(fn, types);
+              if (lowered == zc::none) {
+                lowered = lir::MirToLirLowering::lowerEqualityConditionalReturn(fn, types);
+              }
+              if (lowered == zc::none) {
+                lowered = lir::MirToLirLowering::lowerAggregateFieldInitializer(fn, types);
+              }
+              if (lowered == zc::none) {
+                lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
+              }
+              if (lowered == zc::none) {
+                lowered = lir::MirToLirLowering::lowerScalarConstantReturn(fn, types);
+              }
+              if (lowered == zc::none) {
+                lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types);
+              }
+            }
+            if (lowered == zc::none) { break; }
+            auto fns = ZC_ASSERT_NONNULL(lowered).takeFunctions();
+            for (size_t i = 0; i < fns.size(); ++i) { loweredFunctions.add(zc::mv(fns[i])); }
+          }
+          if (loweredFunctions.size() == functions.size()) {
+            lir = lir::Module(zc::mv(loweredFunctions));
+          }
+        }
       } else {
         // Three functions: either one same-module direct-call caller plus its
         // callee plus one standalone scalar leaf (S-call), or a receiver

@@ -653,6 +653,9 @@ public:
     return functionsValue.asPtr();
   }
 
+  /// \brief Moves the function vector out, leaving the module empty.
+  ZC_NODISCARD zc::Vector<Function> takeFunctions() noexcept { return zc::mv(functionsValue); }
+
 private:
   zc::Vector<Function> functionsValue;
 };

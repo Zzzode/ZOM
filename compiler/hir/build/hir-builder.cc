@@ -2238,12 +2238,71 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // arm carries the checked literal fact; a bare-identifier arm resolves to
         // a function parameter reference (no literal fact is required for it); a
         // binary arm resolves the checked call fact and lowers its two leaf
-        // operands into a primitive binary operation.
+        // operands into a primitive binary operation. An enum-destructure arm
+        // resolves the pattern binding to a positional field extraction off the
+        // scrutinee parameter (payload at field index 1).
         bool armRejected = false;
         auto buildArm =
             [&](ast::NodeId armNode, identity::SemanticTypeId armType,
-                const identity::SourceSpan& armSpan) -> zc::Maybe<PendingConditionalArm> {
+                const identity::SourceSpan& armSpan,
+                zc::Maybe<ast::NodeId> patternBinding) -> zc::Maybe<PendingConditionalArm> {
           if (tree.node(armNode).kind == ast::SyntaxKind::IdentExpr) {
+            // Enum destructure: the arm is a pattern binding, not a callable
+            // parameter. Resolve the scrutinee parameter and synthesize a
+            // positional field extraction (payload at aggregate index 1).
+            if (shape.isMatchEnumDestructure && patternBinding != zc::none) {
+              const auto armName = tree.node(armNode).payload.words[ast::kIdentExprNameWord];
+              const auto bindingName = tree.node(ZC_ASSERT_NONNULL(patternBinding))
+                                           .payload.words[ast::kIdentifierPatternNameWord];
+              if (armName == bindingName) {
+                auto scrutineeParameter =
+                    resolvedCallableParameter(bound.bindings(), shape.condition);
+                if (scrutineeParameter == zc::none) {
+                  armRejected = true;
+                  return zc::none;
+                }
+                identity::CallableParameterId scrutineeHandle;
+                ZC_IF_SOME(value, scrutineeParameter) { scrutineeHandle = value; }
+                auto scrutineeAuthority = registries.callableParameter(scrutineeHandle);
+                if (scrutineeAuthority == zc::none) {
+                  armRejected = true;
+                  return zc::none;
+                }
+                zc::Maybe<PendingConditionalArm> built;
+                ZC_IF_SOME(entry, scrutineeAuthority) {
+                  bool matches = false;
+                  for (const auto& parameterCandidate : parameters) {
+                    if (parameterCandidate.key == entry.key() &&
+                        parameterCandidate.type == conditionType) {
+                      matches = true;
+                    }
+                  }
+                  if (!matches) {
+                    armRejected = true;
+                  } else {
+                    // Resolve the enum definition's DefId from the scrutinee's
+                    // nominal type for fact correlation.
+                    auto typeLookup = semanticTypes.get(conditionType);
+                    if (!typeLookup.is<type::SemanticTypeLookup>()) {
+                      armRejected = true;
+                    } else {
+                      const auto& typeData = typeLookup.get<type::SemanticTypeLookup>().data();
+                      if (!typeData.is<type::semantic::NominalTypeData>()) {
+                        armRejected = true;
+                      } else {
+                        const auto& nominal = typeData.get<type::semantic::NominalTypeData>();
+                        auto projection = PendingConditionalArmParameterFieldProjection{
+                            entry.key().clone(), conditionType, nominal.definition, armType, 1};
+                        built = PendingConditionalArm{
+                            zc::none, zc::none, zc::none, armType,           armSpan.clone(),
+                            zc::none, armNode,  zc::none, zc::mv(projection)};
+                      }
+                    }
+                  }
+                }
+                return built;
+              }
+            }
             auto parameter = resolvedCallableParameter(bound.bindings(), armNode);
             if (parameter == zc::none) {
               armRejected = true;
@@ -2402,8 +2461,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                        zc::none,
                                        armNode};
         };
-        auto thenArm = buildArm(shape.thenReturnValue, thenType, ZC_ASSERT_NONNULL(thenSpan));
-        auto elseArm = buildArm(shape.elseReturnValue, elseType, ZC_ASSERT_NONNULL(elseSpan));
+        zc::Maybe<ast::NodeId> thenPatternBinding;
+        zc::Maybe<ast::NodeId> elsePatternBinding;
+        if (shape.isMatchEnumDestructure && shape.matchDestructureBindings.size() >= 2) {
+          thenPatternBinding = shape.matchDestructureBindings[0];
+          elsePatternBinding = shape.matchDestructureBindings[1];
+        }
+        auto thenArm = buildArm(shape.thenReturnValue, thenType, ZC_ASSERT_NONNULL(thenSpan),
+                                thenPatternBinding);
+        auto elseArm = buildArm(shape.elseReturnValue, elseType, ZC_ASSERT_NONNULL(elseSpan),
+                                elsePatternBinding);
         if (armRejected || thenArm == zc::none || elseArm == zc::none) {
           // A conditional arm that is neither a scalar literal, a bare parameter
           // reference, nor a one-level arithmetic/comparison binary is legal
@@ -9514,6 +9581,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t deadEnumConstructionAggregateCount = 0;
   size_t localFieldProjectionCount = 0;
   size_t parameterFieldProjectionCount = 0;
+  // Arm-level parameter field projections in enum-destructure match returns.
+  // The literals equation subtracts parameterFieldProjectionCount because
+  // function-level projections replace a literal the per-function baseline
+  // grants, but arm-level projections carry no literal to cancel, so they are
+  // added back here.
+  size_t armParameterFieldProjectionCount = 0;
   size_t parameterFieldWriteCount = 0;
   size_t localFieldWriteCount = 0;
   size_t unsafeBlockCount = 0;
@@ -10048,6 +10121,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
+          if (arm->parameterFieldProjection != zc::none) {
+            ++parameterFieldProjectionCount;
+            ++armParameterFieldProjectionCount;
+          }
           ZC_IF_SOME(binary, arm->binary) {
             ++conditionalBinaryArmCount;
             if (binary.left->literal != zc::none) { ++conditionalBinaryArmLiteralOperandCount; }
@@ -10482,9 +10559,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           pending.size() + pendingFunctions.size() - voidFunctionCount - directCallCount -
           aggregateCount + deadEnumConstructionAggregateCount - receiverSelfCallCount -
           uninitializedLocalReturnCount - parameterReferenceCount - parameterReborrowCount -
-          parameterFieldProjectionCount - binaryWriteLocalOperandCount + localAliasReborrowCount +
-          localWriteCount + aggregateElementCount + directCallLiteralArgumentCount +
-          receiverCallArgumentCount - receiverCallFieldArgumentCount + conditionalLiteralArmCount +
+          parameterFieldProjectionCount + armParameterFieldProjectionCount -
+          binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
+          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
+          receiverCallFieldArgumentCount + conditionalLiteralArmCount +
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
           comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
@@ -10536,15 +10614,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   if (facts.members().size() !=
       localFieldProjectionCount + localFieldWriteCount + receiverCallCount + receiverSelfCallCount +
-          parameterFieldProjectionCount + parameterFieldWriteCount + receiverFieldArithmeticCount +
-          receiverCallFieldArgumentCount + receiverCallComparisonArgumentCount) {
+          parameterFieldProjectionCount - armParameterFieldProjectionCount +
+          parameterFieldWriteCount + receiverFieldArithmeticCount + receiverCallFieldArgumentCount +
+          receiverCallComparisonArgumentCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 7);
   }
   if (facts.places().size() != localFieldProjectionCount + localFieldWriteCount +
-                                   parameterIndexCount + parameterFieldProjectionCount +
-                                   receiverFieldArithmeticCount + parameterFieldWriteCount +
-                                   receiverCallFieldArgumentCount +
+                                   parameterIndexCount + parameterFieldProjectionCount -
+                                   armParameterFieldProjectionCount + receiverFieldArithmeticCount +
+                                   parameterFieldWriteCount + receiverCallFieldArgumentCount +
                                    receiverCallComparisonArgumentCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {

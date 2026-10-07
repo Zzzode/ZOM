@@ -418,6 +418,15 @@ bool applyRvalue(const mir::MirFunction& function, const MovePathFunction& paths
     return applyOperand(function, paths, arithmetic.left, zc::mv(leftEvent), states) &&
            applyOperand(function, paths, arithmetic.right, zc::mv(event), states);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::ExtractField) {
+    return applyOperand(function, paths, rvalue.extractFieldValue().source, zc::mv(event), states);
+  }
+  if (rvalue.kind() == mir::MirRvalueKind::Erase) {
+    return applyOperand(function, paths, rvalue.eraseValue().source, zc::mv(event), states);
+  }
+  if (rvalue.kind() == mir::MirRvalueKind::ErrorUnion) {
+    return applyOperand(function, paths, rvalue.errorUnionValue().payload, zc::mv(event), states);
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {

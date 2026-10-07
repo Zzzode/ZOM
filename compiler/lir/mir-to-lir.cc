@@ -163,6 +163,30 @@ zc::Maybe<ValueType> enumCarrierFor(identity::SemanticTypeId type,
   return ValueType::integer(IntegerBitWidth::Bit32);
 }
 
+/// \brief Resolves the aggregate carrier for a tuple-variant enum parameter.
+///
+/// A tuple-variant enum is laid out as a two-field aggregate: field 0 is the
+/// tag (a 32-bit variant discriminant) and field 1 is the payload. The payload
+/// carrier is derived from the function result type, which is the extracted
+/// field type for a destructure arm. This admits the single-payload
+/// tuple-variant destructure slice.
+zc::Maybe<ValueType> enumAggregateCarrierFor(identity::SemanticTypeId type,
+                                             const type::SemanticTypeStore& semanticTypes,
+                                             identity::SemanticTypeId payloadType) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) { return zc::none; }
+  auto payloadCarrier = integerCarrierFor(payloadType, semanticTypes);
+  if (payloadCarrier == zc::none) { return zc::none; }
+  auto tagCarrier = ValueType::integer(IntegerBitWidth::Bit32);
+  if (tagCarrier == zc::none) { return zc::none; }
+  zc::Vector<AggregateField> fields;
+  fields.add(AggregateField(zc::str("tag"), zc::mv(ZC_REQUIRE_NONNULL(tagCarrier))));
+  fields.add(AggregateField(zc::str("payload"), zc::mv(ZC_REQUIRE_NONNULL(payloadCarrier))));
+  return ValueType::aggregate(zc::mv(fields));
+}
+
 /// \brief Selects the entry symbol for a caller function.
 ///
 /// A parameter-free caller folds to the reserved no-argument `zom.module_init`
@@ -884,6 +908,19 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
                                  zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
+    if (assignment.value.kind() == mir::MirRvalueKind::ExtractField) {
+      // Enum tuple-variant destructure: extract the payload at the positional
+      // field index from the aggregate-typed scrutinee parameter.
+      const auto& extract = assignment.value.extractFieldValue();
+      if (extract.resultType != function.resultType) { return false; }
+      if (extract.source.kind() == mir::MirOperandKind::Constant ||
+          extract.source.place().projections().size() != 0) {
+        return false;
+      }
+      const uint32_t sourceOrdinal = extract.source.place().local().ordinal();
+      out.add(Statement::extractField(resultOrdinal, sourceOrdinal, extract.fieldIndex));
+      return true;
+    }
     return false;
   };
 
@@ -934,12 +971,16 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
   }
 
   // Declare every parameter local: the boolean discriminant as its i1 carrier,
-  // integer value parameters as their integer carriers.
+  // integer value parameters as their integer carriers, and tuple-variant enum
+  // parameters as their aggregate (tag + payload) carriers.
   zc::Vector<Local> parameters;
   for (size_t i = 0; i < parameterCount; ++i) {
     const auto& parameterLocal = function.locals[i];
     zc::Maybe<ValueType> carrier = boolCarrierFor(parameterLocal.type, semanticTypes);
     if (carrier == zc::none) { carrier = integerCarrierFor(parameterLocal.type, semanticTypes); }
+    if (carrier == zc::none) {
+      carrier = enumAggregateCarrierFor(parameterLocal.type, semanticTypes, function.resultType);
+    }
     if (carrier == zc::none) { return zc::none; }
     parameters.add(Local(parameterLocal.id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }
@@ -2720,10 +2761,42 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   };
   auto leftCarrier = operandCarrierFor(*conditionLeft);
   auto rightCarrier = operandCarrierFor(*conditionRight);
-  if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
-  auto lirLeft = lirOperandFor(*conditionLeft, ZC_REQUIRE_NONNULL(leftCarrier));
-  auto lirRight = lirOperandFor(*conditionRight, ZC_REQUIRE_NONNULL(rightCarrier));
-  if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+
+  // Enum destructure: the comparison operands are enum-typed (aggregate). The
+  // left operand is a parameter place-use carrying the aggregate; the right
+  // operand is a constant whose integer value is the variant discriminant.
+  // Lower by extracting the tag (field 0) from the aggregate parameter and
+  // comparing it with the discriminant constant. A tag temp local carries the
+  // extracted value between the two entry-block statements.
+  bool isEnumDestructure = false;
+  uint32_t enumParamOrdinal = 0;
+  zc::Maybe<Operand> enumTagConstant;
+  auto tagCarrierMaybe = ValueType::integer(IntegerBitWidth::Bit32);
+  if (tagCarrierMaybe == zc::none) { return zc::none; }
+  const auto tagCarrier = ZC_REQUIRE_NONNULL(tagCarrierMaybe);
+  if (leftCarrier == zc::none || rightCarrier == zc::none) {
+    if (!isLogicalCondition && conditionLeft->kind() != mir::MirOperandKind::Constant &&
+        conditionRight->kind() == mir::MirOperandKind::Constant) {
+      auto enumCarrier = enumAggregateCarrierFor(conditionLeft->place().rootType(), semanticTypes,
+                                                 function.resultType);
+      if (enumCarrier != zc::none) {
+        auto tagConst = lirOperandFor(*conditionRight, tagCarrier);
+        if (tagConst != zc::none) {
+          isEnumDestructure = true;
+          enumParamOrdinal = conditionLeft->place().local().ordinal();
+          enumTagConstant = zc::mv(tagConst);
+        }
+      }
+    }
+    if (!isEnumDestructure) { return zc::none; }
+  }
+  zc::Maybe<Operand> lirLeft;
+  zc::Maybe<Operand> lirRight;
+  if (!isEnumDestructure) {
+    lirLeft = lirOperandFor(*conditionLeft, ZC_REQUIRE_NONNULL(leftCarrier));
+    lirRight = lirOperandFor(*conditionRight, ZC_REQUIRE_NONNULL(rightCarrier));
+  }
+  if (!isEnumDestructure && (lirLeft == zc::none || lirRight == zc::none)) { return zc::none; }
 
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
@@ -2801,6 +2874,19 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
                                  zc::mv(ZC_REQUIRE_NONNULL(right))));
       return true;
     }
+    if (assignment.value.kind() == mir::MirRvalueKind::ExtractField) {
+      // Enum tuple-variant destructure: extract the payload at the positional
+      // field index from the aggregate-typed scrutinee parameter.
+      const auto& extract = assignment.value.extractFieldValue();
+      if (extract.resultType != function.resultType) { return false; }
+      if (extract.source.kind() == mir::MirOperandKind::Constant ||
+          extract.source.place().projections().size() != 0) {
+        return false;
+      }
+      const uint32_t sourceOrdinal = extract.source.place().local().ordinal();
+      out.add(Statement::extractField(resultOrdinal, sourceOrdinal, extract.fieldIndex));
+      return true;
+    }
     return false;
   };
   zc::Vector<Statement> thenStatements;
@@ -2835,7 +2921,15 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   zc::Vector<BasicBlock> blocks;
   {
     zc::Vector<Statement> entryStatements;
-    if (isLogicalCondition) {
+    if (isEnumDestructure) {
+      // Extract the tag (field 0) from the aggregate parameter, then compare
+      // it with the discriminant constant to produce the bool condition.
+      const uint32_t tagTempOrdinal = static_cast<uint32_t>(parameterCount + 3);
+      entryStatements.add(Statement::extractField(tagTempOrdinal, enumParamOrdinal, 0));
+      entryStatements.add(Statement::compare(
+          tempOrdinal, lirComparisonOpFor(tempAssign.value.comparisonValue().op),
+          Operand::localUse(tagTempOrdinal), zc::mv(ZC_REQUIRE_NONNULL(enumTagConstant))));
+    } else if (isLogicalCondition) {
       auto op = lirArithmeticOpFor(tempAssign.value.arithmeticValue().op);
       if (op == zc::none) { return zc::none; }
       entryStatements.add(Statement::arithmetic(tempOrdinal, ZC_REQUIRE_NONNULL(op),
@@ -2862,11 +2956,15 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
 
   // Declare every parameter local plus the result and temp body locals.
   // Logical operator conditionals carry bool parameters; relational comparison
-  // conditionals carry integer parameters.
+  // conditionals carry integer parameters; enum-destructure conditionals carry
+  // an aggregate (tag + payload) scrutinee parameter.
   zc::Vector<Local> parameters;
   for (size_t i = 0; i < parameterCount; ++i) {
     zc::Maybe<ValueType> carrier;
-    if (isLogicalCondition) {
+    if (isEnumDestructure && function.locals[i].id.ordinal() == enumParamOrdinal) {
+      carrier =
+          enumAggregateCarrierFor(function.locals[i].type, semanticTypes, function.resultType);
+    } else if (isLogicalCondition) {
       carrier = boolCarrierFor(function.locals[i].type, semanticTypes);
     } else {
       carrier = integerCarrierFor(function.locals[i].type, semanticTypes);
@@ -2877,6 +2975,11 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   zc::Vector<Local> locals;
   locals.add(Local(resultOrdinal, resultCarrierValue));
   locals.add(Local(tempOrdinal, tempCarrierValue));
+  if (isEnumDestructure) {
+    // Tag temp for the extracted discriminant; ordinal follows the temp.
+    const uint32_t tagTempOrdinal = static_cast<uint32_t>(parameterCount + 3);
+    locals.add(Local(tagTempOrdinal, tagCarrier));
+  }
 
   zc::Vector<Function> functions;
   functions.add(Function(function.owner, zc::heapString("zom.conditional_cmp"), resultCarrierValue,

@@ -828,6 +828,80 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // An enum tuple-variant destructure conditional return has no fold and no
+  // receiver projection: the scrutinee is a bare enum-typed parameter, the
+  // comparison tests the discriminant against a constant, and each arm
+  // extracts the payload through an ExtractField rvalue. The LIR lowering
+  // synthesizes a tag-temporary local (ordinal parameter-count + 3) and an
+  // ExtractField statement in the entry block to read the tag before the
+  // comparison, so neither the slot set nor the entry-block effects are in
+  // lockstep with the MIR.
+  struct EnumDestructureConditional final {
+    uint32_t tagTempOrdinal = 0;
+    uint32_t paramOrdinal = 0;
+  };
+  zc::Maybe<EnumDestructureConditional> enumDestructure;
+  if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
+      receiverFieldArithmetic == zc::none && mir.locals.size() == 3 &&
+      mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      mir.locals[1].kind == mir::MirLocalKind::FunctionResult &&
+      mir.locals[2].kind == mir::MirLocalKind::Temporary && mir.blocks.size() == 4) {
+    const auto& paramLocal = mir.locals[0];
+    const auto& resultLocal = mir.locals[1];
+    const auto& tempLocal = mir.locals[2];
+    const auto& entry = mir.blocks[0];
+    if (entry.statements.size() == 3 &&
+        entry.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+        entry.statements[0].storageLocal() == resultLocal.id &&
+        entry.statements[1].kind() == mir::MirStatementKind::StorageLive &&
+        entry.statements[1].storageLocal() == tempLocal.id &&
+        entry.statements[2].kind() == mir::MirStatementKind::Assign &&
+        entry.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+      const auto& assignment = entry.statements[2].assignmentValue();
+      if (assignment.destination.local() == tempLocal.id &&
+          assignment.destination.projections().size() == 0 &&
+          assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+        const auto& comparison = assignment.value.comparisonValue();
+        if (comparison.left.kind() != mir::MirOperandKind::Constant &&
+            comparison.left.place().local() == paramLocal.id &&
+            comparison.left.place().projections().size() == 0 &&
+            comparison.right.kind() == mir::MirOperandKind::Constant &&
+            enumCarrier(paramLocal.type, types) != zc::none) {
+          // Verify both arms extract the payload from the parameter.
+          bool armsOk = true;
+          for (uint32_t armIdx = 1; armIdx <= 2; ++armIdx) {
+            const auto& arm = mir.blocks[armIdx];
+            if (arm.statements.size() != 1 ||
+                arm.statements[0].kind() != mir::MirStatementKind::Assign ||
+                arm.terminator.kind() != mir::MirTerminatorKind::Goto) {
+              armsOk = false;
+              break;
+            }
+            const auto& armAssign = arm.statements[0].assignmentValue();
+            if (armAssign.destination.local() != resultLocal.id ||
+                armAssign.destination.projections().size() != 0 ||
+                armAssign.value.kind() != mir::MirRvalueKind::ExtractField) {
+              armsOk = false;
+              break;
+            }
+            const auto& extract = armAssign.value.extractFieldValue();
+            if (extract.source.kind() == mir::MirOperandKind::Constant ||
+                extract.source.place().local() != paramLocal.id ||
+                extract.source.place().projections().size() != 0) {
+              armsOk = false;
+              break;
+            }
+          }
+          if (armsOk) {
+            const uint32_t paramOrdinal = paramLocal.id.ordinal();
+            enumDestructure =
+                EnumDestructureConditional{static_cast<uint32_t>(paramOrdinal + 3), paramOrdinal};
+          }
+        }
+      }
+    }
+  }
+
   // Resolve the carrier the LIR return must carry. A materialized function
   // returns the MIR result carrier. A folded scalar function does too; a folded
   // whole-struct bundle carries its first element's carrier, and a folded
@@ -985,6 +1059,43 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         lir.locals()[3].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (enumDestructure != zc::none) {
+    // The enum parameter maps 1:1 but carries an aggregate (tag i32 + payload
+    // integer) instead of the scalar i32 that localCarrier resolves for enum
+    // types. The result and temp locals map 1:1, and one synthesized tag-temp
+    // local (ordinal param + 3, carrier i32) has no MIR local.
+    const auto& destructure = ZC_ASSERT_NONNULL(enumDestructure);
+    if (lir.parameters().size() != 1 || lir.locals().size() != 3) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    auto payloadCarrier = integerCarrier(mir.resultType, types);
+    if (payloadCarrier == zc::none) { payloadCarrier = boolCarrier(mir.resultType, types); }
+    auto tagCarrier = ValueType::integer(IntegerBitWidth::Bit32);
+    if (payloadCarrier == zc::none || tagCarrier == zc::none) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    zc::Vector<AggregateField> aggFields;
+    aggFields.add(AggregateField(zc::str("tag"), zc::mv(ZC_REQUIRE_NONNULL(tagCarrier))));
+    aggFields.add(AggregateField(zc::str("payload"), zc::mv(ZC_ASSERT_NONNULL(payloadCarrier))));
+    auto enumAggregate = ValueType::aggregate(zc::mv(aggFields));
+    if (enumAggregate == zc::none) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    if (lir.parameters()[0].ordinal() != destructure.paramOrdinal ||
+        lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(enumAggregate)) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    // Body locals: result (ordinal param+1), temp (ordinal param+2), tag temp
+    // (ordinal param+3, synthesized).
+    const auto resultCarrier = integerCarrier(mir.resultType, types);
+    if (resultCarrier == zc::none || lir.locals()[0].ordinal() != destructure.paramOrdinal + 1 ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier) ||
+        lir.locals()[1].ordinal() != destructure.paramOrdinal + 2 ||
+        lir.locals()[2].ordinal() != destructure.tagTempOrdinal ||
+        lir.locals()[2].carrier() !=
+            ZC_ASSERT_NONNULL(ValueType::integer(IntegerBitWidth::Bit32))) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else {
     uint32_t parameterCount = 0;
     for (const auto& local : mir.locals) {
@@ -1104,6 +1215,30 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           fieldOperand.localOrdinal() != fieldArithmetic.fieldOrdinal ||
           mField.kind() == mir::MirOperandKind::Constant ||
           !sameConstant(constantOperand, mConstant, ZC_ASSERT_NONNULL(resultCarrier))) {
+        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+      }
+      lirStatement = 2;
+    } else if (enumDestructure != zc::none && b == 0) {
+      // The entry block synthesizes an ExtractField (tag from the enum
+      // parameter) before the Compare; the MIR entry block has only
+      // StorageLive/StorageLive/Assign(Comparison). Validate the two LIR
+      // statements bespoke, then bypass the generic lockstep loop.
+      const auto& destructure = ZC_ASSERT_NONNULL(enumDestructure);
+      const auto& mAssignment = mirBlock.statements[2].assignmentValue();
+      const auto& mComparison = mAssignment.value.comparisonValue();
+      auto tagCarrier = ValueType::integer(IntegerBitWidth::Bit32);
+      if (tagCarrier == zc::none || lirBlock.statements().size() != 2 ||
+          lirBlock.statements()[0].kind() != StatementKind::ExtractField ||
+          lirBlock.statements()[0].destinationOrdinal() != destructure.tagTempOrdinal ||
+          lirBlock.statements()[0].sourceOrdinal() != destructure.paramOrdinal ||
+          lirBlock.statements()[0].fieldIndex() != 0 ||
+          lirBlock.statements()[1].kind() != StatementKind::Compare ||
+          lirBlock.statements()[1].destinationOrdinal() != mir.locals[2].id.ordinal() ||
+          lirBlock.statements()[1].comparisonOp() != comparisonOp(mComparison.op) ||
+          lirBlock.statements()[1].left().isConstant() ||
+          lirBlock.statements()[1].left().localOrdinal() != destructure.tagTempOrdinal ||
+          !sameConstant(lirBlock.statements()[1].right(), mComparison.right,
+                        ZC_ASSERT_NONNULL(tagCarrier))) {
         return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
       }
       lirStatement = 2;

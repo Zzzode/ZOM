@@ -4,9 +4,8 @@ fn fetch() -> Result {
   return Result::Ok(41);
 }
 
-fn entry() -> i32 {
-  let r: Result = fetch();
-  match (r) {
+fn entry(r: Result) -> i32 {
+  match r {
     when Result::Ok(v) => {
       return v;
     }

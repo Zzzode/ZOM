@@ -153,6 +153,12 @@ struct HirLocalFieldProjectionExpression final {
 /// parameter (a shared reference to the owner nominal); the field read
 /// implicitly dereferences that reference. `receiverType` is the referent
 /// owner type, not the parameter's reference type.
+///
+/// When `fieldIndex` is zero, `field` names a declared struct field and the
+/// projection is a named field read. When `fieldIndex` is non-zero, the
+/// projection is a positional aggregate extraction (e.g. enum tuple-variant
+/// payload at index 1, tag at index 0) and `field` carries the enum
+/// definition's DefId for fact correlation.
 struct HirParameterFieldProjectionExpression final {
   HirNodeId node;
   identity::CallableParameterKey parameter;
@@ -161,6 +167,7 @@ struct HirParameterFieldProjectionExpression final {
   identity::SemanticTypeId type;
   HirValueCategory category;
   identity::SourceSpan sourceSpan;
+  uint32_t fieldIndex = 0;
 };
 
 enum class HirLocalWriteKind : uint8_t { Initialize = 0x01, Overwrite = 0x02 };
