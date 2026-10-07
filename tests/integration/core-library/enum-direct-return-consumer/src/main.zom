@@ -1,0 +1,5 @@
+enum Result { Ok(i32), Err(i32) }
+
+fn fetch() -> Result {
+  return Result::Ok(41);
+}

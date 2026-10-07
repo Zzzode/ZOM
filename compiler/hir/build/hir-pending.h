@@ -151,13 +151,20 @@ struct PendingConditionalArmBinary final {
 };
 
 // One conditional arm carries a scalar literal value, a reference to a
-// function parameter, a reference to the function's user local, or a primitive
-// binary operation over two such leaves. Exactly one of `literal`, `parameter`,
-// `local`, and `binary` is populated; the arm kind is discriminated by which
-// one is set.
-// `binary` is declared last so the pre-existing five-field aggregate
-// initializers (literal, parameter, local, type, sourceSpan) keep compiling
-// with a defaulted none.
+// function parameter, a reference to the function's user local, a primitive
+// binary operation over two such leaves, or a field projection off a local.
+// Exactly one of `literal`, `parameter`, `local`, `binary`, and
+// `fieldProjection` is populated; the arm kind is discriminated by which one
+// is set.
+// `binary` and `fieldProjection` are declared last so the pre-existing
+// five-field aggregate initializers (literal, parameter, local, type,
+// sourceSpan) keep compiling with defaulted nones.
+struct PendingConditionalArmFieldProjection final {
+  HirLocalId local;
+  identity::DefId field;
+  identity::SemanticTypeId receiverType;
+};
+
 struct PendingConditionalArm final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirParameterReferenceExpression> parameter;
@@ -168,6 +175,7 @@ struct PendingConditionalArm final {
   /// The AST node this arm was lowered from (literal, identifier, or binary
   /// expression), threaded to the HIR side-table.
   ast::NodeId sourceNode{};
+  zc::Maybe<PendingConditionalArmFieldProjection> fieldProjection = zc::none;
 };
 
 // One mutable-local write value. It is a scalar literal (`literal` populated), a

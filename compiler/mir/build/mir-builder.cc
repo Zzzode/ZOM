@@ -1583,6 +1583,56 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a direct aggregate return:
+/// `fn f() -> T { return T { ..constants.. }; }` (including enum construction
+/// `return Result::Ok(41);`). One Temporary at localId(1) receives the nominal
+/// aggregate rvalue of constant elements, and the whole temporary is returned.
+/// No unsafe-tail variant joins this arm.
+zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirNominalAggregateExpression& aggregate,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (aggregate.type != declaration.resultType) return zc::none;
+  // Every aggregate element is a constant of its declared element type.
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : aggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId tempLocal = ctx.declareLocal(MirLocalKind::Temporary, aggregate.type, scope,
+                                                aggregate.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(tempLocal, aggregate.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(tempLocal, aggregate.type, zc::mv(destinationProjections), aggregate.type),
+      MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(elements)),
+      MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(tempLocal, aggregate.type, zc::mv(returnProjections), aggregate.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a by-value aggregate caller:
 /// `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
 /// UserLocal of nominal type P at localId(1) is initialized from constant
@@ -3026,6 +3076,20 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         auto product = buildMethodConditionalReturn(
             declaration, conditional, ZC_ASSERT_NONNULL(conditionReference),
             ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities, proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
+    }
+
+    // Direct aggregate return: `return T { ..constants.. };` (including enum
+    // construction `return Result::Ok(41);`). The return value is a nominal
+    // aggregate expression with constant elements; a temporary receives the
+    // aggregate and is returned.
+    if (declaration.unsafeBlock == zc::none) {
+      auto aggregate = aggregateFor(hirModule, valueNode);
+      if (aggregate != zc::none && ZC_ASSERT_NONNULL(aggregate).type == declaration.resultType) {
+        auto product =
+            buildAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                 ZC_ASSERT_NONNULL(aggregate), identities, proofs, copyMarker);
         if (product != zc::none) return product;
       }
     }

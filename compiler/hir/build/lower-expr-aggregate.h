@@ -20,5 +20,12 @@ namespace detail {
 /// projection lowers into the return value destination.
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one direct enum construction return:
+/// `return Result::Ok(41);`.
+///
+/// Node stride function, body, aggregate, return. The aggregate lowers into
+/// the return value destination (no intermediate local).
+void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

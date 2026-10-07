@@ -6203,6 +6203,68 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ordinal + 2);
           }
         }
+      } else if (shape.returnsEnumConstruction) {
+        // Single-statement enum construction return: `return Result::Ok(41);`.
+        // The body checker produces an aggregate fact for the construction;
+        // build the HirNominalAggregateExpression wired directly to the return
+        // value (no intermediate local).
+        auto aggregateIndex = factIndex(facts.aggregates(), shape.value);
+        if (aggregateIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t aggregateSlot = 0;
+        ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+        const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
+        if (sourceAggregate.node != shape.value ||
+            !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+            sourceAggregate.resultType != nodeType.value ||
+            !sameSpan(sourceAggregate.sourceSpan, valueSpanValue)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        zc::Vector<HirNominalAggregateElement> elements;
+        for (const auto& sourceElement : sourceAggregate.elements) {
+          if (sourceElement.field == zc::none ||
+              sourceElement.sourceType != sourceElement.destinationType ||
+              sourceElement.adjustment != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
+          auto elementSpan =
+              bound.parsedModule().spanFor(tree.node(sourceElement.sourceNode).range);
+          if (elementLiteral == zc::none || elementSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(index, elementLiteral) { literalSlot = index; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (literalFact.type != sourceElement.destinationType ||
+              !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          ZC_IF_SOME(field, sourceElement.field) {
+            elements.add(HirNominalAggregateElement{field, sourceElement.destinationType,
+                                                    literalFact.literal.clone(),
+                                                    ZC_ASSERT_NONNULL(elementSpan).clone()});
+          }
+        }
+        aggregate = HirNominalAggregateExpression{
+            HirNodeId(),
+            sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition,
+            nodeType.value,
+            zc::mv(elements),
+            HirValueCategory::Value,
+            valueSpanValue.clone()};
+        aggregateIsEnumConstruction = true;
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
                  shape.returnsFoldedFloatCast) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
@@ -10748,6 +10810,37 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
                      conditionals, loops, sourceNodes);
       lowerReceiverFieldArithmeticFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Family: direct enum construction return (`return Result::Ok(41);`).
+    // Four node ids: function, body, aggregate, return. The aggregate is the
+    // return value expression; there is no intermediate local.
+    if (value.aggregate != zc::none && value.aggregateIsEnumConstruction &&
+        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
+        value.literal == zc::none && value.parameterReference == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localReference == zc::none && value.localFieldProjection == zc::none &&
+        value.parameterFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.chainedConditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
+        value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
+        value.statementReceiverReference == zc::none &&
+        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
+        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
+        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerEnumConstructionReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Family 3: one aggregate-initialized local returned through a field

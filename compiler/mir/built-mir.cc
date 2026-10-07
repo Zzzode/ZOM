@@ -6130,6 +6130,73 @@ bool validLocalAggregateReturnFunction(
   return false;
 }
 
+bool validDirectAggregateReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirNominalAggregateExpression& aggregate,
+    const hir::HirReturnStatement& sourceReturn, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != aggregate.node ||
+      aggregate.type != declaration.resultType ||
+      aggregate.category != hir::HirValueCategory::Value) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& local = function.locals[0];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != localId(1) ||
+      local.kind != MirLocalKind::Temporary || local.type != aggregate.type ||
+      local.sourceScope != scope.id || !sameSpan(local.sourceSpan, aggregate.sourceSpan) ||
+      block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 2 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != local.id ||
+      !sameSpan(block.statements[0].sourceSpan(), aggregate.sourceSpan) ||
+      block.statements[1].kind() != MirStatementKind::Assign ||
+      block.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.statements[1].sourceSpan(), aggregate.sourceSpan) ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& assignment = block.statements[1].assignmentValue();
+  if (assignment.destination.local() != local.id ||
+      assignment.destination.rootType() != local.type ||
+      assignment.destination.resultType() != local.type ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != MirRvalueKind::NominalAggregate) {
+    return false;
+  }
+  const auto& rvalue = assignment.value.nominalAggregateValue();
+  if (rvalue.definition != aggregate.definition || rvalue.type != aggregate.type ||
+      rvalue.elements.size() != aggregate.elements.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < aggregate.elements.size(); ++index) {
+    const auto& expected = aggregate.elements[index];
+    const auto& actual = rvalue.elements[index];
+    if (actual.field != expected.field || actual.operand.kind() != MirOperandKind::Constant ||
+        actual.operand.constantValue().type != expected.type ||
+        !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+                      semanticTypes)) {
+      return false;
+    }
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, local.type) && value.place().local() == local.id &&
+           value.place().rootType() == local.type && value.place().resultType() == local.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLocalAggregateFieldOverwriteReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -16324,6 +16391,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       auto parameterReborrow = parameterReborrowFor(hirModule, expressionNode);
       auto conditional = conditionalFor(hirModule, expressionNode);
       auto comparisonReturn = primitiveBinaryFor(hirModule, expressionNode);
+      auto returnAggregate = aggregateFor(hirModule, expressionNode);
       auto sourceLocal = localFor(hirModule, localNode);
       auto sourceOverwrite = localWriteFor(hirModule, overwriteNode);
       auto localReference = localReferenceFor(hirModule, expressionNode);
@@ -16393,6 +16461,15 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       const bool isLocalBorrow = localBorrow != zc::none;
       const bool isConditionalReturn = conditional != zc::none;
       const bool isComparisonReturn = comparisonReturn != zc::none;
+      // Direct aggregate return: `return T { ..constants.. };` (including enum
+      // construction `return Result::Ok(41);`). One-statement body, no local,
+      // the return value is a nominal aggregate expression.
+      const bool isDirectAggregateReturn =
+          sourceDeclaration.receiver == zc::none && sourceBlock != zc::none &&
+          ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 1 && sourceLocal == zc::none &&
+          returnAggregate != zc::none && expression == zc::none && call == zc::none &&
+          localReference == zc::none && localFieldProjection == zc::none &&
+          parameterReference == zc::none && sourceOverwrite == zc::none;
       bool isLocalAliasReborrow = false;
       ZC_IF_SOME(local, sourceLocal) {
         ZC_IF_SOME(reborrow, parameterReborrow) {
@@ -16421,7 +16498,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
            (!isLocalFieldReturn && !isReceiverFieldReturn && !isByValueParameterFieldReturn &&
             !isByValueAggregateCallReturn && !isScalarLocalCallReturn && !isLocalReturn &&
             !isParameterReturn && !isParameterReborrow && !isLocalBorrow && !isConditionalReturn &&
-            !isComparisonReturn && (expression == zc::none) == (call == zc::none)) ||
+            !isComparisonReturn && !isDirectAggregateReturn &&
+            (expression == zc::none) == (call == zc::none)) ||
            (isByValueAggregateCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
@@ -16656,6 +16734,13 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               valid = validDirectCallReturnFunction(function, sourceDeclaration, block,
                                                     returnStatement, sourceCall, proofs, copy,
                                                     module, identities, semanticTypes);
+            }
+          }
+          ZC_IF_SOME(sourceAggregate, returnAggregate) {
+            if (isDirectAggregateReturn) {
+              valid = validDirectAggregateReturnFunction(function, sourceDeclaration, block,
+                                                         sourceAggregate, returnStatement, module,
+                                                         identities, semanticTypes, proofs, copy);
             }
           }
           ZC_IF_SOME(sourceParameter, parameterReference) {

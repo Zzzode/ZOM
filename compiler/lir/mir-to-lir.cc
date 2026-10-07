@@ -664,9 +664,9 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
 zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified whole-struct constant-return shape. This mirrors the
-  // structural facts mir::validLocalAggregateReturnFunction checked; we re-check
-  // them here so lowering is total over its declared input and fail-closed
-  // otherwise.
+  // structural facts mir::validLocalAggregateReturnFunction and
+  // mir::validDirectAggregateReturnFunction checked; we re-check them here so
+  // lowering is total over its declared input and fail-closed otherwise.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
     return zc::none;
@@ -674,7 +674,8 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
 
   const auto& local = function.locals[0];
   const auto& block = function.blocks[0];
-  if (local.kind != mir::MirLocalKind::UserLocal || block.statements.size() != 2 ||
+  if ((local.kind != mir::MirLocalKind::UserLocal && local.kind != mir::MirLocalKind::Temporary) ||
+      block.statements.size() != 2 ||
       block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       block.statements[1].kind() != mir::MirStatementKind::Assign) {
     return zc::none;

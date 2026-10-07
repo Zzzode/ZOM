@@ -429,6 +429,11 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   bool sawEnumPattern = false;
   zc::Vector<ast::NodeId> enumPatternNodes;
   zc::Vector<ast::NodeId> enumReturnValues;
+  // Destructure (tuple-variant) pattern tracking. When any arm carries a
+  // tuple-variant pattern, every arm must be one; the IdentifierPattern node
+  // inside each pattern's single-arg payload is recorded for the builder.
+  bool sawDestructurePattern = false;
+  zc::Vector<ast::NodeId> destructureBindings;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
@@ -462,14 +467,31 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       if (sawDefault) return zc::none;
       sawDefault = true;
     } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
-      // A unit enum variant pattern (e.g., `Color.Red`). N enum arms on the
-      // same scrutinee lower to the equality conditional path (N == 2) or the
-      // chained conditional path (N >= 3); the last arm is the "else" branch.
-      // The variant discriminant is read from the checker's literal fact by
-      // the builder. Tuple-variant patterns (e.g., `Result.Ok(v)`) carry
-      // payload bindings that the equality synthesis cannot populate; reject
-      // them until destructuring lowering exists.
-      if (tree.node(pattern).payload.words[ast::kEnumPatternArgsSizeWord] != 0) { return zc::none; }
+      // An enum variant pattern. Unit-variant patterns (e.g., `Color.Red`)
+      // lower to the equality conditional path; the variant discriminant is
+      // read from the checker's literal fact by the builder. Tuple-variant
+      // patterns (e.g., `Result.Ok(v)`) carry payload bindings that require
+      // downcast + field extraction; the IdentifierPattern inside the single
+      // payload arg is recorded for the builder. Mixing unit and tuple
+      // variants in one match is rejected.
+      const uint32_t argsSize = tree.node(pattern).payload.words[ast::kEnumPatternArgsSizeWord];
+      const bool isTupleVariant = argsSize != 0;
+      if (isTupleVariant) {
+        if (sawEnumPattern && !sawDestructurePattern) return zc::none;
+        if (argsSize != 1) return zc::none;
+        const ast::NodeList args{tree.node(pattern).payload.words[ast::kEnumPatternArgsFirstWord],
+                                 argsSize};
+        if (!tree.contains(args) || args.size != 1) return zc::none;
+        const ast::NodeId binding = tree.list(args)[0];
+        if (!tree.contains(binding) ||
+            tree.node(binding).kind != ast::SyntaxKind::IdentifierPattern) {
+          return zc::none;
+        }
+        sawDestructurePattern = true;
+        destructureBindings.add(binding);
+      } else {
+        if (sawDestructurePattern) return zc::none;
+      }
       if (intLiteralNodes.size() > 0 || sawDefault) return zc::none;
       sawEnumPattern = true;
       enumPatternNodes.add(pattern);
@@ -511,8 +533,14 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       return zc::none;
     }
     const ast::NodeId returnValue(tree.node(returnStmt).payload.words[ast::kReturnStmtValueWord]);
-    if (!tree.contains(returnValue) || !isScalarLiteral(tree.node(returnValue).kind)) {
-      return zc::none;
+    if (!tree.contains(returnValue)) { return zc::none; }
+    // Destructure arms return the pattern binding directly (an IdentExpr);
+    // unit-variant and literal arms return scalar literals.
+    const bool isDestructureArm = sawDestructurePattern;
+    if (isDestructureArm) {
+      if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+    } else {
+      if (!isScalarLiteral(tree.node(returnValue).kind)) { return zc::none; }
     }
     if (isIntLiteral) {
       intLiteralValues.add(returnValue);
@@ -540,13 +568,22 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   shape.condition = scrutinee;
   shape.matchStatement = statement;
   if (sawEnumPattern) {
-    // Enum match: N unit-variant pattern arms on a closed enum domain. Two
+    // Enum match: N variant pattern arms on a closed enum domain. Two
     // arms lower to the equality conditional path; three or more lower to the
     // chained conditional path with the last arm as the else branch. The HIR
     // builder reads each variant discriminant from the checker's literal fact
     // on the EnumPattern node and synthesizes `scrutinee == discriminant`.
+    // When the patterns are tuple-variants, the builder additionally
+    // synthesizes downcast + field extraction and binds the payload.
     if (enumPatternNodes.size() < 2 || enumPatternNodes.size() != enumReturnValues.size()) {
       return zc::none;
+    }
+    if (sawDestructurePattern) {
+      if (destructureBindings.size() != enumPatternNodes.size()) { return zc::none; }
+      shape.isMatchEnumDestructure = true;
+      for (size_t i = 0; i < destructureBindings.size(); ++i) {
+        shape.matchDestructureBindings.add(destructureBindings[i]);
+      }
     }
     if (enumPatternNodes.size() == 2) {
       shape.isMatchEnum = true;
@@ -2632,6 +2669,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         shape.unsafeBlock = zc::mv(unsafeBlock);
         return shape;
       }
+    }
+    // Single-statement enum construction return:
+    // `return Result::Ok(41);`. The return value is a CallExpression whose
+    // callee is a qualified MemberExpression (e.g. `Result::Ok`). The body
+    // checker produces an aggregate fact for the construction; the builder
+    // lowers it to a HirNominalAggregateExpression wired directly to the
+    // return value (no intermediate local).
+    if (tree.contains(value) && isEnumConstructionCall(tree, value)) {
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.returnsEnumConstruction = true;
+      shape.unsafeBlock = zc::mv(unsafeBlock);
+      return shape;
     }
     FunctionReturnShape shape{};
     shape.body = body;

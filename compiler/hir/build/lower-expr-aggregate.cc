@@ -63,5 +63,37 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
+void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const identity::DefId aggregateDefinition = ZC_ASSERT_NONNULL(function.aggregate).definition;
+  const identity::SemanticTypeId aggregateType = ZC_ASSERT_NONNULL(function.aggregate).type;
+  const HirValueCategory aggregateCategory = ZC_ASSERT_NONNULL(function.aggregate).category;
+  const identity::SourceSpan aggregateSpan =
+      ZC_ASSERT_NONNULL(function.aggregate).sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements =
+      zc::mv(ZC_ASSERT_NONNULL(function.aggregate).elements);
+
+  // Fixed source-preorder stride matching the verifier's non-local return
+  // layout: function F, body F+1, return F+2, value F+3. The aggregate is
+  // the return value expression; there is no intermediate local.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId aggregateId = ctx.allocNode(ast::NodeId());
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, aggregateId, function.returnSpan.clone()});
+  ctx.addAggregate(HirNominalAggregateExpression{aggregateId, aggregateDefinition, aggregateType,
+                                                 zc::mv(aggregateElements), aggregateCategory,
+                                                 aggregateSpan.clone()});
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

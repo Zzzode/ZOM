@@ -178,6 +178,12 @@ struct FunctionReturnShape final {
   // local passed as the sole argument of a returned direct free-function call:
   // `let p: P = P { .. }; return f(p);`.
   bool returnsDirectAggregateCall = false;
+  // Single-statement enum construction return: `return Result::Ok(41);`.
+  // The return value is a CallExpression whose callee is a qualified
+  // MemberExpression (e.g. `Result::Ok`). The body checker produces an
+  // aggregate fact for the construction; the HIR builder lowers it to a
+  // HirNominalAggregateExpression wired directly to the return value.
+  bool returnsEnumConstruction = false;
   // Two-statement scalar-local call shape: a leading i32 local initialized from
   // an integer literal passed as the sole argument of a returned direct
   // free-function call: `let a: i32 = 21; return f(a);`.
@@ -380,6 +386,14 @@ struct FunctionReturnShape final {
   // literal fact (the variant discriminant); `matchChainedLiterals` carries
   // the first N-1 EnumPattern nodes (chained case).
   bool isMatchEnum = false;
+  // True when the match-return shape is an enum destructure with N (>= 2)
+  // tuple-variant pattern arms, each returning the pattern binding directly.
+  // The HIR builder synthesizes discriminant comparison + downcast + field
+  // extraction for each arm. `matchDestructureBindings` carries the
+  // IdentifierPattern node for each arm (parallel to enumPatternNodes) so the
+  // builder can resolve the binding to a local.
+  bool isMatchEnumDestructure = false;
+  zc::Vector<ast::NodeId> matchDestructureBindings;
   // True when the match-return shape has a guard on the literal (then) arm.
   // The guard is a single binary expression whose one operand is a bare
   // identifier (a parameter reference) and whose other operand is a scalar

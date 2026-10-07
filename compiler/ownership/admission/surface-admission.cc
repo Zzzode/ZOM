@@ -681,6 +681,7 @@ bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
          isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
          isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
          isAdmittedPrimitiveBinary(tree, value) || isAdmittedPrimitiveUnary(tree, value) ||
+         isAdmittedEnumVariantConstruction(tree, value) ||
          tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 
@@ -1214,6 +1215,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   bool sawDefault = false;
   bool sawGuard = false;
   bool sawEnumPattern = false;
+  bool sawDestructurePattern = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return false;
@@ -1255,9 +1257,27 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       if (sawDefault) return false;
       sawDefault = true;
     } else if (tree.node(pattern).kind == ast::SyntaxKind::EnumPattern) {
-      // A unit enum variant pattern (e.g., `Color.Red`) is admitted when the
-      // scrutinee is an enum type. The variant resolution and type matching
-      // are checker decisions.
+      // An enum variant pattern. Unit-variant patterns (e.g., `Color.Red`)
+      // are admitted when the scrutinee is an enum type. Tuple-variant
+      // patterns (e.g., `Result.Ok(v)`) are admitted when the payload is a
+      // single IdentifierPattern; the variant resolution and type matching
+      // are checker decisions. Mixing unit and tuple variants is rejected.
+      const uint32_t argsSize = tree.node(pattern).payload.words[ast::kEnumPatternArgsSizeWord];
+      if (argsSize != 0) {
+        if (sawEnumPattern && !sawDestructurePattern) return false;
+        if (argsSize != 1) return false;
+        const ast::NodeList args{tree.node(pattern).payload.words[ast::kEnumPatternArgsFirstWord],
+                                 argsSize};
+        if (!tree.contains(args) || args.size != 1) return false;
+        const ast::NodeId binding = tree.list(args)[0];
+        if (!tree.contains(binding) ||
+            tree.node(binding).kind != ast::SyntaxKind::IdentifierPattern) {
+          return false;
+        }
+        sawDestructurePattern = true;
+      } else {
+        if (sawDestructurePattern) return false;
+      }
       if (intLiteralCount > 0 || sawTrue || sawFalse || sawDefault) return false;
       sawEnumPattern = true;
     } else {
@@ -1280,8 +1300,13 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
       return false;
     }
     const ast::NodeId returnValue(tree.node(returnStmt).payload.words[ast::kReturnStmtValueWord]);
-    if (!tree.contains(returnValue) || !isScalarLiteral(tree.node(returnValue).kind)) {
-      return false;
+    if (!tree.contains(returnValue)) { return false; }
+    // Destructure arms return the pattern binding directly (an IdentExpr);
+    // unit-variant and literal arms return scalar literals.
+    if (sawDestructurePattern) {
+      if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return false; }
+    } else {
+      if (!isScalarLiteral(tree.node(returnValue).kind)) { return false; }
     }
   }
   // Bool: one literal arm (the checker rejects the uncovered arm with
