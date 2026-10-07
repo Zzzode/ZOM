@@ -1,0 +1,17 @@
+enum Result { Ok(i32), Err(i32) }
+
+fn fetch() -> Result {
+  return Result::Ok(41);
+}
+
+fn entry() -> i32 {
+  let r: Result = fetch();
+  match (r) {
+    when Result::Ok(v) => {
+      return v;
+    }
+    when Result::Err(e) => {
+      return e;
+    }
+  }
+}

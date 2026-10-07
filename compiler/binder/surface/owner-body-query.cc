@@ -98,10 +98,18 @@ struct VerifierPendingNode final {
   uint32_t nextChild;
 };
 
+/// \brief The syntactic construct that introduces a pattern binding.
+enum class BindingIntroducer : uint8_t {
+  None = 0,
+  VariableDeclarator = 1,
+  MatchArm = 2,
+  ForIn = 3
+};
+
 struct VerifierBindingPendingNode final {
   LocalSyntaxPath path;
   ast::SyntaxKind syntaxKind;
-  bool hasVariableDeclaratorAncestor;
+  BindingIntroducer introducer;
   uint32_t childCount;
   uint32_t nextChild;
 };
@@ -485,30 +493,60 @@ zc::Maybe<StableScopeOwnerKey> verifierNodeScope(
   return zc::none;
 }
 
-bool isVariableBindingPattern(const OwnerBodySyntaxPathEntry& entry,
-                              zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries) {
+bool isBindingPatternSyntax(ast::SyntaxKind kind) noexcept {
+  return kind == ast::SyntaxKind::BindingPattern || kind == ast::SyntaxKind::IdentifierPattern;
+}
+
+BindingIntroducer bindingIntroducerAncestor(const OwnerBodySyntaxPathEntry& entry,
+                                            zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries) {
   if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
-      (entry.syntaxKind != ast::SyntaxKind::BindingPattern &&
-       entry.syntaxKind != ast::SyntaxKind::IdentifierPattern)) {
-    return false;
+      !isBindingPatternSyntax(entry.syntaxKind)) {
+    return BindingIntroducer::None;
   }
   uint32_t ancestorIndex = entry.parentIndex;
   while (ancestorIndex != kNoParent) {
-    if (ancestorIndex >= entries.size()) { return false; }
+    if (ancestorIndex >= entries.size()) { return BindingIntroducer::None; }
     const auto& ancestor = entries[ancestorIndex];
-    if (ancestor.kind == DetachedModuleBodyNodeKind::Syntax &&
-        ancestor.syntaxKind == ast::SyntaxKind::VariableDeclarator) {
-      return true;
+    if (ancestor.kind == DetachedModuleBodyNodeKind::Syntax) {
+      if (ancestor.syntaxKind == ast::SyntaxKind::VariableDeclarator) {
+        return BindingIntroducer::VariableDeclarator;
+      }
+      if (ancestor.syntaxKind == ast::SyntaxKind::MatchArmStmt ||
+          ancestor.syntaxKind == ast::SyntaxKind::MatchArmExpr) {
+        return BindingIntroducer::MatchArm;
+      }
+      if (ancestor.syntaxKind == ast::SyntaxKind::ForInStatement) {
+        return BindingIntroducer::ForIn;
+      }
     }
     ancestorIndex = ancestor.parentIndex;
   }
-  return false;
+  return BindingIntroducer::None;
 }
 
-bool isVerifierVariableBindingPattern(const DetachedModuleBodyNode& node,
-                                      bool hasVariableDeclaratorAncestor) {
-  return hasVariableDeclaratorAncestor && (node.syntaxKind() == ast::SyntaxKind::BindingPattern ||
-                                           node.syntaxKind() == ast::SyntaxKind::IdentifierPattern);
+OwnerLocalBindingKind bindingKindForIntroducer(BindingIntroducer introducer) noexcept {
+  if (introducer == BindingIntroducer::MatchArm || introducer == BindingIntroducer::ForIn) {
+    return OwnerLocalBindingKind::PatternBinding;
+  }
+  return OwnerLocalBindingKind::Local;
+}
+
+DefinitionActivation activationForIntroducer(BindingIntroducer introducer) noexcept {
+  if (introducer == BindingIntroducer::MatchArm) { return DefinitionActivation::MatchPattern; }
+  if (introducer == BindingIntroducer::ForIn) { return DefinitionActivation::LoopPattern; }
+  return DefinitionActivation::ExpressionIntroduction;
+}
+
+BindingIntroducer introducerForActivation(DefinitionActivation activation) noexcept {
+  if (activation == DefinitionActivation::MatchPattern) { return BindingIntroducer::MatchArm; }
+  if (activation == DefinitionActivation::LoopPattern) { return BindingIntroducer::ForIn; }
+  return BindingIntroducer::VariableDeclarator;
+}
+
+bool isVerifierBindingPattern(const DetachedModuleBodyNode& node, BindingIntroducer introducer) {
+  if (introducer == BindingIntroducer::None) { return false; }
+  const auto kind = node.syntaxKind();
+  return kind != zc::none && isBindingPatternSyntax(ZC_ASSERT_NONNULL(kind));
 }
 
 bool pathHasPrefix(const LocalSyntaxPath& path, const LocalSyntaxPath& prefix) {
@@ -527,21 +565,30 @@ zc::Maybe<size_t> entryAtPath(zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entri
   return zc::none;
 }
 
-zc::Maybe<size_t> variableDeclaratorEnd(zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries,
-                                        const LocalSyntaxPath& bindingPath) {
+zc::Maybe<size_t> bindingActivationEnd(zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries,
+                                       const LocalSyntaxPath& bindingPath,
+                                       BindingIntroducer introducer) {
   auto binding = entryAtPath(entries, bindingPath);
   if (binding == zc::none) { return zc::none; }
-  size_t declarator = ZC_ASSERT_NONNULL(binding);
-  while (entries[declarator].parentIndex != kNoParent) {
-    declarator = entries[declarator].parentIndex;
-    if (declarator >= entries.size()) { return zc::none; }
-    if (entries[declarator].syntaxKind == ast::SyntaxKind::VariableDeclarator) { break; }
+  size_t current = ZC_ASSERT_NONNULL(binding);
+  if (introducer == BindingIntroducer::MatchArm || introducer == BindingIntroducer::ForIn) {
+    // Pattern bindings activate immediately after the pattern node itself;
+    // the arm body or loop body follows in DFS order, so uses inside the
+    // body have useIndex >= activationEnd.
+    size_t end = current + 1;
+    while (end < entries.size() && pathHasPrefix(entries[end].path, entries[current].path)) {
+      ++end;
+    }
+    return end;
   }
-  if (entries[declarator].syntaxKind != ast::SyntaxKind::VariableDeclarator) { return zc::none; }
-  size_t end = declarator + 1;
-  while (end < entries.size() && pathHasPrefix(entries[end].path, entries[declarator].path)) {
-    ++end;
+  while (entries[current].parentIndex != kNoParent) {
+    current = entries[current].parentIndex;
+    if (current >= entries.size()) { return zc::none; }
+    if (entries[current].syntaxKind == ast::SyntaxKind::VariableDeclarator) { break; }
   }
+  if (entries[current].syntaxKind != ast::SyntaxKind::VariableDeclarator) { return zc::none; }
+  size_t end = current + 1;
+  while (end < entries.size() && pathHasPrefix(entries[end].path, entries[current].path)) { ++end; }
   return end;
 }
 
@@ -572,7 +619,8 @@ bool appendLocalCandidates(const StableOwnerBodyQueryKey& owner, const StableSco
         binding.name() != name) {
       continue;
     }
-    auto activationEnd = variableDeclaratorEnd(entries, binding.key().path());
+    auto activationEnd = bindingActivationEnd(entries, binding.key().path(),
+                                              introducerForActivation(binding.activation()));
     if (activationEnd == zc::none) { return false; }
     if (useIndex < ZC_ASSERT_NONNULL(activationEnd)) { continue; }
     auto target = StableBindingTargetKey::ownerLocal(owner.clone(), binding.key().clone());
@@ -823,7 +871,8 @@ bool appendVerifierLocalCandidates(const StableOwnerBodyQueryKey& owner,
         binding.name() != name) {
       continue;
     }
-    auto activationEnd = variableDeclaratorEnd(entries, binding.key().path());
+    auto activationEnd = bindingActivationEnd(entries, binding.key().path(),
+                                              introducerForActivation(binding.activation()));
     if (activationEnd == zc::none) { return false; }
     if (useIndex < ZC_ASSERT_NONNULL(activationEnd)) { continue; }
     auto target = StableBindingTargetKey::ownerLocal(owner.clone(), binding.key().clone());
@@ -1642,18 +1691,20 @@ zc::Maybe<OwnerBodyBindingProjection> OwnerBodyBindingProjection::from(
   zc::Vector<StableOwnerLocalBindingFact> facts;
   const auto entries = ZC_ASSERT_NONNULL(traversal).entries();
   for (const auto& entry : entries) {
-    if (!isVariableBindingPattern(entry, entries)) { continue; }
+    const auto introducer = bindingIntroducerAncestor(entry, entries);
+    if (introducer == BindingIntroducer::None) { continue; }
     auto name = syntax.nodes()[entry.nodeIndex].identifierField(0);
     auto scope = providerNodeScope(entry.path, nodeScopes);
     if (name == zc::none || scope == zc::none) { return zc::none; }
-    auto key = OwnerLocalBindingKey::from(
-        owner.owner().clone(), entry.path.clone(), OwnerLocalBindingNamespace::Value,
-        OwnerLocalBindingKind::Local, ZC_ASSERT_NONNULL(name).clone());
+    const auto bindingKind = bindingKindForIntroducer(introducer);
+    const auto activation = activationForIntroducer(introducer);
+    auto key = OwnerLocalBindingKey::from(owner.owner().clone(), entry.path.clone(),
+                                          OwnerLocalBindingNamespace::Value, bindingKind,
+                                          ZC_ASSERT_NONNULL(name).clone());
     if (key == zc::none) { return zc::none; }
     auto fact = StableOwnerLocalBindingFact::from(
-        owner.clone(), zc::mv(ZC_ASSERT_NONNULL(key)), OwnerLocalBindingKind::Local,
-        zc::mv(ZC_ASSERT_NONNULL(name)), Namespace::Value, zc::mv(ZC_ASSERT_NONNULL(scope)),
-        DefinitionActivation::ExpressionIntroduction);
+        owner.clone(), zc::mv(ZC_ASSERT_NONNULL(key)), bindingKind, zc::mv(ZC_ASSERT_NONNULL(name)),
+        Namespace::Value, zc::mv(ZC_ASSERT_NONNULL(scope)), activation);
     if (fact == zc::none) { return zc::none; }
     facts.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
   }
@@ -1678,15 +1729,22 @@ bool OwnerBodyBindingProjection::verify(
       pending.removeLast();
     }
     zc::Maybe<LocalSyntaxPath> path;
-    bool hasVariableDeclaratorAncestor = false;
+    BindingIntroducer introducer = BindingIntroducer::None;
     if (pending.empty()) {
       if (rootIndex == syntax.rootCount()) { return false; }
       path = verifierRootPath(rootIndex++);
     } else {
       auto& parent = pending.back();
       path = verifierChildPath(parent.path, parent.nextChild++);
-      hasVariableDeclaratorAncestor = parent.hasVariableDeclaratorAncestor ||
-                                      parent.syntaxKind == ast::SyntaxKind::VariableDeclarator;
+      introducer = parent.introducer;
+      if (parent.syntaxKind == ast::SyntaxKind::VariableDeclarator) {
+        introducer = BindingIntroducer::VariableDeclarator;
+      } else if (parent.syntaxKind == ast::SyntaxKind::MatchArmStmt ||
+                 parent.syntaxKind == ast::SyntaxKind::MatchArmExpr) {
+        introducer = BindingIntroducer::MatchArm;
+      } else if (parent.syntaxKind == ast::SyntaxKind::ForInStatement) {
+        introducer = BindingIntroducer::ForIn;
+      }
     }
     if (path == zc::none ||
         (node.kind() != DetachedModuleBodyNodeKind::Syntax && node.childCount())) {
@@ -1697,25 +1755,27 @@ bool OwnerBodyBindingProjection::verify(
       return false;
     }
     if (node.kind() == DetachedModuleBodyNodeKind::Syntax &&
-        isVerifierVariableBindingPattern(node, hasVariableDeclaratorAncestor)) {
+        isVerifierBindingPattern(node, introducer)) {
       auto name = node.identifierField(0);
       auto scope = verifierNodeScope(ZC_ASSERT_NONNULL(path), nodeScopes);
       if (name == zc::none || scope == zc::none) { return false; }
-      auto key = OwnerLocalBindingKey::from(
-          owner.owner().clone(), ZC_ASSERT_NONNULL(path).clone(), OwnerLocalBindingNamespace::Value,
-          OwnerLocalBindingKind::Local, ZC_ASSERT_NONNULL(name).clone());
+      const auto bindingKind = bindingKindForIntroducer(introducer);
+      const auto activation = activationForIntroducer(introducer);
+      auto key = OwnerLocalBindingKey::from(owner.owner().clone(), ZC_ASSERT_NONNULL(path).clone(),
+                                            OwnerLocalBindingNamespace::Value, bindingKind,
+                                            ZC_ASSERT_NONNULL(name).clone());
       if (key == zc::none) { return false; }
-      auto fact = StableOwnerLocalBindingFact::from(
-          owner.clone(), zc::mv(ZC_ASSERT_NONNULL(key)), OwnerLocalBindingKind::Local,
-          zc::mv(ZC_ASSERT_NONNULL(name)), Namespace::Value, zc::mv(ZC_ASSERT_NONNULL(scope)),
-          DefinitionActivation::ExpressionIntroduction);
+      auto fact = StableOwnerLocalBindingFact::from(owner.clone(), zc::mv(ZC_ASSERT_NONNULL(key)),
+                                                    bindingKind, zc::mv(ZC_ASSERT_NONNULL(name)),
+                                                    Namespace::Value,
+                                                    zc::mv(ZC_ASSERT_NONNULL(scope)), activation);
       if (fact == zc::none) { return false; }
       expected.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
     }
     if (node.kind() == DetachedModuleBodyNodeKind::Syntax && node.childCount() != 0) {
       pending.add(VerifierBindingPendingNode{zc::mv(ZC_ASSERT_NONNULL(path)),
-                                             ZC_ASSERT_NONNULL(syntaxKind),
-                                             hasVariableDeclaratorAncestor, node.childCount(), 0});
+                                             ZC_ASSERT_NONNULL(syntaxKind), introducer,
+                                             node.childCount(), 0});
     }
   }
   sortVerifierCanonical(expected);
