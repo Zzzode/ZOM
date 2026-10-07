@@ -1401,6 +1401,21 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 // admitted slice.
                 return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                              statementIndex);
+              case mir::MirRvalueKind::ExtractField: {
+                if (actual.kind() != StatementKind::ExtractField) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                const auto& extract = assignment.value.extractFieldValue();
+                if (extract.source.kind() == mir::MirOperandKind::Constant ||
+                    extract.source.place().projections().size() != 0 ||
+                    actual.sourceOrdinal() != extract.source.place().local().ordinal() ||
+                    actual.fieldIndex() != extract.fieldIndex) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
             }
             ++lirStatement;
             break;

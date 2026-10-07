@@ -247,6 +247,8 @@ MirRvalue::MirRvalue(MirEraseRvalue&& value) noexcept : value(zc::mv(value)) {}
 
 MirRvalue::MirRvalue(MirErrorUnionRvalue&& value) noexcept : value(zc::mv(value)) {}
 
+MirRvalue::MirRvalue(MirExtractFieldRvalue&& value) noexcept : value(zc::mv(value)) {}
+
 MirRvalue MirRvalue::use(MirOperand&& operand) noexcept {
   return MirRvalue(MirUseRvalue{zc::mv(operand)});
 }
@@ -278,6 +280,11 @@ MirRvalue MirRvalue::errorUnion(identity::SemanticTypeId unionType,
   return MirRvalue(MirErrorUnionRvalue{unionType, successType, residualType, tag, zc::mv(payload)});
 }
 
+MirRvalue MirRvalue::extractField(MirOperand&& source, uint32_t fieldIndex,
+                                  identity::SemanticTypeId resultType) noexcept {
+  return MirRvalue(MirExtractFieldRvalue{zc::mv(source), fieldIndex, resultType});
+}
+
 MirRvalue MirRvalue::clone() const {
   if (value.is<MirUseRvalue>()) return use(value.get<MirUseRvalue>().operand.clone());
   if (value.is<MirComparisonRvalue>()) {
@@ -300,6 +307,10 @@ MirRvalue MirRvalue::clone() const {
                                  errorUnion.residualType, errorUnion.tag,
                                  errorUnion.payload.clone());
   }
+  if (value.is<MirExtractFieldRvalue>()) {
+    const auto& extract = value.get<MirExtractFieldRvalue>();
+    return MirRvalue::extractField(extract.source.clone(), extract.fieldIndex, extract.resultType);
+  }
   const auto& aggregate = value.get<MirNominalAggregateRvalue>();
   zc::Vector<MirNominalAggregateElement> elements;
   for (const auto& element : aggregate.elements) {
@@ -314,6 +325,7 @@ MirRvalueKind MirRvalue::kind() const noexcept {
   if (value.is<MirArithmeticRvalue>()) return MirRvalueKind::Arithmetic;
   if (value.is<MirEraseRvalue>()) return MirRvalueKind::Erase;
   if (value.is<MirErrorUnionRvalue>()) return MirRvalueKind::ErrorUnion;
+  if (value.is<MirExtractFieldRvalue>()) return MirRvalueKind::ExtractField;
   return MirRvalueKind::NominalAggregate;
 }
 
@@ -335,6 +347,10 @@ const MirEraseRvalue& MirRvalue::eraseValue() const { return value.get<MirEraseR
 
 const MirErrorUnionRvalue& MirRvalue::errorUnionValue() const {
   return value.get<MirErrorUnionRvalue>();
+}
+
+const MirExtractFieldRvalue& MirRvalue::extractFieldValue() const {
+  return value.get<MirExtractFieldRvalue>();
 }
 
 MirStatement::MirStatement(MirAssignmentStatement&& value,
@@ -898,6 +914,12 @@ bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
            encodeType(encoder, errorUnion.successType, semanticTypes) &&
            encodeType(encoder, errorUnion.residualType, semanticTypes) &&
            encodeOperand(encoder, errorUnion.payload, module, identities, semanticTypes);
+  }
+  if (value.kind() == MirRvalueKind::ExtractField) {
+    const auto& extract = value.extractFieldValue();
+    encoder.encodeUint32(extract.fieldIndex);
+    return encodeOperand(encoder, extract.source, module, identities, semanticTypes) &&
+           encodeType(encoder, extract.resultType, semanticTypes);
   }
   const auto& aggregate = value.nominalAggregateValue();
   if (!encodeDefinition(encoder, aggregate.definition, identities) ||

@@ -159,6 +159,10 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
     }
     return validOperand(function, errorUnion.payload);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::ExtractField) {
+    const auto& extract = rvalue.extractFieldValue();
+    return extract.resultType.isValid() && validOperand(function, extract.source);
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {

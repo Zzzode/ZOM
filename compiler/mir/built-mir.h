@@ -233,7 +233,8 @@ enum class MirRvalueKind : uint8_t {
   Comparison = 0x03,
   Arithmetic = 0x04,
   Erase = 0x05,
-  ErrorUnion = 0x06
+  ErrorUnion = 0x06,
+  ExtractField = 0x07
 };
 
 /// \brief Closed comparison operator produced by primitive comparison lowering.
@@ -336,6 +337,20 @@ struct MirErrorUnionRvalue final {
   MirOperand payload;
 };
 
+/// \brief Field extraction rvalue for aggregate-typed operands.
+///
+/// Extracts one field from an aggregate-typed source operand by zero-based
+/// field index. This is used for error-union tag/payload extraction (where
+/// the fields are implicit, not named) and for enum downcast payload
+/// extraction. The source must carry an aggregate type; the result type is
+/// the semantic type of the extracted field. These bytes flow through
+/// `encodeRvalue`; changing a field is a codec change.
+struct MirExtractFieldRvalue final {
+  MirOperand source;
+  uint32_t fieldIndex;
+  identity::SemanticTypeId resultType;
+};
+
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
 public:
@@ -359,6 +374,8 @@ public:
                                            identity::SemanticTypeId successType,
                                            identity::SemanticTypeId residualType, uint8_t tag,
                                            MirOperand&& payload) noexcept;
+  ZC_NODISCARD static MirRvalue extractField(MirOperand&& source, uint32_t fieldIndex,
+                                             identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
@@ -367,6 +384,7 @@ public:
   ZC_NODISCARD const MirArithmeticRvalue& arithmeticValue() const;
   ZC_NODISCARD const MirEraseRvalue& eraseValue() const;
   ZC_NODISCARD const MirErrorUnionRvalue& errorUnionValue() const;
+  ZC_NODISCARD const MirExtractFieldRvalue& extractFieldValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
@@ -375,8 +393,9 @@ private:
   explicit MirRvalue(MirArithmeticRvalue&& value) noexcept;
   explicit MirRvalue(MirEraseRvalue&& value) noexcept;
   explicit MirRvalue(MirErrorUnionRvalue&& value) noexcept;
+  explicit MirRvalue(MirExtractFieldRvalue&& value) noexcept;
   zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue,
-            MirEraseRvalue, MirErrorUnionRvalue>
+            MirEraseRvalue, MirErrorUnionRvalue, MirExtractFieldRvalue>
       value;
 };
 
