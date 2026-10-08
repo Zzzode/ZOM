@@ -443,6 +443,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-loops-consumer/Zom.toml::nested_loops_consumer::nested_loops_consumer::9"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/labeled-break-consumer/Zom.toml::labeled_break_consumer::labeled_break_consumer::1"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/labeled-continue-consumer/Zom.toml::labeled_continue_consumer::labeled_continue_consumer::3"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"

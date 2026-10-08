@@ -602,6 +602,14 @@ struct PendingNestedForLoopAccumulatorReturn final {
   ast::NodeId innerLoopNode{};
   /// The AST ReturnStmt node of the trailing scalar return.
   ast::NodeId returnNode{};
+  /// The inner loop's trailing break source span, when present.
+  zc::Maybe<identity::SourceSpan> innerBreakSpan;
+  /// The inner loop's trailing continue source span, when present.
+  zc::Maybe<identity::SourceSpan> innerContinueSpan;
+  /// True when the inner trailing break targets the outer loop (labeled break).
+  bool innerBreakTargetsEnclosing = false;
+  /// True when the inner trailing continue targets the outer loop (labeled continue).
+  bool innerContinueTargetsEnclosing = false;
 };
 
 // One receiver field-arithmetic return: `return this.<field> OP

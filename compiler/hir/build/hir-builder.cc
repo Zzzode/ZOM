@@ -9365,6 +9365,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           size_t returnTypeSlot = 0;
           ZC_IF_SOME(index, returnTypeIndex) { returnTypeSlot = index; }
           const auto returnType = facts.nodeTypes().entries()[returnTypeSlot].value;
+          // Resolve the inner loop's trailing break/continue spans and
+          // determine whether a labeled break/continue targets the outer
+          // loop. The binder has already validated the label; in the
+          // two-level nested accumulator slice, a labeled break/continue
+          // in the inner body can only target the outer loop.
+          zc::Maybe<identity::SourceSpan> innerBreakSpan;
+          zc::Maybe<identity::SourceSpan> innerContinueSpan;
+          bool innerBreakTargetsEnclosing = false;
+          bool innerContinueTargetsEnclosing = false;
+          if (shape.nestedForLoopInnerBreak) {
+            innerBreakSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedForLoopInnerBreak).range);
+            const auto labelWord =
+                tree.node(shape.nestedForLoopInnerBreak).payload.words[ast::kBreakStmtLabelWord];
+            if (labelWord != 0) { innerBreakTargetsEnclosing = true; }
+          }
+          if (shape.nestedForLoopInnerContinue) {
+            innerContinueSpan =
+                bound.parsedModule().spanFor(tree.node(shape.nestedForLoopInnerContinue).range);
+            const auto labelWord = tree.node(shape.nestedForLoopInnerContinue)
+                                       .payload.words[ast::kContinueStatementLabelWord];
+            if (labelWord != 0) { innerContinueTargetsEnclosing = true; }
+          }
           nestedForLoopAccumulatorReturn = PendingNestedForLoopAccumulatorReturn{
               zc::mv(ZC_ASSERT_NONNULL(outerCondition)),
               zc::mv(ZC_ASSERT_NONNULL(outerConditionLeft)),
@@ -9392,7 +9415,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                           ZC_ASSERT_NONNULL(returnSpan).clone()},
               shape.forLoopStatement,
               shape.nestedForLoopInnerStatement,
-              shape.returnStatement};
+              shape.returnStatement,
+              zc::mv(innerBreakSpan),
+              zc::mv(innerContinueSpan),
+              innerBreakTargetsEnclosing,
+              innerContinueTargetsEnclosing};
         }
       }
       // The function's semantic result type is the success type.  The `?!`

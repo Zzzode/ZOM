@@ -4724,11 +4724,18 @@ bool validNestedForLoopAccumulatorReturnFunction(
       innerEntry.terminator.gotoValue().target != blockId(4) || innerHeader.id != blockId(4) ||
       innerHeader.sourceScope != scopeId(1) || innerHeader.statements.size() != 0 ||
       innerHeader.terminator.kind() != MirTerminatorKind::SwitchInt || innerBody.id != blockId(5) ||
-      innerBody.sourceScope != scopeId(1) || innerBody.statements.size() != 2 + accumulatorCount ||
+      innerBody.sourceScope != scopeId(1) ||
+      innerBody.statements.size() !=
+          (innerLoop.breakTargetsEnclosing || innerLoop.continueTargetsEnclosing
+               ? accumulatorCount
+               : 2 + accumulatorCount) ||
       innerBody.terminator.kind() != MirTerminatorKind::Goto ||
-      innerBody.terminator.gotoValue().target != blockId(4) || outerCont.id != blockId(6) ||
-      outerCont.sourceScope != scopeId(1) || outerCont.statements.size() != 2 ||
-      outerCont.terminator.kind() != MirTerminatorKind::Goto ||
+      innerBody.terminator.gotoValue().target !=
+          (innerLoop.breakTargetsEnclosing
+               ? blockId(7)
+               : (innerLoop.continueTargetsEnclosing ? blockId(6) : blockId(4))) ||
+      outerCont.id != blockId(6) || outerCont.sourceScope != scopeId(1) ||
+      outerCont.statements.size() != 2 || outerCont.terminator.kind() != MirTerminatorKind::Goto ||
       outerCont.terminator.gotoValue().target != blockId(2) || exit.id != blockId(7) ||
       exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
       exit.terminator.kind() != MirTerminatorKind::Return) {
@@ -11657,116 +11664,132 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                                 Overwrite,
                                                                             bw.sourceSpan.clone()));
                                                                       }
-                                                                      // Inner
-                                                                      // update
-                                                                      // write.
-                                                                      zc::Vector<MirProjection>
-                                                                          innerUwLeftProjections;
-                                                                      auto innerUwLeftOperand = placeUse(
-                                                                          proofs, copy,
-                                                                          MirPlace(
-                                                                              innerInitLocalId,
-                                                                              innerInit.type,
-                                                                              zc::mv(
-                                                                                  innerUwLeftProjections),
-                                                                              innerInit.type));
-                                                                      if (innerUwLeftOperand ==
-                                                                          zc::none) {
-                                                                        return rejectMir<
-                                                                            BuiltMirCandidate>(
-                                                                            ir::IrFailurePhase::
-                                                                                MirConstruction,
-                                                                            ir::IrFailureKind::
-                                                                                InvalidFact,
-                                                                            module,
-                                                                            declaration.definition,
-                                                                            identities,
-                                                                            static_cast<uint32_t>(
-                                                                                pending.size() +
-                                                                                1));
+                                                                      // A labeled break/continue
+                                                                      // targeting the outer loop
+                                                                      // skips the inner update
+                                                                      // write and re-compare
+                                                                      // entirely.
+                                                                      const bool innerBreakTargetsOuter =
+                                                                          innerLoopValue
+                                                                              .breakTargetsEnclosing;
+                                                                      const bool
+                                                                          innerContinueTargetsOuter =
+                                                                              innerLoopValue
+                                                                                  .continueTargetsEnclosing;
+                                                                      if (!innerBreakTargetsOuter &&
+                                                                          !innerContinueTargetsOuter) {
+                                                                        // Inner
+                                                                        // update
+                                                                        // write.
+                                                                        zc::Vector<MirProjection>
+                                                                            innerUwLeftProjections;
+                                                                        auto innerUwLeftOperand = placeUse(
+                                                                            proofs, copy,
+                                                                            MirPlace(
+                                                                                innerInitLocalId,
+                                                                                innerInit.type,
+                                                                                zc::mv(
+                                                                                    innerUwLeftProjections),
+                                                                                innerInit.type));
+                                                                        if (innerUwLeftOperand ==
+                                                                            zc::none) {
+                                                                          return rejectMir<
+                                                                              BuiltMirCandidate>(
+                                                                              ir::IrFailurePhase::
+                                                                                  MirConstruction,
+                                                                              ir::IrFailureKind::
+                                                                                  InvalidFact,
+                                                                              module,
+                                                                              declaration
+                                                                                  .definition,
+                                                                              identities,
+                                                                              static_cast<uint32_t>(
+                                                                                  pending.size() +
+                                                                                  1));
+                                                                        }
+                                                                        zc::Vector<MirProjection>
+                                                                            innerUwOverwriteProjections;
+                                                                        innerBodyStatements.add(MirStatement::assign(
+                                                                            MirPlace(
+                                                                                innerInitLocalId,
+                                                                                innerInit.type,
+                                                                                zc::mv(
+                                                                                    innerUwOverwriteProjections),
+                                                                                innerInit.type),
+                                                                            MirRvalue::arithmetic(
+                                                                                ZC_ASSERT_NONNULL(
+                                                                                    innerWriteOp),
+                                                                                zc::mv(ZC_ASSERT_NONNULL(
+                                                                                    innerUwLeftOperand)),
+                                                                                MirOperand::constant(
+                                                                                    innerWriteRhs
+                                                                                        .type,
+                                                                                    innerWriteRhs
+                                                                                        .value
+                                                                                        .clone()),
+                                                                                innerWriteValue
+                                                                                    .type),
+                                                                            MirInitializationKind::
+                                                                                Overwrite,
+                                                                            innerWrite.sourceSpan
+                                                                                .clone()));
+                                                                        // Recompute
+                                                                        // inner
+                                                                        // condition.
+                                                                        zc::Vector<MirProjection>
+                                                                            innerBodyCondLeftProjections;
+                                                                        auto innerBodyCondLeftOperand =
+                                                                            placeUse(
+                                                                                proofs, copy,
+                                                                                MirPlace(
+                                                                                    innerInitLocalId,
+                                                                                    innerInit.type,
+                                                                                    zc::mv(
+                                                                                        innerBodyCondLeftProjections),
+                                                                                    innerInit
+                                                                                        .type));
+                                                                        if (innerBodyCondLeftOperand ==
+                                                                            zc::none) {
+                                                                          return rejectMir<
+                                                                              BuiltMirCandidate>(
+                                                                              ir::IrFailurePhase::
+                                                                                  MirConstruction,
+                                                                              ir::IrFailureKind::
+                                                                                  InvalidFact,
+                                                                              module,
+                                                                              declaration
+                                                                                  .definition,
+                                                                              identities,
+                                                                              static_cast<uint32_t>(
+                                                                                  pending.size() +
+                                                                                  1));
+                                                                        }
+                                                                        zc::Vector<MirProjection>
+                                                                            innerBodyTempProjections;
+                                                                        innerBodyStatements.add(MirStatement::assign(
+                                                                            MirPlace(
+                                                                                innerCondTempId,
+                                                                                innerCond.type,
+                                                                                zc::mv(
+                                                                                    innerBodyTempProjections),
+                                                                                innerCond.type),
+                                                                            MirRvalue::comparison(
+                                                                                ZC_ASSERT_NONNULL(
+                                                                                    innerCmpOp),
+                                                                                zc::mv(ZC_ASSERT_NONNULL(
+                                                                                    innerBodyCondLeftOperand)),
+                                                                                MirOperand::constant(
+                                                                                    innerCondRhs
+                                                                                        .type,
+                                                                                    innerCondRhs
+                                                                                        .value
+                                                                                        .clone()),
+                                                                                innerCond.type),
+                                                                            MirInitializationKind::
+                                                                                Overwrite,
+                                                                            innerCond.sourceSpan
+                                                                                .clone()));
                                                                       }
-                                                                      zc::Vector<MirProjection>
-                                                                          innerUwOverwriteProjections;
-                                                                      innerBodyStatements.add(
-                                                                          MirStatement::assign(
-                                                                              MirPlace(
-                                                                                  innerInitLocalId,
-                                                                                  innerInit.type,
-                                                                                  zc::mv(
-                                                                                      innerUwOverwriteProjections),
-                                                                                  innerInit.type),
-                                                                              MirRvalue::arithmetic(
-                                                                                  ZC_ASSERT_NONNULL(
-                                                                                      innerWriteOp),
-                                                                                  zc::mv(ZC_ASSERT_NONNULL(
-                                                                                      innerUwLeftOperand)),
-                                                                                  MirOperand::constant(
-                                                                                      innerWriteRhs
-                                                                                          .type,
-                                                                                      innerWriteRhs
-                                                                                          .value
-                                                                                          .clone()),
-                                                                                  innerWriteValue
-                                                                                      .type),
-                                                                              MirInitializationKind::
-                                                                                  Overwrite,
-                                                                              innerWrite.sourceSpan
-                                                                                  .clone()));
-                                                                      // Recompute
-                                                                      // inner
-                                                                      // condition.
-                                                                      zc::Vector<MirProjection>
-                                                                          innerBodyCondLeftProjections;
-                                                                      auto innerBodyCondLeftOperand =
-                                                                          placeUse(
-                                                                              proofs, copy,
-                                                                              MirPlace(
-                                                                                  innerInitLocalId,
-                                                                                  innerInit.type,
-                                                                                  zc::mv(
-                                                                                      innerBodyCondLeftProjections),
-                                                                                  innerInit.type));
-                                                                      if (innerBodyCondLeftOperand ==
-                                                                          zc::none) {
-                                                                        return rejectMir<
-                                                                            BuiltMirCandidate>(
-                                                                            ir::IrFailurePhase::
-                                                                                MirConstruction,
-                                                                            ir::IrFailureKind::
-                                                                                InvalidFact,
-                                                                            module,
-                                                                            declaration.definition,
-                                                                            identities,
-                                                                            static_cast<uint32_t>(
-                                                                                pending.size() +
-                                                                                1));
-                                                                      }
-                                                                      zc::Vector<MirProjection>
-                                                                          innerBodyTempProjections;
-                                                                      innerBodyStatements.add(
-                                                                          MirStatement::assign(
-                                                                              MirPlace(
-                                                                                  innerCondTempId,
-                                                                                  innerCond.type,
-                                                                                  zc::mv(
-                                                                                      innerBodyTempProjections),
-                                                                                  innerCond.type),
-                                                                              MirRvalue::comparison(
-                                                                                  ZC_ASSERT_NONNULL(
-                                                                                      innerCmpOp),
-                                                                                  zc::mv(ZC_ASSERT_NONNULL(
-                                                                                      innerBodyCondLeftOperand)),
-                                                                                  MirOperand::constant(
-                                                                                      innerCondRhs
-                                                                                          .type,
-                                                                                      innerCondRhs
-                                                                                          .value
-                                                                                          .clone()),
-                                                                                  innerCond.type),
-                                                                              MirInitializationKind::
-                                                                                  Overwrite,
-                                                                              innerCond.sourceSpan
-                                                                                  .clone()));
                                                                       // bb6
                                                                       // (inner
                                                                       // exit
@@ -12016,7 +12039,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                           zc::mv(
                                                                               innerBodyStatements),
                                                                           MirTerminator::gotoTarget(
-                                                                              blockId(4),
+                                                                              innerBreakTargetsOuter
+                                                                                  ? blockId(7)
+                                                                                  : (innerContinueTargetsOuter
+                                                                                         ? blockId(
+                                                                                               6)
+                                                                                         : blockId(
+                                                                                               4)),
                                                                               innerLoopValue
                                                                                   .sourceSpan
                                                                                   .clone())});

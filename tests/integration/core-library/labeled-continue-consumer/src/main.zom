@@ -1,0 +1,15 @@
+// Labeled continue fixture: a nested for-loop accumulator whose inner body
+// continues the outer loop after the first inner iteration, exercising the
+// labeled continue path through the seven-block nested-loop CFG. Each outer
+// iteration contributes exactly 1 to the sum; with 3 outer iterations the
+// sum is 3.
+fn entry() -> i32 {
+  mut sum = 0;
+  outer: for (let i = 0; i < 3; i = i + 1) {
+    for (let j = 0; j < 3; j = j + 1) {
+      sum = sum + 1;
+      continue outer;
+    }
+  }
+  return sum;
+}

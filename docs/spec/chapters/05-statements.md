@@ -432,7 +432,9 @@ for (let id = <scalar-literal>; <ident> <cmp> <ident|literal>; <ident> = <primit
   optionally followed by one trailing unlabeled `break;` or `continue;`; one
   leading if-guarded break `if (<ident|lit> <cmp> <ident|lit>) { break; }`
   followed by zero or more admitted loop-body writes; or a sole nested admitted
-  `for` loop.
+  `for` loop whose inner body is zero or more admitted loop-body writes
+  optionally followed by one trailing labeled `break <ident>;` or
+  `continue <ident>;` whose label resolves to the outer labeled `for` loop.
 
 For example:
 
@@ -446,11 +448,15 @@ for (let i = 0; i < 10; i = i + 1) {
 The loop desugars downstream to `let id = <literal>; while (<ident> <cmp>
 <literal>) { <body> <ident> = <binary>; }` and lowers to a reducible four-block
 Built MIR CFG — a five-block CFG when the body leads with an if-guarded break,
-and a seven-block CFG for the nested-loop shape. Every other `for` form — a
-`mut` or expression initializer, a missing or non-comparison condition, a
-non-assignment update, or a body statement outside the list above — has no
-admitted semantic contract yet and is rejected with `ZOM4096`. `do-while` and
-`for-in` loops likewise remain unadmitted and are rejected with `ZOM4096`.
+and a seven-block CFG for the nested-loop shape. In the nested-loop shape, a
+labeled `break outer;` in the inner body routes the inner-body terminator
+directly to the outer exit block, and a labeled `continue outer;` routes it to
+the outer continuation block, skipping the inner update write and condition
+re-comparison in both cases. Every other `for` form — a `mut` or expression
+initializer, a missing or non-comparison condition, a non-assignment update, or
+a body statement outside the list above — has no admitted semantic contract yet
+and is rejected with `ZOM4096`. `do-while` and `for-in` loops likewise remain
+unadmitted and are rejected with `ZOM4096`.
 
 ### `for-in` Loops
 
@@ -530,12 +536,15 @@ to an unlabeled loop or `match` target.
 
 The admitted slice is an unlabeled `break;` appearing as the trailing statement
 of an admitted `while` or `for` loop body, or as the sole statement of the
-`if` guard in an admitted if-guarded break. A `break;` outside an admitted loop
-body, and every labeled `break <ident>;`, parses but has no admitted semantic
-contract through the ownership surface yet and is rejected with `ZOM4096`
-(control-flow syntax has no admitted semantic contract). The labeled-lookup
-semantics above describes the intended contract, not the currently admitted
-slice.
+`if` guard in an admitted if-guarded break, or a labeled `break <ident>;`
+appearing as the trailing statement of the inner loop body in an admitted
+nested for-loop accumulator whose label resolves to the outer labeled `for`
+loop. A `break;` outside an admitted loop body, and a labeled `break <ident>;`
+outside the nested for-loop accumulator shape, parses but has no admitted
+semantic contract through the ownership surface yet and is rejected with
+`ZOM4096` (control-flow syntax has no admitted semantic contract). The
+labeled-lookup semantics above describes the intended contract for the
+remaining unadmitted shapes.
 
 ### `continue` Statement
 
@@ -571,12 +580,15 @@ callable boundaries as `break` and never falls back to an unlabeled loop.
 #### Admitted continue shape
 
 The admitted slice is an unlabeled `continue;` appearing as the trailing
-statement of an admitted `while` or `for` loop body. A `continue;` outside an
-admitted loop body, and every labeled `continue <ident>;`, parses but has no
-admitted semantic contract through the ownership surface yet and is rejected
-with `ZOM4096` (control-flow syntax has no admitted semantic contract). The
-labeled-lookup semantics above describes the intended contract, not the
-currently admitted slice.
+statement of an admitted `while` or `for` loop body, or a labeled
+`continue <ident>;` appearing as the trailing statement of the inner loop body
+in an admitted nested for-loop accumulator whose label resolves to the outer
+labeled `for` loop. A `continue;` outside an admitted loop body, and a labeled
+`continue <ident>;` outside the nested for-loop accumulator shape, parses but
+has no admitted semantic contract through the ownership surface yet and is
+rejected with `ZOM4096` (control-flow syntax has no admitted semantic
+contract). The labeled-lookup semantics above describes the intended contract
+for the remaining unadmitted shapes.
 
 ### `return` Statement
 

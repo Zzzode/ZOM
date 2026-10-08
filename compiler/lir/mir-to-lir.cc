@@ -2373,16 +2373,29 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   // Overwrite)...; Assign(innerInit = Arithmetic(op, copy(innerInit), constant),
   // Overwrite); Assign(innerTemp = Comparison(op, copy(innerInit), constant),
   // Overwrite); Goto(innerHeader).
-  const size_t expectedInnerBodySize = 2 + accCount;
+  // A labeled break/continue targeting the outer loop skips the inner update
+  // write and re-compare entirely, leaving only the accumulator writes. The
+  // terminator target distinguishes break (exit) from continue (outerCont).
+  const bool innerBreakTargetsOuter = innerBody.statements.size() == accCount &&
+                                      innerBody.terminator.kind() == mir::MirTerminatorKind::Goto &&
+                                      innerBody.terminator.gotoValue().target == exit.id;
+  const bool innerContinueTargetsOuter =
+      innerBody.statements.size() == accCount &&
+      innerBody.terminator.kind() == mir::MirTerminatorKind::Goto &&
+      innerBody.terminator.gotoValue().target == outerCont.id;
+  const bool innerTargetsEnclosing = innerBreakTargetsOuter || innerContinueTargetsOuter;
+  const size_t expectedInnerBodySize = innerTargetsEnclosing ? accCount : 2 + accCount;
   if (innerBody.statements.size() != expectedInnerBodySize) { return zc::none; }
   for (size_t k = 0; k < accCount; ++k) {
     if (innerBody.statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
   }
-  if (innerBody.statements[accCount].kind() != mir::MirStatementKind::Assign ||
-      innerBody.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
-      innerBody.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      innerBody.terminator.gotoValue().target != innerHeader.id) {
-    return zc::none;
+  if (!innerTargetsEnclosing) {
+    if (innerBody.statements[accCount].kind() != mir::MirStatementKind::Assign ||
+        innerBody.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
+        innerBody.terminator.kind() != mir::MirTerminatorKind::Goto ||
+        innerBody.terminator.gotoValue().target != innerHeader.id) {
+      return zc::none;
+    }
   }
   // Inner body accumulator arithmetic.
   zc::Vector<zc::Maybe<ArithmeticOp>> accArithOps;
@@ -2423,50 +2436,54 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
     accArithOps.add(zc::mv(accArithOp));
     accArithRhsIsLiteral.add(rhsIsLiteral);
   }
-  // Inner body update arithmetic.
-  const auto& innerUpdateAssign = innerBody.statements[accCount].assignmentValue();
-  if (innerUpdateAssign.destination.local() != innerInitDecl.id ||
-      innerUpdateAssign.destination.projections().size() != 0 ||
-      innerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
-      innerUpdateAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
-    return zc::none;
-  }
-  const auto& innerArithmetic = innerUpdateAssign.value.arithmeticValue();
-  auto innerArithOp = lirArithmeticOpFor(innerArithmetic.op);
-  if (innerArithOp == zc::none) { return zc::none; }
-  if (innerArithmetic.resultType != innerInitDecl.type) { return zc::none; }
-  if (innerArithmetic.left.kind() != mir::MirOperandKind::Copy ||
-      innerArithmetic.left.place().local() != innerInitDecl.id ||
-      innerArithmetic.left.place().projections().size() != 0) {
-    return zc::none;
-  }
-  if (innerArithmetic.right.kind() != mir::MirOperandKind::Constant ||
-      innerArithmetic.right.constantValue().type != innerInitDecl.type) {
-    return zc::none;
-  }
-  auto innerArithRightLowered = lirOperandFor(innerArithmetic.right, resultCarrierValue);
-  if (innerArithRightLowered == zc::none) { return zc::none; }
-  // Inner body condition recompute.
-  const auto& innerBodyCondAssign = innerBody.statements[accCount + 1].assignmentValue();
-  if (innerBodyCondAssign.destination.local() != innerTempDecl.id ||
-      innerBodyCondAssign.destination.projections().size() != 0 ||
-      innerBodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
-      innerBodyCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
-    return zc::none;
-  }
-  const auto& innerBodyComparison = innerBodyCondAssign.value.comparisonValue();
-  if (innerBodyComparison.op != innerComparison.op ||
-      innerBodyComparison.resultType != innerTempDecl.type) {
-    return zc::none;
-  }
-  if (innerBodyComparison.left.kind() != mir::MirOperandKind::Copy ||
-      innerBodyComparison.left.place().local() != innerInitDecl.id ||
-      innerBodyComparison.left.place().projections().size() != 0) {
-    return zc::none;
-  }
-  if (innerBodyComparison.right.kind() != mir::MirOperandKind::Constant ||
-      innerBodyComparison.right.constantValue().type != innerInitDecl.type) {
-    return zc::none;
+  // Inner body update arithmetic (skipped for labeled break/continue).
+  zc::Maybe<ArithmeticOp> innerArithOp;
+  zc::Maybe<Operand> innerArithRightLowered;
+  if (!innerTargetsEnclosing) {
+    const auto& innerUpdateAssign = innerBody.statements[accCount].assignmentValue();
+    if (innerUpdateAssign.destination.local() != innerInitDecl.id ||
+        innerUpdateAssign.destination.projections().size() != 0 ||
+        innerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
+        innerUpdateAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+      return zc::none;
+    }
+    const auto& innerArithmetic = innerUpdateAssign.value.arithmeticValue();
+    innerArithOp = lirArithmeticOpFor(innerArithmetic.op);
+    if (innerArithOp == zc::none) { return zc::none; }
+    if (innerArithmetic.resultType != innerInitDecl.type) { return zc::none; }
+    if (innerArithmetic.left.kind() != mir::MirOperandKind::Copy ||
+        innerArithmetic.left.place().local() != innerInitDecl.id ||
+        innerArithmetic.left.place().projections().size() != 0) {
+      return zc::none;
+    }
+    if (innerArithmetic.right.kind() != mir::MirOperandKind::Constant ||
+        innerArithmetic.right.constantValue().type != innerInitDecl.type) {
+      return zc::none;
+    }
+    innerArithRightLowered = lirOperandFor(innerArithmetic.right, resultCarrierValue);
+    if (innerArithRightLowered == zc::none) { return zc::none; }
+    // Inner body condition recompute.
+    const auto& innerBodyCondAssign = innerBody.statements[accCount + 1].assignmentValue();
+    if (innerBodyCondAssign.destination.local() != innerTempDecl.id ||
+        innerBodyCondAssign.destination.projections().size() != 0 ||
+        innerBodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
+        innerBodyCondAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      return zc::none;
+    }
+    const auto& innerBodyComparison = innerBodyCondAssign.value.comparisonValue();
+    if (innerBodyComparison.op != innerComparison.op ||
+        innerBodyComparison.resultType != innerTempDecl.type) {
+      return zc::none;
+    }
+    if (innerBodyComparison.left.kind() != mir::MirOperandKind::Copy ||
+        innerBodyComparison.left.place().local() != innerInitDecl.id ||
+        innerBodyComparison.left.place().projections().size() != 0) {
+      return zc::none;
+    }
+    if (innerBodyComparison.right.kind() != mir::MirOperandKind::Constant ||
+        innerBodyComparison.right.constantValue().type != innerInitDecl.type) {
+      return zc::none;
+    }
   }
 
   // Outer continuation: Assign(outerInit = Arithmetic(op, copy(outerInit), constant),
@@ -2624,14 +2641,20 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
           Statement::arithmetic(accOrdinals[k], ZC_REQUIRE_NONNULL(accArithOps[k]),
                                 Operand::localUse(accOrdinals[k]), zc::mv(rhsOperand)));
     }
-    innerBodyStatements.add(Statement::arithmetic(
-        innerInitOrdinal, ZC_REQUIRE_NONNULL(innerArithOp), Operand::localUse(innerInitOrdinal),
-        zc::mv(ZC_REQUIRE_NONNULL(innerArithRightLowered))));
-    innerBodyStatements.add(Statement::compare(innerTempOrdinal, innerCmpOp,
-                                               Operand::localUse(innerInitOrdinal),
-                                               zc::mv(ZC_REQUIRE_NONNULL(innerCondRightLowered))));
+    LirBlockId innerBodyTarget =
+        innerBreakTargetsOuter ? ZC_REQUIRE_NONNULL(exitId)
+                               : (innerContinueTargetsOuter ? ZC_REQUIRE_NONNULL(outerContId)
+                                                            : ZC_REQUIRE_NONNULL(innerHeaderId));
+    if (!innerTargetsEnclosing) {
+      innerBodyStatements.add(Statement::arithmetic(
+          innerInitOrdinal, ZC_REQUIRE_NONNULL(innerArithOp), Operand::localUse(innerInitOrdinal),
+          zc::mv(ZC_REQUIRE_NONNULL(innerArithRightLowered))));
+      innerBodyStatements.add(
+          Statement::compare(innerTempOrdinal, innerCmpOp, Operand::localUse(innerInitOrdinal),
+                             zc::mv(ZC_REQUIRE_NONNULL(innerCondRightLowered))));
+    }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerBodyId), zc::mv(innerBodyStatements),
-                          Terminator::gotoBlock(ZC_REQUIRE_NONNULL(innerHeaderId))));
+                          Terminator::gotoBlock(innerBodyTarget)));
   }
   // bb6 outer continuation.
   {

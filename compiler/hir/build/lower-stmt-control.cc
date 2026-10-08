@@ -882,11 +882,14 @@ void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& fu
       nested.innerWrite.valueSpan.clone()});
   innerLoopStatements.add(innerWriteId);
 
-  // Inner loop statement.
+  // Inner loop statement. A labeled break/continue in the inner body targets
+  // the outer loop; the flags tell the MIR builder which terminator to emit.
   const HirNodeId innerLoopId = ctx.allocNode(nested.innerLoopNode);
-  ctx.addLoop(HirLoopStatement{innerLoopId, innerConditionId, zc::mv(innerLoopStatements),
-                               nested.innerCondition.type, HirValueCategory::Place,
-                               zc::mv(nested.innerLoopSpan), zc::none, zc::none});
+  ctx.addLoop(HirLoopStatement{
+      innerLoopId, innerConditionId, zc::mv(innerLoopStatements), nested.innerCondition.type,
+      HirValueCategory::Place, zc::mv(nested.innerLoopSpan), zc::mv(nested.innerBreakSpan),
+      zc::mv(nested.innerContinueSpan), HirNodeId{}, nested.innerBreakTargetsEnclosing,
+      nested.innerContinueTargetsEnclosing});
   outerLoopStatements.add(innerLocalId);
   outerLoopStatements.add(innerLoopId);
 

@@ -1984,6 +1984,15 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (forItem != zc::none) {
       ast::NodeId forStmt;
       ZC_IF_SOME(item, forItem) { forStmt = item; }
+      ast::NodeId labeledStmt{};
+      if (tree.node(forStmt).kind == ast::SyntaxKind::LabeledStatement) {
+        const ast::NodeId inner(
+            tree.node(forStmt).payload.words[ast::kLabeledStatementStatementWord]);
+        if (tree.contains(inner) && tree.node(inner).kind == ast::SyntaxKind::ForStmt) {
+          labeledStmt = forStmt;
+          forStmt = inner;
+        }
+      }
       if (tree.node(forStmt).kind == ast::SyntaxKind::ForStmt) {
         const size_t accumulatorCount = statements.size - 2;
         const auto& loop = tree.node(forStmt);
@@ -2088,17 +2097,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                   if (trailingKind != ast::SyntaxKind::BreakStmt &&
                       trailingKind != ast::SyntaxKind::ContinueStatement) {
                     bodyOk = false;
+                  } else if (trailingKind == ast::SyntaxKind::BreakStmt) {
+                    trailingBreak = trailingStmt;
                   } else {
-                    const auto labelWord = trailingKind == ast::SyntaxKind::BreakStmt
-                                               ? ast::kBreakStmtLabelWord
-                                               : ast::kContinueStatementLabelWord;
-                    if (tree.node(trailingStmt).payload.words[labelWord] != 0) {
-                      bodyOk = false;
-                    } else if (trailingKind == ast::SyntaxKind::BreakStmt) {
-                      trailingBreak = trailingStmt;
-                    } else {
-                      trailingContinue = trailingStmt;
-                    }
+                    trailingContinue = trailingStmt;
                   }
                 }
               }
@@ -2116,6 +2118,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                 shape.forLoopUpdate = update;
                 shape.forLoopBody = forBody;
                 shape.forLoopStatement = forStmt;
+                shape.forLoopLabeledStatement = labeledStmt;
                 shape.forLoopBodyBreak = trailingBreak;
                 shape.forLoopBodyContinue = trailingContinue;
                 if (hasGuardedBreak) {
@@ -2143,6 +2146,15 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (forItem != zc::none) {
       ast::NodeId forStmt;
       ZC_IF_SOME(item, forItem) { forStmt = item; }
+      ast::NodeId labeledStmt{};
+      if (tree.node(forStmt).kind == ast::SyntaxKind::LabeledStatement) {
+        const ast::NodeId inner(
+            tree.node(forStmt).payload.words[ast::kLabeledStatementStatementWord]);
+        if (tree.contains(inner) && tree.node(inner).kind == ast::SyntaxKind::ForStmt) {
+          labeledStmt = forStmt;
+          forStmt = inner;
+        }
+      }
       if (tree.node(forStmt).kind == ast::SyntaxKind::ForStmt) {
         const size_t accumulatorCount = statements.size - 2;
         const auto& loop = tree.node(forStmt);
@@ -2223,15 +2235,17 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                   const ast::NodeId innerBody(innerLoop.payload.words[ast::kForStmtBodyWord]);
                   if (tree.contains(innerInit) && tree.contains(innerCond) &&
                       tree.contains(innerUpdate) && tree.contains(innerBody)) {
-                    // The inner loop body has N statements: N accumulator
-                    // writes. The update write is in the for-loop header, not
-                    // the body.
+                    // The inner loop body has N or N+1 statements: N
+                    // accumulator writes, optionally followed by one trailing
+                    // break/continue (labeled or unlabeled). The update write
+                    // is in the for-loop header, not the body.
                     const auto& innerLoopBlock = tree.node(innerBody);
                     const ast::NodeList innerLoopStatements{
                         innerLoopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
                         innerLoopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
                     if (tree.contains(innerLoopStatements) &&
-                        innerLoopStatements.size == accumulatorCount) {
+                        (innerLoopStatements.size == accumulatorCount ||
+                         innerLoopStatements.size == accumulatorCount + 1)) {
                       zc::Vector<ast::NodeId> bodyWrites;
                       bool bodyOk = true;
                       for (size_t i = 0; i < accumulatorCount; ++i) {
@@ -2240,6 +2254,26 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                           break;
                         }
                         bodyWrites.add(tree.list(innerLoopStatements)[i]);
+                      }
+                      ast::NodeId innerBreak{};
+                      ast::NodeId innerContinue{};
+                      if (bodyOk && innerLoopStatements.size == accumulatorCount + 1) {
+                        auto trailingItem =
+                            statementItem(tree, tree.list(innerLoopStatements)[accumulatorCount]);
+                        if (trailingItem == zc::none) {
+                          bodyOk = false;
+                        } else {
+                          ast::NodeId trailingStmt;
+                          ZC_IF_SOME(item, trailingItem) { trailingStmt = item; }
+                          const auto trailingKind = tree.node(trailingStmt).kind;
+                          if (trailingKind == ast::SyntaxKind::BreakStmt) {
+                            innerBreak = trailingStmt;
+                          } else if (trailingKind == ast::SyntaxKind::ContinueStatement) {
+                            innerContinue = trailingStmt;
+                          } else {
+                            bodyOk = false;
+                          }
+                        }
                       }
                       if (bodyOk) {
                         FunctionReturnShape shape{};
@@ -2255,11 +2289,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                         shape.forLoopUpdate = update;
                         shape.forLoopBody = forBody;
                         shape.forLoopStatement = forStmt;
+                        shape.forLoopLabeledStatement = labeledStmt;
                         shape.nestedForLoopInnerInit = innerInit;
                         shape.nestedForLoopInnerCond = innerCond;
                         shape.nestedForLoopInnerUpdate = innerUpdate;
                         shape.nestedForLoopInnerBody = innerBody;
                         shape.nestedForLoopInnerStatement = innerForStmt;
+                        shape.nestedForLoopInnerBreak = innerBreak;
+                        shape.nestedForLoopInnerContinue = innerContinue;
                         return shape;
                       }
                     }
@@ -2326,9 +2363,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                          loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
       if (!tree.contains(loopStatements) || loopStatements.empty()) return zc::none;
       // The body is a sequence of write statements optionally followed by one
-      // trailing unlabeled `break;` or `continue;` (the bounded slice admits a
-      // break/continue only as the final statement). The write prefix feeds
-      // `localWrites`; the trailing break/continue node is recorded separately.
+      // trailing `break;` or `continue;` (labeled or unlabeled; the bounded
+      // slice admits a break/continue only as the final statement). The write
+      // prefix feeds `localWrites`; the trailing break/continue node is
+      // recorded separately.
       ast::NodeId trailingBreak{};
       ast::NodeId trailingContinue{};
       size_t writeCount = loopStatements.size;
@@ -2342,10 +2380,6 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         const auto kind = tree.node(writeStmt).kind;
         if (kind == ast::SyntaxKind::BreakStmt || kind == ast::SyntaxKind::ContinueStatement) {
           if (!isLast) return zc::none;
-          const auto labelWord = kind == ast::SyntaxKind::BreakStmt
-                                     ? ast::kBreakStmtLabelWord
-                                     : ast::kContinueStatementLabelWord;
-          if (tree.node(writeStmt).payload.words[labelWord] != 0) return zc::none;
           if (kind == ast::SyntaxKind::BreakStmt) {
             trailingBreak = writeStmt;
           } else {

@@ -420,6 +420,13 @@ struct HirLoopStatement final {
   zc::Maybe<identity::SourceSpan> breakSpan;
   zc::Maybe<identity::SourceSpan> continueSpan;
   HirNodeId breakCondition{};
+  /// True when the trailing break targets an enclosing loop (labeled break).
+  /// The MIR builder routes the body terminator to the enclosing loop's exit.
+  bool breakTargetsEnclosing = false;
+  /// True when the trailing continue targets an enclosing loop (labeled
+  /// continue). The MIR builder routes the body terminator to the enclosing
+  /// loop's header.
+  bool continueTargetsEnclosing = false;
 };
 
 /// \brief One scalar return statement in immutable semantic HIR.

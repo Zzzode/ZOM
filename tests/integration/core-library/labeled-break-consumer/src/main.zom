@@ -1,0 +1,13 @@
+// Labeled break fixture: a nested for-loop accumulator whose inner body breaks
+// the outer loop after the first inner iteration, exercising the labeled
+// break path through the seven-block nested-loop CFG. The sum is 1.
+fn entry() -> i32 {
+  mut sum = 0;
+  outer: for (let i = 0; i < 10; i = i + 1) {
+    for (let j = 0; j < 10; j = j + 1) {
+      sum = sum + 1;
+      break outer;
+    }
+  }
+  return sum;
+}

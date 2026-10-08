@@ -847,32 +847,28 @@ bool isAdmittedLoopBodyWrite(const ast::Tree& tree, ast::NodeId statement) {
 
 /// \brief Structurally admits one `while`-body trailing control-flow statement.
 ///
-/// The statement is an unlabeled `break;` or `continue;`. A labeled break or
-/// continue stays outside this slice. Structure only; the checker/HIR decide
-/// the loop exit and back-edge lowering.
+/// The statement is a `break;` or `continue;`, labeled or unlabeled. Label
+/// resolution is the binder's contract; the ownership surface only checks the
+/// statement kind. Structure only; the checker/HIR decide the loop exit and
+/// back-edge lowering.
 bool isAdmittedLoopBodyControlFlow(const ast::Tree& tree, ast::NodeId statement) {
   auto item = statementItem(tree, statement);
   if (item == zc::none) return false;
   ast::NodeId stmt;
   ZC_IF_SOME(value, item) { stmt = value; }
   const auto kind = tree.node(stmt).kind;
-  if (kind != ast::SyntaxKind::BreakStmt && kind != ast::SyntaxKind::ContinueStatement) {
-    return false;
-  }
-  const auto labelWord = kind == ast::SyntaxKind::BreakStmt ? ast::kBreakStmtLabelWord
-                                                            : ast::kContinueStatementLabelWord;
-  return tree.node(stmt).payload.words[labelWord] == 0;
+  return kind == ast::SyntaxKind::BreakStmt || kind == ast::SyntaxKind::ContinueStatement;
 }
 
 /// \brief Structurally admits one if-guarded `break;` loop-body statement.
 ///
 /// The statement is `if (<ident|lit> <cmp> <ident|lit>) { break; }`: an `if`
 /// with no `else` whose condition is a binary comparison over an identifier and
-/// a scalar literal and whose body is a block holding exactly one unlabeled
-/// `break;`. The guard evaluates before the accumulator writes in source order,
-/// so the loop body splits into a guard block and a continuation block
-/// downstream. Structure only; the checker/HIR decide the comparison operator
-/// and the loop-exit lowering.
+/// a scalar literal and whose body is a block holding exactly one
+/// `break;` (labeled or unlabeled). The guard evaluates before the accumulator
+/// writes in source order, so the loop body splits into a guard block and a
+/// continuation block downstream. Structure only; the checker/HIR decide the
+/// comparison operator and the loop-exit lowering.
 bool isAdmittedLoopBodyGuardedBreak(const ast::Tree& tree, ast::NodeId statement) {
   auto item = statementItem(tree, statement);
   if (item == zc::none) return false;
@@ -1033,10 +1029,11 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
     return false;
   }
   // Body: an empty block, N admitted loop-body writes optionally followed by
-  // one trailing unlabeled break/continue, or one if-guarded break followed by
-  // N admitted loop-body writes. The guarded break evaluates before the writes
-  // in source order, so it must lead the body. A break/continue is admitted
-  // only as the trailing body statement, matching the while-loop body slice.
+  // one trailing break/continue (labeled or unlabeled), or one if-guarded
+  // break followed by N admitted loop-body writes. The guarded break
+  // evaluates before the writes in source order, so it must lead the body.
+  // A break/continue is admitted only as the trailing body statement,
+  // matching the while-loop body slice.
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
@@ -1834,6 +1831,21 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
   bool found = false;
   ast::visitTreePreOrder(tree, body, [&](ast::NodeId nodeId, const ast::Node& syntax) {
     if (found) return;
+    // A labeled statement wrapping an admitted loop is not a specific surface
+    // failure; the loop's own admission governs the body. Skip it so the
+    // visitor does not false-positive on the label node.
+    if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
+      const ast::NodeId labeledStmt(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+      if (tree.contains(labeledStmt)) {
+        const auto& labeled = tree.node(labeledStmt);
+        if ((labeled.kind == ast::SyntaxKind::WhileStmt &&
+             isAdmittedLoopStatement(tree, labeledStmt)) ||
+            (labeled.kind == ast::SyntaxKind::ForStmt &&
+             isAdmittedForStatement(tree, labeledStmt))) {
+          return;
+        }
+      }
+    }
     if (syntax.kind == ast::SyntaxKind::SpawnExpression ||
         syntax.kind == ast::SyntaxKind::SuspendStatement ||
         (syntax.kind == ast::SyntaxKind::MatchStmt && !isAdmittedMatchStatement(tree, nodeId)) ||
@@ -2052,8 +2064,17 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       kind = SurfaceSyntaxKind::LoopControl;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
-      kind = SurfaceSyntaxKind::Label;
-      rejected = true;
+      const ast::NodeId labeledStmt(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+      const bool wrapsAdmittedLoop =
+          boundModule.tree().contains(labeledStmt) &&
+          ((boundModule.tree().node(labeledStmt).kind == ast::SyntaxKind::WhileStmt &&
+            isAdmittedLoopStatement(boundModule.tree(), labeledStmt)) ||
+           (boundModule.tree().node(labeledStmt).kind == ast::SyntaxKind::ForStmt &&
+            isAdmittedForStatement(boundModule.tree(), labeledStmt)));
+      if (!wrapsAdmittedLoop) {
+        kind = SurfaceSyntaxKind::Label;
+        rejected = true;
+      }
     } else if (syntax.kind == ast::SyntaxKind::ReturnStmt &&
                !boundModule.tree().contains(
                    ast::NodeId(syntax.payload.words[ast::kReturnStmtValueWord]))) {
@@ -2076,6 +2097,21 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
       }
     }
     if (syntax.kind == ast::SyntaxKind::UnsafeBlockExpr) return;
+    // A labeled statement wrapping an admitted loop: traverse into the loop
+    // (which has its own body-skip suppression) and skip the label node.
+    if (syntax.kind == ast::SyntaxKind::LabeledStatement) {
+      const ast::NodeId labeledStmt(syntax.payload.words[ast::kLabeledStatementStatementWord]);
+      if (boundModule.tree().contains(labeledStmt)) {
+        const auto& labeled = boundModule.tree().node(labeledStmt);
+        if ((labeled.kind == ast::SyntaxKind::WhileStmt &&
+             isAdmittedLoopStatement(boundModule.tree(), labeledStmt)) ||
+            (labeled.kind == ast::SyntaxKind::ForStmt &&
+             isAdmittedForStatement(boundModule.tree(), labeledStmt))) {
+          self(labeledStmt, self);
+          return;
+        }
+      }
+    }
     // An admitted while-loop body is validated by isAdmittedLoopStatement; skip
     // the body block so its trailing break/continue is not rejected as
     // LoopControl. The condition (a bare identifier) is still traversed.

@@ -285,11 +285,12 @@ struct FunctionReturnShape final {
   // localReference, returnsLocal) and adds only the loop discriminator, the loop
   // condition node, and the loop statement node.
   bool isLoopBody = false;
-  // Loop-body composite: when the loop body's trailing statement is an unlabeled
-  // `break;` or `continue;`, these record its AST node (empty otherwise). At
-  // most one is set; both are empty when the body ends with a write, so the
-  // back-edge falls through to the header. `localWrites` covers only the write
-  // prefix, excluding the trailing break/continue.
+  // Loop-body composite: when the loop body's trailing statement is a
+  // `break;` or `continue;` (labeled or unlabeled), these record its AST
+  // node (empty otherwise). At most one is set; both are empty when the body
+  // ends with a write, so the back-edge falls through to the header.
+  // `localWrites` covers only the write prefix, excluding the trailing
+  // break/continue.
   ast::NodeId loopBodyBreak{};
   ast::NodeId loopBodyContinue{};
   // For-loop shape: a C-style `for (let id = <lit>; <ident> <cmp> <lit>;
@@ -304,6 +305,10 @@ struct FunctionReturnShape final {
   ast::NodeId forLoopBody{};
   // The ForStmt node itself, carried for the loop source span.
   ast::NodeId forLoopStatement{};
+  // When the for-loop is wrapped in a LabeledStatement, this carries the
+  // LabeledStatement AST node (empty otherwise). The HIR builder reads the
+  // label and pushes a LoopContext with it for break/continue resolution.
+  ast::NodeId forLoopLabeledStatement{};
   // For-loop accumulator shape: N leading scalar `mut` accumulator locals, a
   // C-style `for` loop whose body writes each accumulator, and a trailing
   // `return <accumulator-local>;`. Reuses the for-loop fields. The accumulator
@@ -314,10 +319,11 @@ struct FunctionReturnShape final {
   zc::Vector<ast::NodeId> forLoopAccumulatorInitializers;
   zc::Vector<ast::NodeId> forLoopBodyWrites;
   // For-loop accumulator composite: when the loop body's trailing statement is
-  // an unlabeled `break;` or `continue;`, these record its AST node (empty
-  // otherwise). At most one is set; both are empty when the body ends with a
-  // write, so the back-edge falls through to the header. `forLoopBodyWrites`
-  // covers only the write prefix, excluding the trailing break/continue.
+  // a `break;` or `continue;` (labeled or unlabeled), these record its AST
+  // node (empty otherwise). At most one is set; both are empty when the body
+  // ends with a write, so the back-edge falls through to the header.
+  // `forLoopBodyWrites` covers only the write prefix, excluding the trailing
+  // break/continue.
   ast::NodeId forLoopBodyBreak{};
   ast::NodeId forLoopBodyContinue{};
   // For-loop accumulator if-guarded break: when the loop body's first statement
@@ -340,6 +346,12 @@ struct FunctionReturnShape final {
   ast::NodeId nestedForLoopInnerUpdate{};
   ast::NodeId nestedForLoopInnerBody{};
   ast::NodeId nestedForLoopInnerStatement{};
+  // Nested for-loop accumulator: when the inner loop body's trailing statement
+  // is a `break;` or `continue;` (labeled or unlabeled), these record its AST
+  // node (empty otherwise). At most one is set; both are empty when the inner
+  // body ends with a write, so the back-edge falls through to the inner header.
+  ast::NodeId nestedForLoopInnerBreak{};
+  ast::NodeId nestedForLoopInnerContinue{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,
