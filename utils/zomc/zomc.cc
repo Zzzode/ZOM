@@ -1475,8 +1475,16 @@ private:
         // identified callee) select at most one; any ambiguity (same-shape
         // pair, missing role) or residual mismatch leaves `lir` as none.
         auto isCaller = [](const mir::MirFunction& fn) {
-          return fn.kind == mir::MirFunctionKind::Function &&
-                 (fn.blocks.size() == 2 || fn.blocks.size() == 3);
+          if (fn.kind != mir::MirFunctionKind::Function) { return false; }
+          if (fn.blocks.size() == 2 || fn.blocks.size() == 3) { return true; }
+          // The forced-unwrap (`!!`) caller has a 4-block CFG whose entry
+          // block is a Call terminator; distinguish it from a 4-block
+          // conditional callee whose entry block is a SwitchInt.
+          if (fn.blocks.size() == 4 && !fn.blocks.empty() &&
+              fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
+            return true;
+          }
+          return false;
         };
         auto isCallee = [](const mir::MirFunction& fn) {
           return fn.kind == mir::MirFunctionKind::Function &&
@@ -1535,6 +1543,10 @@ private:
             if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerReceiverCallTwiceModule(functions[caller],
                                                                         functions[callee], types);
+            }
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerErrorUnwrapCallModule(functions[caller],
+                                                                      functions[callee], types);
             }
           }
         }

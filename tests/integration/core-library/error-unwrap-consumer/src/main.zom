@@ -1,0 +1,7 @@
+fn fetch() -> i32 raises str {
+  return 42;
+}
+
+fn entry() -> i32 raises bool {
+  return fetch()!!;
+}

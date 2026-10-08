@@ -191,6 +191,12 @@ struct FunctionReturnShape final {
   // unchanged, so the builder lowers the operand call through the direct-call
   // return carrier.
   bool returnsErrorPropagateCall = false;
+  // Single-statement forced-unwrap return: `return f(args)!!;`. The return
+  // value is a PostfixExpression whose operator is ErrorUnwrap and whose
+  // operand is a CallExpression to a raising function. The operator tests the
+  // error-union tag and traps on error, so the builder lowers through a
+  // multi-block CFG with a trap block.
+  bool returnsErrorUnwrapCall = false;
   // Two-statement scalar-local call shape: a leading i32 local initialized from
   // an integer literal passed as the sole argument of a returned direct
   // free-function call: `let a: i32 = 21; return f(a);`.

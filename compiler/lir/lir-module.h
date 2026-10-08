@@ -123,6 +123,7 @@ enum class TerminatorKind : uint8_t {
   ReturnAggregate = 0x06,
   ReturnVoid = 0x07,
   ReturnString = 0x08,
+  Unreachable = 0x09,
 };
 
 /// \brief Upper bound on the slot count of a multi-slot aggregate return.
@@ -471,6 +472,10 @@ public:
   /// \return The terminator, or none when the bundle is empty or over the cap.
   ZC_NODISCARD static zc::Maybe<Terminator> returnAggregate(
       zc::Vector<IntegerConstant>&& slots) noexcept;
+  /// \brief Builds a terminator for a block that is never reached at runtime.
+  /// The LLVM translator lowers it to a trap followed by an unreachable
+  /// instruction so the program aborts if control flow ever reaches it.
+  ZC_NODISCARD static Terminator unreachable() noexcept;
 
   Terminator(Terminator&&) = default;
   Terminator& operator=(Terminator&&) = default;

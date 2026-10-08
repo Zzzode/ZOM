@@ -8892,6 +8892,230 @@ bool validDirectCallReturnFunction(const MirFunction& function,
   return false;
 }
 
+// Validates the forced-unwrap (`!!`) 4-block CFG: entry (call), test
+// (ExtractField tag + Comparison + SwitchInt), trap (Unreachable), and
+// success (ExtractField payload + Return).  The call produces an error union;
+// the tag is compared with zero (success) and the payload is returned on the
+// success path.
+bool validErrorUnwrapReturnFunction(const MirFunction& function,
+                                    const hir::HirFunctionDeclaration& declaration,
+                                    const hir::HirBlockStatement& sourceBlock,
+                                    const hir::HirReturnStatement& sourceReturn,
+                                    const hir::HirDirectCallExpression& call,
+                                    checker::marker::MarkerProofEngine& proofs,
+                                    identity::DefId copy, identity::ModuleId module,
+                                    const checker::CheckerIdentityAuthority& identities,
+                                    const type::SemanticTypeStore& semanticTypes) {
+  const auto tagType = ZC_ASSERT_NONNULL(declaration.errorUnwrapTagType);
+  const auto boolType = ZC_ASSERT_NONNULL(declaration.errorUnwrapBoolType);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != declaration.parameters.size() + 4 || function.blocks.size() != 4 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 1 ||
+      sourceBlock.statements[0] != sourceReturn.node || sourceReturn.value != call.node ||
+      sourceReturn.resultType != declaration.resultType ||
+      call.resultType == declaration.resultType) {
+    return false;
+  }
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  const auto& scope = function.sourceScopes[0];
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+        parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                 size_t& outIndex) -> bool {
+    for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+      if (declaration.parameters[i].key == key) {
+        outIndex = i;
+        return true;
+      }
+    }
+    return false;
+  };
+  const auto temporaryLocalId = localId(parameterCount + 1);
+  const auto tagTempLocalId = localId(parameterCount + 2);
+  const auto boolTempLocalId = localId(parameterCount + 3);
+  const auto resultLocalId = localId(parameterCount + 4);
+  const auto& temporary = function.locals[parameterCount];
+  const auto& tagTemp = function.locals[parameterCount + 1];
+  const auto& boolTemp = function.locals[parameterCount + 2];
+  const auto& result = function.locals[parameterCount + 3];
+  const auto& entry = function.blocks[0];
+  const auto& test = function.blocks[1];
+  const auto& trap = function.blocks[2];
+  const auto& success = function.blocks[3];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || temporary.id != temporaryLocalId ||
+      temporary.kind != MirLocalKind::Temporary || temporary.type != call.resultType ||
+      temporary.sourceScope != scope.id || !sameSpan(temporary.sourceSpan, call.sourceSpan) ||
+      tagTemp.id != tagTempLocalId || tagTemp.kind != MirLocalKind::Temporary ||
+      tagTemp.type != tagType || tagTemp.sourceScope != scope.id ||
+      !sameSpan(tagTemp.sourceSpan, call.sourceSpan) || boolTemp.id != boolTempLocalId ||
+      boolTemp.kind != MirLocalKind::Temporary || boolTemp.type != boolType ||
+      boolTemp.sourceScope != scope.id || !sameSpan(boolTemp.sourceSpan, call.sourceSpan) ||
+      result.id != resultLocalId || result.kind != MirLocalKind::FunctionResult ||
+      result.type != declaration.resultType || result.sourceScope != scope.id ||
+      !sameSpan(result.sourceSpan, sourceReturn.sourceSpan) || entry.id != blockId(1) ||
+      entry.sourceScope != scope.id || entry.statements.size() != 1 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != temporaryLocalId ||
+      !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Call || test.id != blockId(2) ||
+      test.sourceScope != scope.id || test.statements.size() != 4 ||
+      test.statements[0].kind() != MirStatementKind::StorageLive ||
+      test.statements[0].storageLocal() != tagTempLocalId ||
+      test.statements[1].kind() != MirStatementKind::Assign ||
+      test.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      test.statements[1].assignmentValue().destination.local() != tagTempLocalId ||
+      test.statements[1].assignmentValue().destination.rootType() != tagType ||
+      test.statements[1].assignmentValue().destination.resultType() != tagType ||
+      test.statements[1].assignmentValue().destination.projections().size() != 0 ||
+      test.statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
+      test.statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 0 ||
+      test.statements[1].assignmentValue().value.extractFieldValue().resultType != tagType ||
+      test.statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
+          MirOperandKind::Move ||
+      test.statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
+          temporaryLocalId ||
+      test.statements[1].assignmentValue().value.extractFieldValue().source.place().rootType() !=
+          call.resultType ||
+      test.statements[1].assignmentValue().value.extractFieldValue().source.place().resultType() !=
+          call.resultType ||
+      test.statements[1]
+              .assignmentValue()
+              .value.extractFieldValue()
+              .source.place()
+              .projections()
+              .size() != 0 ||
+      test.statements[2].kind() != MirStatementKind::StorageLive ||
+      test.statements[2].storageLocal() != boolTempLocalId ||
+      test.statements[3].kind() != MirStatementKind::Assign ||
+      test.statements[3].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      test.statements[3].assignmentValue().destination.local() != boolTempLocalId ||
+      test.statements[3].assignmentValue().destination.rootType() != boolType ||
+      test.statements[3].assignmentValue().destination.resultType() != boolType ||
+      test.statements[3].assignmentValue().destination.projections().size() != 0 ||
+      test.statements[3].assignmentValue().value.kind() != MirRvalueKind::Comparison ||
+      test.statements[3].assignmentValue().value.comparisonValue().op !=
+          MirComparisonOperator::Eq ||
+      test.statements[3].assignmentValue().value.comparisonValue().resultType != boolType ||
+      test.terminator.kind() != MirTerminatorKind::SwitchInt || trap.id != blockId(3) ||
+      trap.sourceScope != scope.id || trap.statements.size() != 0 ||
+      trap.terminator.kind() != MirTerminatorKind::Unreachable || success.id != blockId(4) ||
+      success.sourceScope != scope.id || success.statements.size() != 3 ||
+      success.statements[0].kind() != MirStatementKind::StorageLive ||
+      success.statements[0].storageLocal() != resultLocalId ||
+      success.statements[1].kind() != MirStatementKind::Assign ||
+      success.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      success.statements[1].assignmentValue().destination.local() != resultLocalId ||
+      success.statements[1].assignmentValue().destination.rootType() != result.type ||
+      success.statements[1].assignmentValue().destination.resultType() != result.type ||
+      success.statements[1].assignmentValue().destination.projections().size() != 0 ||
+      success.statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
+      success.statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 1 ||
+      success.statements[1].assignmentValue().value.extractFieldValue().resultType !=
+          declaration.resultType ||
+      success.statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
+          MirOperandKind::Move ||
+      success.statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
+          temporaryLocalId ||
+      success.statements[1].assignmentValue().value.extractFieldValue().source.place().rootType() !=
+          call.resultType ||
+      success.statements[1]
+              .assignmentValue()
+              .value.extractFieldValue()
+              .source.place()
+              .resultType() != call.resultType ||
+      success.statements[1]
+              .assignmentValue()
+              .value.extractFieldValue()
+              .source.place()
+              .projections()
+              .size() != 0 ||
+      success.statements[2].kind() != MirStatementKind::StorageDead ||
+      success.statements[2].storageLocal() != temporaryLocalId ||
+      success.terminator.kind() != MirTerminatorKind::Return ||
+      success.terminator.returnValue().value == zc::none ||
+      !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
+      !sameSpan(test.terminator.sourceSpan(), sourceReturn.sourceSpan) ||
+      !sameSpan(trap.terminator.sourceSpan(), sourceReturn.sourceSpan) ||
+      !sameSpan(success.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& terminator = entry.terminator.callValue();
+  if (terminator.callee != call.callee || terminator.arguments.size() != call.arguments.size() ||
+      terminator.destination.local() != temporaryLocalId ||
+      terminator.destination.rootType() != call.resultType ||
+      terminator.destination.resultType() != call.resultType ||
+      terminator.destination.projections().size() != 0 ||
+      terminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      terminator.normalTarget != test.id || terminator.unwindTarget != zc::none) {
+    return false;
+  }
+  for (size_t index = 0; index < call.arguments.size(); ++index) {
+    const auto& actual = terminator.arguments[index];
+    const auto& expected = call.arguments[index];
+    ZC_IF_SOME(value, expected.value) {
+      if (actual.kind() != MirOperandKind::Constant ||
+          actual.constantValue().type != expected.type ||
+          !sameConstant(actual.constantValue().value, value, module, identities, semanticTypes)) {
+        return false;
+      }
+      continue;
+    }
+    ZC_IF_SOME(parameter, expected.parameter) {
+      size_t parameterIndex = 0;
+      if (!parameterLocalIndex(parameter, parameterIndex) ||
+          !matchesPlaceUse(actual, proofs, copy, expected.type) ||
+          actual.place().local() != localId(static_cast<uint32_t>(parameterIndex + 1)) ||
+          actual.place().rootType() != expected.type ||
+          actual.place().resultType() != expected.type ||
+          actual.place().projections().size() != 0) {
+        return false;
+      }
+      continue;
+    }
+    return false;
+  }
+  const auto& switchInt = test.terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != trap.id ||
+      switchInt.discriminant.kind() != MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != boolTempLocalId ||
+      switchInt.discriminant.place().rootType() != boolType ||
+      switchInt.discriminant.place().resultType() != boolType ||
+      switchInt.discriminant.place().projections().size() != 0) {
+    return false;
+  }
+  const auto& trueArm = switchInt.arms[0];
+  const auto& falseArm = switchInt.arms[1];
+  if (trueArm.target != success.id || falseArm.target != trap.id ||
+      trueArm.value.tag() != checker::signature::CanonicalConstValueTag::Bool ||
+      falseArm.value.tag() != checker::signature::CanonicalConstValueTag::Bool) {
+    return false;
+  }
+  auto trueValue = trueArm.value.booleanValue();
+  auto falseValue = falseArm.value.booleanValue();
+  if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
+      ZC_ASSERT_NONNULL(falseValue)) {
+    return false;
+  }
+  ZC_IF_SOME(value, success.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, result.type) &&
+           value.place().local() == resultLocalId && value.place().rootType() == result.type &&
+           value.place().resultType() == result.type && value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 // Validates the RFC 0007 unsafe-scope boundary structural contract: every
 // boundary names a nonzero source scope owned by the enclosing function,
 // enter and exit markers are properly nested (an exit closes only the
@@ -15297,6 +15521,176 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       continue;
     }
     ZC_IF_SOME(directCall, call) {
+      if (declaration.returnsErrorUnwrapCall) {
+        // Forced-unwrap (`!!`) return: the call produces an error union; a
+        // 4-block CFG extracts the tag, compares it with zero (success), and
+        // either traps (Unreachable) or extracts the payload and returns it.
+        const auto tagType = ZC_ASSERT_NONNULL(declaration.errorUnwrapTagType);
+        const auto boolType = ZC_ASSERT_NONNULL(declaration.errorUnwrapBoolType);
+        const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+        const auto temporaryLocal = localId(parameterCount + 1);
+        const auto tagTempLocal = localId(parameterCount + 2);
+        const auto boolTempLocal = localId(parameterCount + 3);
+        const auto resultLocalId = localId(parameterCount + 4);
+        auto parameterLocalIndex = [&](const identity::CallableParameterKey& key,
+                                       size_t& outIndex) -> bool {
+          for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+            if (declaration.parameters[i].key == key) {
+              outIndex = i;
+              return true;
+            }
+          }
+          return false;
+        };
+        zc::Vector<MirSourceScope> scopes;
+        zc::Maybe<MirSourceScopeId> noParent;
+        scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+        zc::Vector<MirLocalDeclaration> locals;
+        for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+          locals.add(MirLocalDeclaration{localId(static_cast<uint32_t>(i + 1)),
+                                         MirLocalKind::Parameter, declaration.parameters[i].type,
+                                         scopeId(1), declaration.parameters[i].sourceSpan.clone()});
+        }
+        locals.add(MirLocalDeclaration{temporaryLocal, MirLocalKind::Temporary,
+                                       directCall.resultType, scopeId(1),
+                                       directCall.sourceSpan.clone()});
+        locals.add(MirLocalDeclaration{tagTempLocal, MirLocalKind::Temporary, tagType, scopeId(1),
+                                       directCall.sourceSpan.clone()});
+        locals.add(MirLocalDeclaration{boolTempLocal, MirLocalKind::Temporary, boolType, scopeId(1),
+                                       directCall.sourceSpan.clone()});
+        locals.add(MirLocalDeclaration{resultLocalId, MirLocalKind::FunctionResult,
+                                       declaration.resultType, scopeId(1), returnSpan.clone()});
+        // Block 1 (entry): StorageLive(T) + Call(dest=T, continuation=block2).
+        zc::Vector<MirStatement> entryStatements;
+        entryStatements.add(
+            MirStatement::storageLive(temporaryLocal, directCall.sourceSpan.clone()));
+        zc::Vector<MirProjection> destinationProjections;
+        zc::Vector<MirOperand> arguments;
+        bool argumentsResolved = true;
+        for (const auto& argument : directCall.arguments) {
+          ZC_IF_SOME(value, argument.value) {
+            arguments.add(MirOperand::constant(argument.type, value.clone()));
+          }
+          ZC_IF_SOME(parameter, argument.parameter) {
+            size_t parameterIndex = 0;
+            if (!parameterLocalIndex(parameter, parameterIndex)) {
+              argumentsResolved = false;
+              break;
+            }
+            zc::Vector<MirProjection> argumentProjections;
+            auto operand =
+                placeUse(proofs, copy,
+                         MirPlace(localId(static_cast<uint32_t>(parameterIndex + 1)), argument.type,
+                                  zc::mv(argumentProjections), argument.type));
+            if (operand == zc::none) {
+              argumentsResolved = false;
+              break;
+            }
+            arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+          }
+        }
+        if (!argumentsResolved) {
+          return rejectMir<BuiltMirCandidate>(
+              ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+              declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+        }
+        zc::Maybe<MirBlockId> noUnwind;
+        auto callTerminator =
+            MirTerminator::call(directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+                                MirPlace(temporaryLocal, directCall.resultType,
+                                         zc::mv(destinationProjections), directCall.resultType),
+                                blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
+        // Block 2 (test): ExtractField(tag from T, field 0) + Comparison(Eq,
+        // tag, 0) + SwitchInt(bool, [true->block4, false->block3]).
+        zc::Vector<MirStatement> testStatements;
+        testStatements.add(MirStatement::storageLive(tagTempLocal, returnSpan.clone()));
+        zc::Vector<MirProjection> tagSourceProjections;
+        testStatements.add(MirStatement::assign(
+            MirPlace(tagTempLocal, tagType, zc::Vector<MirProjection>{}, tagType),
+            MirRvalue::extractField(
+                MirOperand::move(MirPlace(temporaryLocal, directCall.resultType,
+                                          zc::mv(tagSourceProjections), directCall.resultType)),
+                0, tagType),
+            MirInitializationKind::Initialize, returnSpan.clone()));
+        testStatements.add(MirStatement::storageLive(boolTempLocal, returnSpan.clone()));
+        zc::Vector<MirProjection> tagUseProjections;
+        auto tagOperand = placeUse(
+            proofs, copy, MirPlace(tagTempLocal, tagType, zc::mv(tagUseProjections), tagType));
+        if (tagOperand == zc::none) {
+          return rejectMir<BuiltMirCandidate>(
+              ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+              declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+        }
+        auto zeroConstant =
+            checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+                checker::signature::IntegerSign::NonNegative, zc::Array<uint8_t>{}});
+        testStatements.add(MirStatement::assign(
+            MirPlace(boolTempLocal, boolType, zc::Vector<MirProjection>{}, boolType),
+            MirRvalue::comparison(MirComparisonOperator::Eq, zc::mv(ZC_ASSERT_NONNULL(tagOperand)),
+                                  MirOperand::constant(tagType, zc::mv(zeroConstant)), boolType),
+            MirInitializationKind::Initialize, returnSpan.clone()));
+        zc::Vector<MirProjection> discriminantProjections;
+        auto discriminant =
+            placeUse(proofs, copy,
+                     MirPlace(boolTempLocal, boolType, zc::mv(discriminantProjections), boolType));
+        if (discriminant == zc::none) {
+          return rejectMir<BuiltMirCandidate>(
+              ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+              declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+        }
+        zc::Vector<MirSwitchIntArm> arms;
+        arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(4)});
+        arms.add(
+            MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+        // Block 4 (success): StorageLive(R) + Assign(R=ExtractField(T, field
+        // 1)) + StorageDead(T) + Return(R).
+        zc::Vector<MirStatement> successStatements;
+        successStatements.add(MirStatement::storageLive(resultLocalId, returnSpan.clone()));
+        zc::Vector<MirProjection> payloadSourceProjections;
+        successStatements.add(MirStatement::assign(
+            MirPlace(resultLocalId, declaration.resultType, zc::Vector<MirProjection>{},
+                     declaration.resultType),
+            MirRvalue::extractField(
+                MirOperand::move(MirPlace(temporaryLocal, directCall.resultType,
+                                          zc::mv(payloadSourceProjections), directCall.resultType)),
+                1, declaration.resultType),
+            MirInitializationKind::Initialize, returnSpan.clone()));
+        successStatements.add(MirStatement::storageDead(temporaryLocal, returnSpan.clone()));
+        zc::Vector<MirProjection> returnProjections;
+        auto returnOperand = placeUse(proofs, copy,
+                                      MirPlace(resultLocalId, declaration.resultType,
+                                               zc::mv(returnProjections), declaration.resultType));
+        if (returnOperand == zc::none) {
+          return rejectMir<BuiltMirCandidate>(
+              ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
+              declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+        }
+        zc::Vector<MirBasicBlock> blocks;
+        blocks.add(
+            MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements), zc::mv(callTerminator)});
+        blocks.add(
+            MirBasicBlock{blockId(2), scopeId(1), zc::mv(testStatements),
+                          MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                   zc::mv(arms), blockId(3), returnSpan.clone())});
+        blocks.add(MirBasicBlock{blockId(3), scopeId(1), zc::Vector<MirStatement>{},
+                                 MirTerminator::unreachable(returnSpan.clone())});
+        blocks.add(
+            MirBasicBlock{blockId(4), scopeId(1), zc::mv(successStatements),
+                          MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                     returnSpan.clone())});
+        MirFunction function{declaration.definition,
+                             MirFunctionKind::Function,
+                             identity::DefinitionKind::Function,
+                             declaration.resultType,
+                             declaration.sourceSpan.clone(),
+                             zc::mv(scopes),
+                             zc::mv(locals),
+                             zc::mv(blocks)};
+        zc::Array<uint8_t> ownerKey;
+        ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+        pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+        continue;
+      }
       // A direct-call return lowers the caller's parameters to leading parameter
       // locals so a parameter-reference argument can be copied/moved as a place
       // operand. The call-result temporary and the function-result local follow
@@ -16744,7 +17138,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             }
           }
           ZC_IF_SOME(sourceCall, call) {
-            if (isByValueAggregateCallReturn) {
+            if (sourceDeclaration.returnsErrorUnwrapCall) {
+              valid = validErrorUnwrapReturnFunction(function, sourceDeclaration, block,
+                                                     returnStatement, sourceCall, proofs, copy,
+                                                     module, identities, semanticTypes);
+            } else if (isByValueAggregateCallReturn) {
               ZC_IF_SOME(aggregateLocal, sourceLocal) {
                 ZC_IF_SOME(aggregateRecord, initializerAggregate) {
                   valid = validByValueAggregateCallReturnFunction(

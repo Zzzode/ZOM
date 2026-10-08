@@ -258,6 +258,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/raising-function-consumer/Zom.toml::raising_function_consumer::raising_function_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/error-unwrap-consumer/Zom.toml::error_unwrap_consumer::error_unwrap_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-2variant-consumer/Zom.toml::enum_match_2variant_consumer::enum_match_2variant_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-3arm-consumer/Zom.toml::enum_match_3arm_consumer::enum_match_3arm_consumer"
@@ -492,6 +494,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-local-arm-consumer/Zom.toml::conditional_local_arm_consumer::conditional_local_arm_consumer::5"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-unsafe-consumer/Zom.toml::nested_unsafe_consumer::nested_unsafe_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/error-unwrap-consumer/Zom.toml::error_unwrap_consumer::error_unwrap_consumer::42"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

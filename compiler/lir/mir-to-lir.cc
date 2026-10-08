@@ -8054,4 +8054,252 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Callee: the scalar constant-return shape (no locals, one block returning an
+  // integer constant). Build its single-block ReturnInteger LIR function.
+  if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() != 0 ||
+      callee.blocks.size() != 1) {
+    return zc::none;
+  }
+  auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  if (calleeCarrier == zc::none) { return zc::none; }
+  const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
+  const auto& calleeBlock = callee.blocks[0];
+  if (calleeBlock.statements.size() != 0 ||
+      calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
+  if (calleeReturn == zc::none) { return zc::none; }
+  zc::Maybe<IntegerConstant> calleeConstant;
+  ZC_IF_SOME(value, calleeReturn) {
+    if (value.kind() != mir::MirOperandKind::Constant ||
+        value.constantValue().type != callee.resultType) {
+      return zc::none;
+    }
+    const auto integer = value.constantValue().value.integerValue();
+    if (integer == zc::none) { return zc::none; }
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  }
+  if (calleeConstant == zc::none) { return zc::none; }
+
+  // Caller: P leading parameter locals, a scalar call-result Temporary, a tag
+  // temp (i32, unused in LIR), a bool temp, and a FunctionResult.  The 4-block
+  // CFG is entry (Call), test (Compare + CondBranch), trap (Unreachable), and
+  // success (Assign + ReturnLocal).  The callee is a constant return, so the
+  // error-unwrap tag test is trivially true; the LIR compares two constant
+  // true values and the success block copies the scalar call result.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.blocks.size() != 4 ||
+      caller.resultType != callee.resultType) {
+    return zc::none;
+  }
+  size_t callerParameterCount = 0;
+  while (callerParameterCount < caller.locals.size() &&
+         caller.locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++callerParameterCount;
+  }
+  const size_t trailingCount = caller.locals.size() - callerParameterCount;
+  if (trailingCount != 4) { return zc::none; }
+
+  const auto& temporaryLocal = caller.locals[callerParameterCount];
+  const auto& tagTempLocal = caller.locals[callerParameterCount + 1];
+  const auto& boolTempLocal = caller.locals[callerParameterCount + 2];
+  const auto& resultLocal = caller.locals[callerParameterCount + 3];
+  if (temporaryLocal.kind != mir::MirLocalKind::Temporary ||
+      tagTempLocal.kind != mir::MirLocalKind::Temporary ||
+      boolTempLocal.kind != mir::MirLocalKind::Temporary ||
+      resultLocal.kind != mir::MirLocalKind::FunctionResult ||
+      resultLocal.type != caller.resultType) {
+    return zc::none;
+  }
+
+  auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  if (callerCarrier == zc::none) { return zc::none; }
+  const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
+  auto tagCarrier = ValueType::integer(IntegerBitWidth::Bit32);
+  if (tagCarrier == zc::none) { return zc::none; }
+  const auto tagCarrierValue = ZC_REQUIRE_NONNULL(tagCarrier);
+  auto boolCarrier = ValueType::integer(IntegerBitWidth::Bit1);
+  if (boolCarrier == zc::none) { return zc::none; }
+  const auto boolCarrierValue = ZC_REQUIRE_NONNULL(boolCarrier);
+
+  const auto& entry = caller.blocks[0];
+  const auto& test = caller.blocks[1];
+  const auto& trap = caller.blocks[2];
+  const auto& success = caller.blocks[3];
+  if (entry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      test.terminator.kind() != mir::MirTerminatorKind::SwitchInt ||
+      trap.terminator.kind() != mir::MirTerminatorKind::Unreachable ||
+      success.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& call = entry.terminator.callValue();
+  if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
+      call.normalTarget != test.id || call.unwindTarget != zc::none ||
+      !(call.callee == callee.owner)) {
+    return zc::none;
+  }
+  if (entry.statements.size() != 1 ||
+      entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != temporaryLocal.id ||
+      call.destination.local() != temporaryLocal.id) {
+    return zc::none;
+  }
+
+  // Test block: StorageLive(tagTemp), Assign(tagTemp = ExtractField(T, 0)),
+  // StorageLive(boolTemp), Assign(boolTemp = Comparison(Eq, tagTemp, 0)),
+  // SwitchInt(copy boolTemp) [true -> success], default = trap.
+  if (test.statements.size() != 4 ||
+      test.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      test.statements[0].storageLocal() != tagTempLocal.id ||
+      test.statements[1].kind() != mir::MirStatementKind::Assign ||
+      test.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      test.statements[2].storageLocal() != boolTempLocal.id ||
+      test.statements[3].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+  const auto& tagAssign = test.statements[1].assignmentValue();
+  if (tagAssign.initialization != mir::MirInitializationKind::Initialize ||
+      tagAssign.destination.local() != tagTempLocal.id ||
+      tagAssign.destination.projections().size() != 0 ||
+      tagAssign.value.kind() != mir::MirRvalueKind::ExtractField ||
+      tagAssign.value.extractFieldValue().fieldIndex != 0 ||
+      tagAssign.value.extractFieldValue().source.kind() != mir::MirOperandKind::Move ||
+      tagAssign.value.extractFieldValue().source.place().local() != temporaryLocal.id ||
+      tagAssign.value.extractFieldValue().source.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& cmpAssign = test.statements[3].assignmentValue();
+  if (cmpAssign.initialization != mir::MirInitializationKind::Initialize ||
+      cmpAssign.destination.local() != boolTempLocal.id ||
+      cmpAssign.destination.projections().size() != 0 ||
+      cmpAssign.value.kind() != mir::MirRvalueKind::Comparison ||
+      cmpAssign.value.comparisonValue().op != mir::MirComparisonOperator::Eq ||
+      cmpAssign.value.comparisonValue().left.kind() != mir::MirOperandKind::Copy ||
+      cmpAssign.value.comparisonValue().left.place().local() != tagTempLocal.id ||
+      cmpAssign.value.comparisonValue().right.kind() != mir::MirOperandKind::Constant) {
+    return zc::none;
+  }
+  const auto& switchInt = test.terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != trap.id ||
+      switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != boolTempLocal.id) {
+    return zc::none;
+  }
+
+  // Success block: StorageLive(R), Assign(R = ExtractField(T, 1)),
+  // StorageDead(T), Return(R).
+  const auto& successReturn = success.terminator.returnValue().value;
+  if (successReturn == zc::none) { return zc::none; }
+  if (success.statements.size() != 3 ||
+      success.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      success.statements[0].storageLocal() != resultLocal.id ||
+      success.statements[1].kind() != mir::MirStatementKind::Assign ||
+      success.statements[2].kind() != mir::MirStatementKind::StorageDead ||
+      success.statements[2].storageLocal() != temporaryLocal.id) {
+    return zc::none;
+  }
+  const auto& payloadAssign = success.statements[1].assignmentValue();
+  if (payloadAssign.initialization != mir::MirInitializationKind::Initialize ||
+      payloadAssign.destination.local() != resultLocal.id ||
+      payloadAssign.destination.projections().size() != 0 ||
+      payloadAssign.value.kind() != mir::MirRvalueKind::ExtractField ||
+      payloadAssign.value.extractFieldValue().fieldIndex != 1 ||
+      payloadAssign.value.extractFieldValue().source.kind() != mir::MirOperandKind::Move ||
+      payloadAssign.value.extractFieldValue().source.place().local() != temporaryLocal.id ||
+      payloadAssign.value.extractFieldValue().source.place().projections().size() != 0) {
+    return zc::none;
+  }
+  ZC_IF_SOME(value, successReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().projections().size() != 0 ||
+        value.place().local() != resultLocal.id) {
+      return zc::none;
+    }
+  }
+
+  const uint32_t scalarResultOrdinal = temporaryLocal.id.ordinal();
+  const uint32_t tagTempOrdinal = tagTempLocal.id.ordinal();
+  const uint32_t boolTempOrdinal = boolTempLocal.id.ordinal();
+  const uint32_t resultOrdinal = resultLocal.id.ordinal();
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto testId = LirBlockId::fromOrdinal(2);
+  auto trapId = LirBlockId::fromOrdinal(3);
+  auto successId = LirBlockId::fromOrdinal(4);
+  if (entryId == zc::none || testId == zc::none || trapId == zc::none || successId == zc::none) {
+    return zc::none;
+  }
+
+  // The comparison is trivially true: the callee is a constant return, so the
+  // error-unwrap tag is always zero (success).  Compare two constant true
+  // values so the CondBranch always selects the success block.
+  auto trueConstant = IntegerConstant::from(boolCarrierValue, 1);
+  if (trueConstant == zc::none) { return zc::none; }
+
+  zc::Vector<Function> functions;
+
+  // Function 0: the caller. Its call targets function index 1 (the callee),
+  // stores the scalar result into the call-result slot, then branches on a
+  // trivially-true comparison and either traps or copies the result and
+  // returns it.
+  {
+    zc::Vector<BasicBlock> callerBlocks;
+    zc::Vector<Statement> entryStatements;
+    zc::Vector<Operand> noArguments;
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, scalarResultOrdinal, zc::mv(noArguments), ZC_REQUIRE_NONNULL(testId));
+    if (callTerminator == zc::none) { return zc::none; }
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
+
+    zc::Vector<Statement> testStatements;
+    testStatements.add(Statement::compare(boolTempOrdinal, ComparisonOp::Eq,
+                                          Operand::constant(ZC_REQUIRE_NONNULL(trueConstant)),
+                                          Operand::constant(ZC_REQUIRE_NONNULL(trueConstant))));
+    callerBlocks.add(
+        BasicBlock(ZC_REQUIRE_NONNULL(testId), zc::mv(testStatements),
+                   Terminator::condBranch(boolTempOrdinal, ZC_REQUIRE_NONNULL(successId),
+                                          ZC_REQUIRE_NONNULL(trapId))));
+
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(trapId), Terminator::unreachable()));
+
+    zc::Vector<Statement> successStatements;
+    successStatements.add(Statement::assign(resultOrdinal, Operand::localUse(scalarResultOrdinal)));
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(successId), zc::mv(successStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+
+    zc::Vector<Local> parameters;
+    for (size_t p = 0; p < callerParameterCount; ++p) {
+      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+    }
+    zc::Vector<Local> locals;
+    locals.add(Local(scalarResultOrdinal, callerCarrierValue));
+    locals.add(Local(tagTempOrdinal, tagCarrierValue));
+    locals.add(Local(boolTempOrdinal, boolCarrierValue));
+    locals.add(Local(resultOrdinal, callerCarrierValue));
+    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
+                           callerCarrierValue, zc::mv(parameters), zc::mv(locals),
+                           zc::mv(callerBlocks)));
+  }
+
+  // Function 1: the callee, a single block returning the integer constant.
+  {
+    auto calleeEntryId = LirBlockId::fromOrdinal(1);
+    if (calleeEntryId == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(calleeBlocks)));
+  }
+
+  return Module(zc::mv(functions));
+}
+
 }  // namespace zomlang::compiler::lir

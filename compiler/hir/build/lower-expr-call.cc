@@ -21,10 +21,11 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId callId = ctx.allocNode(function.returnValueNode);
 
-  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), zc::none,
-                                         function.visibility.clone(), function.linkage,
-                                         function.declarationSpan.clone(), bodyId, zc::none});
+  ctx.addFunction(HirFunctionDeclaration{
+      functionId, function.definition, function.resultType, zc::mv(function.parameters), zc::none,
+      function.visibility.clone(), function.linkage, function.declarationSpan.clone(), bodyId,
+      zc::none, function.returnsErrorUnwrapCall, zc::mv(function.errorUnwrapTagType),
+      zc::mv(function.errorUnwrapBoolType)});
   zc::Vector<HirNodeId> statements;
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});

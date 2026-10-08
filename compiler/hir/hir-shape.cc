@@ -2705,6 +2705,19 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           return shape;
         }
       }
+      if (postfixOp == ast::PostfixOperatorKind::ErrorUnwrap) {
+        const ast::NodeId operand(
+            tree.node(value).payload.words[ast::kPostfixExpressionOperandWord]);
+        if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::CallExpression) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = operand;
+          shape.returnsErrorUnwrapCall = true;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
     }
     FunctionReturnShape shape{};
     shape.body = body;

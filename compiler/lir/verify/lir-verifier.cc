@@ -115,6 +115,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
         case TerminatorKind::ReturnAggregate:
         case TerminatorKind::ReturnString:
         case TerminatorKind::ReturnVoid:
+        case TerminatorKind::Unreachable:
           break;
       }
     }
@@ -154,6 +155,7 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           case TerminatorKind::ReturnAggregate:
           case TerminatorKind::ReturnString:
           case TerminatorKind::ReturnVoid:
+          case TerminatorKind::Unreachable:
             break;
         }
       }
@@ -569,6 +571,8 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
           }
           break;
         case TerminatorKind::Goto:
+          break;
+        case TerminatorKind::Unreachable:
           break;
       }
     }

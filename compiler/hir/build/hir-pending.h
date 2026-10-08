@@ -753,6 +753,14 @@ struct PendingFunctionDeclaration final {
   /// The PostfixExpression node carries a node-type fact beyond the direct-call
   /// baseline, so the fact-count equations add one extra node-type credit.
   bool returnsErrorPropagateCall = false;
+  /// True when the return value is a forced-unwrap call (`return f()!!;`).
+  /// The PostfixExpression node carries a node-type fact beyond the direct-call
+  /// baseline, so the fact-count equations add one extra node-type credit.
+  bool returnsErrorUnwrapCall = false;
+  /// The i32 tag type and bool comparison-result type for the forced-unwrap
+  /// CFG.  Set only when `returnsErrorUnwrapCall` is true.
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType = zc::none;
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType = zc::none;
   /// The AST BlockStmt node of the function body, threaded to the HIR
   /// side-table so the per-node correspondence validator can anchor it.
   ast::NodeId bodyNode{};

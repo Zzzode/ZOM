@@ -12693,6 +12693,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
     }
+    // Forced-unwrap (`!!`) functions carry the i32 tag and bool comparison
+    // types so the MIR builder can construct the ExtractField and Comparison
+    // rvalues without a mutable type store.  Both must be set and must
+    // resolve to the expected primitive kinds.
+    if (source.returnsErrorUnwrapCall) {
+      if (function.errorUnwrapTagType == zc::none || function.errorUnwrapBoolType == zc::none ||
+          !typeExists(ZC_ASSERT_NONNULL(function.errorUnwrapTagType), semanticTypes) ||
+          !typeExists(ZC_ASSERT_NONNULL(function.errorUnwrapBoolType), semanticTypes) ||
+          !isI32SemanticType(semanticTypes, ZC_ASSERT_NONNULL(function.errorUnwrapTagType)) ||
+          !isBoolSemanticType(semanticTypes, ZC_ASSERT_NONNULL(function.errorUnwrapBoolType))) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+    }
     // The member scope's owner is the enclosing nominal, never the method
     // itself; the receiver type is validated below against that same owner.
     ZC_IF_SOME(scope, memberScope) {
@@ -13171,11 +13186,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     size_t nodeTypeSlot = 0;
     ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
     const auto& sourceType = facts.nodeTypes().entries()[nodeTypeSlot].value;
-    // For an error-propagate return (`return f()?!;`), the source value is the
-    // operand call whose node type is the error union.  The `?!` operator
-    // unwraps it to the success type, which is the function's result type.
-    // The direct-call verification below validates the call's own types.
-    if (sourceType != function.resultType && !source.returnsErrorPropagateCall) {
+    // For an error-operator return (`return f()?!;` or `return f()!!;`),
+    // the source value is the operand call whose node type is the error
+    // union.  The operator unwraps it to the success type, which is the
+    // function's result type.  The direct-call verification below validates
+    // the call's own types.
+    if (sourceType != function.resultType && !source.returnsErrorPropagateCall &&
+        !source.returnsErrorUnwrapCall) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
@@ -13440,7 +13457,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           !tree.contains(typeArguments) || !tree.contains(arguments) || !typeArguments.empty() ||
           call.arguments.size() != arguments.size || calleeTypeIndex == zc::none ||
           checkedCallIndex == zc::none || callKey == zc::none || callee == zc::none ||
-          call.node != materializedNode || call.resultType != function.resultType ||
+          call.node != materializedNode ||
+          (call.resultType != function.resultType && !source.returnsErrorUnwrapCall) ||
           !typeExists(call.calleeType, semanticTypes)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
@@ -13481,21 +13499,25 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           selected.get<checker::checked::DirectCallable>().callee != call.callee ||
           invocation.calleeType != call.calleeType ||
           (invocation.successType != function.resultType && !source.returnsErrorPropagateCall) ||
-          (invocation.resultType != function.resultType && !source.returnsErrorPropagateCall) ||
+          (invocation.resultType != function.resultType && !source.returnsErrorPropagateCall &&
+           !source.returnsErrorUnwrapCall) ||
           invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
           invocation.receiverAdjustment != zc::none ||
           invocation.arguments.size() != arguments.size || invocation.substitutions != zc::none ||
           invocation.witnesses != zc::none ||
-          (invocation.raises != zc::none && !source.returnsErrorPropagateCall) ||
+          (invocation.raises != zc::none && !source.returnsErrorPropagateCall &&
+           !source.returnsErrorUnwrapCall) ||
           !callSpanMatches || !dispatchOwnerMatches ||
           !target.is<checker::dispatch::DirectTarget>() ||
           target.get<checker::dispatch::DirectTarget>().callee != call.callee ||
           !transform.is<checker::dispatch::IdentityResultTransform>() ||
           dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != arguments.size ||
           (dispatch.fact.successType != function.resultType && !source.returnsErrorPropagateCall) ||
-          (dispatch.fact.resultType != function.resultType && !source.returnsErrorPropagateCall) ||
+          (dispatch.fact.resultType != function.resultType && !source.returnsErrorPropagateCall &&
+           !source.returnsErrorUnwrapCall) ||
           dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
-          (dispatch.fact.raises != zc::none && !source.returnsErrorPropagateCall) ||
+          (dispatch.fact.raises != zc::none && !source.returnsErrorPropagateCall &&
+           !source.returnsErrorUnwrapCall) ||
           !dispatchSpanMatches || !hirSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,

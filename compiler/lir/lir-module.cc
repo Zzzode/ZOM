@@ -178,6 +178,8 @@ zc::Maybe<Terminator> Terminator::callVoidFunction(uint32_t calleeIndex,
 
 Terminator Terminator::returnVoid() noexcept { return Terminator(TerminatorKind::ReturnVoid); }
 
+Terminator Terminator::unreachable() noexcept { return Terminator(TerminatorKind::Unreachable); }
+
 Terminator Terminator::returnString(StringConstant&& value) noexcept {
   return Terminator(zc::mv(value));
 }

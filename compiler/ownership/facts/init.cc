@@ -767,6 +767,13 @@ bool transferBlock(const mir::MirFunction& function, const MovePathFunction& pat
     }
     return true;
   }
+  if (block.terminator.kind() == mir::MirTerminatorKind::Unreachable) {
+    if (facts != nullptr && !appendFacts(*facts, MirPoint::exit(block.id, MirExitKind::Unreachable),
+                                         function, paths, states.asPtr())) {
+      return false;
+    }
+    return true;
+  }
   if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
     const auto& switchInt = block.terminator.switchIntValue();
     if (!applyOperand(function, paths, switchInt.discriminant,

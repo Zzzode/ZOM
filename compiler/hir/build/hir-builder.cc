@@ -90,20 +90,6 @@ bool isUnitSemanticType(const type::SemanticTypeStore& store, identity::Semantic
                  .kind == type::semantic::PrimitiveKind::Unit;
 }
 
-// Returns true when the interned semantic type is the canonical `i32` primitive.
-// The multi-field aggregate lowering slice admits `i32` stored fields only;
-// mixed-width, floating-point, boolean, and aggregate-typed fields keep their
-// owning definition on the capability drain (ZOM4099).
-bool isI32SemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
-  auto lookup = store.get(id);
-  return lookup.is<type::SemanticTypeLookup>() &&
-         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
-         lookup.get<type::SemanticTypeLookup>()
-                 .data()
-                 .get<type::semantic::PrimitiveTypeData>()
-                 .kind == type::semantic::PrimitiveKind::I32;
-}
-
 // Returns the primitive kind of an interned semantic type, or none when the
 // type is not a primitive. Used by the unary-return desugaring to pick the
 // synthetic constant operand that matches the operand type.
@@ -124,6 +110,19 @@ bool isExistentialSemanticType(const type::SemanticTypeStore& store, identity::S
   auto lookup = store.get(id);
   return lookup.is<type::SemanticTypeLookup>() &&
          lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ExistentialTypeData>();
+}
+
+// Interns a primitive type and returns its semantic id, or none when
+// canonicalization or interning fails.  Used to resolve the i32 tag and bool
+// comparison-result types for the forced-unwrap (`!!`) CFG.
+zc::Maybe<identity::SemanticTypeId> internPrimitiveType(type::SemanticTypeStore& store,
+                                                        type::semantic::PrimitiveKind kind) {
+  auto canonical =
+      store.canonicalizeClosed(type::semantic::TypeData(type::semantic::PrimitiveTypeData{kind}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned = store.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return interned.get<type::SemanticTypeInterned>().id;
 }
 
 // Desugars a primitive unary operation to an equivalent binary operation with
@@ -373,13 +372,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // when the enclosing raises clause accepts the residual (the error-union
   // aggregate passes through unchanged), so the builder lowers the operand
   // call through the direct-call return carrier. The `!!` (forced-unwrap)
-  // operator still requires panic/trap boundaries that are not built yet;
-  // fail closed as a per-definition capability rejection projected to
-  // ZOM4099. The ErrorUnionShapeFact alone (a raising call with no operator)
-  // is admitted: the union type is a closed scalar type that flows through
-  // the existing lowering paths.
+  // operator in a return position lowers through a multi-block CFG with a
+  // trap block. The ErrorUnionShapeFact alone (a raising call with no
+  // operator) is admitted: the union type is a closed scalar type that flows
+  // through the existing lowering paths.
   for (const auto& entry : facts.errorOperators().entries()) {
     if (entry.value.kind == checker::checked::ErrorOperatorKind::Propagate) { continue; }
+    if (entry.value.kind == checker::checked::ErrorOperatorKind::ForcedUnwrap) { continue; }
     const auto owner = enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key);
     if (owner == zc::none) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -1521,6 +1520,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
+                                                          shape.returnsErrorUnwrapCall,
+                                                          zc::none,
+                                                          zc::none,
                                                           shape.body,
                                                           shape.returnStatement,
                                                           shape.value});
@@ -1711,6 +1713,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
+                                                          shape.returnsErrorUnwrapCall,
+                                                          zc::none,
+                                                          zc::none,
                                                           shape.body,
                                                           shape.returnStatement,
                                                           shape.value});
@@ -2549,6 +2554,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
+                                                          shape.returnsErrorUnwrapCall,
+                                                          zc::none,
+                                                          zc::none,
                                                           shape.body,
                                                           shape.returnStatement,
                                                           shape.value});
@@ -2742,6 +2750,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
+                                                          shape.returnsErrorUnwrapCall,
+                                                          zc::none,
+                                                          zc::none,
                                                           shape.body,
                                                           shape.returnStatement,
                                                           shape.value});
@@ -3080,6 +3091,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
+                                                        shape.returnsErrorUnwrapCall,
+                                                        zc::none,
+                                                        zc::none,
                                                         shape.body,
                                                         shape.returnStatement,
                                                         shape.value});
@@ -3480,6 +3494,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
+                                                        shape.returnsErrorUnwrapCall,
+                                                        zc::none,
+                                                        zc::none,
                                                         shape.body,
                                                         shape.returnStatement,
                                                         shape.value});
@@ -3595,12 +3612,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
             definition.source.clone());
       }
-      // For an error-propagate return (`return f()?!;`), the return-value node
-      // is the operand call whose type is the error union, not the success
-      // type. The call's successType is verified against callable.success in
-      // the direct-call assembly path below.
-      const bool successTypeValid =
-          shape.isVoidBody || callable.success == nodeType.value || shape.returnsErrorPropagateCall;
+      // For an error-operator return (`return f()?!;` or `return f()!!;`),
+      // the return-value node is the operand call whose type is the error
+      // union, not the success type. The call's successType is verified
+      // against callable.success in the direct-call assembly path below.
+      const bool successTypeValid = shape.isVoidBody || callable.success == nodeType.value ||
+                                    shape.returnsErrorPropagateCall || shape.returnsErrorUnwrapCall;
       if (functionVisibility == zc::none || functionLinkage == zc::none ||
           signature.definitionKind !=
               (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
@@ -3883,6 +3900,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
+                                                        shape.returnsErrorUnwrapCall,
+                                                        zc::none,
+                                                        zc::none,
                                                         shape.body,
                                                         shape.returnStatement,
                                                         shape.value});
@@ -5063,6 +5083,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
+                                                        shape.returnsErrorUnwrapCall,
+                                                        zc::none,
+                                                        zc::none,
                                                         shape.body,
                                                         shape.returnStatement,
                                                         shape.value});
@@ -7869,12 +7892,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   ZC_ASSERT_NONNULL(callee) ||
               invocation.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
               (invocation.successType != nodeType.value &&
-               (!shape.returnsErrorPropagateCall || invocation.successType != callable.success)) ||
-              invocation.resultType != nodeType.value || invocation.receiver != zc::none ||
-              invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+               (!shape.returnsErrorPropagateCall || invocation.successType != callable.success) &&
+               (!shape.returnsErrorUnwrapCall || invocation.successType != callable.success)) ||
+              (invocation.resultType != nodeType.value && !shape.returnsErrorUnwrapCall) ||
+              invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+              invocation.receiverAdjustment != zc::none ||
               invocation.arguments.size() != arguments.size ||
               invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
-              (invocation.raises != zc::none && !shape.returnsErrorPropagateCall) ||
+              (invocation.raises != zc::none && !shape.returnsErrorPropagateCall &&
+               !shape.returnsErrorUnwrapCall) ||
               callSpan == zc::none ||
               !sameSpan(checkedCall.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
               !dispatchOwnerMatches || !target.is<checker::dispatch::DirectTarget>() ||
@@ -7882,10 +7908,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               !transform.is<checker::dispatch::IdentityResultTransform>() ||
               dispatch.fact.receiver != zc::none ||
               dispatch.fact.arguments.size() != arguments.size ||
-              (dispatch.fact.successType != nodeType.value && !shape.returnsErrorPropagateCall) ||
-              dispatch.fact.resultType != nodeType.value ||
+              (dispatch.fact.successType != nodeType.value && !shape.returnsErrorPropagateCall &&
+               (!shape.returnsErrorUnwrapCall || dispatch.fact.successType != callable.success)) ||
+              (dispatch.fact.resultType != nodeType.value && !shape.returnsErrorUnwrapCall) ||
               dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
-              (dispatch.fact.raises != zc::none && !shape.returnsErrorPropagateCall) ||
+              (dispatch.fact.raises != zc::none && !shape.returnsErrorPropagateCall &&
+               !shape.returnsErrorUnwrapCall) ||
               !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
               !typeExists(invocation.calleeType, checkedModule.semanticTypes())) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -9423,6 +9451,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       shape.returnsLocalIncrement,
                                                       shape.returnsLocalPostfixIncrement,
                                                       shape.returnsErrorPropagateCall,
+                                                      shape.returnsErrorUnwrapCall,
+                                                      zc::none,
+                                                      zc::none,
                                                       shape.body,
                                                       shape.returnStatement,
                                                       shape.value,
@@ -9584,9 +9615,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t directCallLiteralArgumentCount = 0;
   size_t directAggregateCallCount = 0;
   size_t directScalarLocalCallCount = 0;
-  // Error-propagate returns (`return f()?!;`) carry one extra node-type fact
-  // for the PostfixExpression node beyond the direct-call baseline.
+  // Error-operator returns (`return f()?!;` or `return f()!!;`) carry one
+  // extra node-type fact for the PostfixExpression node beyond the
+  // direct-call baseline.
   size_t errorPropagateReturnCount = 0;
+  size_t errorUnwrapReturnCount = 0;
   size_t receiverCallCount = 0;
   size_t receiverCallArgumentCount = 0;
   size_t receiverCallFieldArgumentCount = 0;
@@ -9856,6 +9889,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.returnsLocalIncrement) ++incrementReturnCount;
     if (function.returnsLocalPostfixIncrement) ++postfixReturnCount;
     if (function.returnsErrorPropagateCall) ++errorPropagateReturnCount;
+    if (function.returnsErrorUnwrapCall) ++errorUnwrapReturnCount;
     const bool hasSequentialLocalReturn = function.sequentialLocalReturn != zc::none;
     if (hasSequentialLocalReturn) {
       ZC_IF_SOME(sequential, function.sequentialLocalReturn) {
@@ -10560,11 +10594,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
-      errorPropagateReturnCount + (receiverCallCount + receiverSelfCallCount) * 2 +
-      localReturnCount - uninitializedLocalReturnCount + localWriteCount * 3 +
-      aggregateElementCount - enumConstructionAggregateCount + localFieldProjectionCount +
-      localFieldWriteCount + parameterIndexCount * 2 + parameterReborrowCount * 2 +
-      directCallArgumentCount + receiverCallArgumentCount + receiverCallFieldArgumentCount +
+      errorPropagateReturnCount + errorUnwrapReturnCount +
+      (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
+      uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount -
+      enumConstructionAggregateCount + localFieldProjectionCount + localFieldWriteCount +
+      parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
+      receiverCallArgumentCount + receiverCallFieldArgumentCount +
       receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
       conditionalCount * 2 + equalityConditionalCount * 2 + conditionalBinaryArmCount * 2 -
       matchEqualityReturnCount * 2 - matchGuardPhantomCount + matchReturnCount * 2 -
@@ -11114,6 +11149,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (value.call != zc::none && value.local == zc::none && value.receiverCall == zc::none &&
         value.aggregate == zc::none && value.localReference == zc::none &&
         value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
+      if (value.returnsErrorUnwrapCall) {
+        auto tagType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::I32);
+        if (tagType == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               9001);
+        }
+        auto boolType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::Bool);
+        if (boolType == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               9002);
+        }
+        value.errorUnwrapTagType = zc::mv(tagType);
+        value.errorUnwrapBoolType = zc::mv(boolType);
+      }
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -11546,10 +11597,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       writeBinaryLeftIds.add(zc::mv(leftId));
       writeBinaryRightIds.add(zc::mv(rightId));
     }
-    functions.add(HirFunctionDeclaration{
-        functionId, value.definition, value.resultType, zc::mv(value.parameters),
-        zc::mv(value.receiver), value.visibility.clone(), value.linkage,
-        value.declarationSpan.clone(), bodyId, zc::mv(unsafeBlockId)});
+    functions.add(HirFunctionDeclaration{functionId, value.definition, value.resultType,
+                                         zc::mv(value.parameters), zc::mv(value.receiver),
+                                         value.visibility.clone(), value.linkage,
+                                         value.declarationSpan.clone(), bodyId,
+                                         zc::mv(unsafeBlockId), value.returnsErrorUnwrapCall});
     zc::Vector<HirNodeId> statements;
     if (value.local != zc::none) { statements.add(localId); }
     for (const auto writeId : writeIds) { statements.add(writeId); }

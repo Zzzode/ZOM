@@ -675,6 +675,16 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
         case lir::TerminatorKind::ReturnVoid:
           ::llvm::ReturnInst::Create(*context, target);
           break;
+        case lir::TerminatorKind::Unreachable: {
+          // Emit a trap so the program aborts if control flow reaches this
+          // block, then an unreachable instruction to satisfy the LLVM
+          // verifier (a block ending after a noreturn call needs a terminator).
+          ::llvm::Function* trapFunc =
+              ::llvm::Intrinsic::getOrInsertDeclaration(llvmModule.get(), ::llvm::Intrinsic::trap);
+          ::llvm::CallInst::Create(trapFunc, {}, "", target);
+          new ::llvm::UnreachableInst(*context, target);
+          break;
+        }
       }
     }
   }

@@ -452,6 +452,16 @@ struct HirFunctionDeclaration final {
   identity::SourceSpan sourceSpan;
   HirNodeId body;
   zc::Maybe<HirNodeId> unsafeBlock;
+  /// True when the return value is a forced-unwrap call (`return f()!!;`).
+  /// The call's result type is the error union; the MIR builder constructs a
+  /// multi-block CFG that tests the tag and traps on error.
+  bool returnsErrorUnwrapCall = false;
+  /// The i32 tag type and bool comparison-result type for the forced-unwrap
+  /// CFG.  Set only when `returnsErrorUnwrapCall` is true; the HIR builder
+  /// interns these primitive types so the MIR builder can construct the
+  /// ExtractField and Comparison rvalues without a mutable type store.
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType = zc::none;
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType = zc::none;
 };
 
 /// \brief One module-scope let, mut, or const declaration in semantic HIR.

@@ -638,6 +638,17 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerReceiverCallTwiceModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers a forced-unwrap (`!!`) call module to a two-function LIR module.
+  ///
+  /// Admits a two-function module: a Function-sourced caller with a 4-block
+  /// CFG (entry Call, test ExtractField+Compare+CondBranch, trap Unreachable,
+  /// success ExtractField+Return) and a scalar-constant callee. The caller
+  /// folds to `zom.module_init` when parameter-free. Every other shape
+  /// returns none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerErrorUnwrapCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

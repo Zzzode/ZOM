@@ -902,6 +902,79 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // An error-unwrap call (`!!`) has a 4-block CFG: entry (StorageLive + Call
+  // into the error-union temporary), test (ExtractField tag + Comparison +
+  // SwitchInt), trap (Unreachable), and success (ExtractField payload +
+  // Return).  The LIR lowering simplifies the tag test to a trivially-true
+  // comparison (the callee is a constant return, so the error-union tag is
+  // always zero) and copies the scalar call result directly.  The first
+  // trailing local therefore carries an integer in LIR instead of the error
+  // union aggregate, and the test/success blocks have fewer LIR statements
+  // than MIR statements.
+  struct ErrorUnwrapCall final {
+    uint32_t scalarResultOrdinal = 0;
+    uint32_t tagTempOrdinal = 0;
+    uint32_t boolTempOrdinal = 0;
+    uint32_t resultOrdinal = 0;
+  };
+  zc::Maybe<ErrorUnwrapCall> errorUnwrapCall;
+  if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
+      receiverFieldArithmetic == zc::none && receiverVoidThenValueCall == zc::none &&
+      enumDestructure == zc::none && mir.blocks.size() == 4) {
+    // Count leading parameters.
+    size_t paramCount = 0;
+    while (paramCount < mir.locals.size() &&
+           mir.locals[paramCount].kind == mir::MirLocalKind::Parameter) {
+      ++paramCount;
+    }
+    if (mir.locals.size() - paramCount == 4) {
+      const auto& tempLocal = mir.locals[paramCount];
+      const auto& tagLocal = mir.locals[paramCount + 1];
+      const auto& boolLocal = mir.locals[paramCount + 2];
+      const auto& resLocal = mir.locals[paramCount + 3];
+      if (tempLocal.kind == mir::MirLocalKind::Temporary &&
+          tagLocal.kind == mir::MirLocalKind::Temporary &&
+          boolLocal.kind == mir::MirLocalKind::Temporary &&
+          resLocal.kind == mir::MirLocalKind::FunctionResult) {
+        const auto& entry = mir.blocks[0];
+        const auto& test = mir.blocks[1];
+        const auto& trap = mir.blocks[2];
+        const auto& success = mir.blocks[3];
+        if (entry.statements.size() == 1 &&
+            entry.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+            entry.statements[0].storageLocal() == tempLocal.id &&
+            entry.terminator.kind() == mir::MirTerminatorKind::Call &&
+            entry.terminator.callValue().destination.local() == tempLocal.id &&
+            entry.terminator.callValue().normalTarget == test.id && test.statements.size() == 4 &&
+            test.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+            test.statements[0].storageLocal() == tagLocal.id &&
+            test.statements[1].kind() == mir::MirStatementKind::Assign &&
+            test.statements[1].assignmentValue().value.kind() == mir::MirRvalueKind::ExtractField &&
+            test.statements[1].assignmentValue().value.extractFieldValue().fieldIndex == 0 &&
+            test.statements[2].kind() == mir::MirStatementKind::StorageLive &&
+            test.statements[2].storageLocal() == boolLocal.id &&
+            test.statements[3].kind() == mir::MirStatementKind::Assign &&
+            test.statements[3].assignmentValue().value.kind() == mir::MirRvalueKind::Comparison &&
+            test.terminator.kind() == mir::MirTerminatorKind::SwitchInt &&
+            trap.statements.size() == 0 &&
+            trap.terminator.kind() == mir::MirTerminatorKind::Unreachable &&
+            success.statements.size() == 3 &&
+            success.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+            success.statements[0].storageLocal() == resLocal.id &&
+            success.statements[1].kind() == mir::MirStatementKind::Assign &&
+            success.statements[1].assignmentValue().value.kind() ==
+                mir::MirRvalueKind::ExtractField &&
+            success.statements[1].assignmentValue().value.extractFieldValue().fieldIndex == 1 &&
+            success.statements[2].kind() == mir::MirStatementKind::StorageDead &&
+            success.statements[2].storageLocal() == tempLocal.id &&
+            success.terminator.kind() == mir::MirTerminatorKind::Return) {
+          errorUnwrapCall = ErrorUnwrapCall{tempLocal.id.ordinal(), tagLocal.id.ordinal(),
+                                            boolLocal.id.ordinal(), resLocal.id.ordinal()};
+        }
+      }
+    }
+  }
+
   // Resolve the carrier the LIR return must carry. A materialized function
   // returns the MIR result carrier. A folded scalar function does too; a folded
   // whole-struct bundle carries its first element's carrier, and a folded
@@ -1096,6 +1169,43 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             ZC_ASSERT_NONNULL(ValueType::integer(IntegerBitWidth::Bit32))) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (errorUnwrapCall != zc::none) {
+    // The 4 trailing locals map 1:1 by ordinal, but the first trailing local
+    // (the MIR error-union temporary) carries an integer in LIR (the scalar
+    // call result) instead of the error-union aggregate.  The tag temp (i32),
+    // bool temp (Bit1), and result (integer) carry their natural carriers.
+    const auto& unwrap = ZC_ASSERT_NONNULL(errorUnwrapCall);
+    uint32_t parameterCount = 0;
+    for (const auto& local : mir.locals) {
+      if (local.kind == mir::MirLocalKind::Parameter) ++parameterCount;
+    }
+    if (lir.parameters().size() != parameterCount || lir.locals().size() != 4) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    for (uint32_t p = 0; p < parameterCount; ++p) {
+      if (lir.parameters()[p].ordinal() != mir.locals[p].id.ordinal()) {
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+      }
+      const auto carrier = localCarrier(mir.locals[p], mir, types);
+      if (carrier == zc::none || lir.parameters()[p].carrier() != ZC_ASSERT_NONNULL(carrier)) {
+        return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+      }
+    }
+    auto resultCarrier = integerCarrier(mir.resultType, types);
+    if (resultCarrier == zc::none) { resultCarrier = boolCarrier(mir.resultType, types); }
+    auto tagCarrier = ValueType::integer(IntegerBitWidth::Bit32);
+    auto boolCarrierValue = ValueType::integer(IntegerBitWidth::Bit1);
+    if (resultCarrier == zc::none || tagCarrier == zc::none || boolCarrierValue == zc::none ||
+        lir.locals()[0].ordinal() != unwrap.scalarResultOrdinal ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier) ||
+        lir.locals()[1].ordinal() != unwrap.tagTempOrdinal ||
+        lir.locals()[1].carrier() != ZC_ASSERT_NONNULL(tagCarrier) ||
+        lir.locals()[2].ordinal() != unwrap.boolTempOrdinal ||
+        lir.locals()[2].carrier() != ZC_ASSERT_NONNULL(boolCarrierValue) ||
+        lir.locals()[3].ordinal() != unwrap.resultOrdinal ||
+        lir.locals()[3].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else {
     uint32_t parameterCount = 0;
     for (const auto& local : mir.locals) {
@@ -1242,6 +1352,46 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
       }
       lirStatement = 2;
+    } else if (errorUnwrapCall != zc::none && (b == 1 || b == 3)) {
+      // The error-unwrap test block (b==1) has four MIR statements
+      // (StorageLive, Assign ExtractField, StorageLive, Assign Comparison)
+      // but the LIR simplifies the tag test to a single trivially-true
+      // Compare (the callee is a constant return, so the error tag is always
+      // zero).  The success block (b==3) has three MIR statements
+      // (StorageLive, Assign ExtractField, StorageDead) but the LIR copies
+      // the scalar call result directly in one Assign.  Validate the LIR
+      // statements bespoke, then bypass the generic lockstep.
+      const auto& unwrap = ZC_ASSERT_NONNULL(errorUnwrapCall);
+      if (b == 1) {
+        if (lirBlock.statements().size() != 1 ||
+            lirBlock.statements()[0].kind() != StatementKind::Compare ||
+            lirBlock.statements()[0].destinationOrdinal() != unwrap.boolTempOrdinal ||
+            lirBlock.statements()[0].comparisonOp() != ComparisonOp::Eq ||
+            !lirBlock.statements()[0].left().isConstant() ||
+            lirBlock.statements()[0].left().constantValue().carrier().kind() !=
+                ValueTypeKind::Integer ||
+            lirBlock.statements()[0].left().constantValue().carrier().integerWidth() !=
+                IntegerBitWidth::Bit1 ||
+            lirBlock.statements()[0].left().constantValue().bits() != 1 ||
+            !lirBlock.statements()[0].right().isConstant() ||
+            lirBlock.statements()[0].right().constantValue().carrier().kind() !=
+                ValueTypeKind::Integer ||
+            lirBlock.statements()[0].right().constantValue().carrier().integerWidth() !=
+                IntegerBitWidth::Bit1 ||
+            lirBlock.statements()[0].right().constantValue().bits() != 1) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        lirStatement = 1;
+      } else {
+        if (lirBlock.statements().size() != 1 ||
+            lirBlock.statements()[0].kind() != StatementKind::Assign ||
+            lirBlock.statements()[0].destinationOrdinal() != unwrap.resultOrdinal ||
+            lirBlock.statements()[0].value().isConstant() ||
+            lirBlock.statements()[0].value().localOrdinal() != unwrap.scalarResultOrdinal) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        lirStatement = 1;
+      }
     } else {
       for (uint32_t s = 0; s < mirBlock.statements.size(); ++s) {
         const auto& mirStatement = mirBlock.statements[s];
@@ -1895,7 +2045,10 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         break;
       }
       case mir::MirTerminatorKind::Unreachable:
-        return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        if (lirTerminator.kind() != TerminatorKind::Unreachable) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        break;
     }
   }
 

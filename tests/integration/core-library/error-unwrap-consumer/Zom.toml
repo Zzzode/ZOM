@@ -1,0 +1,4 @@
+[package]
+name = "error_unwrap_consumer"
+version = "0.1.0"
+edition = "2026"
