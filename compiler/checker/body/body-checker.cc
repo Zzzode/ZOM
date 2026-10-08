@@ -3790,6 +3790,10 @@ struct ConcreteMethodCallShape final {
   /// \brief The selected impl when this shape devirtualizes a dyn-trait call,
   /// or none for a direct concrete-method call.
   zc::Maybe<identity::ImplId> devirtualizedImpl;
+  /// \brief The interface DefId when this shape dispatches a dyn-trait method
+  /// call whose concrete type is not statically known, or none for a direct
+  /// concrete-method or devirtualized call.
+  zc::Maybe<identity::DefId> dynInterface;
 };
 
 zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
@@ -3952,7 +3956,8 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
                                    ZC_ASSERT_NONNULL(success),
                                    ZC_ASSERT_NONNULL(receiverMode),
                                    zc::mv(parameters),
-                                   zc::Maybe<identity::ImplId>()};
+                                   zc::Maybe<identity::ImplId>(),
+                                   zc::Maybe<identity::DefId>()};
   }
   ZC_UNREACHABLE
 }
@@ -4124,13 +4129,170 @@ zc::Maybe<ConcreteMethodCallShape> devirtualizedMethodCallShape(
                                    ZC_ASSERT_NONNULL(success),
                                    ZC_ASSERT_NONNULL(receiverMode),
                                    zc::mv(parameters),
-                                   zc::Maybe<identity::ImplId>(impl)};
+                                   zc::Maybe<identity::ImplId>(impl),
+                                   zc::Maybe<identity::DefId>()};
   }
   return zc::none;
 }
 
-/// \brief Structurally derives the closed expected type of a numeric literal at
-/// its coercion site, without reading the literal's own not-yet-produced node
+/// \brief Resolves a dot-method call on a dyn-trait receiver whose concrete
+/// type is not statically known (a dyn parameter or a local erased from a
+/// non-nominal source). The method is resolved from the existential's
+/// principal interface definition rather than an impl, and the call dispatches
+/// indirectly through a vtable at runtime.
+zc::Maybe<ConcreteMethodCallShape> dynMethodCallShape(
+    const BodyCheckingInput& input, ast::NodeId callNode,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments)) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  // The receiver may be an owner-local binding or a callable parameter.
+  // Devirtualized shapes (which require an owner-local initializer) are
+  // tried first in the cascade; reaching here means the concrete type is
+  // not statically known, so indirect dispatch through the vtable is the
+  // only remaining strategy.
+  const bool isOwnerLocal =
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) != zc::none;
+  const bool isParameter =
+      resolvedCallableParameter(input.boundModule.bindings(), receiverNode) != zc::none;
+  if (!isOwnerLocal && !isParameter) { return zc::none; }
+  zc::Maybe<identity::SemanticTypeId> declaredType;
+  if (isOwnerLocal) {
+    declaredType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  } else {
+    declaredType = callableParameterReferenceType(input, receiverNode);
+  }
+  if (declaredType == zc::none) { return zc::none; }
+  auto existentialRef =
+      erasableExistentialType(input.semanticTypes, ZC_ASSERT_NONNULL(declaredType));
+  if (existentialRef == zc::none) { return zc::none; }
+  const auto& existential = ZC_ASSERT_NONNULL(existentialRef);
+  const auto interfaceId = existential.principal.definition;
+  // Resolve the interface's stable definition key so method ownership can be
+  // compared against the enclosing owner chain.
+  auto interfaceEntry = input.identities.definition(interfaceId);
+  if (interfaceEntry == zc::none) { return zc::none; }
+  const auto& interfaceKey = ZC_ASSERT_NONNULL(interfaceEntry).key();
+  // Resolve the interface method by name from the interface definition's
+  // members. The method's CallableSignature supplies the receiver mode,
+  // parameters, and success type.
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> selectedMethod;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Method ||
+        definition.record.name() != memberName) {
+      continue;
+    }
+    bool ownedByInterface = false;
+    for (const auto& owner : definition.record.owners()) {
+      if (owner.kind() == identity::EnclosingStableOwnerKind::Definition) {
+        ZC_IF_SOME(ownerDefKey, owner.definitionKey()) {
+          if (ownerDefKey == interfaceKey) { ownedByInterface = true; }
+        }
+      }
+    }
+    if (!ownedByInterface) { continue; }
+    if (selectedMethod != zc::none) { return zc::none; }
+    selectedMethod = definition.definition;
+  }
+  if (selectedMethod == zc::none) { return zc::none; }
+  zc::Maybe<signature::ReceiverMode> receiverMode;
+  zc::Maybe<identity::SemanticTypeId> success;
+  zc::Vector<identity::SemanticTypeId> parameters;
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != ZC_ASSERT_NONNULL(selectedMethod) ||
+        !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      continue;
+    }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
+        callable.raises != zc::none || callable.abi != zc::none) {
+      return zc::none;
+    }
+    const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
+    if (receiverSignature.mode != signature::ReceiverMode::Shared &&
+        receiverSignature.mode != signature::ReceiverMode::Mutable) {
+      return zc::none;
+    }
+    receiverMode = receiverSignature.mode;
+    for (const auto& parameter : callable.parameters) {
+      if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
+        return zc::none;
+      }
+      parameters.add(parameter.type);
+    }
+    success = callable.success;
+  }
+  if (receiverMode == zc::none || success == zc::none || arguments.size != parameters.size()) {
+    return zc::none;
+  }
+  // The binder records a deferred member for a dot-method call on a receiver
+  // whose type is not known at bind time.
+  bool deferredMember = false;
+  for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+    if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+        fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != binder::Namespace::Value ||
+        fact.genericArguments.size() != 0 || deferredMember) {
+      continue;
+    }
+    deferredMember = true;
+  }
+  if (!deferredMember) { return zc::none; }
+
+  const auto receiverMutability =
+      ZC_ASSERT_NONNULL(receiverMode) == signature::ReceiverMode::Mutable
+          ? type::semantic::Mutability::Mutable
+          : type::semantic::Mutability::Const;
+  auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{receiverMutability, ZC_ASSERT_NONNULL(declaredType)}));
+  if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto receiverParameter = input.semanticTypes.intern(
+      zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
+  if (!receiverParameter.is<type::SemanticTypeInterned>()) { return zc::none; }
+
+  zc::Vector<identity::SemanticTypeId> canonicalParameters;
+  for (const auto parameter : parameters) { canonicalParameters.add(parameter); }
+  zc::Maybe<identity::SemanticTypeId> noRaises;
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::FunctionTypeData{
+          zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+  return ConcreteMethodCallShape{receiverNode,
+                                 ZC_ASSERT_NONNULL(selectedMethod),
+                                 ZC_ASSERT_NONNULL(declaredType),
+                                 receiverParameter.get<type::SemanticTypeInterned>().id,
+                                 interned.get<type::SemanticTypeInterned>().id,
+                                 ZC_ASSERT_NONNULL(success),
+                                 ZC_ASSERT_NONNULL(receiverMode),
+                                 zc::mv(parameters),
+                                 zc::Maybe<identity::ImplId>(zc::none),
+                                 zc::Maybe<identity::DefId>(interfaceId)};
+}
 /// type.
 ///
 /// Only the annotation-directed sites supply a hint, in priority order:
@@ -4406,7 +4568,8 @@ zc::Maybe<ConcreteMethodCallShape> thisReceiverMethodCallShape(const BodyCheckin
                                    ZC_ASSERT_NONNULL(success),
                                    signature::ReceiverMode::Shared,
                                    zc::Vector<identity::SemanticTypeId>{},
-                                   zc::Maybe<identity::ImplId>()};
+                                   zc::Maybe<identity::ImplId>(),
+                                   zc::Maybe<identity::DefId>()};
   }
   ZC_UNREACHABLE
 }
@@ -6751,6 +6914,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           shape = devirtualizedMethodCallShape(input, site.node, nodeTypes.asPtr());
         }
         if (shape == zc::none) {
+          // A dot-method call on a dyn-trait receiver whose concrete type is
+          // not statically known (a dyn parameter or a non-nominal erase)
+          // dispatches indirectly through a vtable at runtime.
+          shape = dynMethodCallShape(input, site.node, nodeTypes.asPtr());
+        }
+        if (shape == zc::none) {
           // A mutable-receiver method invoked on an immutable `let` local is a
           // genuine mutability error (ZOM4024), distinct from a method the
           // lowering does not implement yet (ZOM4125).
@@ -6950,10 +7119,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
           zc::Maybe<identity::SemanticTypeId> noRaises;
           producedType = value.success;
-          // A devirtualized dyn-trait call selects the impl method; a direct
+          // A dyn-trait call whose concrete type is not statically known
+          // selects the interface method for indirect dispatch; a
+          // devirtualized dyn-trait call selects the impl method; a direct
           // concrete-method call selects the inherent method.
           checked::SelectedCallable selectedCallable =
-              value.devirtualizedImpl != zc::none
+              value.dynInterface != zc::none
+                  ? checked::SelectedCallable(checked::DynMethodCallable{
+                        ZC_ASSERT_NONNULL(value.dynInterface), value.method})
+              : value.devirtualizedImpl != zc::none
                   ? checked::SelectedCallable(checked::ImplMethodCallable{
                         ZC_ASSERT_NONNULL(value.devirtualizedImpl), value.method})
                   : checked::SelectedCallable(checked::ConcreteMethodCallable{value.method});
@@ -7127,19 +7301,39 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             if (deferredLocalType != zc::none) {
               // The by-value aggregate argument's node-type fact is produced by
               // a later stage; its type was resolved from the binding above. A
-              // parameter type disagreement is an ordinary type error.
+              // parameter type disagreement is either a concrete-to-dyn
+              // DynErase or an ordinary type error.
               if (argumentTypeId != value.parameters[index]) {
-                ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, site.node)) {
-                  ZC_IF_SOME(callOwnerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
-                    return attachRecoveryLedger(
-                        rejectTypeMismatch(site, callOwnerOrdinal, value.parameters[index],
-                                           argumentTypeId),
-                        input, factStoreBrands);
+                auto parameterExistential =
+                    erasableExistentialType(input.semanticTypes, value.parameters[index]);
+                bool argumentErased = false;
+                ZC_IF_SOME(existential, parameterExistential) {
+                  ZC_IF_SOME(impl, selectDynEraseImpl(input, argumentTypeId, existential)) {
+                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                    for (const auto& binding : existential.associatedBindings) {
+                      bindings.add(
+                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                    }
+                    dynErases.add(
+                        SelectedDynErase{argument, argumentTypeId, value.parameters[index],
+                                         existential.principal.definition, impl, zc::mv(bindings),
+                                         checked::CoercionSite::Argument});
+                    argumentErased = true;
                   }
                 }
-                return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                       site.key.schemaPreorder, zc::none, site.node,
-                                       site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                if (!argumentErased) {
+                  ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, site.node)) {
+                    ZC_IF_SOME(callOwnerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, callOwnerOrdinal, value.parameters[index],
+                                             argumentTypeId),
+                          input, factStoreBrands);
+                    }
+                  }
+                  return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                         site.key.schemaPreorder, zc::none, site.node,
+                                         site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+                }
               }
               zc::Maybe<checked::CoercionAdjustment> noAdjustment;
               checkedArguments.add(checked::CheckedArgumentFact{
@@ -7901,6 +8095,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         if (shape == zc::none) {
           shape = devirtualizedMethodCallShape(input, callNode, nodeTypes.asPtr());
         }
+        if (shape == zc::none) { shape = dynMethodCallShape(input, callNode, nodeTypes.asPtr()); }
         if (shape == zc::none) {
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {

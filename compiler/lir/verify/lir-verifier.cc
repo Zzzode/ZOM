@@ -49,6 +49,7 @@ const ValueType* operandSlotCarrier(const Function& function, const Operand& ope
 
 zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& module) noexcept {
   const auto functions = module.functions();
+  const auto vtables = module.vtables();
 
   // Function symbols are non-empty and unique within the module.
   for (uint32_t i = 0; i < functions.size(); ++i) {
@@ -110,6 +111,12 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
                          block.id().ordinal());
           }
           break;
+        case TerminatorKind::IndirectCall:
+          if (!targetDeclared(terminator.callNormalTarget())) {
+            return fault(LirVerificationFaultKind::DanglingBlockTarget, functionIndex,
+                         block.id().ordinal());
+          }
+          break;
         case TerminatorKind::ReturnInteger:
         case TerminatorKind::ReturnLocal:
         case TerminatorKind::ReturnAggregate:
@@ -148,6 +155,9 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             mark(terminator.condFalseTarget());
             break;
           case TerminatorKind::Call:
+            mark(terminator.callNormalTarget());
+            break;
+          case TerminatorKind::IndirectCall:
             mark(terminator.callNormalTarget());
             break;
           case TerminatorKind::ReturnInteger:
@@ -460,6 +470,41 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             // Validated before the destination-oriented switch; unreachable here.
             return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
                          statementIndex);
+          case StatementKind::VtableAddr: {
+            // The destination holds an opaque pointer to the vtable global.
+            if (destinationCarrier.kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            // Vtable ordinals are one-based dense into the module's vtable vector.
+            if (statement.vtableOrdinal() == 0 ||
+                statement.vtableOrdinal() > static_cast<uint32_t>(vtables.size())) {
+              return fault(LirVerificationFaultKind::VtableOrdinalOutOfRange, functionIndex,
+                           blockOrdinal, statementIndex);
+            }
+            break;
+          }
+          case StatementKind::VtableSlotLoad: {
+            // The destination holds a function pointer loaded from a vtable
+            // slot; the base slot carries an opaque pointer to the vtable.
+            if (destinationCarrier.kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            const Operand& base = statement.source();
+            if (base.isConstant()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            auto baseSlotFinding = requireSlot(base.localOrdinal(), blockOrdinal, statementIndex);
+            if (baseSlotFinding != zc::none) return baseSlotFinding;
+            const ValueType* baseCarrier = declaredSlotCarrier(function, base.localOrdinal());
+            if (baseCarrier == nullptr || baseCarrier->kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            break;
+          }
         }
       }
 
@@ -570,6 +615,49 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
                          blockOrdinal);
           }
           break;
+        case TerminatorKind::IndirectCall: {
+          // The function-pointer slot must carry a pointer.
+          const uint32_t fnPtrOrdinal = terminator.indirectCallPointerOrdinal();
+          auto fnPtrSlotFinding = requireSlot(fnPtrOrdinal, blockOrdinal, kFunctionLevel);
+          if (fnPtrSlotFinding != zc::none) return fnPtrSlotFinding;
+          const ValueType* fnPtrCarrier = declaredSlotCarrier(function, fnPtrOrdinal);
+          if (fnPtrCarrier == nullptr || fnPtrCarrier->kind() != ValueTypeKind::Pointer) {
+            return fault(LirVerificationFaultKind::IndirectCallTargetNotPointer, functionIndex,
+                         blockOrdinal);
+          }
+          // The destination carrier must match the indirect return carrier.
+          if (terminator.hasCallDestination()) {
+            const uint32_t destinationOrdinal = terminator.callDestinationOrdinal();
+            auto destSlotFinding = requireSlot(destinationOrdinal, blockOrdinal, kFunctionLevel);
+            if (destSlotFinding != zc::none) return destSlotFinding;
+            if (*declaredSlotCarrier(function, destinationOrdinal) !=
+                terminator.indirectReturnCarrier()) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
+            }
+          }
+          // Argument carriers must match the indirect parameter carriers.
+          const auto arguments = terminator.callArguments();
+          const auto paramCarriers = terminator.indirectParameterCarriers();
+          if (arguments.size() != paramCarriers.size()) {
+            return fault(LirVerificationFaultKind::TerminatorArity, functionIndex, blockOrdinal);
+          }
+          for (uint32_t a = 0; a < arguments.size(); ++a) {
+            const Operand& argument = arguments[a];
+            if (!argument.isConstant()) {
+              auto slotFinding = requireSlot(argument.localOrdinal(), blockOrdinal, kFunctionLevel);
+              if (slotFinding != zc::none) return slotFinding;
+              if (*declaredSlotCarrier(function, argument.localOrdinal()) != paramCarriers[a]) {
+                return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex,
+                             blockOrdinal);
+              }
+              continue;
+            }
+            if (argument.constantCarrier() != paramCarriers[a]) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal);
+            }
+          }
+          break;
+        }
         case TerminatorKind::Goto:
           break;
         case TerminatorKind::Unreachable:

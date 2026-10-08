@@ -34,9 +34,9 @@ struct Frame final {
 bool isAdmittedFlowSubset(const mir::MirFunction& function) {
   if (function.blocks.size() == 0) return false;
 
-  // Every terminator must be Return, Unreachable, Call, Goto, or SwitchInt. Every
-  // Call must have no unwind target. Every successor target must resolve to an
-  // existing block.
+  // Every terminator must be Return, Unreachable, Call, IndirectCall, Goto, or
+  // SwitchInt. Every Call must have no unwind target. Every successor target
+  // must resolve to an existing block.
   for (const auto& block : function.blocks) {
     const auto kind = block.terminator.kind();
     if (kind == mir::MirTerminatorKind::Return) continue;
@@ -47,11 +47,17 @@ bool isAdmittedFlowSubset(const mir::MirFunction& function) {
       if (blockIndex(function, call.normalTarget) == zc::none) return false;
       continue;
     }
+    if (kind == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if (call.unwindTarget != zc::none) return false;
+      if (blockIndex(function, call.normalTarget) == zc::none) return false;
+      continue;
+    }
     if (kind == mir::MirTerminatorKind::Goto) {
       if (blockIndex(function, block.terminator.gotoValue().target) == zc::none) return false;
       continue;
     }
-    if (kind != mir::MirTerminatorKind::SwitchInt) return false;
+    if (kind != mir::MirTerminatorKind::SwitchInt) { return false; }
     const auto& switchInt = block.terminator.switchIntValue();
     for (const auto& arm : switchInt.arms) {
       if (blockIndex(function, arm.target) == zc::none) return false;
@@ -78,6 +84,8 @@ bool isAdmittedFlowSubset(const mir::MirFunction& function) {
     };
     if (terminator.kind() == mir::MirTerminatorKind::Call) {
       addTarget(terminator.callValue().normalTarget);
+    } else if (terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      addTarget(terminator.indirectCallValue().normalTarget);
     } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
       addTarget(terminator.gotoValue().target);
     } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {

@@ -86,13 +86,15 @@ void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, H
   ctx.addReceiverCall(HirReceiverCallExpression{
       setCallId, setReceiverId, setCall.callee, setCall.calleeType, setCall.receiverSourceType,
       setCall.receiverType, setCall.receiverMode, zc::mv(setCall.receiverAdjustments),
-      setCall.resultType, zc::mv(setCall.arguments), setCall.sourceSpan.clone()});
+      setCall.resultType, zc::mv(setCall.arguments), setCall.sourceSpan.clone(),
+      zc::mv(setCall.interface)});
   ctx.addLocalReference(HirLocalReferenceExpression{getReceiverId, hirLocalId(1), receiverType,
                                                     receiverCategory, receiverSpan.clone()});
   ctx.addReceiverCall(HirReceiverCallExpression{
       getCallId, getReceiverId, getCall.callee, getCall.calleeType, getCall.receiverSourceType,
       getCall.receiverType, getCall.receiverMode, zc::mv(getCall.receiverAdjustments),
-      getCall.resultType, zc::mv(getCall.arguments), getCall.sourceSpan.clone()});
+      getCall.resultType, zc::mv(getCall.arguments), getCall.sourceSpan.clone(),
+      zc::mv(getCall.interface)});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, getCallId, function.returnSpan.clone()});
 }

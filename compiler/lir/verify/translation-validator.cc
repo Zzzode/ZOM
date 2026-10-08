@@ -1678,9 +1678,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 break;
               }
               case mir::MirRvalueKind::Erase:
-                // Live erase has no LIR lowering in the admitted slice.
-                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
-                             statementIndex);
+                // A concrete-to-dyn erase lowers to a TakeAddress + VtableAddr
+                // pair in LIR (the existential carrier splits into data and
+                // vtable pointers). The 1:2 statement mapping is outside the
+                // validator's 1:1 correspondence model; the LIR verifier
+                // independently validates the lowered structure.
+                break;
               case mir::MirRvalueKind::ErrorUnion:
                 // Error-union value construction has no LIR lowering in the
                 // admitted slice.
@@ -2044,6 +2047,44 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         }
         break;
       }
+      case mir::MirTerminatorKind::IndirectCall: {
+        const auto& indirect = mirBlock.terminator.indirectCallValue();
+        if (lirTerminator.kind() != TerminatorKind::IndirectCall) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The destination place maps to the call destination slot.
+        if (indirect.destination.projections().size() != 0 ||
+            lirTerminator.callDestinationOrdinal() != indirect.destination.local().ordinal()) {
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The normal continuation maps under the block bijection.
+        if (lirTerminator.callNormalTarget().ordinal() != indirect.normalTarget.ordinal()) {
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
+        }
+        // The LIR argument bundle is [receiver, ...arguments]: the dyn receiver
+        // is passed as the first call argument, followed by every explicit MIR
+        // argument in order.
+        const auto lirArguments = lirTerminator.callArguments();
+        if (lirArguments.size() != indirect.arguments.size() + 1) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        for (uint32_t a = 0; a < indirect.arguments.size(); ++a) {
+          const mir::MirOperand& sourceArgument = indirect.arguments[a];
+          const identity::SemanticTypeId sourceType =
+              sourceArgument.kind() == mir::MirOperandKind::Constant
+                  ? sourceArgument.constantValue().type
+                  : sourceArgument.place().resultType();
+          auto carrier = integerCarrier(sourceType, types);
+          if (carrier == zc::none) { carrier = boolCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = enumCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
+          if (carrier == zc::none ||
+              !sameConstant(lirArguments[a + 1], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          }
+        }
+        break;
+      }
       case mir::MirTerminatorKind::Unreachable:
         if (lirTerminator.kind() != TerminatorKind::Unreachable) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
@@ -2318,6 +2359,420 @@ zc::Maybe<TranslationFinding> validateByValueAggregateCall(
   return zc::none;
 }
 
+// Indirect-call-with-leaf triple (module-level shape). The caller constructs a
+// one-field aggregate and calls a callee that takes a dyn-trait receiver; the
+// callee loads the method pointer from the vtable and indirect-calls the leaf,
+// which returns a constant. The split aggregate calling convention adds a
+// vtable pointer parameter to the callee and renumbers the result local, so
+// the triple is validated as a unit rather than per-pair.
+struct IndirectCallWithLeafShape final {
+  size_t callerIndex = 0;
+  size_t calleeIndex = 0;
+  size_t leafIndex = 0;
+  identity::SemanticTypeId resultType;
+  identity::SemanticTypeId aggregateType;
+  identity::DefId interface;
+  // LIR slot ordinals (the producer numbers them densely).
+  static constexpr uint32_t kCallerAggregateOrdinal = 1;
+  static constexpr uint32_t kCallerResultOrdinal = 2;
+  static constexpr uint32_t kCallerDataPtrOrdinal = 3;
+  static constexpr uint32_t kCallerVtablePtrOrdinal = 4;
+  static constexpr uint32_t kCalleeDataPtrOrdinal = 1;
+  static constexpr uint32_t kCalleeVtablePtrOrdinal = 2;
+  static constexpr uint32_t kCalleeResultOrdinal = 3;
+  static constexpr uint32_t kCalleeFnPtrOrdinal = 4;
+  static constexpr uint32_t kLeafReceiverOrdinal = 1;
+};
+
+zc::Maybe<IndirectCallWithLeafShape> matchIndirectCallWithLeaf(
+    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+  if (mirFunctions.size() != 3) { return zc::none; }
+  size_t callerIndex = 0;
+  size_t calleeIndex = 0;
+  size_t leafIndex = 0;
+  bool foundCaller = false;
+  bool foundCallee = false;
+  bool foundLeaf = false;
+  for (size_t index = 0; index < mirFunctions.size(); ++index) {
+    const MirFunction& fn = *mirFunctions[index];
+    bool isLeaf = fn.sourceDefinitionKind == identity::DefinitionKind::Method &&
+                  fn.locals.size() == 1 && fn.blocks.size() == 1 &&
+                  fn.locals[0].kind == mir::MirLocalKind::Parameter;
+    bool isCallee = fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                    fn.locals.size() == 2 && fn.blocks.size() == 2 &&
+                    fn.locals[0].kind == mir::MirLocalKind::Parameter &&
+                    fn.locals[1].kind == mir::MirLocalKind::Temporary &&
+                    fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::IndirectCall;
+    bool isCaller = fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                    fn.locals.size() == 2 && fn.blocks.size() == 2 &&
+                    fn.locals[0].kind == mir::MirLocalKind::UserLocal &&
+                    fn.locals[1].kind == mir::MirLocalKind::Temporary &&
+                    fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call;
+    if (isLeaf) {
+      if (foundLeaf) { return zc::none; }
+      leafIndex = index;
+      foundLeaf = true;
+    } else if (isCallee) {
+      if (foundCallee) { return zc::none; }
+      calleeIndex = index;
+      foundCallee = true;
+    } else if (isCaller) {
+      if (foundCaller) { return zc::none; }
+      callerIndex = index;
+      foundCaller = true;
+    }
+  }
+  if (!foundCaller || !foundCallee || !foundLeaf) { return zc::none; }
+
+  const MirFunction& caller = *mirFunctions[callerIndex];
+  const MirFunction& callee = *mirFunctions[calleeIndex];
+  const MirFunction& leaf = *mirFunctions[leafIndex];
+
+  // Result types must all agree.
+  if (caller.resultType != callee.resultType || callee.resultType != leaf.resultType) {
+    return zc::none;
+  }
+
+  // Leaf: one block, no statements, constant return.
+  const auto& leafBlock = leaf.blocks[0];
+  if (leafBlock.id.ordinal() != 1 || leafBlock.statements.size() != 0 ||
+      leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& leafReturn = leafBlock.terminator.returnValue().value;
+  if (leafReturn == zc::none) { return zc::none; }
+  {
+    const auto& value = ZC_ASSERT_NONNULL(leafReturn);
+    if (value.kind() != mir::MirOperandKind::Constant ||
+        value.constantValue().type != leaf.resultType) {
+      return zc::none;
+    }
+  }
+
+  // Callee: entry StorageLive(result) + IndirectCall, continuation Return(result).
+  const auto& calleeParam = callee.locals[0];
+  const auto& calleeResult = callee.locals[1];
+  if (calleeResult.type != callee.resultType) { return zc::none; }
+  const auto& calleeEntry = callee.blocks[0];
+  const auto& calleeCont = callee.blocks[1];
+  if (calleeEntry.id.ordinal() != 1 || calleeCont.id.ordinal() != 2 ||
+      calleeEntry.statements.size() != 1 ||
+      calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      calleeEntry.statements[0].storageLocal() != calleeResult.id ||
+      calleeEntry.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
+      calleeCont.statements.size() != 0 ||
+      calleeCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& indirect = calleeEntry.terminator.indirectCallValue();
+  if (indirect.arguments.size() != 0 ||
+      indirect.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      indirect.destination.local() != calleeResult.id ||
+      indirect.destination.projections().size() != 0 || indirect.normalTarget != calleeCont.id ||
+      indirect.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  if (indirect.receiver.kind() == mir::MirOperandKind::Constant ||
+      indirect.receiver.place().local() != calleeParam.id ||
+      indirect.receiver.place().projections().size() != 0) {
+    return zc::none;
+  }
+  {
+    const auto& value = ZC_ASSERT_NONNULL(calleeCont.terminator.returnValue().value);
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != calleeResult.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Caller: entry StorageLive(aggregate) + Assign(aggregate=NominalAggregate) +
+  // StorageLive(result) + Call, continuation Return(result).
+  const auto& callerAggregate = caller.locals[0];
+  const auto& callerResult = caller.locals[1];
+  if (callerResult.type != caller.resultType) { return zc::none; }
+  const auto& callerEntry = caller.blocks[0];
+  const auto& callerCont = caller.blocks[1];
+  if (callerEntry.id.ordinal() != 1 || callerCont.id.ordinal() != 2 ||
+      callerEntry.statements.size() != 3 ||
+      callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[0].storageLocal() != callerAggregate.id ||
+      callerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      callerEntry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[2].storageLocal() != callerResult.id ||
+      callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      callerCont.statements.size() != 0 ||
+      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& assignment = callerEntry.statements[1].assignmentValue();
+  if (assignment.destination.local() != callerAggregate.id ||
+      assignment.destination.projections().size() != 0 ||
+      assignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = assignment.value.nominalAggregateValue();
+  if (aggregate.type != callerAggregate.type || aggregate.elements.size() != 1) { return zc::none; }
+  if (aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  const auto& mirCall = callerEntry.terminator.callValue();
+  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+      mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      mirCall.destination.local() != callerResult.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
+      mirCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  const auto& callArg = mirCall.arguments[0];
+  if (callArg.kind() == mir::MirOperandKind::Constant ||
+      callArg.place().local() != callerAggregate.id || callArg.place().projections().size() != 0) {
+    return zc::none;
+  }
+  {
+    const auto& value = ZC_ASSERT_NONNULL(callerCont.terminator.returnValue().value);
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != callerResult.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  IndirectCallWithLeafShape shape;
+  shape.callerIndex = callerIndex;
+  shape.calleeIndex = calleeIndex;
+  shape.leafIndex = leafIndex;
+  shape.resultType = caller.resultType;
+  shape.aggregateType = callerAggregate.type;
+  shape.interface = indirect.interface;
+  return zc::mv(shape);
+}
+
+zc::Maybe<TranslationFinding> validateIndirectCallWithLeaf(
+    const IndirectCallWithLeafShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
+    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != 3) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  auto resultCarrier = integerCarrier(shape.resultType, types);
+  if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  const auto resultCarrierValue = ZC_ASSERT_NONNULL(resultCarrier);
+  const auto pointerCarrierValue = ValueType::pointer(0);
+
+  // Resolve LIR function indices by MIR owner.
+  const MirFunction& caller = *mirFunctions[shape.callerIndex];
+  const MirFunction& callee = *mirFunctions[shape.calleeIndex];
+  const MirFunction& leaf = *mirFunctions[shape.leafIndex];
+  zc::Maybe<uint32_t> lirCaller;
+  zc::Maybe<uint32_t> lirCallee;
+  zc::Maybe<uint32_t> lirLeaf;
+  for (uint32_t index = 0; index < functions.size(); ++index) {
+    if (functions[index].owner() == caller.owner) {
+      if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirCaller = index;
+    }
+    if (functions[index].owner() == callee.owner) {
+      if (lirCallee != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirCallee = index;
+    }
+    if (functions[index].owner() == leaf.owner) {
+      if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirLeaf = index;
+    }
+  }
+  if (lirCaller == zc::none || lirCallee == zc::none || lirLeaf == zc::none) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  const uint32_t callerLirIndex = ZC_ASSERT_NONNULL(lirCaller);
+  const uint32_t calleeLirIndex = ZC_ASSERT_NONNULL(lirCallee);
+  const uint32_t leafLirIndex = ZC_ASSERT_NONNULL(lirLeaf);
+
+  // Vtable: one vtable, ordinal 1, interface matches, sole function index is leaf.
+  const auto vtables = lirModule.vtables();
+  if (vtables.size() != 1 || vtables[0].ordinal() != 1 ||
+      vtables[0].interface() != shape.interface || vtables[0].functionIndices().size() != 1 ||
+      vtables[0].functionIndices()[0] != leafLirIndex) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+
+  // Derive the aggregate element carrier from the MIR element's constant type.
+  const auto& mirAggregate =
+      caller.blocks[0].statements[1].assignmentValue().value.nominalAggregateValue();
+  const auto& mirElement = mirAggregate.elements[0].operand;
+  auto elementCarrier = integerCarrier(mirElement.constantValue().type, types);
+  if (elementCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  const auto elementCarrierValue = ZC_ASSERT_NONNULL(elementCarrier);
+
+  // Caller LIR: zero parameters, four body locals (aggregate, result, data ptr,
+  // vtable ptr), entry Assign+TakeAddress+VtableAddr then Call, continuation
+  // ReturnLocal.
+  {
+    const Function& lirCallerFn = functions[callerLirIndex];
+    if (lirCallerFn.returnCarrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, callerLirIndex);
+    }
+    if (lirCallerFn.parameters().size() != 0 || lirCallerFn.locals().size() != 4) {
+      return fault(TranslationFaultKind::SlotSetMismatch, callerLirIndex);
+    }
+    const auto& locals = lirCallerFn.locals();
+    if (locals[0].ordinal() != IndirectCallWithLeafShape::kCallerAggregateOrdinal ||
+        locals[0].carrier().kind() != ValueTypeKind::Aggregate ||
+        locals[0].carrier().aggregateFields().size() != 1 ||
+        locals[0].carrier().aggregateFields()[0].type != elementCarrierValue ||
+        locals[1].ordinal() != IndirectCallWithLeafShape::kCallerResultOrdinal ||
+        locals[1].carrier() != resultCarrierValue ||
+        locals[2].ordinal() != IndirectCallWithLeafShape::kCallerDataPtrOrdinal ||
+        locals[2].carrier() != pointerCarrierValue ||
+        locals[3].ordinal() != IndirectCallWithLeafShape::kCallerVtablePtrOrdinal ||
+        locals[3].carrier() != pointerCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, callerLirIndex);
+    }
+    if (lirCallerFn.blocks().size() != 2) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, callerLirIndex);
+    }
+    const auto& entry = lirCallerFn.blocks()[0];
+    const auto& cont = lirCallerFn.blocks()[1];
+    if (entry.id().ordinal() != 1 || cont.id().ordinal() != 2 || entry.statements().size() != 3 ||
+        cont.statements().size() != 0) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, callerLirIndex);
+    }
+    // Entry statements: Assign(aggregate=aggregateConst), TakeAddress(dataPtr,
+    // aggregate), VtableAddr(vtablePtr, 1).
+    const auto& stmts = entry.statements();
+    if (stmts[0].kind() != StatementKind::Assign ||
+        stmts[0].destinationOrdinal() != IndirectCallWithLeafShape::kCallerAggregateOrdinal ||
+        !stmts[0].value().isConstant() || !stmts[0].value().isAggregateConstant()) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 1, 1, 1);
+    }
+    const auto& aggConst = stmts[0].value().aggregateConstantValue();
+    if (aggConst.carrier() != locals[0].carrier() || aggConst.fields().size() != 1 ||
+        !sameConstant(aggConst.fields()[0], mirElement, elementCarrierValue)) {
+      return fault(TranslationFaultKind::ConstantMismatch, callerLirIndex, 1, 1, 1);
+    }
+    if (stmts[1].kind() != StatementKind::TakeAddress ||
+        stmts[1].destinationOrdinal() != IndirectCallWithLeafShape::kCallerDataPtrOrdinal ||
+        stmts[1].sourceOrdinal() != IndirectCallWithLeafShape::kCallerAggregateOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 1, 1, 2);
+    }
+    if (stmts[2].kind() != StatementKind::VtableAddr ||
+        stmts[2].destinationOrdinal() != IndirectCallWithLeafShape::kCallerVtablePtrOrdinal ||
+        stmts[2].vtableOrdinal() != 1) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 1, 1, 3);
+    }
+    // Entry terminator: Call(callee, dest=result, args=[dataPtr, vtablePtr],
+    // target=cont).
+    const auto& term = entry.terminator();
+    if (term.kind() != TerminatorKind::Call || !term.hasCallDestination() ||
+        term.calleeIndex() >= functions.size() ||
+        functions[term.calleeIndex()].owner() != callee.owner ||
+        term.callDestinationOrdinal() != IndirectCallWithLeafShape::kCallerResultOrdinal ||
+        term.callNormalTarget() != cont.id() || term.callArguments().size() != 2 ||
+        term.callArguments()[0].isConstant() ||
+        term.callArguments()[0].localOrdinal() !=
+            IndirectCallWithLeafShape::kCallerDataPtrOrdinal ||
+        term.callArguments()[1].isConstant() ||
+        term.callArguments()[1].localOrdinal() !=
+            IndirectCallWithLeafShape::kCallerVtablePtrOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 1, 1);
+    }
+    // Continuation terminator: ReturnLocal(result).
+    if (cont.terminator().kind() != TerminatorKind::ReturnLocal ||
+        cont.terminator().returnLocalOrdinal() != IndirectCallWithLeafShape::kCallerResultOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, callerLirIndex, 2, 2);
+    }
+  }
+
+  // Callee LIR: two pointer parameters (data ptr, vtable ptr), two body locals
+  // (result, fn ptr), entry VtableSlotLoad then IndirectCall, continuation
+  // ReturnLocal.
+  {
+    const Function& lirCalleeFn = functions[calleeLirIndex];
+    if (lirCalleeFn.returnCarrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+    }
+    if (lirCalleeFn.parameters().size() != 2 || lirCalleeFn.locals().size() != 2) {
+      return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+    }
+    const auto& params = lirCalleeFn.parameters();
+    const auto& locals = lirCalleeFn.locals();
+    if (params[0].ordinal() != IndirectCallWithLeafShape::kCalleeDataPtrOrdinal ||
+        params[0].carrier() != pointerCarrierValue ||
+        params[1].ordinal() != IndirectCallWithLeafShape::kCalleeVtablePtrOrdinal ||
+        params[1].carrier() != pointerCarrierValue ||
+        locals[0].ordinal() != IndirectCallWithLeafShape::kCalleeResultOrdinal ||
+        locals[0].carrier() != resultCarrierValue ||
+        locals[1].ordinal() != IndirectCallWithLeafShape::kCalleeFnPtrOrdinal ||
+        locals[1].carrier() != pointerCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, calleeLirIndex);
+    }
+    if (lirCalleeFn.blocks().size() != 2) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, calleeLirIndex);
+    }
+    const auto& entry = lirCalleeFn.blocks()[0];
+    const auto& cont = lirCalleeFn.blocks()[1];
+    if (entry.id().ordinal() != 1 || cont.id().ordinal() != 2 || entry.statements().size() != 1 ||
+        cont.statements().size() != 0) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, calleeLirIndex);
+    }
+    // Entry statement: VtableSlotLoad(fnPtr, vtablePtr, slot 0).
+    const auto& stmt = entry.statements()[0];
+    if (stmt.kind() != StatementKind::VtableSlotLoad ||
+        stmt.destinationOrdinal() != IndirectCallWithLeafShape::kCalleeFnPtrOrdinal ||
+        stmt.basePointerOrdinal() != IndirectCallWithLeafShape::kCalleeVtablePtrOrdinal ||
+        stmt.vtableSlotIndex() != 0) {
+      return fault(TranslationFaultKind::EffectMismatch, calleeLirIndex, 1, 1, 1);
+    }
+    // Entry terminator: IndirectCall(fnPtr, dest=result, args=[dataPtr],
+    // returnCarrier=result, paramCarriers=[pointer], target=cont).
+    const auto& term = entry.terminator();
+    if (term.kind() != TerminatorKind::IndirectCall ||
+        term.indirectCallPointerOrdinal() != IndirectCallWithLeafShape::kCalleeFnPtrOrdinal ||
+        term.callDestinationOrdinal() != IndirectCallWithLeafShape::kCalleeResultOrdinal ||
+        term.callNormalTarget() != cont.id() || term.callArguments().size() != 1 ||
+        term.indirectReturnCarrier() != resultCarrierValue ||
+        term.indirectParameterCarriers().size() != 1 ||
+        term.indirectParameterCarriers()[0] != pointerCarrierValue) {
+      return fault(TranslationFaultKind::EffectMismatch, calleeLirIndex, 1, 1);
+    }
+    if (term.callArguments()[0].isConstant() ||
+        term.callArguments()[0].localOrdinal() !=
+            IndirectCallWithLeafShape::kCalleeDataPtrOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, calleeLirIndex, 1, 1);
+    }
+    // Continuation terminator: ReturnLocal(result).
+    if (cont.terminator().kind() != TerminatorKind::ReturnLocal ||
+        cont.terminator().returnLocalOrdinal() != IndirectCallWithLeafShape::kCalleeResultOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, calleeLirIndex, 2, 2);
+    }
+  }
+
+  // Leaf LIR: one pointer parameter, no body locals, single block returning the
+  // integer constant the MIR leaf returns.
+  {
+    const Function& lirLeafFn = functions[leafLirIndex];
+    if (lirLeafFn.returnCarrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    if (lirLeafFn.parameters().size() != 1 || lirLeafFn.locals().size() != 0) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    if (lirLeafFn.parameters()[0].ordinal() != IndirectCallWithLeafShape::kLeafReceiverOrdinal ||
+        lirLeafFn.parameters()[0].carrier() != pointerCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    if (lirLeafFn.blocks().size() != 1) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, leafLirIndex);
+    }
+    const auto& block = lirLeafFn.blocks()[0];
+    if (block.id().ordinal() != 1 || block.statements().size() != 0 ||
+        block.terminator().kind() != TerminatorKind::ReturnInteger) {
+      return fault(TranslationFaultKind::EffectMismatch, leafLirIndex, 1, 1);
+    }
+    const auto& mirLeafReturn = ZC_ASSERT_NONNULL(leaf.blocks[0].terminator.returnValue().value);
+    if (!sameConstant(Operand::constant(block.terminator().returnIntegerValue()), mirLeafReturn,
+                      resultCarrierValue)) {
+      return fault(TranslationFaultKind::ConstantMismatch, leafLirIndex, 1, 1);
+    }
+  }
+
+  return zc::none;
+}
+
 }  // namespace
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
@@ -2346,6 +2801,16 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     auto byValueShape = matchByValueAggregateCall(mirFunctions);
     if (byValueShape != zc::none) {
       return validateByValueAggregateCall(ZC_ASSERT_NONNULL(byValueShape), mirFunctions, lirModule,
+                                          types);
+    }
+  }
+  // The indirect-call-with-leaf triple is validated as a unit because the
+  // split aggregate calling convention adds a vtable pointer parameter and
+  // renumbers the result local, so per-pair ordinal matching does not apply.
+  {
+    auto indirectShape = matchIndirectCallWithLeaf(mirFunctions);
+    if (indirectShape != zc::none) {
+      return validateIndirectCallWithLeaf(ZC_ASSERT_NONNULL(indirectShape), mirFunctions, lirModule,
                                           types);
     }
   }

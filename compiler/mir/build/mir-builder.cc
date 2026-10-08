@@ -2276,6 +2276,93 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a parameter receiver call return:
+/// `fn f(a: dyn Trait) -> T { return a.method(); }`. The receiver is a
+/// dyn-trait parameter whose concrete type is not statically known, so the
+/// call dispatches indirectly through the existential carrier's vtable.
+zc::Maybe<RecursiveFunctionProduct> buildParameterReceiverCallReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirReceiverCallExpression& call, const hir::VerifiedHirModule& hirModule,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  if (call.interface == zc::none) { return zc::none; }
+  if (call.arguments.size() != 0 || call.resultType != declaration.resultType) { return zc::none; }
+
+  // The receiver must be a parameter reference.
+  auto paramRef = parameterReferenceFor(hirModule, call.receiver);
+  if (paramRef == zc::none) { return zc::none; }
+  const auto& reference = ZC_ASSERT_NONNULL(paramRef);
+
+  // Find the parameter index.
+  size_t receiverIndex = 0;
+  bool receiverFound = false;
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    if (declaration.parameters[i].key == reference.parameter &&
+        declaration.parameters[i].type == reference.type) {
+      receiverIndex = i;
+      receiverFound = true;
+      break;
+    }
+  }
+  if (!receiverFound) { return zc::none; }
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) { return zc::none; }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+
+  // Declare parameter locals.
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[i].type, scope,
+                     declaration.parameters[i].sourceSpan.clone());
+  }
+
+  auto receiverLocalMaybe = MirLocalId::fromOrdinal(static_cast<uint32_t>(receiverIndex + 1));
+  if (receiverLocalMaybe == zc::none) { return zc::none; }
+  const MirLocalId receiverLocal = ZC_ASSERT_NONNULL(receiverLocalMaybe);
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, call.resultType, scope, call.sourceSpan.clone());
+
+  // Block 1: storage-live the result, then indirect-call through the vtable.
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, call.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> receiverProjections;
+  auto receiverOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(receiverLocal, reference.type, zc::mv(receiverProjections), reference.type));
+  if (receiverOperand == zc::none) { return zc::none; }
+
+  zc::Vector<MirOperand> arguments;
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  auto callTerminator = MirTerminator::indirectCall(
+      ZC_ASSERT_NONNULL(call.interface), call.callee, zc::mv(ZC_ASSERT_NONNULL(receiverOperand)),
+      zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
+      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
+  ctx.terminateBlock(zc::mv(callTerminator));
+
+  // Block 2: return the result temporary.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(resultLocal, call.resultType, zc::mv(returnProjections), call.resultType));
+  if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers K leading scalar user locals followed by one comparison
 /// conditional with two literal arms:
 /// `let a: i32 = <lit/param/local>; ...; if (x CMP y) { return lt; } else {
@@ -3165,6 +3252,21 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         auto product = buildReceiverSelfCallReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                                    ZC_ASSERT_NONNULL(receiverCall), identities,
                                                    proofs, copyMarker);
+        if (product != zc::none) return product;
+      }
+    }
+
+    // Parameter receiver call: a free function calling a method on a dyn-trait
+    // parameter (`fn f(a: dyn Trait) -> T { return a.method(); }`). The concrete
+    // type is not statically known, so the call dispatches indirectly through
+    // the existential carrier's vtable.
+    if (declaration.receiver == zc::none && directCall == zc::none &&
+        declaration.unsafeBlock == zc::none) {
+      auto receiverCall = receiverCallFor(hirModule, valueNode);
+      if (receiverCall != zc::none && ZC_ASSERT_NONNULL(receiverCall).interface != zc::none) {
+        auto product = buildParameterReceiverCallReturn(
+            declaration, ZC_ASSERT_NONNULL(sourceReturn), ZC_ASSERT_NONNULL(receiverCall),
+            hirModule, identities, proofs, copyMarker);
         if (product != zc::none) return product;
       }
     }

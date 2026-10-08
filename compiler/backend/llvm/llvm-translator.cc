@@ -190,7 +190,7 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (candidateBlocks.size() < 2) { return false; }
     const auto entryKind = candidateBlocks[0].terminator().kind();
     return entryKind == lir::TerminatorKind::CondBranch || entryKind == lir::TerminatorKind::Goto ||
-           entryKind == lir::TerminatorKind::Call;
+           entryKind == lir::TerminatorKind::Call || entryKind == lir::TerminatorKind::IndirectCall;
   };
   for (const auto& candidate : functions) {
     if (!isSupportedShape(candidate)) {
@@ -279,6 +279,30 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
         ::llvm::FunctionType::get(candidateReturn, paramTypeRef, /*isVarArg=*/false);
     llvmFunctions.add(::llvm::Function::Create(functionType, ::llvm::GlobalValue::ExternalLinkage,
                                                candidate.symbolName().cStr(), llvmModule.get()));
+  }
+
+  // 3b. Emit one private global constant per vtable. Each vtable is an array
+  //     of opaque pointers holding the impl method functions, in trait-method
+  //     order. The VtableAddr statement lowers to the global's address.
+  const auto vtables = module.vtables();
+  zc::Vector<::llvm::GlobalVariable*> llvmVtables;
+  for (const auto& vtable : vtables) {
+    zc::Vector<::llvm::Constant*> methodConstants;
+    for (const auto fnIndex : vtable.functionIndices()) {
+      if (fnIndex >= llvmFunctions.size()) {
+        return LlvmTranslationResult::failure(zc::heapString("vtable function index out of range"));
+      }
+      methodConstants.add(::llvm::ConstantExpr::getBitCast(llvmFunctions[fnIndex],
+                                                           ::llvm::PointerType::get(*context, 0)));
+    }
+    ::llvm::ArrayRef<::llvm::Constant*> methodRef(methodConstants.begin(), methodConstants.size());
+    auto* vtableArray = ::llvm::ConstantArray::get(
+        ::llvm::ArrayType::get(::llvm::PointerType::get(*context, 0), methodConstants.size()),
+        methodRef);
+    auto* vtableGlobal = new ::llvm::GlobalVariable(
+        *llvmModule, vtableArray->getType(),
+        /*isConstant=*/true, ::llvm::GlobalValue::PrivateLinkage, vtableArray, ".vtable");
+    llvmVtables.add(vtableGlobal);
   }
 
   // 4. Emit each function body.
@@ -606,6 +630,31 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           ::llvm::Value* fieldValue = loadOperand(statement.storedValue(), target);
           stored = ::llvm::InsertValueInst::Create(aggregate, fieldValue, {statement.fieldIndex()},
                                                    "ins", target);
+        } else if (statement.kind() == lir::StatementKind::VtableAddr) {
+          // The vtable address is the global's address. Vtable ordinals are
+          // one-based dense (LIR-verifier validated), so the vector index is
+          // ordinal - 1.
+          const uint32_t vtableIndex = statement.vtableOrdinal() - 1;
+          if (vtableIndex >= llvmVtables.size()) {
+            return LlvmTranslationResult::failure(
+                zc::heapString("vtable ordinal out of range in VtableAddr statement"));
+          }
+          stored = llvmVtables[vtableIndex];
+        } else if (statement.kind() == lir::StatementKind::VtableSlotLoad) {
+          // Load the vtable pointer from the base slot, then GEP to the slot
+          // index and load the function pointer. The vtable is an array of
+          // opaque pointers; the destination slot carries a pointer (LIR-
+          // verifier validated), so the loaded type matches.
+          auto* vtableSlot = slotFor(statement.sourceOrdinal());
+          auto* vtablePtr =
+              new ::llvm::LoadInst(vtableSlot->getAllocatedType(), vtableSlot, "vtbl", target);
+          ::llvm::Value* gepIndices[1] = {::llvm::ConstantInt::get(
+              ::llvm::Type::getInt32Ty(*context), statement.vtableSlotIndex())};
+          ::llvm::ArrayRef<::llvm::Value*> indices(gepIndices, 1);
+          ::llvm::Value* slotPtr = ::llvm::GetElementPtrInst::Create(
+              ::llvm::PointerType::get(*context, 0), vtablePtr, indices, "slotgep", target);
+          stored =
+              new ::llvm::LoadInst(::llvm::PointerType::get(*context, 0), slotPtr, "fnptr", target);
         } else {
           stored = loadOperand(statement.value(), target);
         }
@@ -645,6 +694,37 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
             // no SSA name and store nothing.
             ::llvm::CallInst::Create(callee->getFunctionType(), callee, callArgsRef,
                                      /*NameStr=*/"", target);
+          }
+          ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);
+          break;
+        }
+        case lir::TerminatorKind::IndirectCall: {
+          // Call through a function pointer held in a local slot. The
+          // signature comes from the terminator's return and parameter
+          // carriers (LIR-verifier validated). Load the function pointer,
+          // build the FunctionType, emit the call, store the result, and
+          // branch to the normal target.
+          auto* fnPtrSlot = slotFor(terminator.indirectCallPointerOrdinal());
+          auto* fnPtr =
+              new ::llvm::LoadInst(fnPtrSlot->getAllocatedType(), fnPtrSlot, "fnptr", target);
+          ::llvm::Type* retTy = llvmType(*context, terminator.indirectReturnCarrier());
+          zc::Vector<::llvm::Type*> paramTys;
+          for (const auto& pc : terminator.indirectParameterCarriers()) {
+            paramTys.add(llvmType(*context, pc));
+          }
+          ::llvm::ArrayRef<::llvm::Type*> paramTyRef(paramTys.begin(), paramTys.size());
+          auto* fnTy = ::llvm::FunctionType::get(retTy, paramTyRef, /*isVarArg=*/false);
+          zc::Vector<::llvm::Value*> callArgs;
+          for (const auto& argument : terminator.callArguments()) {
+            callArgs.add(loadOperand(argument, target));
+          }
+          ::llvm::ArrayRef<::llvm::Value*> callArgsRef(callArgs.begin(), callArgs.size());
+          if (terminator.hasCallDestination()) {
+            auto* callResult = ::llvm::CallInst::Create(fnTy, fnPtr, callArgsRef, "icall", target);
+            auto* destination = slotFor(terminator.callDestinationOrdinal());
+            new ::llvm::StoreInst(callResult, destination, /*isVolatile=*/false, target);
+          } else {
+            ::llvm::CallInst::Create(fnTy, fnPtr, callArgsRef, /*NameStr=*/"", target);
           }
           ::llvm::BranchInst::Create(blockFor(terminator.callNormalTarget()), target);
           break;

@@ -127,6 +127,21 @@ Statement Statement::insertField(uint32_t destinationOrdinal, uint32_t aggregate
                    Operand::localUse(aggregateOrdinal), zc::mv(value), fieldIndex);
 }
 
+Statement Statement::vtableAddr(uint32_t destinationOrdinal, uint32_t vtableOrdinal) noexcept {
+  // VtableAddr reads only the destination and vtable ordinal; leftValue and
+  // rightValue are never-read placeholders.
+  return Statement(StatementKind::VtableAddr, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(0), Operand::localUse(0), vtableOrdinal);
+}
+
+Statement Statement::vtableSlotLoad(uint32_t destinationOrdinal, uint32_t vtablePointerOrdinal,
+                                    uint32_t slotIndex) noexcept {
+  // VtableSlotLoad reads the vtable pointer from leftValue (a local use);
+  // rightValue is a never-read placeholder.
+  return Statement(StatementKind::VtableSlotLoad, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(vtablePointerOrdinal), Operand::localUse(0), slotIndex);
+}
+
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
 IntegerConstant Terminator::fallbackConstant() noexcept {
@@ -179,6 +194,18 @@ zc::Maybe<Terminator> Terminator::callVoidFunction(uint32_t calleeIndex,
 Terminator Terminator::returnVoid() noexcept { return Terminator(TerminatorKind::ReturnVoid); }
 
 Terminator Terminator::unreachable() noexcept { return Terminator(TerminatorKind::Unreachable); }
+
+zc::Maybe<Terminator> Terminator::indirectCall(uint32_t functionPointerOrdinal,
+                                               uint32_t destinationOrdinal,
+                                               zc::Vector<Operand>&& arguments,
+                                               ValueType returnCarrier,
+                                               zc::Vector<ValueType>&& parameterCarriers,
+                                               LirBlockId normalTarget) noexcept {
+  if (arguments.size() > kMaxCallArguments) { return zc::none; }
+  return Terminator(functionPointerOrdinal, destinationOrdinal, zc::mv(arguments),
+                    zc::mv(returnCarrier), zc::mv(parameterCarriers), normalTarget,
+                    TerminatorKind::IndirectCall);
+}
 
 Terminator Terminator::returnString(StringConstant&& value) noexcept {
   return Terminator(zc::mv(value));

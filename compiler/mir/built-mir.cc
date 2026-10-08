@@ -497,6 +497,9 @@ MirTerminator::MirTerminator(MirGotoTerminator&& value, identity::SourceSpan&& s
 MirTerminator::MirTerminator(MirSwitchIntTerminator&& value,
                              identity::SourceSpan&& sourceSpan) noexcept
     : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
+MirTerminator::MirTerminator(MirIndirectCallTerminator&& value,
+                             identity::SourceSpan&& sourceSpan) noexcept
+    : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
 
 MirTerminator MirTerminator::returnValue(MirOperand&& value,
                                          identity::SourceSpan&& sourceSpan) noexcept {
@@ -565,6 +568,19 @@ MirTerminator MirTerminator::switchInt(MirOperand&& discriminant,
                        zc::mv(sourceSpan));
 }
 
+MirTerminator MirTerminator::indirectCall(identity::DefId interface, identity::DefId method,
+                                          MirOperand&& receiver, zc::Vector<MirOperand>&& arguments,
+                                          MirCallEffect&& effect, MirPlace&& destination,
+                                          MirBlockId normalTarget,
+                                          zc::Maybe<MirBlockId>&& unwindTarget,
+                                          identity::SourceSpan&& sourceSpan) noexcept {
+  return MirTerminator(
+      MirIndirectCallTerminator{interface, method, zc::mv(receiver), zc::mv(arguments),
+                                zc::mv(effect), zc::mv(destination), normalTarget,
+                                zc::mv(unwindTarget)},
+      zc::mv(sourceSpan));
+}
+
 MirTerminator MirTerminator::clone() const {
   if (kind() == MirTerminatorKind::Unreachable) return unreachable(sourceSpan().clone());
   if (kind() == MirTerminatorKind::Call) {
@@ -575,6 +591,16 @@ MirTerminator MirTerminator::clone() const {
     ZC_IF_SOME(target, source.unwindTarget) { unwindTarget = target; }
     return call(source.callee, zc::mv(arguments), source.effect.clone(), source.destination.clone(),
                 source.normalTarget, zc::mv(unwindTarget), sourceSpan().clone());
+  }
+  if (kind() == MirTerminatorKind::IndirectCall) {
+    const auto& source = indirectCallValue();
+    zc::Vector<MirOperand> arguments;
+    for (const auto& argument : source.arguments) arguments.add(argument.clone());
+    zc::Maybe<MirBlockId> unwindTarget;
+    ZC_IF_SOME(target, source.unwindTarget) { unwindTarget = target; }
+    return indirectCall(source.interface, source.method, source.receiver.clone(), zc::mv(arguments),
+                        source.effect.clone(), source.destination.clone(), source.normalTarget,
+                        zc::mv(unwindTarget), sourceSpan().clone());
   }
   if (kind() == MirTerminatorKind::Goto) {
     return gotoTarget(gotoValue().target, sourceSpan().clone());
@@ -599,6 +625,7 @@ MirTerminatorKind MirTerminator::kind() const noexcept {
   if (value.is<MirUnreachableTerminator>()) return MirTerminatorKind::Unreachable;
   if (value.is<MirCallTerminator>()) return MirTerminatorKind::Call;
   if (value.is<MirGotoTerminator>()) return MirTerminatorKind::Goto;
+  if (value.is<MirIndirectCallTerminator>()) return MirTerminatorKind::IndirectCall;
   return MirTerminatorKind::SwitchInt;
 }
 
@@ -614,6 +641,10 @@ const MirGotoTerminator& MirTerminator::gotoValue() const { return value.get<Mir
 
 const MirSwitchIntTerminator& MirTerminator::switchIntValue() const {
   return value.get<MirSwitchIntTerminator>();
+}
+
+const MirIndirectCallTerminator& MirTerminator::indirectCallValue() const {
+  return value.get<MirIndirectCallTerminator>();
 }
 
 namespace {
@@ -1023,6 +1054,34 @@ bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& 
     }
     encoder.encodeUint32(call.normalTarget.ordinal());
     ZC_IF_SOME(target, call.unwindTarget) {
+      if (!target.isValid()) return false;
+      encoder.encodeSome();
+      encoder.encodeUint32(target.ordinal());
+    } else {
+      encoder.encodeNone();
+    }
+    return true;
+  }
+  if (terminator.kind() == MirTerminatorKind::IndirectCall) {
+    const auto& indirect = terminator.indirectCallValue();
+    if (!encodeDefinition(encoder, indirect.interface, identities) ||
+        !encodeDefinition(encoder, indirect.method, identities) ||
+        !encodeOperand(encoder, indirect.receiver, module, identities, semanticTypes) ||
+        !encodePlace(encoder, indirect.destination, identities, semanticTypes) ||
+        !indirect.normalTarget.isValid()) {
+      return false;
+    }
+    encoder.encodeUint8(static_cast<uint8_t>(indirect.effect.kind()));
+    ZC_IF_SOME(temporary, indirect.effect.activatedMutableReceiver()) {
+      if (!temporary.isValid()) return false;
+      encoder.encodeUint32(temporary.ordinal());
+    }
+    encoder.encodeSequenceSize(indirect.arguments.size());
+    for (const auto& argument : indirect.arguments) {
+      if (!encodeOperand(encoder, argument, module, identities, semanticTypes)) return false;
+    }
+    encoder.encodeUint32(indirect.normalTarget.ordinal());
+    ZC_IF_SOME(target, indirect.unwindTarget) {
       if (!target.isValid()) return false;
       encoder.encodeSome();
       encoder.encodeUint32(target.ordinal());
@@ -1812,6 +1871,102 @@ bool validByValueAggregateCallReturnFunction(
       actualArgument.place().rootType() != userLocal.type ||
       actualArgument.place().resultType() != userLocal.type ||
       actualArgument.place().projections().size() != 0) {
+    return false;
+  }
+  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
+           value.place().local() == resultLocal.id &&
+           value.place().rootType() == resultLocal.type &&
+           value.place().resultType() == resultLocal.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
+bool validParameterReceiverCallReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirReceiverCallExpression& call, const hir::VerifiedHirModule& hirModule,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  if (declaration.receiver != zc::none) { return false; }
+  if (call.interface == zc::none) { return false; }
+  // The receiver must be a parameter reference.
+  auto paramRef = parameterReferenceFor(hirModule, call.receiver);
+  if (paramRef == zc::none) { return false; }
+  const auto& reference = ZC_ASSERT_NONNULL(paramRef);
+  // Find the parameter index.
+  size_t receiverIndex = 0;
+  bool receiverFound = false;
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    if (declaration.parameters[i].key == reference.parameter &&
+        declaration.parameters[i].type == reference.type) {
+      receiverIndex = i;
+      receiverFound = true;
+      break;
+    }
+  }
+  if (!receiverFound) { return false; }
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != static_cast<size_t>(parameterCount + 1) ||
+      function.blocks.size() != 2 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 1 || sourceBlock.statements[0] != sourceReturn.node ||
+      sourceReturn.value != call.node || call.arguments.size() != 0 ||
+      call.resultType != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  for (size_t i = 0; i < declaration.parameters.size(); ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(static_cast<uint32_t>(i + 1)) ||
+        parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto& resultLocal = function.locals[parameterCount];
+  const auto& entry = function.blocks[0];
+  const auto& continuation = function.blocks[1];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) ||
+      resultLocal.id != localId(parameterCount + 1) ||
+      resultLocal.kind != MirLocalKind::Temporary || resultLocal.type != call.resultType ||
+      resultLocal.sourceScope != scope.id || !sameSpan(resultLocal.sourceSpan, call.sourceSpan) ||
+      entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 1 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal.id ||
+      !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation.id != blockId(2) ||
+      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
+      continuation.terminator.kind() != MirTerminatorKind::Return ||
+      continuation.terminator.returnValue().value == zc::none ||
+      !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
+      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& terminator = entry.terminator.indirectCallValue();
+  if (terminator.interface != ZC_ASSERT_NONNULL(call.interface) ||
+      terminator.method != call.callee || terminator.arguments.size() != 0 ||
+      terminator.destination.local() != resultLocal.id ||
+      terminator.destination.rootType() != resultLocal.type ||
+      terminator.destination.resultType() != resultLocal.type ||
+      terminator.destination.projections().size() != 0 ||
+      terminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+    return false;
+  }
+  const auto& receiverOperand = terminator.receiver;
+  if (!matchesPlaceUse(receiverOperand, proofs, copy, reference.type) ||
+      receiverOperand.place().local() != localId(static_cast<uint32_t>(receiverIndex + 1)) ||
+      receiverOperand.place().rootType() != reference.type ||
+      receiverOperand.place().resultType() != reference.type ||
+      receiverOperand.place().projections().size() != 0) {
     return false;
   }
   ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
@@ -16840,6 +16995,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       ZC_IF_SOME(value, sourceReturn) { expressionNode = value.value; }
       auto expression = expressionFor(hirModule, expressionNode);
       auto call = callFor(hirModule, expressionNode);
+      auto receiverCall = receiverCallFor(hirModule, expressionNode);
       auto parameterReference = parameterReferenceFor(hirModule, expressionNode);
       auto parameterReborrow = parameterReborrowFor(hirModule, expressionNode);
       auto conditional = conditionalFor(hirModule, expressionNode);
@@ -16900,6 +17056,16 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           ZC_ASSERT_NONNULL(call).arguments[0].value == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].parameter == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].local == ZC_ASSERT_NONNULL(sourceLocal).local;
+      // Parameter receiver call: `fn f(a: dyn I) -> T { return a.method(); }`.
+      // One-statement body, no local, the return value is a receiver call whose
+      // interface is set (live-erase) and whose receiver is a parameter
+      // reference.
+      const bool isParameterReceiverCallReturn =
+          receiverFieldProjection == zc::none && localFieldProjection == zc::none &&
+          sourceDeclaration.receiver == zc::none && sourceLocal == zc::none &&
+          receiverCall != zc::none && expression == zc::none && call == zc::none &&
+          parameterReference == zc::none && ZC_ASSERT_NONNULL(receiverCall).interface != zc::none &&
+          ZC_ASSERT_NONNULL(receiverCall).arguments.size() == 0;
       const bool isScalarLocalCallReturn =
           receiverFieldProjection == zc::none && localFieldProjection == zc::none &&
           sourceDeclaration.receiver == zc::none && sourceDeclaration.parameters.size() == 0 &&
@@ -16951,8 +17117,14 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
            (!isLocalFieldReturn && !isReceiverFieldReturn && !isByValueParameterFieldReturn &&
             !isByValueAggregateCallReturn && !isScalarLocalCallReturn && !isLocalReturn &&
             !isParameterReturn && !isParameterReborrow && !isLocalBorrow && !isConditionalReturn &&
-            !isComparisonReturn && !isDirectAggregateReturn &&
+            !isComparisonReturn && !isDirectAggregateReturn && !isParameterReceiverCallReturn &&
             (expression == zc::none) == (call == zc::none)) ||
+           (isParameterReceiverCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isByValueAggregateCallReturn || isScalarLocalCallReturn || isLocalReturn ||
+             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
+             isComparisonReturn || isDirectAggregateReturn || expression != zc::none ||
+             call != zc::none || localReference != zc::none || sourceOverwrite != zc::none)) ||
            (isByValueAggregateCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
@@ -17191,6 +17363,13 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               valid = validDirectCallReturnFunction(function, sourceDeclaration, block,
                                                     returnStatement, sourceCall, proofs, copy,
                                                     module, identities, semanticTypes);
+            }
+          }
+          ZC_IF_SOME(sourceReceiverCall, receiverCall) {
+            if (isParameterReceiverCallReturn) {
+              valid = validParameterReceiverCallReturnFunction(
+                  function, sourceDeclaration, block, returnStatement, sourceReceiverCall,
+                  hirModule, proofs, copy, module, identities, semanticTypes);
             }
           }
           ZC_IF_SOME(sourceAggregate, returnAggregate) {

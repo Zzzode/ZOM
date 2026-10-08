@@ -2016,6 +2016,80 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
             }
           }
         }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+        const auto& call = block.terminator.indirectCallValue();
+        if (call.unwindTarget != zc::none) return zc::none;
+        if (call.effect.kind() != mir::MirCallEffectKind::NoActivation) return zc::none;
+        // Receiver operand at ordinal 0.
+        {
+          zc::Vector<EventRole> receiverRoles;
+          switch (call.receiver.kind()) {
+            case mir::MirOperandKind::Copy:
+              receiverRoles.add(EventRole::OperandRead);
+              receiverRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              receiverRoles.add(EventRole::OperandRead);
+              receiverRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              receiverRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(receiverRoles)});
+          if (call.receiver.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               call.receiver.place().resultType())) {
+            return zc::none;
+          }
+        }
+        // Arguments at ordinal 1+.
+        for (const auto& argument : call.arguments) {
+          zc::Vector<EventRole> argumentRoles;
+          switch (argument.kind()) {
+            case mir::MirOperandKind::Copy:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              argumentRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
+          if (argument.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               argument.place().resultType())) {
+            return zc::none;
+          }
+        }
+        zc::Vector<EventRole> commitRoles;
+        commitRoles.add(EventRole::DestinationWrite);
+        slots.add(MirEventSlot{
+            MirEventKey{MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)},
+                        0},
+            EventStage::Commit, zc::mv(commitRoles)});
+        const MirEventKey initialization{
+            MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
+        if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
+                             call.destination.resultType()) ||
+            !appendMarkerUse(markerUses, proofs, input, initialization, linear,
+                             call.destination.resultType())) {
+          return zc::none;
+        }
+        if (markerUses.size() < 2 ||
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
+          return zc::none;
+        }
       } else if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
         const auto& call = block.terminator.callValue();
         if (call.unwindTarget != zc::none) return zc::none;
@@ -2333,6 +2407,80 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
               return zc::none;
             }
           }
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+        const auto& call = block.terminator.indirectCallValue();
+        if (call.unwindTarget != zc::none) return zc::none;
+        if (call.effect.kind() != mir::MirCallEffectKind::NoActivation) return zc::none;
+        // Receiver operand at ordinal 0.
+        {
+          zc::Vector<EventRole> receiverRoles;
+          switch (call.receiver.kind()) {
+            case mir::MirOperandKind::Copy:
+              receiverRoles.add(EventRole::OperandRead);
+              receiverRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              receiverRoles.add(EventRole::OperandRead);
+              receiverRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              receiverRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(receiverRoles)});
+          if (call.receiver.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               call.receiver.place().resultType())) {
+            return zc::none;
+          }
+        }
+        // Arguments at ordinal 1+.
+        for (const auto& argument : call.arguments) {
+          zc::Vector<EventRole> argumentRoles;
+          switch (argument.kind()) {
+            case mir::MirOperandKind::Copy:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              argumentRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
+          if (argument.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               argument.place().resultType())) {
+            return zc::none;
+          }
+        }
+        zc::Vector<EventRole> commitRoles;
+        commitRoles.add(EventRole::DestinationWrite);
+        slots.add(MirEventSlot{
+            MirEventKey{MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)},
+                        0},
+            EventStage::Commit, zc::mv(commitRoles)});
+        const MirEventKey initialization{
+            MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
+        if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
+                             call.destination.resultType()) ||
+            !appendMarkerUse(markerUses, proofs, input, initialization, linear,
+                             call.destination.resultType())) {
+          return zc::none;
+        }
+        if (markerUses.size() < 2 ||
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
+          return zc::none;
         }
       } else if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
         const auto& call = block.terminator.callValue();

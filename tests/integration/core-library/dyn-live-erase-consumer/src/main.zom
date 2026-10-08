@@ -1,0 +1,23 @@
+// Live-erase fixture: a dyn-trait parameter whose concrete type is not
+// statically known. The method call `a.speak()` dispatches through the
+// vtable carried by the existential parameter and returns 41.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fn speak(this) -> i32 { return 41; }
+}
+
+fn callSpeak(a: dyn Animal) -> i32 {
+  return a.speak();
+}
+
+fn entry() -> i32 {
+  let d = Dog { tag: 0 };
+  return callSpeak(d);
+}

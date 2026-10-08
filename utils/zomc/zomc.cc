@@ -1697,7 +1697,9 @@ private:
           // non-leaf third function -- leaves `lir` as none and the module fails
           // closed.
           auto isCaller = [](const mir::MirFunction& fn) {
-            return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2;
+            return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2 &&
+                   !fn.blocks.empty() &&
+                   fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call;
           };
           zc::Maybe<size_t> callerIndex;
           bool callerAmbiguous = false;
@@ -1754,6 +1756,14 @@ private:
                       lir = lir::MirToLirLowering::lowerReceiverCallModuleWithLeaf(
                           functions[caller], functions[callee], functions[leaf], types);
                     }
+                    // Dyn live-erase: the caller/callee/leaf triple is the same
+                    // identification, but the callee has an IndirectCall
+                    // terminator (dyn-trait method dispatch) rather than a
+                    // direct Call terminator.
+                    if (lir == zc::none) {
+                      lir = lir::MirToLirLowering::lowerIndirectCallModuleWithLeaf(
+                          functions[caller], functions[callee], functions[leaf], types);
+                    }
                   }
                 }
               }
@@ -1776,6 +1786,7 @@ private:
                   "comparison argument), shared-receiver "
                   "self-call, three-function direct-call-with-leaf, "
                   "two-impl devirtualization-with-leaf, "
+                  "dyn live-erase indirect-call-with-leaf, "
                   "void-setter-then-value-getter receiver-call, and "
                   "string literal return slices)."));
     }

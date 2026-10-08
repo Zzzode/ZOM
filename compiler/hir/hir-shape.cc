@@ -2753,6 +2753,39 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
+    // Single-statement dyn-trait method call on a callable parameter:
+    // `fn f(a: dyn I) -> T { return a.m(); }`. The return value is a
+    // CallExpression whose callee is a dot-access MemberExpression; the
+    // receiver is an IdentExpr naming a callable parameter. The body
+    // checker resolves the call through the existential type and records
+    // a DynMethodCallable dispatch fact. The builder lowers the receiver
+    // through the parameter carrier and the call through an indirect
+    // vtable dispatch.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::CallExpression) {
+      const ast::NodeId paramCallee(tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList paramTypeArgs{
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      if (tree.contains(paramCallee) &&
+          tree.node(paramCallee).kind == ast::SyntaxKind::MemberExpression &&
+          static_cast<ast::MemberAccessKind>(
+              tree.node(paramCallee).payload.words[ast::kMemberExpressionAccessWord]) ==
+              ast::MemberAccessKind::Dot &&
+          tree.contains(paramTypeArgs) && paramTypeArgs.empty()) {
+        const ast::NodeId paramReceiver(
+            tree.node(paramCallee).payload.words[ast::kMemberExpressionObjectWord]);
+        if (tree.contains(paramReceiver) &&
+            tree.node(paramReceiver).kind == ast::SyntaxKind::IdentExpr) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = value;
+          shape.returnsParameterReceiverCall = true;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;

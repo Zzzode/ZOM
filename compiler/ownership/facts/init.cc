@@ -345,12 +345,19 @@ bool hasCompleteInitializationPlans(const mir::MirFunction& function,
         return false;
       }
     }
-    if (block.terminator.kind() != mir::MirTerminatorKind::Call) continue;
-    ++expectedPlans;
-    const auto& call = block.terminator.callValue();
-    const MirEventKey initialization{
-        MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
-    if (!hasInitializationPlan(overlay, initialization, call.destination)) return false;
+    if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
+      ++expectedPlans;
+      const auto& call = block.terminator.callValue();
+      const MirEventKey initialization{
+          MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
+      if (!hasInitializationPlan(overlay, initialization, call.destination)) return false;
+    } else if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      ++expectedPlans;
+      const auto& call = block.terminator.indirectCallValue();
+      const MirEventKey initialization{
+          MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
+      if (!hasInitializationPlan(overlay, initialization, call.destination)) return false;
+    }
   }
   return overlay.logicalDropPlans.size() == expectedPlans;
 }
@@ -643,6 +650,10 @@ zc::Vector<mir::MirBlockId> terminatorSuccessors(const mir::MirTerminator& termi
     successors.add(terminator.callValue().normalTarget);
     return successors;
   }
+  if (terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+    successors.add(terminator.indirectCallValue().normalTarget);
+    return successors;
+  }
   if (terminator.kind() == mir::MirTerminatorKind::Goto) {
     successors.add(terminator.gotoValue().target);
     return successors;
@@ -793,6 +804,27 @@ bool transferBlock(const mir::MirFunction& function, const MovePathFunction& pat
                        function, paths, states.asPtr())) {
         return false;
       }
+    }
+    return true;
+  }
+  if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+    const auto& call = block.terminator.indirectCallValue();
+    if (call.unwindTarget != zc::none) { return false; }
+    if (!applyOperand(function, paths, call.receiver,
+                      eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0), states)) {
+      return false;
+    }
+    for (uint32_t ordinal = 0; ordinal < call.arguments.size(); ++ordinal) {
+      if (!applyOperand(function, paths, call.arguments[ordinal],
+                        eventAt(function.owner, MirPoint::beforeTerminator(block.id), ordinal + 1),
+                        states)) {
+        return false;
+      }
+    }
+    if (!initialize(function, paths, call.destination, states, false)) { return false; }
+    if (facts != nullptr && !appendFacts(*facts, MirPoint::edge(block.id, 0, call.normalTarget),
+                                         function, paths, states.asPtr())) {
+      return false;
     }
     return true;
   }
@@ -1368,6 +1400,23 @@ zc::Maybe<zc::Vector<SourceFailure>> sourceFailures(
       } else if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
         uint32_t argumentOrdinal = 0;
         for (const auto& argument : block.terminator.callValue().arguments) {
+          if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
+                                   ZC_ASSERT_NONNULL(facts), point, argument,
+                                   block.terminator.sourceSpan(), argumentOrdinal++,
+                                   traversalOrdinal, failures, linearPlaces)) {
+            return zc::none;
+          }
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+        const auto& call = block.terminator.indirectCallValue();
+        if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
+                                 ZC_ASSERT_NONNULL(facts), point, call.receiver,
+                                 block.terminator.sourceSpan(), 0, traversalOrdinal, failures,
+                                 linearPlaces)) {
+          return zc::none;
+        }
+        uint32_t argumentOrdinal = 1;
+        for (const auto& argument : call.arguments) {
           if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
                                    ZC_ASSERT_NONNULL(facts), point, argument,
                                    block.terminator.sourceSpan(), argumentOrdinal++,

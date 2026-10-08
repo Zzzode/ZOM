@@ -509,6 +509,21 @@ zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
               zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
         }
       }
+    } else if (terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = terminator.indirectCallValue();
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& operand = call.arguments[argIndex];
+        if (operand.kind() != mir::MirOperandKind::Move) continue;
+        auto place = MovePathKey{function.owner, operand.place().clone()};
+        auto obligationIndex = linearObligationAt(states, place);
+        if (obligationIndex == zc::none) continue;
+        ZC_IF_SOME(obligationOrdinal, obligationIndex) {
+          auto event = MirEventKey{
+              MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, argIndex + 1};
+          states[obligationOrdinal].consumptions.add(LinearConsumption{
+              zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
+        }
+      }
     } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
       // Goto carries no operands and no linear consumptions.
     } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
@@ -1011,7 +1026,7 @@ zc::Maybe<zc::Vector<SourceFailure>> linearSourceFailures(
         for (const auto& obligation : resourceFunction.linearObligations) {
           if (obligation.consumptions.size() != 0) continue;
           auto span = sourceSpanFor(function, functionOverlayValue, obligation.key.introduction);
-          if (span == zc::none) return zc::none;
+          if (span == zc::none) { return zc::none; }
           ZC_IF_SOME(spanValue, span) {
             failures.add(LinearNotConsumedFailure{
                 resourceFunction.owner,

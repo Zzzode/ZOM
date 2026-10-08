@@ -174,6 +174,11 @@ struct FunctionReturnShape final {
   // this struct stays copyable; only the discriminator is stored here.
   bool isSequentialLocalReturn = false;
   bool returnsReceiverCall = false;
+  // Single-statement dyn-trait method call on a callable parameter:
+  // `fn f(a: dyn I) -> T { return a.m(); }`. The receiver is a parameter
+  // whose declared type is existential; the concrete type is not statically
+  // known, so the call dispatches indirectly through a vtable at runtime.
+  bool returnsParameterReceiverCall = false;
   // Two-statement by-value struct call shape: a leading aggregate-initialized
   // local passed as the sole argument of a returned direct free-function call:
   // `let p: P = P { .. }; return f(p);`.

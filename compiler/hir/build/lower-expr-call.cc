@@ -201,7 +201,7 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   ctx.addReceiverCall(HirReceiverCallExpression{
       callId, receiverId, call.callee, call.calleeType, call.receiverSourceType, call.receiverType,
       call.receiverMode, zc::mv(call.receiverAdjustments), call.resultType, zc::mv(call.arguments),
-      call.sourceSpan.clone()});
+      call.sourceSpan.clone(), zc::mv(call.interface)});
 }
 
 void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
@@ -228,7 +228,42 @@ void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnC
   ctx.addReceiverCall(HirReceiverCallExpression{
       callId, HirNodeId(), call.callee, call.calleeType, call.receiverSourceType, call.receiverType,
       call.receiverMode, zc::mv(call.receiverAdjustments), call.resultType, zc::mv(call.arguments),
-      call.sourceSpan.clone()});
+      call.sourceSpan.clone(), zc::mv(call.interface)});
+}
+
+void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
+  identity::CallableParameterKey receiverKey =
+      zc::mv(ZC_ASSERT_NONNULL(function.receiverCallParameterKey));
+  identity::SourceSpan receiverSpan = zc::mv(ZC_ASSERT_NONNULL(function.receiverCallParameterSpan));
+
+  // Fixed source-preorder stride: function F, body F+1, return F+2, receiver
+  // parameter reference F+3, receiver call F+4. The receiver is an explicit
+  // dyn-trait parameter, so it allocates a parameter reference node that the
+  // receiver call's receiver slot names. MIR looks up the parameter reference
+  // to find the receiver local and dispatches indirectly through the vtable.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId receiverId = ctx.allocNode(ast::NodeId());
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addParameterReference(
+      HirParameterReferenceExpression{receiverId, zc::mv(receiverKey), call.receiverSourceType,
+                                      HirValueCategory::Place, zc::mv(receiverSpan)});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addReceiverCall(HirReceiverCallExpression{
+      callId, receiverId, call.callee, call.calleeType, call.receiverSourceType, call.receiverType,
+      call.receiverMode, zc::mv(call.receiverAdjustments), call.resultType, zc::mv(call.arguments),
+      call.sourceSpan.clone(), zc::mv(call.interface)});
 }
 
 }  // namespace detail

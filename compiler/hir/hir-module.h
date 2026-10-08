@@ -314,6 +314,10 @@ struct HirReceiverCallExpression final {
   identity::SemanticTypeId resultType;
   zc::Vector<HirDirectCallArgument> arguments;
   identity::SourceSpan sourceSpan;
+  /// \brief The interface DefId when this call dispatches a dyn-trait method
+  /// whose concrete type is not statically known, or none for a direct or
+  /// devirtualized call.
+  zc::Maybe<identity::DefId> interface;
 };
 
 /// \brief One checked unsafe block expression retained for ownership boundary lowering.

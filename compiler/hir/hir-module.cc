@@ -3434,17 +3434,24 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& transform = dispatch.fact.resultTransform.variant();
         bool dispatchOwnerMatches = false;
         ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
-        // A self-call resolves to either a concrete method or a devirtualized
-        // impl method; both lower through the same direct-call carrier.
+        // A self-call resolves to a concrete method, a devirtualized impl
+        // method, or a live-erased dyn method; all lower through the same
+        // direct-call carrier.
         const auto selfSelectedMethod = [&]() -> identity::DefId {
           if (selected.is<checker::checked::ConcreteMethodCallable>()) {
             return selected.get<checker::checked::ConcreteMethodCallable>().method;
+          }
+          if (selected.is<checker::checked::DynMethodCallable>()) {
+            return selected.get<checker::checked::DynMethodCallable>().method;
           }
           return selected.get<checker::checked::ImplMethodCallable>().method;
         };
         const auto selfTargetMethod = [&]() -> identity::DefId {
           if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
             return target.get<checker::dispatch::ConcreteMethodTarget>().method;
+          }
+          if (target.is<checker::dispatch::DynMethodTarget>()) {
+            return target.get<checker::dispatch::DynMethodTarget>().method;
           }
           return target.get<checker::dispatch::ImplMethodTarget>().method;
         };
@@ -3457,10 +3464,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             memberFact.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
             memberFact.adjustment != zc::none || selfCall.calleeType != memberFact.memberType ||
             !(selected.is<checker::checked::ConcreteMethodCallable>() ||
-              selected.is<checker::checked::ImplMethodCallable>()) ||
+              selected.is<checker::checked::ImplMethodCallable>() ||
+              selected.is<checker::checked::DynMethodCallable>()) ||
             selfSelectedMethod() != selfCall.callee ||
             !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
-              target.is<checker::dispatch::ImplMethodTarget>()) ||
+              target.is<checker::dispatch::ImplMethodTarget>() ||
+              target.is<checker::dispatch::DynMethodTarget>()) ||
             selfTargetMethod() != selfCall.callee ||
             !transform.is<checker::dispatch::IdentityResultTransform>() ||
             invocation.calleeType != selfCall.calleeType ||
@@ -3571,6 +3580,256 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
         nextFunction += 4;
+        continue;
+      }
+    }
+    // Parameter receiver call shape: a free function whose body is the single
+    // statement `return <param>.<method>();` where the parameter is a dyn-trait
+    // value whose concrete type is not statically known. Five node ids:
+    // function, body, return, receiver parameter reference, receiver call. The
+    // receiver call dispatches indirectly through the vtable at runtime.
+    {
+      zc::Maybe<const HirReceiverCallExpression&> paramCallRecord;
+      for (const auto& call : candidate.impl->receiverCalls) {
+        if (call.node != returnStatement.value) continue;
+        if (paramCallRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        paramCallRecord = call;
+      }
+      if (function.receiver == zc::none && paramCallRecord != zc::none &&
+          ZC_ASSERT_NONNULL(paramCallRecord).interface != zc::none &&
+          ZC_ASSERT_NONNULL(paramCallRecord).receiver != HirNodeId()) {
+        const auto& paramCall = ZC_ASSERT_NONNULL(paramCallRecord);
+        const auto callNodeId = hirId(expectedFunction + 4);
+        const auto receiverNodeId = hirId(expectedFunction + 3);
+        if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            returnStatement.node != hirId(expectedFunction + 2) ||
+            returnStatement.value != callNodeId || paramCall.node != callNodeId ||
+            paramCall.receiver != receiverNodeId || function.body != block.node ||
+            block.statements.size() != 1 || block.statements[0] != returnStatement.node ||
+            returnStatement.resultType != function.resultType ||
+            paramCall.resultType != function.resultType ||
+            (paramCall.receiverMode != checker::checked::ReceiverMode::Shared &&
+             paramCall.receiverMode != checker::checked::ReceiverMode::Mutable) ||
+            paramCall.receiverAdjustments.size() != 1 ||
+            (paramCall.receiverAdjustments[0] !=
+                 checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+             paramCall.receiverAdjustments[0] !=
+                 checker::checked::ReceiverAdjustmentStep::BorrowMutable) ||
+            paramCall.arguments.size() != 0) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The receiver node must resolve to a parameter reference.
+        zc::Maybe<const HirParameterReferenceExpression&> receiverParamRef;
+        for (const auto& paramRef : candidate.impl->parameterReferences) {
+          if (paramRef.node != receiverNodeId) continue;
+          if (receiverParamRef != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          receiverParamRef = paramRef;
+        }
+        if (receiverParamRef == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& paramRef = ZC_ASSERT_NONNULL(receiverParamRef);
+        if (paramRef.type != paramCall.receiverSourceType ||
+            paramRef.category != HirValueCategory::Place) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The parameter reference must name one of the function's ordinary
+        // parameters with a matching type.
+        bool receiverParameterFound = false;
+        for (const auto& parameter : function.parameters) {
+          if (parameter.key == paramRef.parameter && parameter.type == paramRef.type) {
+            receiverParameterFound = true;
+            break;
+          }
+        }
+        if (!receiverParameterFound) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t sourceDefinitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { sourceDefinitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[sourceDefinitionSlot];
+        const auto& tree = bound.tree();
+        if (sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node) ||
+            tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+        if (sourceShape == zc::none ||
+            !ZC_ASSERT_NONNULL(sourceShape).returnsParameterReceiverCall) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& source = ZC_ASSERT_NONNULL(sourceShape);
+        if (!tree.contains(source.value) ||
+            tree.node(source.value).kind != ast::SyntaxKind::CallExpression) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& sourceCall = tree.node(source.value);
+        const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+        const ast::NodeList typeArguments{
+            sourceCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+            sourceCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+        const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                      sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+        if (!tree.contains(calleeNode) ||
+            tree.node(calleeNode).kind != ast::SyntaxKind::MemberExpression ||
+            static_cast<ast::MemberAccessKind>(
+                tree.node(calleeNode).payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Dot ||
+            !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+            !arguments.empty()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const ast::NodeId receiverNode(
+            tree.node(calleeNode).payload.words[ast::kMemberExpressionObjectWord]);
+        if (!tree.contains(receiverNode) ||
+            tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+        auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+        auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+        if (bodySpan == zc::none || returnSpan == zc::none || callSpan == zc::none ||
+            !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+            !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+            !sameSpan(paramCall.sourceSpan, ZC_ASSERT_NONNULL(callSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto receiverTypeIndex = factIndex(facts.nodeTypes(), receiverNode);
+        auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+        auto memberIndex = factIndex(facts.members(), calleeNode);
+        auto checkedCallIndex = factIndex(facts.calls(), source.value);
+        auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+        if (receiverTypeIndex == zc::none || calleeTypeIndex == zc::none ||
+            memberIndex == zc::none || checkedCallIndex == zc::none || callKey == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        auto dispatchIndex = dispatchFactIndex(
+            candidate.impl->checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(callKey));
+        if (dispatchIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t receiverTypeSlot = 0;
+        size_t calleeTypeSlot = 0;
+        size_t memberSlot = 0;
+        size_t checkedCallSlot = 0;
+        size_t dispatchSlot = 0;
+        ZC_IF_SOME(value, receiverTypeIndex) { receiverTypeSlot = value; }
+        ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+        ZC_IF_SOME(value, memberIndex) { memberSlot = value; }
+        ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+        ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+        const auto& memberFact = facts.members().entries()[memberSlot].value;
+        const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+        const auto& selected = invocation.selected.variant();
+        const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+        const auto& target = dispatch.fact.target.variant();
+        const auto& transform = dispatch.fact.resultTransform.variant();
+        if (!selected.is<checker::checked::DynMethodCallable>() ||
+            !target.is<checker::dispatch::DynMethodTarget>() ||
+            !transform.is<checker::dispatch::IdentityResultTransform>() ||
+            selected.get<checker::checked::DynMethodCallable>().method != memberFact.member ||
+            target.get<checker::dispatch::DynMethodTarget>().method != memberFact.member ||
+            selected.get<checker::checked::DynMethodCallable>().interface !=
+                ZC_ASSERT_NONNULL(paramCall.interface) ||
+            memberFact.node != calleeNode ||
+            memberFact.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+            memberFact.adjustment != zc::none || paramCall.calleeType != memberFact.memberType ||
+            invocation.calleeType != paramCall.calleeType ||
+            invocation.successType != function.resultType ||
+            invocation.resultType != function.resultType || invocation.receiver == zc::none ||
+            invocation.receiverMode == zc::none || invocation.receiverAdjustment == zc::none ||
+            invocation.arguments.size() != 0 || invocation.substitutions != zc::none ||
+            invocation.witnesses != zc::none || invocation.raises != zc::none ||
+            dispatch.fact.receiver == zc::none || dispatch.fact.arguments.size() != 0 ||
+            dispatch.fact.successType != function.resultType ||
+            dispatch.fact.resultType != function.resultType ||
+            dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+            dispatch.fact.raises != zc::none ||
+            !sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan,
+                      ZC_ASSERT_NONNULL(callSpan)) ||
+            !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(callSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        ZC_IF_SOME(callReceiver, invocation.receiver) {
+          ZC_IF_SOME(mode, invocation.receiverMode) {
+            ZC_IF_SOME(adjustment, invocation.receiverAdjustment) {
+              const bool sharedCall = mode == checker::checked::ReceiverMode::Shared;
+              const auto expectedMutability = sharedCall ? type::semantic::Mutability::Const
+                                                         : type::semantic::Mutability::Mutable;
+              const auto expectedStep =
+                  sharedCall ? checker::checked::ReceiverAdjustmentStep::BorrowShared
+                             : checker::checked::ReceiverAdjustmentStep::BorrowMutable;
+              auto receiverParameterType = semanticTypes.get(callReceiver.parameterType);
+              if (!receiverParameterType.is<type::SemanticTypeLookup>() ||
+                  !receiverParameterType.get<type::SemanticTypeLookup>()
+                       .data()
+                       .is<type::semantic::ReferenceTypeData>() ||
+                  receiverParameterType.get<type::SemanticTypeLookup>()
+                          .data()
+                          .get<type::semantic::ReferenceTypeData>()
+                          .mutability != expectedMutability) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+              if (callReceiver.sourceNode != receiverNode ||
+                  callReceiver.sourceType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+                  callReceiver.adjustment != zc::none || mode != paramCall.receiverMode ||
+                  adjustment.source != callReceiver.sourceType ||
+                  adjustment.destination != callReceiver.parameterType ||
+                  adjustment.steps.size() != 1 || adjustment.steps[0] != expectedStep) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            }
+          }
+        }
+        nextFunction += 5;
         continue;
       }
     }
@@ -9604,13 +9863,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const auto& transform = dispatch.fact.resultTransform.variant();
           bool dispatchOwnerMatches = false;
           ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
-          // A receiver call resolves to either a concrete method
-          // (ConcreteMethodCallable) or a devirtualized impl method
-          // (ImplMethodCallable). Both lower through the same direct-call
-          // carrier, so the verifier admits either variant.
+          // A receiver call resolves to a concrete method
+          // (ConcreteMethodCallable), a devirtualized impl method
+          // (ImplMethodCallable), or a live-erased dyn method
+          // (DynMethodCallable). All lower through the same direct-call
+          // carrier, so the verifier admits any variant.
           const auto selectedMethod = [&]() -> identity::DefId {
             if (selected.is<checker::checked::ConcreteMethodCallable>()) {
               return selected.get<checker::checked::ConcreteMethodCallable>().method;
+            }
+            if (selected.is<checker::checked::DynMethodCallable>()) {
+              return selected.get<checker::checked::DynMethodCallable>().method;
             }
             return selected.get<checker::checked::ImplMethodCallable>().method;
           };
@@ -9618,8 +9881,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
               return target.get<checker::dispatch::ConcreteMethodTarget>().method;
             }
+            if (target.is<checker::dispatch::DynMethodTarget>()) {
+              return target.get<checker::dispatch::DynMethodTarget>().method;
+            }
             return target.get<checker::dispatch::ImplMethodTarget>().method;
           };
+          const bool liveErase = selected.is<checker::checked::DynMethodCallable>();
           const auto expectedResultIsUnit = [&](identity::SemanticTypeId id) {
             auto lookup = semanticTypes.get(id);
             return lookup.is<type::SemanticTypeLookup>() &&
@@ -9629,13 +9896,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                        type::semantic::PrimitiveKind::Unit;
           };
           if (!(selected.is<checker::checked::ConcreteMethodCallable>() ||
-                selected.is<checker::checked::ImplMethodCallable>()) ||
+                selected.is<checker::checked::ImplMethodCallable>() ||
+                selected.is<checker::checked::DynMethodCallable>()) ||
               !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
-                target.is<checker::dispatch::ImplMethodTarget>()) ||
+                target.is<checker::dispatch::ImplMethodTarget>() ||
+                target.is<checker::dispatch::DynMethodTarget>()) ||
               !transform.is<checker::dispatch::IdentityResultTransform>() ||
               selectedMethod() != member.member || targetMethod() != member.member ||
               member.node != calleeNode ||
-              (!devirtualizedErase &&
+              (!(devirtualizedErase || liveErase) &&
                member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
               member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
               member.adjustment != zc::none || hirCall.callee != member.member ||
@@ -9668,7 +9937,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           if (!resultMatches) return false;
           const auto& checkedReceiver = ZC_ASSERT_NONNULL(invocation.receiver);
           if (checkedReceiver.sourceNode != receiverNode ||
-              (!devirtualizedErase &&
+              (!(devirtualizedErase || liveErase) &&
                checkedReceiver.sourceType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
               hirCall.receiverSourceType != checkedReceiver.sourceType ||
               invocation.receiverMode == zc::none ||
@@ -9691,10 +9960,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                       .data()
                       .get<type::semantic::ReferenceTypeData>()
                       .mutability != expectedMutability ||
-              (!devirtualizedErase && receiverParameter.get<type::SemanticTypeLookup>()
-                                              .data()
-                                              .get<type::semantic::ReferenceTypeData>()
-                                              .referent != checkedReceiver.sourceType) ||
+              (!(devirtualizedErase || liveErase) &&
+               receiverParameter.get<type::SemanticTypeLookup>()
+                       .data()
+                       .get<type::semantic::ReferenceTypeData>()
+                       .referent != checkedReceiver.sourceType) ||
               hirCall.receiverType != checkedReceiver.parameterType) {
             return false;
           }
@@ -10233,18 +10503,30 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& checkedArgument = invocation.arguments[0];
       const auto& dispatchArgument = dispatch.fact.arguments[0];
       const auto& hirArgument = call.arguments[0];
+      // A DynErase argument adjustment (concrete-to-dyn) is admitted by the
+      // coercion validation in the builder. The source type matches the
+      // argument expression; the parameter type is the erased existential type
+      // and the adjustment records the erasure, so both are exempt from the
+      // identity checks that apply to non-erased arguments.
+      const bool argumentErased =
+          checkedArgument.adjustment != zc::none &&
+          isSingleDynEraseAdjustment(ZC_ASSERT_NONNULL(checkedArgument.adjustment));
+      const bool dispatchErased =
+          dispatchArgument.adjustment != zc::none &&
+          isSingleDynEraseAdjustment(ZC_ASSERT_NONNULL(dispatchArgument.adjustment));
       if (checkedArgument.sourceNode != argumentNode ||
           checkedArgument.sourceType != argumentType ||
-          checkedArgument.parameterType != argumentType || checkedArgument.adjustment != zc::none ||
+          (!argumentErased && checkedArgument.parameterType != argumentType) ||
+          (!argumentErased && checkedArgument.adjustment != zc::none) ||
           !sameNodeKey(
               dispatchArgument.sourceNode,
               ZC_ASSERT_NONNULL(checkedNodeKey(tree, bound.parsedModule(), argumentNode))) ||
           dispatchArgument.sourceType != argumentType ||
-          dispatchArgument.parameterType != argumentType ||
-          dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
-          argumentType != aggregate.type || argumentType != localRecord.type ||
-          hirArgument.value != zc::none || hirArgument.parameter != zc::none ||
-          hirArgument.local != hirLocalId(1) ||
+          (!dispatchErased && dispatchArgument.parameterType != argumentType) ||
+          (!dispatchErased && dispatchArgument.adjustment != zc::none) ||
+          hirArgument.type != argumentType || argumentType != aggregate.type ||
+          argumentType != localRecord.type || hirArgument.value != zc::none ||
+          hirArgument.parameter != zc::none || hirArgument.local != hirLocalId(1) ||
           !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
         return rejectAggregateCall();
       }
@@ -10680,18 +10962,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           if (selected.is<checker::checked::ConcreteMethodCallable>()) {
             return selected.get<checker::checked::ConcreteMethodCallable>().method;
           }
+          if (selected.is<checker::checked::DynMethodCallable>()) {
+            return selected.get<checker::checked::DynMethodCallable>().method;
+          }
           return selected.get<checker::checked::ImplMethodCallable>().method;
         };
         const auto litTargetMethod = [&]() -> identity::DefId {
           if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
             return target.get<checker::dispatch::ConcreteMethodTarget>().method;
           }
+          if (target.is<checker::dispatch::DynMethodTarget>()) {
+            return target.get<checker::dispatch::DynMethodTarget>().method;
+          }
           return target.get<checker::dispatch::ImplMethodTarget>().method;
         };
         if (!(selected.is<checker::checked::ConcreteMethodCallable>() ||
-              selected.is<checker::checked::ImplMethodCallable>()) ||
+              selected.is<checker::checked::ImplMethodCallable>() ||
+              selected.is<checker::checked::DynMethodCallable>()) ||
             !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
-              target.is<checker::dispatch::ImplMethodTarget>()) ||
+              target.is<checker::dispatch::ImplMethodTarget>() ||
+              target.is<checker::dispatch::DynMethodTarget>()) ||
             !transform.is<checker::dispatch::IdentityResultTransform>() ||
             litSelectedMethod() != member.member || litTargetMethod() != member.member ||
             member.node != calleeNode ||
@@ -10822,12 +11112,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const auto& transform = dispatch.fact.resultTransform.variant();
       bool dispatchOwnerMatches = false;
       ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
-      // A receiver call on an aggregate-initialized local resolves to either a
-      // concrete method or a devirtualized impl method; both lower through the
-      // same direct-call carrier.
+      // A receiver call on an aggregate-initialized local resolves to a
+      // concrete method, a devirtualized impl method, or a live-erased dyn
+      // method; all lower through the same direct-call carrier.
       const auto aggSelectedMethod = [&]() -> identity::DefId {
         if (selected.is<checker::checked::ConcreteMethodCallable>()) {
           return selected.get<checker::checked::ConcreteMethodCallable>().method;
+        }
+        if (selected.is<checker::checked::DynMethodCallable>()) {
+          return selected.get<checker::checked::DynMethodCallable>().method;
         }
         return selected.get<checker::checked::ImplMethodCallable>().method;
       };
@@ -10835,8 +11128,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (target.is<checker::dispatch::ConcreteMethodTarget>()) {
           return target.get<checker::dispatch::ConcreteMethodTarget>().method;
         }
+        if (target.is<checker::dispatch::DynMethodTarget>()) {
+          return target.get<checker::dispatch::DynMethodTarget>().method;
+        }
         return target.get<checker::dispatch::ImplMethodTarget>().method;
       };
+      const bool liveErase = selected.is<checker::checked::DynMethodCallable>();
       if (ZC_ASSERT_NONNULL(receiverAggregate).type !=
               facts.nodeTypes().entries()[initializerTypeSlot].value ||
           checkedInitializer.node != initializer ||
@@ -10850,13 +11147,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           !sameSpan(ZC_ASSERT_NONNULL(localReference).sourceSpan,
                     ZC_ASSERT_NONNULL(receiverSpan)) ||
           !(selected.is<checker::checked::ConcreteMethodCallable>() ||
-            selected.is<checker::checked::ImplMethodCallable>()) ||
+            selected.is<checker::checked::ImplMethodCallable>() ||
+            selected.is<checker::checked::DynMethodCallable>()) ||
           !(target.is<checker::dispatch::ConcreteMethodTarget>() ||
-            target.is<checker::dispatch::ImplMethodTarget>()) ||
+            target.is<checker::dispatch::ImplMethodTarget>() ||
+            target.is<checker::dispatch::DynMethodTarget>()) ||
           !transform.is<checker::dispatch::IdentityResultTransform>() ||
           aggSelectedMethod() != member.member || aggTargetMethod() != member.member ||
           member.node != calleeNode ||
-          (!devirtualizedErase &&
+          (!(devirtualizedErase || liveErase) &&
            member.receiverType != facts.nodeTypes().entries()[receiverTypeSlot].value) ||
           member.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
           member.adjustment != zc::none ||

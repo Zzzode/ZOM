@@ -368,6 +368,13 @@ FlowFunctionOutcome deriveFunction(const mir::MirFunction& function,
       }
       continue;
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if (call.unwindTarget != zc::none || !chainEdge(0, call.normalTarget)) {
+        return {zc::none, FlowRejection::Proof};
+      }
+      continue;
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::Goto) {
       if (!chainEdge(0, block.terminator.gotoValue().target)) {
         return {zc::none, FlowRejection::Proof};

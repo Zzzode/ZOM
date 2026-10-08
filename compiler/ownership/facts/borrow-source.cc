@@ -360,6 +360,22 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if ((call.receiver.kind() == mir::MirOperandKind::Copy ||
+           call.receiver.kind() == mir::MirOperandKind::Move) &&
+          call.receiver.place().local() == destination.local()) {
+        consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0});
+      }
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& arg = call.arguments[argIndex];
+        if ((arg.kind() == mir::MirOperandKind::Copy || arg.kind() == mir::MirOperandKind::Move) &&
+            arg.place().local() == destination.local()) {
+          consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                               argIndex + 1});
+        }
+      }
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
       const auto& discriminant = block.terminator.switchIntValue().discriminant;
       if ((discriminant.kind() == mir::MirOperandKind::Copy ||
@@ -650,7 +666,7 @@ zc::Maybe<zc::Vector<SourceFailure>> borrowSourceFailures(
   // admitted subset admits branches, so this ordering is only sound for the
   // current single-path production MIR; branch-aware ordering is tracked
   // separately.
-  if (!allFunctionsAdmitted(builtMir)) return zc::none;
+  if (!allFunctionsAdmitted(builtMir)) { return zc::none; }
   zc::Vector<SourceFailure> failures;
   uint32_t traversalOrdinal = 0;
   escapeFailures(builtMir, overlay, references, failures, traversalOrdinal);

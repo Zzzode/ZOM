@@ -124,6 +124,7 @@ enum class TerminatorKind : uint8_t {
   ReturnVoid = 0x07,
   ReturnString = 0x08,
   Unreachable = 0x09,
+  IndirectCall = 0x0a,
 };
 
 /// \brief Upper bound on the slot count of a multi-slot aggregate return.
@@ -309,6 +310,8 @@ enum class StatementKind : uint8_t {
   Arithmetic = 0x06,
   ExtractField = 0x07,
   InsertField = 0x08,
+  VtableAddr = 0x09,
+  VtableSlotLoad = 0x0a,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
@@ -374,6 +377,19 @@ public:
   /// named field's type.
   ZC_NODISCARD static Statement insertField(uint32_t destinationOrdinal, uint32_t aggregateOrdinal,
                                             uint32_t fieldIndex, Operand value) noexcept;
+  /// \brief Stores the address of a module-level vtable into a pointer
+  /// destination slot. The vtable is identified by its module-local ordinal
+  /// (one-based, matching the module's vtable vector). The destination must
+  /// carry an opaque pointer.
+  ZC_NODISCARD static Statement vtableAddr(uint32_t destinationOrdinal,
+                                           uint32_t vtableOrdinal) noexcept;
+  /// \brief Loads one function pointer from a vtable slot into a pointer
+  /// destination slot. The base slot carries an opaque pointer to a vtable
+  /// (produced by a `vtableAddr` statement); the slot index selects the
+  /// function pointer within that vtable.
+  ZC_NODISCARD static Statement vtableSlotLoad(uint32_t destinationOrdinal,
+                                               uint32_t vtablePointerOrdinal,
+                                               uint32_t slotIndex) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
@@ -391,6 +407,13 @@ public:
   ZC_NODISCARD ArithmeticOp arithmeticOp() const noexcept { return arithmeticOpValue; }
   ZC_NODISCARD const Operand& left() const noexcept { return leftValue; }
   ZC_NODISCARD const Operand& right() const noexcept { return rightValue; }
+  /// \brief The one-based module-local vtable ordinal for a VtableAddr
+  /// statement. Reuses the field-offset storage; the two accessors name the
+  /// same slot with the semantics each statement kind requires.
+  ZC_NODISCARD uint32_t vtableOrdinal() const noexcept { return fieldOffsetValue; }
+  /// \brief The zero-based vtable slot index for a VtableSlotLoad statement.
+  /// Reuses the field-offset storage.
+  ZC_NODISCARD uint32_t vtableSlotIndex() const noexcept { return fieldOffsetValue; }
 
 private:
   Statement(StatementKind kind, uint32_t destinationOrdinal, ComparisonOp op, Operand left,
@@ -476,6 +499,21 @@ public:
   /// The LLVM translator lowers it to a trap followed by an unreachable
   /// instruction so the program aborts if control flow ever reaches it.
   ZC_NODISCARD static Terminator unreachable() noexcept;
+  /// \brief Builds an indirect call terminator: call through a function pointer
+  /// held in a local slot, store the integer result into
+  /// `destinationOrdinal`, then branch to `normalTarget`. The function
+  /// pointer is typically loaded from a vtable slot by a `VtableSlotLoad`
+  /// statement. Each argument is an `Operand`: an integer constant or a use
+  /// of a declared parameter/body-local slot. The return and parameter
+  /// carriers supply the callee signature since there is no module-local
+  /// function to resolve it from.
+  /// \return The terminator, or none when the vector is over the cap.
+  ZC_NODISCARD static zc::Maybe<Terminator> indirectCall(uint32_t functionPointerOrdinal,
+                                                         uint32_t destinationOrdinal,
+                                                         zc::Vector<Operand>&& arguments,
+                                                         ValueType returnCarrier,
+                                                         zc::Vector<ValueType>&& parameterCarriers,
+                                                         LirBlockId normalTarget) noexcept;
 
   Terminator(Terminator&&) = default;
   Terminator& operator=(Terminator&&) = default;
@@ -507,6 +545,17 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const IntegerConstant> returnAggregateSlots() const noexcept {
     return aggregateSlotsValue.asPtr();
   }
+  /// \brief The local ordinal holding the function pointer for an
+  /// IndirectCall terminator.
+  ZC_NODISCARD uint32_t indirectCallPointerOrdinal() const noexcept { return calleeIndexValue; }
+  /// \brief The return carrier of the indirect callee's signature.
+  ZC_NODISCARD const ValueType& indirectReturnCarrier() const noexcept {
+    return indirectReturnCarrierValue;
+  }
+  /// \brief The ordered parameter carriers of the indirect callee's signature.
+  ZC_NODISCARD zc::ArrayPtr<const ValueType> indirectParameterCarriers() const noexcept {
+    return indirectParameterCarriersValue.asPtr();
+  }
 
 private:
   explicit Terminator(IntegerConstant value) noexcept
@@ -526,6 +575,20 @@ private:
         trueTargetValue(normalTarget),
         calleeIndexValue(calleeIndex),
         callArgumentsValue(zc::mv(arguments)) {}
+  // IndirectCall reuses the Call field layout: calleeIndexValue holds the
+  // function-pointer local ordinal, localOrdinalValue the destination.
+  Terminator(uint32_t functionPointerOrdinal, uint32_t destinationOrdinal,
+             zc::Vector<Operand>&& arguments, ValueType returnCarrier,
+             zc::Vector<ValueType>&& parameterCarriers, LirBlockId normalTarget,
+             TerminatorKind kind) noexcept
+      : kindValue(kind),
+        integerValue(fallbackConstant()),
+        localOrdinalValue(destinationOrdinal),
+        trueTargetValue(normalTarget),
+        calleeIndexValue(functionPointerOrdinal),
+        callArgumentsValue(zc::mv(arguments)),
+        indirectReturnCarrierValue(zc::mv(returnCarrier)),
+        indirectParameterCarriersValue(zc::mv(parameterCarriers)) {}
   explicit Terminator(zc::Vector<IntegerConstant>&& slots) noexcept
       : kindValue(TerminatorKind::ReturnAggregate),
         integerValue(fallbackConstant()),
@@ -557,6 +620,8 @@ private:
   bool hasDestinationValue = true;
   zc::Vector<IntegerConstant> aggregateSlotsValue;
   zc::Vector<Operand> callArgumentsValue;
+  ValueType indirectReturnCarrierValue = ValueType::unit();
+  zc::Vector<ValueType> indirectParameterCarriersValue;
 };
 
 /// \brief One immutable LIR basic block: an identity, statements, a terminator.
@@ -646,10 +711,42 @@ private:
   zc::Vector<BasicBlock> blocksValue;
 };
 
-/// \brief One immutable LIR module: an ordered sequence of LIR functions.
+/// \brief One immutable LIR vtable: a module-local ordinal, the trait and impl
+/// it was generated for, and an ordered sequence of module-local function
+/// indices (callee indices into the module's function vector). The LLVM
+/// translator emits each vtable as a private constant array of function
+/// pointers. The ordinal is one-based and matches the module's vtable vector
+/// position.
+class Vtable final {
+public:
+  Vtable(uint32_t ordinal, identity::DefId interface, identity::ImplId impl,
+         zc::Vector<uint32_t>&& functionIndices) noexcept
+      : ordinalValue(ordinal),
+        interfaceValue(interface),
+        implValue(impl),
+        functionIndicesValue(zc::mv(functionIndices)) {}
+
+  ZC_NODISCARD uint32_t ordinal() const noexcept { return ordinalValue; }
+  ZC_NODISCARD identity::DefId interface() const noexcept { return interfaceValue; }
+  ZC_NODISCARD identity::ImplId impl() const noexcept { return implValue; }
+  ZC_NODISCARD zc::ArrayPtr<const uint32_t> functionIndices() const noexcept {
+    return functionIndicesValue.asPtr();
+  }
+
+private:
+  uint32_t ordinalValue;
+  identity::DefId interfaceValue;
+  identity::ImplId implValue;
+  zc::Vector<uint32_t> functionIndicesValue;
+};
+
+/// \brief One immutable LIR module: an ordered sequence of LIR functions and
+/// optional vtables.
 class Module final {
 public:
   explicit Module(zc::Vector<Function>&& functions) noexcept : functionsValue(zc::mv(functions)) {}
+  Module(zc::Vector<Function>&& functions, zc::Vector<Vtable>&& vtables) noexcept
+      : functionsValue(zc::mv(functions)), vtablesValue(zc::mv(vtables)) {}
   ZC_DISALLOW_COPY(Module);
   Module(Module&&) = default;
   Module& operator=(Module&&) = default;
@@ -657,12 +754,14 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const Function> functions() const noexcept {
     return functionsValue.asPtr();
   }
+  ZC_NODISCARD zc::ArrayPtr<const Vtable> vtables() const noexcept { return vtablesValue.asPtr(); }
 
   /// \brief Moves the function vector out, leaving the module empty.
   ZC_NODISCARD zc::Vector<Function> takeFunctions() noexcept { return zc::mv(functionsValue); }
 
 private:
   zc::Vector<Function> functionsValue;
+  zc::Vector<Vtable> vtablesValue;
 };
 
 }  // namespace zomlang::compiler::lir

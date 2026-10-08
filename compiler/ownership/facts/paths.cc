@@ -425,6 +425,20 @@ zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if (!appendPlace(paths, call.destination)) return zc::none;
+      if (call.receiver.kind() != mir::MirOperandKind::Constant &&
+          !appendPlace(paths, call.receiver.place())) {
+        return zc::none;
+      }
+      for (const auto& argument : call.arguments) {
+        if (argument.kind() != mir::MirOperandKind::Constant &&
+            !appendPlace(paths, argument.place())) {
+          return zc::none;
+        }
+      }
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
       const auto& discriminant = block.terminator.switchIntValue().discriminant;
       if (discriminant.kind() != mir::MirOperandKind::Constant &&
@@ -517,6 +531,14 @@ bool validateFunction(const mir::MirFunction& function) {
     if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
       const auto& call = block.terminator.callValue();
       if (!matchesPlace(function, call.destination)) return false;
+      for (const auto& argument : call.arguments) {
+        if (!validOperand(function, argument)) return false;
+      }
+    }
+    if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if (!matchesPlace(function, call.destination)) return false;
+      if (!validOperand(function, call.receiver)) return false;
       for (const auto& argument : call.arguments) {
         if (!validOperand(function, argument)) return false;
       }

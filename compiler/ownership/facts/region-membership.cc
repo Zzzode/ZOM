@@ -398,6 +398,22 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+      const auto& call = block.terminator.indirectCallValue();
+      if ((call.receiver.kind() == mir::MirOperandKind::Copy ||
+           call.receiver.kind() == mir::MirOperandKind::Move) &&
+          call.receiver.place().local() == destination.local()) {
+        consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0});
+      }
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& arg = call.arguments[argIndex];
+        if ((arg.kind() == mir::MirOperandKind::Copy || arg.kind() == mir::MirOperandKind::Move) &&
+            arg.place().local() == destination.local()) {
+          consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                               argIndex + 1});
+        }
+      }
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
       const auto& discriminant = block.terminator.switchIntValue().discriminant;
       if ((discriminant.kind() == mir::MirOperandKind::Copy ||

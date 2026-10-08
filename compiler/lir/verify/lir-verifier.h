@@ -57,6 +57,13 @@ enum class LirVerificationFaultKind : uint8_t {
   CalleeIndexOutOfRange = 0x0c,
   /// A Return terminator carrier does not match the function return carrier.
   ReturnCarrierMismatch = 0x0d,
+  /// A VtableAddr statement indexes a vtable outside the module range.
+  VtableOrdinalOutOfRange = 0x0e,
+  /// A VtableSlotLoad statement indexes a slot outside the vtable's entries.
+  VtableSlotOutOfRange = 0x0f,
+  /// An IndirectCall terminator names a function-pointer slot whose carrier
+  /// is not a pointer.
+  IndirectCallTargetNotPointer = 0x10,
 };
 
 /// \brief One immutable structural verification finding.

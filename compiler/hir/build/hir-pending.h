@@ -656,6 +656,14 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirDirectCallExpression> call;
   zc::Maybe<HirReceiverCallExpression> receiverCall;
+  // Populated for the parameter receiver call shape: the CallableParameterKey
+  // of the dyn-trait parameter that is the receiver. The lowering function
+  // allocates the parameter reference node and sets the receiver call's
+  // receiver slot to it.
+  zc::Maybe<identity::CallableParameterKey> receiverCallParameterKey;
+  // The source span of the receiver parameter expression, threaded to the
+  // parameter reference node the lowering function allocates.
+  zc::Maybe<identity::SourceSpan> receiverCallParameterSpan;
   zc::Maybe<HirLocalBinding> local;
   zc::Maybe<HirNominalAggregateExpression> aggregate;
   zc::Vector<HirLocalWriteStatement> localWrites;

@@ -53,5 +53,12 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
 /// unset.
 void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one parameter receiver call body through the recursive driver:
+/// `fn f(a: dyn I) -> T { return a.method(); }`. Node stride: function, body,
+/// return, receiver parameter reference, receiver call. The receiver is an
+/// explicit dyn-trait parameter that allocates a parameter reference node; the
+/// receiver call dispatches indirectly through the vtable at runtime.
+void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

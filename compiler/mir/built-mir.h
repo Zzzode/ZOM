@@ -497,6 +497,7 @@ enum class MirTerminatorKind : uint8_t {
   Call = 0x03,
   Goto = 0x04,
   SwitchInt = 0x05,
+  IndirectCall = 0x06,
 };
 
 struct MirReturnTerminator final {
@@ -555,6 +556,22 @@ struct MirSwitchIntTerminator final {
   MirBlockId defaultTarget;
 };
 
+/// \brief One indirect method call through a dyn-trait vtable.
+///
+/// The receiver is a dyn-trait value (existential carrier). The interface and
+/// method DefIds identify the vtable slot to load; the receiver and explicit
+/// arguments are forwarded to the indirect call.
+struct MirIndirectCallTerminator final {
+  identity::DefId interface;
+  identity::DefId method;
+  MirOperand receiver;
+  zc::Vector<MirOperand> arguments;
+  MirCallEffect effect;
+  MirPlace destination;
+  MirBlockId normalTarget;
+  zc::Maybe<MirBlockId> unwindTarget;
+};
+
 /// \brief Closed terminator algebra for the currently supported Built MIR subset.
 class MirTerminator final {
 public:
@@ -577,6 +594,13 @@ public:
                                               zc::Vector<MirSwitchIntArm>&& arms,
                                               MirBlockId defaultTarget,
                                               identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator indirectCall(identity::DefId interface, identity::DefId method,
+                                                 MirOperand&& receiver,
+                                                 zc::Vector<MirOperand>&& arguments,
+                                                 MirCallEffect&& effect, MirPlace&& destination,
+                                                 MirBlockId normalTarget,
+                                                 zc::Maybe<MirBlockId>&& unwindTarget,
+                                                 identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirTerminator clone() const;
   ZC_NODISCARD MirTerminatorKind kind() const noexcept;
   /// \brief Returns presentation-only source ownership for this MIR terminator.
@@ -585,6 +609,7 @@ public:
   ZC_NODISCARD const MirCallTerminator& callValue() const;
   ZC_NODISCARD const MirGotoTerminator& gotoValue() const;
   ZC_NODISCARD const MirSwitchIntTerminator& switchIntValue() const;
+  ZC_NODISCARD const MirIndirectCallTerminator& indirectCallValue() const;
 
 private:
   MirTerminator(MirReturnTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
@@ -592,8 +617,9 @@ private:
   MirTerminator(MirCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirGotoTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirSwitchIntTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirTerminator(MirIndirectCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   zc::OneOf<MirReturnTerminator, MirUnreachableTerminator, MirCallTerminator, MirGotoTerminator,
-            MirSwitchIntTerminator>
+            MirSwitchIntTerminator, MirIndirectCallTerminator>
       value;
   identity::SourceSpan sourceSpanValue;
 };
