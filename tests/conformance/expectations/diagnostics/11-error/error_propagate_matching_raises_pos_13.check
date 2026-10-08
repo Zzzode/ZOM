@@ -1,5 +1,9 @@
-// RUN: cd %corpus && ! %zomc compile --check 11-error/error_propagate_matching_raises_pos_13.zom > %t 2>&1
+// RUN: cd %corpus && %zomc compile --check 11-error/error_propagate_matching_raises_pos_13.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/11-error/error_propagate_matching_raises_pos_13.zom:8:12
+// `return fail()?!;` where both functions have matching raises clauses is a
+// codegen no-op: the error-union aggregate `{tag, payload}` passes through
+// unchanged. The `?!` operator unwraps the call's error union to the success
+// type, matching the enclosing function's result type. The compiler exits 0.
+
+// CHECK-NOT: Error

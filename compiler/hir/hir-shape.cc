@@ -2685,6 +2685,27 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.unsafeBlock = zc::mv(unsafeBlock);
       return shape;
     }
+    // Single-statement error-propagate return: `return f(args)?!;`. The
+    // return value is a PostfixExpression whose operator is ErrorPropagate
+    // and whose operand is a CallExpression. The operator is a codegen
+    // no-op: the error-union aggregate passes through unchanged.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::PostfixExpression) {
+      const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
+          tree.node(value).payload.words[ast::kPostfixExpressionOpWord]);
+      if (postfixOp == ast::PostfixOperatorKind::ErrorPropagate) {
+        const ast::NodeId operand(
+            tree.node(value).payload.words[ast::kPostfixExpressionOperandWord]);
+        if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::CallExpression) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = operand;
+          shape.returnsErrorPropagateCall = true;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;

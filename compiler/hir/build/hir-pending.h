@@ -749,6 +749,10 @@ struct PendingFunctionDeclaration final {
   // localReturnCount node-type credit has no corresponding AST node and must
   // be subtracted, and the call fact has no corresponding HIR call node.
   bool returnsLocalPostfixIncrement = false;
+  /// True when the return value is an error-propagate call (`return f()?!;`).
+  /// The PostfixExpression node carries a node-type fact beyond the direct-call
+  /// baseline, so the fact-count equations add one extra node-type credit.
+  bool returnsErrorPropagateCall = false;
   /// The AST BlockStmt node of the function body, threaded to the HIR
   /// side-table so the per-node correspondence validator can anchor it.
   ast::NodeId bodyNode{};

@@ -184,6 +184,13 @@ struct FunctionReturnShape final {
   // aggregate fact for the construction; the HIR builder lowers it to a
   // HirNominalAggregateExpression wired directly to the return value.
   bool returnsEnumConstruction = false;
+  // Single-statement error-propagate return: `return f(args)?!;`. The return
+  // value is a PostfixExpression whose operator is ErrorPropagate and whose
+  // operand is a CallExpression to a raising function. The operator is a
+  // codegen no-op: the error-union aggregate `{tag, payload}` passes through
+  // unchanged, so the builder lowers the operand call through the direct-call
+  // return carrier.
+  bool returnsErrorPropagateCall = false;
   // Two-statement scalar-local call shape: a leading i32 local initialized from
   // an integer literal passed as the sole argument of a returned direct
   // free-function call: `let a: i32 = 21; return f(a);`.

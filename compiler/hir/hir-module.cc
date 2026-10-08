@@ -12683,7 +12683,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     if (signature.definition != function.definition ||
         signature.definitionKind !=
             (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
-        !moduleMembershipValid || callable.success != function.resultType ||
+        !moduleMembershipValid ||
+        (callable.success != function.resultType && !source.returnsErrorPropagateCall &&
+         callable.raises == zc::none) ||
         !sameSpan(function.sourceSpan, sourceDefinition.source) ||
         !sameSpan(signature.declarationSpan, sourceDefinition.source) || !visibilityMatches ||
         !linkageMatches || !bodySpanMatches || !returnSpanMatches) {
@@ -13169,7 +13171,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     size_t nodeTypeSlot = 0;
     ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
     const auto& sourceType = facts.nodeTypes().entries()[nodeTypeSlot].value;
-    if (sourceType != function.resultType) {
+    // For an error-propagate return (`return f()?!;`), the source value is the
+    // operand call whose node type is the error union.  The `?!` operator
+    // unwraps it to the success type, which is the function's result type.
+    // The direct-call verification below validates the call's own types.
+    if (sourceType != function.resultType && !source.returnsErrorPropagateCall) {
       return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                           ir::IrFailureKind::InvalidFact, module, registries,
                                           index + 1);
@@ -13474,19 +13480,23 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           !selected.is<checker::checked::DirectCallable>() ||
           selected.get<checker::checked::DirectCallable>().callee != call.callee ||
           invocation.calleeType != call.calleeType ||
-          invocation.successType != function.resultType ||
-          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
-          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          (invocation.successType != function.resultType && !source.returnsErrorPropagateCall) ||
+          (invocation.resultType != function.resultType && !source.returnsErrorPropagateCall) ||
+          invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+          invocation.receiverAdjustment != zc::none ||
           invocation.arguments.size() != arguments.size || invocation.substitutions != zc::none ||
-          invocation.witnesses != zc::none || invocation.raises != zc::none || !callSpanMatches ||
-          !dispatchOwnerMatches || !target.is<checker::dispatch::DirectTarget>() ||
+          invocation.witnesses != zc::none ||
+          (invocation.raises != zc::none && !source.returnsErrorPropagateCall) ||
+          !callSpanMatches || !dispatchOwnerMatches ||
+          !target.is<checker::dispatch::DirectTarget>() ||
           target.get<checker::dispatch::DirectTarget>().callee != call.callee ||
           !transform.is<checker::dispatch::IdentityResultTransform>() ||
           dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != arguments.size ||
-          dispatch.fact.successType != function.resultType ||
-          dispatch.fact.resultType != function.resultType ||
+          (dispatch.fact.successType != function.resultType && !source.returnsErrorPropagateCall) ||
+          (dispatch.fact.resultType != function.resultType && !source.returnsErrorPropagateCall) ||
           dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
-          dispatch.fact.raises != zc::none || !dispatchSpanMatches || !hirSpanMatches) {
+          (dispatch.fact.raises != zc::none && !source.returnsErrorPropagateCall) ||
+          !dispatchSpanMatches || !hirSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
