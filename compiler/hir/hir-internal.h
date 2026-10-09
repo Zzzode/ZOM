@@ -266,6 +266,17 @@ bool isDevirtualizedEraseInitializer(const ast::Tree& tree,
                                      const checker::checked::VerifiedCheckedFacts& facts,
                                      ast::NodeId initializerNode);
 
+/// \brief Reports whether an annotated-initializer erasure is admitted because
+/// every read of the erased local is a plain argument of a direct call (a
+/// CallExpression whose callee is an IdentExpr). The erased local carries the
+/// existential type and the call passes it to a dyn-parameter callee, so the
+/// MIR builder emits an Erase rvalue to construct the existential carrier. A
+/// read in any other position (receiver, return, field access, standalone
+/// expression) rejects the erasure.
+bool isCallArgumentEraseInitializer(const ast::Tree& tree,
+                                    const binder::ImmutableDefinitionInventory& definitions,
+                                    ast::NodeId initializerNode);
+
 /// Collects the initializer nodes of admitted dead-erase coercions:
 /// AnnotatedInitializer, single-step DynErase sites whose erased local is never
 /// read in its enclosing body. The builder drains these coercions instead of

@@ -298,6 +298,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // uses the concrete type for the local and lowers the call as a direct impl
   // method call.
   zc::Vector<ast::NodeId> devirtualizedEraseInitializers;
+  // Call-argument-erase initializers are live (the erased local is read) but
+  // every read is a plain argument of a direct call. The binding stores the
+  // existential type and carries an erasure record so the MIR builder emits
+  // an Erase rvalue to construct the existential carrier.
+  zc::Vector<ast::NodeId> callArgumentEraseInitializers;
   if (facts.coercions().size() != 0) {
     // Validate every coercion before admitting any capability failure, so a
     // malformed entry can never be masked by an earlier well-formed one.
@@ -324,6 +329,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (entry.value.site == checker::checked::CoercionSite::AnnotatedInitializer &&
           isDevirtualizedEraseInitializer(bound.tree(), bound.definitions(), facts, entry.key)) {
         devirtualizedEraseInitializers.add(entry.key);
+        continue;
+      }
+      if (entry.value.site == checker::checked::CoercionSite::AnnotatedInitializer &&
+          isCallArgumentEraseInitializer(bound.tree(), bound.definitions(), entry.key)) {
+        callArgumentEraseInitializers.add(entry.key);
         continue;
       }
       const auto owner =
@@ -5206,12 +5216,40 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           initializerNode = HirNodeId();
           zc::Maybe<identity::SourceSpan> initializerSource;
           ZC_IF_SOME(value, initializerSpan) { initializerSource = value.clone(); }
+          // A call-argument-erase initializer carries a single DynErase
+          // coercion: the binding stores the existential (destination) type
+          // while the aggregate expression keeps the concrete (source) type.
+          identity::SemanticTypeId bindingType = initializerType;
+          zc::Maybe<HirErasureRecord> erasure;
+          for (const auto& erased : callArgumentEraseInitializers) {
+            if (erased != initializer) continue;
+            auto coercionIndex = factIndex(facts.coercions(), initializer);
+            if (coercionIndex == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto& coercion =
+                facts.coercions().entries()[ZC_ASSERT_NONNULL(coercionIndex)].value;
+            if (!isSingleDynEraseAdjustment(coercion) || coercion.source != initializerType) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto& eraseStep =
+                coercion.steps[0].variant().get<checker::checked::DynEraseStep>();
+            bindingType = coercion.destination;
+            erasure = HirErasureRecord{coercion.source, coercion.destination, eraseStep.impl,
+                                       eraseStep.interface.interface};
+            break;
+          }
           local = HirLocalBinding{HirNodeId(),
                                   HirLocalId(),
-                                  initializerType,
+                                  bindingType,
                                   zc::mv(initializerNode),
                                   ZC_ASSERT_NONNULL(patternSpan).clone(),
-                                  zc::mv(initializerSource)};
+                                  zc::mv(initializerSource),
+                                  zc::mv(erasure)};
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
               !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
               !shape.returnsDirectScalarLocalCall) {
@@ -12002,7 +12040,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ZC_IF_SOME(value, initializerId) { initializer = value; }
       ZC_IF_SOME(span, local.initializerSpan) { initializerSpan = span.clone(); }
       locals.add(HirLocalBinding{localId, hirLocalId(1), local.type, zc::mv(initializer),
-                                 local.sourceSpan.clone(), zc::mv(initializerSpan)});
+                                 local.sourceSpan.clone(), zc::mv(initializerSpan),
+                                 zc::mv(local.erasure)});
     }
     for (size_t index = 0; index < value.localWrites.size(); ++index) {
       const auto& write = value.localWrites[index];

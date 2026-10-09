@@ -293,6 +293,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-unsafe-consumer/Zom.toml::nested_unsafe_consumer::nested_unsafe_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-live-erase-consumer/Zom.toml::dyn_live_erase_consumer::dyn_live_erase_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-stored-erase-consumer/Zom.toml::dyn_stored_erase_consumer::dyn_stored_erase_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
       --reject-case
@@ -452,6 +454,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-live-erase-consumer/Zom.toml::dyn_live_erase_consumer::dyn_live_erase_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-stored-erase-consumer/Zom.toml::dyn_stored_erase_consumer::dyn_stored_erase_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"
       --run-case

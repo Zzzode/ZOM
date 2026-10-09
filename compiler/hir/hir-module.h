@@ -117,6 +117,20 @@ struct HirErrorUnionExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief Records a concrete-to-existential erasure on a local binding.
+///
+/// When a local binding's initializer carries a single DynErase coercion, the
+/// binding stores the existential (target) type while the initializer
+/// expression keeps the concrete (source) type. This record carries the
+/// erasure endpoints and the impl identity so the MIR builder can emit an
+/// Erase rvalue and the LIR lowering can construct the existential carrier.
+struct HirErasureRecord final {
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId targetType;
+  identity::ImplId impl;
+  identity::DefId interface;
+};
+
 /// \brief One function-owned local binding with a layer-local identity.
 struct HirLocalBinding final {
   HirNodeId node;
@@ -125,6 +139,10 @@ struct HirLocalBinding final {
   zc::Maybe<HirNodeId> initializer;
   identity::SourceSpan sourceSpan;
   zc::Maybe<identity::SourceSpan> initializerSpan;
+  /// \brief Populated when the initializer carries a single DynErase coercion
+  /// and the erased local is read by a direct-call argument. The MIR builder
+  /// emits an Erase rvalue to construct the existential carrier.
+  zc::Maybe<HirErasureRecord> erasure{};
 };
 
 /// \brief One checked use of a function-local binding as a place expression.

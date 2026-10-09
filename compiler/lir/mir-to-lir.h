@@ -678,6 +678,38 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerIndirectCallModuleWithLeaf(
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers a stored-erase indirect-call module with one standalone
+  /// leaf to a three-function LIR module with one vtable.
+  ///
+  /// Admits a three-function module: a Function-sourced caller with one
+  /// existential UserLocal erased from a concrete aggregate Temporary and a
+  /// result Temporary (entry `StorageLive; aggregate = NominalAggregate;
+  /// StorageLive; existential = Erase(move aggregate); StorageLive;
+  /// Call(callee, copy existential) -> result`, continuation `return result`)
+  /// that erases a concrete value to a stored dyn-trait local read by a
+  /// dyn-parameter call; a Function-sourced callee with one dyn-trait
+  /// parameter and a result temporary whose entry block carries an
+  /// `IndirectCall` terminator through the existential carrier's vtable; and
+  /// a Method-sourced leaf returning a scalar constant.
+  ///
+  /// The caller erases the aggregate to a split fat pointer: it takes the
+  /// aggregate's address (data pointer) and the vtable address, inserts both
+  /// into the existential aggregate carrier, then extracts them as two
+  /// pointer call arguments. The callee receives the data and vtable pointers
+  /// as two pointer parameters, loads the method function pointer from the
+  /// vtable slot, and indirect-calls it with the data pointer. The vtable is
+  /// emitted as a private global constant array containing the leaf
+  /// function's pointer. Every other shape returns none.
+  ///
+  /// \param caller Verified caller MIR function (two-block erased aggregate call).
+  /// \param callee Verified callee MIR function (two-block indirect call).
+  /// \param leaf Verified standalone method MIR function (constant return).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered three-function LIR module with one vtable, or none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerErasedAggregateCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

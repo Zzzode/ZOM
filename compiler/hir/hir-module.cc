@@ -10337,7 +10337,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
           localRecord.initializer != hirId(expectedFunction + 3) ||
           localRecord.initializerSpan == zc::none ||
-          aggregate.node != hirId(expectedFunction + 3) || aggregate.type != localRecord.type ||
+          aggregate.node != hirId(expectedFunction + 3) ||
+          (localRecord.erasure == zc::none && aggregate.type != localRecord.type) ||
+          (localRecord.erasure != zc::none &&
+           (aggregate.type != ZC_ASSERT_NONNULL(localRecord.erasure).sourceType ||
+            localRecord.type != ZC_ASSERT_NONNULL(localRecord.erasure).targetType)) ||
           aggregate.category != HirValueCategory::Value ||
           returnStatementRecord.node != hirId(expectedFunction + 4) ||
           returnStatementRecord.value != call.node ||
@@ -10524,7 +10528,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           dispatchArgument.sourceType != argumentType ||
           (!dispatchErased && dispatchArgument.parameterType != argumentType) ||
           (!dispatchErased && dispatchArgument.adjustment != zc::none) ||
-          hirArgument.type != argumentType || argumentType != aggregate.type ||
+          hirArgument.type != argumentType ||
+          (localRecord.erasure == zc::none && argumentType != aggregate.type) ||
           argumentType != localRecord.type || hirArgument.value != zc::none ||
           hirArgument.parameter != zc::none || hirArgument.local != hirLocalId(1) ||
           !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {

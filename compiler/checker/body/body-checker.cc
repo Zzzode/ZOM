@@ -5204,6 +5204,24 @@ bool isScalarOwnerLocalArgument(const BodyCheckingInput& input, ast::NodeId argu
   return kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::Bool;
 }
 
+/// \brief True when a direct-call argument is an owner local whose declared
+/// type is an existential (`dyn Trait`), the admitted stored-erase argument
+/// carrier. The local's initializer shape and erasure fact are checked by the
+/// HIR capability gate; here only the semantic argument kind is decided so the
+/// call fact records the existential argument instead of draining the call as
+/// an unlowered local read.
+bool isExistentialOwnerLocalArgument(const BodyCheckingInput& input, ast::NodeId argument,
+                                     identity::SemanticTypeId argumentType) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(argument) || tree.node(argument).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  if (resolvedOwnerLocal(input.boundModule.bindings(), argument) == zc::none) { return false; }
+  auto lookup = input.semanticTypes.get(argumentType);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ExistentialTypeData>();
+}
+
 /// \brief Attaches a ZOM4125 recovery ledger for a method-call site, resolving
 /// its enclosing callable owner exactly like the binary-operator rail.
 ///
@@ -7231,8 +7249,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             // scheduled after this direct-call site (a deferred local reference
             // at stage 2), so its node-type fact does not exist yet. Resolve its
             // type from the binding (the declared annotation or the already-
-            // typed initializer) for the by-value aggregate and scalar-local
-            // argument carriers.
+            // typed initializer) for the by-value aggregate, scalar-local, and
+            // stored-existential argument carriers.
             zc::Maybe<identity::SemanticTypeId> deferredLocalType;
             if (isLocalOrGlobalArgument && argumentType == zc::none) {
               deferredLocalType = ownerLocalReferenceType(input, argument, nodeTypes.asPtr());
@@ -7240,7 +7258,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   (isByValueStructLocalArgument(input, argument,
                                                 ZC_ASSERT_NONNULL(deferredLocalType)) ||
                    isScalarOwnerLocalArgument(input, argument,
-                                              ZC_ASSERT_NONNULL(deferredLocalType)))) {
+                                              ZC_ASSERT_NONNULL(deferredLocalType)) ||
+                   isExistentialOwnerLocalArgument(input, argument,
+                                                   ZC_ASSERT_NONNULL(deferredLocalType)))) {
                 argumentType = zc::Maybe<const checked::NodeTypeMap::Entry&>{};
               } else {
                 deferredLocalType = zc::none;
@@ -7270,7 +7290,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             if (isLocalOrGlobalArgument && hasArgumentType &&
                 argumentTypeId == value.parameters[index] &&
                 !isByValueStructLocalArgument(input, argument, argumentTypeId) &&
-                !isScalarOwnerLocalArgument(input, argument, argumentTypeId)) {
+                !isScalarOwnerLocalArgument(input, argument, argumentTypeId) &&
+                !isExistentialOwnerLocalArgument(input, argument, argumentTypeId)) {
               // A typed owner-local or module/imported identifier argument is
               // valid source the direct-call lowering slice does not admit yet
               // (only parameter arguments lower). Its type already matches the

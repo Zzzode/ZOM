@@ -1727,6 +1727,119 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers an erased-aggregate direct-call caller:
+/// `fn entry() -> T { let a: dyn I = P { ..constants.. }; return f(a); }`.
+/// One UserLocal of existential type at localId(1) is erased from a concrete
+/// aggregate Temporary at localId(2), one Temporary of the call result type at
+/// localId(3) receives the direct call, and the existential user local is
+/// copied as the call's sole by-value argument. Block 1 constructs the concrete
+/// aggregate, erases it into the existential local, and calls into block 2,
+/// which returns the result temporary.
+zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
+  if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
+  auto sourceReturn = returnFor(hirModule, block.statements[1]);
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none || sourceLocal == zc::none) { return zc::none; }
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1 || binding.initializer == zc::none ||
+      binding.erasure == zc::none) {
+    return zc::none;
+  }
+  const auto& erasure = ZC_ASSERT_NONNULL(binding.erasure);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto aggregate = aggregateFor(hirModule, initializerNode);
+  auto call = callFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (aggregate == zc::none || call == zc::none) { return zc::none; }
+  const auto& sourceAggregate = ZC_ASSERT_NONNULL(aggregate);
+  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
+  if (sourceAggregate.type != erasure.sourceType || binding.type != erasure.targetType ||
+      sourceCall.resultType != declaration.resultType || sourceCall.arguments.size() != 1 ||
+      sourceCall.arguments[0].value != zc::none || sourceCall.arguments[0].parameter != zc::none ||
+      sourceCall.arguments[0].local != binding.local ||
+      sourceCall.arguments[0].type != binding.type) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) { return zc::none; }
+
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : sourceAggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  if (userLocal.ordinal() != 1) { return zc::none; }
+  const MirLocalId concreteLocal = ctx.declareLocal(MirLocalKind::Temporary, erasure.sourceType,
+                                                    scope, sourceAggregate.sourceSpan.clone());
+  if (concreteLocal.ordinal() != 2) { return zc::none; }
+  const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, sourceCall.resultType,
+                                                  scope, sourceCall.sourceSpan.clone());
+  if (resultLocal.ordinal() != 3) { return zc::none; }
+
+  // Block 1: construct the concrete aggregate, erase it into the existential
+  // user local, copy the existential as the call argument, and call into
+  // block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(concreteLocal, sourceAggregate.sourceSpan.clone()));
+  zc::Vector<MirProjection> concreteProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(concreteLocal, erasure.sourceType, zc::mv(concreteProjections), erasure.sourceType),
+      MirRvalue::nominalAggregate(sourceAggregate.definition, sourceAggregate.type,
+                                  zc::mv(elements)),
+      MirInitializationKind::Initialize, sourceAggregate.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  zc::Vector<MirProjection> eraseProjections;
+  zc::Vector<MirProjection> eraseSourceProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, binding.type, zc::mv(eraseProjections), binding.type),
+      MirRvalue::erase(
+          MirOperand::move(MirPlace(concreteLocal, erasure.sourceType,
+                                    zc::mv(eraseSourceProjections), erasure.sourceType)),
+          erasure.sourceType, erasure.targetType),
+      MirInitializationKind::Initialize, binding.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceCall.sourceSpan.clone()));
+  zc::Vector<MirProjection> argumentProjections;
+  auto argumentOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, binding.type, zc::mv(argumentProjections), binding.type));
+  if (argumentOperand == zc::none) { return zc::none; }
+  zc::Vector<MirOperand> arguments;
+  arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  ctx.terminateBlock(
+      MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+                          MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
+                                   sourceCall.resultType),
+                          blockId(2), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+
+  // Block 2: return the result temporary.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, sourceCall.resultType,
+                                         zc::mv(returnProjections), sourceCall.resultType));
+  if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a scalar-local direct-call caller:
 /// `fn entry() -> i32 { let a: i32 = <literal>; return f(a); }`. One UserLocal
 /// of scalar type at localId(1) is initialized from a constant, one Temporary
@@ -3427,6 +3540,18 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       declaration.unsafeBlock == zc::none) {
     auto product = buildByValueAggregateCallReturn(declaration, block, hirModule, identities,
                                                    proofs, copyMarker);
+    if (product != zc::none) return product;
+  }
+
+  // Erased-aggregate direct-call caller:
+  // `fn entry() -> T { let a: dyn I = P { ..constants.. }; return f(a); }`.
+  // The trailing return value is a direct call whose sole argument copies the
+  // existential-initialized owner local. The binding carries an erasure record
+  // so the builder emits an Erase rvalue to construct the existential carrier.
+  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto product = buildErasedAggregateCallReturn(declaration, block, hirModule, identities, proofs,
+                                                  copyMarker);
     if (product != zc::none) return product;
   }
 

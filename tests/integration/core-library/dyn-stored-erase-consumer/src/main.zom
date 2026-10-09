@@ -1,0 +1,24 @@
+// Stored-erase fixture: a concrete local is erased into a stored existential
+// local that is then read by a dyn-parameter call. The method call
+// `a.speak()` dispatches through the vtable carried by the existential
+// parameter and returns 41.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fn speak(this) -> i32 { return 41; }
+}
+
+fn callSpeak(a: dyn Animal) -> i32 {
+  return a.speak();
+}
+
+fn entry() -> i32 {
+  let a: dyn Animal = Dog { tag: 0 };
+  return callSpeak(a);
+}

@@ -470,6 +470,89 @@ bool isDevirtualizedEraseInitializer(const ast::Tree& tree,
   return false;
 }
 
+bool isCallArgumentEraseInitializer(const ast::Tree& tree,
+                                    const binder::ImmutableDefinitionInventory& definitions,
+                                    ast::NodeId initializerNode) {
+  if (!tree.contains(initializerNode)) { return false; }
+  // Find the VariableDeclarator whose init word is the initializer, then read
+  // its identifier pattern name. Mirrors isDevirtualizedEraseInitializer.
+  zc::Maybe<ast::NodeId> pattern;
+  for (const auto& local : definitions.ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& site = local.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    const auto& declarator = tree.node(site.introducer);
+    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) !=
+        initializerNode) {
+      continue;
+    }
+    pattern = ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+    break;
+  }
+  if (pattern == zc::none) { return false; }
+  ast::NodeId patternNode;
+  ZC_IF_SOME(value, pattern) { patternNode = value; }
+  if (!tree.contains(patternNode) ||
+      tree.node(patternNode).kind != ast::SyntaxKind::IdentifierPattern) {
+    return false;
+  }
+  const auto name = tree.node(patternNode).payload.words[ast::kIdentifierPatternNameWord];
+  const auto owner = enclosingExecutableDefinition(tree, definitions, initializerNode);
+  if (owner == zc::none) { return false; }
+  for (const auto& definition : definitions.definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(owner)) continue;
+    if (!tree.contains(definition.node) ||
+        tree.node(definition.node).kind != ast::SyntaxKind::FunctionDecl) {
+      continue;
+    }
+    const ast::NodeId body(tree.node(definition.node).payload.words[ast::kFunctionDeclBodyWord]);
+    if (!tree.contains(body)) { return false; }
+    // Collect the IdentExpr nodes that appear in a direct call's argument
+    // list. A direct call is a CallExpression whose callee is an IdentExpr
+    // (not a MemberExpression receiver call).
+    zc::Vector<ast::NodeId> callArguments;
+    ast::visitTreePreOrder(tree, body, [&](ast::NodeId node, const ast::Node& syntax) {
+      if (syntax.kind != ast::SyntaxKind::CallExpression) return;
+      const ast::NodeId callee(syntax.payload.words[ast::kCallExpressionCalleeWord]);
+      if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
+        return;
+      }
+      const ast::NodeList args{syntax.payload.words[ast::kCallExpressionArgsFirstWord],
+                               syntax.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!tree.contains(args)) return;
+      for (const auto arg : tree.list(args)) {
+        if (tree.contains(arg) && tree.node(arg).kind == ast::SyntaxKind::IdentExpr) {
+          callArguments.add(arg);
+        }
+      }
+    });
+    // Every IdentExpr in the body that matches the binding name must be a
+    // direct-call argument. A read in any other position (receiver, return,
+    // field access, standalone) rejects the erasure.
+    bool allCallArguments = true;
+    ast::visitTreePreOrder(tree, body, [&](ast::NodeId node, const ast::Node& syntax) {
+      if (!allCallArguments) return;
+      if (syntax.kind != ast::SyntaxKind::IdentExpr ||
+          syntax.payload.words[ast::kIdentExprNameWord] != name) {
+        return;
+      }
+      bool found = false;
+      for (const auto& arg : callArguments) {
+        if (arg == node) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) { allCallArguments = false; }
+    });
+    return allCallArguments;
+  }
+  return false;
+}
+
 zc::Vector<ast::NodeId> deadEraseInitializerNodes(
     const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
     const checker::checked::VerifiedCheckedFacts& facts) {

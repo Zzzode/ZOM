@@ -1883,6 +1883,150 @@ bool validByValueAggregateCallReturnFunction(
   return false;
 }
 
+/// \brief Validates the erased aggregate-call return shape:
+/// `fn entry() -> T { let a: dyn I = Concrete { .. }; return f(a); }`.
+/// Three locals -- the existential user local, the concrete aggregate
+/// temporary, and the call result temporary -- and two blocks. Block 1
+/// constructs the concrete aggregate, erases it into the existential user
+/// local, and calls the callee with the existential as its sole argument;
+/// block 2 returns the result temporary.
+bool validErasedAggregateCallReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirNominalAggregateExpression& aggregate,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirDirectCallExpression& call,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver != zc::none) return false;
+  if (sourceLocal.erasure == zc::none) return false;
+  const auto& erasure = ZC_ASSERT_NONNULL(sourceLocal.erasure);
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 3 || function.blocks.size() != 2 ||
+      declaration.parameters.size() != 0 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 2 || sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != sourceReturn.node || sourceLocal.initializer != aggregate.node ||
+      sourceReturn.value != call.node || sourceLocal.local.ordinal() != 1 ||
+      sourceLocal.type != erasure.targetType || aggregate.type != erasure.sourceType ||
+      aggregate.category != hir::HirValueCategory::Value ||
+      call.resultType != declaration.resultType || call.arguments.size() != 1 ||
+      call.arguments[0].value != zc::none || call.arguments[0].parameter != zc::none ||
+      call.arguments[0].local != sourceLocal.local || call.arguments[0].type != sourceLocal.type) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& userLocal = function.locals[0];
+  const auto& concreteLocal = function.locals[1];
+  const auto& resultLocal = function.locals[2];
+  const auto& entry = function.blocks[0];
+  const auto& continuation = function.blocks[1];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
+      userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
+      userLocal.sourceScope != scope.id ||
+      !sameSpan(userLocal.sourceSpan, sourceLocal.sourceSpan) || concreteLocal.id != localId(2) ||
+      concreteLocal.kind != MirLocalKind::Temporary || concreteLocal.type != erasure.sourceType ||
+      concreteLocal.sourceScope != scope.id ||
+      !sameSpan(concreteLocal.sourceSpan, aggregate.sourceSpan) || resultLocal.id != localId(3) ||
+      resultLocal.kind != MirLocalKind::Temporary || resultLocal.type != call.resultType ||
+      resultLocal.sourceScope != scope.id || !sameSpan(resultLocal.sourceSpan, call.sourceSpan) ||
+      entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 5 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != concreteLocal.id ||
+      !sameSpan(entry.statements[0].sourceSpan(), aggregate.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::Assign ||
+      entry.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      !sameSpan(entry.statements[1].sourceSpan(), aggregate.sourceSpan) ||
+      entry.statements[2].kind() != MirStatementKind::StorageLive ||
+      entry.statements[2].storageLocal() != userLocal.id ||
+      !sameSpan(entry.statements[2].sourceSpan(), sourceLocal.sourceSpan) ||
+      entry.statements[3].kind() != MirStatementKind::Assign ||
+      entry.statements[3].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      !sameSpan(entry.statements[3].sourceSpan(), sourceLocal.sourceSpan) ||
+      entry.statements[4].kind() != MirStatementKind::StorageLive ||
+      entry.statements[4].storageLocal() != resultLocal.id ||
+      !sameSpan(entry.statements[4].sourceSpan(), call.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
+      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
+      continuation.terminator.kind() != MirTerminatorKind::Return ||
+      continuation.terminator.returnValue().value == zc::none ||
+      !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
+      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // Statement 1: concrete aggregate construction into the temporary.
+  const auto& aggregateAssign = entry.statements[1].assignmentValue();
+  if (aggregateAssign.destination.local() != concreteLocal.id ||
+      aggregateAssign.destination.rootType() != concreteLocal.type ||
+      aggregateAssign.destination.resultType() != concreteLocal.type ||
+      aggregateAssign.destination.projections().size() != 0 ||
+      aggregateAssign.value.kind() != MirRvalueKind::NominalAggregate) {
+    return false;
+  }
+  const auto& rvalue = aggregateAssign.value.nominalAggregateValue();
+  if (rvalue.definition != aggregate.definition || rvalue.type != aggregate.type ||
+      rvalue.elements.size() != aggregate.elements.size()) {
+    return false;
+  }
+  for (size_t index = 0; index < aggregate.elements.size(); ++index) {
+    const auto& expected = aggregate.elements[index];
+    const auto& actual = rvalue.elements[index];
+    if (actual.field != expected.field || actual.operand.kind() != MirOperandKind::Constant ||
+        actual.operand.constantValue().type != expected.type ||
+        !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+                      semanticTypes)) {
+      return false;
+    }
+  }
+  // Statement 3: erase the concrete temporary into the existential user local.
+  const auto& eraseAssign = entry.statements[3].assignmentValue();
+  if (eraseAssign.destination.local() != userLocal.id ||
+      eraseAssign.destination.rootType() != userLocal.type ||
+      eraseAssign.destination.resultType() != userLocal.type ||
+      eraseAssign.destination.projections().size() != 0 ||
+      eraseAssign.value.kind() != MirRvalueKind::Erase) {
+    return false;
+  }
+  const auto& erase = eraseAssign.value.eraseValue();
+  if (erase.sourceType != erasure.sourceType || erase.targetType != erasure.targetType ||
+      erase.source.kind() != MirOperandKind::Move ||
+      erase.source.place().local() != concreteLocal.id ||
+      erase.source.place().rootType() != concreteLocal.type ||
+      erase.source.place().resultType() != concreteLocal.type ||
+      erase.source.place().projections().size() != 0) {
+    return false;
+  }
+  // Call terminator: the existential user local is the sole argument.
+  const auto& terminator = entry.terminator.callValue();
+  if (terminator.callee != call.callee || terminator.arguments.size() != 1 ||
+      terminator.destination.local() != resultLocal.id ||
+      terminator.destination.rootType() != resultLocal.type ||
+      terminator.destination.resultType() != resultLocal.type ||
+      terminator.destination.projections().size() != 0 ||
+      terminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+    return false;
+  }
+  const auto& actualArgument = terminator.arguments[0];
+  if (!matchesPlaceUse(actualArgument, proofs, copy, sourceLocal.type) ||
+      actualArgument.place().local() != userLocal.id ||
+      actualArgument.place().rootType() != userLocal.type ||
+      actualArgument.place().resultType() != userLocal.type ||
+      actualArgument.place().projections().size() != 0) {
+    return false;
+  }
+  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
+           value.place().local() == resultLocal.id &&
+           value.place().rootType() == resultLocal.type &&
+           value.place().resultType() == resultLocal.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validParameterReceiverCallReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirReturnStatement& sourceReturn,
@@ -17052,7 +17196,22 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           sourceDeclaration.receiver == zc::none && sourceDeclaration.parameters.size() == 0 &&
           sourceLocal != zc::none && localReference == zc::none &&
           initializerAggregate != zc::none && call != zc::none && expression == zc::none &&
-          parameterReference == zc::none && ZC_ASSERT_NONNULL(call).arguments.size() == 1 &&
+          parameterReference == zc::none && ZC_ASSERT_NONNULL(sourceLocal).erasure == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments.size() == 1 &&
+          ZC_ASSERT_NONNULL(call).arguments[0].value == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments[0].parameter == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments[0].local == ZC_ASSERT_NONNULL(sourceLocal).local;
+      // Erased aggregate call: `let a: dyn I = Concrete { .. }; return f(a);`.
+      // Same carrier as the by-value aggregate call, but the local carries an
+      // erasure record so the MIR builder emits an Erase rvalue to construct
+      // the existential from the concrete temporary.
+      const bool isErasedAggregateCallReturn =
+          receiverFieldProjection == zc::none && localFieldProjection == zc::none &&
+          sourceDeclaration.receiver == zc::none && sourceDeclaration.parameters.size() == 0 &&
+          sourceLocal != zc::none && localReference == zc::none &&
+          initializerAggregate != zc::none && call != zc::none && expression == zc::none &&
+          parameterReference == zc::none && ZC_ASSERT_NONNULL(sourceLocal).erasure != zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments.size() == 1 &&
           ZC_ASSERT_NONNULL(call).arguments[0].value == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].parameter == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].local == ZC_ASSERT_NONNULL(sourceLocal).local;
@@ -17097,7 +17256,8 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         }
       }
       const bool isLocalReturn = !isLocalFieldReturn && !isLocalAliasReborrow && !isLocalBorrow &&
-                                 !isByValueAggregateCallReturn && !isScalarLocalCallReturn &&
+                                 !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
+                                 !isScalarLocalCallReturn &&
                                  (sourceLocal != zc::none || localReference != zc::none);
       const bool hasLocalWrites =
           sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 3;
@@ -17115,17 +17275,25 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       if (!isLeadingLocalConditional &&
           (sourceBlock == zc::none || sourceReturn == zc::none ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && !isByValueParameterFieldReturn &&
-            !isByValueAggregateCallReturn && !isScalarLocalCallReturn && !isLocalReturn &&
-            !isParameterReturn && !isParameterReborrow && !isLocalBorrow && !isConditionalReturn &&
-            !isComparisonReturn && !isDirectAggregateReturn && !isParameterReceiverCallReturn &&
+            !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
+            !isScalarLocalCallReturn && !isLocalReturn && !isParameterReturn &&
+            !isParameterReborrow && !isLocalBorrow && !isConditionalReturn && !isComparisonReturn &&
+            !isDirectAggregateReturn && !isParameterReceiverCallReturn &&
             (expression == zc::none) == (call == zc::none)) ||
            (isParameterReceiverCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
-             isByValueAggregateCallReturn || isScalarLocalCallReturn || isLocalReturn ||
-             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
-             isComparisonReturn || isDirectAggregateReturn || expression != zc::none ||
-             call != zc::none || localReference != zc::none || sourceOverwrite != zc::none)) ||
+             isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
+             isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
+             isLocalBorrow || isConditionalReturn || isComparisonReturn ||
+             isDirectAggregateReturn || expression != zc::none || call != zc::none ||
+             localReference != zc::none || sourceOverwrite != zc::none)) ||
            (isByValueAggregateCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isErasedAggregateCallReturn || isScalarLocalCallReturn || isLocalReturn ||
+             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
+             isComparisonReturn || expression != zc::none || localReference != zc::none ||
+             sourceOverwrite != zc::none)) ||
+           (isErasedAggregateCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
              isLocalBorrow || isConditionalReturn || isComparisonReturn || expression != zc::none ||
@@ -17347,6 +17515,14 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               ZC_IF_SOME(aggregateLocal, sourceLocal) {
                 ZC_IF_SOME(aggregateRecord, initializerAggregate) {
                   valid = validByValueAggregateCallReturnFunction(
+                      function, sourceDeclaration, block, aggregateLocal, aggregateRecord,
+                      returnStatement, sourceCall, module, identities, semanticTypes, proofs, copy);
+                }
+              }
+            } else if (isErasedAggregateCallReturn) {
+              ZC_IF_SOME(aggregateLocal, sourceLocal) {
+                ZC_IF_SOME(aggregateRecord, initializerAggregate) {
+                  valid = validErasedAggregateCallReturnFunction(
                       function, sourceDeclaration, block, aggregateLocal, aggregateRecord,
                       returnStatement, sourceCall, module, identities, semanticTypes, proofs, copy);
                 }

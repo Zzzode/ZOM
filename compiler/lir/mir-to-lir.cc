@@ -8607,4 +8607,330 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
   return Module(zc::mv(functions), zc::mv(vtables));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
+    const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Leaf: a Method-sourced scalar constant-return function with one receiver
+  // parameter local (the same shape lowerIndirectCallModuleWithLeaf admits).
+  // The receiver is never read in the constant return.
+  if (leaf.kind != mir::MirFunctionKind::Function ||
+      leaf.sourceDefinitionKind != identity::DefinitionKind::Method || leaf.locals.size() != 1 ||
+      leaf.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& leafReceiver = leaf.locals[0];
+  if (leafReceiver.kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  auto leafCarrier = integerCarrierFor(leaf.resultType, semanticTypes);
+  if (leafCarrier == zc::none) { return zc::none; }
+  const auto leafCarrierValue = ZC_REQUIRE_NONNULL(leafCarrier);
+  const auto& leafBlock = leaf.blocks[0];
+  if (leafBlock.statements.size() != 0 ||
+      leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& leafReturn = leafBlock.terminator.returnValue().value;
+  if (leafReturn == zc::none) { return zc::none; }
+  zc::Maybe<IntegerConstant> leafConstant;
+  ZC_IF_SOME(value, leafReturn) {
+    if (value.kind() != mir::MirOperandKind::Constant ||
+        value.constantValue().type != leaf.resultType) {
+      return zc::none;
+    }
+    const auto integer = value.constantValue().value.integerValue();
+    if (integer == zc::none) { return zc::none; }
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  }
+  if (leafConstant == zc::none) { return zc::none; }
+
+  // Callee: a Function with one dyn-trait Parameter local and one result
+  // Temporary local, two blocks (entry StorageLive + IndirectCall, continuation
+  // Return). The indirect call names the interface and method DefIds that
+  // identify the vtable slot.
+  if (callee.kind != mir::MirFunctionKind::Function ||
+      callee.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      callee.locals.size() != 2 || callee.blocks.size() != 2 ||
+      callee.resultType != leaf.resultType) {
+    return zc::none;
+  }
+  const auto& calleeReceiver = callee.locals[0];
+  const auto& calleeResult = callee.locals[1];
+  if (calleeReceiver.kind != mir::MirLocalKind::Parameter ||
+      calleeResult.kind != mir::MirLocalKind::Temporary || calleeResult.type != callee.resultType) {
+    return zc::none;
+  }
+  auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  if (calleeCarrier == zc::none) { return zc::none; }
+  const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
+  const auto& calleeEntry = callee.blocks[0];
+  const auto& calleeCont = callee.blocks[1];
+  if (calleeEntry.statements.size() != 1 ||
+      calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      calleeEntry.statements[0].storageLocal() != calleeResult.id ||
+      calleeEntry.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
+      calleeCont.statements.size() != 0 ||
+      calleeCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& indirectCall = calleeEntry.terminator.indirectCallValue();
+  if (indirectCall.arguments.size() != 0 ||
+      indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      indirectCall.destination.local() != calleeResult.id ||
+      indirectCall.destination.projections().size() != 0 ||
+      indirectCall.normalTarget != calleeCont.id || indirectCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
+      indirectCall.receiver.place().local() != calleeReceiver.id ||
+      indirectCall.receiver.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& calleeContReturn = calleeCont.terminator.returnValue().value;
+  if (calleeContReturn == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, calleeContReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != calleeResult.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Caller: a Function with one existential UserLocal, one concrete aggregate
+  // Temporary, and one result Temporary, two blocks (entry StorageLive +
+  // Assign(NominalAggregate) + StorageLive + Assign(Erase) + StorageLive +
+  // Call, continuation Return). The call passes the existential by value as
+  // the sole argument and targets the identified callee.
+  if (caller.kind != mir::MirFunctionKind::Function ||
+      caller.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      caller.locals.size() != 3 || caller.blocks.size() != 2 ||
+      caller.resultType != callee.resultType) {
+    return zc::none;
+  }
+  const auto& callerExistential = caller.locals[0];
+  const auto& callerConcrete = caller.locals[1];
+  const auto& callerResult = caller.locals[2];
+  if (callerExistential.kind != mir::MirLocalKind::UserLocal ||
+      callerConcrete.kind != mir::MirLocalKind::Temporary ||
+      callerResult.kind != mir::MirLocalKind::Temporary || callerResult.type != caller.resultType) {
+    return zc::none;
+  }
+  auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  if (callerCarrier == zc::none) { return zc::none; }
+  const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
+  const auto& callerEntry = caller.blocks[0];
+  const auto& callerCont = caller.blocks[1];
+  if (callerEntry.statements.size() != 5 ||
+      callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[0].storageLocal() != callerConcrete.id ||
+      callerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
+      callerEntry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[2].storageLocal() != callerExistential.id ||
+      callerEntry.statements[3].kind() != mir::MirStatementKind::Assign ||
+      callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+      callerEntry.statements[4].storageLocal() != callerResult.id ||
+      callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      callerCont.statements.size() != 0 ||
+      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& concreteAssign = callerEntry.statements[1].assignmentValue();
+  if (concreteAssign.initialization != mir::MirInitializationKind::Initialize ||
+      concreteAssign.destination.local() != callerConcrete.id ||
+      concreteAssign.destination.projections().size() != 0 ||
+      concreteAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = concreteAssign.value.nominalAggregateValue();
+  if (aggregate.type != callerConcrete.type || aggregate.elements.size() != 1) { return zc::none; }
+  const auto& aggregateElement = aggregate.elements[0];
+  if (aggregateElement.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  auto elementCarrier =
+      integerCarrierFor(aggregateElement.operand.constantValue().type, semanticTypes);
+  if (elementCarrier == zc::none) { return zc::none; }
+  const auto elementCarrierValue = ZC_REQUIRE_NONNULL(elementCarrier);
+  auto elementConstant = lirOperandFor(aggregateElement.operand, elementCarrierValue);
+  if (elementConstant == zc::none) { return zc::none; }
+  const auto& eraseAssign = callerEntry.statements[3].assignmentValue();
+  if (eraseAssign.initialization != mir::MirInitializationKind::Initialize ||
+      eraseAssign.destination.local() != callerExistential.id ||
+      eraseAssign.destination.projections().size() != 0 ||
+      eraseAssign.value.kind() != mir::MirRvalueKind::Erase) {
+    return zc::none;
+  }
+  const auto& erase = eraseAssign.value.eraseValue();
+  if (erase.sourceType != callerConcrete.type || erase.targetType != callerExistential.type ||
+      erase.source.kind() != mir::MirOperandKind::Move ||
+      erase.source.place().local() != callerConcrete.id ||
+      erase.source.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& mirCall = callerEntry.terminator.callValue();
+  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+      mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      mirCall.destination.local() != callerResult.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
+      mirCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  const auto& callArgument = mirCall.arguments[0];
+  if (callArgument.kind() == mir::MirOperandKind::Constant ||
+      callArgument.place().local() != callerExistential.id ||
+      callArgument.place().projections().size() != 0) {
+    return zc::none;
+  }
+  const auto& callerContReturn = callerCont.terminator.returnValue().value;
+  if (callerContReturn == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, callerContReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != callerResult.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Construct the aggregate carrier for the caller's Dog struct. The single
+  // field's carrier is the element carrier resolved above.
+  zc::Vector<AggregateField> aggregateFields;
+  aggregateFields.add(AggregateField(zc::str("field0"), elementCarrierValue));
+  auto aggregateCarrier = ValueType::aggregate(zc::mv(aggregateFields));
+  if (aggregateCarrier == zc::none) { return zc::none; }
+  const auto aggregateCarrierValue = ZC_REQUIRE_NONNULL(aggregateCarrier);
+  zc::Vector<Operand> aggregateFieldOperands;
+  aggregateFieldOperands.add(zc::mv(ZC_REQUIRE_NONNULL(elementConstant)));
+  auto aggregateConstant =
+      AggregateConstant::from(aggregateCarrierValue, zc::mv(aggregateFieldOperands));
+  if (aggregateConstant == zc::none) { return zc::none; }
+
+  // Construct the existential aggregate carrier {dataPtr, vtablePtr}.
+  const auto pointerCarrier = ValueType::pointer(0);
+  zc::Vector<AggregateField> existentialFields;
+  existentialFields.add(AggregateField(zc::str("data"), pointerCarrier));
+  existentialFields.add(AggregateField(zc::str("vtable"), pointerCarrier));
+  auto existentialCarrier = ValueType::aggregate(zc::mv(existentialFields));
+  if (existentialCarrier == zc::none) { return zc::none; }
+  const auto existentialCarrierValue = ZC_REQUIRE_NONNULL(existentialCarrier);
+
+  auto callerEntryId = LirBlockId::fromOrdinal(1);
+  auto callerContId = LirBlockId::fromOrdinal(2);
+  auto calleeEntryId = LirBlockId::fromOrdinal(1);
+  auto calleeContId = LirBlockId::fromOrdinal(2);
+  auto leafEntryId = LirBlockId::fromOrdinal(1);
+  if (callerEntryId == zc::none || callerContId == zc::none || calleeEntryId == zc::none ||
+      calleeContId == zc::none || leafEntryId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<Function> functions;
+
+  // Function 0: the caller. The concrete aggregate local is constructed as a
+  // constant, its address is taken as the data pointer, and the vtable address
+  // is loaded. Both pointers are inserted into the existential aggregate
+  // carrier, then extracted as two pointer call arguments (the split
+  // aggregate calling convention).
+  {
+    constexpr uint32_t dataPtrOrdinal = 4;
+    constexpr uint32_t vtablePtrOrdinal = 5;
+    constexpr uint32_t existentialTmpOrdinal = 6;
+    zc::Vector<Statement> entryStatements;
+    entryStatements.add(
+        Statement::assign(callerConcrete.id.ordinal(),
+                          Operand::constant(zc::mv(ZC_REQUIRE_NONNULL(aggregateConstant)))));
+    entryStatements.add(Statement::takeAddress(dataPtrOrdinal, callerConcrete.id.ordinal()));
+    entryStatements.add(Statement::vtableAddr(vtablePtrOrdinal, /*vtableOrdinal=*/1));
+    // Insert data pointer into field 0 of the existential aggregate.
+    entryStatements.add(
+        Statement::insertField(existentialTmpOrdinal, callerExistential.id.ordinal(),
+                               /*fieldIndex=*/0, Operand::localUse(dataPtrOrdinal)));
+    // Insert vtable pointer into field 1, producing the final existential.
+    entryStatements.add(
+        Statement::insertField(callerExistential.id.ordinal(), existentialTmpOrdinal,
+                               /*fieldIndex=*/1, Operand::localUse(vtablePtrOrdinal)));
+    // Extract the data and vtable pointers for the call.
+    entryStatements.add(
+        Statement::extractField(dataPtrOrdinal, callerExistential.id.ordinal(), /*fieldIndex=*/0));
+    entryStatements.add(Statement::extractField(vtablePtrOrdinal, callerExistential.id.ordinal(),
+                                                /*fieldIndex=*/1));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(dataPtrOrdinal));
+    arguments.add(Operand::localUse(vtablePtrOrdinal));
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, callerResult.id.ordinal(), zc::mv(arguments),
+        ZC_REQUIRE_NONNULL(callerContId));
+    if (callTerminator == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> callerBlocks;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId),
+                                Terminator::returnLocal(callerResult.id.ordinal())));
+    zc::Vector<Local> noParameters;
+    zc::Vector<Local> locals;
+    locals.add(Local(callerExistential.id.ordinal(), existentialCarrierValue));
+    locals.add(Local(callerConcrete.id.ordinal(), aggregateCarrierValue));
+    locals.add(Local(callerResult.id.ordinal(), callerCarrierValue));
+    locals.add(Local(dataPtrOrdinal, pointerCarrier));
+    locals.add(Local(vtablePtrOrdinal, pointerCarrier));
+    locals.add(Local(existentialTmpOrdinal, existentialCarrierValue));
+    functions.add(Function(caller.owner, zc::heapString("zom.module_init"), callerCarrierValue,
+                           zc::mv(noParameters), zc::mv(locals), zc::mv(callerBlocks)));
+  }
+
+  // Function 1: the callee. The receiver parameter is lowered to a data
+  // pointer; the vtable pointer is a second pointer parameter. The function
+  // pointer is loaded from the vtable slot, then the indirect call passes the
+  // data pointer as the sole argument.
+  {
+    constexpr uint32_t calleeResultOrdinal = 3;
+    constexpr uint32_t fnPtrOrdinal = 4;
+    zc::Vector<Statement> entryStatements;
+    entryStatements.add(Statement::vtableSlotLoad(fnPtrOrdinal,
+                                                  /*vtablePointerOrdinal=*/2,
+                                                  /*slotIndex=*/0));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::localUse(/*dataPtrOrdinal=*/1));
+    zc::Vector<ValueType> parameterCarriers;
+    parameterCarriers.add(pointerCarrier);
+    auto indirectTerminator = Terminator::indirectCall(
+        fnPtrOrdinal, calleeResultOrdinal, zc::mv(arguments), calleeCarrierValue,
+        zc::mv(parameterCarriers), ZC_REQUIRE_NONNULL(calleeContId));
+    if (indirectTerminator == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> calleeBlocks;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(entryStatements),
+                                ZC_REQUIRE_NONNULL(zc::mv(indirectTerminator))));
+    calleeBlocks.add(
+        BasicBlock(ZC_REQUIRE_NONNULL(calleeContId), Terminator::returnLocal(calleeResultOrdinal)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(/*dataPtrOrdinal=*/1, pointerCarrier));
+    parameters.add(Local(/*vtablePtrOrdinal=*/2, pointerCarrier));
+    zc::Vector<Local> locals;
+    locals.add(Local(calleeResultOrdinal, calleeCarrierValue));
+    locals.add(Local(fnPtrOrdinal, pointerCarrier));
+    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
+  }
+
+  // Function 2: the standalone leaf, a single block returning its integer
+  // constant. It calls nothing and is called by nothing; the vtable references
+  // it as the method implementation.
+  {
+    zc::Vector<BasicBlock> leafBlocks;
+    leafBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                              Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(leafReceiver.id.ordinal(), pointerCarrier));
+    zc::Vector<Local> noLocals;
+    functions.add(Function(leaf.owner, zc::heapString("zom.leaf"), leafCarrierValue,
+                           zc::mv(parameters), zc::mv(noLocals), zc::mv(leafBlocks)));
+  }
+
+  // Vtable 1: the interface from the IndirectCall terminator, a placeholder
+  // impl identity (the LLVM translator only uses functionIndices for codegen),
+  // and the leaf's function index (2) as the sole method implementation.
+  zc::Vector<Vtable> vtables;
+  zc::Vector<uint32_t> functionIndices;
+  functionIndices.add(/*leafFunctionIndex=*/2);
+  vtables.add(
+      Vtable(/*ordinal=*/1, indirectCall.interface, identity::ImplId{}, zc::mv(functionIndices)));
+
+  return Module(zc::mv(functions), zc::mv(vtables));
+}
+
 }  // namespace zomlang::compiler::lir

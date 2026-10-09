@@ -81,6 +81,7 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
   const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
       ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+  zc::Maybe<HirErasureRecord> localErasure = zc::mv(ZC_ASSERT_NONNULL(function.local).erasure);
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, aggregate initializer F+3, return F+4, direct call
@@ -102,7 +103,7 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
-                               initializerSpan.clone()});
+                               initializerSpan.clone(), zc::mv(localErasure)});
   ctx.addAggregate(HirNominalAggregateExpression{initializerId, aggregate.definition,
                                                  aggregate.type, zc::mv(aggregate.elements),
                                                  aggregate.category, aggregate.sourceSpan.clone()});
