@@ -327,7 +327,7 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-consumer/Zom.toml::string_concat_consumer::string_concat_consumer::hello world"
       --string-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-concat-let-consumer/Zom.toml::string_concat_let_consumer::string_concat_let_consumer::hello world")
-  set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 2400)
+  set_tests_properties(object-emission-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 600)
 endif()
 
 # RFC 0043 O5/KR5.4: with the LLVM backend built, `zomc run` executes an
@@ -508,7 +508,7 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arith-arm-consumer/Zom.toml::conditional_arith_arm_consumer::conditional_arith_arm_consumer")
-  set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 2400)
+  set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 600)
 endif()
 add_test(
   NAME package-workspace-build

@@ -22,6 +22,12 @@ bytes (followed by a NUL terminator).  This pins the string-literal-return slice
 end to end: the compiler must copy the canonical bytes into a global constant,
 not merely produce a page-aligned pointer whose low bits happen to match an exit
 code.
+
+Cases run concurrently in a thread pool (`--jobs` workers, defaulting to
+`min(8, cpu count)`): every case owns a temporary directory and a copied
+environment, and zomc's only shared write is the PID-keyed run root, so no case
+shares state with another. All case failures are collected and raised together
+as one aggregated error instead of aborting at the first failure.
 """
 
 from __future__ import annotations
@@ -31,6 +37,9 @@ import os
 import re
 import subprocess
 import tempfile
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from functools import partial
 from pathlib import Path
 
 ELF_MAGIC = b"\x7fELF"
@@ -233,6 +242,28 @@ def incident_case(zomc: str, manifest: str, package: str, binary: str) -> None:
             )
 
 
+def _run_parallel(jobs: int, tasks: list[tuple[str, Callable[[], None]]]) -> None:
+    """Run case callables in a thread pool, raising one error for all failures.
+
+    subprocess.run waits release the GIL, so a thread pool overlaps case wall
+    time without multiprocessing overhead. Every failure is collected so a
+    single run reports every broken case instead of only the first.
+    """
+    failures: list[str] = []
+    with ThreadPoolExecutor(max_workers=jobs) as executor:
+        futures = {executor.submit(callable_): label for label, callable_ in tasks}
+        for future in as_completed(futures):
+            label = futures[future]
+            try:
+                future.result()
+            except Exception as error:  # noqa: BLE001 - aggregate every case failure
+                failures.append(f"{label}: {error}")
+    if failures:
+        raise RuntimeError(
+            f"{len(failures)} of {len(tasks)} cases failed:\n" + "\n---\n".join(failures)
+        )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--zomc", required=True)
@@ -249,29 +280,40 @@ def main() -> int:
     # Each string-case is "manifest::package::bin::expected"; the emitted
     # object's .rodata must contain the expected UTF-8 bytes + NUL.
     parser.add_argument("--string-case", action="append", default=[])
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=min(8, os.cpu_count() or 1),
+        help="parallel case workers (default: min(8, cpu count))",
+    )
     arguments = parser.parse_args()
     zomc = str(Path(arguments.zomc).resolve(strict=True))
 
+    # Parse every spec before running anything so a malformed command line
+    # fails fast without starting the pool.
+    tasks: list[tuple[str, Callable[[], None]]] = []
     for case in arguments.case:
         parts = case.split("::")
         if len(parts) != 3:
             raise RuntimeError(f"malformed --case (want manifest::package::bin): {case}")
         manifest, package, binary = parts
-        emit_case(zomc, manifest, package, binary)
+        tasks.append((f"emit {package}", partial(emit_case, zomc, manifest, package, binary)))
 
     for case in arguments.reject_case:
         parts = case.split("::")
         if len(parts) != 3:
             raise RuntimeError(f"malformed --reject-case (want manifest::package::bin): {case}")
         manifest, package, binary = parts
-        reject_case(zomc, manifest, package, binary)
+        tasks.append((f"reject {package}", partial(reject_case, zomc, manifest, package, binary)))
 
     for case in arguments.incident_case:
         parts = case.split("::")
         if len(parts) != 3:
             raise RuntimeError(f"malformed --incident-case (want manifest::package::bin): {case}")
         manifest, package, binary = parts
-        incident_case(zomc, manifest, package, binary)
+        tasks.append(
+            (f"incident {package}", partial(incident_case, zomc, manifest, package, binary))
+        )
 
     for case in arguments.string_case:
         parts = case.split("::")
@@ -280,8 +322,11 @@ def main() -> int:
                 f"malformed --string-case (want manifest::package::bin::expected): {case}"
             )
         manifest, package, binary, expected = parts
-        string_case(zomc, manifest, package, binary, expected)
+        tasks.append(
+            (f"string {package}", partial(string_case, zomc, manifest, package, binary, expected))
+        )
 
+    _run_parallel(arguments.jobs, tasks)
     print("zomc compile --emit=binary wrote a native ELF object for every case")
     return 0
 
