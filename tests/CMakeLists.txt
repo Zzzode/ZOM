@@ -295,8 +295,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-live-erase-consumer/Zom.toml::dyn_live_erase_consumer::dyn_live_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-stored-erase-consumer/Zom.toml::dyn_stored_erase_consumer::dyn_stored_erase_consumer"
-      --reject-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-fourfn-consumer/Zom.toml::reject_fourfn_consumer::reject_fourfn_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/fourfn-standalone-consumer/Zom.toml::fourfn_standalone_consumer::fourfn_standalone_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case

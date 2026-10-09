@@ -1379,89 +1379,118 @@ private:
           "Binary emission currently supports exactly one module; got ", mirModules.size(), "."));
     }
     const auto functions = mirModules[0].builtMir().functions();
-    if (functions.size() != 1 && functions.size() != 2 && functions.size() != 3) {
-      return NativeObjectResult(
-          zc::str("Binary emission currently supports one, two, or three functions; got ",
-                  functions.size(), "."));
+    if (functions.size() == 0) {
+      return NativeObjectResult(zc::str("Binary emission requires at least one function."));
     }
     auto semanticTypes = session->getSemanticTypeStore();
     if (semanticTypes == zc::none) {
       return NativeObjectResult(zc::str("No semantic type store is available."));
     }
-    // Select the MIR -> LIR lowering by module shape. A single module initializer
-    // lowers through the scalar slice (RFC 0021 KR2.4); a single `Function` is
-    // tried against the boolean-conditional diamond slice (KR5.2 C1), then the
-    // reducible while-loop slice (KR5.2 C2), then the comparison-driven
-    // conditional slice (KR5.2 C3), then the aggregate field-return slice (gap#2).
-    // The three multi-block single-function slices have mutually exclusive shapes
-    // (the diamond entry is a one-statement SwitchInt, the loop entry is a Goto,
-    // the comparison entry is a three-statement SwitchInt on a computed boolean
-    // temporary) and all require four blocks, while the aggregate field-return has
-    // one block, so trying them in order selects at most one. A two-`Function`
-    // module is tried against the same-module direct-call slices (KR5.2 C4/C5):
-    // the caller (two blocks) and the callee (one block) are identified by block
-    // count, requiring exactly one of each, and the deeper `lowerCallModule` /
-    // `lowerCallModuleWithArgument` gates (including the call targeting the
-    // identified callee and the argument count) fail-close any residual mismatch.
-    // The multi-block slices keep their own parameterized symbols
-    // (`zom.conditional`, `zom.loop`, `zom.conditional_cmp`), so they produce a
-    // relocatable object only. The call slices fold a parameter-free caller to
-    // the reserved no-argument `zom.module_init` entry the runtime `_start`
-    // calls, so they run natively; a parameterized caller keeps `zom.caller`
-    // and stays object-only. The scalar and aggregate field-return slices fold
-    // to `zom.module_init` unconditionally. Every other shape stays
-    // fail-closed here, and `zomc run` remains gated on the
+    // Select the MIR -> LIR lowering by module shape. A single function is
+    // tried against every single-function lowering shape in order (the
+    // scalar-initializer slice, then the boolean-conditional diamond, the
+    // reducible while-loop, the comparison-driven conditional, the aggregate
+    // field-return, and so on through the full ladder). A two-function module
+    // is tried against the same-module direct-call slices (KR5.2 C4/C5): the
+    // caller and the callee are identified by block count, and the deeper
+    // `lowerCallModule` / `lowerCallModuleWithArgument` gates (including the
+    // call targeting the identified callee and the argument count) fail-close
+    // any residual mismatch. A three-function module is tried against the
+    // three-function call-chain slices (direct-call-with-leaf, receiver
+    // self-call, void-setter-then-value-getter, two-impl devirtualization,
+    // dyn live-erase, stored-erase). When no call-chain shape matches -- or
+    // the module has four or more functions -- every function is lowered
+    // independently through the full single-function ladder and combined
+    // into one LIR module. The multi-block single-function slices keep their
+    // own parameterized symbols (`zom.conditional`, `zom.loop`,
+    // `zom.conditional_cmp`), so they produce a relocatable object only. The
+    // call slices fold a parameter-free caller to the reserved no-argument
+    // `zom.module_init` entry the runtime `_start` calls, so they run
+    // natively; a parameterized caller keeps `zom.caller` and stays
+    // object-only. The scalar and aggregate field-return slices fold to
+    // `zom.module_init` unconditionally. When independently-lowered functions
+    // collide on a symbol (most commonly `zom.module_init`), all but the
+    // first are renamed to a unique `zom.standalone_<N>` symbol so the
+    // structural verifier's unique-symbol invariant holds. Every other shape
+    // stays fail-closed here, and `zomc run` remains gated on the
     // host-compatibility path regardless.
     zc::Maybe<lir::Module> lir;
     ZC_IF_SOME(types, semanticTypes) {
-      if (functions.size() == 1) {
-        if (functions[0].kind == mir::MirFunctionKind::ModuleInitializer) {
-          lir = lir::MirToLirLowering::lowerScalarInitializer(functions[0], types);
-        } else if (functions[0].kind == mir::MirFunctionKind::Function) {
-          lir = lir::MirToLirLowering::lowerConditionalReturn(functions[0], types);
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerLoopReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerLoopBodyReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerForLoopReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerNestedForLoopAccumulatorReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerForLoopAccumulatorReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerEqualityConditionalReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerLeadingLocalConditionalReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerTernaryLocalReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerAggregateFieldInitializer(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerAggregateReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerScalarConstantReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerArithmeticReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(functions[0], types);
-          }
-          if (lir == zc::none) {
-            lir = lir::MirToLirLowering::lowerScalarReturn(functions[0], types);
-          }
+      // Standalone single-function ladder: tries every single-function
+      // lowering shape in order. Shared by the one-function path and the
+      // multi-function standalone fallback so both admit the same shapes.
+      auto lowerStandaloneFunction = [&](const mir::MirFunction& fn) -> zc::Maybe<lir::Module> {
+        if (fn.kind == mir::MirFunctionKind::ModuleInitializer) {
+          return lir::MirToLirLowering::lowerScalarInitializer(fn, types);
         }
+        if (fn.kind != mir::MirFunctionKind::Function) { return zc::none; }
+        zc::Maybe<lir::Module> lowered = lir::MirToLirLowering::lowerConditionalReturn(fn, types);
+        if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerLoopReturn(fn, types); }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerLoopBodyReturn(fn, types);
+        }
+        if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerForLoopReturn(fn, types); }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerNestedForLoopAccumulatorReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerForLoopAccumulatorReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerEqualityConditionalReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerLeadingLocalConditionalReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerTernaryLocalReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerAggregateFieldInitializer(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerScalarConstantReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerArithmeticReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(fn, types);
+        }
+        if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types); }
+        return lowered;
+      };
+      // Standalone multi-function fallback: lower each function independently
+      // through the full single-function ladder and combine into one LIR
+      // module. The LIR structural verifier rejects duplicate symbols, so any
+      // function whose lowered symbol collides with an already-added function
+      // is renamed to a unique standalone symbol.
+      auto lowerStandaloneModule =
+          [&](zc::ArrayPtr<const mir::MirFunction> fns) -> zc::Maybe<lir::Module> {
+        zc::Vector<lir::Function> loweredFunctions;
+        for (const auto& fn : fns) {
+          auto lowered = lowerStandaloneFunction(fn);
+          if (lowered == zc::none) { return zc::none; }
+          auto singleFns = ZC_ASSERT_NONNULL(lowered).takeFunctions();
+          if (singleFns.size() != 1) { return zc::none; }
+          auto function = zc::mv(singleFns[0]);
+          for (const auto& existing : loweredFunctions) {
+            if (existing.symbolName() == function.symbolName()) {
+              function =
+                  zc::mv(function).withSymbol(zc::str("zom.standalone_", loweredFunctions.size()));
+              break;
+            }
+          }
+          loweredFunctions.add(zc::mv(function));
+        }
+        if (loweredFunctions.size() != fns.size()) { return zc::none; }
+        return lir::Module(zc::mv(loweredFunctions));
+      };
+      if (functions.size() == 1) {
+        lir = lowerStandaloneFunction(functions[0]);
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
         // block count. The caller is a `Function` with two blocks (entry Call,
@@ -1552,223 +1581,216 @@ private:
         }
         if (lir == zc::none) {
           // Standalone multi-function module: no caller/callee pair exists.
-          // Lower each function individually and combine into one LIR module.
-          zc::Vector<lir::Function> loweredFunctions;
-          for (const auto& fn : functions) {
-            zc::Maybe<lir::Module> lowered;
-            if (fn.kind == mir::MirFunctionKind::ModuleInitializer) {
-              lowered = lir::MirToLirLowering::lowerScalarInitializer(fn, types);
-            } else if (fn.kind == mir::MirFunctionKind::Function) {
-              lowered = lir::MirToLirLowering::lowerConditionalReturn(fn, types);
-              if (lowered == zc::none) {
-                lowered = lir::MirToLirLowering::lowerEqualityConditionalReturn(fn, types);
-              }
-              if (lowered == zc::none) {
-                lowered = lir::MirToLirLowering::lowerAggregateFieldInitializer(fn, types);
-              }
-              if (lowered == zc::none) {
-                lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
-              }
-              if (lowered == zc::none) {
-                lowered = lir::MirToLirLowering::lowerScalarConstantReturn(fn, types);
-              }
-              if (lowered == zc::none) {
-                lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types);
-              }
-            }
-            if (lowered == zc::none) { break; }
-            auto fns = ZC_ASSERT_NONNULL(lowered).takeFunctions();
-            for (size_t i = 0; i < fns.size(); ++i) { loweredFunctions.add(zc::mv(fns[i])); }
-          }
-          if (loweredFunctions.size() == functions.size()) {
-            lir = lir::Module(zc::mv(loweredFunctions));
-          }
+          // Lower each function individually through the full single-function
+          // ladder and combine into one LIR module.
+          lir = lowerStandaloneModule(functions);
         }
       } else {
-        // Three functions: either one same-module direct-call caller plus its
-        // callee plus one standalone scalar leaf (S-call), or a receiver
-        // self-call chain (module caller -> forwarding Method -> leaf Method).
-        // The self-call chain is distinguished by two Method-sourced functions
-        // whose two-block member forwards its leading receiver parameter, so it
-        // is classified before the generic unique-caller scan.
-        {
-          // Void-then-value receiver module: one Function-sourced three-block
-          // caller (bb0 mutating unit Call, bb1 shared value Call, bb2 value
-          // Return) and two one-block Method owners, each resolved from one Call
-          // terminator's callee owner. A non-unique caller or owner leaves lir
-          // unset so the later ladders reject the module.
-          zc::Maybe<size_t> voidCallerIndex;
-          for (size_t index = 0; index < functions.size(); ++index) {
-            const auto& fn = functions[index];
-            if (fn.kind == mir::MirFunctionKind::Function &&
-                fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
-                fn.blocks.size() == 3 &&
-                fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
-                fn.blocks[1].terminator.kind() == mir::MirTerminatorKind::Call &&
-                fn.blocks[2].terminator.kind() == mir::MirTerminatorKind::Return) {
-              if (voidCallerIndex != zc::none) {
-                voidCallerIndex = zc::none;
-                break;
+        // Three or more functions. A three-function module is tried against
+        // the three-function call-chain slices below; a module with four or
+        // more functions skips them and falls through to the standalone
+        // fallback, which lowers each function independently.
+        if (functions.size() == 3) {
+          // Three functions: either one same-module direct-call caller plus its
+          // callee plus one standalone scalar leaf (S-call), or a receiver
+          // self-call chain (module caller -> forwarding Method -> leaf Method).
+          // The self-call chain is distinguished by two Method-sourced functions
+          // whose two-block member forwards its leading receiver parameter, so it
+          // is classified before the generic unique-caller scan.
+          {
+            // Void-then-value receiver module: one Function-sourced three-block
+            // caller (bb0 mutating unit Call, bb1 shared value Call, bb2 value
+            // Return) and two one-block Method owners, each resolved from one Call
+            // terminator's callee owner. A non-unique caller or owner leaves lir
+            // unset so the later ladders reject the module.
+            zc::Maybe<size_t> voidCallerIndex;
+            for (size_t index = 0; index < functions.size(); ++index) {
+              const auto& fn = functions[index];
+              if (fn.kind == mir::MirFunctionKind::Function &&
+                  fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                  fn.blocks.size() == 3 &&
+                  fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
+                  fn.blocks[1].terminator.kind() == mir::MirTerminatorKind::Call &&
+                  fn.blocks[2].terminator.kind() == mir::MirTerminatorKind::Return) {
+                if (voidCallerIndex != zc::none) {
+                  voidCallerIndex = zc::none;
+                  break;
+                }
+                voidCallerIndex = index;
               }
-              voidCallerIndex = index;
+            }
+            ZC_IF_SOME(caller, voidCallerIndex) {
+              const auto& callerFn = functions[caller];
+              const auto& mutatingCall = callerFn.blocks[0].terminator.callValue();
+              const auto& readCall = callerFn.blocks[1].terminator.callValue();
+              auto resolveMethod = [&](identity::DefId owner) -> zc::Maybe<size_t> {
+                zc::Maybe<size_t> hit;
+                for (size_t index = 0; index < functions.size(); ++index) {
+                  if (index == caller) continue;
+                  if (functions[index].owner == owner &&
+                      functions[index].kind == mir::MirFunctionKind::Function &&
+                      functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
+                      functions[index].blocks.size() == 1) {
+                    if (hit != zc::none) return zc::none;
+                    hit = index;
+                  }
+                }
+                return hit;
+              };
+              auto setterIndex = resolveMethod(mutatingCall.callee);
+              auto getterIndex = resolveMethod(readCall.callee);
+              if (setterIndex != zc::none && getterIndex != zc::none &&
+                  ZC_ASSERT_NONNULL(setterIndex) != ZC_ASSERT_NONNULL(getterIndex)) {
+                lir = lir::MirToLirLowering::lowerReceiverVoidThenValueCallModule(
+                    functions[caller], functions[ZC_ASSERT_NONNULL(setterIndex)],
+                    functions[ZC_ASSERT_NONNULL(getterIndex)], types);
+              }
             }
           }
-          ZC_IF_SOME(caller, voidCallerIndex) {
-            const auto& callerFn = functions[caller];
-            const auto& mutatingCall = callerFn.blocks[0].terminator.callValue();
-            const auto& readCall = callerFn.blocks[1].terminator.callValue();
-            auto resolveMethod = [&](identity::DefId owner) -> zc::Maybe<size_t> {
-              zc::Maybe<size_t> hit;
+          zc::Maybe<size_t> receiverCallerIndex;
+          zc::Maybe<size_t> forwarderIndex;
+          zc::Maybe<size_t> selfCallLeafIndex;
+          for (size_t index = 0; index < functions.size(); ++index) {
+            const auto& fn = functions[index];
+            if (fn.kind != mir::MirFunctionKind::Function || fn.blocks.size() != 2) { continue; }
+            if (fn.sourceDefinitionKind == identity::DefinitionKind::Function) {
+              if (receiverCallerIndex == zc::none) receiverCallerIndex = index;
+            } else if (fn.sourceDefinitionKind == identity::DefinitionKind::Method) {
+              // The forwarding Method calls a Method with exactly one argument.
+              if (fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
+                  fn.blocks[0].terminator.callValue().arguments.size() == 1 &&
+                  forwarderIndex == zc::none) {
+                forwarderIndex = index;
+              }
+            }
+          }
+          ZC_IF_SOME(forwarder, forwarderIndex) {
+            const auto& forwarderFn = functions[forwarder];
+            if (forwarderFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
+              const auto& forwardCall = forwarderFn.blocks[0].terminator.callValue();
               for (size_t index = 0; index < functions.size(); ++index) {
-                if (index == caller) continue;
-                if (functions[index].owner == owner &&
+                if (index == forwarder) { continue; }
+                if (functions[index].owner == forwardCall.callee &&
                     functions[index].kind == mir::MirFunctionKind::Function &&
                     functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
                     functions[index].blocks.size() == 1) {
-                  if (hit != zc::none) return zc::none;
-                  hit = index;
+                  selfCallLeafIndex = index;
+                  break;
                 }
               }
-              return hit;
-            };
-            auto setterIndex = resolveMethod(mutatingCall.callee);
-            auto getterIndex = resolveMethod(readCall.callee);
-            if (setterIndex != zc::none && getterIndex != zc::none &&
-                ZC_ASSERT_NONNULL(setterIndex) != ZC_ASSERT_NONNULL(getterIndex)) {
-              lir = lir::MirToLirLowering::lowerReceiverVoidThenValueCallModule(
-                  functions[caller], functions[ZC_ASSERT_NONNULL(setterIndex)],
-                  functions[ZC_ASSERT_NONNULL(getterIndex)], types);
             }
           }
-        }
-        zc::Maybe<size_t> receiverCallerIndex;
-        zc::Maybe<size_t> forwarderIndex;
-        zc::Maybe<size_t> selfCallLeafIndex;
-        for (size_t index = 0; index < functions.size(); ++index) {
-          const auto& fn = functions[index];
-          if (fn.kind != mir::MirFunctionKind::Function || fn.blocks.size() != 2) { continue; }
-          if (fn.sourceDefinitionKind == identity::DefinitionKind::Function) {
-            if (receiverCallerIndex == zc::none) receiverCallerIndex = index;
-          } else if (fn.sourceDefinitionKind == identity::DefinitionKind::Method) {
-            // The forwarding Method calls a Method with exactly one argument.
-            if (fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
-                fn.blocks[0].terminator.callValue().arguments.size() == 1 &&
-                forwarderIndex == zc::none) {
-              forwarderIndex = index;
-            }
-          }
-        }
-        ZC_IF_SOME(forwarder, forwarderIndex) {
-          const auto& forwarderFn = functions[forwarder];
-          if (forwarderFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
-            const auto& forwardCall = forwarderFn.blocks[0].terminator.callValue();
-            for (size_t index = 0; index < functions.size(); ++index) {
-              if (index == forwarder) { continue; }
-              if (functions[index].owner == forwardCall.callee &&
-                  functions[index].kind == mir::MirFunctionKind::Function &&
-                  functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
-                  functions[index].blocks.size() == 1) {
-                selfCallLeafIndex = index;
-                break;
+          if (receiverCallerIndex != zc::none && forwarderIndex != zc::none &&
+              selfCallLeafIndex != zc::none) {
+            ZC_IF_SOME(caller, receiverCallerIndex) {
+              ZC_IF_SOME(forward, forwarderIndex) {
+                ZC_IF_SOME(leaf, selfCallLeafIndex) {
+                  lir = lir::MirToLirLowering::lowerReceiverSelfCallModule(
+                      functions[caller], functions[forward], functions[leaf], types);
+                }
               }
             }
           }
-        }
-        if (receiverCallerIndex != zc::none && forwarderIndex != zc::none &&
-            selfCallLeafIndex != zc::none) {
-          ZC_IF_SOME(caller, receiverCallerIndex) {
-            ZC_IF_SOME(forward, forwarderIndex) {
-              ZC_IF_SOME(leaf, selfCallLeafIndex) {
-                lir = lir::MirToLirLowering::lowerReceiverSelfCallModule(
-                    functions[caller], functions[forward], functions[leaf], types);
+          if (lir == zc::none) {
+            // Three-function direct-call ladder. Identify the unique caller by the
+            // two-block Call+Return shape, locate its callee among the other two
+            // functions by owner match (`call.callee == other.owner`), and require
+            // the remaining third function to be the unique scalar leaf. The
+            // emitted LIR module fixes the order [caller, callee, leaf], so the
+            // caller's call index (1) is the callee's emission-order position,
+            // independent of the MIR array order. Any ambiguity -- more than one
+            // caller-shaped function, no or multiple owner-matched callees, or a
+            // non-leaf third function -- leaves `lir` as none and the module fails
+            // closed.
+            auto isCaller = [](const mir::MirFunction& fn) {
+              return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2 &&
+                     !fn.blocks.empty() &&
+                     fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call;
+            };
+            zc::Maybe<size_t> callerIndex;
+            bool callerAmbiguous = false;
+            for (size_t index = 0; index < functions.size(); ++index) {
+              if (isCaller(functions[index])) {
+                if (callerIndex != zc::none) {
+                  callerAmbiguous = true;
+                  break;
+                }
+                callerIndex = index;
+              }
+            }
+            if (!callerAmbiguous) {
+              ZC_IF_SOME(caller, callerIndex) {
+                // The caller's single call terminator names the callee's owner.
+                // Locate the unique other function whose owner matches; the last
+                // remaining function is the leaf candidate.
+                const auto& callerFn = functions[caller];
+                zc::Maybe<size_t> calleeIndex;
+                bool calleeAmbiguous = false;
+                if (callerFn.blocks.size() == 2 &&
+                    callerFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
+                  const auto& call = callerFn.blocks[0].terminator.callValue();
+                  for (size_t index = 0; index < functions.size(); ++index) {
+                    if (index == caller) { continue; }
+                    if (functions[index].owner == call.callee) {
+                      if (calleeIndex != zc::none) {
+                        calleeAmbiguous = true;
+                        break;
+                      }
+                      calleeIndex = index;
+                    }
+                  }
+                }
+                if (!calleeAmbiguous) {
+                  ZC_IF_SOME(callee, calleeIndex) {
+                    // The leaf is the one remaining function that is neither the
+                    // caller nor the owner-matched callee.
+                    zc::Maybe<size_t> leafIndex;
+                    for (size_t index = 0; index < functions.size(); ++index) {
+                      if (index != caller && index != callee) {
+                        leafIndex = index;
+                        break;
+                      }
+                    }
+                    ZC_IF_SOME(leaf, leafIndex) {
+                      lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
+                          functions[caller], functions[callee], functions[leaf], types);
+                      // Two-impl devirtualization: the caller/callee/leaf triple
+                      // is the same identification, but the callee and leaf are
+                      // Method-sourced constant-return functions (one receiver
+                      // parameter local each) rather than zero-local functions.
+                      if (lir == zc::none) {
+                        lir = lir::MirToLirLowering::lowerReceiverCallModuleWithLeaf(
+                            functions[caller], functions[callee], functions[leaf], types);
+                      }
+                      // Dyn live-erase: the caller/callee/leaf triple is the same
+                      // identification, but the callee has an IndirectCall
+                      // terminator (dyn-trait method dispatch) rather than a
+                      // direct Call terminator.
+                      if (lir == zc::none) {
+                        lir = lir::MirToLirLowering::lowerIndirectCallModuleWithLeaf(
+                            functions[caller], functions[callee], functions[leaf], types);
+                      }
+                      // Stored-erase: the caller/callee/leaf triple is the same
+                      // identification, but the caller has a 3-local shape with
+                      // an Erase assignment (stored existential local erased
+                      // from a concrete aggregate temporary).
+                      if (lir == zc::none) {
+                        lir = lir::MirToLirLowering::lowerErasedAggregateCallModule(
+                            functions[caller], functions[callee], functions[leaf], types);
+                      }
+                    }
+                  }
+                }
               }
             }
           }
         }
         if (lir == zc::none) {
-          // Three-function direct-call ladder. Identify the unique caller by the
-          // two-block Call+Return shape, locate its callee among the other two
-          // functions by owner match (`call.callee == other.owner`), and require
-          // the remaining third function to be the unique scalar leaf. The
-          // emitted LIR module fixes the order [caller, callee, leaf], so the
-          // caller's call index (1) is the callee's emission-order position,
-          // independent of the MIR array order. Any ambiguity -- more than one
-          // caller-shaped function, no or multiple owner-matched callees, or a
-          // non-leaf third function -- leaves `lir` as none and the module fails
-          // closed.
-          auto isCaller = [](const mir::MirFunction& fn) {
-            return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2 &&
-                   !fn.blocks.empty() &&
-                   fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call;
-          };
-          zc::Maybe<size_t> callerIndex;
-          bool callerAmbiguous = false;
-          for (size_t index = 0; index < functions.size(); ++index) {
-            if (isCaller(functions[index])) {
-              if (callerIndex != zc::none) {
-                callerAmbiguous = true;
-                break;
-              }
-              callerIndex = index;
-            }
-          }
-          if (!callerAmbiguous) {
-            ZC_IF_SOME(caller, callerIndex) {
-              // The caller's single call terminator names the callee's owner.
-              // Locate the unique other function whose owner matches; the last
-              // remaining function is the leaf candidate.
-              const auto& callerFn = functions[caller];
-              zc::Maybe<size_t> calleeIndex;
-              bool calleeAmbiguous = false;
-              if (callerFn.blocks.size() == 2 &&
-                  callerFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
-                const auto& call = callerFn.blocks[0].terminator.callValue();
-                for (size_t index = 0; index < functions.size(); ++index) {
-                  if (index == caller) { continue; }
-                  if (functions[index].owner == call.callee) {
-                    if (calleeIndex != zc::none) {
-                      calleeAmbiguous = true;
-                      break;
-                    }
-                    calleeIndex = index;
-                  }
-                }
-              }
-              if (!calleeAmbiguous) {
-                ZC_IF_SOME(callee, calleeIndex) {
-                  // The leaf is the one remaining function that is neither the
-                  // caller nor the owner-matched callee.
-                  zc::Maybe<size_t> leafIndex;
-                  for (size_t index = 0; index < functions.size(); ++index) {
-                    if (index != caller && index != callee) {
-                      leafIndex = index;
-                      break;
-                    }
-                  }
-                  ZC_IF_SOME(leaf, leafIndex) {
-                    lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
-                        functions[caller], functions[callee], functions[leaf], types);
-                    // Two-impl devirtualization: the caller/callee/leaf triple
-                    // is the same identification, but the callee and leaf are
-                    // Method-sourced constant-return functions (one receiver
-                    // parameter local each) rather than zero-local functions.
-                    if (lir == zc::none) {
-                      lir = lir::MirToLirLowering::lowerReceiverCallModuleWithLeaf(
-                          functions[caller], functions[callee], functions[leaf], types);
-                    }
-                    // Dyn live-erase: the caller/callee/leaf triple is the same
-                    // identification, but the callee has an IndirectCall
-                    // terminator (dyn-trait method dispatch) rather than a
-                    // direct Call terminator.
-                    if (lir == zc::none) {
-                      lir = lir::MirToLirLowering::lowerIndirectCallModuleWithLeaf(
-                          functions[caller], functions[callee], functions[leaf], types);
-                    }
-                  }
-                }
-              }
-            }
-          }
+          // Standalone fallback for 3+ functions: no call-chain shape matched
+          // (or the module has 4+ functions). Lower each function independently
+          // through the full single-function ladder and combine into one LIR
+          // module, renaming symbol collisions.
+          lir = lowerStandaloneModule(functions);
         }
       }
     }
@@ -1787,7 +1809,9 @@ private:
                   "self-call, three-function direct-call-with-leaf, "
                   "two-impl devirtualization-with-leaf, "
                   "dyn live-erase indirect-call-with-leaf, "
-                  "void-setter-then-value-getter receiver-call, and "
+                  "stored-erase indirect-call-with-leaf, "
+                  "void-setter-then-value-getter receiver-call, "
+                  "standalone multi-function, and "
                   "string literal return slices)."));
     }
     backend::llvm::LlvmTranslator translator;

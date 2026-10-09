@@ -702,6 +702,15 @@ public:
     return blocksValue.asPtr();
   }
 
+  /// \brief Consumes this function and returns one with the symbol replaced.
+  /// All other fields move unchanged. Used when combining independently
+  /// lowered functions whose lowered symbols collide (the structural
+  /// verifier rejects duplicate symbols within a module).
+  ZC_NODISCARD Function withSymbol(zc::String&& newSymbol) && noexcept {
+    return Function(ownerValue, zc::mv(newSymbol), zc::mv(returnCarrierValue),
+                    zc::mv(parametersValue), zc::mv(localsValue), zc::mv(blocksValue));
+  }
+
 private:
   identity::DefId ownerValue;
   zc::String symbolNameValue;
