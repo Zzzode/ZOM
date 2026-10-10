@@ -37,6 +37,20 @@ void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, 
                                                             parameter.sourceSpan.clone()});
 }
 
+void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  // Fixed source-preorder stride: function F, body F+1. The block lists no
+  // statements; no return is materialized for the Unit result.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+}
+
 void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   HirReceiverCallExpression setCall = zc::mv(ZC_ASSERT_NONNULL(function.statementReceiverCall));
   HirLocalReferenceExpression setReceiver =

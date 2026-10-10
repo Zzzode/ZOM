@@ -17,6 +17,11 @@ namespace detail {
 /// No return is materialized; the callable result is Unit.
 void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one empty-body void function: `deinit() { }`. Two node ids in
+/// source preorder: function, body. No statements, return, or value are
+/// materialized; the callable result is Unit.
+void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one discarded receiver-call statement followed by a trailing
 /// receiver-call return:
 /// `mut cell = T { .. }; cell.set(<args>); return cell.get();`. Nine node ids

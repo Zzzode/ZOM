@@ -305,6 +305,27 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     llvmVtables.add(vtableGlobal);
   }
 
+  // 3c. Emit one private global constant per global data entry. Each global is
+  //     a literal struct holding the aggregate constant's fields; the
+  //     GlobalAddr statement lowers to the global's address.
+  const auto globals = module.globals();
+  zc::Vector<::llvm::GlobalVariable*> llvmGlobals;
+  for (const auto& global : globals) {
+    const auto& aggregateConstant = global.value();
+    zc::Vector<::llvm::Constant*> fieldValues;
+    for (const auto& field : aggregateConstant.fields()) {
+      fieldValues.add(lowerConstant(*context, field));
+    }
+    ::llvm::ArrayRef<::llvm::Constant*> fieldRef(fieldValues.begin(), fieldValues.size());
+    auto* aggregateValue = ::llvm::ConstantStruct::get(
+        ::llvm::cast<::llvm::StructType>(llvmType(*context, aggregateConstant.carrier())),
+        fieldRef);
+    auto* globalVar = new ::llvm::GlobalVariable(
+        *llvmModule, aggregateValue->getType(),
+        /*isConstant=*/true, ::llvm::GlobalValue::PrivateLinkage, aggregateValue, ".global");
+    llvmGlobals.add(globalVar);
+  }
+
   // 4. Emit each function body.
   for (size_t functionIndex = 0; functionIndex < functions.size(); ++functionIndex) {
     const auto& function = functions[functionIndex];
@@ -640,6 +661,16 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
                 zc::heapString("vtable ordinal out of range in VtableAddr statement"));
           }
           stored = llvmVtables[vtableIndex];
+        } else if (statement.kind() == lir::StatementKind::GlobalAddr) {
+          // The global address is the private constant's address. Global
+          // ordinals are one-based dense (LIR-verifier validated), so the
+          // vector index is ordinal - 1.
+          const uint32_t globalIndex = statement.globalOrdinal() - 1;
+          if (globalIndex >= llvmGlobals.size()) {
+            return LlvmTranslationResult::failure(
+                zc::heapString("global ordinal out of range in GlobalAddr statement"));
+          }
+          stored = llvmGlobals[globalIndex];
         } else if (statement.kind() == lir::StatementKind::VtableSlotLoad) {
           // Load the vtable pointer from the base slot, then GEP to the slot
           // index and load the function pointer. The vtable is an array of

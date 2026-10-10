@@ -491,6 +491,12 @@ struct HirFunctionDeclaration final {
   /// ExtractField and Comparison rvalues without a mutable type store.
   zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType = zc::none;
   zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType = zc::none;
+  /// Set when the return value is a concrete aggregate construction erased to
+  /// an existential return type (`fn f() -> dyn I { return P { .. }; }`).
+  /// The record carries the concrete source type, existential target type,
+  /// impl, and interface so the MIR builder emits an Erase rvalue and the LIR
+  /// builder constructs the fat-pointer carrier.
+  zc::Maybe<HirErasureRecord> returnErasure = zc::none;
 };
 
 /// \brief One module-scope let, mut, or const declaration in semantic HIR.

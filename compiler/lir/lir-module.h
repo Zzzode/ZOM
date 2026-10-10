@@ -312,6 +312,7 @@ enum class StatementKind : uint8_t {
   InsertField = 0x08,
   VtableAddr = 0x09,
   VtableSlotLoad = 0x0a,
+  GlobalAddr = 0x0b,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
@@ -390,6 +391,12 @@ public:
   ZC_NODISCARD static Statement vtableSlotLoad(uint32_t destinationOrdinal,
                                                uint32_t vtablePointerOrdinal,
                                                uint32_t slotIndex) noexcept;
+  /// \brief Stores the address of a module-level global data constant into a
+  /// pointer destination slot. The global is identified by its module-local
+  /// ordinal (one-based, matching the module's global vector). The destination
+  /// must carry an opaque pointer.
+  ZC_NODISCARD static Statement globalAddr(uint32_t destinationOrdinal,
+                                           uint32_t globalOrdinal) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
@@ -414,6 +421,10 @@ public:
   /// \brief The zero-based vtable slot index for a VtableSlotLoad statement.
   /// Reuses the field-offset storage.
   ZC_NODISCARD uint32_t vtableSlotIndex() const noexcept { return fieldOffsetValue; }
+  /// \brief The one-based module-local global ordinal for a GlobalAddr
+  /// statement. Reuses the field-offset storage; the two accessors name the
+  /// same slot with the semantics each statement kind requires.
+  ZC_NODISCARD uint32_t globalOrdinal() const noexcept { return fieldOffsetValue; }
 
 private:
   Statement(StatementKind kind, uint32_t destinationOrdinal, ComparisonOp op, Operand left,
@@ -749,13 +760,36 @@ private:
   zc::Vector<uint32_t> functionIndicesValue;
 };
 
-/// \brief One immutable LIR module: an ordered sequence of LIR functions and
-/// optional vtables.
+/// \brief One immutable LIR global data constant: a module-local ordinal and
+/// the aggregate constant it holds. The LLVM translator emits each global as a
+/// private constant struct. The ordinal is one-based and matches the module's
+/// global vector position. A GlobalAddr statement produces a pointer to this
+/// global, which outlives the function that references it.
+class GlobalData final {
+public:
+  GlobalData(uint32_t ordinal, AggregateConstant&& value) noexcept
+      : ordinalValue(ordinal), valueValue(zc::mv(value)) {}
+
+  ZC_NODISCARD uint32_t ordinal() const noexcept { return ordinalValue; }
+  ZC_NODISCARD const AggregateConstant& value() const noexcept { return valueValue; }
+
+private:
+  uint32_t ordinalValue;
+  AggregateConstant valueValue;
+};
+
+/// \brief One immutable LIR module: an ordered sequence of LIR functions,
+/// optional vtables, and optional global data constants.
 class Module final {
 public:
   explicit Module(zc::Vector<Function>&& functions) noexcept : functionsValue(zc::mv(functions)) {}
   Module(zc::Vector<Function>&& functions, zc::Vector<Vtable>&& vtables) noexcept
       : functionsValue(zc::mv(functions)), vtablesValue(zc::mv(vtables)) {}
+  Module(zc::Vector<Function>&& functions, zc::Vector<Vtable>&& vtables,
+         zc::Vector<GlobalData>&& globals) noexcept
+      : functionsValue(zc::mv(functions)),
+        vtablesValue(zc::mv(vtables)),
+        globalsValue(zc::mv(globals)) {}
   ZC_DISALLOW_COPY(Module);
   Module(Module&&) = default;
   Module& operator=(Module&&) = default;
@@ -764,6 +798,9 @@ public:
     return functionsValue.asPtr();
   }
   ZC_NODISCARD zc::ArrayPtr<const Vtable> vtables() const noexcept { return vtablesValue.asPtr(); }
+  ZC_NODISCARD zc::ArrayPtr<const GlobalData> globals() const noexcept {
+    return globalsValue.asPtr();
+  }
 
   /// \brief Moves the function vector out, leaving the module empty.
   ZC_NODISCARD zc::Vector<Function> takeFunctions() noexcept { return zc::mv(functionsValue); }
@@ -771,6 +808,7 @@ public:
 private:
   zc::Vector<Function> functionsValue;
   zc::Vector<Vtable> vtablesValue;
+  zc::Vector<GlobalData> globalsValue;
 };
 
 }  // namespace zomlang::compiler::lir

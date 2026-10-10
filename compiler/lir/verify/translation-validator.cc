@@ -624,6 +624,19 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // An empty-body void function: zero locals, one block, zero statements, and
+  // a value-less Return. This is the destructor `deinit() { }` body shape.
+  // The value-less Return maps to a LIR ReturnVoid.
+  bool emptyBodyVoid = false;
+  if (!folded && receiverParameterFieldWriteVoid == zc::none && mir.locals.size() == 0 &&
+      mir.blocks.size() == 1 && mir.blocks[0].statements.size() == 0) {
+    const auto& term = mir.blocks[0].terminator;
+    if (term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value == zc::none &&
+        unitCarrier(mir.resultType, types) != zc::none) {
+      emptyBodyVoid = true;
+    }
+  }
+
   // A Function-sourced three-block caller that performs a mutating unit receiver
   // call and then a shared value receiver call, returning the value. Five MIR
   // locals (owner, mutable borrow, an unread unit call destination, shared
@@ -1789,7 +1802,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       case mir::MirTerminatorKind::Return: {
         const auto& returned = mirBlock.terminator.returnValue().value;
         if (returned == zc::none) {
-          if (receiverParameterFieldWriteVoid != zc::none &&
+          if ((receiverParameterFieldWriteVoid != zc::none || emptyBodyVoid) &&
               lirTerminator.kind() == TerminatorKind::ReturnVoid) {
             break;  // A value-less Return of a Unit method maps to ReturnVoid.
           }
@@ -3247,6 +3260,218 @@ zc::Maybe<TranslationFinding> validateErasedAggregateCall(
   return zc::none;
 }
 
+// Existential return: a function returns a concrete-to-dyn erasure. The MIR
+// shape has two Temporary locals (concrete aggregate, existential result), one
+// block, four statements (StorageLive, Assign(NominalAggregate), StorageLive,
+// Assign(Erase)), and a Return terminator. The LIR shape promotes the concrete
+// aggregate to a module-level global constant so the returned data pointer
+// outlives the call, then builds the fat pointer {dataPtr, vtablePtr} with
+// GlobalAddr + VtableAddr + InsertField + InsertField and returns it with
+// ReturnLocal. The 1:1 MIR-to-LIR statement correspondence does not hold, so
+// this shape is validated as a unit before validatePair.
+struct ExistentialReturnShape final {
+  identity::SemanticTypeId concreteType;
+  identity::SemanticTypeId existentialType;
+  // LIR slot ordinals (the producer numbers them densely).
+  static constexpr uint32_t kExistentialOrdinal = 1;
+  static constexpr uint32_t kDataPtrOrdinal = 2;
+  static constexpr uint32_t kVtablePtrOrdinal = 3;
+  static constexpr uint32_t kExistentialTmpOrdinal = 4;
+};
+
+zc::Maybe<ExistentialReturnShape> matchExistentialReturn(const MirFunction& function) noexcept {
+  if (function.kind != mir::MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceScopes.size() != 1 || function.locals.size() != 2 ||
+      function.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& concreteLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
+  if (concreteLocal.kind != mir::MirLocalKind::Temporary ||
+      resultLocal.kind != mir::MirLocalKind::Temporary) {
+    return zc::none;
+  }
+  const auto& block = function.blocks[0];
+  if (block.id.ordinal() != 1 || block.statements.size() != 4 ||
+      block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != concreteLocal.id ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign ||
+      block.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[2].storageLocal() != resultLocal.id ||
+      block.statements[3].kind() != mir::MirStatementKind::Assign ||
+      block.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  // Statement 1: concrete aggregate construction into the temporary.
+  const auto& aggregateAssign = block.statements[1].assignmentValue();
+  if (aggregateAssign.destination.local() != concreteLocal.id ||
+      aggregateAssign.destination.projections().size() != 0 ||
+      aggregateAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = aggregateAssign.value.nominalAggregateValue();
+  if (aggregate.type != concreteLocal.type || aggregate.elements.size() != 1) { return zc::none; }
+  if (aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  // Statement 3: erase the concrete temporary into the existential result.
+  const auto& eraseAssign = block.statements[3].assignmentValue();
+  if (eraseAssign.destination.local() != resultLocal.id ||
+      eraseAssign.destination.projections().size() != 0 ||
+      eraseAssign.value.kind() != mir::MirRvalueKind::Erase) {
+    return zc::none;
+  }
+  const auto& erase = eraseAssign.value.eraseValue();
+  if (erase.sourceType != concreteLocal.type || erase.targetType != resultLocal.type ||
+      erase.source.kind() != mir::MirOperandKind::Move ||
+      erase.source.place().local() != concreteLocal.id ||
+      erase.source.place().projections().size() != 0) {
+    return zc::none;
+  }
+  // Terminator: return the existential result (a place-use with no projections).
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  ExistentialReturnShape shape;
+  shape.concreteType = concreteLocal.type;
+  shape.existentialType = resultLocal.type;
+  return zc::mv(shape);
+}
+
+zc::Maybe<TranslationFinding> validateExistentialReturn(
+    const ExistentialReturnShape& shape, const MirFunction& mir, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  const auto& lir = functions[0];
+  if (lir.owner() != mir.owner) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  const auto vtables = lirModule.vtables();
+  if (vtables.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  const auto globals = lirModule.globals();
+  if (globals.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+
+  // Existential carrier: aggregate {dataPtr, vtablePtr}, both opaque pointers.
+  const auto pointerCarrier = ValueType::pointer(0);
+  const auto& returnCarrier = lir.returnCarrier();
+  if (returnCarrier.kind() != ValueTypeKind::Aggregate) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+  const auto returnFields = returnCarrier.aggregateFields();
+  if (returnFields.size() != 2 || returnFields[0].type != pointerCarrier ||
+      returnFields[1].type != pointerCarrier) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+
+  // No parameters, four body locals.
+  if (lir.parameters().size() != 0) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  const auto locals = lir.locals();
+  if (locals.size() != 4) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  if (locals[0].ordinal() != ExistentialReturnShape::kExistentialOrdinal ||
+      locals[0].carrier() != returnCarrier) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+  if (locals[1].ordinal() != ExistentialReturnShape::kDataPtrOrdinal ||
+      locals[1].carrier() != pointerCarrier) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+  if (locals[2].ordinal() != ExistentialReturnShape::kVtablePtrOrdinal ||
+      locals[2].carrier() != pointerCarrier) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+  if (locals[3].ordinal() != ExistentialReturnShape::kExistentialTmpOrdinal ||
+      locals[3].carrier() != returnCarrier) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+
+  // One block, four statements, ReturnLocal terminator.
+  const auto blocks = lir.blocks();
+  if (blocks.size() != 1) { return fault(TranslationFaultKind::BlockBijectionMismatch, 0); }
+  const auto& block = blocks[0];
+  if (block.id().ordinal() != 1 || block.statements().size() != 4) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 1);
+  }
+  // Statement 1: GlobalAddr(dataPtr, global=1).
+  const auto& s0 = block.statements()[0];
+  if (s0.kind() != StatementKind::GlobalAddr ||
+      s0.destinationOrdinal() != ExistentialReturnShape::kDataPtrOrdinal ||
+      s0.globalOrdinal() != 1) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 1);
+  }
+  // Statement 2: VtableAddr(vtablePtr, vtable=1).
+  const auto& s1 = block.statements()[1];
+  if (s1.kind() != StatementKind::VtableAddr ||
+      s1.destinationOrdinal() != ExistentialReturnShape::kVtablePtrOrdinal ||
+      s1.vtableOrdinal() != 1) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 2);
+  }
+  // Statement 3: InsertField(tmp, existential, field=0, dataPtr).
+  const auto& s2 = block.statements()[2];
+  if (s2.kind() != StatementKind::InsertField ||
+      s2.destinationOrdinal() != ExistentialReturnShape::kExistentialTmpOrdinal ||
+      s2.sourceOrdinal() != ExistentialReturnShape::kExistentialOrdinal || s2.fieldIndex() != 0 ||
+      s2.storedValue().isConstant() ||
+      s2.storedValue().localOrdinal() != ExistentialReturnShape::kDataPtrOrdinal) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 3);
+  }
+  // Statement 4: InsertField(existential, tmp, field=1, vtablePtr).
+  const auto& s3 = block.statements()[3];
+  if (s3.kind() != StatementKind::InsertField ||
+      s3.destinationOrdinal() != ExistentialReturnShape::kExistentialOrdinal ||
+      s3.sourceOrdinal() != ExistentialReturnShape::kExistentialTmpOrdinal ||
+      s3.fieldIndex() != 1 || s3.storedValue().isConstant() ||
+      s3.storedValue().localOrdinal() != ExistentialReturnShape::kVtablePtrOrdinal) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 4);
+  }
+  // Terminator: ReturnLocal(existential).
+  if (block.terminator().kind() != TerminatorKind::ReturnLocal ||
+      block.terminator().returnLocalOrdinal() != ExistentialReturnShape::kExistentialOrdinal) {
+    return fault(TranslationFaultKind::EffectMismatch, 0, 1, 1);
+  }
+
+  // Vtable 1: ordinal 1, empty function indices (the impl method is not in
+  // this single-function module).
+  const auto& vtable = vtables[0];
+  if (vtable.ordinal() != 1 || vtable.functionIndices().size() != 0) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+
+  // Global 1: ordinal 1, aggregate constant with one integer field matching
+  // the MIR aggregate element's constant.
+  const auto& global = globals[0];
+  if (global.ordinal() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  const auto& aggregateConstant = global.value();
+  const auto& constantCarrier = aggregateConstant.carrier();
+  if (constantCarrier.kind() != ValueTypeKind::Aggregate) {
+    return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1);
+  }
+  const auto constantFields = constantCarrier.aggregateFields();
+  if (constantFields.size() != 1) { return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1); }
+  // The field carrier must match the MIR aggregate element's carrier.
+  const auto& mirElement =
+      mir.blocks[0].statements[1].assignmentValue().value.nominalAggregateValue().elements[0];
+  auto elementCarrier = integerCarrier(mirElement.operand.constantValue().type, types);
+  if (elementCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  if (constantFields[0].type != ZC_ASSERT_NONNULL(elementCarrier)) {
+    return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1);
+  }
+  // The constant value must match the MIR aggregate element's constant.
+  const auto constantOperands = aggregateConstant.fields();
+  if (constantOperands.size() != 1 || !constantOperands[0].isConstant() ||
+      constantOperands[0].isAggregateConstant() || constantOperands[0].isFloatConstant()) {
+    return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1);
+  }
+  if (!sameConstant(constantOperands[0], mirElement.operand, ZC_ASSERT_NONNULL(elementCarrier))) {
+    return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1);
+  }
+
+  return zc::none;
+}
+
 }  // namespace
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
@@ -3256,6 +3481,16 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   if (functions.size() != 1) return fault(TranslationFaultKind::FunctionSetMismatch, 0);
   if (functions[0].owner() != mirFunction.owner) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  // The existential return is validated as a unit because the Erase rvalue
+  // lowers to a GlobalAddr + VtableAddr + InsertField + InsertField sequence
+  // that breaks the 1:1 MIR-to-LIR statement correspondence.
+  {
+    auto existentialShape = matchExistentialReturn(mirFunction);
+    if (existentialShape != zc::none) {
+      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), mirFunction, lirModule,
+                                       types);
+    }
   }
   return validatePair(0, mirFunction, functions[0], types, functions);
 }
@@ -3296,6 +3531,16 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     if (erasedShape != zc::none) {
       return validateErasedAggregateCall(ZC_ASSERT_NONNULL(erasedShape), mirFunctions, lirModule,
                                          types);
+    }
+  }
+  // The existential return is validated as a unit because the Erase rvalue
+  // lowers to a GlobalAddr + VtableAddr + InsertField + InsertField sequence
+  // that breaks the 1:1 MIR-to-LIR statement correspondence.
+  if (mirFunctions.size() == 1) {
+    auto existentialShape = matchExistentialReturn(*mirFunctions[0]);
+    if (existentialShape != zc::none) {
+      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), *mirFunctions[0],
+                                       lirModule, types);
     }
   }
   // Every MIR owner matches exactly one LIR owner.

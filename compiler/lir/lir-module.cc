@@ -142,6 +142,13 @@ Statement Statement::vtableSlotLoad(uint32_t destinationOrdinal, uint32_t vtable
                    Operand::localUse(vtablePointerOrdinal), Operand::localUse(0), slotIndex);
 }
 
+Statement Statement::globalAddr(uint32_t destinationOrdinal, uint32_t globalOrdinal) noexcept {
+  // GlobalAddr reads only the destination and global ordinal; leftValue and
+  // rightValue are never-read placeholders.
+  return Statement(StatementKind::GlobalAddr, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(0), Operand::localUse(0), globalOrdinal);
+}
+
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
 IntegerConstant Terminator::fallbackConstant() noexcept {

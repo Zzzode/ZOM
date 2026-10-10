@@ -750,7 +750,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& sourceNodeData = tree.node(sourceNode);
       if (sourceNodeData.kind != ast::SyntaxKind::FunctionDecl &&
-          sourceNodeData.kind != ast::SyntaxKind::MethodDecl) {
+          sourceNodeData.kind != ast::SyntaxKind::MethodDecl &&
+          sourceNodeData.kind != ast::SyntaxKind::DestructorDecl) {
         return rejectNode(ir::IrFailureKind::InvalidFact, function.node.ordinal());
       }
     }
@@ -978,6 +979,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) { isVoidShape = value.isVoidBody; }
     bool isSequentialShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isSequentialShape = value.isSequentialLocalReturn; }
+    bool isEmptyBodyShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) { isEmptyBodyShape = value.isEmptyBody; }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -1201,6 +1204,112 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       nextFunction += 4;
+      continue;
+    }
+    if (isEmptyBodyShape) {
+      // Empty-body destructor branch: `deinit() { }`. Two node ids in source
+      // preorder: function F, body F+1. No statements, return, or value are
+      // materialized; the callable result is Unit.
+      const FunctionReturnShape& emptySource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      if (!block.statements.empty()) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // No return record may lie in this function's id range.
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node.ordinal() >= expectedFunction &&
+            candidateReturn.node.ordinal() < expectedFunction + 2) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+      }
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t sourceDefinitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { sourceDefinitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[sourceDefinitionSlot];
+      const auto& tree = bound.tree();
+      if (sourceDefinition.record.kind() != identity::DefinitionKind::Destructor ||
+          !hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::DestructorDecl) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(emptySource.body).range);
+      if (bodySpan == zc::none || !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      const checker::signature::SemanticSignature* signaturePtr = nullptr;
+      if (signaturePosition != zc::none) {
+        size_t slot = 0;
+        ZC_IF_SOME(value, signaturePosition) { slot = value; }
+        signaturePtr = &signatures.definitions[slot];
+      } else {
+        const auto& localSignatures =
+            candidate.impl->checkedModule.localSignatureFacts().signatures();
+        for (const auto& sig : localSignatures) {
+          if (sig.definition == function.definition) {
+            signaturePtr = &sig;
+            break;
+          }
+        }
+      }
+      if (signaturePtr == nullptr) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      const auto& signature = *signaturePtr;
+      if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          (!signature.scope.variant().is<checker::signature::EnclosedSignatureScope>() &&
+           !signature.scope.variant().is<checker::signature::MemberSignatureScope>() &&
+           !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Destructor) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedLinkage = linkage(callable);
+      auto resultLookup = semanticTypes.get(callable.success);
+      const bool callableSuccessIsUnit =
+          resultLookup.is<type::SemanticTypeLookup>() &&
+          resultLookup.get<type::SemanticTypeLookup>().data().primitiveKind() != zc::none &&
+          ZC_ASSERT_NONNULL(resultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
+              type::semantic::PrimitiveKind::Unit;
+      if (callable.receiver != zc::none || callable.parameters.size() != 0 ||
+          callable.raises != zc::none || !callableSuccessIsUnit ||
+          function.resultType != callable.success || expectedLinkage == zc::none ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += 2;
       continue;
     }
     // Every non-void body block ends with its return statement id. Resolve the
@@ -11776,13 +11885,144 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
+    // Direct existential aggregate construction return:
+    // `fn f() -> dyn I { return P { ..constants.. }; }`.
+    // Four node ids: function, body, return, aggregate. The aggregate is the
+    // return value expression; there is no intermediate local. The function
+    // declaration carries a HirErasureRecord from the concrete aggregate type
+    // to the existential return type.
+    if (aggregateExpression != zc::none && function.returnErasure != zc::none &&
+        localBinding == zc::none && localFieldProjection == zc::none &&
+        localReference == zc::none && literalExpression == zc::none && directCall == zc::none &&
+        parameterReference == zc::none && !hasLocalWrite) {
+      const auto& erasure = ZC_ASSERT_NONNULL(function.returnErasure);
+      if (function.node.ordinal() != expectedFunction ||
+          block.node.ordinal() != expectedFunction + 1 ||
+          returnStatement.node != hirId(expectedFunction + 2) ||
+          ZC_ASSERT_NONNULL(aggregateExpression).node != hirId(expectedFunction + 3) ||
+          function.body != block.node || block.statements.size() != 1 ||
+          block.statements[0] != returnStatement.node ||
+          returnStatement.value != ZC_ASSERT_NONNULL(aggregateExpression).node ||
+          function.resultType != returnStatement.resultType ||
+          ZC_ASSERT_NONNULL(aggregateExpression).type != erasure.sourceType ||
+          function.resultType != erasure.targetType ||
+          ZC_ASSERT_NONNULL(aggregateExpression).category != HirValueCategory::Value ||
+          !typeExists(erasure.sourceType, semanticTypes) ||
+          !typeExists(erasure.targetType, semanticTypes)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !tree.contains(sourceDefinition.node)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceShape = functionReturnShape(tree, tree.node(sourceDefinition.node));
+      if (sourceShape == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
+      if (!source.returnsAggregateConstruction) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto aggregateIndex = factIndex(facts.aggregates(), source.value);
+      auto returnType = factIndex(facts.nodeTypes(), source.value);
+      auto coercionIndex = factIndex(facts.coercions(), source.value);
+      auto aggregateSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+      if (aggregateIndex == zc::none || returnType == zc::none || coercionIndex == zc::none ||
+          aggregateSpan == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t aggregateSlot = 0;
+      size_t returnTypeSlot = 0;
+      size_t coercionSlot = 0;
+      ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
+      ZC_IF_SOME(value, returnType) { returnTypeSlot = value; }
+      ZC_IF_SOME(value, coercionIndex) { coercionSlot = value; }
+      const auto& checkedAggregate = facts.aggregates().entries()[aggregateSlot].value;
+      const auto& coercion = facts.coercions().entries()[coercionSlot].value;
+      if (checkedAggregate.node != source.value ||
+          !checkedAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+          checkedAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition !=
+              ZC_ASSERT_NONNULL(aggregateExpression).definition ||
+          checkedAggregate.resultType != ZC_ASSERT_NONNULL(aggregateExpression).type ||
+          checkedAggregate.resultType != facts.nodeTypes().entries()[returnTypeSlot].value ||
+          !sameSpan(checkedAggregate.sourceSpan, ZC_ASSERT_NONNULL(aggregateSpan)) ||
+          !isSingleDynEraseAdjustment(coercion) ||
+          coercion.site != checker::checked::CoercionSite::Return ||
+          coercion.source != erasure.sourceType || coercion.destination != erasure.targetType) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const auto& eraseStep = coercion.steps[0].variant().get<checker::checked::DynEraseStep>();
+      if (eraseStep.impl != erasure.impl || eraseStep.interface.interface != erasure.interface) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      if (checkedAggregate.elements.size() !=
+          ZC_ASSERT_NONNULL(aggregateExpression).elements.size()) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      for (size_t elementIndex = 0; elementIndex < checkedAggregate.elements.size();
+           ++elementIndex) {
+        const auto& checkedElement = checkedAggregate.elements[elementIndex];
+        const auto& aggregateElement =
+            ZC_ASSERT_NONNULL(aggregateExpression).elements[elementIndex];
+        auto literalIndex = factIndex(facts.literals(), checkedElement.sourceNode);
+        if (checkedElement.field == zc::none || checkedElement.index != elementIndex ||
+            checkedElement.sourceType != checkedElement.destinationType ||
+            checkedElement.adjustment != zc::none || literalIndex == zc::none ||
+            ZC_ASSERT_NONNULL(checkedElement.field) != aggregateElement.field ||
+            checkedElement.destinationType != aggregateElement.type) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+        const auto& literal = facts.literals().entries()[literalSlot].value;
+        if (literal.type != aggregateElement.type ||
+            !sameConstant(literal.literal, aggregateElement.value, module, registries,
+                          semanticTypes) ||
+            !sameSpan(literal.sourceSpan, aggregateElement.sourceSpan)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      }
+      nextFunction += 4;
+      continue;
+    }
     // Direct enum construction return: `return Result::Ok(41);`.
     // Four node ids: function, body, return, aggregate. The aggregate is the
     // return value expression; there is no intermediate local.
-    if (aggregateExpression != zc::none && localBinding == zc::none &&
-        localFieldProjection == zc::none && localReference == zc::none &&
-        literalExpression == zc::none && directCall == zc::none && parameterReference == zc::none &&
-        !hasLocalWrite) {
+    if (aggregateExpression != zc::none && function.returnErasure == zc::none &&
+        localBinding == zc::none && localFieldProjection == zc::none &&
+        localReference == zc::none && literalExpression == zc::none && directCall == zc::none &&
+        parameterReference == zc::none && !hasLocalWrite) {
       if (function.node.ordinal() != expectedFunction ||
           block.node.ordinal() != expectedFunction + 1 ||
           returnStatement.node != hirId(expectedFunction + 2) ||

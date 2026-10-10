@@ -70,6 +70,21 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one empty-body void function to a single-function LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape of a `Function` with no
+  /// locals, one source scope, one block with no statements, and a
+  /// `ReturnVoid` terminator. This is the destructor `deinit() { }` body
+  /// shape: the callable result is Unit and no value is materialized. The
+  /// function folds to the `zom.destructor` symbol. Every shape outside this
+  /// slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns `function.resultType`.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerEmptyBodyVoidFunction(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one scalar constant-return function to a single-function LIR module.
   ///
   /// Admits the verified Built MIR shape of a `Function` with one `UserLocal`
@@ -710,6 +725,30 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerErasedAggregateCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one existential-return function to a single-function LIR
+  /// module with one vtable and one global data constant.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validExistentialReturnFunction` accepts: a `Function` with two
+  /// `Temporary` locals (a concrete aggregate and an existential result) and a
+  /// single block (`StorageLive(concrete); concrete = NominalAggregate{constant
+  /// fields}; StorageLive(result); result = Erase(move concrete)`) whose
+  /// terminator returns the existential result. The concrete aggregate is
+  /// promoted to a module-level private global constant so the returned data
+  /// pointer outlives the function call. The existential is materialized as a
+  /// fat pointer aggregate `{dataPtr, vtablePtr}`: a `GlobalAddr` produces the
+  /// data pointer, a `VtableAddr` the vtable pointer, and two `InsertField`
+  /// statements build the fat pointer. A `ReturnLocal` returns it. The vtable
+  /// has no function indices because the method is not in this single-function
+  /// module; the LLVM translator emits it as an empty private constant array.
+  /// Every shape outside this slice returns `none`.
+  ///
+  /// \param function Verified existential-return MIR function.
+  /// \param semanticTypes Session-owned type store that owns the element types.
+  /// \return The lowered LIR module with one vtable and one global, or none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerExistentialReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

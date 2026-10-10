@@ -50,6 +50,7 @@ const ValueType* operandSlotCarrier(const Function& function, const Operand& ope
 zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& module) noexcept {
   const auto functions = module.functions();
   const auto vtables = module.vtables();
+  const auto globals = module.globals();
 
   // Function symbols are non-empty and unique within the module.
   for (uint32_t i = 0; i < functions.size(); ++i) {
@@ -502,6 +503,20 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             if (baseCarrier == nullptr || baseCarrier->kind() != ValueTypeKind::Pointer) {
               return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
                            statementIndex);
+            }
+            break;
+          }
+          case StatementKind::GlobalAddr: {
+            // The destination holds an opaque pointer to the global data.
+            if (destinationCarrier.kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            // Global ordinals are one-based dense into the module's global vector.
+            if (statement.globalOrdinal() == 0 ||
+                statement.globalOrdinal() > static_cast<uint32_t>(globals.size())) {
+              return fault(LirVerificationFaultKind::GlobalOrdinalOutOfRange, functionIndex,
+                           blockOrdinal, statementIndex);
             }
             break;
           }

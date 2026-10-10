@@ -27,5 +27,15 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
 /// the return value destination (no intermediate local).
 void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one existential return whose value is a concrete aggregate
+/// construction:
+/// `fn f() -> dyn I { return P { ..constants.. }; }`.
+///
+/// Node stride function, body, return, aggregate. The aggregate lowers into
+/// the return value destination (no intermediate local). The function
+/// declaration carries a HirErasureRecord so the MIR builder emits an Erase
+/// rvalue and the LIR builder constructs the fat-pointer carrier.
+void lowerExistentialReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

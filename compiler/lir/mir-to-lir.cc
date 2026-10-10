@@ -505,6 +505,31 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
   return zc::none;
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerEmptyBodyVoidFunction(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit the verified empty-body void shape: a standalone function with no
+  // locals, one source scope, one block with no statements, and a ReturnVoid
+  // terminator. This is the destructor `deinit() { }` body: the callable
+  // result is Unit and no value is materialized.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 0 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != 0) { return zc::none; }
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  if (block.terminator.returnValue().value != zc::none) { return zc::none; }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), Terminator::returnVoid()));
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::heapString("zom.destructor"), ValueType::unit(),
+                         zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit the verified scalar constant-return fold shape: a standalone function
@@ -8931,6 +8956,154 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
       Vtable(/*ordinal=*/1, indirectCall.interface, identity::ImplId{}, zc::mv(functionIndices)));
 
   return Module(zc::mv(functions), zc::mv(vtables));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerExistentialReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified existential-return shape. This mirrors the
+  // structural facts mir::validExistentialReturnFunction checked; we re-check
+  // them here so lowering is total over its declared input and fail-closed
+  // otherwise.
+  if (function.kind != mir::MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceScopes.size() != 1 || function.locals.size() != 2 ||
+      function.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& concreteLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
+  if (concreteLocal.kind != mir::MirLocalKind::Temporary ||
+      resultLocal.kind != mir::MirLocalKind::Temporary) {
+    return zc::none;
+  }
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != 4 ||
+      block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != concreteLocal.id ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign ||
+      block.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[2].storageLocal() != resultLocal.id ||
+      block.statements[3].kind() != mir::MirStatementKind::Assign ||
+      block.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+
+  // Statement 1: concrete aggregate construction into the temporary.
+  const auto& aggregateAssign = block.statements[1].assignmentValue();
+  if (aggregateAssign.destination.local() != concreteLocal.id ||
+      aggregateAssign.destination.projections().size() != 0 ||
+      aggregateAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = aggregateAssign.value.nominalAggregateValue();
+  if (aggregate.type != concreteLocal.type || aggregate.elements.size() != 1) { return zc::none; }
+  const auto& element = aggregate.elements[0];
+  if (element.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  auto elementCarrier = integerCarrierFor(element.operand.constantValue().type, semanticTypes);
+  if (elementCarrier == zc::none) { return zc::none; }
+  const auto elementCarrierValue = ZC_REQUIRE_NONNULL(elementCarrier);
+  auto elementConstant = lirOperandFor(element.operand, elementCarrierValue);
+  if (elementConstant == zc::none) { return zc::none; }
+
+  // Statement 3: erase the concrete temporary into the existential result.
+  const auto& eraseAssign = block.statements[3].assignmentValue();
+  if (eraseAssign.destination.local() != resultLocal.id ||
+      eraseAssign.destination.projections().size() != 0 ||
+      eraseAssign.value.kind() != mir::MirRvalueKind::Erase) {
+    return zc::none;
+  }
+  const auto& erase = eraseAssign.value.eraseValue();
+  if (erase.sourceType != concreteLocal.type || erase.targetType != resultLocal.type ||
+      erase.source.kind() != mir::MirOperandKind::Move ||
+      erase.source.place().local() != concreteLocal.id ||
+      erase.source.place().projections().size() != 0) {
+    return zc::none;
+  }
+
+  // Terminator: return the existential result (a place-use with no projections).
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Construct the aggregate carrier for the concrete struct. The single field's
+  // carrier is the element carrier resolved above.
+  zc::Vector<AggregateField> aggregateFields;
+  aggregateFields.add(AggregateField(zc::str("field0"), elementCarrierValue));
+  auto aggregateCarrier = ValueType::aggregate(zc::mv(aggregateFields));
+  if (aggregateCarrier == zc::none) { return zc::none; }
+  const auto aggregateCarrierValue = ZC_REQUIRE_NONNULL(aggregateCarrier);
+  zc::Vector<Operand> aggregateFieldOperands;
+  aggregateFieldOperands.add(zc::mv(ZC_REQUIRE_NONNULL(elementConstant)));
+  auto aggregateConstant =
+      AggregateConstant::from(aggregateCarrierValue, zc::mv(aggregateFieldOperands));
+  if (aggregateConstant == zc::none) { return zc::none; }
+
+  // Construct the existential aggregate carrier {dataPtr, vtablePtr}.
+  const auto pointerCarrier = ValueType::pointer(0);
+  zc::Vector<AggregateField> existentialFields;
+  existentialFields.add(AggregateField(zc::str("data"), pointerCarrier));
+  existentialFields.add(AggregateField(zc::str("vtable"), pointerCarrier));
+  auto existentialCarrier = ValueType::aggregate(zc::mv(existentialFields));
+  if (existentialCarrier == zc::none) { return zc::none; }
+  const auto existentialCarrierValue = ZC_REQUIRE_NONNULL(existentialCarrier);
+
+  // The concrete MIR local (ordinal 1) is not declared in LIR: the concrete
+  // aggregate is promoted to a module-level global constant so the returned
+  // data pointer outlives the function call. The existential result local is
+  // renumbered to LIR ordinal 1 to keep body-local slots dense.
+  constexpr uint32_t existentialOrdinal = 1;
+  constexpr uint32_t dataPtrOrdinal = 2;
+  constexpr uint32_t vtablePtrOrdinal = 3;
+  constexpr uint32_t existentialTmpOrdinal = 4;
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+
+  zc::Vector<Statement> statements;
+  statements.add(Statement::globalAddr(dataPtrOrdinal, /*globalOrdinal=*/1));
+  statements.add(Statement::vtableAddr(vtablePtrOrdinal, /*vtableOrdinal=*/1));
+  statements.add(Statement::insertField(existentialTmpOrdinal, existentialOrdinal,
+                                        /*fieldIndex=*/0, Operand::localUse(dataPtrOrdinal)));
+  statements.add(Statement::insertField(existentialOrdinal, existentialTmpOrdinal,
+                                        /*fieldIndex=*/1, Operand::localUse(vtablePtrOrdinal)));
+
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(existentialOrdinal)));
+
+  zc::Vector<Local> locals;
+  locals.add(Local(existentialOrdinal, existentialCarrierValue));
+  locals.add(Local(dataPtrOrdinal, pointerCarrier));
+  locals.add(Local(vtablePtrOrdinal, pointerCarrier));
+  locals.add(Local(existentialTmpOrdinal, existentialCarrierValue));
+
+  zc::Vector<Function> functions;
+  zc::Vector<Local> noParameters;
+  functions.add(Function(function.owner, zc::heapString("zom.existential_return"),
+                         existentialCarrierValue, zc::mv(noParameters), zc::mv(locals),
+                         zc::mv(blocks)));
+
+  // Vtable 1: the existential's trait vtable. The impl method is not in this
+  // single-function module, so the vtable carries no function indices; the
+  // LLVM translator emits it as an empty private constant array. The MIR Erase
+  // rvalue does not carry the interface/impl identities, so placeholders are
+  // used; the LLVM translator only reads function indices for codegen.
+  zc::Vector<Vtable> vtables;
+  zc::Vector<uint32_t> functionIndices;
+  vtables.add(
+      Vtable(/*ordinal=*/1, identity::DefId{}, identity::ImplId{}, zc::mv(functionIndices)));
+
+  // Global 1: the concrete aggregate constant, promoted to module level so the
+  // returned data pointer does not dangle after the function returns.
+  zc::Vector<GlobalData> globals;
+  globals.add(GlobalData(/*ordinal=*/1, zc::mv(ZC_REQUIRE_NONNULL(aggregateConstant))));
+
+  return Module(zc::mv(functions), zc::mv(vtables), zc::mv(globals));
 }
 
 }  // namespace zomlang::compiler::lir

@@ -789,6 +789,10 @@ struct PendingFunctionDeclaration final {
   /// element reuses the call node as its source, so it contributes no new
   /// node-type fact beyond the one the initializer node already carries.
   bool aggregateIsEnumConstruction = false;
+  /// Set when the return value is a concrete aggregate construction erased to
+  /// an existential return type. The record carries the erasure details so
+  /// the function header can attach them to the HirFunctionDeclaration.
+  zc::Maybe<HirErasureRecord> returnErasure = zc::none;
 };
 
 }  // namespace detail

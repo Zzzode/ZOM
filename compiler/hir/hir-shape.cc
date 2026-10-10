@@ -1522,14 +1522,31 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
 zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                    const ast::Node& function) {
   const bool isMethod = function.kind == ast::SyntaxKind::MethodDecl;
-  if (function.kind != ast::SyntaxKind::FunctionDecl && !isMethod) return zc::none;
-  const auto bodyWord = isMethod ? ast::kMethodDeclBodyWord : ast::kFunctionDeclBodyWord;
+  const bool isDestructor = function.kind == ast::SyntaxKind::DestructorDecl;
+  if (function.kind != ast::SyntaxKind::FunctionDecl && !isMethod && !isDestructor) {
+    return zc::none;
+  }
+  const auto bodyWord = isDestructor ? ast::kDestructorDeclBodyWord
+                        : isMethod   ? ast::kMethodDeclBodyWord
+                                     : ast::kFunctionDeclBodyWord;
   const ast::NodeId body(function.payload.words[bodyWord]);
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
-  if (!tree.contains(statements) || statements.empty()) return zc::none;
+  if (!tree.contains(statements)) return zc::none;
+  // Destructor empty-body shape: `deinit() { }` with zero statements. The
+  // callable result is Unit; there is no return statement or return value.
+  // The checker's canonical destructor shape (signature-facts.cc) expects no
+  // receiver and no ordinary parameters, so the body is the only carrier.
+  if (isDestructor) {
+    if (!statements.empty()) return zc::none;
+    FunctionReturnShape shape{};
+    shape.body = body;
+    shape.isEmptyBody = true;
+    return shape;
+  }
+  if (statements.empty()) return zc::none;
   // An inherent method is admitted only for a single flat return statement,
   // with parameter arities matching the lowered shapes exactly so the
   // capability drain keeps every other body on ZOM4099:
@@ -2716,6 +2733,21 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.returnStatement = returnNode;
       shape.value = value;
       shape.returnsEnumConstruction = true;
+      shape.unsafeBlock = zc::mv(unsafeBlock);
+      return shape;
+    }
+    // Single-statement aggregate construction return:
+    // `fn f() -> dyn I { return P { ..constants.. }; }`. The return value is
+    // a StructLiteralExpr whose concrete type is erased to the existential
+    // return type by the body checker. The HIR builder attaches a
+    // HirErasureRecord to the function declaration so downstream stages emit
+    // the fat-pointer carrier.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::StructLiteralExpr) {
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.returnsAggregateConstruction = true;
       shape.unsafeBlock = zc::mv(unsafeBlock);
       return shape;
     }

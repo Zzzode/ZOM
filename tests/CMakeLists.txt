@@ -296,6 +296,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-stored-erase-consumer/Zom.toml::dyn_stored_erase_consumer::dyn_stored_erase_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/existential-return-consumer/Zom.toml::existential_return_consumer::existential_return_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/fourfn-standalone-consumer/Zom.toml::fourfn_standalone_consumer::fourfn_standalone_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
@@ -508,6 +510,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-unsafe-consumer/Zom.toml::nested_unsafe_consumer::nested_unsafe_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/error-unwrap-consumer/Zom.toml::error_unwrap_consumer::error_unwrap_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-empty-consumer/Zom.toml::destructor_empty_consumer::destructor_empty_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

@@ -673,18 +673,6 @@ bool isAdmittedFloatCastFold(const ast::Tree& tree, ast::NodeId value) {
   return tree.contains(inner) && tree.node(inner).kind == ast::SyntaxKind::FloatLiteralExpr;
 }
 
-bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
-  if (!tree.contains(value)) return false;
-  return isScalarLiteral(tree.node(value).kind) || isAdmittedStringConcatFold(tree, value) ||
-         isAdmittedFloatCastFold(tree, value) ||
-         tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
-         isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
-         isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
-         isAdmittedPrimitiveBinary(tree, value) || isAdmittedPrimitiveUnary(tree, value) ||
-         isAdmittedEnumVariantConstruction(tree, value) ||
-         tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
-}
-
 bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializer) {
   if (!tree.contains(initializer) ||
       tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
@@ -728,6 +716,19 @@ bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializ
     if (!tree.contains(value) || !isScalarLiteral(tree.node(value).kind)) return false;
   }
   return true;
+}
+
+bool isAdmittedReturnValue(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value)) return false;
+  return isScalarLiteral(tree.node(value).kind) || isAdmittedStringConcatFold(tree, value) ||
+         isAdmittedFloatCastFold(tree, value) ||
+         tree.node(value).kind == ast::SyntaxKind::IdentExpr || isAdmittedDirectCall(tree, value) ||
+         isAdmittedReceiverCall(tree, value) || isAdmittedReferenceReborrow(tree, value) ||
+         isAdmittedLocalBorrow(tree, value) || isAdmittedErrorPostfix(tree, value) ||
+         isAdmittedPrimitiveBinary(tree, value) || isAdmittedPrimitiveUnary(tree, value) ||
+         isAdmittedEnumVariantConstruction(tree, value) ||
+         isAdmittedAggregateInitializer(tree, value) ||
+         tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr;
 }
 
 // Structurally admits a local initializer. A primitive-binary initializer is

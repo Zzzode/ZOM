@@ -1,0 +1,17 @@
+// Existential return fixture: a function returns a concrete-to-dyn erasure.
+// The concrete aggregate is promoted to a module-level global constant so the
+// returned data pointer outlives the call, and the fat pointer
+// {dataPtr, vtablePtr} is built and returned through the full pipeline.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {}
+
+fn makeAnimal() -> dyn Animal {
+  return Dog { tag: 0 };
+}

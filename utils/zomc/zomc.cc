@@ -1492,6 +1492,9 @@ private:
           lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
         }
         if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerExistentialReturn(fn, types);
+        }
+        if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerScalarConstantReturn(fn, types);
         }
         if (lowered == zc::none) {
@@ -1501,6 +1504,9 @@ private:
           lowered = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(fn, types);
         }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types); }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerEmptyBodyVoidFunction(fn, types);
+        }
         return lowered;
       };
       // Standalone multi-function fallback: lower each function independently
@@ -1851,7 +1857,8 @@ private:
                   "dyn live-erase indirect-call-with-leaf, "
                   "stored-erase indirect-call-with-leaf, "
                   "void-setter-then-value-getter receiver-call, "
-                  "standalone multi-function, and "
+                  "standalone multi-function, "
+                  "empty-body void, and "
                   "string literal return slices)."));
     }
     backend::llvm::LlvmTranslator translator;

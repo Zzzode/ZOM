@@ -189,6 +189,14 @@ struct FunctionReturnShape final {
   // aggregate fact for the construction; the HIR builder lowers it to a
   // HirNominalAggregateExpression wired directly to the return value.
   bool returnsEnumConstruction = false;
+  // Single-statement aggregate construction return:
+  // `fn f() -> dyn I { return P { ..constants.. }; }`. The return value is a
+  // StructLiteralExpr whose type is a concrete nominal aggregate; the body
+  // checker produces a DynErase coercion from the concrete type to the
+  // existential return type. The HIR builder lowers the aggregate to a
+  // HirNominalAggregateExpression and attaches a HirErasureRecord to the
+  // function declaration so downstream stages emit the fat-pointer carrier.
+  bool returnsAggregateConstruction = false;
   // Single-statement error-propagate return: `return f(args)?!;`. The return
   // value is a PostfixExpression whose operator is ErrorPropagate and whose
   // operand is a CallExpression to a raising function. The operator is a
@@ -367,6 +375,11 @@ struct FunctionReturnShape final {
   // reference (IdentExpr) rather than a scalar literal. Resolving it to the
   // parameter is a builder decision; shape only records the structure.
   bool voidWriteValueIsParameter = false;
+  // Destructor empty-body shape: `deinit() { }` with zero statements. The
+  // callable result is Unit; there is no return statement, return value,
+  // receiver, or ordinary parameters. The body block is carried for the
+  // per-node correspondence validator.
+  bool isEmptyBody = false;
   // Function shape: a leading aggregate-initialized owner local, one discarded
   // receiver-call expression statement on that local, and a trailing
   // `return <owner-local>.<method>(...);`. This slice admits exactly one

@@ -1633,6 +1633,73 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers an existential aggregate construction return:
+/// `fn f() -> dyn I { return P { ..constants.. }; }`. One Temporary of the
+/// concrete type at localId(1) receives the nominal aggregate, one Temporary
+/// of the existential type at localId(2) receives the Erase rvalue, and the
+/// existential temporary is returned. The LIR builder promotes the concrete
+/// aggregate to a global constant so the fat pointer's data pointer outlives
+/// the function call.
+zc::Maybe<RecursiveFunctionProduct> buildExistentialReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirNominalAggregateExpression& aggregate, const hir::HirErasureRecord& erasure,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (aggregate.type != erasure.sourceType || declaration.resultType != erasure.targetType) {
+    return zc::none;
+  }
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : aggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId concreteLocal = ctx.declareLocal(MirLocalKind::Temporary, erasure.sourceType,
+                                                    scope, aggregate.sourceSpan.clone());
+  if (concreteLocal.ordinal() != 1) return zc::none;
+  const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, erasure.targetType,
+                                                  scope, sourceReturn.sourceSpan.clone());
+  if (resultLocal.ordinal() != 2) return zc::none;
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(concreteLocal, aggregate.sourceSpan.clone()));
+  zc::Vector<MirProjection> concreteProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(concreteLocal, erasure.sourceType, zc::mv(concreteProjections), erasure.sourceType),
+      MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(elements)),
+      MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> eraseProjections;
+  zc::Vector<MirProjection> eraseSourceProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocal, erasure.targetType, zc::mv(eraseProjections), erasure.targetType),
+      MirRvalue::erase(
+          MirOperand::move(MirPlace(concreteLocal, erasure.sourceType,
+                                    zc::mv(eraseSourceProjections), erasure.sourceType)),
+          erasure.sourceType, erasure.targetType),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(resultLocal, erasure.targetType, zc::mv(returnProjections), erasure.targetType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a by-value aggregate caller:
 /// `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
 /// UserLocal of nominal type P at localId(1) is initialized from constant
@@ -3319,6 +3386,20 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
             buildAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                  ZC_ASSERT_NONNULL(aggregate), identities, proofs, copyMarker);
         if (product != zc::none) return product;
+      }
+      // Existential aggregate construction return:
+      // `fn f() -> dyn I { return P { ..constants.. }; }`. The aggregate type
+      // is the concrete source type; the function result type is the
+      // existential target type. The declaration carries a HirErasureRecord.
+      if (aggregate != zc::none && declaration.returnErasure != zc::none) {
+        const auto& erasure = ZC_ASSERT_NONNULL(declaration.returnErasure);
+        if (ZC_ASSERT_NONNULL(aggregate).type == erasure.sourceType &&
+            declaration.resultType == erasure.targetType) {
+          auto product = buildExistentialReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                                ZC_ASSERT_NONNULL(aggregate), erasure, identities,
+                                                proofs, copyMarker);
+          if (product != zc::none) return product;
+        }
       }
     }
 

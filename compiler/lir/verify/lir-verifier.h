@@ -64,6 +64,8 @@ enum class LirVerificationFaultKind : uint8_t {
   /// An IndirectCall terminator names a function-pointer slot whose carrier
   /// is not a pointer.
   IndirectCallTargetNotPointer = 0x10,
+  /// A GlobalAddr statement indexes a global outside the module range.
+  GlobalOrdinalOutOfRange = 0x11,
 };
 
 /// \brief One immutable structural verification finding.

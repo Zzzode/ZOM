@@ -229,8 +229,8 @@ OrdinaryParameter ::= OuterAttributeList? Identifier ':' TypeExpr Initializer?
 A callable has a receiver only when its parameter clause explicitly declares
 `this`. Placement in a class, struct, error, interface, or `impl` body does not
 synthesize a receiver. A `this` expression in the callable body resolves to
-that declared parameter. Only a direct method, accessor, initializer, or
-deinitializer member may declare a receiver. Module functions, block
+that declared parameter. Only a direct method, accessor, or initializer
+member may declare a receiver. Module functions, block
 functions, extern functions, function expressions, and lambdas use
 `OrdinaryParameterClause`. `ZOM2095 ReceiverNotAllowedHere` rejects `this` in
 ordinary callable contexts.
@@ -628,9 +628,7 @@ class Resource {
         this.handle = unsafe { allocate_memory(1024) };
     }
 
-    deinit(this) {
-        unsafe { free_memory(this.handle) };
-    }
+    deinit() { }
 }
 ```
 

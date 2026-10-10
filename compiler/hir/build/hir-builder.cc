@@ -336,6 +336,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         callArgumentEraseInitializers.add(entry.key);
         continue;
       }
+      if (entry.value.site == checker::checked::CoercionSite::Return &&
+          bound.tree().contains(entry.key) &&
+          bound.tree().node(entry.key).kind == ast::SyntaxKind::StructLiteralExpr) {
+        // Aggregate construction returns are admitted: the HIR builder
+        // attaches a HirErasureRecord to the function declaration so the
+        // MIR builder emits an Erase rvalue and the LIR builder constructs
+        // the fat-pointer carrier. Other return erasure shapes (parameter
+        // references, etc.) fall through to the capability rejection below
+        // because the existential lowering carrier is not built for them.
+        continue;
+      }
       const auto owner =
           enclosingExecutableDefinition(bound.tree(), bound.definitions(), entry.key);
       return rejectHirCapability<HirModuleCandidate>(ZC_ASSERT_NONNULL(owner), registries,
@@ -447,23 +458,27 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return false;
   };
   for (const auto& definition : definitions) {
-    if (definition.record.kind() != identity::DefinitionKind::Method ||
-        !hasExecutableBody(definition, bound.definitions())) {
-      continue;
-    }
+    const bool isMethod = definition.record.kind() == identity::DefinitionKind::Method;
+    const bool isDestructor = definition.record.kind() == identity::DefinitionKind::Destructor;
+    if (!isMethod && !isDestructor) { continue; }
+    if (!hasExecutableBody(definition, bound.definitions())) { continue; }
     const auto& tree = bound.tree();
     // A bodied method (inherent or impl-supplied) is admitted through semantic
     // HIR only when it is a shared/mutable-receiver method whose body is a
     // recognized return shape. The signature is published upstream so
     // coherence observes the complete impl; only the body is capability-gated
     // here. Every other method body shape stays a per-definition capability
-    // rejection (ZOM4099).
-    const bool admitted =
-        tree.contains(definition.node) &&
-        tree.node(definition.node).kind == ast::SyntaxKind::MethodDecl &&
-        definition.site.value().is<binder::DeclarationDefinitionSite>() &&
-        functionReturnShape(tree, tree.node(definition.node)) != zc::none &&
-        (methodReceiverIsBorrowed(definition.definition) || isImplMethod(definition));
+    // rejection (ZOM4099). A destructor is admitted when its body is the
+    // canonical empty shape (`deinit() { }`); it has no receiver and no
+    // ordinary parameters, so the receiver-borrowed gate does not apply.
+    const auto expectedNodeKind =
+        isDestructor ? ast::SyntaxKind::DestructorDecl : ast::SyntaxKind::MethodDecl;
+    const bool admitted = tree.contains(definition.node) &&
+                          tree.node(definition.node).kind == expectedNodeKind &&
+                          definition.site.value().is<binder::DeclarationDefinitionSite>() &&
+                          functionReturnShape(tree, tree.node(definition.node)) != zc::none &&
+                          (isDestructor || methodReceiverIsBorrowed(definition.definition) ||
+                           isImplMethod(definition));
     if (!admitted) {
       return rejectHirCapability<HirModuleCandidate>(definition.definition, registries,
                                                      ir::IrFailureKind::UnsupportedSourceConstruct,
@@ -477,7 +492,143 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (definition.record.kind() != identity::DefinitionKind::Function &&
         definition.record.kind() != identity::DefinitionKind::Method &&
         definition.record.kind() != identity::DefinitionKind::Static &&
-        definition.record.kind() != identity::DefinitionKind::Constant) {
+        definition.record.kind() != identity::DefinitionKind::Constant &&
+        definition.record.kind() != identity::DefinitionKind::Destructor) {
+      continue;
+    }
+    if (definition.record.kind() == identity::DefinitionKind::Destructor) {
+      // Destructor empty-body shape: `deinit() { }` with zero statements. The
+      // callable result is Unit; there is no receiver, no ordinary parameters,
+      // no return statement, and no return value. The function exists in the
+      // binary for future drop elaboration but is not called until the
+      // discharge inventory gains a backend consumer.
+      const auto& tree = bound.tree();
+      if (!tree.contains(definition.node) ||
+          tree.node(definition.node).kind != ast::SyntaxKind::DestructorDecl ||
+          !definition.site.value().is<binder::DeclarationDefinitionSite>()) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      auto bodyShape = functionReturnShape(tree, tree.node(definition.node));
+      if (bodyShape == zc::none || !ZC_ASSERT_NONNULL(bodyShape).isEmptyBody) {
+        return rejectHirCapability<HirModuleCandidate>(
+            definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            definition.source.clone());
+      }
+      const auto* signaturePtr = lookupSignature(definition.definition);
+      if (signaturePtr == nullptr) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::MissingRequiredFact, module,
+                                             registries, ordinal + 2);
+      }
+      if (!signaturePtr->payload.variant().is<checker::signature::CallableSignature>() ||
+          (!signaturePtr->scope.variant().is<checker::signature::EnclosedSignatureScope>() &&
+           !signaturePtr->scope.variant().is<checker::signature::MemberSignatureScope>() &&
+           !signaturePtr->scope.variant()
+                .is<checker::signature::ModuleDefinitionSignatureScope>())) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      const auto& callable =
+          signaturePtr->payload.variant().get<checker::signature::CallableSignature>();
+      if (signaturePtr->definitionKind != identity::DefinitionKind::Destructor ||
+          callable.receiver != zc::none || callable.parameters.size() != 0 ||
+          callable.raises != zc::none ||
+          !sameSpan(signaturePtr->declarationSpan, definition.source)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      if (!typeExists(callable.success, checkedModule.semanticTypes())) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      // A destructor is an enclosed member of its nominal owner; it has no
+      // module-scope signature root, so the visibility is the enclosed-member
+      // default (external) rather than a root visibility.
+      HirVisibility visibilityValue = HirVisibility::external();
+      auto functionLinkage = linkage(callable);
+      if (functionLinkage == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
+      const ast::NodeId bodyNode(
+          tree.node(definition.node).payload.words[ast::kDestructorDeclBodyWord]);
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(bodyNode).range);
+      if (bodySpan == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::MissingRequiredFact, module,
+                                             registries, ordinal + 2);
+      }
+      HirLinkage linkageValue = HirLinkage::Internal;
+      identity::SourceSpan bodySpanValue = definition.source.clone();
+      ZC_IF_SOME(value, functionLinkage) { linkageValue = value; }
+      ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
+      zc::Array<uint8_t> orderingKey = definition.key.encode();
+      FunctionReturnShape shape = zc::mv(bodyShape).orDefault(FunctionReturnShape{});
+      pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
+                                                      definition.node,
+                                                      callable.success,
+                                                      {},
+                                                      zc::none,
+                                                      zc::mv(visibilityValue),
+                                                      linkageValue,
+                                                      definition.source.clone(),
+                                                      bodySpanValue.clone(),
+                                                      definition.source.clone(),
+                                                      definition.source.clone(),
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      {},
+                                                      {},
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::mv(orderingKey),
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      zc::none,
+                                                      true,
+                                                      false,
+                                                      zc::none,
+                                                      shape.returnsFoldedStringConcat,
+                                                      shape.returnsFoldedFloatCast,
+                                                      shape.returnsLocalIncrement,
+                                                      shape.returnsLocalPostfixIncrement,
+                                                      shape.returnsErrorPropagateCall,
+                                                      shape.returnsErrorUnwrapCall,
+                                                      zc::none,
+                                                      zc::none,
+                                                      shape.body,
+                                                      ast::NodeId(),
+                                                      ast::NodeId()});
       continue;
     }
     if (definition.record.kind() == identity::DefinitionKind::Function ||
@@ -3631,7 +3782,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // union, not the success type. The call's successType is verified
       // against callable.success in the direct-call assembly path below.
       const bool successTypeValid = shape.isVoidBody || callable.success == nodeType.value ||
-                                    shape.returnsErrorPropagateCall || shape.returnsErrorUnwrapCall;
+                                    shape.returnsErrorPropagateCall ||
+                                    shape.returnsErrorUnwrapCall ||
+                                    shape.returnsAggregateConstruction;
       if (functionVisibility == zc::none || functionLinkage == zc::none ||
           signature.definitionKind !=
               (isMethod ? identity::DefinitionKind::Method : identity::DefinitionKind::Function) ||
@@ -3724,7 +3877,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              ir::IrFailureKind::InvalidFact, module, registries,
                                              ordinal + 2);
       }
-      if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+      if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success) &&
+          !shape.returnsAggregateConstruction) {
         return rejectHirCapability<HirModuleCandidate>(
             definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
             definition.source.clone());
@@ -3932,6 +4086,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirLocalBinding> local;
       zc::Maybe<HirNominalAggregateExpression> aggregate;
       bool aggregateIsEnumConstruction = false;
+      zc::Maybe<HirErasureRecord> returnErasure;
       zc::Vector<HirLocalWriteStatement> localWrites;
       zc::Vector<PendingLocalWriteValue> localWriteValues;
       zc::Maybe<HirLocalReferenceExpression> localReference;
@@ -6420,6 +6575,89 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             HirValueCategory::Value,
             valueSpanValue.clone()};
         aggregateIsEnumConstruction = true;
+      } else if (shape.returnsAggregateConstruction) {
+        // Single-statement aggregate construction return:
+        // `fn f() -> dyn I { return P { ..constants.. }; }`. The body checker
+        // produces an aggregate fact for the construction and a DynErase
+        // coercion from the concrete type to the existential return type.
+        // Build the HirNominalAggregateExpression and attach a
+        // HirErasureRecord to the function declaration.
+        auto aggregateIndex = factIndex(facts.aggregates(), shape.value);
+        if (aggregateIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t aggregateSlot = 0;
+        ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+        const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
+        if (sourceAggregate.node != shape.value ||
+            !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+            sourceAggregate.resultType != nodeType.value ||
+            !sameSpan(sourceAggregate.sourceSpan, valueSpanValue)) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        zc::Vector<HirNominalAggregateElement> elements;
+        for (const auto& sourceElement : sourceAggregate.elements) {
+          if (sourceElement.field == zc::none ||
+              sourceElement.sourceType != sourceElement.destinationType ||
+              sourceElement.adjustment != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
+          auto elementSpan =
+              bound.parsedModule().spanFor(tree.node(sourceElement.sourceNode).range);
+          if (elementLiteral == zc::none || elementSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(index, elementLiteral) { literalSlot = index; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (literalFact.type != sourceElement.destinationType ||
+              !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          ZC_IF_SOME(field, sourceElement.field) {
+            elements.add(HirNominalAggregateElement{field, sourceElement.destinationType,
+                                                    literalFact.literal.clone(),
+                                                    ZC_ASSERT_NONNULL(elementSpan).clone()});
+          }
+        }
+        aggregate = HirNominalAggregateExpression{
+            HirNodeId(),
+            sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition,
+            nodeType.value,
+            zc::mv(elements),
+            HirValueCategory::Value,
+            valueSpanValue.clone()};
+        // Look up the return-site DynErase coercion for the same node.
+        auto coercionIndex = factIndex(facts.coercions(), shape.value);
+        if (coercionIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t coercionSlot = 0;
+        ZC_IF_SOME(index, coercionIndex) { coercionSlot = index; }
+        const auto& coercion = facts.coercions().entries()[coercionSlot].value;
+        if (!isSingleDynEraseAdjustment(coercion) ||
+            coercion.site != checker::checked::CoercionSite::Return ||
+            coercion.source != nodeType.value || coercion.destination != callable.success) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        const auto& eraseStep = coercion.steps[0].variant().get<checker::checked::DynEraseStep>();
+        returnErasure = HirErasureRecord{coercion.source, coercion.destination, eraseStep.impl,
+                                         eraseStep.interface.interface};
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
                  shape.returnsFoldedFloatCast) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
@@ -9782,7 +10020,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       shape.body,
                                                       shape.returnStatement,
                                                       shape.value,
-                                                      aggregateIsEnumConstruction});
+                                                      aggregateIsEnumConstruction,
+                                                      zc::mv(returnErasure)});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -10644,14 +10883,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         !uninitializedLocal && !hasParameterReference && !hasParameterIndex &&
         !hasParameterReborrow && !hasLocalBorrow && !hasParameterFieldProjection &&
         function.localWrites.size() == 0 && function.parameterFieldWrite == zc::none &&
-        function.statementReceiverCall == zc::none) {
+        function.statementReceiverCall == zc::none && !function.voidBody) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::MissingRequiredFact, module,
                                            registries, 1);
     }
-    // Void-method and discarded-call shape invariants.
-    if (function.voidBody != (function.parameterFieldWrite != zc::none &&
-                              function.parameterFieldWriteParameter != zc::none)) {
+    // Void-method and discarded-call shape invariants. A void body either
+    // carries one receiver-field write (the mutating-method shape) or carries
+    // no write at all (the destructor empty-body shape); the two are
+    // distinguished by whether parameterFieldWrite is set.
+    if (function.voidBody && ((function.parameterFieldWrite != zc::none) !=
+                              (function.parameterFieldWriteParameter != zc::none))) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -11170,6 +11412,34 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
+    // Empty-body void function family: `deinit() { }` with zero statements,
+    // no receiver, no parameters, no return, Unit result. Two node ids:
+    // function, body. The function exists in the binary for future drop
+    // elaboration but is not called until the discharge inventory gains a
+    // backend consumer.
+    if (value.voidBody && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteParameter == zc::none && value.receiver == zc::none &&
+        value.parameterFieldProjection == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.literal == zc::none &&
+        value.call == zc::none && value.receiverCall == zc::none &&
+        value.receiverSelfCall == zc::none && value.local == zc::none &&
+        value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
+        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerEmptyBodyVoidFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     // Void mutating-method family: one receiver-field write whose value is the
     // ordinary parameter (`mutating fn set(this, x) { this.f = x; }`), no
     // return, Unit result. Four node ids: function, body, write, parameter
@@ -11324,6 +11594,38 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
                      conditionals, loops, sourceNodes);
       lowerEnumConstructionReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Existential aggregate construction return:
+    // `fn f() -> dyn I { return P { ..constants.. }; }`. The aggregate is the
+    // return value and the function declaration carries a HirErasureRecord.
+    if (value.aggregate != zc::none && value.returnErasure != zc::none &&
+        !value.aggregateIsEnumConstruction && value.local == zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.literal == zc::none &&
+        value.parameterReference == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
+        value.forLoopAccumulatorReturn == zc::none &&
+        value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
+        value.statementReceiverReference == zc::none &&
+        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
+        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
+        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerExistentialReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Family 3: one aggregate-initialized local returned through a field
