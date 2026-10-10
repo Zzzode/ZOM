@@ -511,7 +511,9 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arith-arm-consumer/Zom.toml::conditional_arith_arm_consumer::conditional_arith_arm_consumer")
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arith-arm-consumer/Zom.toml::conditional_arith_arm_consumer::conditional_arith_arm_consumer"
+      --target-reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer")
   set_tests_properties(native-run-cli PROPERTIES LABELS "unittest;cli;llvm" TIMEOUT 600)
 endif()
 add_test(

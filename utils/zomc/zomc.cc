@@ -189,6 +189,32 @@ HostTargetConfiguration hostTargetConfiguration() {
 #endif
 }
 
+// The cross-compilation target registered alongside the host: the other Linux
+// architecture this compiler can describe but cannot execute. macOS gets no
+// cross profile because `zomc run` is Linux-only.
+zc::Maybe<HostTargetConfiguration> crossTargetConfiguration() {
+#if defined(__x86_64__) && defined(__linux__)
+  return HostTargetConfiguration{"aarch64"_zc,
+                                 "unknown"_zc,
+                                 "linux"_zc,
+                                 "gnu"_zc,
+                                 "aarch64-unknown-linux-gnu"_zc,
+                                 "e-m:e-i8:8:32-i16:16:32-i64:64-i128:128-n32:64-S128-Fn32"_zc,
+                                 ir::ObjectFormat::Elf};
+#elif (defined(__aarch64__) || defined(__arm64__)) && defined(__linux__)
+  return HostTargetConfiguration{
+      "x86_64"_zc,
+      "unknown"_zc,
+      "linux"_zc,
+      "gnu"_zc,
+      "x86_64-unknown-linux-gnu"_zc,
+      "e-m:e-p270:32:32-p271:32:32-p272:64:64-i64:64-i128:128-f80:128-n8:16:32:64-S128"_zc,
+      ir::ObjectFormat::Elf};
+#else
+  return zc::none;
+#endif
+}
+
 class CompilerMain {
 public:
   explicit CompilerMain(zc::ProcessContext& context) : context(context) {
@@ -738,46 +764,60 @@ public:
     ZC_UNREACHABLE;
   }
 
-  static identity::CanonicalTargetSpecificationKey hostSemanticProjection() {
-    const auto host = hostTargetConfiguration();
+  static identity::CanonicalTargetSpecificationKey semanticProjection(
+      const HostTargetConfiguration& config, uint32_t pointerWidth) {
     zc::Vector<identity::TargetFeatureName> features;
     auto sortedFeatures = identity::SortedTargetFeatureSet::from(zc::mv(features));
     ZC_IF_SOME(featureValues, sortedFeatures) {
       auto projection = identity::CanonicalTargetSpecificationKey::from(
-          requireScalar<identity::TargetComponentName>(host.architecture),
-          requireScalar<identity::TargetComponentName>(host.vendor),
-          requireScalar<identity::TargetComponentName>(host.operatingSystem),
-          requireScalar<identity::TargetComponentName>(host.environment),
-          requireScalar<identity::TargetComponentName>("zom"_zc),
-          static_cast<uint32_t>(sizeof(void*) * 8), identity::Endianness::Little,
-          zc::mv(featureValues));
+          requireScalar<identity::TargetComponentName>(config.architecture),
+          requireScalar<identity::TargetComponentName>(config.vendor),
+          requireScalar<identity::TargetComponentName>(config.operatingSystem),
+          requireScalar<identity::TargetComponentName>(config.environment),
+          requireScalar<identity::TargetComponentName>("zom"_zc), pointerWidth,
+          identity::Endianness::Little, zc::mv(featureValues));
       ZC_IF_SOME(value, projection) { return zc::mv(value); }
     }
     ZC_UNREACHABLE;
   }
 
   static ir::TargetRegistrySnapshot targetRegistry() {
-    const auto host = hostTargetConfiguration();
-    zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
-    auto specification = ir::CanonicalTargetSpec::from(
-        host.triple, host.dataLayout, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
-        ir::BackendPanicStrategy::Abort, host.objectFormat);
-    auto name = package::RegisteredTargetProfileName::from("host"_zc);
-    ZC_IF_SOME(profileName, name) {
-      ZC_IF_SOME(specificationValue, specification) {
-        zc::Vector<identity::TargetFeatureName> semanticFeatures;
-        zc::Vector<ir::CanonicalTargetSpec> specifications;
-        specifications.add(zc::mv(specificationValue));
-        auto profile = ir::RegisteredTargetProfileRecord::from(
-            profileName.clone(), hostSemanticProjection(), zc::mv(semanticFeatures),
-            zc::mv(specifications));
-        ZC_IF_SOME(profileValue, profile) {
-          zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
-          profiles.add(zc::mv(profileValue));
-          auto registry = ir::TargetRegistrySnapshot::from(zc::mv(profileName), zc::mv(profiles));
-          ZC_IF_SOME(value, registry) { return zc::mv(value); }
+    zc::Vector<ir::RegisteredTargetProfileRecord> profiles;
+    // Builds one registered profile record from a target configuration. The
+    // profile name selects the profile through `--target <name>`; the host
+    // profile is always named "host" and the cross profile uses its triple.
+    auto addProfile = [&](const HostTargetConfiguration& config, zc::StringPtr profileName,
+                          uint32_t pointerWidth) {
+      zc::Vector<ir::CanonicalTargetFeature> backendFeatures;
+      auto specification = ir::CanonicalTargetSpec::from(
+          config.triple, config.dataLayout, "generic"_zc, zc::mv(backendFeatures), "zom"_zc,
+          ir::BackendPanicStrategy::Abort, config.objectFormat);
+      auto name = package::RegisteredTargetProfileName::from(profileName);
+      ZC_IF_SOME(profileNameValue, name) {
+        ZC_IF_SOME(specificationValue, specification) {
+          zc::Vector<identity::TargetFeatureName> semanticFeatures;
+          zc::Vector<ir::CanonicalTargetSpec> specifications;
+          specifications.add(zc::mv(specificationValue));
+          auto profile = ir::RegisteredTargetProfileRecord::from(
+              zc::mv(profileNameValue), semanticProjection(config, pointerWidth),
+              zc::mv(semanticFeatures), zc::mv(specifications));
+          ZC_IF_SOME(profileValue, profile) {
+            profiles.add(zc::mv(profileValue));
+            return;
+          }
         }
       }
+      ZC_UNREACHABLE;
+    };
+
+    const auto host = hostTargetConfiguration();
+    addProfile(host, "host"_zc, static_cast<uint32_t>(sizeof(void*) * 8));
+    ZC_IF_SOME(cross, crossTargetConfiguration()) { addProfile(cross, cross.triple, 64); }
+
+    auto hostName = package::RegisteredTargetProfileName::from("host"_zc);
+    ZC_IF_SOME(hostProfileName, hostName) {
+      auto registry = ir::TargetRegistrySnapshot::from(zc::mv(hostProfileName), zc::mv(profiles));
+      ZC_IF_SOME(value, registry) { return zc::mv(value); }
     }
     ZC_UNREACHABLE;
   }
@@ -1891,7 +1931,49 @@ private:
     ZC_UNREACHABLE;
   }
 
+  // RFC 0043 "Host Execution": the pre-build compatibility gate. Compares the
+  // session's verified target with the running host and returns a descriptive
+  // rejection when the intended artifact cannot execute on this host. This
+  // runs before any object is built, so `zomc run --target <cross>` and
+  // `zomc compile --emit=binary --target <cross>` fail fast instead of
+  // silently producing a host-architecture artifact. The post-link inspection
+  // check remains as defense-in-depth for a produced artifact that does not
+  // match its target spec.
+  zc::Maybe<zc::String> crossTargetRejection() {
+    auto hostProfile = ir::currentHostExecutionProfile();
+    if (hostProfile == zc::none) { return zc::none; }
+    ZC_IF_SOME(target, session->getVerifiedTarget()) {
+      auto artifactProfile = ir::artifactExecutionProfileFromTargetSpec(target.targetSpec());
+      if (artifactProfile == zc::none) { return zc::none; }
+      auto compatibility = ir::runCompatibility(ZC_REQUIRE_NONNULL(artifactProfile),
+                                                ZC_REQUIRE_NONNULL(hostProfile));
+      if (compatibility.isCompatible()) { return zc::none; }
+      zc::StringPtr dimension;
+      switch (compatibility.reason()) {
+        case ir::HostMismatchReason::OperatingSystem:
+          dimension = "operating system"_zc;
+          break;
+        case ir::HostMismatchReason::CpuArchitecture:
+          dimension = "CPU architecture"_zc;
+          break;
+        case ir::HostMismatchReason::ObjectFormatKind:
+          dimension = "object format"_zc;
+          break;
+        case ir::HostMismatchReason::PointerWidth:
+          dimension = "pointer width"_zc;
+          break;
+        case ir::HostMismatchReason::AbiCapability:
+          dimension = "ABI capability"_zc;
+          break;
+      }
+      return zc::str("Cannot execute target '", target.targetSpec().triple(), "': ", dimension,
+                     " mismatch with this host.");
+    }
+    return zc::none;
+  }
+
   zc::MainBuilder::Validity emitNativeObject() {
+    ZC_IF_SOME(rejection, crossTargetRejection()) { return zc::mv(rejection); }
     NativeObjectResult result = buildNativeObject();
     if (result.is<zc::String>()) {
       auto error = zc::mv(result).get<zc::String>();
@@ -1956,6 +2038,7 @@ private:
   zc::MainBuilder::Validity runNativeExecutable() {
 #if defined(__linux__) && defined(__x86_64__) && defined(ZOM_RUNTIME_ENTRY_OBJECT) && \
     defined(ZOM_HOST_LINKER)
+    ZC_IF_SOME(rejection, crossTargetRejection()) { return zc::mv(rejection); }
     NativeObjectResult objectResult = buildNativeObject();
     if (objectResult.is<zc::String>()) {
       auto error = zc::mv(objectResult).get<zc::String>();

@@ -162,6 +162,25 @@ ZC_NODISCARD HostCompatibility runCompatibility(const HostExecutionProfile& arti
 ZC_NODISCARD zc::Maybe<HostExecutionProfile> artifactExecutionProfileFromInspection(
     zc::StringPtr triple, const ExecutableInspectionProfile& inspection);
 
+/// \brief Builds the execution profile of an artifact from its verified target
+///        specification, before any artifact is produced.
+///
+/// RFC 0043 "Host Execution": the pre-build gate compares the *intended* target
+/// with the running host so a cross-target build is rejected before code
+/// generation, not after a host-architecture artifact has already been emitted.
+/// The operating system and CPU architecture are parsed fail-closed from the
+/// canonical `arch-vendor-os-env` target triple; the object format comes from
+/// the target specification. Both registered architectures (x86_64 and
+/// aarch64) are 64-bit, so the pointer width is 64. The artifact requires no
+/// additional execution ABI capability in the current scalar slice, so the
+/// capability set is empty.
+///
+/// \param spec The artifact's verified canonical target specification.
+/// \return The artifact execution profile, or none when the triple is malformed
+///         or the architecture or operating system is unsupported.
+ZC_NODISCARD zc::Maybe<HostExecutionProfile> artifactExecutionProfileFromTargetSpec(
+    const CanonicalTargetSpec& spec);
+
 /// \brief Builds the execution profile of the running compiler host.
 ///
 /// RFC 0043 "Host Execution": the host side of the comparison must describe the

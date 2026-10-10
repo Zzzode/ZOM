@@ -147,6 +147,36 @@ zc::Maybe<HostExecutionProfile> artifactExecutionProfileFromInspection(
   return zc::none;
 }
 
+zc::Maybe<HostExecutionProfile> artifactExecutionProfileFromTargetSpec(
+    const CanonicalTargetSpec& spec) {
+  auto fields = splitTriple(spec.triple());
+  ZC_IF_SOME(parts, fields) {
+    const zc::StringPtr architecture = parts[0];
+    // The operating system is the third canonical field (arch-vendor-os-env).
+    const zc::StringPtr operatingSystem = parts[2];
+
+    // Only architectures this compiler can describe are accepted. Both
+    // registered architectures (x86_64 and aarch64) are 64-bit, and the
+    // registry projects 64 for both, so the pointer width is 64.
+    if (compareBytes(architecture, "x86_64"_zc) != 0 &&
+        compareBytes(architecture, "aarch64"_zc) != 0) {
+      return zc::none;
+    }
+
+    // Only operating systems this compiler can describe are accepted.
+    if (compareBytes(operatingSystem, "linux"_zc) != 0 &&
+        compareBytes(operatingSystem, "darwin"_zc) != 0) {
+      return zc::none;
+    }
+
+    // The artifact requires no additional execution ABI capability in the
+    // current scalar slice, so the capability set is empty by construction.
+    return HostExecutionProfile::make(operatingSystem, architecture, spec.objectFormat(), 64,
+                                      zc::Array<zc::String>());
+  }
+  return zc::none;
+}
+
 zc::Maybe<HostExecutionProfile> currentHostExecutionProfile() {
 #if defined(__x86_64__)
   const zc::StringPtr architecture = "x86_64"_zc;

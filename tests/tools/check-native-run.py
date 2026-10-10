@@ -11,7 +11,10 @@ One or more positive programs are named with repeated
 ``--run-case manifest::package::binary::exit-code`` entries; the script asserts
 each one runs with its exact exit code. Object-only reject cases are named with
 repeated ``--reject-case manifest::package::binary`` entries; the script asserts
-each one fails closed.
+each one fails closed. Cross-target reject cases are named with repeated
+``--target-reject-case manifest::package::binary`` entries; the script asserts
+``zomc run --target aarch64-unknown-linux-gnu`` exits non-zero and reports a
+target rejection before any artifact is built.
 
 Cases run concurrently in a thread pool (`--jobs` workers, defaulting to
 `min(8, cpu count)`): every case owns a temporary directory and a copied
@@ -34,22 +37,29 @@ from pathlib import Path
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LINK_FAILED = "Native linking or publication failed."
+TARGET_REJECT_TRIPLE = "aarch64-unknown-linux-gnu"
+TARGET_REJECT_TEXT = "Cannot execute target"
 
 
-def run(zomc: str, manifest: str, package: str, binary: str) -> tuple[int, str]:
+def run(
+    zomc: str, manifest: str, package: str, binary: str, target: str | None = None
+) -> tuple[int, str]:
     resolved_manifest = str(Path(manifest).resolve(strict=True))
+    command = [
+        zomc,
+        "run",
+        "--manifest-path",
+        resolved_manifest,
+        "--package",
+        package,
+        "--bin",
+        binary,
+    ]
+    if target is not None:
+        command.extend(["--target", target])
     with tempfile.TemporaryDirectory(prefix="zom-native-run-") as temporary:
         result = subprocess.run(
-            [
-                zomc,
-                "run",
-                "--manifest-path",
-                resolved_manifest,
-                "--package",
-                package,
-                "--bin",
-                binary,
-            ],
+            command,
             cwd=Path(temporary),
             env=dict(os.environ),
             stdout=subprocess.PIPE,
@@ -88,6 +98,20 @@ def check_reject_case(zomc: str, manifest: str, package: str, binary: str) -> No
     if exit_code == 0 and LINK_FAILED not in output:
         raise RuntimeError(
             "object-only program unexpectedly ran instead of failing closed:"
+            f"\nrc={exit_code}\n{output}"
+        )
+
+
+def check_target_reject_case(zomc: str, manifest: str, package: str, binary: str) -> None:
+    """Assert a cross-target run is rejected before any artifact is built."""
+    exit_code, output = run(zomc, manifest, package, binary, target=TARGET_REJECT_TRIPLE)
+    if exit_code == 0:
+        raise RuntimeError(
+            f"cross-target run for {package} unexpectedly exited 0:\n{output}"
+        )
+    if TARGET_REJECT_TEXT not in output:
+        raise RuntimeError(
+            f"cross-target run for {package} did not report a target rejection:"
             f"\nrc={exit_code}\n{output}"
         )
 
@@ -133,6 +157,14 @@ def main() -> int:
         help="Object-only program that zomc run must reject; repeatable.",
     )
     parser.add_argument(
+        "--target-reject-case",
+        action="append",
+        required=False,
+        default=[],
+        metavar="manifest::package::binary",
+        help="Program that zomc run must reject for a cross target; repeatable.",
+    )
+    parser.add_argument(
         "--jobs",
         type=int,
         default=min(8, os.cpu_count() or 1),
@@ -155,6 +187,19 @@ def main() -> int:
             raise ValueError(f"reject case must be manifest::package::binary, got: {spec!r}")
         manifest, package, binary = parts
         tasks.append((f"reject {package}", partial(check_reject_case, zomc, manifest, package, binary)))
+    for spec in arguments.target_reject_case:
+        parts = spec.split("::")
+        if len(parts) != 3:
+            raise ValueError(
+                f"target-reject case must be manifest::package::binary, got: {spec!r}"
+            )
+        manifest, package, binary = parts
+        tasks.append(
+            (
+                f"target-reject {package}",
+                partial(check_target_reject_case, zomc, manifest, package, binary),
+            )
+        )
 
     _run_parallel(arguments.jobs, tasks)
     print("zomc run executed every entry-compatible program and rejected every object-only program")

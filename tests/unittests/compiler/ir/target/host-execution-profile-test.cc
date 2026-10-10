@@ -202,5 +202,72 @@ ZC_TEST("Artifact profile from inspection fails closed on malformed or inconsist
             zc::none);
 }
 
+// The spec-based factory builds the pre-build gate profile from the intended
+// target, before any artifact exists. On this x86-64 Linux host, an AArch64
+// target spec is a real CpuArchitecture mismatch.
+CanonicalTargetSpec targetSpec(zc::StringPtr triple, ObjectFormat format) {
+  zc::Vector<CanonicalTargetFeature> features;
+  auto value = CanonicalTargetSpec::from(triple, "e-m:e-i64:64"_zc, "generic"_zc, zc::mv(features),
+                                         "zom"_zc, BackendPanicStrategy::Abort, format);
+  ZC_REQUIRE(value != zc::none);
+  return ZC_REQUIRE_NONNULL(zc::mv(value));
+}
+
+ZC_TEST("Artifact profile from an aarch64 target spec mismatches an x86-64 host") {
+  auto artifact = artifactExecutionProfileFromTargetSpec(
+      targetSpec("aarch64-unknown-linux-gnu"_zc, ObjectFormat::Elf));
+  ZC_REQUIRE(artifact != zc::none);
+  auto host = currentHostExecutionProfile();
+  ZC_REQUIRE(host != zc::none);
+  auto result =
+      runCompatibility(ZC_REQUIRE_NONNULL(zc::mv(artifact)), ZC_REQUIRE_NONNULL(zc::mv(host)));
+  ZC_REQUIRE(!result.isCompatible());
+  ZC_EXPECT(result.reason() == HostMismatchReason::CpuArchitecture);
+}
+
+// A same-target spec (x86-64 triple + ELF) is compatible with the x86-64 Linux
+// host that produced it.
+ZC_TEST("Artifact profile from an x86-64 target spec matches the x86-64 host") {
+  auto artifact = artifactExecutionProfileFromTargetSpec(
+      targetSpec("x86_64-unknown-linux-gnu"_zc, ObjectFormat::Elf));
+  ZC_REQUIRE(artifact != zc::none);
+  auto host = currentHostExecutionProfile();
+  ZC_REQUIRE(host != zc::none);
+  ZC_EXPECT(runCompatibility(ZC_REQUIRE_NONNULL(zc::mv(artifact)), ZC_REQUIRE_NONNULL(zc::mv(host)))
+                .isCompatible());
+}
+
+// The spec-based profile carries the object format from the target spec, not
+// from the host: a linux/x86-64 spec with MachO is an ObjectFormatKind
+// mismatch against the ELF host.
+ZC_TEST("Artifact profile from a MachO target spec mismatches the host object format") {
+  auto artifact = artifactExecutionProfileFromTargetSpec(
+      targetSpec("x86_64-unknown-linux-gnu"_zc, ObjectFormat::MachO));
+  ZC_REQUIRE(artifact != zc::none);
+  auto host = currentHostExecutionProfile();
+  ZC_REQUIRE(host != zc::none);
+  auto result =
+      runCompatibility(ZC_REQUIRE_NONNULL(zc::mv(artifact)), ZC_REQUIRE_NONNULL(zc::mv(host)));
+  ZC_REQUIRE(!result.isCompatible());
+  ZC_EXPECT(result.reason() == HostMismatchReason::ObjectFormatKind);
+}
+
+// The spec-based factory fails closed on a malformed triple, an unsupported
+// architecture, and an unsupported operating system.
+ZC_TEST("Artifact profile from target spec fails closed on malformed or unsupported input") {
+  // Fewer than three fields (arch-vendor-os) is malformed.
+  ZC_EXPECT(artifactExecutionProfileFromTargetSpec(
+                targetSpec("x86_64-unknown"_zc, ObjectFormat::Elf)) == zc::none);
+  // An empty field is malformed.
+  ZC_EXPECT(artifactExecutionProfileFromTargetSpec(
+                targetSpec("x86_64--linux-gnu"_zc, ObjectFormat::Elf)) == zc::none);
+  // An unsupported architecture is rejected.
+  ZC_EXPECT(artifactExecutionProfileFromTargetSpec(
+                targetSpec("riscv64-unknown-linux-gnu"_zc, ObjectFormat::Elf)) == zc::none);
+  // An unsupported operating system is rejected.
+  ZC_EXPECT(artifactExecutionProfileFromTargetSpec(
+                targetSpec("x86_64-unknown-freebsd"_zc, ObjectFormat::Elf)) == zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::ir
