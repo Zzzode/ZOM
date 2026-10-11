@@ -1503,6 +1503,9 @@ private:
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(fn, types);
         }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerRawDereferenceReturn(fn, types);
+        }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types); }
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerEmptyBodyVoidFunction(fn, types);

@@ -1,0 +1,5 @@
+// Raw-pointer dereference fixture: the entry takes a const raw pointer to i32
+// and returns the pointee read through an unsafe block. The function keeps a
+// parameterized symbol (zom.raw_deref) and is object-only, since the runtime
+// _start cannot bind arguments to it.
+fn entry(ptr: *const i32) -> i32 { return unsafe { *ptr }; }

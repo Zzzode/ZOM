@@ -2732,6 +2732,27 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
+    // A single `return *ptr` where `ptr` is a raw-pointer parameter. The
+    // Deref unary over an IdentExpr parameter reference is lowered to a
+    // parameter reference wrapped in an unsafe block; the MIR builder emits
+    // a [Dereference] projection on the parameter place.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::UnaryExpression) {
+      const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+          tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
+      if (unaryOp == ast::UnaryOperatorKind::Deref) {
+        const ast::NodeId operand(tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+        if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = value;
+          shape.returnsRawDereference = true;
+          shape.rawDereferenceOperand = operand;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
+    }
     // Single-statement free-function shape:
     // `return <ordinary-parameter>.<field>;` reads one field of a by-value
     // struct parameter. There are no locals in the body, so the member object is

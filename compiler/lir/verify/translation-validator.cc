@@ -105,9 +105,13 @@ zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
   auto lookup = types.get(type);
   if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
   const auto& data = lookup.get<type::SemanticTypeLookup>().data();
-  if (!data.is<type::semantic::ReferenceTypeData>()) return zc::none;
   // Both shared and mutable references lower to the opaque pointer carrier;
   // mutability is enforced by borrow-mode facts rather than the LIR carrier.
+  // Raw pointers (*const T / *mut T) share the same physical carrier.
+  if (!data.is<type::semantic::ReferenceTypeData>() &&
+      !data.is<type::semantic::RawPointerTypeData>()) {
+    return zc::none;
+  }
   return ValueType::pointer(0);
 }
 
@@ -488,6 +492,48 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // A standalone function returning `unsafe { *ptr }` where `ptr` is a
+  // raw-pointer parameter has no fold: its Return operand is a copy/move
+  // place-use rooted at the parameter through a single [Dereference]
+  // projection. The two unsafe-scope boundary statements (Enter/Exit) are
+  // semantically transparent and skipped. The read materializes as one
+  // LoadField at offset zero into a synthesized result slot followed by
+  // ReturnLocal.
+  struct RawDereferenceRead final {
+    uint32_t paramOrdinal = 0;
+    uint32_t resultOrdinal = 0;
+  };
+  zc::Maybe<RawDereferenceRead> rawDereferenceRead;
+  if (!folded && receiverFieldRead == zc::none && mir.locals.size() == 1 &&
+      mir.locals[0].kind == mir::MirLocalKind::Parameter && mir.blocks.size() == 1 &&
+      mir.blocks[0].statements.size() == 2) {
+    const auto& block = mir.blocks[0];
+    if (block.statements[0].kind() == mir::MirStatementKind::UnsafeScopeBoundary &&
+        block.statements[1].kind() == mir::MirStatementKind::UnsafeScopeBoundary) {
+      const auto& enter = block.statements[0].unsafeScopeBoundaryValue();
+      const auto& exit = block.statements[1].unsafeScopeBoundaryValue();
+      if (enter.kind == mir::MirUnsafeScopeBoundaryKind::Enter &&
+          exit.kind == mir::MirUnsafeScopeBoundaryKind::Exit && enter.scope == exit.scope) {
+        const auto& term = block.terminator;
+        if (term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value != zc::none) {
+          const auto& rv = ZC_ASSERT_NONNULL(term.returnValue().value);
+          if (rv.kind() != mir::MirOperandKind::Constant) {
+            const auto& place = rv.place();
+            const uint32_t paramOrdinal = mir.locals[0].id.ordinal();
+            const uint32_t resultOrdinal = paramOrdinal + 1;
+            if (place.local().ordinal() == paramOrdinal && place.rootType() == mir.locals[0].type &&
+                place.resultType() == mir.resultType && place.projections().size() == 1 &&
+                place.projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+                place.projections()[0].inputType() == mir.locals[0].type &&
+                place.projections()[0].resultType() == mir.resultType) {
+              rawDereferenceRead = RawDereferenceRead{paramOrdinal, resultOrdinal};
+            }
+          }
+        }
+      }
+    }
+  }
+
   // A mutating-receiver method whose body is `this.field = <constant>; return
   // this.field;` has one Overwrite Assign whose destination is rooted at the
   // receiver parameter through [Dereference, Field] and the same projected place
@@ -501,8 +547,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     uint32_t resultOrdinal = 0;
   };
   zc::Maybe<ReceiverFieldWriteRead> receiverFieldWriteRead;
-  if (!folded && receiverFieldRead == zc::none && mir.locals.size() == 1 &&
-      mir.locals[0].kind == mir::MirLocalKind::Parameter && mir.blocks.size() == 1) {
+  if (!folded && receiverFieldRead == zc::none && rawDereferenceRead == zc::none &&
+      mir.locals.size() == 1 && mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      mir.blocks.size() == 1) {
     const auto& receiverLocal = mir.locals[0];
     auto receiverLookup = types.get(receiverLocal.type);
     bool receiverMutable = false;
@@ -797,7 +844,8 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
   };
   zc::Maybe<ReceiverFieldArithmetic> receiverFieldArithmetic;
   if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
-      mir.locals.size() == 2 && mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      rawDereferenceRead == zc::none && mir.locals.size() == 2 &&
+      mir.locals[0].kind == mir::MirLocalKind::Parameter &&
       mir.locals[1].kind == mir::MirLocalKind::FunctionResult && mir.blocks.size() == 1) {
     const auto& receiverLocal = mir.locals[0];
     const auto& resultLocal = mir.locals[1];
@@ -863,8 +911,8 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
   };
   zc::Maybe<EnumDestructureConditional> enumDestructure;
   if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
-      receiverFieldArithmetic == zc::none && mir.locals.size() == 3 &&
-      mir.locals[0].kind == mir::MirLocalKind::Parameter &&
+      rawDereferenceRead == zc::none && receiverFieldArithmetic == zc::none &&
+      mir.locals.size() == 3 && mir.locals[0].kind == mir::MirLocalKind::Parameter &&
       mir.locals[1].kind == mir::MirLocalKind::FunctionResult &&
       mir.locals[2].kind == mir::MirLocalKind::Temporary && mir.blocks.size() == 4) {
     const auto& paramLocal = mir.locals[0];
@@ -940,8 +988,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
   };
   zc::Maybe<ErrorUnwrapCall> errorUnwrapCall;
   if (!folded && receiverFieldRead == zc::none && receiverFieldWriteRead == zc::none &&
-      receiverFieldArithmetic == zc::none && receiverVoidThenValueCall == zc::none &&
-      enumDestructure == zc::none && mir.blocks.size() == 4) {
+      rawDereferenceRead == zc::none && receiverFieldArithmetic == zc::none &&
+      receiverVoidThenValueCall == zc::none && enumDestructure == zc::none &&
+      mir.blocks.size() == 4) {
     // Count leading parameters.
     size_t paramCount = 0;
     while (paramCount < mir.locals.size() &&
@@ -1087,6 +1136,20 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     const auto& read = ZC_ASSERT_NONNULL(receiverFieldRead);
     const auto parameterCarrier = localCarrier(mir.locals[0], mir, types);
     if (parameterCarrier == zc::none || lir.parameters()[0].ordinal() != read.receiverOrdinal ||
+        lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(parameterCarrier) ||
+        lir.locals()[0].ordinal() != read.resultOrdinal ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+  } else if (rawDereferenceRead != zc::none) {
+    // The raw-pointer parameter maps 1:1; the dereference result slot is
+    // synthesized in LIR (ordinal param + 1) and has no MIR local.
+    if (lir.parameters().size() != 1 || lir.locals().size() != 1) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    const auto& read = ZC_ASSERT_NONNULL(rawDereferenceRead);
+    const auto parameterCarrier = localCarrier(mir.locals[0], mir, types);
+    if (parameterCarrier == zc::none || lir.parameters()[0].ordinal() != read.paramOrdinal ||
         lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(parameterCarrier) ||
         lir.locals()[0].ordinal() != read.resultOrdinal ||
         lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
@@ -1792,6 +1855,25 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
         }
+      } else if (rawDereferenceRead != zc::none) {
+        // The two unsafe-scope boundary statements have no LIR effect; LIR
+        // emits exactly one LoadField at offset zero into the synthesized
+        // result slot.
+        if (lirStatement != 0 || lirBlock.statements().size() != 1) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+        }
+        const Statement& load = lirBlock.statements()[0];
+        const auto& read = ZC_ASSERT_NONNULL(rawDereferenceRead);
+        const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
+        const auto resultCarrier = integerCarrier(mir.resultType, types);
+        if (baseCarrier == zc::none || resultCarrier == zc::none ||
+            load.kind() != StatementKind::LoadField || load.source().isConstant() ||
+            load.destinationOrdinal() != read.resultOrdinal ||
+            load.basePointerOrdinal() != read.paramOrdinal || load.fieldOffsetBytes() != 0 ||
+            lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
+            lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 1);
+        }
       } else if (receiverFieldWriteRead != zc::none) {
         // The projected write consumed the leading StoreField; the projected
         // return still has no MIR statement, so the trailing LIR statement is
@@ -1917,6 +1999,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
               lirTerminator.returnLocalOrdinal() !=
                   ZC_ASSERT_NONNULL(receiverFieldRead).resultOrdinal) {
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+          }
+        } else if (rawDereferenceRead != zc::none) {
+          if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
+              lirTerminator.returnLocalOrdinal() !=
+                  ZC_ASSERT_NONNULL(rawDereferenceRead).resultOrdinal) {
             return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         } else if (receiverFieldWriteRead != zc::none) {

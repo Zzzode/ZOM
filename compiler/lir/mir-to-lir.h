@@ -70,6 +70,26 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one unsafe-block raw-pointer dereference return to a
+  /// single-function LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validRawDereferenceReturnFunction` accepts: a `Function` with one
+  /// raw-pointer `Parameter` local, two source scopes (root plus one unsafe
+  /// child), and a single block whose two statements are the Enter/Exit
+  /// unsafe-scope boundary markers and whose terminator returns a place-use of
+  /// the parameter through a single `[Dereference]` projection. The raw-pointer
+  /// parameter lowers to a pointer carrier local; the dereference is an
+  /// offset-zero `LoadField` through that pointer slot into an integer carrier
+  /// destination, and the block returns that destination. Every shape outside
+  /// this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerRawDereferenceReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one empty-body void function to a single-function LIR module.
   ///
   /// Admits exactly the verified Built MIR shape of a `Function` with no

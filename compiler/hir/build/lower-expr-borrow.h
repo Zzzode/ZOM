@@ -24,6 +24,12 @@ void lowerParameterReborrowReturnFunction(PendingFunctionDeclaration&& function,
 /// scalar value, trailing unsafe block whose body is the value node.
 void lowerUnsafeScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one unsafe-block-wrapped raw-pointer dereference return
+/// through the recursive driver: `return unsafe { *ptr };` where `ptr` is a
+/// raw-pointer parameter. Node stride: function, body, return, parameter-
+/// reference value, trailing unsafe block whose body is the value node.
+void lowerRawDereferenceReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one local-alias reborrow through the recursive driver:
 /// `let y = p; return &*y;`, optionally wrapped in one admitted unsafe block.
 /// The binding is initialized by the reborrowed parameter and the returned

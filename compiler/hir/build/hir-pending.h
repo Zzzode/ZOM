@@ -678,6 +678,12 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<HirParameterReferenceExpression> parameterReference;
   zc::Maybe<HirParameterIndexExpression> parameterIndex;
   zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
+  // Populated for the raw-pointer dereference return shape: the parameter
+  // reference that is dereferenced (`return unsafe { *ptr };`). The lowering
+  // function allocates the parameter reference node wrapped in a trailing
+  // unsafe block; the MIR builder emits a [Dereference] projection on the
+  // parameter place.
+  zc::Maybe<HirParameterReferenceExpression> rawDereferenceSource;
   zc::Maybe<HirLocalBorrowExpression> localBorrow;
   zc::Maybe<PendingSequentialLocalReturn> sequentialLocalReturn;
   zc::Maybe<identity::SourceSpan> unsafeBlockSpan;

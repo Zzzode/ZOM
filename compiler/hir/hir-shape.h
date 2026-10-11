@@ -277,6 +277,13 @@ struct FunctionReturnShape final {
   bool returnsUnary = false;
   ast::NodeId unaryOperand;
   bool unaryOperandIsLiteral = false;
+  // Single-statement raw-pointer dereference return: `return unsafe { *ptr };`
+  // where `ptr` is a `*const T` or `*mut T` parameter. The return value is a
+  // UnaryExpression with the Deref operator; the operand is an IdentExpr
+  // parameter reference. The HIR builder lowers it to a
+  // HirParameterReferenceExpression wrapped in a HirUnsafeBlockExpression.
+  bool returnsRawDereference = false;
+  ast::NodeId rawDereferenceOperand;
   // When the body is a single `return "a" + "b"` of two string literals, the
   // body checker folds the concatenation to a string constant at compile time.
   // `shape.value` is the BinaryExpr node; the builder looks up its checked

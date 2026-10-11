@@ -772,6 +772,68 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fn f(ptr: *const T) -> T { return unsafe { *ptr }; }`: one
+/// root scope plus a child unsafe scope, one parameter local carrying the raw
+/// pointer, one block with Enter/Exit unsafe-scope boundary statements, and a
+/// Return of a copy/move place-use rooted at the parameter local through a
+/// single [Dereference(*const T -> T)] projection.
+zc::Maybe<RecursiveFunctionProduct> buildRawDereferenceReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirParameterReferenceExpression& source, const hir::VerifiedHirModule& hirModule,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.unsafeBlock == zc::none) return zc::none;
+  if (declaration.receiver != zc::none) return zc::none;
+
+  auto paramIndex = parameterIndexFor(declaration, source.parameter);
+  if (paramIndex == zc::none) return zc::none;
+  const auto& param = declaration.parameters[ZC_ASSERT_NONNULL(paramIndex)];
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId paramLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, param.type, scope, source.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  // Unsafe blocks wrap the body in Enter/Exit scope boundary statements so the
+  // MIR verifier and ownership overlay can acknowledge the unsafe region.
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+  for (const auto& candidate : hirModule.unsafeBlocks()) {
+    if (candidate.node != ZC_ASSERT_NONNULL(declaration.unsafeBlock)) continue;
+    if (unsafeBlock != zc::none) return zc::none;
+    unsafeBlock = candidate;
+  }
+  if (unsafeBlock == zc::none) return zc::none;
+  const auto& unsafe = ZC_ASSERT_NONNULL(unsafeBlock);
+  const auto unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                        unsafeScope, unsafe.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                        unsafeScope, unsafe.sourceSpan.clone()));
+
+  // Build a place rooted at the parameter local with a [Dereference]
+  // projection. The pointee type is the function result type (the HIR builder
+  // validated rawPtr.pointee == callable.success).
+  zc::Vector<MirProjection> projections;
+  projections.add(MirProjection::dereference(param.type, declaration.resultType));
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(paramLocal, param.type, zc::mv(projections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn m(this) -> T { return this.field; }` on a shared or
 /// mutating receiver: one root scope, one receiver parameter local carrying
 /// the receiver reference, and a Return of a copy/move place-use rooted at that
@@ -3508,6 +3570,22 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         ZC_ASSERT_NONNULL(literal).type == declaration.resultType) {
       return buildScalarReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                ZC_ASSERT_NONNULL(literal), hirModule, identities);
+    }
+
+    // Raw-pointer dereference return: `return unsafe { *ptr };` where `ptr` is
+    // a raw-pointer parameter. The value node is a parameter reference wrapped
+    // in an unsafe block; the parameter type (raw pointer) differs from the
+    // result type (pointee). The MIR builder emits a [Dereference] projection
+    // on the parameter place.
+    if (declaration.unsafeBlock != zc::none && declaration.receiver == zc::none) {
+      auto paramRef = parameterReferenceFor(hirModule, valueNode);
+      if (paramRef != zc::none && ZC_ASSERT_NONNULL(paramRef).type != declaration.resultType &&
+          ZC_ASSERT_NONNULL(paramRef).category == hir::HirValueCategory::Place) {
+        auto product = buildRawDereferenceReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                                 ZC_ASSERT_NONNULL(paramRef), hirModule, identities,
+                                                 proofs, copyMarker);
+        if (product != zc::none) { return product; }
+      }
     }
 
     // Receiver field read: a shared- or mutating-receiver method returning

@@ -81,6 +81,31 @@ void lowerUnsafeScalarReturnFunction(PendingFunctionDeclaration&& function, HirF
                                                function.valueSpan.clone()});
 }
 
+void lowerRawDereferenceReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  HirParameterReferenceExpression source = zc::mv(ZC_ASSERT_NONNULL(function.rawDereferenceSource));
+
+  // Fixed source-preorder stride matching the generic materializer:
+  // function F, body F+1, return F+2, parameter-reference value F+3, trailing
+  // unsafe block F+4 whose body is the parameter reference.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
+  zc::Maybe<HirNodeId> unsafeBlockId = lowerTrailingUnsafeBlock(function, valueId, ctx);
+
+  ctx.addFunction(HirFunctionDeclaration{
+      functionId, function.definition, function.resultType, zc::mv(function.parameters), zc::none,
+      function.visibility.clone(), function.linkage, function.declarationSpan.clone(), bodyId,
+      zc::mv(unsafeBlockId)});
+  zc::Vector<HirNodeId> statements;
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+  ctx.addParameterReference(HirParameterReferenceExpression{
+      valueId, zc::mv(source.parameter), source.type, source.category, source.sourceSpan.clone()});
+}
+
 void lowerLocalAliasReborrowReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
   const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();

@@ -3606,6 +3606,41 @@ struct ReferenceReborrowShape final {
   identity::SemanticTypeId referentType;
 };
 
+/// \brief Finds the nearest enclosing UnsafeBlockExpr ancestor of `target`
+/// within the subtree rooted at `root`. The AST has no parent pointers, so
+/// this walks the tree tracking the unsafe-block stack. Returns the nearest
+/// enclosing unsafe block, or none when the target is outside every unsafe
+/// block.
+void findEnclosingUnsafe(const ast::Tree& tree, ast::NodeId node, ast::NodeId target,
+                         zc::Vector<ast::NodeId>& unsafeStack, zc::Maybe<ast::NodeId>& result,
+                         bool& done) {
+  if (done) return;
+  const auto& syntax = tree.node(node);
+  bool pushed = false;
+  if (syntax.kind == ast::SyntaxKind::UnsafeBlockExpr) {
+    unsafeStack.add(node);
+    pushed = true;
+  }
+  if (node == target) {
+    if (!unsafeStack.empty()) { result = unsafeStack[unsafeStack.size() - 1]; }
+    done = true;
+    return;
+  }
+  ast::visitChildNodeIds(tree, syntax, [&](ast::NodeId child) {
+    if (!done) findEnclosingUnsafe(tree, child, target, unsafeStack, result, done);
+  });
+  if (pushed) unsafeStack.pop();
+}
+
+zc::Maybe<ast::NodeId> enclosingUnsafeBlock(const ast::Tree& tree, ast::NodeId root,
+                                            ast::NodeId target) {
+  zc::Vector<ast::NodeId> unsafeStack;
+  zc::Maybe<ast::NodeId> result;
+  bool done = false;
+  findEnclosingUnsafe(tree, root, target, unsafeStack, result, done);
+  return result;
+}
+
 zc::Maybe<identity::SemanticTypeId> referenceSourceType(
     const BodyCheckingInput& input, ast::NodeId source,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
@@ -5441,9 +5476,17 @@ bool addOperatorRequirements(const ast::Node& syntax, ast::NodeId node,
     if (static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
             ast::UnaryOperatorKind::Ref ||
         static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
-            ast::UnaryOperatorKind::RefMut ||
-        static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
-            ast::UnaryOperatorKind::Deref) {
+            ast::UnaryOperatorKind::RefMut) {
+      return true;
+    }
+    if (static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
+        ast::UnaryOperatorKind::Deref) {
+      // A dereference may be an unsafe raw-pointer dereference; the body
+      // checker produces an UnsafeScopeFact on the deref node when the source
+      // type is a raw pointer. Register the requirement so the additional-fact
+      // gate admits it. Reference dereferences produce no fact and the
+      // requirement stays unused.
+      addNodeRequirement(requirements, CheckedFactGroup::UnsafeOperation, node, key);
       return true;
     }
     addNodeRequirement(requirements, CheckedFactGroup::Call, node, key);
@@ -6561,6 +6604,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Vector<checked::ExhaustivenessFactMap::Entry> exhaustiveness;
   zc::Vector<checked::ErrorUnionShapeFactMap::Entry> errorUnionShapes;
   zc::Vector<checked::ErrorOperatorFactMap::Entry> errorOperators;
+  // Unsafe-scope facts for raw-pointer dereferences inside `unsafe {}` blocks.
+  // One entry per dereference expression node; the enclosing unsafe block (if
+  // any) determines whether the operation is acknowledged.
+  zc::Vector<checked::UnsafeOperationFactMap::Entry> unsafeOperations;
   // Concrete-to-dyn erasures selected at annotated initializer sites, one per
   // initializer expression node. Consumed into the coercion fact map and the
   // witness store after every production site has been checked.
@@ -8179,18 +8226,33 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         ZC_IF_SOME(type, sourceType) {
           auto lookup = input.semanticTypes.get(type);
-          if (!lookup.is<type::SemanticTypeLookup>() ||
-              !lookup.get<type::SemanticTypeLookup>()
-                   .data()
-                   .is<type::semantic::ReferenceTypeData>()) {
+          if (!lookup.is<type::SemanticTypeLookup>()) {
             return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,
                                    site.key.sourceSpan.clone(), factPath(site.primaryGroup));
           }
-          producedType = lookup.get<type::SemanticTypeLookup>()
-                             .data()
-                             .get<type::semantic::ReferenceTypeData>()
-                             .referent;
+          const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+          if (data.is<type::semantic::ReferenceTypeData>()) {
+            producedType = data.get<type::semantic::ReferenceTypeData>().referent;
+          } else if (data.is<type::semantic::RawPointerTypeData>()) {
+            const auto& rawPointer = data.get<type::semantic::RawPointerTypeData>();
+            // A raw-pointer dereference is an unsafe operation. Find the
+            // nearest enclosing unsafe block (if any) to decide whether the
+            // operation is acknowledged.
+            auto enclosing = enclosingUnsafeBlock(input.boundModule.tree(),
+                                                  input.boundModule.tree().root(), site.node);
+            const bool acknowledged = enclosing != zc::none;
+            unsafeOperations.add(checked::UnsafeOperationFactMap::Entry{
+                site.node,
+                checked::UnsafeScopeFact{site.node, checked::UnsafeOperation::RawDereference,
+                                         zc::mv(enclosing), acknowledged},
+                zc::Array<uint8_t>()});
+            producedType = rawPointer.pointee;
+          } else {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
         }
       } else if (site.production == BodyProductionKind::ReferenceReborrow) {
         auto shape = referenceReborrowShape(input, site.node, nodeTypes.asPtr());
@@ -9495,6 +9557,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         requirement.group != CheckedFactGroup::MarkerObligation &&
         requirement.group != CheckedFactGroup::Pattern &&
         requirement.group != CheckedFactGroup::Exhaustiveness &&
+        requirement.group != CheckedFactGroup::UnsafeOperation &&
         requirement.group != CheckedFactGroup::ErrorUnionShape &&
         requirement.group != CheckedFactGroup::ErrorOperator) {
       return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
@@ -9705,7 +9768,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           emptyFactMap<checked::CaptureFactMap>(),
           checked::MarkerObligationFactMap::fromEntries(zc::mv(markerObligations)),
           checked::ExhaustivenessFactMap::fromEntries(zc::mv(exhaustiveness)),
-          emptyFactMap<checked::UnsafeOperationFactMap>(),
+          checked::UnsafeOperationFactMap::fromEntries(zc::mv(unsafeOperations)),
           emptyFactMap<checked::ProjectionFactMap>(),
           emptyFactMap<checked::ObligationFactMap>(),
           checked::ErrorUnionShapeFactMap::fromEntries(zc::mv(errorUnionShapes)),

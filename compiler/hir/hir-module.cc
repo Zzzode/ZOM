@@ -1491,6 +1491,192 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                           registries, index + 1);
     }
     const auto& returnStatement = *returnStatementPtr;
+    // Raw-pointer dereference return: `return unsafe { *ptr };` where `ptr` is
+    // a `*const T` or `*mut T` parameter. Five node ids in source preorder:
+    // function F, body F+1, return F+2, parameter-reference value F+3,
+    // trailing unsafe block F+4 whose body is the parameter reference.
+    {
+      bool isRawDerefShape = false;
+      ZC_IF_SOME(shape, sourceShapeMaybe) { isRawDerefShape = shape.returnsRawDereference; }
+      if (isRawDerefShape) {
+        const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        const auto valueNode = hirId(expectedFunction + 3);
+        if (block.statements.size() != 1 || block.statements[0] != returnStatement.node ||
+            function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            returnStatement.node != hirId(expectedFunction + 2) ||
+            returnStatement.value != valueNode || function.body != block.node ||
+            function.resultType != returnStatement.resultType ||
+            !typeExists(function.resultType, semanticTypes)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (!hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node) ||
+            tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The parameter reference at valueNode carries the raw-pointer
+        // parameter type; the MIR builder emits the dereference projection.
+        zc::Maybe<const HirParameterReferenceExpression&> parameterReference;
+        for (const auto& reference : candidate.impl->parameterReferences) {
+          if (reference.node != valueNode) continue;
+          if (parameterReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          parameterReference = reference;
+        }
+        if (parameterReference == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const auto& reference = ZC_ASSERT_NONNULL(parameterReference);
+        // The raw-deref operand is an IdentExpr parameter reference.
+        const ast::NodeId& operand = source.rawDereferenceOperand;
+        if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto parameter = resolvedCallableParameter(bound.bindings(), operand);
+        auto operandSpan = bound.parsedModule().spanFor(tree.node(operand).range);
+        if (parameter == zc::none || operandSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        // The parameter type must be a raw pointer whose pointee matches the
+        // function result type.
+        auto parameterLookup = semanticTypes.get(reference.type);
+        if (!parameterLookup.is<type::SemanticTypeLookup>() ||
+            !parameterLookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .is<type::semantic::RawPointerTypeData>() ||
+            parameterLookup.get<type::SemanticTypeLookup>()
+                    .data()
+                    .get<type::semantic::RawPointerTypeData>()
+                    .pointee != function.resultType ||
+            reference.category != HirValueCategory::Place ||
+            !sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        ZC_IF_SOME(handle, parameter) {
+          auto authority = registries.callableParameter(handle);
+          if (authority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          ZC_IF_SOME(entry, authority) {
+            bool found = false;
+            for (const auto& candidateParameter : function.parameters) {
+              if (candidateParameter.key == entry.key() &&
+                  candidateParameter.type == reference.type) {
+                found = true;
+              }
+            }
+            if (!found || reference.parameter != entry.key()) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+        }
+        // Validate the trailing unsafe block.
+        const auto expectedUnsafeBlock = hirId(expectedFunction + 4);
+        if (function.unsafeBlock != expectedUnsafeBlock) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        zc::Maybe<const HirUnsafeBlockExpression&> unsafeBlock;
+        for (const auto& candidateBlock : candidate.impl->unsafeBlocks) {
+          if (candidateBlock.node != expectedUnsafeBlock) continue;
+          if (unsafeBlock != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          unsafeBlock = candidateBlock;
+        }
+        if (unsafeBlock == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(block, unsafeBlock) {
+          auto sourceUnsafeSpan =
+              bound.parsedModule().spanFor(tree.node(ZC_ASSERT_NONNULL(source.unsafeBlock)).range);
+          if (block.body != valueNode || block.type != function.resultType ||
+              sourceUnsafeSpan == zc::none ||
+              !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(sourceUnsafeSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        nextFunction += 5;
+        continue;
+      }
+    }
     // Sequential N-local shape: recompute the source classification and verify
     // the materialized bindings against it and against checked facts. Each
     // binding consumes its localNode then its initializerNode, plus two operand

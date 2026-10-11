@@ -642,6 +642,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
+                                                      zc::none,
                                                       zc::mv(orderingKey),
                                                       zc::none,
                                                       zc::none,
@@ -1695,6 +1696,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          zc::none,
                                                           zc::mv(orderingKey),
                                                           zc::none,
                                                           zc::none,
@@ -1882,6 +1884,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           {},
                                                           {},
+                                                          zc::none,
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
@@ -2735,6 +2738,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
+                                                          zc::none,
                                                           zc::mv(orderingKey),
                                                           zc::mv(conditionalReturn),
                                                           zc::none,
@@ -2925,6 +2929,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           {},
                                                           {},
+                                                          zc::none,
                                                           zc::none,
                                                           zc::none,
                                                           zc::none,
@@ -3269,6 +3274,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         {},
                                                         {},
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -3675,6 +3681,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         {},
                                                         {},
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -4096,6 +4103,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
+                                                        zc::none,
                                                         zc::mv(orderingKey),
                                                         zc::none,
                                                         zc::none,
@@ -4156,6 +4164,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
+      zc::Maybe<HirParameterReferenceExpression> rawDereferenceSource;
       zc::Maybe<HirLocalBorrowExpression> localBorrow;
       zc::Vector<SequentialLocalBinding> deadBindings;
       if (shape.isSequentialLocalReturn) {
@@ -5277,6 +5286,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         {},
                                                         {},
+                                                        zc::none,
                                                         zc::none,
                                                         zc::none,
                                                         zc::none,
@@ -6815,6 +6825,67 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         literal = sourceLiteral.literal.clone();
         returnsFoldedStringConcat = shape.returnsFoldedStringConcat;
         returnsFoldedFloatCast = shape.returnsFoldedFloatCast;
+      } else if (shape.returnsRawDereference) {
+        // Raw-pointer dereference return: `return unsafe { *ptr };` where
+        // `ptr` is a raw-pointer parameter. The operand resolves to a callable
+        // parameter whose type is a raw pointer whose pointee matches the
+        // dereference result type. The lowering function allocates a parameter
+        // reference wrapped in a trailing unsafe block.
+        auto parameter = resolvedCallableParameter(bound.bindings(), shape.rawDereferenceOperand);
+        if (parameter == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        ZC_IF_SOME(handle, parameter) {
+          auto authority = registries.callableParameter(handle);
+          if (authority == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          ZC_IF_SOME(entry, authority) {
+            bool matches = false;
+            identity::SemanticTypeId parameterType;
+            for (const auto& candidate : parameters) {
+              if (candidate.key == entry.key()) {
+                matches = true;
+                parameterType = candidate.type;
+                break;
+              }
+            }
+            if (!matches) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            // The parameter must carry a raw-pointer type whose pointee matches
+            // the dereference result type.
+            auto parameterLookup = checkedModule.semanticTypes().get(parameterType);
+            if (!parameterLookup.is<type::SemanticTypeLookup>() ||
+                !parameterLookup.get<type::SemanticTypeLookup>()
+                     .data()
+                     .is<type::semantic::RawPointerTypeData>() ||
+                parameterLookup.get<type::SemanticTypeLookup>()
+                        .data()
+                        .get<type::semantic::RawPointerTypeData>()
+                        .pointee != nodeType.value) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto operandSpan =
+                bound.parsedModule().spanFor(tree.node(shape.rawDereferenceOperand).range);
+            if (operandSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            rawDereferenceSource = HirParameterReferenceExpression{
+                HirNodeId(), entry.key().clone(), parameterType, HirValueCategory::Place,
+                ZC_ASSERT_NONNULL(operandSpan).clone()};
+          }
+        }
       } else if (!shape.isForLoopAccumulator && !shape.isNestedForLoopAccumulator &&
                  tree.node(shape.value).kind == ast::SyntaxKind::IdentExpr) {
         auto parameter = resolvedCallableParameter(bound.bindings(), shape.value);
@@ -10144,6 +10215,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::mv(parameterReference),
                                                       zc::mv(parameterIndex),
                                                       zc::mv(parameterReborrow),
+                                                      zc::mv(rawDereferenceSource),
                                                       zc::mv(localBorrow),
                                                       zc::none,
                                                       zc::mv(unsafeBlockSpan),
@@ -10355,6 +10427,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t uninitializedLocalReturnCount = 0;
   size_t localWriteCount = 0;
   size_t parameterReferenceCount = 0;
+  // Raw-pointer dereference returns (`return unsafe { *ptr };`). Each carries
+  // one extra node-type fact for the Deref operand (an IdentExpr parameter
+  // reference) beyond the per-function baseline, and no literal fact.
+  size_t rawDereferenceCount = 0;
   size_t parameterIndexCount = 0;
   size_t parameterReborrowCount = 0;
   size_t localAliasReborrowCount = 0;
@@ -11059,8 +11135,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         function.receiverSelfCall == zc::none && function.aggregate == zc::none &&
         !uninitializedLocal && !hasParameterReference && !hasParameterIndex &&
         !hasParameterReborrow && !hasLocalBorrow && !hasParameterFieldProjection &&
-        function.localWrites.size() == 0 && function.parameterFieldWrite == zc::none &&
-        function.statementReceiverCall == zc::none && !function.voidBody) {
+        function.rawDereferenceSource == zc::none && function.localWrites.size() == 0 &&
+        function.parameterFieldWrite == zc::none && function.statementReceiverCall == zc::none &&
+        !function.voidBody) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::MissingRequiredFact, module,
                                            registries, 1);
@@ -11253,6 +11330,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.parameterFieldProjection != zc::none) ++parameterFieldProjectionCount;
     if (function.parameterFieldWrite != zc::none) ++parameterFieldWriteCount;
     if (hasParameterReference) { ++parameterReferenceCount; }
+    if (function.rawDereferenceSource != zc::none) { ++rawDereferenceCount; }
     if (function.parameterFieldWriteParameter != zc::none) ++parameterReferenceCount;
     if (hasParameterIndex) ++parameterIndexCount;
     ZC_IF_SOME(reborrow, function.parameterReborrow) {
@@ -11373,19 +11451,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       parameterIndexCount * 2 + parameterReborrowCount * 2 + directCallArgumentCount +
       receiverCallArgumentCount + receiverCallFieldArgumentCount +
       receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
-      conditionalCount * 2 + equalityConditionalCount * 2 + conditionalBinaryArmCount * 2 -
-      matchEqualityReturnCount * 2 - matchGuardPhantomCount + matchReturnCount * 2 -
-      matchDefaultArmCount + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
-      sequentialBinaryCount * 2 + binaryWriteCount * 2 + nestedBinaryWriteOperandCount * 2 +
-      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
-      parameterFieldWriteCount * 4 + discardedStatementCallCount +
-      leadingLocalConditionalBindingCount + castCount + foldedStringLengthCount +
-      foldedStringConcatCount * 2 + foldedFloatCastCount + sequentialFoldedStringConcatCount * 2 +
-      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount +
-      postfixReturnCount - sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 +
-      forLoopReturnCount * 9 + forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
+      rawDereferenceCount + conditionalCount * 2 + equalityConditionalCount * 2 +
+      conditionalBinaryArmCount * 2 - matchEqualityReturnCount * 2 - matchGuardPhantomCount +
+      matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
+      unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
+      nestedBinaryWriteOperandCount * 2 + parameterFieldProjectionCount +
+      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
+      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
+      foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
+      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
+      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      incrementWriteCount * 3 - incrementReturnCount + postfixReturnCount -
+      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
@@ -11401,10 +11480,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           pending.size() + pendingFunctions.size() - voidFunctionCount + voidLetBodyCount -
           directCallCount - aggregateCount + deadEnumConstructionAggregateCount -
           receiverSelfCallCount - liveEraseReceiverCallCount - uninitializedLocalReturnCount -
-          parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
-          armParameterFieldProjectionCount - binaryWriteLocalOperandCount +
-          localAliasReborrowCount + localWriteCount + aggregateElementCount +
-          directCallLiteralArgumentCount + receiverCallArgumentCount -
+          parameterReferenceCount - rawDereferenceCount - parameterReborrowCount -
+          parameterFieldProjectionCount + armParameterFieldProjectionCount -
+          binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
+          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
           receiverCallFieldArgumentCount + conditionalLiteralArmCount +
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
@@ -12336,6 +12415,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
                      conditionals, loops, sourceNodes);
       lowerUnsafeScalarReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // B2: unsafe-block-wrapped raw-pointer dereference return. The value node
+    // is a parameter reference (the dereference source) wrapped in a trailing
+    // unsafe block; the MIR builder emits a [Dereference] projection on the
+    // parameter place.
+    if (value.rawDereferenceSource != zc::none && value.unsafeBlockSpan != zc::none &&
+        value.literal == zc::none && value.local == zc::none &&
+        value.parameterReference == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && borrowCarriersClear) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerRawDereferenceReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     // C: local-alias reborrow (one initialized local plus its parameter
