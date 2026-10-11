@@ -793,6 +793,26 @@ public:
   /// \return The lowered LIR module with one vtable and one global, or none.
   ZC_NODISCARD static zc::Maybe<Module> lowerExistentialReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one dyn-field aggregate construction return function to LIR.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validDynFieldAggregateReturnFunction` accepts: a `Function` with one
+  /// block and 2N+1 locals (N concrete/existential pairs plus the result),
+  /// where at least one field of the returned aggregate is erased from a
+  /// concrete type to an existential field type. For each erased field, the
+  /// concrete aggregate is promoted to a module-level private global constant
+  /// and the existential is materialized as a fat pointer aggregate
+  /// `{dataPtr, vtablePtr}`. The outer aggregate is constructed by inserting
+  /// each fat pointer (or constant, for non-erased fields) into the result
+  /// local. A `ReturnLocal` returns it. Every shape outside this slice returns
+  /// `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the element types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerDynFieldAggregateReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

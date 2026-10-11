@@ -713,7 +713,14 @@ bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializ
       return false;
     }
     const ast::NodeId value(tree.node(property).payload.words[ast::kObjectPropertyValueWord]);
-    if (!tree.contains(value) || !isScalarLiteral(tree.node(value).kind)) return false;
+    if (!tree.contains(value)) return false;
+    // A field value may be a scalar literal or a nested struct literal whose
+    // own fields are all admitted (recursive). This admits per-field
+    // concrete-to-existential erasure shapes such as
+    // `Zoo { animal: Dog { tag: 0 } }`.
+    if (!isScalarLiteral(tree.node(value).kind) && !isAdmittedAggregateInitializer(tree, value)) {
+      return false;
+    }
   }
   return true;
 }

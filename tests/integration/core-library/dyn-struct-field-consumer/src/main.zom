@@ -1,0 +1,22 @@
+// Dyn struct field fixture: a struct literal field is erased from a concrete
+// type to an existential field type. The concrete inner aggregate is promoted
+// to a module-level global constant so the returned data pointer outlives the
+// call, and the fat pointer {dataPtr, vtablePtr} is built and inserted into
+// the outer aggregate through the full pipeline.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {}
+
+struct Zoo {
+  animal: dyn Animal,
+}
+
+fn makeZoo() -> Zoo {
+  return Zoo { animal: Dog { tag: 0 } };
+}

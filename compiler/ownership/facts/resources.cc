@@ -591,7 +591,7 @@ zc::Maybe<zc::Vector<ResourceFunction>> derive(const VerifiedMovePaths& movePath
         break;
       }
     }
-    if (overlayFunction == zc::none) return zc::none;
+    if (overlayFunction == zc::none) { return zc::none; }
     ZC_IF_SOME(value, overlayFunction) {
       zc::Vector<ResourceFact> facts;
       zc::Vector<DropTransfer> transfers;
@@ -616,9 +616,11 @@ zc::Maybe<zc::Vector<ResourceFunction>> derive(const VerifiedMovePaths& movePath
           zc::Vector<DropPlanComponent> planComponents;
           zc::Maybe<DropResourceSubject> rootSubject;
           for (const auto& component : plan.components) {
-            if (!containsMovePath(movePaths, mirFunction.owner, component.place)) return zc::none;
+            if (!containsMovePath(movePaths, mirFunction.owner, component.place)) {
+              return zc::none;
+            }
             auto componentRequirement = requirement(component, value);
-            if (componentRequirement == zc::none) return zc::none;
+            if (componentRequirement == zc::none) { return zc::none; }
             ZC_IF_SOME(expectedRequirement, componentRequirement) {
               auto introduction = plan.initialization;
               auto origin = MovePathKey{mirFunction.owner, component.place.clone()};
@@ -708,11 +710,20 @@ zc::Maybe<zc::Vector<ResourceFunction>> derive(const VerifiedMovePaths& movePath
           }
           ZC_IF_SOME(subject, rootSubject) {
             dropPlans.add(DropPlan{zc::mv(subject), DropPlanMode::Closed, zc::mv(planComponents)});
+          } else if (planComponents.size() > 0) {
+            // The projection fold omitted the root (a Linear- root whose
+            // children carry the drop obligations). Build a subject from the
+            // plan's root so the children's facts receive a discharge plan.
+            dropPlans.add(
+                DropPlan{DropResourceSubject{plan.initialization,
+                                             MovePathKey{mirFunction.owner, plan.root.clone()},
+                                             plan.root.resultType()},
+                         DropPlanMode::Closed, zc::mv(planComponents)});
           }
         }
       }
       auto linear = deriveLinear(mirFunction, facts, transfers, castRoutes);
-      if (linear == zc::none) return zc::none;
+      if (linear == zc::none) { return zc::none; }
       ZC_IF_SOME(linearValue, linear) {
         // The current MIR subset has no raw-pointer roots (no reference-to-raw
         // casts, no raw-typed parameters, no static-address roots, and no

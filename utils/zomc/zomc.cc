@@ -1492,6 +1492,9 @@ private:
           lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
         }
         if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerDynFieldAggregateReturn(fn, types);
+        }
+        if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerExistentialReturn(fn, types);
         }
         if (lowered == zc::none) {

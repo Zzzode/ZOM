@@ -9592,4 +9592,254 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialReturn(
   return Module(zc::mv(functions), zc::mv(vtables), zc::mv(globals));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerDynFieldAggregateReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the verified dyn-field aggregate return shape. This mirrors the
+  // structural facts mir::validDynFieldAggregateReturnFunction checked; we
+  // re-check them here so lowering is total over its declared input and
+  // fail-closed otherwise.
+  if (function.kind != mir::MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.sourceScopes.size() != 1 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+  // Locals: 2 per erased field (concrete + existential) plus the result.
+  if (function.locals.size() < 3 || (function.locals.size() - 1) % 2 != 0) { return zc::none; }
+  const size_t erasedCount = (function.locals.size() - 1) / 2;
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != 4 * erasedCount + 2) { return zc::none; }
+
+  // Validate and extract each erased field's concrete aggregate.
+  struct ErasedFieldInfo {
+    identity::SemanticTypeId concreteType;
+    identity::SemanticTypeId existentialType;
+    identity::DefId concreteDefinition;
+    zc::Vector<ValueType> concreteFieldCarriers;
+    zc::Vector<Operand> concreteFieldOperands;
+  };
+  zc::Vector<ErasedFieldInfo> erasedFields;
+
+  size_t localIdx = 0;
+  size_t stmtIdx = 0;
+  for (size_t i = 0; i < erasedCount; ++i) {
+    const auto& concreteLocal = function.locals[localIdx];
+    const auto& existentialLocal = function.locals[localIdx + 1];
+    if (concreteLocal.kind != mir::MirLocalKind::Temporary ||
+        existentialLocal.kind != mir::MirLocalKind::Temporary) {
+      return zc::none;
+    }
+    // Statement: StorageLive(concreteLocal).
+    if (block.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+        block.statements[stmtIdx].storageLocal() != concreteLocal.id) {
+      return zc::none;
+    }
+    // Statement: Assign(concreteLocal = NominalAggregate(...)).
+    const auto& concreteAssign = block.statements[stmtIdx + 1].assignmentValue();
+    if (block.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+        concreteAssign.destination.local() != concreteLocal.id ||
+        concreteAssign.destination.projections().size() != 0 ||
+        concreteAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+      return zc::none;
+    }
+    const auto& innerAggregate = concreteAssign.value.nominalAggregateValue();
+    if (innerAggregate.type != concreteLocal.type || innerAggregate.elements.size() == 0) {
+      return zc::none;
+    }
+    // Build the concrete aggregate carrier and constant operands.
+    ErasedFieldInfo info;
+    info.concreteType = concreteLocal.type;
+    info.existentialType = existentialLocal.type;
+    info.concreteDefinition = innerAggregate.definition;
+    zc::Vector<AggregateField> aggFields;
+    for (size_t fi = 0; fi < innerAggregate.elements.size(); ++fi) {
+      const auto& elem = innerAggregate.elements[fi];
+      if (elem.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+      auto operand = lirOperandFor(elem.operand, carrierValue);
+      if (operand == zc::none) { return zc::none; }
+      aggFields.add(AggregateField(zc::str("field", fi), carrierValue));
+      info.concreteFieldCarriers.add(carrierValue);
+      info.concreteFieldOperands.add(zc::mv(ZC_REQUIRE_NONNULL(operand)));
+    }
+    // Statement: StorageLive(existentialLocal).
+    if (block.statements[stmtIdx + 2].kind() != mir::MirStatementKind::StorageLive ||
+        block.statements[stmtIdx + 2].storageLocal() != existentialLocal.id) {
+      return zc::none;
+    }
+    // Statement: Assign(existentialLocal = Erase(Move(concreteLocal), ...)).
+    const auto& eraseAssign = block.statements[stmtIdx + 3].assignmentValue();
+    if (block.statements[stmtIdx + 3].kind() != mir::MirStatementKind::Assign ||
+        eraseAssign.destination.local() != existentialLocal.id ||
+        eraseAssign.destination.projections().size() != 0 ||
+        eraseAssign.value.kind() != mir::MirRvalueKind::Erase) {
+      return zc::none;
+    }
+    const auto& erase = eraseAssign.value.eraseValue();
+    if (erase.sourceType != concreteLocal.type || erase.targetType != existentialLocal.type ||
+        erase.source.kind() != mir::MirOperandKind::Move ||
+        erase.source.place().local() != concreteLocal.id ||
+        erase.source.place().projections().size() != 0) {
+      return zc::none;
+    }
+    erasedFields.add(zc::mv(info));
+    localIdx += 2;
+    stmtIdx += 4;
+  }
+
+  // Validate result local and outer aggregate.
+  const auto& resultLocal = function.locals[localIdx];
+  if (resultLocal.kind != mir::MirLocalKind::Temporary) { return zc::none; }
+  if (block.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[stmtIdx].storageLocal() != resultLocal.id) {
+    return zc::none;
+  }
+  const auto& outerAssign = block.statements[stmtIdx + 1].assignmentValue();
+  if (block.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+      outerAssign.destination.local() != resultLocal.id ||
+      outerAssign.destination.projections().size() != 0 ||
+      outerAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& outerAggregate = outerAssign.value.nominalAggregateValue();
+  if (outerAggregate.type != resultLocal.type) { return zc::none; }
+  // Terminator: return the result local.
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return || returnValue == zc::none) {
+    return zc::none;
+  }
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Build the existential carrier {dataPtr, vtablePtr}.
+  const auto pointerCarrier = ValueType::pointer(0);
+  zc::Vector<AggregateField> existentialFields;
+  existentialFields.add(AggregateField(zc::str("data"), pointerCarrier));
+  existentialFields.add(AggregateField(zc::str("vtable"), pointerCarrier));
+  auto existentialCarrier = ValueType::aggregate(zc::mv(existentialFields));
+  if (existentialCarrier == zc::none) { return zc::none; }
+  const auto existentialCarrierValue = ZC_REQUIRE_NONNULL(existentialCarrier);
+
+  // Build the outer aggregate carrier: one field per outer element. Erased
+  // fields use the existential carrier; non-erased fields use their integer
+  // carrier.
+  zc::Vector<AggregateField> outerFields;
+  // Track which outer elements are erased and their erased-field index.
+  zc::Vector<size_t> erasedElementIndices;
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    const auto& elem = outerAggregate.elements[i];
+    if (elem.operand.kind() == mir::MirOperandKind::Move) {
+      // Erased element: find the matching erased field by local ordinal.
+      bool found = false;
+      for (size_t j = 0; j < erasedFields.size(); ++j) {
+        if (elem.operand.place().local().ordinal() == 2 + 2 * j) {
+          outerFields.add(AggregateField(zc::str("field", i), existentialCarrierValue));
+          erasedElementIndices.add(j);
+          found = true;
+          break;
+        }
+      }
+      if (!found) { return zc::none; }
+    } else if (elem.operand.kind() == mir::MirOperandKind::Constant) {
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      outerFields.add(AggregateField(zc::str("field", i), ZC_REQUIRE_NONNULL(carrier)));
+      erasedElementIndices.add(SIZE_MAX);
+    } else {
+      return zc::none;
+    }
+  }
+  auto outerCarrier = ValueType::aggregate(zc::mv(outerFields));
+  if (outerCarrier == zc::none) { return zc::none; }
+  const auto outerCarrierValue = ZC_REQUIRE_NONNULL(outerCarrier);
+
+  // LIR locals: ordinal 1 = result, then 4 per erased field.
+  constexpr uint32_t resultOrdinal = 1;
+  zc::Vector<Local> locals;
+  locals.add(Local(resultOrdinal, outerCarrierValue));
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+    locals.add(Local(base, pointerCarrier));               // dataPtr
+    locals.add(Local(base + 1, pointerCarrier));           // vtablePtr
+    locals.add(Local(base + 2, existentialCarrierValue));  // existentialTmp
+    locals.add(Local(base + 3, existentialCarrierValue));  // existential
+  }
+
+  // LIR statements: build fat pointers for each erased field, then insert
+  // into the outer aggregate.
+  zc::Vector<Statement> statements;
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+    const uint32_t dataPtrOrdinal = base;
+    const uint32_t vtablePtrOrdinal = base + 1;
+    const uint32_t existentialTmpOrdinal = base + 2;
+    const uint32_t existentialOrdinal = base + 3;
+    statements.add(
+        Statement::globalAddr(dataPtrOrdinal, /*globalOrdinal=*/static_cast<uint32_t>(i + 1)));
+    statements.add(
+        Statement::vtableAddr(vtablePtrOrdinal, /*vtableOrdinal=*/static_cast<uint32_t>(i + 1)));
+    statements.add(Statement::insertField(existentialTmpOrdinal, existentialOrdinal,
+                                          /*fieldIndex=*/0, Operand::localUse(dataPtrOrdinal)));
+    statements.add(Statement::insertField(existentialOrdinal, existentialTmpOrdinal,
+                                          /*fieldIndex=*/1, Operand::localUse(vtablePtrOrdinal)));
+  }
+  // Insert each outer element into the result aggregate.
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    const auto& elem = outerAggregate.elements[i];
+    if (elem.operand.kind() == mir::MirOperandKind::Move) {
+      const size_t erasedIdx = erasedElementIndices[i];
+      const uint32_t existentialOrdinal = 2 + 4 * static_cast<uint32_t>(erasedIdx) + 3;
+      statements.add(Statement::insertField(resultOrdinal, resultOrdinal, static_cast<uint32_t>(i),
+                                            Operand::localUse(existentialOrdinal)));
+    } else {
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      auto operand = lirOperandFor(elem.operand, ZC_REQUIRE_NONNULL(carrier));
+      if (operand == zc::none) { return zc::none; }
+      statements.add(Statement::insertField(resultOrdinal, resultOrdinal, static_cast<uint32_t>(i),
+                                            zc::mv(ZC_REQUIRE_NONNULL(operand))));
+    }
+  }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(resultOrdinal)));
+
+  zc::Vector<Function> functions;
+  zc::Vector<Local> noParameters;
+  functions.add(Function(function.owner, zc::heapString("zom.dyn_field_aggregate_return"),
+                         outerCarrierValue, zc::mv(noParameters), zc::mv(locals), zc::mv(blocks)));
+
+  // Vtables and globals: one per erased field.
+  zc::Vector<Vtable> vtables;
+  zc::Vector<GlobalData> globals;
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    auto& ef = erasedFields[i];
+    zc::Vector<uint32_t> functionIndices;
+    vtables.add(Vtable(/*ordinal=*/static_cast<uint32_t>(i + 1), identity::DefId{},
+                       identity::ImplId{}, zc::mv(functionIndices)));
+    // Build the concrete aggregate constant.
+    zc::Vector<AggregateField> aggFields;
+    for (size_t fi = 0; fi < ef.concreteFieldCarriers.size(); ++fi) {
+      aggFields.add(AggregateField(zc::str("field", fi), ef.concreteFieldCarriers[fi]));
+    }
+    auto aggCarrier = ValueType::aggregate(zc::mv(aggFields));
+    if (aggCarrier == zc::none) { return zc::none; }
+    auto aggConstant =
+        AggregateConstant::from(ZC_REQUIRE_NONNULL(aggCarrier), zc::mv(ef.concreteFieldOperands));
+    if (aggConstant == zc::none) { return zc::none; }
+    globals.add(GlobalData(/*ordinal=*/static_cast<uint32_t>(i + 1),
+                           zc::mv(ZC_REQUIRE_NONNULL(aggConstant))));
+  }
+
+  return Module(zc::mv(functions), zc::mv(vtables), zc::mv(globals));
+}
+
 }  // namespace zomlang::compiler::lir

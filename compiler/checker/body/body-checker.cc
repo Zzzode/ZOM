@@ -68,6 +68,23 @@ struct BodyProductionSite final {
   BodyProductionKind production;
 };
 
+bool isScalarLiteralProduction(BodyProductionKind production) noexcept {
+  switch (production) {
+    case BodyProductionKind::NullLiteral:
+    case BodyProductionKind::BoolLiteral:
+    case BodyProductionKind::IntLiteral:
+    case BodyProductionKind::FloatLiteral:
+    case BodyProductionKind::BigIntLiteral:
+    case BodyProductionKind::StringLiteral:
+    case BodyProductionKind::UnitLiteral:
+    case BodyProductionKind::CharacterLiteral:
+    case BodyProductionKind::NoSubstitutionTemplateLiteral:
+      return true;
+    default:
+      return false;
+  }
+}
+
 checked::CheckedNodeKey cloneNodeKey(const checked::CheckedNodeKey& key) {
   return checked::CheckedNodeKey{key.syntaxKind, key.schemaPreorder, key.sourceSpan.clone()};
 }
@@ -1875,10 +1892,23 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
                                 ZC_ASSERT_NONNULL(receiver).receiverMutable};
 }
 
+/// \brief One per-field concrete-to-existential erasure recorded inside a
+/// struct literal. The field value's concrete type is erased to the declared
+/// existential field type at MIR level via an Erase rvalue; the HIR builder
+/// consumes the endpoints to build a HirErasureRecord for the MIR builder.
+struct StructLiteralFieldErasure final {
+  ast::NodeId valueNode;
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId targetType;
+  identity::ImplId impl;
+  identity::DefId interface;
+};
+
 struct StructLiteralShape final {
   identity::DefId definition;
   identity::SemanticTypeId type;
   zc::Vector<checked::AggregateElementFact> elements;
+  zc::Vector<StructLiteralFieldErasure> fieldErasures;
 };
 
 /// \brief A user-level error in a struct literal, classified so the production
@@ -1967,6 +1997,7 @@ StructLiteralBuildResult buildStructLiteral(
   };
 
   zc::Vector<checked::AggregateElementFact> elements(properties.size);
+  zc::Vector<StructLiteralFieldErasure> fieldErasures;
   zc::Vector<identity::DefId> initializedFields;
   for (uint32_t index = 0; index < properties.size; ++index) {
     const auto property = tree.list(properties)[index];
@@ -2005,22 +2036,37 @@ StructLiteralBuildResult buildStructLiteral(
           }
         }
         if (sourceType.value != member.type) {
-          // An integer literal assigned to a non-i32 integer field is a valid
-          // source relation the numeric-literal unification slice does not
-          // implement yet; drain it as ZOM4099 like the scalar positions. Every
-          // other unequal pair is a genuine type error (ZOM4009).
-          const bool integerLiteralWidening =
-              tree.node(value).kind == ast::SyntaxKind::IntLiteral &&
-              integerPrimitiveKind(input.semanticTypes, member.type) != zc::none &&
-              integerPrimitiveKind(input.semanticTypes, sourceType.value) != zc::none;
-          if (integerLiteralWidening) {
-            return StructLiteralBuildResult(
-                StructLiteralRejection{StructLiteralRejection::Kind::UnsupportedIntegerField,
-                                       zc::none, zc::none, sourceType.value, member.type});
+          // A concrete value assigned to an existential field is a
+          // concrete-to-dyn erasure, not a mismatch, when a unique applicable
+          // impl exists. The AggregateElementFact.adjustment stays none here;
+          // it is patched after the witness store freezes.
+          bool erased = false;
+          auto existentialRef = erasableExistentialType(input.semanticTypes, member.type);
+          ZC_IF_SOME(existential, existentialRef) {
+            ZC_IF_SOME(impl, selectDynEraseImpl(input, sourceType.value, existential)) {
+              fieldErasures.add(StructLiteralFieldErasure{value, sourceType.value, member.type,
+                                                          impl, existential.principal.definition});
+              erased = true;
+            }
           }
-          return StructLiteralBuildResult(
-              StructLiteralRejection{StructLiteralRejection::Kind::TypeMismatch, zc::none, zc::none,
-                                     sourceType.value, member.type});
+          if (!erased) {
+            // An integer literal assigned to a non-i32 integer field is a valid
+            // source relation the numeric-literal unification slice does not
+            // implement yet; drain it as ZOM4099 like the scalar positions. Every
+            // other unequal pair is a genuine type error (ZOM4009).
+            const bool integerLiteralWidening =
+                tree.node(value).kind == ast::SyntaxKind::IntLiteral &&
+                integerPrimitiveKind(input.semanticTypes, member.type) != zc::none &&
+                integerPrimitiveKind(input.semanticTypes, sourceType.value) != zc::none;
+            if (integerLiteralWidening) {
+              return StructLiteralBuildResult(
+                  StructLiteralRejection{StructLiteralRejection::Kind::UnsupportedIntegerField,
+                                         zc::none, zc::none, sourceType.value, member.type});
+            }
+            return StructLiteralBuildResult(
+                StructLiteralRejection{StructLiteralRejection::Kind::TypeMismatch, zc::none,
+                                       zc::none, sourceType.value, member.type});
+          }
         }
         initializedFields.add(member.definition);
         zc::Maybe<identity::DefId> fieldDefinition = member.definition;
@@ -2044,7 +2090,7 @@ StructLiteralBuildResult buildStructLiteral(
   }
   ZC_IF_SOME(value, type) {
     return StructLiteralBuildResult(
-        StructLiteralShape{nominal.definition, value, zc::mv(elements)});
+        StructLiteralShape{nominal.definition, value, zc::mv(elements), zc::mv(fieldErasures)});
   }
   ZC_UNREACHABLE
 }
@@ -6667,6 +6713,168 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       }
     }
   }
+  // Pre-pass: produce NodeType and Aggregate facts on StructLiteral sites in
+  // reverse pre-order so a nested struct literal's type is available when its
+  // enclosing struct literal is built. The main stage loop processes sites in
+  // pre-order, which would visit the outer literal before the inner one and
+  // fail the value-type lookup. Reverse order guarantees inner-first.
+  //
+  // Scalar literal types must be in nodeTypes before buildStructLiteral runs,
+  // so produce them here first. The main stage loop skips re-emission for
+  // scalar literals whose type is already present.
+  {
+    for (const auto& site : input.requirements.impl->productionSiteValues) {
+      if (!isScalarLiteralProduction(site.production)) continue;
+      if (factEntry(nodeTypes.asPtr(), site.node) != zc::none) continue;
+      auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
+          context, module, input.boundModule.tree(), site.node, site.key,
+          input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
+          expectedLiteralType(input, site.node, nodeTypes.asPtr())});
+      if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
+        return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
+      }
+      if (emitted.is<checked::CheckedFactsSourceRejected>()) {
+        return attachRecoveryLedger(zc::mv(emitted).get<checked::CheckedFactsSourceRejected>(),
+                                    input, factStoreBrands);
+      }
+      auto facts = zc::mv(emitted).get<scalar_literal::EmittedFacts>();
+      nodeTypes.add(zc::mv(facts.nodeType));
+      literals.add(zc::mv(facts.literal));
+    }
+    zc::Vector<const BodyProductionSite*> structLiteralSites;
+    for (const auto& site : input.requirements.impl->productionSiteValues) {
+      if (site.production == BodyProductionKind::StructLiteral) { structLiteralSites.add(&site); }
+    }
+    for (size_t idx = structLiteralSites.size(); idx > 0; --idx) {
+      const auto& site = *structLiteralSites[idx - 1];
+      auto built = buildStructLiteral(input, site.node, nodeTypes.asPtr());
+      if (built == zc::none) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, zc::none, site.node,
+                               site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
+      }
+      ZC_IF_SOME(result, built) {
+        if (result.is<StructLiteralRejection>()) {
+          const auto& rejection = result.get<StructLiteralRejection>();
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              switch (rejection.kind) {
+                case StructLiteralRejection::Kind::UnknownField:
+                case StructLiteralRejection::Kind::DuplicateField: {
+                  ZC_IF_SOME(name, rejection.name) {
+                    zc::Vector<checked::CheckerDisplayArgument> arguments;
+                    arguments.add(checked::CheckerDisplayArgument(
+                        checked::IdentifierDisplayArg{name.clone()}));
+                    const auto diagnostic =
+                        rejection.kind == StructLiteralRejection::Kind::UnknownField
+                            ? checked::CheckerErrorId::UnknownStructField()
+                            : checked::CheckerErrorId::DuplicateStructField();
+                    return attachRecoveryLedger(
+                        rejectAggregateLiteralField(site, ownerOrdinal, diagnostic,
+                                                    zc::mv(arguments)),
+                        input, factStoreBrands);
+                  }
+                  break;
+                }
+                case StructLiteralRejection::Kind::MissingField: {
+                  ZC_IF_SOME(field, rejection.field) {
+                    zc::Vector<checked::CheckerDisplayArgument> arguments;
+                    arguments.add(
+                        checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{field}));
+                    return attachRecoveryLedger(
+                        rejectAggregateLiteralField(site, ownerOrdinal,
+                                                    checked::CheckerErrorId::MissingStructField(),
+                                                    zc::mv(arguments)),
+                        input, factStoreBrands);
+                  }
+                  break;
+                }
+                case StructLiteralRejection::Kind::UnsupportedIntegerField:
+                  return attachRecoveryLedger(
+                      rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
+                      factStoreBrands);
+                case StructLiteralRejection::Kind::TypeMismatch:
+                  ZC_IF_SOME(expected, rejection.expectedType) {
+                    ZC_IF_SOME(actual, rejection.actualType) {
+                      return attachRecoveryLedger(
+                          rejectTypeMismatch(site, ownerOrdinal, expected, actual), input,
+                          factStoreBrands);
+                    }
+                  }
+                  break;
+              }
+            }
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(),
+                                 factPath(CheckedFactGroup::Aggregate));
+        }
+        auto& value = result.get<StructLiteralShape>();
+        // Per-field concrete-to-existential erasures participate in witness
+        // store construction; their AggregateElementFact.adjustment is
+        // patched after the witness store freezes.
+        for (auto& fe : value.fieldErasures) {
+          zc::Vector<checked::AssociatedTypeBindingData> bindings;
+          dynErases.add(SelectedDynErase{fe.valueNode, fe.sourceType, fe.targetType, fe.interface,
+                                         fe.impl, zc::mv(bindings),
+                                         checked::CoercionSite::AggregateField});
+        }
+        aggregates.add(checked::AggregateFactMap::Entry{
+            site.node,
+            checked::CheckedAggregateFact{
+                site.node, checked::AggregateKind(checked::NominalAggregate{value.definition}),
+                value.type, zc::mv(value.elements), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+        // A concrete struct literal assigned to an annotated dyn existential
+        // is a concrete-to-dyn coercion, not a mismatch, when a unique
+        // applicable impl exists.
+        ZC_IF_SOME(declared, ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                               input.semanticTypes, site.node)) {
+          if (declared != value.type) {
+            auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
+            bool erased = false;
+            ZC_IF_SOME(existential, existentialRef) {
+              ZC_IF_SOME(impl, selectDynEraseImpl(input, value.type, existential)) {
+                zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                for (const auto& binding : existential.associatedBindings) {
+                  bindings.add(
+                      checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                }
+                dynErases.add(SelectedDynErase{
+                    site.node, value.type, declared, existential.principal.definition, impl,
+                    zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
+                erased = true;
+              }
+            }
+            if (!erased) {
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  if (existentialRef != zc::none) {
+                    const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
+                    if (hasImplForErasureOutsideSlice(input, value.type, existentialValue)) {
+                      return attachRecoveryLedger(
+                          rejectGenericErasureUnsupported(site, ownerOrdinal, value.type,
+                                                          existentialValue.principal.definition),
+                          input, factStoreBrands);
+                    }
+                    return attachRecoveryLedger(
+                        rejectTraitNotImplemented(site, ownerOrdinal, value.type,
+                                                  existentialValue.principal.definition),
+                        input, factStoreBrands);
+                  }
+                  return attachRecoveryLedger(
+                      rejectTypeMismatch(site, ownerOrdinal, declared, value.type), input,
+                      factStoreBrands);
+                }
+              }
+            }
+          }
+        }
+        nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.type, zc::Array<uint8_t>()});
+      }
+    }
+  }
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
       if (site.production == BodyProductionKind::ErrorOperator ||
@@ -8284,121 +8492,138 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         ZC_IF_SOME(value, shape) { producedType = value.type; }
       } else if (site.production == BodyProductionKind::StructLiteral) {
-        auto built = buildStructLiteral(input, site.node, nodeTypes.asPtr());
-        if (built == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(),
-                                 factPath(CheckedFactGroup::Aggregate));
-        }
-        ZC_IF_SOME(result, built) {
-          if (result.is<StructLiteralRejection>()) {
-            const auto& rejection = result.get<StructLiteralRejection>();
-            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
-              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                switch (rejection.kind) {
-                  case StructLiteralRejection::Kind::UnknownField:
-                  case StructLiteralRejection::Kind::DuplicateField: {
-                    ZC_IF_SOME(name, rejection.name) {
-                      zc::Vector<checked::CheckerDisplayArgument> arguments;
-                      arguments.add(checked::CheckerDisplayArgument(
-                          checked::IdentifierDisplayArg{name.clone()}));
-                      const auto diagnostic =
-                          rejection.kind == StructLiteralRejection::Kind::UnknownField
-                              ? checked::CheckerErrorId::UnknownStructField()
-                              : checked::CheckerErrorId::DuplicateStructField();
-                      return attachRecoveryLedger(
-                          rejectAggregateLiteralField(site, ownerOrdinal, diagnostic,
-                                                      zc::mv(arguments)),
-                          input, factStoreBrands);
-                    }
-                    break;
-                  }
-                  case StructLiteralRejection::Kind::MissingField: {
-                    ZC_IF_SOME(field, rejection.field) {
-                      zc::Vector<checked::CheckerDisplayArgument> arguments;
-                      arguments.add(
-                          checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{field}));
-                      return attachRecoveryLedger(
-                          rejectAggregateLiteralField(site, ownerOrdinal,
-                                                      checked::CheckerErrorId::MissingStructField(),
-                                                      zc::mv(arguments)),
-                          input, factStoreBrands);
-                    }
-                    break;
-                  }
-                  case StructLiteralRejection::Kind::UnsupportedIntegerField:
-                    return attachRecoveryLedger(
-                        rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
-                        factStoreBrands);
-                  case StructLiteralRejection::Kind::TypeMismatch:
-                    ZC_IF_SOME(expected, rejection.expectedType) {
-                      ZC_IF_SOME(actual, rejection.actualType) {
-                        return attachRecoveryLedger(
-                            rejectTypeMismatch(site, ownerOrdinal, expected, actual), input,
-                            factStoreBrands);
-                      }
-                    }
-                    break;
-                }
-              }
-            }
+        // Struct literals are processed in the reverse-order pre-pass above so
+        // nested literals have their types available. When the pre-pass already
+        // produced the type, reuse it and skip re-building the aggregate facts.
+        // The return-value erasure check below still runs in the main loop.
+        ZC_IF_SOME(existing, factEntry(nodeTypes.asPtr(), site.node)) {
+          producedType = existing.value;
+        } else {
+          auto built = buildStructLiteral(input, site.node, nodeTypes.asPtr());
+          if (built == zc::none) {
             return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,
                                    site.key.sourceSpan.clone(),
                                    factPath(CheckedFactGroup::Aggregate));
           }
-          auto& value = result.get<StructLiteralShape>();
-          producedType = value.type;
-          aggregates.add(checked::AggregateFactMap::Entry{
-              site.node,
-              checked::CheckedAggregateFact{
-                  site.node, checked::AggregateKind(checked::NominalAggregate{value.definition}),
-                  value.type, zc::mv(value.elements), site.key.sourceSpan.clone()},
-              zc::Array<uint8_t>()});
-          // A concrete struct literal assigned to an annotated dyn existential
-          // is a concrete-to-dyn coercion, not a mismatch, when a unique
-          // applicable impl exists. Mirrors the identifier-reference erasure
-          // decision so `let a: dyn Animal = Dog { ... }` records the erase.
-          ZC_IF_SOME(produced, producedType) {
-            ZC_IF_SOME(declared,
-                       ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
-                                                         input.semanticTypes, site.node)) {
-              if (declared != produced) {
-                auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
-                bool erased = false;
-                ZC_IF_SOME(existential, existentialRef) {
-                  ZC_IF_SOME(impl, selectDynEraseImpl(input, produced, existential)) {
-                    zc::Vector<checked::AssociatedTypeBindingData> bindings;
-                    for (const auto& binding : existential.associatedBindings) {
-                      bindings.add(
-                          checked::AssociatedTypeBindingData{binding.associated, binding.type});
-                    }
-                    dynErases.add(SelectedDynErase{
-                        site.node, produced, declared, existential.principal.definition, impl,
-                        zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
-                    erased = true;
-                  }
-                }
-                if (!erased) {
-                  ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
-                    ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                      if (existentialRef != zc::none) {
-                        const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
-                        if (hasImplForErasureOutsideSlice(input, produced, existentialValue)) {
-                          return attachRecoveryLedger(rejectGenericErasureUnsupported(
-                                                          site, ownerOrdinal, produced,
-                                                          existentialValue.principal.definition),
-                                                      input, factStoreBrands);
-                        }
+          ZC_IF_SOME(result, built) {
+            if (result.is<StructLiteralRejection>()) {
+              const auto& rejection = result.get<StructLiteralRejection>();
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  switch (rejection.kind) {
+                    case StructLiteralRejection::Kind::UnknownField:
+                    case StructLiteralRejection::Kind::DuplicateField: {
+                      ZC_IF_SOME(name, rejection.name) {
+                        zc::Vector<checked::CheckerDisplayArgument> arguments;
+                        arguments.add(checked::CheckerDisplayArgument(
+                            checked::IdentifierDisplayArg{name.clone()}));
+                        const auto diagnostic =
+                            rejection.kind == StructLiteralRejection::Kind::UnknownField
+                                ? checked::CheckerErrorId::UnknownStructField()
+                                : checked::CheckerErrorId::DuplicateStructField();
                         return attachRecoveryLedger(
-                            rejectTraitNotImplemented(site, ownerOrdinal, produced,
-                                                      existentialValue.principal.definition),
+                            rejectAggregateLiteralField(site, ownerOrdinal, diagnostic,
+                                                        zc::mv(arguments)),
                             input, factStoreBrands);
                       }
+                      break;
+                    }
+                    case StructLiteralRejection::Kind::MissingField: {
+                      ZC_IF_SOME(field, rejection.field) {
+                        zc::Vector<checked::CheckerDisplayArgument> arguments;
+                        arguments.add(
+                            checked::CheckerDisplayArgument(checked::DefinitionDisplayArg{field}));
+                        return attachRecoveryLedger(
+                            rejectAggregateLiteralField(
+                                site, ownerOrdinal, checked::CheckerErrorId::MissingStructField(),
+                                zc::mv(arguments)),
+                            input, factStoreBrands);
+                      }
+                      break;
+                    }
+                    case StructLiteralRejection::Kind::UnsupportedIntegerField:
                       return attachRecoveryLedger(
-                          rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                          rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
                           factStoreBrands);
+                    case StructLiteralRejection::Kind::TypeMismatch:
+                      ZC_IF_SOME(expected, rejection.expectedType) {
+                        ZC_IF_SOME(actual, rejection.actualType) {
+                          return attachRecoveryLedger(
+                              rejectTypeMismatch(site, ownerOrdinal, expected, actual), input,
+                              factStoreBrands);
+                        }
+                      }
+                      break;
+                  }
+                }
+              }
+              return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(),
+                                     factPath(CheckedFactGroup::Aggregate));
+            }
+            auto& value = result.get<StructLiteralShape>();
+            producedType = value.type;
+            // Per-field concrete-to-existential erasures participate in witness
+            // store construction; their AggregateElementFact.adjustment is
+            // patched after the witness store freezes.
+            for (auto& fe : value.fieldErasures) {
+              zc::Vector<checked::AssociatedTypeBindingData> bindings;
+              dynErases.add(SelectedDynErase{fe.valueNode, fe.sourceType, fe.targetType,
+                                             fe.interface, fe.impl, zc::mv(bindings),
+                                             checked::CoercionSite::AggregateField});
+            }
+            aggregates.add(checked::AggregateFactMap::Entry{
+                site.node,
+                checked::CheckedAggregateFact{
+                    site.node, checked::AggregateKind(checked::NominalAggregate{value.definition}),
+                    value.type, zc::mv(value.elements), site.key.sourceSpan.clone()},
+                zc::Array<uint8_t>()});
+            // A concrete struct literal assigned to an annotated dyn existential
+            // is a concrete-to-dyn coercion, not a mismatch, when a unique
+            // applicable impl exists. Mirrors the identifier-reference erasure
+            // decision so `let a: dyn Animal = Dog { ... }` records the erase.
+            ZC_IF_SOME(produced, producedType) {
+              ZC_IF_SOME(declared,
+                         ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                           input.semanticTypes, site.node)) {
+                if (declared != produced) {
+                  auto existentialRef = erasableExistentialType(input.semanticTypes, declared);
+                  bool erased = false;
+                  ZC_IF_SOME(existential, existentialRef) {
+                    ZC_IF_SOME(impl, selectDynEraseImpl(input, produced, existential)) {
+                      zc::Vector<checked::AssociatedTypeBindingData> bindings;
+                      for (const auto& binding : existential.associatedBindings) {
+                        bindings.add(
+                            checked::AssociatedTypeBindingData{binding.associated, binding.type});
+                      }
+                      dynErases.add(SelectedDynErase{
+                          site.node, produced, declared, existential.principal.definition, impl,
+                          zc::mv(bindings), checked::CoercionSite::AnnotatedInitializer});
+                      erased = true;
+                    }
+                  }
+                  if (!erased) {
+                    ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                      ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                        if (existentialRef != zc::none) {
+                          const auto& existentialValue = ZC_ASSERT_NONNULL(existentialRef);
+                          if (hasImplForErasureOutsideSlice(input, produced, existentialValue)) {
+                            return attachRecoveryLedger(rejectGenericErasureUnsupported(
+                                                            site, ownerOrdinal, produced,
+                                                            existentialValue.principal.definition),
+                                                        input, factStoreBrands);
+                          }
+                          return attachRecoveryLedger(
+                              rejectTraitNotImplemented(site, ownerOrdinal, produced,
+                                                        existentialValue.principal.definition),
+                              input, factStoreBrands);
+                        }
+                        return attachRecoveryLedger(
+                            rejectTypeMismatch(site, ownerOrdinal, declared, produced), input,
+                            factStoreBrands);
+                      }
                     }
                   }
                 }
@@ -8879,20 +9104,31 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               zc::Array<uint8_t>()});
         }
       } else {
-        auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
-            context, module, input.boundModule.tree(), site.node, site.key,
-            input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
-            expectedLiteralType(input, site.node, nodeTypes.asPtr())});
-        if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
-          return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
+        // Scalar literals inside struct-literal fields are produced by the
+        // pre-pass so their types are available when buildStructLiteral runs.
+        // Reuse the existing entry here; only emit when the pre-pass did not
+        // cover this site.
+        if (isScalarLiteralProduction(site.production)) {
+          ZC_IF_SOME(existing, factEntry(nodeTypes.asPtr(), site.node)) {
+            producedType = existing.value;
+          }
         }
-        if (emitted.is<checked::CheckedFactsSourceRejected>()) {
-          return attachRecoveryLedger(zc::mv(emitted).get<checked::CheckedFactsSourceRejected>(),
-                                      input, factStoreBrands);
+        if (producedType == zc::none) {
+          auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
+              context, module, input.boundModule.tree(), site.node, site.key,
+              input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
+              expectedLiteralType(input, site.node, nodeTypes.asPtr())});
+          if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
+            return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
+          }
+          if (emitted.is<checked::CheckedFactsSourceRejected>()) {
+            return attachRecoveryLedger(zc::mv(emitted).get<checked::CheckedFactsSourceRejected>(),
+                                        input, factStoreBrands);
+          }
+          auto facts = zc::mv(emitted).get<scalar_literal::EmittedFacts>();
+          producedType = facts.nodeType.value;
+          literals.add(zc::mv(facts.literal));
         }
-        auto facts = zc::mv(emitted).get<scalar_literal::EmittedFacts>();
-        producedType = facts.nodeType.value;
-        literals.add(zc::mv(facts.literal));
       }
       auto callable = returnValueOwner(input.boundModule, site.node);
       ZC_IF_SOME(owner, callable) {
@@ -8958,7 +9194,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       }
       ZC_IF_SOME(value, producedType) {
-        nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value, zc::Array<uint8_t>()});
+        // Scalar literals and struct literals produced in the pre-pass already
+        // have a nodeTypes entry; skip to avoid a duplicate.
+        if ((isScalarLiteralProduction(site.production) ||
+             site.production == BodyProductionKind::StructLiteral) &&
+            factEntry(nodeTypes.asPtr(), site.node) != zc::none) {
+          // Entry already exists from the pre-pass.
+        } else {
+          nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value, zc::Array<uint8_t>()});
+        }
       }
     }
   }
@@ -9732,6 +9976,33 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                              argument.parameterType, zc::mv(adjustment)});
           }
           callEntry.value.invocation.arguments = zc::mv(adjustedArguments);
+        }
+        // Attach the aggregate-field DynErase adjustments to their enclosing
+        // aggregate element facts. Each adjustment source/destination must
+        // equal the element's source/destination types, which the verifier
+        // re-checks.
+        for (auto& aggEntry : aggregates) {
+          for (auto& elem : aggEntry.value.elements) {
+            if (elem.adjustment != zc::none) continue;
+            for (const auto& erase : dynErases) {
+              if (erase.site != checked::CoercionSite::AggregateField ||
+                  erase.node != elem.sourceNode || erase.concrete != elem.sourceType ||
+                  erase.existential != elem.destinationType) {
+                continue;
+              }
+              zc::Vector<checked::CoercionStep> steps;
+              steps.add(checked::CoercionStep(checked::DynEraseStep{
+                  signature::InterfaceInstantiation{erase.interface,
+                                                    zc::Vector<identity::SemanticTypeId>()},
+                  erase.impl, ZC_ASSERT_NONNULL(eraseWitnessId)}));
+              auto span = input.boundModule.parsedModule().spanFor(
+                  input.boundModule.tree().node(erase.node).range);
+              elem.adjustment = checked::CoercionAdjustment{
+                  checked::CoercionSite::AggregateField, erase.concrete, erase.existential,
+                  zc::mv(steps), zc::mv(ZC_ASSERT_NONNULL(span))};
+              break;
+            }
+          }
         }
       }
     }

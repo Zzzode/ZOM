@@ -437,7 +437,9 @@ bool applyRvalue(const mir::MirFunction& function, const MovePathFunction& paths
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {
-    if (!element.field.isValid() || element.operand.kind() != mir::MirOperandKind::Constant) {
+    if (!element.field.isValid()) return false;
+    MirEventKey elementEvent = event;
+    if (!applyOperand(function, paths, element.operand, zc::mv(elementEvent), states)) {
       return false;
     }
   }

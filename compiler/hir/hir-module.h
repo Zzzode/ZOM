@@ -81,12 +81,50 @@ struct HirScalarLiteralExpression final {
   identity::SourceSpan sourceSpan;
 };
 
+/// \brief Records a concrete-to-existential erasure on a local binding or
+/// aggregate field.
+///
+/// When a local binding's initializer carries a single DynErase coercion, the
+/// binding stores the existential (target) type while the initializer
+/// expression keeps the concrete (source) type. This record carries the
+/// erasure endpoints and the impl identity so the MIR builder can emit an
+/// Erase rvalue and the LIR lowering can construct the existential carrier.
+struct HirErasureRecord final {
+  identity::SemanticTypeId sourceType;
+  identity::SemanticTypeId targetType;
+  identity::ImplId impl;
+  identity::DefId interface;
+  /// \brief The concrete type's nominal definition, populated for aggregate
+  /// field erasures so the MIR builder can construct the inner aggregate
+  /// without the semantic type store.
+  identity::DefId concreteDefinition{};
+};
+
+/// \brief One concrete field value inside an erased aggregate element.
+///
+/// When a struct literal field is erased from a concrete type to an
+/// existential field type, the inner concrete aggregate's field values are
+/// carried here so the MIR builder can construct the concrete temporary
+/// without access to the semantic type store.
+struct HirConcreteAggregateElement final {
+  identity::DefId field;
+  identity::SemanticTypeId type;
+  checker::checked::CanonicalConstValue value;
+};
+
 /// \brief One field value admitted into a closed nominal aggregate expression.
 struct HirNominalAggregateElement final {
   identity::DefId field;
   identity::SemanticTypeId type;
   checker::checked::CanonicalConstValue value;
   identity::SourceSpan sourceSpan;
+  /// \brief Populated when the field value is erased from a concrete type to
+  /// an existential field type. The MIR builder emits an Erase rvalue to
+  /// construct the existential carrier for this field.
+  zc::Maybe<HirErasureRecord> erasure{};
+  /// \brief The inner concrete aggregate's field values, populated when
+  /// erasure is set. Each entry is one field of the concrete value.
+  zc::Vector<HirConcreteAggregateElement> concreteElements{};
 };
 
 /// \brief One verified closed nominal aggregate expression.
@@ -115,20 +153,6 @@ struct HirErrorUnionExpression final {
   HirNodeId payload;
   HirValueCategory category;
   identity::SourceSpan sourceSpan;
-};
-
-/// \brief Records a concrete-to-existential erasure on a local binding.
-///
-/// When a local binding's initializer carries a single DynErase coercion, the
-/// binding stores the existential (target) type while the initializer
-/// expression keeps the concrete (source) type. This record carries the
-/// erasure endpoints and the impl identity so the MIR builder can emit an
-/// Erase rvalue and the LIR lowering can construct the existential carrier.
-struct HirErasureRecord final {
-  identity::SemanticTypeId sourceType;
-  identity::SemanticTypeId targetType;
-  identity::ImplId impl;
-  identity::DefId interface;
 };
 
 /// \brief One function-owned local binding with a layer-local identity.

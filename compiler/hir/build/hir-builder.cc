@@ -6748,34 +6748,104 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
         zc::Vector<HirNominalAggregateElement> elements;
         for (const auto& sourceElement : sourceAggregate.elements) {
-          if (sourceElement.field == zc::none ||
-              sourceElement.sourceType != sourceElement.destinationType ||
-              sourceElement.adjustment != zc::none) {
+          if (sourceElement.field == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
           auto elementSpan =
               bound.parsedModule().spanFor(tree.node(sourceElement.sourceNode).range);
-          if (elementLiteral == zc::none || elementSpan == zc::none) {
+          if (elementSpan == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,
                                                  registries, ordinal + 2);
           }
-          size_t literalSlot = 0;
-          ZC_IF_SOME(index, elementLiteral) { literalSlot = index; }
-          const auto& literalFact = facts.literals().entries()[literalSlot].value;
-          if (literalFact.type != sourceElement.destinationType ||
-              !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+          zc::Maybe<HirErasureRecord> elementErasure;
+          zc::Vector<HirConcreteAggregateElement> concreteElements;
+          zc::Maybe<checker::checked::CanonicalConstValue> elementValue;
+          if (sourceElement.sourceType != sourceElement.destinationType) {
+            // DynErase element: a concrete value erased to an existential
+            // field type. The adjustment carries the witness-backed coercion.
+            if (sourceElement.adjustment == zc::none ||
+                !isSingleDynEraseAdjustment(ZC_ASSERT_NONNULL(sourceElement.adjustment))) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto& adj = ZC_ASSERT_NONNULL(sourceElement.adjustment);
+            if (adj.site != checker::checked::CoercionSite::AggregateField ||
+                adj.source != sourceElement.sourceType ||
+                adj.destination != sourceElement.destinationType) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto& eraseStep = adj.steps[0].variant().get<checker::checked::DynEraseStep>();
+            // Look up the inner aggregate fact (the concrete value's own
+            // aggregate) so the MIR builder can construct the concrete
+            // temporary without the semantic type store.
+            auto innerIdx = factIndex(facts.aggregates(), sourceElement.sourceNode);
+            if (innerIdx == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t innerSlot = 0;
+            ZC_IF_SOME(index, innerIdx) { innerSlot = index; }
+            const auto& inner = facts.aggregates().entries()[innerSlot].value;
+            if (!inner.kind.variant().is<checker::checked::NominalAggregate>()) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            const auto& innerNominal =
+                inner.kind.variant().get<checker::checked::NominalAggregate>();
+            elementErasure =
+                HirErasureRecord{adj.source, adj.destination, eraseStep.impl,
+                                 eraseStep.interface.interface, innerNominal.definition};
+            for (const auto& ie : inner.elements) {
+              auto litIdx = factIndex(facts.literals(), ie.sourceNode);
+              if (litIdx == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              size_t litSlot = 0;
+              ZC_IF_SOME(index, litIdx) { litSlot = index; }
+              const auto& lit = facts.literals().entries()[litSlot].value;
+              ZC_IF_SOME(f, ie.field) {
+                concreteElements.add(HirConcreteAggregateElement{f, lit.type, lit.literal.clone()});
+              }
+            }
+            elementValue = checker::checked::CanonicalConstValue::null();
+          } else {
+            if (sourceElement.adjustment != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
+            if (elementLiteral == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, elementLiteral) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            if (literalFact.type != sourceElement.destinationType ||
+                !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(elementSpan))) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            elementValue = literalFact.literal.clone();
           }
           ZC_IF_SOME(field, sourceElement.field) {
-            elements.add(HirNominalAggregateElement{field, sourceElement.destinationType,
-                                                    literalFact.literal.clone(),
-                                                    ZC_ASSERT_NONNULL(elementSpan).clone()});
+            elements.add(HirNominalAggregateElement{
+                field, sourceElement.destinationType, zc::mv(ZC_ASSERT_NONNULL(elementValue)),
+                ZC_ASSERT_NONNULL(elementSpan).clone(), zc::mv(elementErasure),
+                zc::mv(concreteElements)});
           }
         }
         aggregate = HirNominalAggregateExpression{
@@ -6785,26 +6855,30 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             zc::mv(elements),
             HirValueCategory::Value,
             valueSpanValue.clone()};
-        // Look up the return-site DynErase coercion for the same node.
-        auto coercionIndex = factIndex(facts.coercions(), shape.value);
-        if (coercionIndex == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, ordinal + 2);
+        // Only existential returns require a return-site DynErase coercion.
+        // Concrete aggregate returns (e.g. Zoo containing an erased field)
+        // carry per-field erasures on the elements themselves.
+        if (isExistentialSemanticType(checkedModule.semanticTypes(), callable.success)) {
+          auto coercionIndex = factIndex(facts.coercions(), shape.value);
+          if (coercionIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t coercionSlot = 0;
+          ZC_IF_SOME(index, coercionIndex) { coercionSlot = index; }
+          const auto& coercion = facts.coercions().entries()[coercionSlot].value;
+          if (!isSingleDynEraseAdjustment(coercion) ||
+              coercion.site != checker::checked::CoercionSite::Return ||
+              coercion.source != nodeType.value || coercion.destination != callable.success) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto& eraseStep = coercion.steps[0].variant().get<checker::checked::DynEraseStep>();
+          returnErasure = HirErasureRecord{coercion.source, coercion.destination, eraseStep.impl,
+                                           eraseStep.interface.interface};
         }
-        size_t coercionSlot = 0;
-        ZC_IF_SOME(index, coercionIndex) { coercionSlot = index; }
-        const auto& coercion = facts.coercions().entries()[coercionSlot].value;
-        if (!isSingleDynEraseAdjustment(coercion) ||
-            coercion.site != checker::checked::CoercionSite::Return ||
-            coercion.source != nodeType.value || coercion.destination != callable.success) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               ordinal + 2);
-        }
-        const auto& eraseStep = coercion.steps[0].variant().get<checker::checked::DynEraseStep>();
-        returnErasure = HirErasureRecord{coercion.source, coercion.destination, eraseStep.impl,
-                                         eraseStep.interface.interface};
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
                  shape.returnsFoldedFloatCast) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
@@ -10437,6 +10511,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t localBorrowCount = 0;
   size_t aggregateCount = 0;
   size_t aggregateElementCount = 0;
+  // Aggregate elements erased from a concrete type to an existential field
+  // type. These elements carry no literal fact themselves (their value is a
+  // nested aggregate); only their inner concrete elements do. The literals
+  // count equation subtracts this so the erased element is not double-counted.
+  size_t aggregateErasedElementCount = 0;
+  // Inner concrete aggregates nested inside erased aggregate elements. The
+  // checker produces an aggregate fact for each, so the aggregates count
+  // check must include them. The literals formula does not subtract them
+  // because they are not function-return or binding aggregates.
+  size_t innerAggregateCount = 0;
   // Enum tuple-variant construction aggregates whose discriminant element
   // reuses the call node as its source, so it contributes no new node-type
   // fact beyond the one the initializer node already carries.
@@ -10739,6 +10823,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ++literalBearingSlots;
               ZC_IF_SOME(aggregate, binding.aggregate) {
                 aggregateElementCount += aggregate.elements.size();
+                for (const auto& element : aggregate.elements) {
+                  aggregateElementCount += element.concreteElements.size();
+                  if (element.erasure != zc::none) {
+                    ++aggregateErasedElementCount;
+                    ++innerAggregateCount;
+                  }
+                }
               }
               break;
             case SequentialInitializerKind::LocalReference:
@@ -10852,8 +10943,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               if (aggregateIndex != zc::none) {
                 size_t aggregateSlot = 0;
                 ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
-                aggregateElementCount +=
-                    facts.aggregates().entries()[aggregateSlot].value.elements.size();
+                const auto& deadAggregate = facts.aggregates().entries()[aggregateSlot].value;
+                aggregateElementCount += deadAggregate.elements.size();
+                for (const auto& element : deadAggregate.elements) {
+                  if (element.sourceType != element.destinationType) {
+                    ++aggregateErasedElementCount;
+                    ++innerAggregateCount;
+                    auto innerIdx = factIndex(facts.aggregates(), element.sourceNode);
+                    if (innerIdx != zc::none) {
+                      size_t innerSlot = 0;
+                      ZC_IF_SOME(index, innerIdx) { innerSlot = index; }
+                      aggregateElementCount +=
+                          facts.aggregates().entries()[innerSlot].value.elements.size();
+                    }
+                  }
+                }
               }
               break;
             }
@@ -11324,6 +11428,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     ZC_IF_SOME(aggregate, function.aggregate) {
       ++aggregateCount;
       aggregateElementCount += aggregate.elements.size();
+      for (const auto& element : aggregate.elements) {
+        aggregateElementCount += element.concreteElements.size();
+        if (element.erasure != zc::none) {
+          ++aggregateErasedElementCount;
+          ++innerAggregateCount;
+        }
+      }
       if (function.aggregateIsEnumConstruction) { ++enumConstructionAggregateCount; }
     }
     if (function.localFieldProjection != zc::none) ++localFieldProjectionCount;
@@ -11483,8 +11594,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           parameterReferenceCount - rawDereferenceCount - parameterReborrowCount -
           parameterFieldProjectionCount + armParameterFieldProjectionCount -
           binaryWriteLocalOperandCount + localAliasReborrowCount + localWriteCount +
-          aggregateElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
-          receiverCallFieldArgumentCount + conditionalLiteralArmCount +
+          aggregateElementCount - aggregateErasedElementCount + directCallLiteralArgumentCount +
+          receiverCallArgumentCount - receiverCallFieldArgumentCount + conditionalLiteralArmCount +
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
           comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
@@ -11526,7 +11637,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 5);
   }
-  if (facts.aggregates().size() != aggregateCount) {
+  if (facts.aggregates().size() != aggregateCount + innerAggregateCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }
@@ -11881,6 +11992,40 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.chainedConditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
         value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
+        value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
+        value.statementReceiverReference == zc::none &&
+        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
+        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
+        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerEnumConstructionReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Direct aggregate construction return (non-existential, non-enum):
+    // `fn f() -> T { return T { ..constants.. }; }`. The aggregate is the
+    // return value expression; there is no intermediate local and no
+    // return-site erasure. Per-field concrete-to-existential erasures ride on
+    // the aggregate elements themselves.
+    if (value.aggregate != zc::none && !value.aggregateIsEnumConstruction &&
+        value.returnErasure == zc::none && value.local == zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.literal == zc::none &&
+        value.parameterReference == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
+        value.forLoopAccumulatorReturn == zc::none &&
         value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
         value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
         value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&

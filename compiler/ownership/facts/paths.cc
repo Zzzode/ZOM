@@ -166,9 +166,7 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {
-    if (!element.field.isValid() || element.operand.kind() != mir::MirOperandKind::Constant) {
-      return false;
-    }
+    if (!element.field.isValid() || !validOperand(function, element.operand)) { return false; }
   }
   return true;
 }
@@ -383,6 +381,51 @@ zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
             if (operand.kind() != mir::MirOperandKind::Constant &&
                 !appendPlace(paths, operand.place())) {
               return zc::none;
+            }
+          }
+          if (assignment.value.kind() == mir::MirRvalueKind::Erase) {
+            const auto& operand = assignment.value.eraseValue().source;
+            if (operand.kind() != mir::MirOperandKind::Constant &&
+                !appendPlace(paths, operand.place())) {
+              return zc::none;
+            }
+          }
+          if (assignment.value.kind() == mir::MirRvalueKind::NominalAggregate) {
+            const auto& aggregate = assignment.value.nominalAggregateValue();
+            // Only create field-projection paths when the aggregate has
+            // non-constant (Move) operands. All-constant aggregates are
+            // fully handled by the existing path set and do not need
+            // component places for drop planning.
+            bool hasMoveOperand = false;
+            for (const auto& element : aggregate.elements) {
+              if (element.operand.kind() != mir::MirOperandKind::Constant) {
+                hasMoveOperand = true;
+                break;
+              }
+            }
+            if (hasMoveOperand) {
+              for (const auto& element : aggregate.elements) {
+                identity::SemanticTypeId fieldType;
+                if (element.operand.kind() == mir::MirOperandKind::Constant) {
+                  fieldType = element.operand.constantValue().type;
+                } else {
+                  fieldType = element.operand.place().resultType();
+                }
+                zc::Vector<mir::MirProjection> fieldProjections;
+                for (const auto& proj : assignment.destination.projections()) {
+                  fieldProjections.add(proj.clone());
+                }
+                fieldProjections.add(mir::MirProjection::field(
+                    element.field, assignment.destination.resultType(), fieldType));
+                auto fieldPlace =
+                    mir::MirPlace(assignment.destination.local(), assignment.destination.rootType(),
+                                  zc::mv(fieldProjections), fieldType);
+                if (!appendPlace(paths, fieldPlace)) return zc::none;
+                if (element.operand.kind() != mir::MirOperandKind::Constant &&
+                    !appendPlace(paths, element.operand.place())) {
+                  return zc::none;
+                }
+              }
             }
           }
           break;

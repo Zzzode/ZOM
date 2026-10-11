@@ -1762,6 +1762,115 @@ zc::Maybe<RecursiveFunctionProduct> buildExistentialReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a dyn-field aggregate construction return:
+/// `fn f() -> T { return T { field: P { ..constants.. }, .. }; }` where at
+/// least one field is erased from a concrete type to an existential field type.
+/// For each erased field, a concrete Temporary receives the inner aggregate, an
+/// existential Temporary receives the Erase rvalue, and the outer aggregate
+/// Temporary is constructed with the existential as the field value. Non-erased
+/// fields remain constants. The outer aggregate is returned.
+zc::Maybe<RecursiveFunctionProduct> buildDynFieldAggregateReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirNominalAggregateExpression& aggregate,
+    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) { return zc::none; }
+  if (declaration.unsafeBlock != zc::none) { return zc::none; }
+  if (aggregate.type != declaration.resultType) { return zc::none; }
+  if (declaration.returnErasure != zc::none) { return zc::none; }
+
+  // At least one element must carry a per-field erasure.
+  bool hasErasure = false;
+  for (const auto& element : aggregate.elements) {
+    if (element.erasure != zc::none) {
+      hasErasure = true;
+      break;
+    }
+  }
+  if (!hasErasure) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  // For each erased element, build a concrete temporary and an existential
+  // temporary. Track the existential local so the outer aggregate can reference
+  // it. Non-erased elements remain constants.
+  zc::Vector<MirNominalAggregateElement> outerElements;
+  for (const auto& element : aggregate.elements) {
+    if (element.erasure != zc::none) {
+      const auto& erasure = ZC_ASSERT_NONNULL(element.erasure);
+      // Concrete temporary for the inner aggregate.
+      const MirLocalId concreteLocal = ctx.declareLocal(MirLocalKind::Temporary, erasure.sourceType,
+                                                        scope, aggregate.sourceSpan.clone());
+      // Build the inner aggregate elements from concreteElements.
+      zc::Vector<MirNominalAggregateElement> innerElements;
+      for (const auto& ce : element.concreteElements) {
+        innerElements.add(
+            MirNominalAggregateElement{ce.field, MirOperand::constant(ce.type, ce.value.clone())});
+      }
+      ctx.appendStatement(MirStatement::storageLive(concreteLocal, aggregate.sourceSpan.clone()));
+      zc::Vector<MirProjection> concreteProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(concreteLocal, erasure.sourceType, zc::mv(concreteProjections),
+                   erasure.sourceType),
+          MirRvalue::nominalAggregate(erasure.concreteDefinition, erasure.sourceType,
+                                      zc::mv(innerElements)),
+          MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+      // Existential temporary receives the Erase rvalue.
+      const MirLocalId existentialLocal = ctx.declareLocal(
+          MirLocalKind::Temporary, erasure.targetType, scope, sourceReturn.sourceSpan.clone());
+      ctx.appendStatement(
+          MirStatement::storageLive(existentialLocal, sourceReturn.sourceSpan.clone()));
+      zc::Vector<MirProjection> eraseProjections;
+      zc::Vector<MirProjection> eraseSourceProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(existentialLocal, erasure.targetType, zc::mv(eraseProjections),
+                   erasure.targetType),
+          MirRvalue::erase(
+              MirOperand::move(MirPlace(concreteLocal, erasure.sourceType,
+                                        zc::mv(eraseSourceProjections), erasure.sourceType)),
+              erasure.sourceType, erasure.targetType),
+          MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+      // The outer aggregate element is a move of the existential temporary.
+      zc::Vector<MirProjection> elemProjections;
+      outerElements.add(MirNominalAggregateElement{
+          element.field, MirOperand::move(MirPlace(existentialLocal, erasure.targetType,
+                                                   zc::mv(elemProjections), erasure.targetType))});
+    } else {
+      // Non-erased element: constant of its declared type.
+      outerElements.add(MirNominalAggregateElement{
+          element.field, MirOperand::constant(element.type, element.value.clone())});
+    }
+  }
+
+  // Outer aggregate temporary receives the constructed struct.
+  const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, aggregate.type, scope,
+                                                  sourceReturn.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> resultProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocal, aggregate.type, zc::mv(resultProjections), aggregate.type),
+      MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(outerElements)),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(resultLocal, aggregate.type, zc::mv(returnProjections), aggregate.type));
+  if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a by-value aggregate caller:
 /// `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
 /// UserLocal of nominal type P at localId(1) is initialized from constant
@@ -3541,10 +3650,26 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     if (declaration.unsafeBlock == zc::none) {
       auto aggregate = aggregateFor(hirModule, valueNode);
       if (aggregate != zc::none && ZC_ASSERT_NONNULL(aggregate).type == declaration.resultType) {
-        auto product =
-            buildAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                 ZC_ASSERT_NONNULL(aggregate), identities, proofs, copyMarker);
-        if (product != zc::none) return product;
+        // Dyn-field aggregate return: at least one element carries a per-field
+        // concrete-to-existential erasure.
+        bool hasDynFieldErasure = false;
+        for (const auto& elem : ZC_ASSERT_NONNULL(aggregate).elements) {
+          if (elem.erasure != zc::none) {
+            hasDynFieldErasure = true;
+            break;
+          }
+        }
+        if (hasDynFieldErasure) {
+          auto product = buildDynFieldAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                                      ZC_ASSERT_NONNULL(aggregate), identities,
+                                                      proofs, copyMarker);
+          if (product != zc::none) return product;
+        } else {
+          auto product =
+              buildAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
+                                   ZC_ASSERT_NONNULL(aggregate), identities, proofs, copyMarker);
+          if (product != zc::none) return product;
+        }
       }
       // Existential aggregate construction return:
       // `fn f() -> dyn I { return P { ..constants.. }; }`. The aggregate type

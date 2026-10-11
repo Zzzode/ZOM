@@ -12662,9 +12662,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += 4;
       continue;
     }
-    // Direct enum construction return: `return Result::Ok(41);`.
-    // Four node ids: function, body, return, aggregate. The aggregate is the
-    // return value expression; there is no intermediate local.
+    // Direct aggregate or enum construction return:
+    // `return Result::Ok(41);` or `fn f() -> T { return T { .. }; }`
+    // (including per-field concrete-to-existential erasure). Four node ids:
+    // function, body, return, aggregate. The aggregate is the return value
+    // expression; there is no intermediate local.
     if (aggregateExpression != zc::none && function.returnErasure == zc::none &&
         localBinding == zc::none && localFieldProjection == zc::none &&
         localReference == zc::none && literalExpression == zc::none && directCall == zc::none &&
@@ -12708,11 +12710,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             registries, index + 1);
       }
       FunctionReturnShape source = zc::mv(sourceShape).orDefault(FunctionReturnShape{});
-      if (!source.returnsEnumConstruction) {
+      if (!source.returnsEnumConstruction && !source.returnsAggregateConstruction) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
+      const bool isAggregateConstruction = source.returnsAggregateConstruction;
       auto aggregateIndex = factIndex(facts.aggregates(), source.value);
       auto returnType = factIndex(facts.nodeTypes(), source.value);
       auto aggregateSpan = bound.parsedModule().spanFor(tree.node(source.value).range);
@@ -12748,26 +12751,102 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto& checkedElement = checkedAggregate.elements[elementIndex];
         const auto& aggregateElement =
             ZC_ASSERT_NONNULL(aggregateExpression).elements[elementIndex];
-        auto literalIndex = factIndex(facts.literals(), checkedElement.sourceNode);
         if (checkedElement.field == zc::none || checkedElement.index != elementIndex ||
-            checkedElement.sourceType != checkedElement.destinationType ||
-            checkedElement.adjustment != zc::none || literalIndex == zc::none ||
             ZC_ASSERT_NONNULL(checkedElement.field) != aggregateElement.field ||
             checkedElement.destinationType != aggregateElement.type) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        size_t literalSlot = 0;
-        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-        const auto& literal = facts.literals().entries()[literalSlot].value;
-        if (literal.type != aggregateElement.type ||
-            !sameConstant(literal.literal, aggregateElement.value, module, registries,
-                          semanticTypes) ||
-            !sameSpan(literal.sourceSpan, aggregateElement.sourceSpan)) {
-          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                              ir::IrFailureKind::InvalidFact, module, registries,
-                                              index + 1);
+        if (checkedElement.sourceType != checkedElement.destinationType) {
+          // DynErase element: a concrete value erased to an existential field.
+          if (!isAggregateConstruction || checkedElement.adjustment == zc::none ||
+              aggregateElement.erasure == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& adj = ZC_ASSERT_NONNULL(checkedElement.adjustment);
+          if (!isSingleDynEraseAdjustment(adj) ||
+              adj.site != checker::checked::CoercionSite::AggregateField ||
+              adj.source != checkedElement.sourceType ||
+              adj.destination != checkedElement.destinationType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          const auto& eraseStep = adj.steps[0].variant().get<checker::checked::DynEraseStep>();
+          const auto& erasure = ZC_ASSERT_NONNULL(aggregateElement.erasure);
+          if (erasure.sourceType != adj.source || erasure.targetType != adj.destination ||
+              erasure.impl != eraseStep.impl ||
+              erasure.interface != eraseStep.interface.interface) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          // Validate concreteElements against the inner aggregate fact.
+          auto innerIdx = factIndex(facts.aggregates(), checkedElement.sourceNode);
+          if (innerIdx == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t innerSlot = 0;
+          ZC_IF_SOME(value, innerIdx) { innerSlot = value; }
+          const auto& inner = facts.aggregates().entries()[innerSlot].value;
+          if (inner.elements.size() != aggregateElement.concreteElements.size()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          for (size_t ci = 0; ci < inner.elements.size(); ++ci) {
+            const auto& ie = inner.elements[ci];
+            const auto& ce = aggregateElement.concreteElements[ci];
+            if (ie.field == zc::none || ZC_ASSERT_NONNULL(ie.field) != ce.field) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            auto litIdx = factIndex(facts.literals(), ie.sourceNode);
+            if (litIdx == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t litSlot = 0;
+            ZC_IF_SOME(value, litIdx) { litSlot = value; }
+            const auto& lit = facts.literals().entries()[litSlot].value;
+            bool sameConst = sameConstant(lit.literal, ce.value, module, registries, semanticTypes);
+            if (lit.type != ce.type || !sameConst) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+        } else {
+          // Exact-match element: source and destination types agree.
+          if (checkedElement.adjustment != zc::none || aggregateElement.erasure != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          auto literalIndex = factIndex(facts.literals(), checkedElement.sourceNode);
+          if (literalIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literal = facts.literals().entries()[literalSlot].value;
+          if (literal.type != aggregateElement.type ||
+              !sameConstant(literal.literal, aggregateElement.value, module, registries,
+                            semanticTypes) ||
+              !sameSpan(literal.sourceSpan, aggregateElement.sourceSpan)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
         }
       }
       nextFunction += 4;

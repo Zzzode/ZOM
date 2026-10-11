@@ -298,6 +298,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/existential-return-consumer/Zom.toml::existential_return_consumer::existential_return_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-struct-field-consumer/Zom.toml::dyn_struct_field_consumer::dyn_struct_field_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/existential-call-result-consumer/Zom.toml::existential_call_result_consumer::existential_call_result_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/fourfn-standalone-consumer/Zom.toml::fourfn_standalone_consumer::fourfn_standalone_consumer"
