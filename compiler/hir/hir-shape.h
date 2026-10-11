@@ -128,6 +128,14 @@ struct LeadingLocalConditionalShape final {
   zc::Vector<SequentialLocalBinding> bindings;
 };
 
+// A single scalar-let binding in a destructor void-let body: the let statement,
+// its binding pattern, and its scalar-literal initializer.
+struct VoidLetBinding final {
+  ast::NodeId statement;
+  ast::NodeId pattern;
+  ast::NodeId initializer;
+};
+
 struct FunctionReturnShape final {
   ast::NodeId body;
   ast::NodeId returnStatement;
@@ -393,15 +401,13 @@ struct FunctionReturnShape final {
   // receiver, or ordinary parameters. The body block is carried for the
   // per-node correspondence validator.
   bool isEmptyBody = false;
-  // Destructor void-let-body shape: `deinit() { let x: T = <scalar-literal>; }`
-  // with exactly one statement. The callable result is Unit; there is no return
-  // statement or return value. The let statement, its binding pattern, and the
-  // scalar-literal initializer are carried for the builder and the per-node
-  // correspondence validator.
+  // Destructor void-let-body shape: `deinit() { let x: T = <scalar-literal>;
+  // ... }` with one or more scalar-let statements. The callable result is
+  // Unit; there is no return statement or return value. Each let statement,
+  // its binding pattern, and its scalar-literal initializer are carried for
+  // the builder and the per-node correspondence validator.
   bool isVoidLetBody = false;
-  ast::NodeId voidLetStatement;
-  ast::NodeId voidLetPattern;
-  ast::NodeId voidLetInitializer;
+  zc::Vector<VoidLetBinding> voidLetBindings;
   // Function shape: a leading aggregate-initialized owner local, one discarded
   // receiver-call expression statement on that local, and a trailing
   // `return <owner-local>.<method>(...);`. This slice admits exactly one

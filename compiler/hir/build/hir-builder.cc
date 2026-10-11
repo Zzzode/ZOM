@@ -579,38 +579,38 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
       zc::Array<uint8_t> orderingKey = definition.key.encode();
       FunctionReturnShape shape = zc::mv(bodyShape).orDefault(FunctionReturnShape{});
-      // For the void-let-body shape, resolve the pattern type, spans, and
-      // literal fact so the materialization pass can lower the binding.
-      zc::Maybe<HirLocalBinding> voidLetLocal;
-      zc::Maybe<checker::checked::CanonicalConstValue> voidLetLiteral;
+      // For the void-let-body shape, resolve each binding's pattern type,
+      // spans, and literal fact so the materialization pass can lower the
+      // bindings.
+      zc::Vector<PendingVoidLetBinding> voidLetBindings;
       if (shape.isVoidLetBody) {
-        auto patternSpan = bound.parsedModule().spanFor(tree.node(shape.voidLetPattern).range);
-        auto initializerSpan =
-            bound.parsedModule().spanFor(tree.node(shape.voidLetInitializer).range);
-        auto literalIndex = factIndex(facts.literals(), shape.voidLetInitializer);
-        if (patternSpan == zc::none || initializerSpan == zc::none || literalIndex == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, ordinal + 2);
+        for (const auto& binding : shape.voidLetBindings) {
+          auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
+          auto initializerSpan = bound.parsedModule().spanFor(tree.node(binding.initializer).range);
+          auto literalIndex = factIndex(facts.literals(), binding.initializer);
+          if (patternSpan == zc::none || initializerSpan == zc::none || literalIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (!sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // The body checker produces no NodeType fact for an owner-local
+          // IdentifierPattern; the literal fact's type is the binding's type
+          // because the checker verified the declared/initializer match.
+          const identity::SemanticTypeId patternType = literalFact.type;
+          voidLetBindings.add(PendingVoidLetBinding{
+              HirLocalBinding{HirNodeId(), HirLocalId(), patternType, HirNodeId(),
+                              ZC_ASSERT_NONNULL(patternSpan).clone(),
+                              ZC_ASSERT_NONNULL(initializerSpan).clone()},
+              literalFact.literal.clone()});
         }
-        size_t literalSlot = 0;
-        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-        const auto& literalFact = facts.literals().entries()[literalSlot].value;
-        if (!sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               ordinal + 2);
-        }
-        // The body checker produces no NodeType fact for an owner-local
-        // IdentifierPattern; the literal fact's type is the binding's type
-        // because the checker verified the declared/initializer match.
-        const identity::SemanticTypeId patternType = literalFact.type;
-        zc::Maybe<HirNodeId> initializerNode;
-        initializerNode = HirNodeId();
-        voidLetLocal = zc::some(HirLocalBinding{
-            HirNodeId(), HirLocalId(), patternType, zc::mv(initializerNode),
-            ZC_ASSERT_NONNULL(patternSpan).clone(), ZC_ASSERT_NONNULL(initializerSpan).clone()});
-        voidLetLiteral = zc::some(literalFact.literal.clone());
       }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       definition.node,
@@ -623,12 +623,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       bodySpanValue.clone(),
                                                       definition.source.clone(),
                                                       definition.source.clone(),
-                                                      zc::mv(voidLetLiteral),
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
-                                                      zc::mv(voidLetLocal),
+                                                      zc::none,
+                                                      zc::none,
                                                       zc::none,
                                                       zc::none,
                                                       {},
@@ -672,7 +672,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       shape.body,
                                                       ast::NodeId(),
-                                                      ast::NodeId()});
+                                                      ast::NodeId(),
+                                                      false,
+                                                      zc::none,
+                                                      zc::mv(voidLetBindings)});
       continue;
     }
     if (definition.record.kind() == identity::DefinitionKind::Function ||
@@ -10730,10 +10733,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // typed nodes and write/parameter records are counted by the existing
   // parameterFieldWrite/parameterReference tallies.
   size_t voidFunctionCount = 0;
-  // Destructors whose body is a single scalar-let statement
-  // (`deinit() { let x: T = <lit>; }`). Each contributes one extra node-type
-  // fact and one extra literal fact beyond the void-function baseline (the
-  // let initializer expression), so both equations add this count back.
+  // Destructors whose body is one or more scalar-let statements
+  // (`deinit() { let x: T = <lit>; ... }`). Each binding contributes one
+  // extra node-type fact and one extra literal fact beyond the void-function
+  // baseline (the let initializer expression), so both equations add this
+  // count back.
   size_t voidLetBodyCount = 0;
   // Discarded statement-position receiver calls. A returned receiver call has
   // its call node covered by the per-function node-type baseline; a discarded
@@ -10775,9 +10779,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t nestedForLoopAccumulatorReturnCount = 0;
   for (const auto& function : pendingFunctions) {
     if (function.voidBody) ++voidFunctionCount;
-    if (function.voidBody && function.local != zc::none && function.literal != zc::none) {
-      ++voidLetBodyCount;
-    }
+    if (function.voidBody) { voidLetBodyCount += function.voidLetBindings.size(); }
     if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     if (function.returnsFoldedFloatCast) ++foldedFloatCastCount;
     if (function.returnsLocalIncrement) ++incrementReturnCount;
@@ -11452,8 +11454,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     // A void-let-body destructor (`deinit() { let x: T = <lit>; }`) carries a
     // dead local binding with no local reference; the local is folded away by
     // the LIR builder. Exclude it from the local/localReference pairing check.
-    const bool isVoidLetBody =
-        function.voidBody && function.local != zc::none && function.literal != zc::none;
+    const bool isVoidLetBody = function.voidBody && function.voidLetBindings.size() != 0;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
         !isDirectAggregateCall && !isDirectScalarLocalCall && !isDirectExistentialCall &&
@@ -11799,11 +11800,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Void-let-body destructor family: `deinit() { let x: T = <lit>; }` with
-    // one scalar-initialized local, no receiver, no parameters, no return,
-    // Unit result. Four node ids: function, body, local, literal. The dead
-    // local is folded away by the LIR builder, which emits only ReturnVoid.
-    if (value.voidBody && value.local != zc::none && value.literal != zc::none &&
+    // Void-let-body destructor family: `deinit() { let x: T = <lit>; ... }`
+    // with one or more scalar-initialized locals, no receiver, no parameters,
+    // no return, Unit result. 2 + 2N node ids: function, body, then N x
+    // (local, literal). The dead locals are folded away by the LIR builder,
+    // which emits only ReturnVoid.
+    if (value.voidBody && value.voidLetBindings.size() != 0 &&
         value.parameterFieldWrite == zc::none && value.parameterFieldWriteParameter == zc::none &&
         value.receiver == zc::none && value.parameterFieldProjection == zc::none &&
         value.parameterFieldWriteLiteral == zc::none && value.call == zc::none &&

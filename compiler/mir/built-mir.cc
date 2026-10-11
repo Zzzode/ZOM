@@ -10245,10 +10245,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   // counting it here would make the identity expect one return too few. The HIR
   // verifier admits a no-return body only for the Unit void-method shape.
   int64_t voidFunctionCount = 0;
-  // Destructors whose body is a single scalar-let statement
-  // (`deinit() { let x: T = <lit>; }`). Each carries one extra expression
-  // (the literal initializer) beyond the void-function baseline, so the
-  // checksum equation subtracts this count from the right side.
+  // Destructors whose body is one or more scalar-let statements
+  // (`deinit() { let x: T = <lit>; ... }`). Each binding carries one extra
+  // expression (the literal initializer) beyond the void-function baseline,
+  // so the checksum equation subtracts this count from the right side.
   int64_t voidLetBodyCount = 0;
   for (const auto& voidFunction : hirModule.functions()) {
     auto voidBlock = blockFor(hirModule, voidFunction.body);
@@ -10261,8 +10261,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     const hir::HirNodeId voidTrailing = block.statements[block.statements.size() - 1];
     if (returnFor(hirModule, voidTrailing) == zc::none) {
       ++voidFunctionCount;
-      if (block.statements.size() == 1) {
-        auto sourceLocal = localFor(hirModule, block.statements[0]);
+      for (size_t i = 0; i < block.statements.size(); ++i) {
+        auto sourceLocal = localFor(hirModule, block.statements[i]);
         ZC_IF_SOME(local, sourceLocal) {
           if (local.initializer != zc::none &&
               expressionFor(hirModule, ZC_ASSERT_NONNULL(local.initializer)) != zc::none) {
@@ -10634,53 +10634,66 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
         continue;
       }
-      // Void-let-body destructor: `deinit() { let x: T = <lit>; }`. One block
-      // with one user local initialized from a scalar literal and a
-      // Return(void) terminator. The dead local is folded away by the LIR
+      // Void-let-body destructor: `deinit() { let x: T = <lit>; ... }`. One
+      // block with N user locals each initialized from a scalar literal and a
+      // Return(void) terminator. The dead locals are folded away by the LIR
       // builder.
-      if (block.statements.size() == 1) {
-        auto sourceLocal = localFor(hirModule, block.statements[0]);
-        ZC_IF_SOME(local, sourceLocal) {
-          if (local.initializer != zc::none) {
-            auto sourceLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(local.initializer));
-            ZC_IF_SOME(literal, sourceLiteral) {
-              if (literal.type == local.type) {
-                auto definition = identities.definition(declaration.definition);
-                if (definition != zc::none) {
-                  zc::Vector<MirSourceScope> scopes;
-                  zc::Maybe<MirSourceScopeId> noParent;
-                  scopes.add(
-                      MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
-                  zc::Vector<MirLocalDeclaration> locals;
-                  locals.add(MirLocalDeclaration{localId(1), MirLocalKind::UserLocal, local.type,
-                                                 scopeId(1), local.sourceSpan.clone()});
-                  zc::Vector<MirStatement> statements;
-                  statements.add(MirStatement::storageLive(localId(1), local.sourceSpan.clone()));
+      if (block.statements.size() >= 1) {
+        zc::Vector<MirLocalDeclaration> locals;
+        zc::Vector<MirStatement> statements;
+        bool allResolved = true;
+        for (size_t i = 0; i < block.statements.size(); ++i) {
+          auto sourceLocal = localFor(hirModule, block.statements[i]);
+          bool resolved = false;
+          ZC_IF_SOME(local, sourceLocal) {
+            if (local.initializer != zc::none) {
+              auto sourceLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(local.initializer));
+              ZC_IF_SOME(literal, sourceLiteral) {
+                if (literal.type == local.type) {
+                  const auto localOrdinal = static_cast<uint32_t>(i + 1);
+                  locals.add(MirLocalDeclaration{localId(localOrdinal), MirLocalKind::UserLocal,
+                                                 local.type, scopeId(1), local.sourceSpan.clone()});
+                  statements.add(
+                      MirStatement::storageLive(localId(localOrdinal), local.sourceSpan.clone()));
                   zc::Vector<MirProjection> destinationProjections;
                   auto constant = MirOperand::constant(literal.type, literal.value.clone());
                   statements.add(MirStatement::assign(
-                      MirPlace(localId(1), local.type, zc::mv(destinationProjections), local.type),
+                      MirPlace(localId(localOrdinal), local.type, zc::mv(destinationProjections),
+                               local.type),
                       MirRvalue::use(zc::mv(constant)), MirInitializationKind::Initialize,
                       literal.sourceSpan.clone()));
-                  zc::Vector<MirBasicBlock> blocks;
-                  blocks.add(
-                      MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
-                                    MirTerminator::returnVoid(declaration.sourceSpan.clone())});
-                  MirFunction function{declaration.definition,
-                                       MirFunctionKind::Function,
-                                       identity::DefinitionKind::Destructor,
-                                       declaration.resultType,
-                                       declaration.sourceSpan.clone(),
-                                       zc::mv(scopes),
-                                       zc::mv(locals),
-                                       zc::mv(blocks)};
-                  zc::Array<uint8_t> ownerKey;
-                  ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
-                  pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
-                  continue;
+                  resolved = true;
                 }
               }
             }
+          }
+          if (!resolved) {
+            allResolved = false;
+            break;
+          }
+        }
+        if (allResolved) {
+          auto definition = identities.definition(declaration.definition);
+          if (definition != zc::none) {
+            zc::Vector<MirSourceScope> scopes;
+            zc::Maybe<MirSourceScopeId> noParent;
+            scopes.add(
+                MirSourceScope{scopeId(1), zc::mv(noParent), declaration.sourceSpan.clone()});
+            zc::Vector<MirBasicBlock> blocks;
+            blocks.add(MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                                     MirTerminator::returnVoid(declaration.sourceSpan.clone())});
+            MirFunction function{declaration.definition,
+                                 MirFunctionKind::Function,
+                                 identity::DefinitionKind::Destructor,
+                                 declaration.resultType,
+                                 declaration.sourceSpan.clone(),
+                                 zc::mv(scopes),
+                                 zc::mv(locals),
+                                 zc::mv(blocks)};
+            zc::Array<uint8_t> ownerKey;
+            ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+            pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+            continue;
           }
         }
       }
@@ -16960,98 +16973,118 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
         }
         continue;
       }
-      // Void-let-body destructor: `deinit() { let x: T = <lit>; }`. The HIR
-      // block has one local-binding statement; the MIR function has one user
-      // local initialized from a scalar constant and a Return(void)
+      // Void-let-body destructor: `deinit() { let x: T = <lit>; ... }`. The
+      // HIR block has N local-binding statements; the MIR function has N user
+      // locals each initialized from a scalar constant and a Return(void)
       // terminator.
-      if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 1) {
+      if (sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 1) {
         const auto& letBlock = ZC_ASSERT_NONNULL(sourceBlock);
-        auto sourceLocal = localFor(hirModule, letBlock.statements[0]);
-        ZC_IF_SOME(local, sourceLocal) {
-          if (local.initializer != zc::none) {
-            auto sourceLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(local.initializer));
-            ZC_IF_SOME(literal, sourceLiteral) {
-              if (literal.type == local.type) {
-                auto unitLookup = semanticTypes.get(sourceDeclaration.resultType);
-                const bool isUnit =
-                    unitLookup.is<type::SemanticTypeLookup>() &&
-                    unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind() != zc::none &&
-                    ZC_ASSERT_NONNULL(
-                        unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
-                        type::semantic::PrimitiveKind::Unit;
-                const bool shapeValid =
-                    isUnit && sourceDeclaration.receiver == zc::none &&
-                    sourceDeclaration.parameters.size() == 0 &&
-                    function.owner == sourceDeclaration.definition &&
-                    function.kind == MirFunctionKind::Function &&
-                    function.sourceDefinitionKind == identity::DefinitionKind::Destructor &&
-                    function.resultType == sourceDeclaration.resultType &&
-                    sameSpan(function.sourceSpan, sourceDeclaration.sourceSpan) &&
-                    function.sourceScopes.size() == 1 && function.locals.size() == 1 &&
-                    function.blocks.size() == 1 && sourceDeclaration.body == letBlock.node &&
-                    function.sourceScopes[0].id == scopeId(1) &&
-                    function.sourceScopes[0].parent == zc::none &&
-                    function.locals[0].id == localId(1) &&
-                    function.locals[0].kind == MirLocalKind::UserLocal &&
-                    function.locals[0].type == local.type &&
-                    function.locals[0].sourceScope == scopeId(1) &&
-                    function.blocks[0].id == blockId(1) &&
-                    function.blocks[0].sourceScope == scopeId(1) &&
-                    function.blocks[0].statements.size() == 2 &&
-                    function.blocks[0].statements[0].kind() == MirStatementKind::StorageLive &&
-                    function.blocks[0].statements[0].storageLocal() == localId(1) &&
-                    function.blocks[0].statements[1].kind() == MirStatementKind::Assign;
-                if (shapeValid) {
-                  const auto& assignment = function.blocks[0].statements[1].assignmentValue();
-                  const bool assignValid =
-                      assignment.destination.local() == localId(1) &&
-                      assignment.destination.rootType() == local.type &&
-                      assignment.destination.resultType() == local.type &&
-                      assignment.destination.projections().size() == 0 &&
-                      assignment.initialization == MirInitializationKind::Initialize &&
-                      assignment.value.kind() == MirRvalueKind::Use &&
-                      assignment.value.useValue().operand.kind() == MirOperandKind::Constant;
-                  if (assignValid) {
-                    const auto& constant = assignment.value.useValue().operand.constantValue();
-                    const bool constantValid =
-                        constant.type == local.type &&
-                        sameConstant(constant.value, literal.value, module, identities,
-                                     semanticTypes) &&
-                        function.blocks[0].terminator.kind() == MirTerminatorKind::Return &&
-                        function.blocks[0].terminator.returnValue().value == zc::none;
-                    if (constantValid) {
-                      auto owner = identities.definition(function.owner);
-                      auto record = encodeFunction(function, module, identities, semanticTypes);
-                      if (owner == zc::none || record == zc::none) {
-                        return rejectMir<VerifiedBuiltMir>(
-                            ir::IrFailurePhase::BuiltMirVerification,
-                            ir::IrFailureKind::CanonicalCodecMismatch, module, function.owner,
-                            identities, static_cast<uint32_t>(index + 1));
-                      }
-                      zc::Array<uint8_t> ownerBytes;
-                      ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
-                      if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
-                        return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
-                                                           ir::IrFailureKind::InvalidFact, module,
-                                                           function.owner, identities,
-                                                           static_cast<uint32_t>(index + 1));
-                      }
-                      previousOwner = zc::mv(ownerBytes);
-                      ZC_IF_SOME(value, record) {
-                        if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
-                          return rejectMir<VerifiedBuiltMir>(
-                              ir::IrFailurePhase::BuiltMirVerification,
-                              ir::IrFailureKind::CanonicalCodecMismatch, module, function.owner,
-                              identities, static_cast<uint32_t>(index + 1));
-                        }
-                        recomputedFunctions.add(zc::mv(value));
-                      }
-                      continue;
-                    }
-                  }
-                }
-              }
+        const size_t letCount = letBlock.statements.size();
+        auto unitLookup = semanticTypes.get(sourceDeclaration.resultType);
+        const bool isUnit =
+            unitLookup.is<type::SemanticTypeLookup>() &&
+            unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind() != zc::none &&
+            ZC_ASSERT_NONNULL(unitLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
+                type::semantic::PrimitiveKind::Unit;
+        const bool shapeValid =
+            isUnit && sourceDeclaration.receiver == zc::none &&
+            sourceDeclaration.parameters.size() == 0 &&
+            function.owner == sourceDeclaration.definition &&
+            function.kind == MirFunctionKind::Function &&
+            function.sourceDefinitionKind == identity::DefinitionKind::Destructor &&
+            function.resultType == sourceDeclaration.resultType &&
+            sameSpan(function.sourceSpan, sourceDeclaration.sourceSpan) &&
+            function.sourceScopes.size() == 1 && function.locals.size() == letCount &&
+            function.blocks.size() == 1 && sourceDeclaration.body == letBlock.node &&
+            function.sourceScopes[0].id == scopeId(1) &&
+            function.sourceScopes[0].parent == zc::none && function.blocks[0].id == blockId(1) &&
+            function.blocks[0].sourceScope == scopeId(1) &&
+            function.blocks[0].statements.size() == 2 * letCount;
+        if (shapeValid) {
+          bool allValid = true;
+          for (size_t i = 0; i < letCount; ++i) {
+            auto sourceLocal = localFor(hirModule, letBlock.statements[i]);
+            if (sourceLocal == zc::none) {
+              allValid = false;
+              break;
             }
+            const auto& local = ZC_ASSERT_NONNULL(sourceLocal);
+            if (local.initializer == zc::none) {
+              allValid = false;
+              break;
+            }
+            auto sourceLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(local.initializer));
+            if (sourceLiteral == zc::none) {
+              allValid = false;
+              break;
+            }
+            const auto& literal = ZC_ASSERT_NONNULL(sourceLiteral);
+            if (literal.type != local.type) {
+              allValid = false;
+              break;
+            }
+            const auto localOrdinal = static_cast<uint32_t>(i + 1);
+            if (function.locals[i].id != localId(localOrdinal) ||
+                function.locals[i].kind != MirLocalKind::UserLocal ||
+                function.locals[i].type != local.type ||
+                function.locals[i].sourceScope != scopeId(1)) {
+              allValid = false;
+              break;
+            }
+            const auto& liveStatement = function.blocks[0].statements[2 * i];
+            const auto& assignStatement = function.blocks[0].statements[2 * i + 1];
+            if (liveStatement.kind() != MirStatementKind::StorageLive ||
+                liveStatement.storageLocal() != localId(localOrdinal) ||
+                assignStatement.kind() != MirStatementKind::Assign) {
+              allValid = false;
+              break;
+            }
+            const auto& assignment = assignStatement.assignmentValue();
+            if (assignment.destination.local() != localId(localOrdinal) ||
+                assignment.destination.rootType() != local.type ||
+                assignment.destination.resultType() != local.type ||
+                assignment.destination.projections().size() != 0 ||
+                assignment.initialization != MirInitializationKind::Initialize ||
+                assignment.value.kind() != MirRvalueKind::Use ||
+                assignment.value.useValue().operand.kind() != MirOperandKind::Constant) {
+              allValid = false;
+              break;
+            }
+            const auto& constant = assignment.value.useValue().operand.constantValue();
+            if (constant.type != local.type ||
+                !sameConstant(constant.value, literal.value, module, identities, semanticTypes)) {
+              allValid = false;
+              break;
+            }
+          }
+          if (allValid && function.blocks[0].terminator.kind() == MirTerminatorKind::Return &&
+              function.blocks[0].terminator.returnValue().value == zc::none) {
+            auto owner = identities.definition(function.owner);
+            auto record = encodeFunction(function, module, identities, semanticTypes);
+            if (owner == zc::none || record == zc::none) {
+              return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                 ir::IrFailureKind::CanonicalCodecMismatch, module,
+                                                 function.owner, identities,
+                                                 static_cast<uint32_t>(index + 1));
+            }
+            zc::Array<uint8_t> ownerBytes;
+            ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
+            if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
+              return rejectMir<VerifiedBuiltMir>(
+                  ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidFact, module,
+                  function.owner, identities, static_cast<uint32_t>(index + 1));
+            }
+            previousOwner = zc::mv(ownerBytes);
+            ZC_IF_SOME(value, record) {
+              if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
+                return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                   ir::IrFailureKind::CanonicalCodecMismatch,
+                                                   module, function.owner, identities,
+                                                   static_cast<uint32_t>(index + 1));
+              }
+              recomputedFunctions.add(zc::mv(value));
+            }
+            continue;
           }
         }
       }

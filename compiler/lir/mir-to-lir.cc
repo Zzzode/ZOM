@@ -595,8 +595,9 @@ zc::Maybe<Module> MirToLirLowering::lowerEmptyBodyVoidFunction(
   // Admit the verified void-body shapes: a standalone function with one source
   // scope, one block, and a ReturnVoid terminator. Two body shapes are admitted:
   //   1. Empty body (`deinit() { }`): zero locals, zero statements.
-  //   2. Void-let body (`deinit() { let x: T = <lit>; }`): one user local,
-  //      StorageLive + Assign(Use constant). The dead local is folded away.
+  //   2. Void-let body (`deinit() { let x: T = <lit>; ... }`): N user locals,
+  //      each with StorageLive + Assign(Use constant). The dead locals are
+  //      folded away.
   // The callable result is Unit and no value is materialized in either shape.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1) {
@@ -606,11 +607,18 @@ zc::Maybe<Module> MirToLirLowering::lowerEmptyBodyVoidFunction(
   if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
   if (block.terminator.returnValue().value != zc::none) { return zc::none; }
   const bool isEmptyBody = function.locals.size() == 0 && block.statements.size() == 0;
-  const bool isVoidLetBody = function.locals.size() == 1 &&
-                             function.locals[0].kind == mir::MirLocalKind::UserLocal &&
-                             block.statements.size() == 2 &&
-                             block.statements[0].kind() == mir::MirStatementKind::StorageLive &&
-                             block.statements[1].kind() == mir::MirStatementKind::Assign;
+  bool isVoidLetBody = !isEmptyBody && function.locals.size() >= 1 &&
+                       block.statements.size() == 2 * function.locals.size();
+  if (isVoidLetBody) {
+    for (size_t i = 0; i < function.locals.size(); ++i) {
+      if (function.locals[i].kind != mir::MirLocalKind::UserLocal ||
+          block.statements[2 * i].kind() != mir::MirStatementKind::StorageLive ||
+          block.statements[2 * i + 1].kind() != mir::MirStatementKind::Assign) {
+        isVoidLetBody = false;
+        break;
+      }
+    }
+  }
   if (!isEmptyBody && !isVoidLetBody) { return zc::none; }
 
   auto entryId = LirBlockId::fromOrdinal(1);

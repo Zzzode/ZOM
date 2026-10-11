@@ -52,29 +52,36 @@ void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx&
 }
 
 void lowerVoidLetBodyFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const HirLocalBinding& local = ZC_ASSERT_NONNULL(function.local);
-  const auto& literal = ZC_ASSERT_NONNULL(function.literal);
-  const identity::SourceSpan& initializerSpan = ZC_ASSERT_NONNULL(local.initializerSpan);
+  const auto& bindings = function.voidLetBindings;
+  const size_t count = bindings.size();
 
-  // Fixed source-preorder stride: function F, body F+1, local F+2, literal
-  // F+3. The block lists the local; no return is materialized for the Unit
-  // result. The dead local is folded away by the LIR builder.
+  // Fixed source-preorder stride: function F, body F+1, then N x (local,
+  // literal). The block lists the locals; no return is materialized for the
+  // Unit result. The dead locals are folded away by the LIR builder.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
-  const HirNodeId localId = ctx.allocNode(ast::NodeId());
-  const HirNodeId literalId = ctx.allocNode(ast::NodeId());
+  zc::Vector<HirNodeId> statementIds;
+  zc::Vector<HirNodeId> literalIds;
+  for (size_t i = 0; i < count; ++i) {
+    statementIds.add(ctx.allocNode(ast::NodeId()));
+    literalIds.add(ctx.allocNode(ast::NodeId()));
+  }
 
   ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
                                          zc::mv(function.parameters), zc::mv(function.receiver),
                                          function.visibility.clone(), function.linkage,
                                          function.declarationSpan.clone(), bodyId, zc::none});
-  zc::Vector<HirNodeId> statements;
-  statements.add(localId);
-  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
-  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), local.type, literalId,
-                               local.sourceSpan.clone(), initializerSpan.clone()});
-  ctx.addExpression(HirScalarLiteralExpression{literalId, local.type, literal.clone(),
-                                               HirValueCategory::Value, initializerSpan.clone()});
+  for (size_t i = 0; i < count; ++i) {
+    const auto& binding = bindings[i];
+    const identity::SourceSpan& initializerSpan = ZC_ASSERT_NONNULL(binding.local.initializerSpan);
+    ctx.addLocal(HirLocalBinding{statementIds[i], hirLocalId(static_cast<uint32_t>(i + 1)),
+                                 binding.local.type, literalIds[i],
+                                 binding.local.sourceSpan.clone(), initializerSpan.clone()});
+    ctx.addExpression(HirScalarLiteralExpression{literalIds[i], binding.local.type,
+                                                 binding.literal.clone(), HirValueCategory::Value,
+                                                 initializerSpan.clone()});
+  }
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statementIds), function.bodySpan.clone()});
 }
 
 void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {

@@ -636,6 +636,14 @@ struct PendingReceiverFieldArithmetic final {
   ast::NodeId binaryNode{};
 };
 
+// One dead scalar-let binding in a void-let-body destructor. The local binding
+// and its scalar-literal value are carried for the lowering function; the dead
+// local is folded away by the LIR builder.
+struct PendingVoidLetBinding final {
+  HirLocalBinding local;
+  checker::checked::CanonicalConstValue literal;
+};
+
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
   /// The AST node of the function/method declaration this pending record
@@ -803,6 +811,10 @@ struct PendingFunctionDeclaration final {
   /// an existential return type. The record carries the erasure details so
   /// the function header can attach them to the HirFunctionDeclaration.
   zc::Maybe<HirErasureRecord> returnErasure = zc::none;
+  /// Populated for the void-let-body destructor: N dead scalar-let bindings.
+  /// Each is folded away by the LIR builder. The single local/literal fields
+  /// are not used for this shape.
+  zc::Vector<PendingVoidLetBinding> voidLetBindings = {};
 };
 
 }  // namespace detail
