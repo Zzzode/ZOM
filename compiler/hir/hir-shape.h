@@ -214,6 +214,12 @@ struct FunctionReturnShape final {
   // an integer literal passed as the sole argument of a returned direct
   // free-function call: `let a: i32 = 21; return f(a);`.
   bool returnsDirectScalarLocalCall = false;
+  // Two-statement existential-call shape: a leading existential-initialized
+  // local whose initializer is a direct call returning the existential type,
+  // passed as the sole argument of a returned direct free-function call:
+  // `let a: dyn I = makeExistential(); return f(a);`. No erasure is needed:
+  // the call already produces the existential fat-pointer carrier.
+  bool returnsDirectExistentialCall = false;
   bool returnsLocalBorrow = false;
   zc::Maybe<ast::NodeId> unsafeBlock;
   bool isConditional = false;

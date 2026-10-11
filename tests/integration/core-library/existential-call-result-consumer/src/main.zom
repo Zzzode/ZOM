@@ -1,0 +1,30 @@
+// Existential call result fixture: a call-initialized existential local is
+// passed to a second call. The entry function calls makeAnimal() to obtain a
+// dyn Animal fat pointer, then passes it to callSpeak() which dispatches
+// through the vtable. The four-function module (caller, existential callee,
+// indirect callee, leaf method) compiles through the full pipeline to native
+// code and exits with code 41.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fn speak(this) -> i32 { return 41; }
+}
+
+fn makeAnimal() -> dyn Animal {
+  return Dog { tag: 0 };
+}
+
+fn callSpeak(a: dyn Animal) -> i32 {
+  return a.speak();
+}
+
+fn entry() -> i32 {
+  let a: dyn Animal = makeAnimal();
+  return callSpeak(a);
+}

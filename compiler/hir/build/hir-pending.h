@@ -666,6 +666,10 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<identity::SourceSpan> receiverCallParameterSpan;
   zc::Maybe<HirLocalBinding> local;
   zc::Maybe<HirNominalAggregateExpression> aggregate;
+  // Populated for the existential-call shape: the direct call that
+  // initializes the sole owner local (the initializer is a CallExpression
+  // rather than an aggregate or literal).
+  zc::Maybe<HirDirectCallExpression> initializerCall;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<PendingLocalWriteValue> localWriteValues;
   zc::Maybe<HirLocalReferenceExpression> localReference;

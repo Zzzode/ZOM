@@ -113,6 +113,45 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
                                             zc::mv(call.arguments), call.sourceSpan.clone()});
 }
 
+void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
+  HirDirectCallExpression initializerCall = zc::mv(ZC_ASSERT_NONNULL(function.initializerCall));
+  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
+  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  const identity::SourceSpan initializerSpan =
+      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+
+  // Fixed source-preorder stride matching the generic materializer: function F,
+  // body F+1, local F+2, direct-call initializer F+3, return F+4, direct call
+  // F+5. The initializer call produces the existential fat-pointer carrier
+  // directly; the return call, whose sole argument references local 1 inline,
+  // is the return value.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
+                               initializerSpan.clone()});
+  ctx.addDirectCall(HirDirectCallExpression{
+      initializerId, initializerCall.callee, initializerCall.calleeType, initializerCall.resultType,
+      zc::mv(initializerCall.arguments), initializerCall.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
+                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+}
+
 void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
   const auto& literal = ZC_ASSERT_NONNULL(function.literal);

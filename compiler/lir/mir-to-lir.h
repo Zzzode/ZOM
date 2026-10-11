@@ -726,6 +726,30 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one existential-call-result module to a four-function LIR
+  /// module with one vtable and one global data constant.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validDirectExistentialCallReturnFunction` accepts for the caller,
+  /// combined with an existential-return callee, an indirect-call callee, and a
+  /// leaf method. The caller has three blocks: the first calls the existential
+  /// callee into an existential user local, the second passes that local by
+  /// value to the indirect callee and stores the result in a temporary, and the
+  /// third returns the temporary. The existential callee constructs a concrete
+  /// aggregate, erases it, and returns the fat pointer. The indirect callee
+  /// invokes a method through the vtable. The leaf returns a constant.
+  ///
+  /// \param caller Verified caller MIR function (three-block existential call).
+  /// \param existentialCallee Verified existential-return MIR function.
+  /// \param indirectCallee Verified indirect-call MIR function.
+  /// \param leaf Verified standalone method MIR function (constant return).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered four-function LIR module with one vtable, or none.
+  ZC_NODISCARD static zc::Maybe<Module> lowerExistentialCallResultModule(
+      const mir::MirFunction& caller, const mir::MirFunction& existentialCallee,
+      const mir::MirFunction& indirectCallee, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one existential-return function to a single-function LIR
   /// module with one vtable and one global data constant.
   ///

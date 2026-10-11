@@ -2898,6 +2898,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsReceiverCall = false;
   bool returnsDirectAggregateCall = false;
   bool returnsDirectScalarLocalCall = false;
+  bool returnsDirectExistentialCall = false;
   bool returnsLocalIncrement = false;
   bool returnsLocalPostfixIncrement = false;
   const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
@@ -3035,15 +3036,20 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     return zc::none;
   }
   // Split the sole-local direct-call carrier by initializer kind. A struct
-  // literal initializer rides the by-value aggregate slice and a scalar literal
-  // rides the scalar-local slice. An identifier or call initializer names a
-  // local neither call-argument carrier admits, so the shape is unclaimed: the
-  // builder drains the owning definition with the capability code rather than
-  // assembling an unsupported call record.
+  // literal initializer rides the by-value aggregate slice, a scalar literal
+  // rides the scalar-local slice, and a call initializer that returns the
+  // existential type rides the existential-call slice (the call already
+  // produces the fat-pointer carrier, so no erasure is needed). An identifier
+  // initializer names a local none of the call-argument carriers admit, so
+  // the shape is unclaimed: the builder drains the owning definition with the
+  // capability code rather than assembling an unsupported call record.
   if (returnsDirectAggregateCall && tree.contains(initializer)) {
     if (isScalarLiteral(tree.node(initializer).kind)) {
       returnsDirectAggregateCall = false;
       returnsDirectScalarLocalCall = true;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::CallExpression) {
+      returnsDirectAggregateCall = false;
+      returnsDirectExistentialCall = true;
     } else if (tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
       return zc::none;
     }
@@ -3064,6 +3070,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsReceiverCall = returnsReceiverCall;
     shape.returnsDirectAggregateCall = returnsDirectAggregateCall;
     shape.returnsDirectScalarLocalCall = returnsDirectScalarLocalCall;
+    shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;

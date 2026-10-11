@@ -1831,6 +1831,100 @@ private:
             }
           }
         }
+        if (functions.size() == 4) {
+          // Four functions: one existential-call-result caller (three blocks,
+          // two Call terminators, two locals), one existential-return callee
+          // (one block, Erase rvalue), one indirect-call callee (two blocks,
+          // IndirectCall terminator), and one standalone scalar leaf (one
+          // block, Method-sourced, one receiver parameter). The caller's first
+          // call targets the existential callee and its second call targets
+          // the indirect callee. Any ambiguity leaves lir unset and the module
+          // fails closed.
+          auto isExistentialCallResultCaller = [](const mir::MirFunction& fn) {
+            return fn.kind == mir::MirFunctionKind::Function &&
+                   fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                   fn.locals.size() == 2 && fn.blocks.size() == 3 &&
+                   fn.locals[0].kind == mir::MirLocalKind::UserLocal &&
+                   fn.locals[1].kind == mir::MirLocalKind::Temporary &&
+                   fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call &&
+                   fn.blocks[1].terminator.kind() == mir::MirTerminatorKind::Call;
+          };
+          auto isExistentialCallee = [](const mir::MirFunction& fn) {
+            return fn.kind == mir::MirFunctionKind::Function &&
+                   fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                   fn.locals.size() == 2 && fn.blocks.size() == 1 &&
+                   fn.locals[0].kind == mir::MirLocalKind::Temporary &&
+                   fn.locals[1].kind == mir::MirLocalKind::Temporary &&
+                   fn.blocks[0].statements.size() == 4 &&
+                   fn.blocks[0].statements[3].kind() == mir::MirStatementKind::Assign;
+          };
+          auto isIndirectCallee = [](const mir::MirFunction& fn) {
+            return fn.kind == mir::MirFunctionKind::Function &&
+                   fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                   fn.locals.size() == 2 && fn.blocks.size() == 2 &&
+                   fn.locals[0].kind == mir::MirLocalKind::Parameter &&
+                   fn.locals[1].kind == mir::MirLocalKind::Temporary &&
+                   fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::IndirectCall;
+          };
+          auto isLeaf = [](const mir::MirFunction& fn) {
+            return fn.kind == mir::MirFunctionKind::Function &&
+                   fn.sourceDefinitionKind == identity::DefinitionKind::Method &&
+                   fn.locals.size() == 1 && fn.blocks.size() == 1 &&
+                   fn.locals[0].kind == mir::MirLocalKind::Parameter;
+          };
+          zc::Maybe<size_t> callerIndex;
+          zc::Maybe<size_t> existentialCalleeIndex;
+          zc::Maybe<size_t> indirectCalleeIndex;
+          zc::Maybe<size_t> leafIndex;
+          bool ambiguous = false;
+          for (size_t index = 0; index < functions.size(); ++index) {
+            const auto& fn = functions[index];
+            if (isExistentialCallResultCaller(fn)) {
+              if (callerIndex != zc::none) {
+                ambiguous = true;
+                break;
+              }
+              callerIndex = index;
+            } else if (isExistentialCallee(fn)) {
+              if (existentialCalleeIndex != zc::none) {
+                ambiguous = true;
+                break;
+              }
+              existentialCalleeIndex = index;
+            } else if (isIndirectCallee(fn)) {
+              if (indirectCalleeIndex != zc::none) {
+                ambiguous = true;
+                break;
+              }
+              indirectCalleeIndex = index;
+            } else if (isLeaf(fn)) {
+              if (leafIndex != zc::none) {
+                ambiguous = true;
+                break;
+              }
+              leafIndex = index;
+            }
+          }
+          if (!ambiguous) {
+            ZC_IF_SOME(caller, callerIndex) {
+              ZC_IF_SOME(existentialCallee, existentialCalleeIndex) {
+                ZC_IF_SOME(indirectCallee, indirectCalleeIndex) {
+                  ZC_IF_SOME(leaf, leafIndex) {
+                    const auto& callerFn = functions[caller];
+                    const auto& initCall = callerFn.blocks[0].terminator.callValue();
+                    const auto& returnCall = callerFn.blocks[1].terminator.callValue();
+                    if (initCall.callee == functions[existentialCallee].owner &&
+                        returnCall.callee == functions[indirectCallee].owner) {
+                      lir = lir::MirToLirLowering::lowerExistentialCallResultModule(
+                          functions[caller], functions[existentialCallee],
+                          functions[indirectCallee], functions[leaf], types);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
         if (lir == zc::none) {
           // Standalone fallback for 3+ functions: no call-chain shape matched
           // (or the module has 4+ functions). Lower each function independently

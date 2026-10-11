@@ -1,0 +1,8 @@
+[package]
+name = "existential_call_result_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "existential_call_result_consumer"
+path = "src/main.zom"

@@ -10800,6 +10800,313 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += 6;
       continue;
     }
+    // Existential call: `let a: dyn I = makeExistential(); return f(a);`.
+    // Fixed six-node preorder: function F, body F+1, local F+2, direct-call
+    // initializer F+3, return F+4, direct call F+5. The initializer call
+    // produces the existential fat-pointer carrier directly; the return call's
+    // sole argument is that existential local copied by value.
+    if (sourceShapeMaybe != zc::none &&
+        ZC_ASSERT_NONNULL(sourceShapeMaybe).returnsDirectExistentialCall) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectExistentialCall = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      };
+      const auto rejectExistentialCallMissing = [&]() {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      };
+      zc::Maybe<const HirLocalBinding&> existentialLocal;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node != hirId(expectedFunction + 2)) continue;
+        if (existentialLocal != zc::none) return rejectExistentialCall();
+        existentialLocal = candidateLocal;
+      }
+      zc::Maybe<const HirDirectCallExpression&> initializerCallRecord;
+      for (const auto& candidateCall : candidate.impl->calls) {
+        if (candidateCall.node != hirId(expectedFunction + 3)) continue;
+        if (initializerCallRecord != zc::none) return rejectExistentialCall();
+        initializerCallRecord = candidateCall;
+      }
+      zc::Maybe<const HirDirectCallExpression&> existentialCall;
+      for (const auto& candidateCall : candidate.impl->calls) {
+        if (candidateCall.node != hirId(expectedFunction + 5)) continue;
+        if (existentialCall != zc::none) return rejectExistentialCall();
+        existentialCall = candidateCall;
+      }
+      zc::Maybe<const HirReturnStatement&> existentialReturn;
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node != hirId(expectedFunction + 4)) continue;
+        if (existentialReturn != zc::none) return rejectExistentialCall();
+        existentialReturn = candidateReturn;
+      }
+      if (existentialLocal == zc::none || initializerCallRecord == zc::none ||
+          existentialCall == zc::none || existentialReturn == zc::none) {
+        return rejectExistentialCallMissing();
+      }
+      const auto& localRecord = ZC_ASSERT_NONNULL(existentialLocal);
+      const auto& initCall = ZC_ASSERT_NONNULL(initializerCallRecord);
+      const auto& call = ZC_ASSERT_NONNULL(existentialCall);
+      const auto& returnStatementRecord = ZC_ASSERT_NONNULL(existentialReturn);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 2 ||
+          block.statements[0] != localRecord.node ||
+          block.statements[1] != returnStatementRecord.node ||
+          localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
+          localRecord.initializer != hirId(expectedFunction + 3) ||
+          localRecord.initializerSpan == zc::none || localRecord.erasure != zc::none ||
+          initCall.node != hirId(expectedFunction + 3) || initCall.resultType != localRecord.type ||
+          returnStatementRecord.node != hirId(expectedFunction + 4) ||
+          returnStatementRecord.value != call.node ||
+          returnStatementRecord.resultType != function.resultType ||
+          call.node != hirId(expectedFunction + 5) || call.resultType != function.resultType ||
+          function.receiver != zc::none || !typeExists(localRecord.type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectExistentialCall();
+      }
+
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+      if (sourceDefinitionIndex == zc::none || signaturePosition == zc::none ||
+          rootPosition == zc::none) {
+        return rejectExistentialCallMissing();
+      }
+      size_t definitionSlot = 0;
+      size_t signatureSlot = 0;
+      size_t rootSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+      ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& signature = signatures.definitions[signatureSlot];
+      const auto& root = signatures.roots[rootSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          !signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) {
+        return rejectExistentialCall();
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedVisibility = visibility(root.visibility);
+      auto expectedLinkage = linkage(callable);
+      ast::NodeId initializer;
+      ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
+      if (expectedVisibility == zc::none || expectedLinkage == zc::none || !source.returnsLocal ||
+          source.localInitializer == zc::none || source.localWrites.size != 0 ||
+          !tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::CallExpression ||
+          !tree.contains(initializer) ||
+          tree.node(initializer).kind != ast::SyntaxKind::CallExpression ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Function ||
+          root.canonicalDefinition != function.definition || root.sourceModule != module ||
+          callable.receiver != zc::none || callable.success != function.resultType ||
+          callable.parameters.size() != 0 || function.parameters.size() != 0 ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage)) {
+        return rejectExistentialCall();
+      }
+      // Return call AST: `f(a)` — callee is IdentExpr, no type args, one
+      // argument that names the owner local.
+      const auto& sourceCall = tree.node(source.value);
+      const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList typeArguments{
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                    sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+          tree.list(arguments).size() != 1) {
+        return rejectExistentialCall();
+      }
+      const ast::NodeId argumentNode = tree.list(arguments)[0];
+      if (!tree.contains(argumentNode) ||
+          tree.node(argumentNode).kind != ast::SyntaxKind::IdentExpr) {
+        return rejectExistentialCall();
+      }
+      // Initializer call AST: `makeExistential()` — callee is IdentExpr, no
+      // type args, zero arguments.
+      const auto& sourceInitCall = tree.node(initializer);
+      const ast::NodeId initCalleeNode(
+          sourceInitCall.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList initTypeArguments{
+          sourceInitCall.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          sourceInitCall.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList initArguments{
+          sourceInitCall.payload.words[ast::kCallExpressionArgsFirstWord],
+          sourceInitCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (!tree.contains(initCalleeNode) ||
+          tree.node(initCalleeNode).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(initTypeArguments) || !initTypeArguments.empty() ||
+          !tree.contains(initArguments) || tree.list(initArguments).size() != 0) {
+        return rejectExistentialCall();
+      }
+      auto ownerBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
+      auto argumentBinding = resolvedOwnerLocal(bound.bindings(), argumentNode);
+      auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+      auto argumentTypeIndex = factIndex(facts.nodeTypes(), argumentNode);
+      auto initializerTypeIndex = factIndex(facts.nodeTypes(), initializer);
+      auto initCalleeTypeIndex = factIndex(facts.nodeTypes(), initCalleeNode);
+      auto checkedCallIndex = factIndex(facts.calls(), source.value);
+      auto checkedInitCallIndex = factIndex(facts.calls(), initializer);
+      auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+      auto initCallKey = checkedNodeKey(tree, bound.parsedModule(), initializer);
+      auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+      auto initCallSpan = bound.parsedModule().spanFor(sourceInitCall.range);
+      auto initializerSpan = bound.parsedModule().spanFor(tree.node(initializer).range);
+      auto argumentSpan = bound.parsedModule().spanFor(tree.node(argumentNode).range);
+      if (ownerBinding == zc::none || argumentBinding == zc::none ||
+          ownerBinding != argumentBinding ||
+          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
+                             tree) ||
+          calleeTypeIndex == zc::none || argumentTypeIndex == zc::none ||
+          initializerTypeIndex == zc::none || initCalleeTypeIndex == zc::none ||
+          checkedCallIndex == zc::none || checkedInitCallIndex == zc::none || callKey == zc::none ||
+          initCallKey == zc::none || callSpan == zc::none || initCallSpan == zc::none ||
+          initializerSpan == zc::none || argumentSpan == zc::none) {
+        return rejectExistentialCallMissing();
+      }
+      auto dispatchIndex = dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                             ZC_ASSERT_NONNULL(callKey));
+      auto initDispatchIndex = dispatchFactIndex(
+          candidate.impl->checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(initCallKey));
+      if (dispatchIndex == zc::none || initDispatchIndex == zc::none) {
+        return rejectExistentialCallMissing();
+      }
+      auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+      auto initCallee = resolvedDefinition(bound.bindings(), initCalleeNode);
+      if (callee == zc::none || initCallee == zc::none) { return rejectExistentialCallMissing(); }
+      size_t calleeTypeSlot = 0;
+      size_t argumentTypeSlot = 0;
+      size_t initializerTypeSlot = 0;
+      size_t initCalleeTypeSlot = 0;
+      size_t checkedCallSlot = 0;
+      size_t checkedInitCallSlot = 0;
+      size_t dispatchSlot = 0;
+      size_t initDispatchSlot = 0;
+      ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+      ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+      ZC_IF_SOME(value, initializerTypeIndex) { initializerTypeSlot = value; }
+      ZC_IF_SOME(value, initCalleeTypeIndex) { initCalleeTypeSlot = value; }
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      ZC_IF_SOME(value, checkedInitCallIndex) { checkedInitCallSlot = value; }
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      ZC_IF_SOME(value, initDispatchIndex) { initDispatchSlot = value; }
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& initInvocation = facts.calls().entries()[checkedInitCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      const auto& initSelected = initInvocation.selected.variant();
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& initDispatch =
+          candidate.impl->checkedModule.dispatchFacts().facts()[initDispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& initTarget = initDispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      const auto& initTransform = initDispatch.fact.resultTransform.variant();
+      const auto& argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+      bool dispatchOwnerMatches = false;
+      ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+      bool initDispatchOwnerMatches = false;
+      ZC_IF_SOME(owner, initDispatch.owner) {
+        initDispatchOwnerMatches = owner == function.definition;
+      }
+      bool callSpanMatches = false;
+      bool dispatchSpanMatches = false;
+      bool hirSpanMatches = false;
+      ZC_IF_SOME(value, callSpan) {
+        callSpanMatches =
+            sameSpan(facts.calls().entries()[checkedCallSlot].value.sourceSpan, value);
+        dispatchSpanMatches = sameSpan(dispatch.fact.sourceSpan, value);
+        hirSpanMatches = sameSpan(call.sourceSpan, value);
+      }
+      bool initCallSpanMatches = false;
+      bool initDispatchSpanMatches = false;
+      bool initHirSpanMatches = false;
+      ZC_IF_SOME(value, initCallSpan) {
+        initCallSpanMatches =
+            sameSpan(facts.calls().entries()[checkedInitCallSlot].value.sourceSpan, value);
+        initDispatchSpanMatches = sameSpan(initDispatch.fact.sourceSpan, value);
+        initHirSpanMatches = sameSpan(initCall.sourceSpan, value);
+      }
+      if (initCall.resultType != facts.nodeTypes().entries()[initializerTypeSlot].value ||
+          initCall.resultType != localRecord.type ||
+          initCall.callee != ZC_ASSERT_NONNULL(initCallee) ||
+          initCall.calleeType != facts.nodeTypes().entries()[initCalleeTypeSlot].value ||
+          initCall.arguments.size() != 0 || !initSelected.is<checker::checked::DirectCallable>() ||
+          initSelected.get<checker::checked::DirectCallable>().callee != initCall.callee ||
+          !initTarget.is<checker::dispatch::DirectTarget>() ||
+          initTarget.get<checker::dispatch::DirectTarget>().callee != initCall.callee ||
+          !initTransform.is<checker::dispatch::IdentityResultTransform>() ||
+          initInvocation.calleeType != initCall.calleeType ||
+          initInvocation.successType != localRecord.type ||
+          initInvocation.resultType != localRecord.type || initInvocation.receiver != zc::none ||
+          initInvocation.receiverMode != zc::none ||
+          initInvocation.receiverAdjustment != zc::none || initInvocation.arguments.size() != 0 ||
+          initInvocation.substitutions != zc::none || initInvocation.witnesses != zc::none ||
+          initInvocation.raises != zc::none || !initDispatchOwnerMatches ||
+          initDispatch.fact.receiver != zc::none || initDispatch.fact.arguments.size() != 0 ||
+          initDispatch.fact.successType != localRecord.type ||
+          initDispatch.fact.resultType != localRecord.type ||
+          initDispatch.fact.substitutions != zc::none || initDispatch.fact.witnesses != zc::none ||
+          initDispatch.fact.raises != zc::none || !initCallSpanMatches ||
+          !initDispatchSpanMatches || !initHirSpanMatches ||
+          !sameSpan(localRecord.sourceSpan, ZC_ASSERT_NONNULL(bound.parsedModule().spanFor(
+                                                tree.node(source.localPattern).range))) ||
+          !sameSpan(ZC_ASSERT_NONNULL(localRecord.initializerSpan),
+                    ZC_ASSERT_NONNULL(initializerSpan)) ||
+          call.callee != ZC_ASSERT_NONNULL(callee) ||
+          call.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+          call.arguments.size() != 1 || !selected.is<checker::checked::DirectCallable>() ||
+          selected.get<checker::checked::DirectCallable>().callee != call.callee ||
+          !target.is<checker::dispatch::DirectTarget>() ||
+          target.get<checker::dispatch::DirectTarget>().callee != call.callee ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          invocation.calleeType != call.calleeType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver != zc::none ||
+          invocation.receiverMode != zc::none || invocation.receiverAdjustment != zc::none ||
+          invocation.arguments.size() != 1 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          !dispatchOwnerMatches || dispatch.fact.receiver != zc::none ||
+          dispatch.fact.arguments.size() != 1 || dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none || !callSpanMatches || !dispatchSpanMatches ||
+          !hirSpanMatches) {
+        return rejectExistentialCall();
+      }
+      const auto& checkedArgument = invocation.arguments[0];
+      const auto& dispatchArgument = dispatch.fact.arguments[0];
+      const auto& hirArgument = call.arguments[0];
+      if (checkedArgument.sourceNode != argumentNode ||
+          checkedArgument.sourceType != argumentType ||
+          checkedArgument.parameterType != argumentType || checkedArgument.adjustment != zc::none ||
+          !sameNodeKey(
+              dispatchArgument.sourceNode,
+              ZC_ASSERT_NONNULL(checkedNodeKey(tree, bound.parsedModule(), argumentNode))) ||
+          dispatchArgument.sourceType != argumentType ||
+          dispatchArgument.parameterType != argumentType ||
+          dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
+          argumentType != localRecord.type || hirArgument.value != zc::none ||
+          hirArgument.parameter != zc::none || hirArgument.local != hirLocalId(1) ||
+          !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+        return rejectExistentialCall();
+      }
+      nextFunction += 6;
+      continue;
+    }
     // number of extra HIR nodes the unsafe block contributes (0 when absent, 1
     // when present and valid), or zc::none when present but invalid.
     auto verifyUnsafeBlock = [&](const FunctionReturnShape& source, uint32_t baseIncrement,

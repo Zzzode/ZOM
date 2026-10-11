@@ -2220,6 +2220,101 @@ bool validScalarLocalCallReturnFunction(
   return false;
 }
 
+bool validDirectExistentialCallReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirDirectCallExpression& initializerCall,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirDirectCallExpression& call,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver != zc::none) return false;
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 3 ||
+      declaration.parameters.size() != 0 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 2 || sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != sourceReturn.node ||
+      sourceLocal.initializer != initializerCall.node || sourceReturn.value != call.node ||
+      sourceLocal.local.ordinal() != 1 || sourceLocal.type != initializerCall.resultType ||
+      initializerCall.arguments.size() != 0 || call.resultType != declaration.resultType ||
+      call.arguments.size() != 1 || call.arguments[0].value != zc::none ||
+      call.arguments[0].parameter != zc::none || call.arguments[0].local != sourceLocal.local ||
+      call.arguments[0].type != sourceLocal.type) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& userLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
+  const auto& entry = function.blocks[0];
+  const auto& continuation = function.blocks[1];
+  const auto& finalBlock = function.blocks[2];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
+      userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
+      userLocal.sourceScope != scope.id ||
+      !sameSpan(userLocal.sourceSpan, sourceLocal.sourceSpan) || resultLocal.id != localId(2) ||
+      resultLocal.kind != MirLocalKind::Temporary || resultLocal.type != call.resultType ||
+      resultLocal.sourceScope != scope.id || !sameSpan(resultLocal.sourceSpan, call.sourceSpan) ||
+      entry.id != blockId(1) || entry.sourceScope != scope.id || entry.statements.size() != 1 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != userLocal.id ||
+      !sameSpan(entry.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      entry.terminator.kind() != MirTerminatorKind::Call ||
+      !sameSpan(entry.terminator.sourceSpan(), initializerCall.sourceSpan) ||
+      continuation.id != blockId(2) || continuation.sourceScope != scope.id ||
+      continuation.statements.size() != 1 ||
+      continuation.statements[0].kind() != MirStatementKind::StorageLive ||
+      continuation.statements[0].storageLocal() != resultLocal.id ||
+      !sameSpan(continuation.statements[0].sourceSpan(), call.sourceSpan) ||
+      continuation.terminator.kind() != MirTerminatorKind::Call ||
+      !sameSpan(continuation.terminator.sourceSpan(), call.sourceSpan) ||
+      finalBlock.id != blockId(3) || finalBlock.sourceScope != scope.id ||
+      finalBlock.statements.size() != 0 ||
+      finalBlock.terminator.kind() != MirTerminatorKind::Return ||
+      finalBlock.terminator.returnValue().value == zc::none ||
+      !sameSpan(finalBlock.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  const auto& initTerminator = entry.terminator.callValue();
+  if (initTerminator.callee != initializerCall.callee || initTerminator.arguments.size() != 0 ||
+      initTerminator.destination.local() != userLocal.id ||
+      initTerminator.destination.rootType() != userLocal.type ||
+      initTerminator.destination.resultType() != userLocal.type ||
+      initTerminator.destination.projections().size() != 0 ||
+      initTerminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      initTerminator.normalTarget != continuation.id || initTerminator.unwindTarget != zc::none) {
+    return false;
+  }
+  const auto& returnTerminator = continuation.terminator.callValue();
+  if (returnTerminator.callee != call.callee || returnTerminator.arguments.size() != 1 ||
+      returnTerminator.destination.local() != resultLocal.id ||
+      returnTerminator.destination.rootType() != resultLocal.type ||
+      returnTerminator.destination.resultType() != resultLocal.type ||
+      returnTerminator.destination.projections().size() != 0 ||
+      returnTerminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      returnTerminator.normalTarget != finalBlock.id || returnTerminator.unwindTarget != zc::none) {
+    return false;
+  }
+  const auto& actualArgument = returnTerminator.arguments[0];
+  if (!matchesPlaceUse(actualArgument, proofs, copy, sourceLocal.type) ||
+      actualArgument.place().local() != userLocal.id ||
+      actualArgument.place().rootType() != userLocal.type ||
+      actualArgument.place().resultType() != userLocal.type ||
+      actualArgument.place().projections().size() != 0) {
+    return false;
+  }
+  ZC_IF_SOME(value, finalBlock.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
+           value.place().local() == resultLocal.id &&
+           value.place().rootType() == resultLocal.type &&
+           value.place().resultType() == resultLocal.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validReceiverFieldWriteReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock,
@@ -17591,6 +17686,21 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           ZC_ASSERT_NONNULL(call).arguments[0].value == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].parameter == zc::none &&
           ZC_ASSERT_NONNULL(call).arguments[0].local == ZC_ASSERT_NONNULL(sourceLocal).local;
+      // Existential call: `let a: dyn I = makeExistential(); return f(a);`.
+      // Same carrier as the scalar-local call, but the initializer is a direct
+      // call that produces the existential fat-pointer carrier directly (no
+      // erasure), and the return call passes that existential local by value.
+      const bool isDirectExistentialCallReturn =
+          receiverFieldProjection == zc::none && localFieldProjection == zc::none &&
+          sourceDeclaration.receiver == zc::none && sourceDeclaration.parameters.size() == 0 &&
+          sourceLocal != zc::none && localReference == zc::none && initializer == zc::none &&
+          initializerCall != zc::none && initializerAggregate == zc::none && call != zc::none &&
+          expression == zc::none && parameterReference == zc::none &&
+          ZC_ASSERT_NONNULL(sourceLocal).erasure == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments.size() == 1 &&
+          ZC_ASSERT_NONNULL(call).arguments[0].value == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments[0].parameter == zc::none &&
+          ZC_ASSERT_NONNULL(call).arguments[0].local == ZC_ASSERT_NONNULL(sourceLocal).local;
       const bool isParameterReturn = parameterReference != zc::none;
       const bool isParameterReborrow = parameterReborrow != zc::none;
       const bool isLocalBorrow = localBorrow != zc::none;
@@ -17626,7 +17736,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       }
       const bool isLocalReturn = !isLocalFieldReturn && !isLocalAliasReborrow && !isLocalBorrow &&
                                  !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
-                                 !isScalarLocalCallReturn &&
+                                 !isScalarLocalCallReturn && !isDirectExistentialCallReturn &&
                                  (sourceLocal != zc::none || localReference != zc::none);
       const bool hasLocalWrites =
           sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 3;
@@ -17645,32 +17755,42 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           (sourceBlock == zc::none || sourceReturn == zc::none ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && !isByValueParameterFieldReturn &&
             !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
-            !isScalarLocalCallReturn && !isLocalReturn && !isParameterReturn &&
-            !isParameterReborrow && !isLocalBorrow && !isConditionalReturn && !isComparisonReturn &&
-            !isDirectAggregateReturn && !isExistentialReturn && !isParameterReceiverCallReturn &&
-            (expression == zc::none) == (call == zc::none)) ||
+            !isScalarLocalCallReturn && !isDirectExistentialCallReturn && !isLocalReturn &&
+            !isParameterReturn && !isParameterReborrow && !isLocalBorrow && !isConditionalReturn &&
+            !isComparisonReturn && !isDirectAggregateReturn && !isExistentialReturn &&
+            !isParameterReceiverCallReturn && (expression == zc::none) == (call == zc::none)) ||
            (isParameterReceiverCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
+             isScalarLocalCallReturn || isDirectExistentialCallReturn || isLocalReturn ||
+             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
+             isComparisonReturn || isDirectAggregateReturn || expression != zc::none ||
+             call != zc::none || localReference != zc::none || sourceOverwrite != zc::none)) ||
+           (isByValueAggregateCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isErasedAggregateCallReturn || isScalarLocalCallReturn ||
+             isDirectExistentialCallReturn || isLocalReturn || isParameterReturn ||
+             isParameterReborrow || isLocalBorrow || isConditionalReturn || isComparisonReturn ||
+             expression != zc::none || localReference != zc::none ||
+             sourceOverwrite != zc::none)) ||
+           (isErasedAggregateCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isScalarLocalCallReturn || isDirectExistentialCallReturn || isLocalReturn ||
+             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
+             isComparisonReturn || expression != zc::none || localReference != zc::none ||
+             sourceOverwrite != zc::none)) ||
+           (isScalarLocalCallReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isDirectExistentialCallReturn || isLocalReturn || isParameterReturn ||
+             isParameterReborrow || isLocalBorrow || isConditionalReturn || isComparisonReturn ||
+             expression != zc::none || localReference != zc::none ||
+             sourceOverwrite != zc::none)) ||
+           (isDirectExistentialCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
              isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
              isLocalBorrow || isConditionalReturn || isComparisonReturn ||
-             isDirectAggregateReturn || expression != zc::none || call != zc::none ||
-             localReference != zc::none || sourceOverwrite != zc::none)) ||
-           (isByValueAggregateCallReturn &&
-            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
-             isErasedAggregateCallReturn || isScalarLocalCallReturn || isLocalReturn ||
-             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
-             isComparisonReturn || expression != zc::none || localReference != zc::none ||
-             sourceOverwrite != zc::none)) ||
-           (isErasedAggregateCallReturn &&
-            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
-             isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
-             isLocalBorrow || isConditionalReturn || isComparisonReturn || expression != zc::none ||
-             localReference != zc::none || sourceOverwrite != zc::none)) ||
-           (isScalarLocalCallReturn &&
-            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
-             isLocalReturn || isParameterReturn || isParameterReborrow || isLocalBorrow ||
-             isConditionalReturn || isComparisonReturn || expression != zc::none ||
+             isDirectAggregateReturn || isExistentialReturn || expression != zc::none ||
              localReference != zc::none || sourceOverwrite != zc::none)) ||
            (isReceiverFieldReturn &&
             (isLocalFieldReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
@@ -17901,6 +18021,14 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                 ZC_IF_SOME(scalarInitializer, initializer) {
                   valid = validScalarLocalCallReturnFunction(
                       function, sourceDeclaration, block, scalarLocal, scalarInitializer,
+                      returnStatement, sourceCall, module, identities, semanticTypes, proofs, copy);
+                }
+              }
+            } else if (isDirectExistentialCallReturn) {
+              ZC_IF_SOME(existentialLocal, sourceLocal) {
+                ZC_IF_SOME(existentialInitCall, initializerCall) {
+                  valid = validDirectExistentialCallReturnFunction(
+                      function, sourceDeclaration, block, existentialLocal, existentialInitCall,
                       returnStatement, sourceCall, module, identities, semanticTypes, proofs, copy);
                 }
               }
