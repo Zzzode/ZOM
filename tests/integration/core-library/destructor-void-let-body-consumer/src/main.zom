@@ -1,0 +1,7 @@
+struct Resource {
+  let handle: i32,
+  deinit() { let x: i32 = 0; }
+}
+fn entry() -> i32 {
+  return 41;
+}

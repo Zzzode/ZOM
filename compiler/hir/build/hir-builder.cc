@@ -497,7 +497,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       continue;
     }
     if (definition.record.kind() == identity::DefinitionKind::Destructor) {
-      // Destructor empty-body shape: `deinit() { }` with zero statements. The
+      // Destructor body shapes: `deinit() { }` (zero statements) or
+      // `deinit() { let x: T = <scalar-literal>; }` (one let statement). The
       // callable result is Unit; there is no receiver, no ordinary parameters,
       // no return statement, and no return value. The function exists in the
       // binary for future drop elaboration but is not called until the
@@ -511,7 +512,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              ordinal + 2);
       }
       auto bodyShape = functionReturnShape(tree, tree.node(definition.node));
-      if (bodyShape == zc::none || !ZC_ASSERT_NONNULL(bodyShape).isEmptyBody) {
+      if (bodyShape == zc::none || (!ZC_ASSERT_NONNULL(bodyShape).isEmptyBody &&
+                                    !ZC_ASSERT_NONNULL(bodyShape).isVoidLetBody)) {
         return rejectHirCapability<HirModuleCandidate>(
             definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
             definition.source.clone());
@@ -533,9 +535,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       }
       const auto& callable =
           signaturePtr->payload.variant().get<checker::signature::CallableSignature>();
+      // A raises clause on a destructor is well-formed source the current
+      // lowering does not emit; drain the owning definition with the
+      // capability code rather than an invariant.
+      if (callable.raises != zc::none) {
+        return rejectHirCapability<HirModuleCandidate>(
+            definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            definition.source.clone());
+      }
       if (signaturePtr->definitionKind != identity::DefinitionKind::Destructor ||
           callable.receiver != zc::none || callable.parameters.size() != 0 ||
-          callable.raises != zc::none ||
           !sameSpan(signaturePtr->declarationSpan, definition.source)) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries,
@@ -570,6 +579,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ZC_IF_SOME(value, bodySpan) { bodySpanValue = value.clone(); }
       zc::Array<uint8_t> orderingKey = definition.key.encode();
       FunctionReturnShape shape = zc::mv(bodyShape).orDefault(FunctionReturnShape{});
+      // For the void-let-body shape, resolve the pattern type, spans, and
+      // literal fact so the materialization pass can lower the binding.
+      zc::Maybe<HirLocalBinding> voidLetLocal;
+      zc::Maybe<checker::checked::CanonicalConstValue> voidLetLiteral;
+      if (shape.isVoidLetBody) {
+        auto patternSpan = bound.parsedModule().spanFor(tree.node(shape.voidLetPattern).range);
+        auto initializerSpan =
+            bound.parsedModule().spanFor(tree.node(shape.voidLetInitializer).range);
+        auto literalIndex = factIndex(facts.literals(), shape.voidLetInitializer);
+        if (patternSpan == zc::none || initializerSpan == zc::none || literalIndex == zc::none) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::MissingRequiredFact, module,
+                                               registries, ordinal + 2);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+        const auto& literalFact = facts.literals().entries()[literalSlot].value;
+        if (!sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                               ir::IrFailureKind::InvalidFact, module, registries,
+                                               ordinal + 2);
+        }
+        // The body checker produces no NodeType fact for an owner-local
+        // IdentifierPattern; the literal fact's type is the binding's type
+        // because the checker verified the declared/initializer match.
+        const identity::SemanticTypeId patternType = literalFact.type;
+        zc::Maybe<HirNodeId> initializerNode;
+        initializerNode = HirNodeId();
+        voidLetLocal = zc::some(HirLocalBinding{
+            HirNodeId(), HirLocalId(), patternType, zc::mv(initializerNode),
+            ZC_ASSERT_NONNULL(patternSpan).clone(), ZC_ASSERT_NONNULL(initializerSpan).clone()});
+        voidLetLiteral = zc::some(literalFact.literal.clone());
+      }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       definition.node,
                                                       callable.success,
@@ -581,12 +623,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       bodySpanValue.clone(),
                                                       definition.source.clone(),
                                                       definition.source.clone(),
+                                                      zc::mv(voidLetLiteral),
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
-                                                      zc::none,
-                                                      zc::none,
+                                                      zc::mv(voidLetLocal),
                                                       zc::none,
                                                       {},
                                                       {},
@@ -10412,6 +10454,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // typed nodes and write/parameter records are counted by the existing
   // parameterFieldWrite/parameterReference tallies.
   size_t voidFunctionCount = 0;
+  // Destructors whose body is a single scalar-let statement
+  // (`deinit() { let x: T = <lit>; }`). Each contributes one extra node-type
+  // fact and one extra literal fact beyond the void-function baseline (the
+  // let initializer expression), so both equations add this count back.
+  size_t voidLetBodyCount = 0;
   // Discarded statement-position receiver calls. A returned receiver call has
   // its call node covered by the per-function node-type baseline; a discarded
   // call has no return, so its call node needs one additional node-type term on
@@ -10452,6 +10499,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t nestedForLoopAccumulatorReturnCount = 0;
   for (const auto& function : pendingFunctions) {
     if (function.voidBody) ++voidFunctionCount;
+    if (function.voidBody && function.local != zc::none && function.literal != zc::none) {
+      ++voidLetBodyCount;
+    }
     if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     if (function.returnsFoldedFloatCast) ++foldedFloatCastCount;
     if (function.returnsLocalIncrement) ++incrementReturnCount;
@@ -11070,9 +11120,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       if (reborrow.sourceAlias != zc::none) ++localAliasReborrowCount;
     }
     if (hasLocalBorrow) ++localBorrowCount;
+    // A void-let-body destructor (`deinit() { let x: T = <lit>; }`) carries a
+    // dead local binding with no local reference; the local is folded away by
+    // the LIR builder. Exclude it from the local/localReference pairing check.
+    const bool isVoidLetBody =
+        function.voidBody && function.local != zc::none && function.literal != zc::none;
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
-        !isDirectAggregateCall && !isDirectScalarLocalCall) {
+        !isDirectAggregateCall && !isDirectScalarLocalCall && !isVoidLetBody) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -11083,7 +11138,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
     }
-    if (function.local != zc::none) {
+    if (function.local != zc::none && !isVoidLetBody) {
       ++localReturnCount;
       if (missingInitializer) ++uninitializedLocalReturnCount;
     }
@@ -11169,8 +11224,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
   }
   const size_t expectedNodeTypes =
-      pending.size() + pendingFunctions.size() - voidFunctionCount + directCallCount +
-      errorPropagateReturnCount + errorUnwrapReturnCount +
+      pending.size() + pendingFunctions.size() - voidFunctionCount + voidLetBodyCount +
+      directCallCount + errorPropagateReturnCount + errorUnwrapReturnCount +
       (receiverCallCount + receiverSelfCallCount) * 2 + localReturnCount -
       uninitializedLocalReturnCount + localWriteCount * 3 + aggregateElementCount -
       enumConstructionAggregateCount + localFieldProjectionCount + localFieldWriteCount +
@@ -11201,10 +11256,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   const int64_t expectedLiterals =
       static_cast<int64_t>(
-          pending.size() + pendingFunctions.size() - voidFunctionCount - directCallCount -
-          aggregateCount + deadEnumConstructionAggregateCount - receiverSelfCallCount -
-          liveEraseReceiverCallCount - uninitializedLocalReturnCount - parameterReferenceCount -
-          parameterReborrowCount - parameterFieldProjectionCount +
+          pending.size() + pendingFunctions.size() - voidFunctionCount + voidLetBodyCount -
+          directCallCount - aggregateCount + deadEnumConstructionAggregateCount -
+          receiverSelfCallCount - liveEraseReceiverCallCount - uninitializedLocalReturnCount -
+          parameterReferenceCount - parameterReborrowCount - parameterFieldProjectionCount +
           armParameterFieldProjectionCount - binaryWriteLocalOperandCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount +
           directCallLiteralArgumentCount + receiverCallArgumentCount -
@@ -11410,6 +11465,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
                      conditionals, loops, sourceNodes);
       lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Void-let-body destructor family: `deinit() { let x: T = <lit>; }` with
+    // one scalar-initialized local, no receiver, no parameters, no return,
+    // Unit result. Four node ids: function, body, local, literal. The dead
+    // local is folded away by the LIR builder, which emits only ReturnVoid.
+    if (value.voidBody && value.local != zc::none && value.literal != zc::none &&
+        value.parameterFieldWrite == zc::none && value.parameterFieldWriteParameter == zc::none &&
+        value.receiver == zc::none && value.parameterFieldProjection == zc::none &&
+        value.parameterFieldWriteLiteral == zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.receiverSelfCall == zc::none &&
+        value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
+        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
+        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.receiverFieldArithmetic == zc::none && value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     unsafeBlocks, parameterReborrows, localBorrows, calls, receiverCalls,
+                     conditionals, loops, sourceNodes);
+      lowerVoidLetBodyFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Empty-body void function family: `deinit() { }` with zero statements,

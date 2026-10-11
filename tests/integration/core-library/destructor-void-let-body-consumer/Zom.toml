@@ -1,0 +1,8 @@
+[package]
+name = "destructor_void_let_body_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "destructor_void_let_body_consumer"
+path = "src/main.zom"

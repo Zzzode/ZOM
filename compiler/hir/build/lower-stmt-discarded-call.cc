@@ -51,6 +51,32 @@ void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx&
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
 }
 
+void lowerVoidLetBodyFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const HirLocalBinding& local = ZC_ASSERT_NONNULL(function.local);
+  const auto& literal = ZC_ASSERT_NONNULL(function.literal);
+  const identity::SourceSpan& initializerSpan = ZC_ASSERT_NONNULL(local.initializerSpan);
+
+  // Fixed source-preorder stride: function F, body F+1, local F+2, literal
+  // F+3. The block lists the local; no return is materialized for the Unit
+  // result. The dead local is folded away by the LIR builder.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId literalId = ctx.allocNode(ast::NodeId());
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::mv(function.receiver),
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), local.type, literalId,
+                               local.sourceSpan.clone(), initializerSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{literalId, local.type, literal.clone(),
+                                               HirValueCategory::Value, initializerSpan.clone()});
+}
+
 void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   HirReceiverCallExpression setCall = zc::mv(ZC_ASSERT_NONNULL(function.statementReceiverCall));
   HirLocalReferenceExpression setReceiver =

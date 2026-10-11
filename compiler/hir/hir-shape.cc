@@ -1535,16 +1535,48 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return zc::none;
-  // Destructor empty-body shape: `deinit() { }` with zero statements. The
+  // Destructor body shapes: `deinit() { }` (zero statements) or
+  // `deinit() { let x: T = <scalar-literal>; }` (one let statement). The
   // callable result is Unit; there is no return statement or return value.
   // The checker's canonical destructor shape (signature-facts.cc) expects no
   // receiver and no ordinary parameters, so the body is the only carrier.
   if (isDestructor) {
-    if (!statements.empty()) return zc::none;
-    FunctionReturnShape shape{};
-    shape.body = body;
-    shape.isEmptyBody = true;
-    return shape;
+    if (statements.empty()) {
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.isEmptyBody = true;
+      return shape;
+    }
+    if (statements.size == 1) {
+      auto letItem = statementItem(tree, tree.list(statements)[0]);
+      if (letItem != zc::none) {
+        ast::NodeId letNode;
+        ZC_IF_SOME(value, letItem) { letNode = value; }
+        auto letDeclarator = localDeclarator(tree, letNode);
+        if (letDeclarator != zc::none && tree.node(letNode).kind == ast::SyntaxKind::LetStmt &&
+            static_cast<ast::BindingDeclarationKind>(
+                tree.node(letNode).payload.words[ast::kLetStmtKindWord]) ==
+                ast::BindingDeclarationKind::Let) {
+          ast::NodeId declarator;
+          ZC_IF_SOME(value, letDeclarator) { declarator = value; }
+          const ast::NodeId pattern(
+              tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+          const ast::NodeId initializer(
+              tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+          if (tree.contains(pattern) && tree.contains(initializer) &&
+              isScalarLiteral(tree.node(initializer).kind)) {
+            FunctionReturnShape shape{};
+            shape.body = body;
+            shape.isVoidLetBody = true;
+            shape.voidLetStatement = letNode;
+            shape.voidLetPattern = pattern;
+            shape.voidLetInitializer = initializer;
+            return shape;
+          }
+        }
+      }
+    }
+    return zc::none;
   }
   if (statements.empty()) return zc::none;
   // An inherent method is admitted only for a single flat return statement,

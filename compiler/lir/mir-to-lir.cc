@@ -507,18 +507,26 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerEmptyBodyVoidFunction(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit the verified empty-body void shape: a standalone function with no
-  // locals, one source scope, one block with no statements, and a ReturnVoid
-  // terminator. This is the destructor `deinit() { }` body: the callable
-  // result is Unit and no value is materialized.
+  // Admit the verified void-body shapes: a standalone function with one source
+  // scope, one block, and a ReturnVoid terminator. Two body shapes are admitted:
+  //   1. Empty body (`deinit() { }`): zero locals, zero statements.
+  //   2. Void-let body (`deinit() { let x: T = <lit>; }`): one user local,
+  //      StorageLive + Assign(Use constant). The dead local is folded away.
+  // The callable result is Unit and no value is materialized in either shape.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
-      function.locals.size() != 0 || function.blocks.size() != 1) {
+      function.blocks.size() != 1) {
     return zc::none;
   }
   const auto& block = function.blocks[0];
-  if (block.statements.size() != 0) { return zc::none; }
   if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
   if (block.terminator.returnValue().value != zc::none) { return zc::none; }
+  const bool isEmptyBody = function.locals.size() == 0 && block.statements.size() == 0;
+  const bool isVoidLetBody = function.locals.size() == 1 &&
+                             function.locals[0].kind == mir::MirLocalKind::UserLocal &&
+                             block.statements.size() == 2 &&
+                             block.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+                             block.statements[1].kind() == mir::MirStatementKind::Assign;
+  if (!isEmptyBody && !isVoidLetBody) { return zc::none; }
 
   auto entryId = LirBlockId::fromOrdinal(1);
   if (entryId == zc::none) { return zc::none; }

@@ -624,16 +624,24 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
-  // An empty-body void function: zero locals, one block, zero statements, and
-  // a value-less Return. This is the destructor `deinit() { }` body shape.
-  // The value-less Return maps to a LIR ReturnVoid.
+  // A void-body function: one block with a value-less Return. Two body shapes
+  // are admitted, both mapping to a LIR ReturnVoid:
+  //   1. Empty body (`deinit() { }`): zero locals, zero statements.
+  //   2. Void-let body (`deinit() { let x: T = <lit>; }`): one user local,
+  //      StorageLive + Assign(Use constant). The dead local is folded away.
   bool emptyBodyVoid = false;
-  if (!folded && receiverParameterFieldWriteVoid == zc::none && mir.locals.size() == 0 &&
-      mir.blocks.size() == 1 && mir.blocks[0].statements.size() == 0) {
-    const auto& term = mir.blocks[0].terminator;
+  if (!folded && receiverParameterFieldWriteVoid == zc::none && mir.blocks.size() == 1) {
+    const auto& block = mir.blocks[0];
+    const auto& term = block.terminator;
     if (term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value == zc::none &&
         unitCarrier(mir.resultType, types) != zc::none) {
-      emptyBodyVoid = true;
+      const bool isEmptyBody = mir.locals.size() == 0 && block.statements.size() == 0;
+      const bool isVoidLetBody = mir.locals.size() == 1 &&
+                                 mir.locals[0].kind == mir::MirLocalKind::UserLocal &&
+                                 block.statements.size() == 2 &&
+                                 block.statements[0].kind() == mir::MirStatementKind::StorageLive &&
+                                 block.statements[1].kind() == mir::MirStatementKind::Assign;
+      if (isEmptyBody || isVoidLetBody) { emptyBodyVoid = true; }
     }
   }
 
@@ -1219,6 +1227,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         lir.locals()[3].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (emptyBodyVoid) {
+    // A void-body destructor declares no LIR slots: the empty-body shape has no
+    // MIR locals, and the void-let-body shape folds its dead scalar local away.
+    if (lir.parameters().size() != 0 || lir.locals().size() != 0) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else {
     uint32_t parameterCount = 0;
     for (const auto& local : mir.locals) {
@@ -1419,6 +1433,15 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             const auto& assignment = mirStatement.assignmentValue();
             // The folded initializer is consumed by the return terminator.
             if (folded && &assignment == fold.assignment) break;
+            // A void-let-body destructor folds its dead scalar local away: the
+            // StorageLive and Assign have no LIR effect.
+            if (emptyBodyVoid && mir.locals.size() == 1 &&
+                assignment.destination.local() == mir.locals[0].id &&
+                assignment.destination.projections().size() == 0 &&
+                assignment.value.kind() == mir::MirRvalueKind::Use &&
+                assignment.value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
+              break;
+            }
             if (lirStatement >= lirBlock.statements().size()) {
               return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);

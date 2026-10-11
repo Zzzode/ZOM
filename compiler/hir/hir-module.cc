@@ -981,6 +981,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) { isSequentialShape = value.isSequentialLocalReturn; }
     bool isEmptyBodyShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isEmptyBodyShape = value.isEmptyBody; }
+    bool isVoidLetBodyShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) { isVoidLetBodyShape = value.isVoidLetBody; }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -1310,6 +1312,157 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       nextFunction += 2;
+      continue;
+    }
+    if (isVoidLetBodyShape) {
+      // Void-let-body destructor branch: `deinit() { let x: T = <lit>; }`.
+      // Four node ids in source preorder: function F, body F+1, local F+2,
+      // literal F+3. The block lists the local; no return is materialized.
+      const FunctionReturnShape& letSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      if (block.statements.size() != 1) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // No return record may lie in this function's id range.
+      for (const auto& candidateReturn : candidate.impl->returns) {
+        if (candidateReturn.node.ordinal() >= expectedFunction &&
+            candidateReturn.node.ordinal() < expectedFunction + 4) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+      }
+      zc::Maybe<const HirLocalBinding&> letLocal;
+      for (const auto& candidateLocal : candidate.impl->locals) {
+        if (candidateLocal.node != hirId(expectedFunction + 2)) continue;
+        if (letLocal != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        letLocal = candidateLocal;
+      }
+      zc::Maybe<const HirScalarLiteralExpression&> letLiteral;
+      for (const auto& candidateExpression : candidate.impl->expressions) {
+        if (candidateExpression.node != hirId(expectedFunction + 3)) continue;
+        if (letLiteral != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        letLiteral = candidateExpression;
+      }
+      if (letLocal == zc::none || letLiteral == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      const auto& localRecord = ZC_ASSERT_NONNULL(letLocal);
+      const auto& literalRecord = ZC_ASSERT_NONNULL(letLiteral);
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements[0] != localRecord.node ||
+          localRecord.node != hirId(expectedFunction + 2) || localRecord.local != hirLocalId(1) ||
+          localRecord.initializer != hirId(expectedFunction + 3) ||
+          localRecord.initializerSpan == zc::none ||
+          literalRecord.node != hirId(expectedFunction + 3) ||
+          literalRecord.type != localRecord.type ||
+          literalRecord.category != HirValueCategory::Value || function.receiver != zc::none ||
+          !typeExists(localRecord.type, semanticTypes)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t sourceDefinitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { sourceDefinitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[sourceDefinitionSlot];
+      const auto& tree = bound.tree();
+      if (sourceDefinition.record.kind() != identity::DefinitionKind::Destructor ||
+          !hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::DestructorDecl) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(letSource.body).range);
+      if (bodySpan == zc::none || !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source AST shape: one let statement with a scalar-literal
+      // initializer.
+      if (!tree.contains(letSource.voidLetStatement) ||
+          tree.node(letSource.voidLetStatement).kind != ast::SyntaxKind::LetStmt ||
+          !tree.contains(letSource.voidLetPattern) ||
+          !tree.contains(letSource.voidLetInitializer) ||
+          !isScalarLiteral(tree.node(letSource.voidLetInitializer).kind)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto signaturePosition = signatureIndex(signatures.definitions.asPtr(), function.definition);
+      const checker::signature::SemanticSignature* signaturePtr = nullptr;
+      if (signaturePosition != zc::none) {
+        size_t slot = 0;
+        ZC_IF_SOME(value, signaturePosition) { slot = value; }
+        signaturePtr = &signatures.definitions[slot];
+      } else {
+        const auto& localSignatures =
+            candidate.impl->checkedModule.localSignatureFacts().signatures();
+        for (const auto& sig : localSignatures) {
+          if (sig.definition == function.definition) {
+            signaturePtr = &sig;
+            break;
+          }
+        }
+      }
+      if (signaturePtr == nullptr) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      const auto& signature = *signaturePtr;
+      if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+          (!signature.scope.variant().is<checker::signature::EnclosedSignatureScope>() &&
+           !signature.scope.variant().is<checker::signature::MemberSignatureScope>() &&
+           !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>()) ||
+          signature.definition != function.definition ||
+          signature.definitionKind != identity::DefinitionKind::Destructor) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const auto& callable =
+          signature.payload.variant().get<checker::signature::CallableSignature>();
+      auto expectedLinkage = linkage(callable);
+      auto resultLookup = semanticTypes.get(callable.success);
+      const bool callableSuccessIsUnit =
+          resultLookup.is<type::SemanticTypeLookup>() &&
+          resultLookup.get<type::SemanticTypeLookup>().data().primitiveKind() != zc::none &&
+          ZC_ASSERT_NONNULL(resultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) ==
+              type::semantic::PrimitiveKind::Unit;
+      if (callable.receiver != zc::none || callable.parameters.size() != 0 ||
+          callable.raises != zc::none || !callableSuccessIsUnit ||
+          function.resultType != callable.success || expectedLinkage == zc::none ||
+          function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+          !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+          !sameSpan(signature.declarationSpan, sourceDefinition.source)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += 4;
       continue;
     }
     // Every non-void body block ends with its return statement id. Resolve the

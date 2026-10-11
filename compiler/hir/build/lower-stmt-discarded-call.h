@@ -22,6 +22,12 @@ void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, 
 /// materialized; the callable result is Unit.
 void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one void-let-body destructor:
+/// `deinit() { let x: T = <scalar-literal>; }`. Four node ids in source
+/// preorder: function, body, local, literal. The block lists the local; no
+/// return is materialized. The dead local is folded away by the LIR builder.
+void lowerVoidLetBodyFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one discarded receiver-call statement followed by a trailing
 /// receiver-call return:
 /// `mut cell = T { .. }; cell.set(<args>); return cell.get();`. Nine node ids
