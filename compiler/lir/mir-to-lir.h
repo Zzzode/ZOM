@@ -90,6 +90,27 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerRawDereferenceReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one raw-pointer write-read function to a single-function LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validRawPointerWriteReturnFunction` accepts: a `Function` with one
+  /// raw-pointer `Parameter` local, three source scopes (root plus two unsafe
+  /// children), and a single block whose five statements are the Enter/Exit
+  /// unsafe-scope boundary pairs for the write and return regions and an
+  /// `Assign(Overwrite, [Dereference], constant)` between them, and whose
+  /// terminator returns a place-use of the parameter through a single
+  /// `[Dereference]` projection. The raw-pointer parameter lowers to a pointer
+  /// carrier local; the write is an offset-zero `StoreField` of the constant
+  /// through that pointer slot, and the read is an offset-zero `LoadField` into
+  /// an integer carrier destination that the block returns. Every shape outside
+  /// this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerRawPointerWriteReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one empty-body void function to a single-function LIR module.
   ///
   /// Admits exactly the verified Built MIR shape of a `Function` with no

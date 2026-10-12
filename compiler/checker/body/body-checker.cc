@@ -58,6 +58,7 @@ enum class BodyProductionKind : uint8_t {
   StringLengthFold = 0x22,
   StringConcatFold = 0x23,
   FloatToIntCastFold = 0x24,
+  RawPointerWrite = 0x25,
   Unsupported = 0x17
 };
 
@@ -1183,6 +1184,35 @@ bool isSimpleReceiverFieldWrite(
   // reference is in scope and matches the field type.
   return isScalarLiteral(tree.node(value).kind) ||
          tree.node(value).kind == ast::SyntaxKind::IdentExpr;
+}
+
+bool isSimpleRawPointerWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                             ast::NodeId assignment) {
+  const auto& tree = boundModule.tree();
+  if (!tree.contains(assignment)) return false;
+  const auto& syntax = tree.node(assignment);
+  if (syntax.kind != ast::SyntaxKind::AssignmentExpr ||
+      static_cast<ast::AssignmentOperatorKind>(syntax.payload.words[ast::kAssignmentExprOpWord]) !=
+          ast::AssignmentOperatorKind::Assign) {
+    return false;
+  }
+  const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
+  const ast::NodeId value(syntax.payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(target) || !tree.contains(value) ||
+      tree.node(target).kind != ast::SyntaxKind::UnaryExpression) {
+    return false;
+  }
+  const auto derefOp = static_cast<ast::UnaryOperatorKind>(
+      tree.node(target).payload.words[ast::kUnaryExpressionOpWord]);
+  if (derefOp != ast::UnaryOperatorKind::Deref) return false;
+  const ast::NodeId operand(tree.node(target).payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  // The pointer operand must resolve to a callable parameter; the raw-pointer
+  // type and mutability are validated downstream at the production site.
+  if (resolvedCallableParameter(boundModule.bindings(), operand) == zc::none) return false;
+  return isScalarLiteral(tree.node(value).kind);
 }
 
 struct OwnerLocalFieldShape final {
@@ -6282,6 +6312,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             production = BodyProductionKind::OwnerLocalFieldWrite;
           } else if (isSimpleReceiverFieldWrite(boundModule, node)) {
             production = BodyProductionKind::ReceiverFieldWrite;
+          } else if (isSimpleRawPointerWrite(boundModule, node)) {
+            production = BodyProductionKind::RawPointerWrite;
           }
           break;
         case ast::SyntaxKind::MemberExpression: {
@@ -6981,6 +7013,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool methodReference = site.production == BodyProductionKind::OwnerLocalMethodReference;
       const bool fieldWrite = site.production == BodyProductionKind::OwnerLocalFieldWrite;
       const bool receiverFieldWrite = site.production == BodyProductionKind::ReceiverFieldWrite;
+      const bool rawPointerWrite = site.production == BodyProductionKind::RawPointerWrite;
       const bool directCall = site.production == BodyProductionKind::DirectCall;
       const bool enumConstruction = site.production == BodyProductionKind::EnumVariantConstruction;
       const bool concreteMethodCall = site.production == BodyProductionKind::ConcreteMethodCall;
@@ -6992,15 +7025,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const bool conditionalExpr = site.production == BodyProductionKind::ConditionalExpression;
       const bool matchExpr = site.production == BodyProductionKind::MatchExpression;
       if ((stage == 0 &&
-           (structured || projected || fieldWrite || receiverFieldWrite || directCall ||
-            enumConstruction || concreteMethodCall || errorOperator || indexed || unsafeBlock ||
-            primitiveBinary || integerCast || conditionalExpr || matchExpr)) ||
+           (structured || projected || fieldWrite || receiverFieldWrite || rawPointerWrite ||
+            directCall || enumConstruction || concreteMethodCall || errorOperator || indexed ||
+            unsafeBlock || primitiveBinary || integerCast || conditionalExpr || matchExpr)) ||
           (stage == 1 &&
            (((!structured && !directCall && !enumConstruction) || errorOperator || indexed) &&
             !primitiveBinary && !integerCast && !conditionalExpr && !matchExpr)) ||
           (stage == 2 && ((!projected && !indexed) || methodReference)) ||
-          (stage == 3 &&
-           (!fieldWrite && !receiverFieldWrite && !concreteMethodCall && !methodReference)) ||
+          (stage == 3 && (!fieldWrite && !receiverFieldWrite && !rawPointerWrite &&
+                          !concreteMethodCall && !methodReference)) ||
           (stage == 4 && !errorOperator)) {
         continue;
       }
@@ -8394,6 +8427,53 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             producedType = type.value;
           }
         }
+      } else if (site.production == BodyProductionKind::RawPointerWrite) {
+        const auto& assignment = input.boundModule.tree().node(site.node);
+        const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
+        const ast::NodeId operand(
+            input.boundModule.tree().node(target).payload.words[ast::kUnaryExpressionOperandWord]);
+        auto pointerType = callableParameterReferenceType(input, operand);
+        if (pointerType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(type, pointerType) {
+          auto lookup = input.semanticTypes.get(type);
+          if (!lookup.is<type::SemanticTypeLookup>()) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+          if (!data.is<type::semantic::RawPointerTypeData>()) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          const auto& rawPointer = data.get<type::semantic::RawPointerTypeData>();
+          if (rawPointer.mutability != type::semantic::Mutability::Mutable) {
+            zc::Maybe<uint32_t> ownerOrdinal;
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ownerOrdinal = definitionPreorder(input.boundModule, owner);
+            }
+            if (ownerOrdinal == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            return attachRecoveryLedger(
+                rejectCannotMutateImmutableVariable(site, ZC_ASSERT_NONNULL(ownerOrdinal),
+                                                    input.boundModule.tree(), operand),
+                input, factStoreBrands);
+          }
+          // The unsafe-operation fact is produced by the ReferenceDereference
+          // production on the deref node; the write site only needs to
+          // contribute its node-type fact (the pointee type) so the
+          // assignment type-match check and the enclosing unsafe-block
+          // tail-expression lookup can resolve it.
+          producedType = rawPointer.pointee;
+        }
       } else if (site.production == BodyProductionKind::OwnerLocalFieldReference) {
         auto thisShape = thisReceiverFieldShape(input, site.node);
         auto destructorShape = thisShape != zc::none ? zc::Maybe<DestructorFieldShape>{zc::none}
@@ -9363,7 +9443,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   for (const auto& site : input.requirements.impl->productionSiteValues) {
     if (site.production != BodyProductionKind::LocalWrite &&
         site.production != BodyProductionKind::OwnerLocalFieldWrite &&
-        site.production != BodyProductionKind::ReceiverFieldWrite) {
+        site.production != BodyProductionKind::ReceiverFieldWrite &&
+        site.production != BodyProductionKind::RawPointerWrite) {
       continue;
     }
     const auto& assignment = input.boundModule.tree().node(site.node);

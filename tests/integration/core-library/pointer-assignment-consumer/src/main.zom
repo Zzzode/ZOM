@@ -1,0 +1,9 @@
+// Raw-pointer assignment fixture: the entry takes a mutable raw pointer to
+// i32, writes 41 through the pointer in an unsafe block, and returns the
+// pointee read through a second unsafe block. The function keeps a
+// parameterized symbol and is object-only, since the runtime _start cannot
+// bind arguments to it.
+fn entry(ptr: *mut i32) -> i32 {
+  unsafe { *ptr = 41; };
+  return unsafe { *ptr };
+}

@@ -754,6 +754,17 @@ Parser::Impl::SourceElementBoundary Parser::Impl::consumeSourceElement(TokenCurs
       } else if (head + 1 < limit && kindAt(head + 1) == ast::SyntaxKind::Colon) {
         boundary.kind = ast::SyntaxKind::LabeledStatement;
         boundary.end = consumeLabeledStatementEnd(head, limit);
+      } else if (isSoftKeyword(head, "unsafe"_zc) && head + 1 < limit &&
+                 kindAt(head + 1) == ast::SyntaxKind::LeftBrace) {
+        // An `unsafe { ... }` block expression is a self-contained expression;
+        // its boundary ends at the matching closing brace (plus an optional
+        // trailing semicolon) so the brace-depth scanner in
+        // consumeSimpleStatementEnd does not swallow the following statement.
+        const size_t closeBrace = findMatchingRightBrace(head + 1, limit);
+        size_t end = closeBrace < limit ? closeBrace + 1 : limit;
+        if (end < limit && kindAt(end) == ast::SyntaxKind::Semicolon) { ++end; }
+        boundary.kind = ast::SyntaxKind::ExpressionStatement;
+        boundary.end = end;
       } else {
         boundary.kind = ast::SyntaxKind::ExpressionStatement;
         boundary.end = consumeSimpleStatementEnd(head, limit);

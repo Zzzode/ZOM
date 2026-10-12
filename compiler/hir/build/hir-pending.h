@@ -842,6 +842,15 @@ struct PendingFunctionDeclaration final {
   /// return. The lowering function materializes the two locals, the aggregate,
   /// the field projection, the receiver reference, and the receiver call.
   zc::Maybe<PendingDynFieldAccessReturn> dynFieldAccessReturn = zc::none;
+  // Populated for the raw-pointer write-read shape
+  // (`unsafe { *ptr = <lit>; }; return unsafe { *ptr };`): the write
+  // statement that overwrites the pointee through the mutable raw-pointer
+  // parameter, the span of the write's unsafe block, and the scalar literal
+  // value written through the pointer. The lowering function materializes
+  // the write before the trailing raw-deref return.
+  zc::Maybe<HirRawPointerWriteStatement> rawDereferenceWrite = zc::none;
+  zc::Maybe<identity::SourceSpan> writeUnsafeBlockSpan = zc::none;
+  zc::Maybe<checker::checked::CanonicalConstValue> rawDereferenceWriteLiteral = zc::none;
 };
 
 }  // namespace detail

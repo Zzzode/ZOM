@@ -67,6 +67,7 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirLocalFieldProjectionExpression>&& localFieldProjections,
        zc::Vector<HirParameterFieldProjectionExpression>&& parameterFieldProjections,
        zc::Vector<HirParameterFieldWriteStatement>&& parameterFieldWrites,
+       zc::Vector<HirRawPointerWriteStatement>&& rawPointerWrites,
        zc::Vector<HirParameterReferenceExpression>&& parameterReferences,
        zc::Vector<HirParameterIndexExpression>&& parameterIndexes,
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
@@ -110,6 +111,7 @@ struct VerifiedHirModule::Impl final {
         localFieldProjections(zc::mv(localFieldProjections)),
         parameterFieldProjections(zc::mv(parameterFieldProjections)),
         parameterFieldWrites(zc::mv(parameterFieldWrites)),
+        rawPointerWrites(zc::mv(rawPointerWrites)),
         parameterReferences(zc::mv(parameterReferences)),
         parameterIndexes(zc::mv(parameterIndexes)),
         parameterReborrows(zc::mv(parameterReborrows)),
@@ -158,6 +160,7 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirLocalFieldProjectionExpression> localFieldProjections;
   zc::Vector<HirParameterFieldProjectionExpression> parameterFieldProjections;
   zc::Vector<HirParameterFieldWriteStatement> parameterFieldWrites;
+  zc::Vector<HirRawPointerWriteStatement> rawPointerWrites;
   zc::Vector<HirParameterReferenceExpression> parameterReferences;
   zc::Vector<HirParameterIndexExpression> parameterIndexes;
   zc::Vector<HirParameterReborrowExpression> parameterReborrows;
@@ -309,6 +312,11 @@ VerifiedHirModule::parameterFieldProjections() const noexcept {
 zc::ArrayPtr<const HirParameterFieldWriteStatement> VerifiedHirModule::parameterFieldWrites()
     const noexcept {
   return impl->parameterFieldWrites.asPtr();
+}
+
+zc::ArrayPtr<const HirRawPointerWriteStatement> VerifiedHirModule::rawPointerWrites()
+    const noexcept {
+  return impl->rawPointerWrites.asPtr();
 }
 
 zc::ArrayPtr<const HirParameterReferenceExpression> VerifiedHirModule::parameterReferences()
@@ -1515,7 +1523,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     // trailing unsafe block F+4 whose body is the parameter reference.
     {
       bool isRawDerefShape = false;
-      ZC_IF_SOME(shape, sourceShapeMaybe) { isRawDerefShape = shape.returnsRawDereference; }
+      ZC_IF_SOME(shape, sourceShapeMaybe) {
+        isRawDerefShape = shape.returnsRawDereference && !shape.writesRawDereference;
+      }
       if (isRawDerefShape) {
         const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
         const auto valueNode = hirId(expectedFunction + 3);
@@ -1692,6 +1702,279 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
         }
         nextFunction += 5;
+        continue;
+      }
+    }
+    // Raw-pointer write-read shape:
+    // `unsafe { *ptr = <lit>; }; return unsafe { *ptr };` where `ptr` is a
+    // `*mut T` parameter. Eight node ids in source preorder:
+    // function F, body F+1, write F+2, write value literal F+3, return F+4,
+    // parameter-reference value F+5, write unsafe block F+6 whose body is the
+    // write statement, return unsafe block F+7 whose body is the parameter
+    // reference.
+    {
+      bool isRawPointerWriteShape = false;
+      ZC_IF_SOME(shape, sourceShapeMaybe) { isRawPointerWriteShape = shape.writesRawDereference; }
+      if (isRawPointerWriteShape) {
+        const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        const auto writeNode = hirId(expectedFunction + 2);
+        const auto writeValueNode = hirId(expectedFunction + 3);
+        const auto valueNode = hirId(expectedFunction + 5);
+        const auto writeUnsafeNode = hirId(expectedFunction + 6);
+        const auto returnUnsafeNode = hirId(expectedFunction + 7);
+        if (block.statements.size() != 2 || block.statements[0] != writeNode ||
+            block.statements[1] != returnStatement.node ||
+            function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+            returnStatement.node != hirId(expectedFunction + 4) ||
+            returnStatement.value != valueNode || function.body != block.node ||
+            function.resultType != returnStatement.resultType ||
+            !typeExists(function.resultType, semanticTypes) ||
+            function.unsafeBlock != returnUnsafeNode ||
+            function.writeUnsafeBlock != writeUnsafeNode) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (!hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node) ||
+            tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedVisibility == zc::none || expectedLinkage == zc::none ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The write statement must be a raw-pointer write whose pointee type
+        // matches the function result type.
+        zc::Maybe<const HirRawPointerWriteStatement&> writeStatement;
+        for (const auto& candidate : candidate.impl->rawPointerWrites) {
+          if (candidate.node != writeNode) continue;
+          if (writeStatement != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          writeStatement = candidate;
+        }
+        if (writeStatement == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const auto& write = ZC_ASSERT_NONNULL(writeStatement);
+        if (write.type != function.resultType || write.value != writeValueNode) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The write value must be a scalar literal of the pointee type.
+        zc::Maybe<const HirScalarLiteralExpression&> writeLiteral;
+        for (const auto& candidate : candidate.impl->expressions) {
+          if (candidate.node != writeValueNode) continue;
+          if (writeLiteral != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          writeLiteral = candidate;
+        }
+        if (writeLiteral == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const auto& literal = ZC_ASSERT_NONNULL(writeLiteral);
+        if (literal.type != function.resultType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The parameter reference at valueNode carries the raw-pointer
+        // parameter type; the MIR builder emits the dereference projection.
+        zc::Maybe<const HirParameterReferenceExpression&> parameterReference;
+        for (const auto& reference : candidate.impl->parameterReferences) {
+          if (reference.node != valueNode) continue;
+          if (parameterReference != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          parameterReference = reference;
+        }
+        if (parameterReference == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const auto& reference = ZC_ASSERT_NONNULL(parameterReference);
+        if (write.pointerType != reference.type || write.parameter != reference.parameter) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The parameter type must be a raw pointer whose pointee matches the
+        // function result type.
+        auto parameterLookup = semanticTypes.get(reference.type);
+        if (!parameterLookup.is<type::SemanticTypeLookup>() ||
+            !parameterLookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .is<type::semantic::RawPointerTypeData>() ||
+            parameterLookup.get<type::SemanticTypeLookup>()
+                    .data()
+                    .get<type::semantic::RawPointerTypeData>()
+                    .pointee != function.resultType ||
+            reference.category != HirValueCategory::Place) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The raw-deref operand is an IdentExpr parameter reference.
+        const ast::NodeId& operand = source.rawDereferenceOperand;
+        if (!tree.contains(operand) || tree.node(operand).kind != ast::SyntaxKind::IdentExpr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto parameter = resolvedCallableParameter(bound.bindings(), operand);
+        auto operandSpan = bound.parsedModule().spanFor(tree.node(operand).range);
+        if (parameter == zc::none || operandSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        if (!sameSpan(reference.sourceSpan, ZC_ASSERT_NONNULL(operandSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        ZC_IF_SOME(handle, parameter) {
+          auto authority = registries.callableParameter(handle);
+          if (authority == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          ZC_IF_SOME(entry, authority) {
+            bool found = false;
+            for (const auto& candidateParameter : function.parameters) {
+              if (candidateParameter.key == entry.key() &&
+                  candidateParameter.type == reference.type) {
+                found = true;
+              }
+            }
+            if (!found || reference.parameter != entry.key()) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+        }
+        // Validate the write unsafe block.
+        if (function.writeUnsafeBlock != writeUnsafeNode) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        zc::Maybe<const HirUnsafeBlockExpression&> writeUnsafeBlock;
+        for (const auto& candidateBlock : candidate.impl->unsafeBlocks) {
+          if (candidateBlock.node != writeUnsafeNode) continue;
+          if (writeUnsafeBlock != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          writeUnsafeBlock = candidateBlock;
+        }
+        if (writeUnsafeBlock == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(block, writeUnsafeBlock) {
+          if (block.body != writeNode || block.type != function.resultType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        // Validate the return unsafe block.
+        if (function.unsafeBlock != returnUnsafeNode) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        zc::Maybe<const HirUnsafeBlockExpression&> returnUnsafeBlock;
+        for (const auto& candidateBlock : candidate.impl->unsafeBlocks) {
+          if (candidateBlock.node != returnUnsafeNode) continue;
+          if (returnUnsafeBlock != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnUnsafeBlock = candidateBlock;
+        }
+        if (returnUnsafeBlock == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        ZC_IF_SOME(block, returnUnsafeBlock) {
+          if (block.body != valueNode || block.type != function.resultType) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        nextFunction += 8;
         continue;
       }
     }
@@ -15296,12 +15579,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->locals), zc::mv(candidate.impl->localWrites),
       zc::mv(candidate.impl->localReferences), zc::mv(candidate.impl->localFieldProjections),
       zc::mv(candidate.impl->parameterFieldProjections),
-      zc::mv(candidate.impl->parameterFieldWrites), zc::mv(candidate.impl->parameterReferences),
-      zc::mv(candidate.impl->parameterIndexes), zc::mv(candidate.impl->parameterReborrows),
-      zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
-      zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks),
-      zc::mv(candidate.impl->primitiveBinaryOperations), zc::mv(candidate.impl->conditionals),
-      zc::mv(candidate.impl->loops));
+      zc::mv(candidate.impl->parameterFieldWrites), zc::mv(candidate.impl->rawPointerWrites),
+      zc::mv(candidate.impl->parameterReferences), zc::mv(candidate.impl->parameterIndexes),
+      zc::mv(candidate.impl->parameterReborrows), zc::mv(candidate.impl->localBorrows),
+      zc::mv(candidate.impl->calls), zc::mv(candidate.impl->receiverCalls),
+      zc::mv(candidate.impl->unsafeBlocks), zc::mv(candidate.impl->primitiveBinaryOperations),
+      zc::mv(candidate.impl->conditionals), zc::mv(candidate.impl->loops));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

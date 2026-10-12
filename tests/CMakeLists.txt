@@ -305,6 +305,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/fourfn-standalone-consumer/Zom.toml::fourfn_standalone_consumer::fourfn_standalone_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/raw-deref-consumer/Zom.toml::raw_deref_consumer::raw_deref_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/pointer-assignment-consumer/Zom.toml::pointer_assignment_consumer::pointer_assignment_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case

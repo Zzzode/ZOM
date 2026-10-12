@@ -97,6 +97,11 @@ zc::Maybe<const hir::HirParameterFieldWriteStatement&> parameterFieldWriteFor(
   return uniqueRecordFor(module.parameterFieldWrites(), node);
 }
 
+zc::Maybe<const hir::HirRawPointerWriteStatement&> rawPointerWriteFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  return uniqueRecordFor(module.rawPointerWrites(), node);
+}
+
 zc::Maybe<const hir::HirNominalAggregateExpression&> aggregateFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.aggregates(), node);
@@ -822,6 +827,96 @@ zc::Maybe<RecursiveFunctionProduct> buildRawDereferenceReturn(
   auto returnOperand =
       placeUse(proofs, copyMarker,
                MirPlace(paramLocal, param.type, zc::mv(projections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers `unsafe { *ptr = <lit>; }; return unsafe { *ptr };` where
+/// `ptr` is a `*mut T` parameter: one root scope, one parameter local carrying
+/// the raw pointer, two unsafe scope boundary pairs (write and return), an
+/// Overwrite assign to a [Dereference] projection on the parameter place, and
+/// a Return of a copy/move place-use through the same [Dereference] projection.
+zc::Maybe<RecursiveFunctionProduct> buildRawPointerWriteReturn(
+    const hir::HirFunctionDeclaration& declaration,
+    const hir::HirRawPointerWriteStatement& sourceWrite,
+    const hir::HirScalarLiteralExpression& writeLiteral,
+    const hir::HirParameterReferenceExpression& source, const hir::HirReturnStatement& sourceReturn,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.writeUnsafeBlock == zc::none) return zc::none;
+  if (declaration.unsafeBlock == zc::none) return zc::none;
+  if (declaration.receiver != zc::none) return zc::none;
+  if (sourceWrite.type != declaration.resultType || writeLiteral.type != declaration.resultType ||
+      source.type != sourceWrite.pointerType) {
+    return zc::none;
+  }
+
+  auto paramIndex = parameterIndexFor(declaration, source.parameter);
+  if (paramIndex == zc::none) return zc::none;
+  const auto& param = declaration.parameters[ZC_ASSERT_NONNULL(paramIndex)];
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId paramLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, param.type, scope, source.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  // Write unsafe scope: Enter/Exit boundary pair delimiting the write region.
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> writeUnsafeBlock;
+  for (const auto& candidate : hirModule.unsafeBlocks()) {
+    if (candidate.node != ZC_ASSERT_NONNULL(declaration.writeUnsafeBlock)) continue;
+    if (writeUnsafeBlock != zc::none) return zc::none;
+    writeUnsafeBlock = candidate;
+  }
+  if (writeUnsafeBlock == zc::none) return zc::none;
+  const auto& writeUnsafe = ZC_ASSERT_NONNULL(writeUnsafeBlock);
+  const auto writeUnsafeScope = ctx.pushScope(scope, writeUnsafe.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+      MirUnsafeScopeBoundaryKind::Enter, writeUnsafeScope, writeUnsafe.sourceSpan.clone()));
+
+  // Overwrite the pointee through the [Dereference] projection.
+  zc::Vector<MirProjection> writeProjections;
+  writeProjections.add(MirProjection::dereference(param.type, declaration.resultType));
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(paramLocal, param.type, zc::mv(writeProjections), declaration.resultType),
+      MirRvalue::use(MirOperand::constant(declaration.resultType, writeLiteral.value.clone())),
+      MirInitializationKind::Overwrite, sourceWrite.sourceSpan.clone()));
+
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+      MirUnsafeScopeBoundaryKind::Exit, writeUnsafeScope, writeUnsafe.sourceSpan.clone()));
+
+  // Return unsafe scope: Enter/Exit boundary pair delimiting the read region.
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> returnUnsafeBlock;
+  for (const auto& candidate : hirModule.unsafeBlocks()) {
+    if (candidate.node != ZC_ASSERT_NONNULL(declaration.unsafeBlock)) continue;
+    if (returnUnsafeBlock != zc::none) return zc::none;
+    returnUnsafeBlock = candidate;
+  }
+  if (returnUnsafeBlock == zc::none) return zc::none;
+  const auto& returnUnsafe = ZC_ASSERT_NONNULL(returnUnsafeBlock);
+  const auto returnUnsafeScope = ctx.pushScope(scope, returnUnsafe.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+      MirUnsafeScopeBoundaryKind::Enter, returnUnsafeScope, returnUnsafe.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+      MirUnsafeScopeBoundaryKind::Exit, returnUnsafeScope, returnUnsafe.sourceSpan.clone()));
+
+  // Return the pointee read through the same [Dereference] projection.
+  zc::Vector<MirProjection> returnProjections;
+  returnProjections.add(MirProjection::dereference(param.type, declaration.resultType));
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(paramLocal, param.type, zc::mv(returnProjections), declaration.resultType));
   if (returnOperand == zc::none) return zc::none;
 
   ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
@@ -3956,6 +4051,25 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       return buildParameterReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
                                   ZC_ASSERT_NONNULL(parameterReference), identities, proofs,
                                   copyMarker);
+    }
+  }
+
+  // Raw-pointer write-read: `unsafe { *ptr = <lit>; }; return unsafe { *ptr };`
+  // where `ptr` is a `*mut T` parameter. The two-statement body overwrites the
+  // pointee and returns it; both unsafe blocks contribute scope boundaries.
+  if (declaration.writeUnsafeBlock != zc::none && block.statements.size() == 2 &&
+      declaration.receiver == zc::none) {
+    auto write = rawPointerWriteFor(hirModule, block.statements[0]);
+    auto paramRef = parameterReferenceFor(hirModule, valueNode);
+    if (write != zc::none && paramRef != zc::none) {
+      auto writeLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(write).value);
+      if (writeLiteral != zc::none) {
+        auto product = buildRawPointerWriteReturn(
+            declaration, ZC_ASSERT_NONNULL(write), ZC_ASSERT_NONNULL(writeLiteral),
+            ZC_ASSERT_NONNULL(paramRef), ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities,
+            proofs, copyMarker);
+        if (product != zc::none) { return product; }
+      }
     }
   }
 

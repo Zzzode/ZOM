@@ -590,6 +590,110 @@ zc::Maybe<Module> MirToLirLowering::lowerRawDereferenceReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerRawPointerWriteReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit the verified raw-pointer write-read shape: a standalone function
+  // with one raw-pointer Parameter local, three source scopes (root plus two
+  // unsafe children), and a single block whose five statements are the
+  // Enter/Exit unsafe-scope boundary pairs for the write and return regions
+  // and an Assign(Overwrite, [Dereference], constant) between them, and whose
+  // terminator returns a place-use of the parameter through a single
+  // [Dereference] projection. This mirrors the structural facts that
+  // mir::validRawPointerWriteReturnFunction checked; we re-check them here so
+  // lowering is total over its declared input and fail-closed on anything else.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 3 ||
+      function.locals.size() != 1 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& paramLocal = function.locals[0];
+  if (paramLocal.kind != mir::MirLocalKind::Parameter || paramLocal.id.ordinal() != 1) {
+    return zc::none;
+  }
+
+  // The parameter must carry a raw-pointer type; its physical carrier is a
+  // target pointer in address space zero.
+  auto paramLookup = semanticTypes.get(paramLocal.type);
+  if (!paramLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& paramData = paramLookup.get<type::SemanticTypeLookup>().data();
+  if (!paramData.is<type::semantic::RawPointerTypeData>()) { return zc::none; }
+
+  const auto& block = function.blocks[0];
+  // Unsafe scope boundary statements are semantically transparent for code
+  // generation: they are ownership/safety markers with no runtime effect.
+  if (block.statements.size() != 5 ||
+      block.statements[0].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign ||
+      block.statements[2].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
+      block.statements[3].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
+      block.statements[4].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
+    return zc::none;
+  }
+
+  // Extract the write constant from the assign statement's rvalue.
+  const auto& assign = block.statements[1].assignmentValue();
+  if (assign.initialization != mir::MirInitializationKind::Overwrite) { return zc::none; }
+  if (assign.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
+  const auto& useRvalue = assign.value.useValue();
+  if (useRvalue.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+  const auto& constant = useRvalue.operand.constantValue();
+  if (constant.type != function.resultType) { return zc::none; }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+
+  // The return value must be a copy/move place-use rooted at the parameter
+  // local through a single [Dereference] projection.
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant) { return zc::none; }
+    const auto& place = value.place();
+    if (place.local() != paramLocal.id || place.projections().size() != 1) { return zc::none; }
+    if (place.projections()[0].kind() != mir::MirProjectionKind::Dereference) { return zc::none; }
+  }
+
+  // Resolve the pointee (function result) carrier as an integer width.
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+
+  // Materialize the write constant as an LIR integer constant.
+  auto integer = constant.value.integerValue();
+  if (integer == zc::none) { return zc::none; }
+  auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), resultCarrierValue.integerWidth());
+  if (bits == zc::none) { return zc::none; }
+  auto lirConstant = IntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  if (lirConstant == zc::none) { return zc::none; }
+
+  // The raw-pointer parameter lowers to a pointer carrier local. The write is
+  // an offset-zero StoreField of the constant through that pointer slot; the
+  // read is an offset-zero LoadField into an integer carrier destination that
+  // the block returns.
+  const uint32_t paramOrdinal = paramLocal.id.ordinal();
+  const uint32_t resultOrdinal = paramOrdinal + 1;
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+
+  zc::Vector<Statement> statements;
+  statements.add(Statement::storeField(paramOrdinal,
+                                       Operand::constant(ZC_REQUIRE_NONNULL(zc::mv(lirConstant))),
+                                       /*fieldOffsetBytes=*/0));
+  statements.add(Statement::loadField(resultOrdinal, paramOrdinal, /*fieldOffsetBytes=*/0));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(resultOrdinal)));
+
+  zc::Vector<Local> parameters;
+  parameters.add(Local(paramOrdinal, ValueType::pointer(0)));
+  zc::Vector<Local> locals;
+  locals.add(Local(resultOrdinal, resultCarrierValue));
+
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::heapString("zom.raw_deref"), resultCarrierValue,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerEmptyBodyVoidFunction(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit the verified void-body shapes: a standalone function with one source

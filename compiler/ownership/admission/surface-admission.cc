@@ -77,6 +77,25 @@ bool isAdmittedCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
   }
 }
 
+bool isScalarLiteral(ast::SyntaxKind kind) noexcept {
+  switch (kind) {
+    case ast::SyntaxKind::NullLiteral:
+    case ast::SyntaxKind::BoolLiteral:
+    case ast::SyntaxKind::IntLiteral:
+    case ast::SyntaxKind::FloatLiteralExpr:
+    case ast::SyntaxKind::BigIntLiteral:
+    case ast::SyntaxKind::StringLiteralExpr:
+    case ast::SyntaxKind::UnitLiteral:
+    case ast::SyntaxKind::CharacterLiteralExpr:
+    case ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr:
+      return true;
+    default:
+      return false;
+  }
+}
+
+zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);
+
 bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& statement) {
   const ast::NodeId expression(statement.payload.words[ast::kExpressionStatementExpressionWord]);
   if (!tree.contains(expression)) { return false; }
@@ -118,7 +137,51 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
         tree.node(expression).payload.words[ast::kUnaryExpressionOperandWord]);
     return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
   }
-  if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) return false;
+  if (tree.node(expression).kind != ast::SyntaxKind::AssignmentExpr) {
+    // An unsafe block expression statement (`unsafe { *ptr = <literal>; }`) is
+    // admitted when its sole inner statement is a raw-pointer write: an
+    // assignment whose target is a Deref unary over an identifier and whose
+    // value is a scalar literal. Pointer mutability and pointee type matching
+    // are checker decisions, kept out of surface admission.
+    if (tree.node(expression).kind != ast::SyntaxKind::UnsafeBlockExpr) return false;
+    const ast::NodeId unsafeBody(
+        tree.node(expression).payload.words[ast::kUnsafeBlockExprBodyWord]);
+    if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
+      return false;
+    }
+    const ast::NodeList unsafeStatements{
+        tree.node(unsafeBody).payload.words[ast::kBlockStmtStmtsFirstWord],
+        tree.node(unsafeBody).payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(unsafeStatements) || unsafeStatements.size != 1) return false;
+    auto innerItem = statementItem(tree, tree.list(unsafeStatements)[0]);
+    if (innerItem == zc::none) return false;
+    ast::NodeId innerStatement;
+    ZC_IF_SOME(item, innerItem) { innerStatement = item; }
+    if (!tree.contains(innerStatement) ||
+        tree.node(innerStatement).kind != ast::SyntaxKind::ExpressionStatement) {
+      return false;
+    }
+    const ast::NodeId innerExpr(
+        tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+    if (!tree.contains(innerExpr) || tree.node(innerExpr).kind != ast::SyntaxKind::AssignmentExpr) {
+      return false;
+    }
+    const auto innerOp = static_cast<ast::AssignmentOperatorKind>(
+        tree.node(innerExpr).payload.words[ast::kAssignmentExprOpWord]);
+    if (innerOp != ast::AssignmentOperatorKind::Assign) return false;
+    const ast::NodeId innerTarget(tree.node(innerExpr).payload.words[ast::kAssignmentExprLhsWord]);
+    const ast::NodeId innerValue(tree.node(innerExpr).payload.words[ast::kAssignmentExprRhsWord]);
+    if (!tree.contains(innerTarget) || !tree.contains(innerValue)) return false;
+    if (tree.node(innerTarget).kind != ast::SyntaxKind::UnaryExpression) return false;
+    const auto derefOp = static_cast<ast::UnaryOperatorKind>(
+        tree.node(innerTarget).payload.words[ast::kUnaryExpressionOpWord]);
+    if (derefOp != ast::UnaryOperatorKind::Deref) return false;
+    const ast::NodeId derefOperand(
+        tree.node(innerTarget).payload.words[ast::kUnaryExpressionOperandWord]);
+    return tree.contains(derefOperand) &&
+           tree.node(derefOperand).kind == ast::SyntaxKind::IdentExpr &&
+           isScalarLiteral(tree.node(innerValue).kind);
+  }
   const auto& assignment = tree.node(expression);
   const auto assignmentOp = static_cast<ast::AssignmentOperatorKind>(
       assignment.payload.words[ast::kAssignmentExprOpWord]);
@@ -166,23 +229,6 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
   // kept out of surface admission.
   return tree.contains(object) && (tree.node(object).kind == ast::SyntaxKind::IdentExpr ||
                                    tree.node(object).kind == ast::SyntaxKind::ThisExpr);
-}
-
-bool isScalarLiteral(ast::SyntaxKind kind) noexcept {
-  switch (kind) {
-    case ast::SyntaxKind::NullLiteral:
-    case ast::SyntaxKind::BoolLiteral:
-    case ast::SyntaxKind::IntLiteral:
-    case ast::SyntaxKind::FloatLiteralExpr:
-    case ast::SyntaxKind::BigIntLiteral:
-    case ast::SyntaxKind::StringLiteralExpr:
-    case ast::SyntaxKind::UnitLiteral:
-    case ast::SyntaxKind::CharacterLiteralExpr:
-    case ast::SyntaxKind::NoSubstitutionTemplateLiteralExpr:
-      return true;
-    default:
-      return false;
-  }
 }
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement) {

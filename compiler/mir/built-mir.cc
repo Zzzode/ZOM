@@ -1286,6 +1286,17 @@ zc::Maybe<const hir::HirParameterReferenceExpression&> parameterReferenceFor(
   return result;
 }
 
+zc::Maybe<const hir::HirRawPointerWriteStatement&> rawPointerWriteFor(
+    const hir::VerifiedHirModule& module, hir::HirNodeId node) {
+  zc::Maybe<const hir::HirRawPointerWriteStatement&> result;
+  for (const auto& write : module.rawPointerWrites()) {
+    if (write.node != node) continue;
+    if (result != zc::none) return zc::none;
+    result = write;
+  }
+  return result;
+}
+
 zc::Maybe<const hir::HirParameterReborrowExpression&> parameterReborrowFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   zc::Maybe<const hir::HirParameterReborrowExpression&> result;
@@ -1739,6 +1750,137 @@ bool validRawDereferenceReturnFunction(
         !sameSpan(block.statements[1].sourceSpan(), unsafeBlockRef.sourceSpan)) {
       return false;
     }
+  }
+  // Verify the return value is a copy/move place-use rooted at the parameter
+  // local through a single [Dereference(raw-pointer -> pointee)] projection.
+  bool validReturn = false;
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    validReturn = matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+                  value.place().local() == paramLocal.id &&
+                  value.place().rootType() == param.type &&
+                  value.place().resultType() == declaration.resultType &&
+                  value.place().projections().size() == 1 &&
+                  value.place().projections()[0].kind() == MirProjectionKind::Dereference &&
+                  value.place().projections()[0].inputType() == param.type &&
+                  value.place().projections()[0].resultType() == declaration.resultType;
+  }
+  return validReturn;
+}
+
+bool validRawPointerWriteReturnFunction(
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirParameterReferenceExpression& source,
+    const hir::HirRawPointerWriteStatement& sourceWrite, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock == zc::none ||
+      declaration.writeUnsafeBlock == zc::none) {
+    return false;
+  }
+  if (declaration.parameters.size() != 1) return false;
+  const auto& param = declaration.parameters[0];
+  if (param.key != source.parameter || param.type != source.type) return false;
+  if (sourceWrite.parameter != source.parameter || sourceWrite.pointerType != source.type ||
+      sourceWrite.type != declaration.resultType) {
+    return false;
+  }
+
+  // Resolve both unsafe blocks.
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> writeUnsafeBlock;
+  ZC_IF_SOME(writeUnsafeNode, declaration.writeUnsafeBlock) {
+    writeUnsafeBlock = unsafeBlockFor(hirModule, writeUnsafeNode);
+    if (writeUnsafeBlock == zc::none) return false;
+  }
+  zc::Maybe<const hir::HirUnsafeBlockExpression&> returnUnsafeBlock;
+  ZC_IF_SOME(returnUnsafeNode, declaration.unsafeBlock) {
+    returnUnsafeBlock = unsafeBlockFor(hirModule, returnUnsafeNode);
+    if (returnUnsafeBlock == zc::none) return false;
+  }
+  if (writeUnsafeBlock == zc::none || returnUnsafeBlock == zc::none) return false;
+
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 3 ||
+      function.locals.size() != 1 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
+      sourceBlock.statements[0] != sourceWrite.node ||
+      sourceBlock.statements[1] != sourceReturn.node || sourceReturn.value != source.node ||
+      sourceReturn.resultType != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 5 ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // Verify the single parameter local carrying the raw-pointer type.
+  const auto& paramLocal = function.locals[0];
+  if (paramLocal.id != localId(1) || paramLocal.kind != MirLocalKind::Parameter ||
+      paramLocal.type != param.type || paramLocal.sourceScope != scope.id ||
+      !sameSpan(paramLocal.sourceSpan, source.sourceSpan)) {
+    return false;
+  }
+  // Verify the write unsafe scope (child 1) and its Enter/Exit boundaries.
+  const auto& writeUnsafe = ZC_ASSERT_NONNULL(writeUnsafeBlock);
+  const auto& writeScope = function.sourceScopes[1];
+  if (writeScope.id != scopeId(2) || writeScope.parent != scopeId(1) ||
+      !sameSpan(writeScope.sourceSpan, writeUnsafe.sourceSpan)) {
+    return false;
+  }
+  if (block.statements[0].kind() != MirStatementKind::UnsafeScopeBoundary) { return false; }
+  const auto& writeEnter = block.statements[0].unsafeScopeBoundaryValue();
+  if (writeEnter.kind != MirUnsafeScopeBoundaryKind::Enter || writeEnter.scope != scopeId(2) ||
+      !sameSpan(block.statements[0].sourceSpan(), writeUnsafe.sourceSpan)) {
+    return false;
+  }
+  // Verify the overwrite assign: destination is the parameter through
+  // [Dereference], rvalue is a constant of the pointee type.
+  if (block.statements[1].kind() != MirStatementKind::Assign) return false;
+  const auto& assign = block.statements[1].assignmentValue();
+  if (assign.initialization != MirInitializationKind::Overwrite) return false;
+  if (assign.destination.local() != paramLocal.id || assign.destination.rootType() != param.type ||
+      assign.destination.resultType() != declaration.resultType ||
+      assign.destination.projections().size() != 1 ||
+      assign.destination.projections()[0].kind() != MirProjectionKind::Dereference ||
+      assign.destination.projections()[0].inputType() != param.type ||
+      assign.destination.projections()[0].resultType() != declaration.resultType) {
+    return false;
+  }
+  if (assign.value.kind() != MirRvalueKind::Use) return false;
+  const auto& useRvalue = assign.value.useValue();
+  if (useRvalue.operand.kind() != MirOperandKind::Constant) return false;
+  const auto& constant = useRvalue.operand.constantValue();
+  if (constant.type != declaration.resultType) return false;
+  if (block.statements[2].kind() != MirStatementKind::UnsafeScopeBoundary) { return false; }
+  const auto& writeExit = block.statements[2].unsafeScopeBoundaryValue();
+  if (writeExit.kind != MirUnsafeScopeBoundaryKind::Exit || writeExit.scope != scopeId(2) ||
+      !sameSpan(block.statements[2].sourceSpan(), writeUnsafe.sourceSpan)) {
+    return false;
+  }
+  // Verify the return unsafe scope (child 2) and its Enter/Exit boundaries.
+  const auto& returnUnsafe = ZC_ASSERT_NONNULL(returnUnsafeBlock);
+  const auto& returnScope = function.sourceScopes[2];
+  if (returnScope.id != scopeId(3) || returnScope.parent != scopeId(1) ||
+      !sameSpan(returnScope.sourceSpan, returnUnsafe.sourceSpan)) {
+    return false;
+  }
+  if (block.statements[3].kind() != MirStatementKind::UnsafeScopeBoundary ||
+      block.statements[4].kind() != MirStatementKind::UnsafeScopeBoundary) {
+    return false;
+  }
+  const auto& returnEnter = block.statements[3].unsafeScopeBoundaryValue();
+  const auto& returnExit = block.statements[4].unsafeScopeBoundaryValue();
+  if (returnEnter.kind != MirUnsafeScopeBoundaryKind::Enter || returnEnter.scope != scopeId(3) ||
+      returnExit.kind != MirUnsafeScopeBoundaryKind::Exit || returnExit.scope != scopeId(3) ||
+      !sameSpan(block.statements[3].sourceSpan(), returnUnsafe.sourceSpan) ||
+      !sameSpan(block.statements[4].sourceSpan(), returnUnsafe.sourceSpan)) {
+    return false;
   }
   // Verify the return value is a copy/move place-use rooted at the parameter
   // local through a single [Dereference(raw-pointer -> pointee)] projection.
@@ -10515,6 +10657,15 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       ++directAggregateCallValueNodes;
     }
   }
+  // A raw-pointer write-read function (`unsafe { *ptr = <lit>; }; return unsafe
+  // { *ptr };`) materializes two value nodes on the RHS: the write-value
+  // literal expression and the parameter-reference expression. The shared
+  // equation credits only the function on the LHS, so each such function
+  // contributes one excess value node that this term restores.
+  int64_t rawPointerWriteExcess = 0;
+  for (const auto& writeFunction : hirModule.functions()) {
+    if (writeFunction.writeUnsafeBlock != zc::none) ++rawPointerWriteExcess;
+  }
   // An admitted void function materializes no HirReturnStatement: its sole body
   // statement is the mutating receiver-field write and it terminates with
   // Return(void). Its parameter RHS still contributes a parameter reference and
@@ -10758,7 +10909,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            hirModule.primitiveBinaryOperations().size() +
                            hirModule.loops().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
-      leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection;
+      leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection + rawPointerWriteExcess;
   const int64_t rhsChecksum =
       static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
                            hirModule.aggregates().size() + uninitializedLocalReturnCount +
@@ -18763,6 +18914,15 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
           ZC_IF_SOME(sourceParameter, parameterReference) {
             valid = validParameterReturnFunction(function, sourceDeclaration, block,
                                                  returnStatement, sourceParameter, proofs, copy);
+            if (!valid && sourceDeclaration.writeUnsafeBlock != zc::none &&
+                block.statements.size() == 2) {
+              auto sourceWrite = rawPointerWriteFor(hirModule, block.statements[0]);
+              if (sourceWrite != zc::none) {
+                valid = validRawPointerWriteReturnFunction(
+                    function, hirModule, sourceDeclaration, block, returnStatement, sourceParameter,
+                    ZC_ASSERT_NONNULL(sourceWrite), proofs, copy);
+              }
+            }
             if (!valid && sourceDeclaration.unsafeBlock != zc::none) {
               valid =
                   validRawDereferenceReturnFunction(function, hirModule, sourceDeclaration, block,

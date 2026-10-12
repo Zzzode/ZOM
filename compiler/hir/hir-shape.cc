@@ -2063,6 +2063,132 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         return shape;
       }
     }
+    // Raw-pointer write-read shape: a leading
+    // `unsafe { *ptr = <literal>; };` expression statement followed by
+    // `return unsafe { *ptr };` where `ptr` is a `*mut T` parameter. Both
+    // unsafe blocks are unwrapped to reach the AssignmentExpr and the Deref
+    // unary respectively.
+    {
+      auto writeItem = statementItem(tree, tree.list(statements)[0]);
+      if (writeItem != zc::none) {
+        ast::NodeId writeStmt;
+        ZC_IF_SOME(item, writeItem) { writeStmt = item; }
+        if (tree.node(writeStmt).kind == ast::SyntaxKind::ExpressionStatement) {
+          const ast::NodeId writeExpr(
+              tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+          if (tree.contains(writeExpr) &&
+              tree.node(writeExpr).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+            // Unwrap the write's unsafe block to reach the tail AssignmentExpr.
+            const ast::NodeId writeUnsafeBody(
+                tree.node(writeExpr).payload.words[ast::kUnsafeBlockExprBodyWord]);
+            if (tree.contains(writeUnsafeBody) &&
+                tree.node(writeUnsafeBody).kind == ast::SyntaxKind::BlockStmt) {
+              const auto& writeBlockNode = tree.node(writeUnsafeBody);
+              const ast::NodeList writeUnsafeStmts{
+                  writeBlockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                  writeBlockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+              if (tree.contains(writeUnsafeStmts) && !writeUnsafeStmts.empty()) {
+                auto writeTailItem =
+                    statementItem(tree, tree.list(writeUnsafeStmts)[writeUnsafeStmts.size - 1]);
+                if (writeTailItem != zc::none) {
+                  ast::NodeId writeTailStmt;
+                  ZC_IF_SOME(item, writeTailItem) { writeTailStmt = item; }
+                  if (tree.node(writeTailStmt).kind == ast::SyntaxKind::ExpressionStatement) {
+                    const ast::NodeId assignment(
+                        tree.node(writeTailStmt)
+                            .payload.words[ast::kExpressionStatementExpressionWord]);
+                    if (tree.contains(assignment) &&
+                        tree.node(assignment).kind == ast::SyntaxKind::AssignmentExpr) {
+                      const auto& assignNode = tree.node(assignment);
+                      if (static_cast<ast::AssignmentOperatorKind>(
+                              assignNode.payload.words[ast::kAssignmentExprOpWord]) ==
+                          ast::AssignmentOperatorKind::Assign) {
+                        const ast::NodeId target(
+                            assignNode.payload.words[ast::kAssignmentExprLhsWord]);
+                        const ast::NodeId writeValue(
+                            assignNode.payload.words[ast::kAssignmentExprRhsWord]);
+                        if (tree.contains(target) &&
+                            tree.node(target).kind == ast::SyntaxKind::UnaryExpression &&
+                            static_cast<ast::UnaryOperatorKind>(
+                                tree.node(target).payload.words[ast::kUnaryExpressionOpWord]) ==
+                                ast::UnaryOperatorKind::Deref &&
+                            tree.contains(writeValue) &&
+                            isScalarLiteral(tree.node(writeValue).kind)) {
+                          const ast::NodeId writeOperand(
+                              tree.node(target).payload.words[ast::kUnaryExpressionOperandWord]);
+                          // Unwrap the return's unsafe block to reach the tail
+                          // Deref unary.
+                          if (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
+                            const ast::NodeId retUnsafeBody(
+                                tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
+                            if (tree.contains(retUnsafeBody) &&
+                                tree.node(retUnsafeBody).kind == ast::SyntaxKind::BlockStmt) {
+                              const auto& retBlockNode = tree.node(retUnsafeBody);
+                              const ast::NodeList retUnsafeStmts{
+                                  retBlockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                  retBlockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+                              if (tree.contains(retUnsafeStmts) && !retUnsafeStmts.empty()) {
+                                auto retTailItem = statementItem(
+                                    tree, tree.list(retUnsafeStmts)[retUnsafeStmts.size - 1]);
+                                if (retTailItem != zc::none) {
+                                  ast::NodeId retTailStmt;
+                                  ZC_IF_SOME(item, retTailItem) { retTailStmt = item; }
+                                  if (tree.node(retTailStmt).kind ==
+                                      ast::SyntaxKind::ExpressionStatement) {
+                                    const ast::NodeId retExpr(
+                                        tree.node(retTailStmt)
+                                            .payload
+                                            .words[ast::kExpressionStatementExpressionWord]);
+                                    if (tree.contains(retExpr) &&
+                                        tree.node(retExpr).kind ==
+                                            ast::SyntaxKind::UnaryExpression &&
+                                        static_cast<ast::UnaryOperatorKind>(
+                                            tree.node(retExpr)
+                                                .payload.words[ast::kUnaryExpressionOpWord]) ==
+                                            ast::UnaryOperatorKind::Deref) {
+                                      const ast::NodeId retOperand(
+                                          tree.node(retExpr)
+                                              .payload.words[ast::kUnaryExpressionOperandWord]);
+                                      // Both operands are identifier references;
+                                      // the builder resolves them to the same
+                                      // parameter via binder facts.
+                                      if (tree.contains(writeOperand) &&
+                                          tree.node(writeOperand).kind ==
+                                              ast::SyntaxKind::IdentExpr &&
+                                          tree.contains(retOperand) &&
+                                          tree.node(retOperand).kind ==
+                                              ast::SyntaxKind::IdentExpr) {
+                                        FunctionReturnShape shape{};
+                                        shape.body = body;
+                                        shape.returnStatement = returnNode;
+                                        shape.value = retExpr;
+                                        shape.returnsRawDereference = true;
+                                        shape.rawDereferenceOperand = retOperand;
+                                        shape.unsafeBlock = value;
+                                        shape.writesRawDereference = true;
+                                        shape.rawDereferenceWriteStatement = writeStmt;
+                                        shape.rawDereferenceWriteAssignment = assignment;
+                                        shape.rawDereferenceWriteValue = writeValue;
+                                        shape.rawDereferenceWriteUnsafeBlock = writeExpr;
+                                        return shape;
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
   // For-loop accumulator shape: N leading scalar `mut` accumulator locals, a
   // C-style `for` loop whose body writes each accumulator, and a trailing

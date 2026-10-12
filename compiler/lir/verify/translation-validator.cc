@@ -409,7 +409,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         // ReturnInteger with no source local at all.
         if (operand.kind() == mir::MirOperandKind::Constant) {
           fold.kind = FoldKind::DirectConstant;
-        } else if (operand.place().projections().size() <= 1) {
+        } else if (operand.place().projections().size() == 0 ||
+                   (operand.place().projections().size() == 1 &&
+                    operand.place().projections()[0].kind() == mir::MirProjectionKind::Field)) {
           const mir::MirLocalId root = operand.place().local();
           const mir::MirAssignmentStatement* source = nullptr;
           for (const auto& statement : block.statements) {
@@ -620,6 +622,75 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             assignment.value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
           const uint32_t receiverOrdinal = receiverLocal.id.ordinal();
           receiverFieldWriteRead = ReceiverFieldWriteRead{receiverOrdinal, receiverOrdinal + 1};
+        }
+      }
+    }
+  }
+
+  // A raw-pointer write-read function whose body is
+  // `unsafe { *ptr = <constant>; }; return unsafe { *ptr };` has one
+  // parameter local, one block, and five statements: Enter(write), Assign,
+  // Exit(write), Enter(return), Exit(return). The Assign destination is the
+  // parameter through [Dereference] and the Return operand is the same
+  // projected place. The write materializes as one StoreField at offset zero
+  // and the read as one LoadField at offset zero into a synthesized result
+  // slot.
+  struct RawPointerWriteRead final {
+    uint32_t paramOrdinal = 0;
+    uint32_t resultOrdinal = 0;
+  };
+  zc::Maybe<RawPointerWriteRead> rawPointerWriteRead;
+  if (!folded && receiverFieldRead == zc::none && rawDereferenceRead == zc::none &&
+      receiverFieldWriteRead == zc::none && mir.locals.size() == 1 &&
+      mir.locals[0].kind == mir::MirLocalKind::Parameter && mir.blocks.size() == 1 &&
+      mir.blocks[0].statements.size() == 5) {
+    const auto& block = mir.blocks[0];
+    const auto& s0 = block.statements[0];
+    const auto& s1 = block.statements[1];
+    const auto& s2 = block.statements[2];
+    const auto& s3 = block.statements[3];
+    const auto& s4 = block.statements[4];
+    if (s0.kind() == mir::MirStatementKind::UnsafeScopeBoundary &&
+        s1.kind() == mir::MirStatementKind::Assign &&
+        s2.kind() == mir::MirStatementKind::UnsafeScopeBoundary &&
+        s3.kind() == mir::MirStatementKind::UnsafeScopeBoundary &&
+        s4.kind() == mir::MirStatementKind::UnsafeScopeBoundary) {
+      const auto& enterWrite = s0.unsafeScopeBoundaryValue();
+      const auto& exitWrite = s2.unsafeScopeBoundaryValue();
+      const auto& enterReturn = s3.unsafeScopeBoundaryValue();
+      const auto& exitReturn = s4.unsafeScopeBoundaryValue();
+      if (enterWrite.kind == mir::MirUnsafeScopeBoundaryKind::Enter &&
+          exitWrite.kind == mir::MirUnsafeScopeBoundaryKind::Exit &&
+          enterWrite.scope == exitWrite.scope &&
+          enterReturn.kind == mir::MirUnsafeScopeBoundaryKind::Enter &&
+          exitReturn.kind == mir::MirUnsafeScopeBoundaryKind::Exit &&
+          enterReturn.scope == exitReturn.scope && enterWrite.scope != enterReturn.scope) {
+        const auto& term = block.terminator;
+        if (term.kind() == mir::MirTerminatorKind::Return && term.returnValue().value != zc::none) {
+          const auto& rv = ZC_ASSERT_NONNULL(term.returnValue().value);
+          if (rv.kind() != mir::MirOperandKind::Constant) {
+            const auto& place = rv.place();
+            const uint32_t paramOrdinal = mir.locals[0].id.ordinal();
+            const uint32_t resultOrdinal = paramOrdinal + 1;
+            if (place.local().ordinal() == paramOrdinal && place.rootType() == mir.locals[0].type &&
+                place.resultType() == mir.resultType && place.projections().size() == 1 &&
+                place.projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+                place.projections()[0].inputType() == mir.locals[0].type &&
+                place.projections()[0].resultType() == mir.resultType) {
+              const auto& assignment = s1.assignmentValue();
+              const auto& dest = assignment.destination;
+              if (dest.local().ordinal() == paramOrdinal && dest.rootType() == mir.locals[0].type &&
+                  dest.resultType() == mir.resultType && dest.projections().size() == 1 &&
+                  dest.projections()[0].kind() == mir::MirProjectionKind::Dereference &&
+                  dest.projections()[0].inputType() == mir.locals[0].type &&
+                  dest.projections()[0].resultType() == mir.resultType &&
+                  assignment.initialization == mir::MirInitializationKind::Overwrite &&
+                  assignment.value.kind() == mir::MirRvalueKind::Use &&
+                  assignment.value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
+                rawPointerWriteRead = RawPointerWriteRead{paramOrdinal, resultOrdinal};
+              }
+            }
+          }
         }
       }
     }
@@ -1353,6 +1424,21 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
       return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
     }
+  } else if (rawPointerWriteRead != zc::none) {
+    // The raw-pointer parameter maps 1:1; the dereference result slot is
+    // synthesized in LIR (ordinal param + 1) and has no MIR local. The
+    // write itself names only the parameter slot and the stored constant.
+    if (lir.parameters().size() != 1 || lir.locals().size() != 1) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
+    const auto& writeRead = ZC_ASSERT_NONNULL(rawPointerWriteRead);
+    const auto parameterCarrier = localCarrier(mir.locals[0], mir, types);
+    if (parameterCarrier == zc::none || lir.parameters()[0].ordinal() != writeRead.paramOrdinal ||
+        lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(parameterCarrier) ||
+        lir.locals()[0].ordinal() != writeRead.resultOrdinal ||
+        lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(integerCarrier(mir.resultType, types))) {
+      return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
+    }
   } else if (receiverFieldArithmetic != zc::none) {
     // The receiver parameter maps 1:1; the field slot and arithmetic result
     // slot are both synthesized in LIR (ordinals receiver + 1 and receiver +
@@ -1846,6 +1932,32 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               ++lirStatement;
               break;
             }
+            if (rawPointerWriteRead != zc::none &&
+                assignment.destination.projections().size() == 1) {
+              // A raw-pointer write maps to one StoreField through the
+              // parameter pointer at offset zero.
+              const auto& projections = assignment.destination.projections();
+              const auto fieldCarrier = integerCarrier(assignment.destination.resultType(), types);
+              if (fieldCarrier == zc::none || actual.kind() != StatementKind::StoreField ||
+                  actual.fieldOffsetBytes() != 0 ||
+                  projections[0].kind() != mir::MirProjectionKind::Dereference) {
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              const auto& writeRead = ZC_ASSERT_NONNULL(rawPointerWriteRead);
+              if (assignment.initialization != mir::MirInitializationKind::Overwrite ||
+                  assignment.value.kind() != mir::MirRvalueKind::Use ||
+                  assignment.value.useValue().operand.kind() != mir::MirOperandKind::Constant ||
+                  actual.basePointerOrdinal() != writeRead.paramOrdinal ||
+                  actual.source().isConstant() ||
+                  !sameConstant(actual.storedValue(), assignment.value.useValue().operand,
+                                ZC_ASSERT_NONNULL(fieldCarrier))) {
+                return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                             statementIndex);
+              }
+              ++lirStatement;
+              break;
+            }
             if (assignment.destination.projections().size() != 0) {
               return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1,
                            statementIndex);
@@ -2188,6 +2300,26 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 2);
         }
+      } else if (rawPointerWriteRead != zc::none) {
+        // The projected write consumed the leading StoreField; the projected
+        // return still has no MIR statement, so the trailing LIR statement is
+        // exactly one LoadField into the synthesized result slot.
+        if (lirStatement != 1 || lirBlock.statements().size() != 2) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                       lirStatement + 1);
+        }
+        const Statement& load = lirBlock.statements()[1];
+        const auto& writeRead = ZC_ASSERT_NONNULL(rawPointerWriteRead);
+        const auto baseCarrier = localCarrier(mir.locals[0], mir, types);
+        const auto resultCarrier = integerCarrier(mir.resultType, types);
+        if (baseCarrier == zc::none || resultCarrier == zc::none ||
+            load.kind() != StatementKind::LoadField || load.source().isConstant() ||
+            load.destinationOrdinal() != writeRead.resultOrdinal ||
+            load.basePointerOrdinal() != writeRead.paramOrdinal || load.fieldOffsetBytes() != 0 ||
+            lir.parameters()[0].carrier() != ZC_ASSERT_NONNULL(baseCarrier) ||
+            lir.locals()[0].carrier() != ZC_ASSERT_NONNULL(resultCarrier)) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1, 2);
+        }
       } else if (lirStatement != lirBlock.statements().size()) {
         return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                      lirStatement + 1);
@@ -2304,6 +2436,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
               lirTerminator.returnLocalOrdinal() !=
                   ZC_ASSERT_NONNULL(receiverFieldWriteRead).resultOrdinal) {
+            return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+          }
+        } else if (rawPointerWriteRead != zc::none) {
+          if (lirTerminator.kind() != TerminatorKind::ReturnLocal ||
+              lirTerminator.returnLocalOrdinal() !=
+                  ZC_ASSERT_NONNULL(rawPointerWriteRead).resultOrdinal) {
             return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
         } else if (receiverFieldArithmetic != zc::none) {

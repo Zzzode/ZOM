@@ -300,6 +300,18 @@ struct FunctionReturnShape final {
   // HirParameterReferenceExpression wrapped in a HirUnsafeBlockExpression.
   bool returnsRawDereference = false;
   ast::NodeId rawDereferenceOperand;
+  // Two-statement raw-pointer write-read shape:
+  // `unsafe { *ptr = <literal>; }; return unsafe { *ptr };` where `ptr` is a
+  // `*mut T` parameter. The leading statement is an ExpressionStatement
+  // wrapping an UnsafeBlockExpr whose tail expression is an AssignmentExpr
+  // with a Deref unary target and a scalar-literal value. The trailing return
+  // reuses the raw-deref-return fields (returnsRawDereference,
+  // rawDereferenceOperand, unsafeBlock). These fields carry the write details.
+  bool writesRawDereference = false;
+  ast::NodeId rawDereferenceWriteStatement;
+  ast::NodeId rawDereferenceWriteAssignment;
+  ast::NodeId rawDereferenceWriteValue;
+  ast::NodeId rawDereferenceWriteUnsafeBlock;
   // When the body is a single `return "a" + "b"` of two string literals, the
   // body checker folds the concatenation to a string constant at compile time.
   // `shape.value` is the BinaryExpr node; the builder looks up its checked

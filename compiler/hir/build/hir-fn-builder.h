@@ -38,6 +38,7 @@ public:
            zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
            zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
            zc::Vector<HirParameterFieldWriteStatement>& parameterFieldWrites,
+           zc::Vector<HirRawPointerWriteStatement>& rawPointerWrites,
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
            zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -64,6 +65,7 @@ public:
   void addLocalFieldProjection(HirLocalFieldProjectionExpression projection);
   void addParameterFieldProjection(HirParameterFieldProjectionExpression projection);
   void addParameterFieldWrite(HirParameterFieldWriteStatement write);
+  void addRawPointerWrite(HirRawPointerWriteStatement write);
   void addUnsafeBlock(HirUnsafeBlockExpression block);
   void addParameterReborrow(HirParameterReborrowExpression reborrow);
   void addLocalBorrow(HirLocalBorrowExpression borrow);
@@ -112,6 +114,7 @@ private:
   zc::Vector<HirLocalFieldProjectionExpression>* localFieldProjections;
   zc::Vector<HirParameterFieldProjectionExpression>* parameterFieldProjections;
   zc::Vector<HirParameterFieldWriteStatement>* parameterFieldWrites;
+  zc::Vector<HirRawPointerWriteStatement>* rawPointerWrites;
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
   zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
   zc::Vector<HirLocalBorrowExpression>* localBorrows;
@@ -161,6 +164,13 @@ void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, Hir
 /// ids in source preorder: function, body, write, write value literal, return,
 /// returned parameter field projection.
 void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
+/// \brief Lowers one raw-pointer write-read body:
+/// `unsafe { *ptr = <literal>; }; return unsafe { *ptr };` where `ptr` is a
+/// `*mut T` parameter. Eight node ids in source preorder: function, body,
+/// write statement, write value literal, return, parameter reference, write
+/// unsafe block, return unsafe block.
+void lowerRawPointerWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one mutable-local write body: one initialized mut local, one
 /// or more non-field scalar/parameter/binary writes, and a local-reference

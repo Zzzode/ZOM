@@ -22,6 +22,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirLocalFieldProjectionExpression>& localFieldProjections,
                    zc::Vector<HirParameterFieldProjectionExpression>& parameterFieldProjections,
                    zc::Vector<HirParameterFieldWriteStatement>& parameterFieldWrites,
+                   zc::Vector<HirRawPointerWriteStatement>& rawPointerWrites,
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
                    zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
                    zc::Vector<HirLocalBorrowExpression>& localBorrows,
@@ -44,6 +45,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       localFieldProjections(&localFieldProjections),
       parameterFieldProjections(&parameterFieldProjections),
       parameterFieldWrites(&parameterFieldWrites),
+      rawPointerWrites(&rawPointerWrites),
       unsafeBlocks(&unsafeBlocks),
       parameterReborrows(&parameterReborrows),
       localBorrows(&localBorrows),
@@ -102,6 +104,10 @@ void HirFnCtx::addParameterFieldProjection(HirParameterFieldProjectionExpression
 
 void HirFnCtx::addParameterFieldWrite(HirParameterFieldWriteStatement write) {
   parameterFieldWrites->add(zc::mv(write));
+}
+
+void HirFnCtx::addRawPointerWrite(HirRawPointerWriteStatement write) {
+  rawPointerWrites->add(zc::mv(write));
 }
 
 void HirFnCtx::addUnsafeBlock(HirUnsafeBlockExpression block) { unsafeBlocks->add(zc::mv(block)); }
@@ -728,6 +734,58 @@ void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function
       HirValueCategory::Place, projection.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+}
+
+void lowerRawPointerWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const auto& write = ZC_ASSERT_NONNULL(function.rawDereferenceWrite);
+  const auto& source = ZC_ASSERT_NONNULL(function.rawDereferenceSource);
+  const auto& literal = ZC_ASSERT_NONNULL(function.rawDereferenceWriteLiteral);
+  const identity::SemanticTypeId pointeeType = write.type;
+
+  // Source preorder: function, body, write statement, write value literal,
+  // return, parameter reference, write unsafe block, return unsafe block.
+  // The block lists the write before the return; each unsafe block is a
+  // trailing allocation wrapping its inner node (the write statement and
+  // the parameter reference respectively).
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId writeId = ctx.allocNode(ast::NodeId());
+  const HirNodeId writeValueId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
+  const HirNodeId writeUnsafeId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnUnsafeId = ctx.allocNode(ast::NodeId());
+
+  auto declaration = HirFunctionDeclaration{functionId,
+                                            function.definition,
+                                            function.resultType,
+                                            zc::mv(function.parameters),
+                                            zc::none,
+                                            function.visibility.clone(),
+                                            function.linkage,
+                                            function.declarationSpan.clone(),
+                                            bodyId,
+                                            returnUnsafeId};
+  declaration.writeUnsafeBlock = writeUnsafeId;
+  ctx.addFunction(zc::mv(declaration));
+  zc::Vector<HirNodeId> statements;
+  statements.add(writeId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addRawPointerWrite(
+      HirRawPointerWriteStatement{writeId, write.parameter.clone(), write.pointerType, pointeeType,
+                                  writeValueId, write.sourceSpan.clone(), write.valueSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{writeValueId, pointeeType, literal.clone(),
+                                               HirValueCategory::Value, write.valueSpan.clone()});
+  ctx.addParameterReference(HirParameterReferenceExpression{
+      valueId, source.parameter.clone(), source.type, source.category, source.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+  ctx.addUnsafeBlock(
+      HirUnsafeBlockExpression{writeUnsafeId, writeId, pointeeType,
+                               ZC_ASSERT_NONNULL(function.writeUnsafeBlockSpan).clone()});
+  ctx.addUnsafeBlock(HirUnsafeBlockExpression{returnUnsafeId, valueId, function.resultType,
+                                              ZC_ASSERT_NONNULL(function.unsafeBlockSpan).clone()});
 }
 
 }  // namespace detail

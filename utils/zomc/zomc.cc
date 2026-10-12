@@ -1507,6 +1507,9 @@ private:
           lowered = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(fn, types);
         }
         if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerRawPointerWriteReturn(fn, types);
+        }
+        if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerRawDereferenceReturn(fn, types);
         }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types); }

@@ -230,6 +230,21 @@ struct HirParameterFieldWriteStatement final {
   identity::SourceSpan valueSpan;
 };
 
+/// \brief One verified scalar write through a mutable raw-pointer parameter.
+///
+/// Lowers `unsafe { *ptr = <literal>; }` where `ptr` is a `*mut T` parameter.
+/// The MIR builder emits an Overwrite assign to a [Dereference] projection on
+/// the parameter place; the LIR builder emits a StoreField at offset zero.
+struct HirRawPointerWriteStatement final {
+  HirNodeId node;
+  identity::CallableParameterKey parameter;
+  identity::SemanticTypeId pointerType;
+  identity::SemanticTypeId type;
+  HirNodeId value;
+  identity::SourceSpan sourceSpan;
+  identity::SourceSpan valueSpan;
+};
+
 /// \brief One verified scalar write to a mutable function-local place.
 struct HirLocalWriteStatement final {
   HirNodeId node;
@@ -521,6 +536,11 @@ struct HirFunctionDeclaration final {
   /// impl, and interface so the MIR builder emits an Erase rvalue and the LIR
   /// builder constructs the fat-pointer carrier.
   zc::Maybe<HirErasureRecord> returnErasure = zc::none;
+  /// Set for the raw-pointer write-read body shape
+  /// (`unsafe { *ptr = <lit>; }; return unsafe { *ptr };`): the unsafe block
+  /// wrapping the leading write statement. The trailing `unsafeBlock` field
+  /// still carries the return's unsafe block.
+  zc::Maybe<HirNodeId> writeUnsafeBlock = zc::none;
 };
 
 /// \brief One module-scope let, mut, or const declaration in semantic HIR.
@@ -601,6 +621,7 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterFieldWriteStatement> parameterFieldWrites()
       const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirRawPointerWriteStatement> rawPointerWrites() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterIndexExpression> parameterIndexes() const noexcept;
