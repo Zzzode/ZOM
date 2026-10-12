@@ -513,7 +513,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       }
       auto bodyShape = functionReturnShape(tree, tree.node(definition.node));
       if (bodyShape == zc::none || (!ZC_ASSERT_NONNULL(bodyShape).isEmptyBody &&
-                                    !ZC_ASSERT_NONNULL(bodyShape).isVoidLetBody)) {
+                                    !ZC_ASSERT_NONNULL(bodyShape).isVoidLetBody &&
+                                    !ZC_ASSERT_NONNULL(bodyShape).isDestructorFieldWriteBody)) {
         return rejectHirCapability<HirModuleCandidate>(
             definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
             definition.source.clone());
@@ -675,7 +676,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       ast::NodeId(),
                                                       false,
                                                       zc::none,
-                                                      zc::mv(voidLetBindings)});
+                                                      zc::mv(voidLetBindings),
+                                                      shape.isDestructorFieldWriteBody});
       continue;
     }
     if (definition.record.kind() == identity::DefinitionKind::Function ||
@@ -10739,6 +10741,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // baseline (the let initializer expression), so both equations add this
   // count back.
   size_t voidLetBodyCount = 0;
+  // Destructors whose body is a single dead-folded field write
+  // (`deinit() { this.<field> = <scalar-literal>; }`). The checker produces
+  // four node-type facts (this, member, assignment, literal), one member fact,
+  // one place fact, and one literal fact that are not materialized as HIR
+  // nodes, so the equations subtract them.
+  size_t destructorFieldWriteBodyCount = 0;
   // Discarded statement-position receiver calls. A returned receiver call has
   // its call node covered by the per-function node-type baseline; a discarded
   // call has no return, so its call node needs one additional node-type term on
@@ -10780,6 +10788,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   for (const auto& function : pendingFunctions) {
     if (function.voidBody) ++voidFunctionCount;
     if (function.voidBody) { voidLetBodyCount += function.voidLetBindings.size(); }
+    if (function.isDestructorFieldWriteBody) ++destructorFieldWriteBodyCount;
     if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     if (function.returnsFoldedFloatCast) ++foldedFloatCastCount;
     if (function.returnsLocalIncrement) ++incrementReturnCount;
@@ -11578,7 +11587,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
-      directExistentialCallCount;
+      directExistentialCallCount + destructorFieldWriteBodyCount * 4;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -11613,7 +11622,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(chainedMatchLiteralExcess) +
           static_cast<int64_t>(foldedStringConcatCount) * 2 +
           static_cast<int64_t>(sequentialFoldedStringConcatCount) * 2 +
-          static_cast<int64_t>(foldedFloatCastCount)) +
+          static_cast<int64_t>(foldedFloatCastCount) +
+          static_cast<int64_t>(destructorFieldWriteBodyCount)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -11650,7 +11660,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       localFieldProjectionCount + localFieldWriteCount + receiverCallCount + receiverSelfCallCount +
           parameterFieldProjectionCount - armParameterFieldProjectionCount +
           parameterFieldWriteCount + receiverFieldArithmeticCount + receiverCallFieldArgumentCount +
-          receiverCallComparisonArgumentCount) {
+          receiverCallComparisonArgumentCount + destructorFieldWriteBodyCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 7);
   }
@@ -11658,7 +11668,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                    parameterIndexCount + parameterFieldProjectionCount -
                                    armParameterFieldProjectionCount + receiverFieldArithmeticCount +
                                    parameterFieldWriteCount + receiverCallFieldArgumentCount +
-                                   receiverCallComparisonArgumentCount ||
+                                   receiverCallComparisonArgumentCount +
+                                   destructorFieldWriteBodyCount ||
       facts.indexes().size() != parameterIndexCount ||
       facts.markerObligations().size() != parameterIndexCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

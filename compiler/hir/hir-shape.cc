@@ -1535,18 +1535,60 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements)) return zc::none;
-  // Destructor body shapes: `deinit() { }` (zero statements) or
+  // Destructor body shapes: `deinit() { }` (zero statements),
   // `deinit() { let x: T = <scalar-literal>; ... }` (one or more scalar-let
-  // statements). The callable result is Unit; there is no return statement or
-  // return value. The checker's canonical destructor shape (signature-facts.cc)
-  // expects no receiver and no ordinary parameters, so the body is the only
-  // carrier.
+  // statements), or `deinit() { this.<field> = <scalar-literal>; }` (one
+  // field-write statement). The callable result is Unit; there is no return
+  // statement or return value. The checker's canonical destructor shape
+  // (signature-facts.cc) expects no receiver and no ordinary parameters, so
+  // the body is the only carrier.
   if (isDestructor) {
     if (statements.empty()) {
       FunctionReturnShape shape{};
       shape.body = body;
       shape.isEmptyBody = true;
       return shape;
+    }
+    if (statements.size == 1) {
+      auto writeItem = statementItem(tree, tree.list(statements)[0]);
+      if (writeItem != zc::none) {
+        ast::NodeId writeStatement;
+        ZC_IF_SOME(value, writeItem) { writeStatement = value; }
+        if (tree.contains(writeStatement) &&
+            tree.node(writeStatement).kind == ast::SyntaxKind::ExpressionStatement) {
+          const ast::NodeId writeAssignment(
+              tree.node(writeStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+          if (tree.contains(writeAssignment) &&
+              tree.node(writeAssignment).kind == ast::SyntaxKind::AssignmentExpr &&
+              static_cast<ast::AssignmentOperatorKind>(
+                  tree.node(writeAssignment).payload.words[ast::kAssignmentExprOpWord]) ==
+                  ast::AssignmentOperatorKind::Assign) {
+            const ast::NodeId writeTarget(
+                tree.node(writeAssignment).payload.words[ast::kAssignmentExprLhsWord]);
+            const ast::NodeId writeRhs(
+                tree.node(writeAssignment).payload.words[ast::kAssignmentExprRhsWord]);
+            if (tree.contains(writeTarget) && tree.contains(writeRhs) &&
+                tree.node(writeTarget).kind == ast::SyntaxKind::MemberExpression &&
+                static_cast<ast::MemberAccessKind>(
+                    tree.node(writeTarget).payload.words[ast::kMemberExpressionAccessWord]) ==
+                    ast::MemberAccessKind::Dot &&
+                isScalarLiteral(tree.node(writeRhs).kind)) {
+              const ast::NodeId writeObject(
+                  tree.node(writeTarget).payload.words[ast::kMemberExpressionObjectWord]);
+              if (tree.contains(writeObject) &&
+                  tree.node(writeObject).kind == ast::SyntaxKind::ThisExpr) {
+                FunctionReturnShape shape{};
+                shape.body = body;
+                shape.isDestructorFieldWriteBody = true;
+                shape.receiverWriteStatement = writeStatement;
+                shape.receiverWriteAssignment = writeAssignment;
+                shape.receiverWriteValue = writeRhs;
+                return shape;
+              }
+            }
+          }
+        }
+      }
     }
     zc::Vector<VoidLetBinding> bindings;
     for (size_t i = 0; i < statements.size; ++i) {

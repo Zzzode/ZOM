@@ -983,6 +983,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) { isEmptyBodyShape = value.isEmptyBody; }
     bool isVoidLetBodyShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isVoidLetBodyShape = value.isVoidLetBody; }
+    bool isDestructorFieldWriteBodyShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) {
+      isDestructorFieldWriteBodyShape = value.isDestructorFieldWriteBody;
+    }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -1208,10 +1212,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += 4;
       continue;
     }
-    if (isEmptyBodyShape) {
-      // Empty-body destructor branch: `deinit() { }`. Two node ids in source
-      // preorder: function F, body F+1. No statements, return, or value are
-      // materialized; the callable result is Unit.
+    if (isEmptyBodyShape || isDestructorFieldWriteBodyShape) {
+      // Empty-body or field-write destructor branch: `deinit() { }` or
+      // `deinit() { this.<field> = <scalar-literal>; }`. The field-write
+      // store is dead-folded, so both shapes produce the same HIR: two node
+      // ids in source preorder (function F, body F+1), no statements, no
+      // return. The callable result is Unit.
       const FunctionReturnShape& emptySource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       if (!block.statements.empty()) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,

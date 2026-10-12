@@ -524,6 +524,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-void-let-body-consumer/Zom.toml::destructor_void_let_body_consumer::destructor_void_let_body_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-multi-let-body-consumer/Zom.toml::destructor_multi_let_body_consumer::destructor_multi_let_body_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-field-write-consumer/Zom.toml::destructor_field_write_consumer::destructor_field_write_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

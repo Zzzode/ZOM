@@ -815,6 +815,12 @@ struct PendingFunctionDeclaration final {
   /// Each is folded away by the LIR builder. The single local/literal fields
   /// are not used for this shape.
   zc::Vector<PendingVoidLetBinding> voidLetBindings = {};
+  /// True for the destructor field-write body shape
+  /// (`deinit() { this.<field> = <scalar-literal>; }`). The store is
+  /// dead-folded: the HIR is the same single-block ReturnVoid as the empty-body
+  /// shape. The checker-produced facts (node-type, member, place, literal) are
+  /// not materialized as HIR nodes, so the fact-count equations subtract them.
+  bool isDestructorFieldWriteBody = false;
 };
 
 }  // namespace detail

@@ -408,6 +408,13 @@ struct FunctionReturnShape final {
   // the builder and the per-node correspondence validator.
   bool isVoidLetBody = false;
   zc::Vector<VoidLetBinding> voidLetBindings;
+  // Destructor field-write-body shape: `deinit() { this.<field> =
+  // <scalar-literal>; }` with exactly one statement. The callable result is
+  // Unit; there is no return statement or return value. The write statement,
+  // its assignment, and the scalar-literal RHS reuse receiverWriteStatement,
+  // receiverWriteAssignment, and receiverWriteValue. The store is dead-folded
+  // by the HIR builder when the destructor is never called.
+  bool isDestructorFieldWriteBody = false;
   // Function shape: a leading aggregate-initialized owner local, one discarded
   // receiver-call expression statement on that local, and a trailing
   // `return <owner-local>.<method>(...);`. This slice admits exactly one

@@ -1892,6 +1892,91 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
                                 ZC_ASSERT_NONNULL(receiver).receiverMutable};
 }
 
+/// \brief Resolved field access through the implicit destruction place of a
+/// destructor body: the owner nominal definition, the owner nominal type, a
+/// mutable reference to that type, the projected field, and the field type.
+///
+/// RFC 0014 designs the destructor receiver as a DestructionPlace rather than
+/// an ordinary callable receiver. The minimal slice admits `this.<field> =
+/// <scalar-literal>` by resolving the owner nominal from the destructor's
+/// enclosed signature scope and treating the place as mutable. Live destructor
+/// field writes require the full RFC 0007/RFC 0014 DestructionPlace permission
+/// analysis; the HIR builder dead-folds the store when the destructor is never
+/// called.
+struct DestructorFieldShape final {
+  identity::DefId ownerDefinition;
+  identity::SemanticTypeId receiverType;
+  identity::SemanticTypeId receiverReferenceType;
+  identity::DefId field;
+  identity::SemanticTypeId fieldType;
+};
+
+/// \brief Resolves `this.field` inside a destructor body to the owner nominal
+/// and field definition. The destruction place is always mutable.
+zc::Maybe<DestructorFieldShape> destructorFieldShape(const BodyCheckingInput& input,
+                                                     ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  auto owner = enclosingBodyOwner(input.boundModule, object);
+  if (owner == zc::none) { return zc::none; }
+  // The destructor's signature scope is ModuleDefinitionSignatureScope (the
+  // binder classifies it as a module-scope callable), so the owner nominal
+  // cannot be read from the signature scope. Walk the destructor's stable
+  // owners to find the enclosing nominal definition.
+  zc::Maybe<identity::DefId> ownerDefinition;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(owner)) { continue; }
+    const auto owners = definition.record.owners();
+    for (size_t remaining = owners.size(); remaining > 0; --remaining) {
+      const auto& stableOwner = owners[remaining - 1];
+      if (stableOwner.kind() != identity::EnclosingStableOwnerKind::Definition) { continue; }
+      auto ownerKey = stableOwner.definitionKey();
+      ZC_IF_SOME(key, ownerKey) {
+        for (const auto& candidate : input.boundModule.definitions().definitions()) {
+          if (candidate.key == key) {
+            ownerDefinition = candidate.definition;
+            break;
+          }
+        }
+      }
+      break;
+    }
+    break;
+  }
+  if (ownerDefinition == zc::none) { return zc::none; }
+  auto field = nominalFieldShape(
+      input, ZC_ASSERT_NONNULL(ownerDefinition),
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
+  if (field == zc::none) { return zc::none; }
+  auto admitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::NominalTypeData{ZC_ASSERT_NONNULL(ownerDefinition), {}}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto interned =
+      input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+  const auto ownerType = interned.get<type::SemanticTypeInterned>().id;
+  auto referenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{type::semantic::Mutability::Mutable, ownerType}));
+  if (!referenceAdmitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto referenceInterned = input.semanticTypes.intern(
+      zc::mv(referenceAdmitted).get<type::semantic::CanonicalTypeData>());
+  if (!referenceInterned.is<type::SemanticTypeInterned>()) { return zc::none; }
+  const auto ownerReferenceType = referenceInterned.get<type::SemanticTypeInterned>().id;
+  return DestructorFieldShape{ZC_ASSERT_NONNULL(ownerDefinition), ownerType, ownerReferenceType,
+                              ZC_ASSERT_NONNULL(field).definition, ZC_ASSERT_NONNULL(field).type};
+}
+
 /// \brief One per-field concrete-to-existential erasure recorded inside a
 /// struct literal. The field value's concrete type is erased to the declared
 /// existential field type at MIR level via an Erase rvalue; the HIR builder
@@ -4524,6 +4609,10 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
           } else if (isSimpleReceiverFieldWrite(input.boundModule, node)) {
             auto shape = thisReceiverFieldShape(input, target);
             ZC_IF_SOME(field, shape) { assignmentHint = field.fieldType; }
+            if (shape == zc::none) {
+              auto dshape = destructorFieldShape(input, target);
+              ZC_IF_SOME(field, dshape) { assignmentHint = field.fieldType; }
+            }
           }
         }
       }
@@ -7001,6 +7090,39 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 zc::Array<uint8_t>()});
             continue;
           }
+          // A `this` expression inside a destructor body that is the receiver
+          // of an admitted `this.field` access produces the destruction-place
+          // reference type.
+          zc::Maybe<DestructorFieldShape> admittedDestructorField;
+          for (size_t index = 0; index < tree.nodeCount(); ++index) {
+            const ast::NodeId candidate(static_cast<uint32_t>(index));
+            if (!tree.contains(candidate) ||
+                tree.node(candidate).kind != ast::SyntaxKind::MemberExpression) {
+              continue;
+            }
+            const auto& member = tree.node(candidate);
+            if (static_cast<ast::MemberAccessKind>(
+                    member.payload.words[ast::kMemberExpressionAccessWord]) !=
+                ast::MemberAccessKind::Dot) {
+              continue;
+            }
+            const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+            if (object != site.node) { continue; }
+            auto shape = destructorFieldShape(input, candidate);
+            if (shape != zc::none) {
+              if (admittedDestructorField != zc::none) {
+                admittedDestructorField = zc::none;
+                break;
+              }
+              admittedDestructorField = shape;
+            }
+          }
+          if (admittedDestructorField != zc::none) {
+            nodeTypes.add(checked::NodeTypeMap::Entry{
+                site.node, ZC_ASSERT_NONNULL(admittedDestructorField).receiverReferenceType,
+                zc::Array<uint8_t>()});
+            continue;
+          }
           // A `this` expression that is the receiver of an admitted zero-arg
           // self-call (`this.method()`) is typed as the enclosing receiver
           // reference; the call site supplies the typed call fact.
@@ -8233,11 +8355,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         const auto& assignment = input.boundModule.tree().node(site.node);
         const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
         auto targetShape = thisReceiverFieldShape(input, target);
-        if (targetShape == zc::none) {
+        auto destructorTargetShape = targetShape != zc::none
+                                         ? zc::Maybe<DestructorFieldShape>{zc::none}
+                                         : destructorFieldShape(input, target);
+        if (targetShape == zc::none && destructorTargetShape == zc::none) {
           return rejectMethodCallCapability(site, input, factStoreBrands,
                                             unsupportedThisFieldAccess(input, target));
         }
-        if (!ZC_ASSERT_NONNULL(targetShape).receiverMutable) {
+        if (targetShape != zc::none && !ZC_ASSERT_NONNULL(targetShape).receiverMutable) {
           // A field write through a shared receiver is the same mutation error
           // as writing an immutable variable, naming the implicit receiver.
           zc::Maybe<uint32_t> ownerOrdinal;
@@ -8271,13 +8396,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       } else if (site.production == BodyProductionKind::OwnerLocalFieldReference) {
         auto thisShape = thisReceiverFieldShape(input, site.node);
-        auto shape = thisShape != zc::none
+        auto destructorShape = thisShape != zc::none ? zc::Maybe<DestructorFieldShape>{zc::none}
+                                                     : destructorFieldShape(input, site.node);
+        auto shape = (thisShape != zc::none || destructorShape != zc::none)
                          ? zc::none
                          : ownerLocalFieldShape(input, site.node, nodeTypes.asPtr());
-        auto parameterShape = (thisShape != zc::none || shape != zc::none)
-                                  ? zc::none
-                                  : parameterFieldShape(input, site.node, nodeTypes.asPtr());
-        if (thisShape == zc::none && shape == zc::none && parameterShape == zc::none) {
+        auto parameterShape =
+            (thisShape != zc::none || destructorShape != zc::none || shape != zc::none)
+                ? zc::none
+                : parameterFieldShape(input, site.node, nodeTypes.asPtr());
+        if (thisShape == zc::none && destructorShape == zc::none && shape == zc::none &&
+            parameterShape == zc::none) {
           auto unsupportedThisField = unsupportedThisFieldAccess(input, site.node);
           if (unsupportedThisField != zc::none) {
             return rejectMethodCallCapability(site, input, factStoreBrands,
@@ -8321,6 +8450,30 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   site.node,
                   checked::PlaceRoot(checked::CallableParameterPlaceRoot{value.receiverParameter}),
                   zc::mv(projections), value.fieldType, value.receiverMutable, true},
+              zc::Array<uint8_t>()});
+        }
+        ZC_IF_SOME(value, destructorShape) {
+          producedType = value.fieldType;
+          zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+          members.add(checked::MemberFactMap::Entry{
+              site.node,
+              checked::CheckedMemberFact{site.node, value.receiverType, value.field,
+                                         value.fieldType, zc::mv(noAdjustment)},
+              zc::Array<uint8_t>()});
+          zc::Vector<checked::PlaceProjection> projections;
+          projections.add(checked::PlaceProjection(checked::FieldProjection{value.field}));
+          // The destruction place is represented as a temporary root keyed by
+          // the `this` expression node. The HIR builder dead-folds the store
+          // when the destructor is never called, so the root is only used for
+          // checker-internal place validation.
+          const ast::NodeId object(input.boundModule.tree()
+                                       .node(site.node)
+                                       .payload.words[ast::kMemberExpressionObjectWord]);
+          places.add(checked::PlaceFactMap::Entry{
+              site.node,
+              checked::CheckedPlaceFact{site.node,
+                                        checked::PlaceRoot(checked::TemporaryPlaceRoot{object}),
+                                        zc::mv(projections), value.fieldType, true, true},
               zc::Array<uint8_t>()});
         }
         ZC_IF_SOME(value, shape) {

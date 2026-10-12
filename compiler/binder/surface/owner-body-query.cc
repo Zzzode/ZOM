@@ -1250,6 +1250,22 @@ zc::Maybe<StableCallableParameterQueryKey> verifierReceiver(const StableOwnerBod
   return zc::none;
 }
 
+// Destructors have no callable receiver parameter by design (RFC 0014: the
+// destruction place is not an ordinary receiver). A `this` expression inside a
+// destructor body therefore has no StableCallableParameterQueryKey to bind to.
+// The projection skips such entries instead of failing so the owner-body query
+// can publish; the checker resolves destructor `this` through the owner nominal
+// rather than a this-binding fact.
+bool isDestructorOwner(const StableOwnerBodyQueryKey& owner, const BoundModuleSkeleton& skeleton) {
+  ZC_IF_SOME(definition, owner.owner().definitionKey()) {
+    for (const auto& candidate : skeleton.declarations().values()) {
+      if (candidate.queryKey().definition() != definition) { continue; }
+      return candidate.kind() == identity::DefinitionKind::Destructor;
+    }
+  }
+  return false;
+}
+
 bool isLoopSyntaxKind(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::WhileStmt:
@@ -2140,13 +2156,17 @@ zc::Maybe<OwnerBodyReceiverProjection> OwnerBodyReceiverProjection::from(
   auto traversal = OwnerBodySyntaxTraversal::from(syntax);
   if (traversal == zc::none) { return zc::none; }
   auto receiver = providerReceiver(owner, skeleton);
+  const bool destructorOwner = isDestructorOwner(owner, skeleton);
   zc::Vector<StableThisBindingFact> bindings;
   for (const auto& entry : ZC_ASSERT_NONNULL(traversal).entries()) {
     if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
         entry.syntaxKind != ast::SyntaxKind::ThisExpr) {
       continue;
     }
-    if (receiver == zc::none) { return zc::none; }
+    if (receiver == zc::none) {
+      if (destructorOwner) { continue; }
+      return zc::none;
+    }
     auto binding = StableThisBindingFact::from(owner.clone(), entry.path.clone(),
                                                ZC_ASSERT_NONNULL(receiver).clone());
     if (binding == zc::none) { return zc::none; }
@@ -2169,6 +2189,7 @@ bool OwnerBodyReceiverProjection::verify(const StableOwnerBodyQueryKey& owner,
   auto traversal = OwnerBodySyntaxTraversal::from(syntax);
   if (traversal == zc::none) { return false; }
   auto receiver = verifierReceiver(owner, skeleton);
+  const bool destructorOwner = isDestructorOwner(owner, skeleton);
   zc::Vector<StableThisBindingFact> expected;
   const auto entries = ZC_ASSERT_NONNULL(traversal).entries();
   for (size_t index = entries.size(); index != 0; --index) {
@@ -2177,7 +2198,10 @@ bool OwnerBodyReceiverProjection::verify(const StableOwnerBodyQueryKey& owner,
         entry.syntaxKind != ast::SyntaxKind::ThisExpr) {
       continue;
     }
-    if (receiver == zc::none) { return false; }
+    if (receiver == zc::none) {
+      if (destructorOwner) { continue; }
+      return false;
+    }
     auto binding = StableThisBindingFact::from(owner.clone(), entry.path.clone(),
                                                ZC_ASSERT_NONNULL(receiver).clone());
     if (binding == zc::none) { return false; }
