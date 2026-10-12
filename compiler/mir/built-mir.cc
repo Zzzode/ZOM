@@ -6516,6 +6516,47 @@ bool validUninitializedLocalReturnFunction(
   return false;
 }
 
+bool validArrayIndexFoldReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirScalarLiteralExpression& foldLiteral,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
+      sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != sourceReturn.node || sourceLocal.initializer == zc::none ||
+      sourceReturn.value != foldLiteral.node || foldLiteral.type != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& local = function.locals[0];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != localId(1) ||
+      local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
+      local.sourceScope != scope.id || !sameSpan(local.sourceSpan, sourceLocal.sourceSpan) ||
+      block.id != blockId(1) || block.sourceScope != scope.id || block.statements.size() != 1 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != local.id ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return value.kind() == MirOperandKind::Constant &&
+           value.constantValue().type == foldLiteral.type &&
+           sameConstant(value.constantValue().value, foldLiteral.value, module, identities,
+                        semanticTypes);
+  }
+  return false;
+}
+
 bool validUninitializedLocalFieldReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -19171,6 +19212,19 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               local.initializer == zc::none && write.kind == hir::HirLocalWriteKind::Initialize;
         }
       }
+      // Array index fold: `let a: [T; N] = [...]; return a[k];` folds the
+      // constant index to a scalar literal at body-checker level. The HIR
+      // block has two statements (local binding with array-aggregate
+      // initializer + scalar-literal return); the MIR keeps the local live
+      // and returns the folded constant. The array literal initializer has no
+      // HIR expression/aggregate/call/parameter record, which distinguishes
+      // this shape from a scalar-initialized local with an unrelated literal
+      // return.
+      const bool isArrayIndexFold = isLocalReturn && expression != zc::none &&
+                                    sourceLocal != zc::none && localReference == zc::none &&
+                                    ZC_ASSERT_NONNULL(sourceLocal).initializer != zc::none &&
+                                    initializer == zc::none && initializerAggregate == zc::none &&
+                                    initializerCall == zc::none && initializerParameter == zc::none;
       if (!isLeadingLocalConditional &&
           (sourceBlock == zc::none || sourceReturn == zc::none ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && !isByValueParameterFieldReturn &&
@@ -19227,7 +19281,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             (isLocalReturn || isParameterReborrow || expression != zc::none || call != zc::none)) ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && isParameterReborrow &&
             (isLocalReturn || expression != zc::none || call != zc::none)) ||
-           (!isLocalFieldReturn && !isReceiverFieldReturn && isLocalReturn &&
+           (!isLocalFieldReturn && !isReceiverFieldReturn && isLocalReturn && !isArrayIndexFold &&
             (sourceLocal == zc::none || localReference == zc::none ||
              (!uninitializedLocal && !initializedByWrite &&
               ((initializer != zc::none) + (initializerAggregate != zc::none) +
@@ -19397,9 +19451,18 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             }
           }
           ZC_IF_SOME(sourceExpression, expression) {
-            valid = validScalarReturnFunction(function, hirModule, sourceDeclaration, block,
-                                              returnStatement, sourceExpression, module, identities,
-                                              semanticTypes);
+            if (isArrayIndexFold) {
+              ZC_IF_SOME(local, sourceLocal) {
+                valid = validArrayIndexFoldReturnFunction(function, sourceDeclaration, block, local,
+                                                          returnStatement, sourceExpression, module,
+                                                          identities, semanticTypes);
+              }
+            }
+            if (!valid) {
+              valid = validScalarReturnFunction(function, hirModule, sourceDeclaration, block,
+                                                returnStatement, sourceExpression, module,
+                                                identities, semanticTypes);
+            }
           }
           ZC_IF_SOME(sourceReceiverField, receiverFieldProjection) {
             if (sourceDeclaration.receiver != zc::none && receiverFieldWrite != zc::none &&

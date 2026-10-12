@@ -1372,6 +1372,36 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fn f() -> T { let a: [T; N] = [...]; return a[k]; }` where
+/// the index read is folded to a scalar literal. The array local is declared
+/// and StorageLive'd but never initialized (the array literal is folded at
+/// the body-checker level and not lowered). The return is the folded constant.
+zc::Maybe<RecursiveFunctionProduct> buildArrayIndexFoldReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirScalarLiteralExpression& foldLiteral,
+    const checker::CheckerIdentityAuthority& identities) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
+                                                sourceLocal.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
+  ctx.terminateBlock(MirTerminator::returnValue(
+      MirOperand::constant(declaration.resultType, foldLiteral.value.clone()),
+      sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn f() -> T { mut x = <lit>; x = <lit>; return x; }`: one
 /// root scope, one UserLocal at localId(1), StorageLive, the Initialize Assign
 /// of the initializer constant, one Overwrite Assign of the write constant, and
@@ -4254,6 +4284,28 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     auto product =
         buildScalarLocalCallReturn(declaration, block, hirModule, identities, proofs, copyMarker);
     if (product != zc::none) return product;
+  }
+
+  // Array index fold: `let a: [T; N] = [...]; return a[k];` where the index
+  // read is folded to a scalar literal. The local binding's initializer node
+  // has no HIR expression record (the array literal is validated by the builder
+  // but not lowered), and the return value is a scalar literal. The MIR
+  // declares the array local and emits StorageLive but no Initialize; the
+  // return is the folded constant.
+  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
+    auto sourceLocal = localFor(hirModule, block.statements[0]);
+    if (sourceLocal != zc::none) {
+      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+      hir::HirNodeId initializerNode;
+      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+      auto initializerLiteral = expressionFor(hirModule, initializerNode);
+      auto foldLiteral = expressionFor(hirModule, valueNode);
+      if (initializerLiteral == zc::none && foldLiteral != zc::none &&
+          ZC_ASSERT_NONNULL(foldLiteral).type == declaration.resultType) {
+        return buildArrayIndexFoldReturn(declaration, binding, ZC_ASSERT_NONNULL(sourceReturn),
+                                         ZC_ASSERT_NONNULL(foldLiteral), identities);
+      }
+    }
   }
 
   // Single scalar-initialized user local: `let x = <literal>; return x;`. The

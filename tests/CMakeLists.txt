@@ -311,6 +311,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/pointer-assignment-consumer/Zom.toml::pointer_assignment_consumer::pointer_assignment_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-literal-index/Zom.toml::array_literal_index::array_literal_index"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case
@@ -538,6 +540,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-field-write-consumer/Zom.toml::destructor_field_write_consumer::destructor_field_write_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-literal-index/Zom.toml::array_literal_index::array_literal_index::1"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

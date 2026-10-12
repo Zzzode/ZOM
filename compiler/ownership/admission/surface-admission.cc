@@ -719,6 +719,39 @@ bool isAdmittedFloatCastFold(const ast::Tree& tree, ast::NodeId value) {
   return tree.contains(inner) && tree.node(inner).kind == ast::SyntaxKind::FloatLiteralExpr;
 }
 
+/// \brief Structurally admits an array literal `[e0, e1, ...]` as a local
+/// initializer. Every element must be a scalar literal; the array type and
+/// element count are checker decisions.
+bool isAdmittedArrayLiteralInitializer(const ast::Tree& tree, ast::NodeId initializer) {
+  if (!tree.contains(initializer) || tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral) {
+    return false;
+  }
+  const auto& array = tree.node(initializer);
+  const ast::NodeList elements{array.payload.words[ast::kArrayLiteralElemsFirstWord],
+                               array.payload.words[ast::kArrayLiteralElemsSizeWord]};
+  if (!tree.contains(elements)) return false;
+  for (const auto element : tree.list(elements)) {
+    if (!tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) { return false; }
+  }
+  return true;
+}
+
+/// \brief Structurally admits a constant-index array access `a[k]` as a
+/// compile-time fold return value. The base must be a bare identifier naming
+/// the declared local; the index must be an integer literal. The fold itself
+/// (reading the array-literal initializer and emitting the element constant)
+/// runs in the body checker, so surface admission only verifies the shape.
+bool isAdmittedArrayIndexFold(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::IndexExpression) {
+    return false;
+  }
+  const auto& index = tree.node(value);
+  const ast::NodeId base(index.payload.words[ast::kIndexExpressionObjectWord]);
+  const ast::NodeId subscript(index.payload.words[ast::kIndexExpressionIndexWord]);
+  return tree.contains(base) && tree.node(base).kind == ast::SyntaxKind::IdentExpr &&
+         tree.contains(subscript) && tree.node(subscript).kind == ast::SyntaxKind::IntLiteral;
+}
+
 bool isAdmittedAggregateInitializer(const ast::Tree& tree, ast::NodeId initializer) {
   if (!tree.contains(initializer) ||
       tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr) {
@@ -798,6 +831,7 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
       tree.node(initializer).kind == ast::SyntaxKind::IdentExpr ||
       isAdmittedDirectCall(tree, initializer) ||
       isAdmittedAggregateInitializer(tree, initializer) ||
+      isAdmittedArrayLiteralInitializer(tree, initializer) ||
       isAdmittedPrimitiveBinary(tree, initializer) || isAdmittedPrimitiveUnary(tree, initializer) ||
       isAdmittedIncrementUnary(tree, initializer) ||
       isAdmittedPostfixIncrement(tree, initializer) || isAdmittedCast(tree, initializer) ||
@@ -1845,6 +1879,12 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
         returnReference = postfixOperand;
       }
     }
+  } else if (isAdmittedArrayIndexFold(tree, returnValue)) {
+    // A constant-index array access (`return a[0];`) folds to the element
+    // constant at compile time. The base must name the declared local; the
+    // array type and bounds check are checker decisions.
+    returnReference =
+        ast::NodeId(tree.node(returnValue).payload.words[ast::kIndexExpressionObjectWord]);
   }
   if (!matchesLocalReference(tree, pattern, returnReference)) return false;
   (void)returnsDirectLocalCall;

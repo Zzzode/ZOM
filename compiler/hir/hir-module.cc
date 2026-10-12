@@ -997,6 +997,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     }
     bool isDynFieldAccessShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isDynFieldAccessShape = value.dynFieldAccessReturn; }
+    bool isArrayIndexFoldShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) { isArrayIndexFoldShape = value.returnsArrayIndexFold; }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -13946,6 +13948,91 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
+      continue;
+    }
+    // Array index fold: `let a: [T; N] = [...]; return a[k];` where the index
+    // read is folded to a scalar literal. The local binding exists with an
+    // initializer node that has no HIR expression record (the array literal is
+    // validated by the builder but not lowered), and the return value is a
+    // scalar literal at the value node (not a local reference).
+    if (isArrayIndexFoldShape && returnsLocal && localHasInitializer &&
+        localReference == zc::none && literalExpression == zc::none && directCall == zc::none &&
+        !hasLocalWrite) {
+      zc::Maybe<const HirScalarLiteralExpression&> foldLiteral;
+      for (const auto& expression : candidate.impl->expressions) {
+        if (expression.node != valueNode) continue;
+        if (foldLiteral != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        foldLiteral = expression;
+      }
+      if (foldLiteral == zc::none || function.node.ordinal() != expectedFunction ||
+          block.node.ordinal() != expectedFunction + 1 ||
+          ZC_ASSERT_NONNULL(localBinding).node != hirId(expectedFunction + 2) ||
+          ZC_ASSERT_NONNULL(localBinding).initializer != hirId(expectedFunction + 3) ||
+          ZC_ASSERT_NONNULL(localBinding).initializerSpan == zc::none ||
+          returnStatement.node != hirId(expectedFunction + 4) ||
+          returnStatement.value != valueNode || ZC_ASSERT_NONNULL(foldLiteral).node != valueNode ||
+          ZC_ASSERT_NONNULL(foldLiteral).type != function.resultType ||
+          ZC_ASSERT_NONNULL(foldLiteral).category != HirValueCategory::Value ||
+          function.body != block.node || block.statements.size() != 2 ||
+          block.statements[0] != ZC_ASSERT_NONNULL(localBinding).node ||
+          block.statements[1] != returnStatement.node ||
+          function.resultType != returnStatement.resultType ||
+          !typeExists(ZC_ASSERT_NONNULL(localBinding).type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& tree = bound.tree();
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      if (!source.returnsArrayIndexFold || source.localInitializer == zc::none ||
+          !tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::IndexExpression) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the folded literal against the checker literal fact keyed by
+      // the index expression node.
+      auto literalFactIndex = factIndex(facts.literals(), source.value);
+      if (literalFactIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t literalSlot = 0;
+      ZC_IF_SOME(value, literalFactIndex) { literalSlot = value; }
+      const auto& literalFact = facts.literals().entries()[literalSlot].value;
+      if (literalFact.node != source.value ||
+          literalFact.type != ZC_ASSERT_NONNULL(foldLiteral).type ||
+          !sameConstant(literalFact.literal, ZC_ASSERT_NONNULL(foldLiteral).value, module,
+                        registries, semanticTypes)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += 6;
       continue;
     }
     const bool uninitializedLocal = returnsLocal && !localHasInitializer && !hasLocalWrite;

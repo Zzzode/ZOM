@@ -827,6 +827,11 @@ struct PendingFunctionDeclaration final {
   // the cast node; the inner FloatLiteralExpr node carries an extra node-type
   // and literal fact beyond the per-function baseline.
   bool returnsFoldedFloatCast = false;
+  // True when the return value is a compile-time-folded constant-index array
+  // access (`return a[0]` on an array-literal-initialized local). The body
+  // checker emits a literal fact for the IndexExpression node; the base
+  // IdentExpr and index IntLiteral nodes each carry their own facts.
+  bool returnsArrayIndexFold = false;
   // True when the return value is a prefix increment/decrement on a mutable
   // owner local (`return ++x;`). The desugared binary write pools into the
   // increment-write digest; the return value is the UnaryExpression itself,
@@ -892,6 +897,11 @@ struct PendingFunctionDeclaration final {
   zc::Maybe<HirRawPointerWriteStatement> rawDereferenceWrite = zc::none;
   zc::Maybe<identity::SourceSpan> writeUnsafeBlockSpan = zc::none;
   zc::Maybe<checker::checked::CanonicalConstValue> rawDereferenceWriteLiteral = zc::none;
+  // Number of scalar elements in the array-literal initializer of an
+  // array-index-fold function. The body checker produces one node-type fact
+  // per element plus one for the ArrayLiteral node itself and one for the
+  // base IdentExpr; the count equation adds this count plus two.
+  uint32_t arrayLiteralElementCount = 0;
 };
 
 }  // namespace detail

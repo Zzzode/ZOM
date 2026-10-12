@@ -144,6 +144,24 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarConstantReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one array-literal constant-index fold function to a scalar
+  /// LIR module.
+  ///
+  /// Admits exactly the verified Built MIR shape that
+  /// `mir::validArrayIndexFoldReturnFunction` accepts: a `Function` with one
+  /// `UserLocal` of an array type and a single block whose sole statement is
+  /// `StorageLive(local)` and whose terminator returns a constant. The array
+  /// index was folded to a scalar literal at body-checker level, so the array
+  /// local is never read and the LIR emits only the folded constant return.
+  /// The function folds to the reserved no-argument `zom.module_init` entry.
+  /// Every shape outside this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns `function.resultType`.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerArrayIndexFoldReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one struct-local field-return function to a scalar LIR module.
   ///
   /// Admits exactly the verified Built MIR shape that

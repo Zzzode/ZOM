@@ -260,10 +260,6 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
   const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
       ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan placeSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
 
   // Fixed source-preorder stride for the one-binding shape, matching the
   // generic materializer: function F, body F+1, local F+2, initializer F+3,
@@ -283,10 +279,22 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
 
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  lowerScalarLeaf(initializerId, localType, initializerSpan, function.literal,
-                  function.parameterReference, ctx);
-  ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
-                                                    placeCategory, placeSpan.clone()});
+  if (function.returnsArrayIndexFold) {
+    // Array index fold: the initializer is an array literal (validated by the
+    // builder but not lowered to a HIR expression), and the return value is
+    // the folded scalar literal.
+    lowerScalarLeaf(valueId, function.resultType, function.valueSpan, function.literal,
+                    function.parameterReference, ctx);
+  } else {
+    const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
+    const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
+    const identity::SourceSpan placeSpan =
+        ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+    lowerScalarLeaf(initializerId, localType, initializerSpan, function.literal,
+                    function.parameterReference, ctx);
+    ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
+                                                      placeCategory, placeSpan.clone()});
+  }
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }

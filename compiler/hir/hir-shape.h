@@ -329,6 +329,14 @@ struct FunctionReturnShape final {
   // literal fact and lowers the return to a scalar literal, reusing the
   // literal-return path.
   bool returnsFoldedFloatCast = false;
+  // Two-statement array-index fold shape: a leading array-literal-initialized
+  // local (`let a: [T; N] = [e0, ..];`) followed by `return a[k];` where `k`
+  // is a constant integer index. The body checker folds the index read to the
+  // selected element at compile time, so the builder looks up the checked
+  // literal fact on the IndexExpression node and lowers the return to a scalar
+  // literal, reusing the literal-return path. `shape.value` is the
+  // IndexExpression node; `localReference` is the base IdentExpr.
+  bool returnsArrayIndexFold = false;
   // Single-statement shared-receiver method shape:
   // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
   // reading the field through the implicit receiver with one field projection.

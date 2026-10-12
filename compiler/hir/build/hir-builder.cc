@@ -666,6 +666,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       shape.returnsFoldedStringConcat,
                                                       shape.returnsFoldedFloatCast,
+                                                      shape.returnsArrayIndexFold,
                                                       shape.returnsLocalIncrement,
                                                       shape.returnsLocalPostfixIncrement,
                                                       shape.returnsErrorPropagateCall,
@@ -1871,6 +1872,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::mv(leadingPending),
                                                           shape.returnsFoldedStringConcat,
                                                           shape.returnsFoldedFloatCast,
+                                                          shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
@@ -2069,6 +2071,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           shape.returnsFoldedStringConcat,
                                                           shape.returnsFoldedFloatCast,
+                                                          shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
@@ -2915,6 +2918,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           shape.returnsFoldedStringConcat,
                                                           shape.returnsFoldedFloatCast,
+                                                          shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
@@ -3116,6 +3120,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           zc::none,
                                                           shape.returnsFoldedStringConcat,
                                                           shape.returnsFoldedFloatCast,
+                                                          shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
                                                           shape.returnsErrorPropagateCall,
@@ -3462,6 +3467,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         shape.returnsFoldedStringConcat,
                                                         shape.returnsFoldedFloatCast,
+                                                        shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
@@ -3870,6 +3876,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         shape.returnsFoldedStringConcat,
                                                         shape.returnsFoldedFloatCast,
+                                                        shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
@@ -4284,6 +4291,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         shape.returnsFoldedStringConcat,
                                                         shape.returnsFoldedFloatCast,
+                                                        shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
@@ -4320,6 +4328,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool voidBody = false;
       bool returnsFoldedStringConcat = false;
       bool returnsFoldedFloatCast = false;
+      bool returnsArrayIndexFold = false;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
@@ -5481,6 +5490,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         zc::none,
                                                         shape.returnsFoldedStringConcat,
                                                         shape.returnsFoldedFloatCast,
+                                                        shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
                                                         shape.returnsErrorPropagateCall,
@@ -5953,6 +5963,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         false,
                                                         false,
                                                         false,
+                                                        false,
                                                         zc::none,
                                                         zc::none,
                                                         shape.body,
@@ -6040,7 +6051,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                 zc::mv(noInitializerSpan)};
         if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
             !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
-            !shape.returnsDirectExistentialCall) {
+            !shape.returnsDirectExistentialCall && !shape.returnsArrayIndexFold) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -6059,11 +6070,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if ((!shape.returnsLocalField && !shape.returnsReceiverCall &&
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
-               initializerType != nodeType.value) ||
+               !shape.returnsArrayIndexFold && initializerType != nodeType.value) ||
               (!shape.returnsLocalField && !shape.returnsReceiverCall &&
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
-               initializerType != callable.success) ||
+               !shape.returnsArrayIndexFold && initializerType != callable.success) ||
               (shape.returnsLocalBorrow && initializerType != localType)) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
@@ -6109,7 +6120,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                   zc::mv(erasure)};
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
               !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
-              !shape.returnsDirectScalarLocalCall && !shape.returnsDirectExistentialCall) {
+              !shape.returnsDirectScalarLocalCall && !shape.returnsDirectExistentialCall &&
+              !shape.returnsArrayIndexFold) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -6169,6 +6181,51 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    registries, ordinal + 2);
             }
             literal = sourceLiteral.literal.clone();
+          } else if (tree.node(initializer).kind == ast::SyntaxKind::ArrayLiteral) {
+            // Array literal initializer: the body checker produces an
+            // ArrayAggregate fact. Validate the fact and the element literals;
+            // the aggregate itself is not lowered to a HIR expression because
+            // the return value is a folded constant index read.
+            auto aggregateIndex = factIndex(facts.aggregates(), initializer);
+            if (aggregateIndex == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t aggregateSlot = 0;
+            ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+            const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
+            if (sourceAggregate.node != initializer ||
+                !sourceAggregate.kind.variant().is<checker::checked::ArrayAggregate>() ||
+                sourceAggregate.resultType != initializerType ||
+                !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            for (const auto& sourceElement : sourceAggregate.elements) {
+              if (sourceElement.field != zc::none ||
+                  sourceElement.sourceType != sourceElement.destinationType ||
+                  sourceElement.adjustment != zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+              auto elementLiteral = factIndex(facts.literals(), sourceElement.sourceNode);
+              if (elementLiteral == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, elementLiteral) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.type != sourceElement.destinationType) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+            }
           } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr ||
                      isEnumConstructionCall(tree, initializer)) {
             auto aggregateIndex = factIndex(facts.aggregates(), initializer);
@@ -7297,6 +7354,30 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ordinal + 2);
           }
         }
+        if (shape.returnsArrayIndexFold) {
+          // Array index fold: `return a[0];` where `a` is an array-literal-
+          // initialized local. The body checker folds the constant index read
+          // to a scalar literal fact, so the return value lowers to that
+          // literal. The array aggregate itself is validated above but not
+          // lowered to a HIR expression.
+          auto literalIndex = factIndex(facts.literals(), shape.value);
+          if (literalIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+          const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
+          if (sourceLiteral.type != nodeType.value ||
+              !sameSpan(valueSpanValue, sourceLiteral.sourceSpan)) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          literal = sourceLiteral.literal.clone();
+          returnsArrayIndexFold = shape.returnsArrayIndexFold;
+        }
       } else if (shape.returnsEnumConstruction) {
         // Single-statement enum construction return: `return Result::Ok(41);`.
         // The body checker produces an aggregate fact for the construction;
@@ -7517,7 +7598,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            eraseStep.interface.interface};
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
-                 shape.returnsFoldedFloatCast) {
+                 shape.returnsFoldedFloatCast || shape.returnsArrayIndexFold) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
         if (literalIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7536,6 +7617,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         literal = sourceLiteral.literal.clone();
         returnsFoldedStringConcat = shape.returnsFoldedStringConcat;
         returnsFoldedFloatCast = shape.returnsFoldedFloatCast;
+        returnsArrayIndexFold = shape.returnsArrayIndexFold;
       } else if (shape.returnsRawDereference) {
         // Raw-pointer dereference return: `return unsafe { *ptr };` where
         // `ptr` is a raw-pointer parameter. The operand resolves to a callable
@@ -11104,6 +11186,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // enclosing function's result type matches the success type, not the
       // call's error-union result type.
       const identity::SemanticTypeId functionResultType = callable.success;
+      uint32_t arrayLiteralElementCount = 0;
+      if (shape.returnsArrayIndexFold) {
+        auto aggregateIndex = factIndex(facts.aggregates(), shape.localInitializer);
+        if (aggregateIndex != zc::none) {
+          size_t aggregateSlot = 0;
+          ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
+          arrayLiteralElementCount = static_cast<uint32_t>(
+              facts.aggregates().entries()[aggregateSlot].value.elements.size());
+        }
+      }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       definition.node,
                                                       functionResultType,
@@ -11157,6 +11249,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       returnsFoldedStringConcat,
                                                       returnsFoldedFloatCast,
+                                                      returnsArrayIndexFold,
                                                       shape.returnsLocalIncrement,
                                                       shape.returnsLocalPostfixIncrement,
                                                       shape.returnsErrorPropagateCall,
@@ -11173,7 +11266,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::mv(dynFieldAccessReturn),
                                                       zc::mv(rawDereferenceWrite),
                                                       zc::mv(writeUnsafeBlockSpan),
-                                                      zc::mv(rawDereferenceWriteLiteral)});
+                                                      zc::mv(rawDereferenceWriteLiteral),
+                                                      arrayLiteralElementCount});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -11325,7 +11419,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         literal.literal.clone(), zc::mv(constant), zc::mv(orderingKey), bindingSite.introducer,
         patternNode, initializer});
   }
-
   size_t directCallCount = 0;
   size_t directCallArgumentCount = 0;
   size_t directCallLiteralArgumentCount = 0;
@@ -11535,6 +11628,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // extra node-type and literal fact for the FloatLiteralExpr inner operand
   // beyond the per-function baseline.
   size_t foldedFloatCastCount = 0;
+  // Array-index-fold returns (`return a[0]` on an array-literal local). The
+  // IndexExpression node carries a literal fact; the base IdentExpr and index
+  // IntLiteral nodes carry their own node-type and literal facts.
+  size_t foldedArrayIndexFoldCount = 0;
+  size_t arrayIndexFoldElementCount = 0;
+  size_t arrayIndexFoldAggregateCount = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -11657,6 +11756,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (function.isDestructorFieldWriteBody) ++destructorFieldWriteBodyCount;
     if (function.returnsFoldedStringConcat) ++foldedStringConcatCount;
     if (function.returnsFoldedFloatCast) ++foldedFloatCastCount;
+    if (function.returnsArrayIndexFold) {
+      ++foldedArrayIndexFoldCount;
+      ++arrayIndexFoldAggregateCount;
+      arrayIndexFoldElementCount += function.arrayLiteralElementCount;
+    }
     if (function.returnsLocalIncrement) ++incrementReturnCount;
     if (function.returnsLocalPostfixIncrement) ++postfixReturnCount;
     if (function.returnsErrorPropagateCall) ++errorPropagateReturnCount;
@@ -12336,7 +12440,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
         !isDirectAggregateCall && !isDirectScalarLocalCall && !isDirectExistentialCall &&
-        !isVoidLetBody) {
+        !isVoidLetBody && !function.returnsArrayIndexFold) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -12470,6 +12574,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
       discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
       foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
+      foldedArrayIndexFoldCount * 3 + arrayIndexFoldElementCount +
       sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
       sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
       leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
@@ -12515,6 +12620,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(foldedStringConcatCount) * 2 +
           static_cast<int64_t>(sequentialFoldedStringConcatCount) * 2 +
           static_cast<int64_t>(foldedFloatCastCount) +
+          static_cast<int64_t>(foldedArrayIndexFoldCount) * 2 +
+          static_cast<int64_t>(arrayIndexFoldElementCount) +
           static_cast<int64_t>(destructorFieldWriteBodyCount) +
           static_cast<int64_t>(rawPointerWriteCount) +
           static_cast<int64_t>(doWhileLoopBodyReturnCount)) +
@@ -12542,7 +12649,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 5);
   }
-  if (facts.aggregates().size() != aggregateCount + innerAggregateCount) {
+  if (facts.aggregates().size() !=
+      aggregateCount + innerAggregateCount + arrayIndexFoldAggregateCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }
@@ -12823,7 +12931,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
         value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
-    if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal)) {
+    // Array index fold: `let a: [T; N] = [...]; return a[k];` where the index
+    // read is folded to a scalar literal. The local binding exists but the
+    // return value is a literal, not a local reference.
+    const bool arrayIndexFoldLocal =
+        value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
+        value.returnsArrayIndexFold && value.call == zc::none && value.receiverCall == zc::none &&
+        value.aggregate == zc::none && value.localWrites.size() == 0 &&
+        value.localWriteValues.size() == 0 && value.localFieldProjection == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
+        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
+        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+    if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal || arrayIndexFoldLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -12927,8 +13048,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
+        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -12961,8 +13082,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
+        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -12993,8 +13114,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
+        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,

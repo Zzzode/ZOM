@@ -765,7 +765,8 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     bool matchHasDefaultArm = false;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
-    } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr) {
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr ||
+               tree.node(initializer).kind == ast::SyntaxKind::ArrayLiteral) {
       kind = SequentialInitializerKind::Aggregate;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
       kind = SequentialInitializerKind::ParameterReference;
@@ -3212,6 +3213,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsDirectExistentialCall = false;
   bool returnsLocalIncrement = false;
   bool returnsLocalPostfixIncrement = false;
+  bool returnsArrayIndexFold = false;
   const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
@@ -3288,6 +3290,20 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         returnsLocalPostfixIncrement = true;
       }
     }
+  } else if (tree.node(value).kind == ast::SyntaxKind::IndexExpression) {
+    // A constant-index array access (`return a[0];`) folds to the selected
+    // element at compile time. The base must be a bare identifier naming the
+    // declared local; the index must be an integer literal. The fold itself
+    // runs in the body checker, so the shape only verifies the structure.
+    const ast::NodeId indexBase(tree.node(value).payload.words[ast::kIndexExpressionObjectWord]);
+    const ast::NodeId indexSubscript(
+        tree.node(value).payload.words[ast::kIndexExpressionIndexWord]);
+    if (tree.contains(indexBase) && tree.node(indexBase).kind == ast::SyntaxKind::IdentExpr &&
+        tree.contains(indexSubscript) &&
+        tree.node(indexSubscript).kind == ast::SyntaxKind::IntLiteral) {
+      localReference = indexBase;
+      returnsArrayIndexFold = true;
+    }
   }
   if (!tree.contains(localReference) ||
       tree.node(localReference).kind != ast::SyntaxKind::IdentExpr) {
@@ -3340,6 +3356,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       tree.node(initializer).kind != ast::SyntaxKind::CallExpression &&
       tree.node(initializer).kind != ast::SyntaxKind::IdentExpr &&
       tree.node(initializer).kind != ast::SyntaxKind::StructLiteralExpr &&
+      tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral &&
       !(returnsReceiverCall && tree.node(initializer).kind == ast::SyntaxKind::MemberExpression &&
         static_cast<ast::MemberAccessKind>(
             tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
@@ -3383,6 +3400,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsDirectScalarLocalCall = returnsDirectScalarLocalCall;
     shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
+    shape.returnsArrayIndexFold = returnsArrayIndexFold;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
   }

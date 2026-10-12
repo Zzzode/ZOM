@@ -59,6 +59,8 @@ enum class BodyProductionKind : uint8_t {
   StringConcatFold = 0x23,
   FloatToIntCastFold = 0x24,
   RawPointerWrite = 0x25,
+  ArrayLiteral = 0x26,
+  ArrayIndexFold = 0x27,
   Unsupported = 0x17
 };
 
@@ -2210,6 +2212,67 @@ StructLiteralBuildResult buildStructLiteral(
   ZC_UNREACHABLE
 }
 
+/// \brief The resolved shape of an array literal `[e0, e1, ..]` used as an
+/// owner-local initializer. The array type is derived from the binding
+/// annotation; every element must be a scalar literal whose type matches the
+/// declared element type.
+struct ArrayLiteralShape final {
+  identity::SemanticTypeId type;
+  identity::SemanticTypeId elementType;
+  zc::Vector<checked::AggregateElementFact> elements;
+};
+
+/// \brief Resolves an array literal against its binding annotation and builds
+/// the per-element aggregate facts. Returns none when the literal is not an
+/// array-literal-initialized owner local, the annotation is not a fixed array
+/// type, the element count mismatches, or any element is not a scalar literal
+/// of the element type.
+zc::Maybe<ArrayLiteralShape> buildArrayLiteral(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::ArrayLiteral) {
+    return zc::none;
+  }
+  const auto& literal = tree.node(node);
+  const ast::NodeList elems{literal.payload.words[ast::kArrayLiteralElemsFirstWord],
+                            literal.payload.words[ast::kArrayLiteralElemsSizeWord]};
+  if (!tree.contains(elems)) return zc::none;
+
+  // The array type comes from the binding annotation, not from the literal
+  // itself (array literals carry no type syntax).
+  auto declared = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                    input.semanticTypes, node);
+  if (declared == zc::none) return zc::none;
+  auto lookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(declared));
+  if (!lookup.is<type::SemanticTypeLookup>()) return zc::none;
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::FixedArrayTypeData>()) return zc::none;
+  const auto& array = data.get<type::semantic::FixedArrayTypeData>();
+  if (array.length != elems.size) return zc::none;
+
+  zc::Vector<checked::AggregateElementFact> elements(elems.size);
+  for (uint32_t index = 0; index < elems.size; ++index) {
+    const auto element = tree.list(elems)[index];
+    if (!tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) return zc::none;
+    zc::Maybe<const checked::NodeTypeMap::Entry&> elementType;
+    for (const auto& entry : nodeTypes) {
+      if (entry.key != element) continue;
+      if (elementType != zc::none) return zc::none;
+      elementType = entry;
+    }
+    if (elementType == zc::none) return zc::none;
+    ZC_IF_SOME(value, elementType) {
+      if (value.value != array.element) return zc::none;
+      zc::Maybe<identity::DefId> noField;
+      zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+      elements.add(checked::AggregateElementFact{element, zc::mv(noField), index, value.value,
+                                                 array.element, zc::mv(noAdjustment)});
+    }
+  }
+  return ArrayLiteralShape{ZC_ASSERT_NONNULL(declared), array.element, zc::mv(elements)};
+}
+
 // Forward declaration: scalar-literal classification is defined below but is
 // consulted by the primitive-comparison shape helper above it.
 bool isScalarLiteral(ast::SyntaxKind kind) noexcept;
@@ -2530,6 +2593,34 @@ bool isStringLengthFoldSite(const driver::module_graph_query::CheckerBoundModule
   if (initializer == zc::none) { return false; }
   return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
          tree.node(ZC_ASSERT_NONNULL(initializer)).kind == ast::SyntaxKind::StringLiteralExpr;
+}
+
+/// \brief Whether an index expression `a[i]` folds to the selected array
+/// element at compile time.
+///
+/// The fold is purely structural: an IndexExpression whose base is an
+/// identifier naming an owner-local whose initializer is an array literal, and
+/// whose index is an integer literal. The check loop verifies the index is in
+/// bounds and emits the folded element constant. Every other index access
+/// stays on the ReadIndex rail.
+bool isArrayIndexFoldSite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                          const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::IndexExpression) {
+    return false;
+  }
+  const auto& syntax = tree.node(node);
+  const ast::NodeId base(syntax.payload.words[ast::kIndexExpressionObjectWord]);
+  const ast::NodeId index(syntax.payload.words[ast::kIndexExpressionIndexWord]);
+  if (!tree.contains(base) || tree.node(base).kind != ast::SyntaxKind::IdentExpr ||
+      !tree.contains(index) || tree.node(index).kind != ast::SyntaxKind::IntLiteral) {
+    return false;
+  }
+  const auto binding = resolvedOwnerLocal(boundModule.bindings(), base);
+  if (binding == zc::none) { return false; }
+  const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
+  if (initializer == zc::none) { return false; }
+  return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
+         tree.node(ZC_ASSERT_NONNULL(initializer)).kind == ast::SyntaxKind::ArrayLiteral;
 }
 
 /// \brief Whether a binary expression `"a" + "b"` folds to the concatenation
@@ -6211,10 +6302,17 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
         }
       } else if (syntax.kind == ast::SyntaxKind::IndexExpression) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Place, node, key);
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Index, node, key);
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::MarkerObligation, node, key);
+        if (isArrayIndexFoldSite(boundModule, tree, node)) {
+          // A constant-index read on an array-literal-initialized local folds
+          // to the selected element at compile time; it needs only a Literal
+          // requirement, mirroring the string-length fold.
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Call, node, key);
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Place, node, key);
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Index, node, key);
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::MarkerObligation, node, key);
+        }
       } else if (isPattern(syntax.kind) && !(syntax.kind == ast::SyntaxKind::IdentifierPattern &&
                                              isOwnerLocalPattern(boundModule, node))) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Pattern, node, key);
@@ -6339,10 +6437,17 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           break;
         }
         case ast::SyntaxKind::IndexExpression:
-          production = BodyProductionKind::ReadIndex;
+          if (isArrayIndexFoldSite(boundModule, tree, node)) {
+            production = BodyProductionKind::ArrayIndexFold;
+          } else {
+            production = BodyProductionKind::ReadIndex;
+          }
           break;
         case ast::SyntaxKind::StructLiteralExpr:
           production = BodyProductionKind::StructLiteral;
+          break;
+        case ast::SyntaxKind::ArrayLiteral:
+          production = BodyProductionKind::ArrayLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
           // A literal-vs-literal `+` on two string literals folds to the
@@ -6982,6 +7087,28 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.type, zc::Array<uint8_t>()});
       }
     }
+    // Array literals ride the same pre-pass: scalar element types are already
+    // produced above, so build the aggregate facts here and let the main stage
+    // loop reuse the node-type entry.
+    for (const auto& site : input.requirements.impl->productionSiteValues) {
+      if (site.production != BodyProductionKind::ArrayLiteral) continue;
+      if (factEntry(nodeTypes.asPtr(), site.node) != zc::none) continue;
+      auto built = buildArrayLiteral(input, site.node, nodeTypes.asPtr());
+      if (built == zc::none) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, zc::none, site.node,
+                               site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
+      }
+      ZC_IF_SOME(value, built) {
+        aggregates.add(checked::AggregateFactMap::Entry{
+            site.node,
+            checked::CheckedAggregateFact{
+                site.node, checked::AggregateKind(checked::ArrayAggregate{}), value.type,
+                zc::mv(value.elements), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+        nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.type, zc::Array<uint8_t>()});
+      }
+    }
   }
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
@@ -6993,7 +7120,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  dependsOnDirectCallLocalInitializer(input, site.node) ||
                                  dependsOnTernaryLocalInitializer(input, site.node);
       }
-      const bool structured = site.production == BodyProductionKind::StructLiteral;
+      const bool structured = site.production == BodyProductionKind::StructLiteral ||
+                              site.production == BodyProductionKind::ArrayLiteral;
       const bool projected = site.production == BodyProductionKind::OwnerLocalFieldReference ||
                              site.production == BodyProductionKind::OwnerLocalMethodReference ||
                              deferredLocalReference;
@@ -8851,6 +8979,30 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
           }
         }
+      } else if (site.production == BodyProductionKind::ArrayLiteral) {
+        // Array literals are processed in the reverse-order pre-pass above so
+        // nested literals have their types available. When the pre-pass already
+        // produced the type, reuse it and skip re-building the aggregate facts.
+        ZC_IF_SOME(existing, factEntry(nodeTypes.asPtr(), site.node)) {
+          producedType = existing.value;
+        } else {
+          auto built = buildArrayLiteral(input, site.node, nodeTypes.asPtr());
+          if (built == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(),
+                                   factPath(CheckedFactGroup::Aggregate));
+          }
+          ZC_IF_SOME(value, built) {
+            producedType = value.type;
+            aggregates.add(checked::AggregateFactMap::Entry{
+                site.node,
+                checked::CheckedAggregateFact{
+                    site.node, checked::AggregateKind(checked::ArrayAggregate{}), value.type,
+                    zc::mv(value.elements), site.key.sourceSpan.clone()},
+                zc::Array<uint8_t>()});
+          }
+        }
       } else if (site.production == BodyProductionKind::ErrorOperator) {
         const auto& postfix = input.boundModule.tree().node(site.node);
         const auto operation = static_cast<ast::PostfixOperatorKind>(
@@ -9091,6 +9243,109 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 signature::CanonicalConstValue::integer(signature::CanonicalInteger{
                     signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
                 ZC_ASSERT_NONNULL(i32Type), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::ArrayIndexFold) {
+        // A constant-index read `a[i]` on an array-literal-initialized local
+        // folds to the selected element at compile time. The classification
+        // precondition (the local initializer is an array literal and the
+        // index is an integer literal) guarantees the receiver is a fixed
+        // array. The folded value reuses the selected element's literal fact
+        // so the HIR builder lowers it to a scalar constant.
+        const auto& tree = input.boundModule.tree();
+        const auto& indexSyntax = tree.node(site.node);
+        const ast::NodeId base(indexSyntax.payload.words[ast::kIndexExpressionObjectWord]);
+        const ast::NodeId indexNode(indexSyntax.payload.words[ast::kIndexExpressionIndexWord]);
+        const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), base);
+        const auto initializer =
+            binding == zc::none
+                ? zc::none
+                : ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(binding));
+        if (initializer == zc::none || !tree.contains(ZC_ASSERT_NONNULL(initializer)) ||
+            tree.node(ZC_ASSERT_NONNULL(initializer)).kind != ast::SyntaxKind::ArrayLiteral) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        // Resolve the array type from the binding annotation to validate the
+        // index is in bounds and to obtain the element type.
+        auto declared =
+            ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                              input.semanticTypes, ZC_ASSERT_NONNULL(initializer));
+        if (declared == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto arrayLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(declared));
+        if (!arrayLookup.is<type::SemanticTypeLookup>()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& arrayData = arrayLookup.get<type::SemanticTypeLookup>().data();
+        if (!arrayData.is<type::semantic::FixedArrayTypeData>()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& array = arrayData.get<type::semantic::FixedArrayTypeData>();
+        // Extract the constant index from the index literal fact.
+        auto indexFact = factEntry(literals.asPtr(), indexNode);
+        if (indexFact == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto indexInteger = ZC_ASSERT_NONNULL(indexFact).value.literal.integerValue();
+        if (indexInteger == zc::none ||
+            ZC_ASSERT_NONNULL(indexInteger).sign != signature::IntegerSign::NonNegative) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        // Decode the big-endian magnitude into a uint64_t, rejecting indices
+        // that do not fit (they cannot be in bounds for any supported array).
+        uint64_t indexValue = 0;
+        for (uint8_t byte : ZC_ASSERT_NONNULL(indexInteger).magnitude) {
+          if (indexValue > (uint64_t(-1) >> 8)) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          indexValue = (indexValue << 8) | byte;
+        }
+        if (indexValue >= array.length) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        // Select the element AST node and look up its literal fact.
+        const auto& literalSyntax = tree.node(ZC_ASSERT_NONNULL(initializer));
+        const ast::NodeList elems{literalSyntax.payload.words[ast::kArrayLiteralElemsFirstWord],
+                                  literalSyntax.payload.words[ast::kArrayLiteralElemsSizeWord]};
+        if (!tree.contains(elems) || indexValue >= elems.size) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto element = tree.list(elems)[static_cast<uint32_t>(indexValue)];
+        auto elementFact = factEntry(literals.asPtr(), element);
+        if (elementFact == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& selected = ZC_ASSERT_NONNULL(elementFact).value;
+        if (selected.type != array.element) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = array.element;
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{site.node, selected.literal.clone(), array.element,
+                                        site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::StringConcatFold) {
         // A `"a" + "b"` binary folds to the concatenation of its two
@@ -9414,10 +9669,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       }
       ZC_IF_SOME(value, producedType) {
-        // Scalar literals and struct literals produced in the pre-pass already
-        // have a nodeTypes entry; skip to avoid a duplicate.
+        // Scalar literals, struct literals, and array literals produced in the
+        // pre-pass already have a nodeTypes entry; skip to avoid a duplicate.
         if ((isScalarLiteralProduction(site.production) ||
-             site.production == BodyProductionKind::StructLiteral) &&
+             site.production == BodyProductionKind::StructLiteral ||
+             site.production == BodyProductionKind::ArrayLiteral) &&
             factEntry(nodeTypes.asPtr(), site.node) != zc::none) {
           // Entry already exists from the pre-pass.
         } else {

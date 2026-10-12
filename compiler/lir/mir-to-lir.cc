@@ -825,6 +825,64 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerArrayIndexFoldReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit the verified array-literal constant-index fold shape: a standalone
+  // function with one user local of an array type, one source scope, one block
+  // whose sole statement is StorageLive, and a Return of a constant. The array
+  // index was folded at body-checker level, so the local is never read and the
+  // LIR emits only the folded constant return. This mirrors the structural
+  // facts that mir::validArrayIndexFoldReturnFunction checked; we re-check them
+  // here so lowering is total over its declared input and fail-closed on
+  // anything else.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 1 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& local = function.locals[0];
+  const auto& block = function.blocks[0];
+  if (local.kind != mir::MirLocalKind::UserLocal || local.type == function.resultType ||
+      block.statements.size() != 1 ||
+      block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != local.id) {
+    return zc::none;
+  }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+
+  const mir::MirConstantOperand* constant = nullptr;
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    constant = &value.constantValue();
+    if (constant->type != function.resultType) { return zc::none; }
+  }
+  if (constant == nullptr) { return zc::none; }
+
+  // Build the single entry block returning the constant. The array local is
+  // never read and is not declared in LIR.
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+
+  auto integer = constant->value.integerValue();
+  if (integer == zc::none) { return zc::none; }
+  auto carrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (carrier == zc::none) { return zc::none; }
+  const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+  auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  if (bits == zc::none) { return zc::none; }
+  auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
+  if (lirConstant == zc::none) { return zc::none; }
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                        Terminator::returnInteger(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified struct-local field-return shape. This mirrors the

@@ -1516,6 +1516,9 @@ private:
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerRawDereferenceReturn(fn, types);
         }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerArrayIndexFoldReturn(fn, types);
+        }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerScalarReturn(fn, types); }
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerEmptyBodyVoidFunction(fn, types);
@@ -2002,7 +2005,8 @@ private:
                   "stored-erase indirect-call-with-leaf, "
                   "void-setter-then-value-getter receiver-call, "
                   "standalone multi-function, "
-                  "empty-body void, and "
+                  "empty-body void, "
+                  "array-literal constant-index fold, and "
                   "string literal return slices)."));
     }
     backend::llvm::LlvmTranslator translator;
