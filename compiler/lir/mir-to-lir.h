@@ -813,6 +813,25 @@ public:
   /// \return The lowered LIR module, or none when the function is outside the slice.
   ZC_NODISCARD static zc::Maybe<Module> lowerDynFieldAggregateReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers a dyn-field-access-return module: an entry function that
+  /// constructs a struct with a per-field erased dyn-typed field, reads the
+  /// field into a dyn-typed local, and dispatches a method call through the
+  /// vtable, plus the method leaf that returns a constant.
+  ///
+  /// The entry function has five locals (concrete temporary, existential
+  /// temporary, aggregate user local, field-read user local, result temporary)
+  /// and two blocks (entry with aggregate construction, field extraction, and
+  /// IndirectCall; continuation Return). The leaf is a Method-sourced
+  /// one-block constant-return function with one receiver parameter.
+  ///
+  /// \param entry Verified Built MIR entry function.
+  /// \param leaf Verified Built MIR method leaf.
+  /// \param semanticTypes Session-owned type store that owns the element types.
+  /// \return The lowered LIR module, or none when the module is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerDynFieldAccessReturnModule(
+      const mir::MirFunction& entry, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

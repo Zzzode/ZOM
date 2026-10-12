@@ -4626,6 +4626,439 @@ zc::Maybe<TranslationFinding> validateExistentialCallResult(
   return zc::none;
 }
 
+// Dyn field-access return: a two-function module where the entry constructs a
+// struct with a per-field erased dyn-typed field, reads the field into a
+// dyn-typed local, and dispatches a method call through the vtable, plus the
+// method leaf that returns a constant. The per-field Erase rvalues lower to
+// GlobalAddr + VtableAddr + InsertField + InsertField sequences, and the field
+// read + indirect call add ExtractField + VtableSlotLoad + IndirectCall, all
+// of which break the 1:1 MIR-to-LIR statement correspondence, so the shape is
+// validated bespoke.
+struct DynFieldAccessReturnShape final {
+  size_t entryIndex = 0;
+  size_t leafIndex = 0;
+  size_t erasedFieldCount = 0;
+  size_t outerElementCount = 0;
+  size_t animalFieldIndex = 0;
+  identity::SemanticTypeId resultType;
+  identity::DefId interface;
+};
+
+zc::Maybe<DynFieldAccessReturnShape> matchDynFieldAccessReturn(
+    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+  if (mirFunctions.size() != 2) { return zc::none; }
+  size_t entryIndex = 0;
+  size_t leafIndex = 0;
+  bool foundEntry = false;
+  bool foundLeaf = false;
+  for (size_t index = 0; index < mirFunctions.size(); ++index) {
+    const MirFunction& fn = *mirFunctions[index];
+    bool isLeaf = fn.sourceDefinitionKind == identity::DefinitionKind::Method &&
+                  fn.locals.size() == 1 && fn.blocks.size() == 1 &&
+                  fn.locals[0].kind == mir::MirLocalKind::Parameter;
+    bool isEntry = fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                   fn.locals.size() >= 5 && (fn.locals.size() - 3) % 2 == 0 &&
+                   fn.blocks.size() == 2 &&
+                   fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::IndirectCall;
+    if (isLeaf) {
+      if (foundLeaf) { return zc::none; }
+      leafIndex = index;
+      foundLeaf = true;
+    } else if (isEntry) {
+      if (foundEntry) { return zc::none; }
+      entryIndex = index;
+      foundEntry = true;
+    }
+  }
+  if (!foundEntry || !foundLeaf) { return zc::none; }
+
+  const MirFunction& entry = *mirFunctions[entryIndex];
+  const MirFunction& leaf = *mirFunctions[leafIndex];
+
+  // Result types must agree.
+  if (entry.resultType != leaf.resultType) { return zc::none; }
+
+  // Leaf: one block, no statements, constant return.
+  const auto& leafBlock = leaf.blocks[0];
+  if (leafBlock.id.ordinal() != 1 || leafBlock.statements.size() != 0 ||
+      leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& leafReturn = leafBlock.terminator.returnValue().value;
+  if (leafReturn == zc::none) { return zc::none; }
+  {
+    const auto& value = ZC_ASSERT_NONNULL(leafReturn);
+    if (value.kind() != mir::MirOperandKind::Constant ||
+        value.constantValue().type != leaf.resultType) {
+      return zc::none;
+    }
+  }
+
+  // Entry: validate the erased-field pattern, zoo local, animal local, and
+  // result local.
+  const size_t erasedCount = (entry.locals.size() - 3) / 2;
+  const auto& entryBlock = entry.blocks[0];
+  const auto& contBlock = entry.blocks[1];
+  if (entryBlock.id.ordinal() != 1 || contBlock.id.ordinal() != 2 ||
+      entryBlock.statements.size() != 4 * erasedCount + 5 || contBlock.statements.size() != 0 ||
+      contBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+
+  // Validate each erased field's concrete + existential pair.
+  size_t localIdx = 0;
+  size_t stmtIdx = 0;
+  for (size_t i = 0; i < erasedCount; ++i) {
+    const auto& concreteLocal = entry.locals[localIdx];
+    const auto& existentialLocal = entry.locals[localIdx + 1];
+    if (concreteLocal.kind != mir::MirLocalKind::Temporary ||
+        existentialLocal.kind != mir::MirLocalKind::Temporary) {
+      return zc::none;
+    }
+    if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+        entryBlock.statements[stmtIdx].storageLocal() != concreteLocal.id ||
+        entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+        entryBlock.statements[stmtIdx + 1].assignmentValue().value.kind() !=
+            mir::MirRvalueKind::NominalAggregate ||
+        entryBlock.statements[stmtIdx + 2].kind() != mir::MirStatementKind::StorageLive ||
+        entryBlock.statements[stmtIdx + 2].storageLocal() != existentialLocal.id ||
+        entryBlock.statements[stmtIdx + 3].kind() != mir::MirStatementKind::Assign ||
+        entryBlock.statements[stmtIdx + 3].assignmentValue().value.kind() !=
+            mir::MirRvalueKind::Erase) {
+      return zc::none;
+    }
+    localIdx += 2;
+    stmtIdx += 4;
+  }
+
+  // Zoo local.
+  const auto& zooLocal = entry.locals[localIdx];
+  if (zooLocal.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != zooLocal.id ||
+      entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+      entryBlock.statements[stmtIdx + 1].assignmentValue().value.kind() !=
+          mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& outerAggregate =
+      entryBlock.statements[stmtIdx + 1].assignmentValue().value.nominalAggregateValue();
+  stmtIdx += 2;
+  ++localIdx;
+
+  // Animal local (field-read user local).
+  const auto& animalLocal = entry.locals[localIdx];
+  if (animalLocal.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != animalLocal.id ||
+      entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+      entryBlock.statements[stmtIdx + 1].assignmentValue().value.kind() !=
+          mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& fieldUse =
+      entryBlock.statements[stmtIdx + 1].assignmentValue().value.useValue().operand;
+  if (fieldUse.kind() != mir::MirOperandKind::Move || fieldUse.place().local() != zooLocal.id ||
+      fieldUse.place().projections().size() != 1) {
+    return zc::none;
+  }
+  const auto& fieldProjection = fieldUse.place().projections()[0];
+  if (fieldProjection.kind() != mir::MirProjectionKind::Field) { return zc::none; }
+  // Find the field index in the outer aggregate.
+  zc::Maybe<size_t> animalFieldIndex;
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    if (outerAggregate.elements[i].field == fieldProjection.fieldValue().field) {
+      animalFieldIndex = i;
+      break;
+    }
+  }
+  if (animalFieldIndex == zc::none) { return zc::none; }
+  stmtIdx += 2;
+  ++localIdx;
+
+  // Result local.
+  const auto& resultLocal = entry.locals[localIdx];
+  if (resultLocal.kind != mir::MirLocalKind::Temporary || resultLocal.type != entry.resultType) {
+    return zc::none;
+  }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != resultLocal.id) {
+    return zc::none;
+  }
+
+  // IndirectCall terminator.
+  const auto& indirect = entryBlock.terminator.indirectCallValue();
+  if (indirect.arguments.size() != 0 ||
+      indirect.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      indirect.destination.local() != resultLocal.id ||
+      indirect.destination.projections().size() != 0 || indirect.normalTarget != contBlock.id ||
+      indirect.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  if (indirect.receiver.kind() == mir::MirOperandKind::Constant ||
+      indirect.receiver.place().local() != animalLocal.id ||
+      indirect.receiver.place().projections().size() != 0) {
+    return zc::none;
+  }
+  // Continuation: return the result local.
+  {
+    const auto& value = ZC_ASSERT_NONNULL(contBlock.terminator.returnValue().value);
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  DynFieldAccessReturnShape shape;
+  shape.entryIndex = entryIndex;
+  shape.leafIndex = leafIndex;
+  shape.erasedFieldCount = erasedCount;
+  shape.outerElementCount = outerAggregate.elements.size();
+  shape.animalFieldIndex = ZC_ASSERT_NONNULL(animalFieldIndex);
+  shape.resultType = entry.resultType;
+  shape.interface = indirect.interface;
+  return zc::mv(shape);
+}
+
+zc::Maybe<TranslationFinding> validateDynFieldAccessReturn(
+    const DynFieldAccessReturnShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
+    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+  const auto functions = lirModule.functions();
+  if (functions.size() != 2) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  auto resultCarrier = integerCarrier(shape.resultType, types);
+  if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  const auto pointerCarrierValue = ValueType::pointer(0);
+
+  // Resolve LIR function indices by MIR owner.
+  const MirFunction& entry = *mirFunctions[shape.entryIndex];
+  const MirFunction& leaf = *mirFunctions[shape.leafIndex];
+  zc::Maybe<uint32_t> lirEntry;
+  zc::Maybe<uint32_t> lirLeaf;
+  for (uint32_t index = 0; index < functions.size(); ++index) {
+    if (functions[index].owner() == entry.owner) {
+      if (lirEntry != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirEntry = index;
+    }
+    if (functions[index].owner() == leaf.owner) {
+      if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
+      lirLeaf = index;
+    }
+  }
+  if (lirEntry == zc::none || lirLeaf == zc::none) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+  const uint32_t entryLirIndex = ZC_ASSERT_NONNULL(lirEntry);
+  const uint32_t leafLirIndex = ZC_ASSERT_NONNULL(lirLeaf);
+
+  // Vtable: one vtable, ordinal 1, interface matches, sole function index is leaf.
+  const auto vtables = lirModule.vtables();
+  if (vtables.size() != 1 || vtables[0].ordinal() != 1 ||
+      vtables[0].interface() != shape.interface || vtables[0].functionIndices().size() != 1 ||
+      vtables[0].functionIndices()[0] != leafLirIndex) {
+    return fault(TranslationFaultKind::SlotSetMismatch, 0);
+  }
+
+  // Globals: one per erased field.
+  const auto globals = lirModule.globals();
+  if (globals.size() != shape.erasedFieldCount) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
+
+  // Entry LIR: zero parameters, 6+4N body locals (zoo, 4 per erased field,
+  // animal, animalDataPtr, animalVtablePtr, fnPtr, result).
+  const size_t N = shape.erasedFieldCount;
+  const uint32_t zooOrdinal = 1;
+  const uint32_t animalOrdinal = 2 + 4 * static_cast<uint32_t>(N);
+  const uint32_t animalDataPtrOrdinal = animalOrdinal + 1;
+  const uint32_t animalVtablePtrOrdinal = animalOrdinal + 2;
+  const uint32_t fnPtrOrdinal = animalOrdinal + 3;
+  const uint32_t resultOrdinal = animalOrdinal + 4;
+  {
+    const Function& lirEntryFn = functions[entryLirIndex];
+    if (lirEntryFn.returnCarrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+    }
+    if (lirEntryFn.parameters().size() != 0) {
+      return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+    }
+    const size_t expectedLocals = 6 + 4 * N;
+    const auto locals = lirEntryFn.locals();
+    if (locals.size() != expectedLocals) {
+      return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+    }
+    if (locals[0].ordinal() != zooOrdinal ||
+        locals[0].carrier().kind() != ValueTypeKind::Aggregate) {
+      return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+    }
+    // Validate erased-field locals.
+    for (size_t i = 0; i < N; ++i) {
+      const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+      if (locals[1 + 4 * i].ordinal() != base ||
+          locals[1 + 4 * i].carrier() != pointerCarrierValue) {
+        return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+      }
+      if (locals[2 + 4 * i].ordinal() != base + 1 ||
+          locals[2 + 4 * i].carrier() != pointerCarrierValue) {
+        return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+      }
+      for (size_t j = 3; j <= 4; ++j) {
+        if (locals[j + 4 * i].carrier().kind() != ValueTypeKind::Aggregate) {
+          return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+        }
+      }
+    }
+    // Validate animal, data/vtable ptr, fn ptr, result locals.
+    const size_t afterErased = 1 + 4 * N;
+    if (locals[afterErased].ordinal() != animalOrdinal ||
+        locals[afterErased].carrier().kind() != ValueTypeKind::Aggregate ||
+        locals[afterErased + 1].ordinal() != animalDataPtrOrdinal ||
+        locals[afterErased + 1].carrier() != pointerCarrierValue ||
+        locals[afterErased + 2].ordinal() != animalVtablePtrOrdinal ||
+        locals[afterErased + 2].carrier() != pointerCarrierValue ||
+        locals[afterErased + 3].ordinal() != fnPtrOrdinal ||
+        locals[afterErased + 3].carrier() != pointerCarrierValue ||
+        locals[afterErased + 4].ordinal() != resultOrdinal ||
+        locals[afterErased + 4].carrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, entryLirIndex);
+    }
+
+    // Two blocks.
+    if (lirEntryFn.blocks().size() != 2) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, entryLirIndex);
+    }
+    const auto& entryBlock = lirEntryFn.blocks()[0];
+    const auto& contBlock = lirEntryFn.blocks()[1];
+    if (entryBlock.id().ordinal() != 1 || contBlock.id().ordinal() != 2) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, entryLirIndex);
+    }
+    // Statements: 4 per erased field + 1 per outer element + 4 (extract animal,
+    // extract data ptr, extract vtable ptr, vtable slot load).
+    const size_t expectedStatements = 4 * N + shape.outerElementCount + 4;
+    if (entryBlock.statements().size() != expectedStatements) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1);
+    }
+    const auto& stmts = entryBlock.statements();
+    // Validate fat-pointer construction per erased field.
+    for (size_t i = 0; i < N; ++i) {
+      const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+      const size_t si = 4 * i;
+      if (stmts[si].kind() != StatementKind::GlobalAddr || stmts[si].destinationOrdinal() != base ||
+          stmts[si].globalOrdinal() != i + 1) {
+        return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 1);
+      }
+      if (stmts[si + 1].kind() != StatementKind::VtableAddr ||
+          stmts[si + 1].destinationOrdinal() != base + 1 ||
+          stmts[si + 1].vtableOrdinal() != i + 1) {
+        return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 2);
+      }
+      if (stmts[si + 2].kind() != StatementKind::InsertField ||
+          stmts[si + 2].destinationOrdinal() != base + 2 ||
+          stmts[si + 2].sourceOrdinal() != base + 3 || stmts[si + 2].fieldIndex() != 0 ||
+          stmts[si + 2].storedValue().isConstant() ||
+          stmts[si + 2].storedValue().localOrdinal() != base) {
+        return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 3);
+      }
+      if (stmts[si + 3].kind() != StatementKind::InsertField ||
+          stmts[si + 3].destinationOrdinal() != base + 3 ||
+          stmts[si + 3].sourceOrdinal() != base + 2 || stmts[si + 3].fieldIndex() != 1 ||
+          stmts[si + 3].storedValue().isConstant() ||
+          stmts[si + 3].storedValue().localOrdinal() != base + 1) {
+        return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 4);
+      }
+    }
+    // Validate outer element insertions.
+    for (size_t i = 0; i < shape.outerElementCount; ++i) {
+      const auto& s = stmts[4 * N + i];
+      if (s.kind() != StatementKind::InsertField || s.destinationOrdinal() != zooOrdinal ||
+          s.sourceOrdinal() != zooOrdinal || s.fieldIndex() != i) {
+        return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 1);
+      }
+    }
+    // Validate field extraction and vtable slot load.
+    const size_t extractStart = 4 * N + shape.outerElementCount;
+    if (stmts[extractStart].kind() != StatementKind::ExtractField ||
+        stmts[extractStart].destinationOrdinal() != animalOrdinal ||
+        stmts[extractStart].sourceOrdinal() != zooOrdinal ||
+        stmts[extractStart].fieldIndex() != shape.animalFieldIndex) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 1);
+    }
+    if (stmts[extractStart + 1].kind() != StatementKind::ExtractField ||
+        stmts[extractStart + 1].destinationOrdinal() != animalDataPtrOrdinal ||
+        stmts[extractStart + 1].sourceOrdinal() != animalOrdinal ||
+        stmts[extractStart + 1].fieldIndex() != 0) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 2);
+    }
+    if (stmts[extractStart + 2].kind() != StatementKind::ExtractField ||
+        stmts[extractStart + 2].destinationOrdinal() != animalVtablePtrOrdinal ||
+        stmts[extractStart + 2].sourceOrdinal() != animalOrdinal ||
+        stmts[extractStart + 2].fieldIndex() != 1) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 3);
+    }
+    if (stmts[extractStart + 3].kind() != StatementKind::VtableSlotLoad ||
+        stmts[extractStart + 3].destinationOrdinal() != fnPtrOrdinal ||
+        stmts[extractStart + 3].basePointerOrdinal() != animalVtablePtrOrdinal ||
+        stmts[extractStart + 3].vtableSlotIndex() != 0) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1, 4);
+    }
+    // Entry terminator: IndirectCall(fnPtr, dest=result, args=[animalDataPtr],
+    // returnCarrier=result, paramCarriers=[pointer], target=cont).
+    const auto& term = entryBlock.terminator();
+    if (term.kind() != TerminatorKind::IndirectCall ||
+        term.indirectCallPointerOrdinal() != fnPtrOrdinal ||
+        term.callDestinationOrdinal() != resultOrdinal ||
+        term.callNormalTarget() != contBlock.id() || term.callArguments().size() != 1 ||
+        term.indirectReturnCarrier() != resultCarrierValue ||
+        term.indirectParameterCarriers().size() != 1 ||
+        term.indirectParameterCarriers()[0] != pointerCarrierValue) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1);
+    }
+    if (term.callArguments()[0].isConstant() ||
+        term.callArguments()[0].localOrdinal() != animalDataPtrOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 1, 1);
+    }
+    // Continuation terminator: ReturnLocal(result).
+    if (contBlock.terminator().kind() != TerminatorKind::ReturnLocal ||
+        contBlock.terminator().returnLocalOrdinal() != resultOrdinal) {
+      return fault(TranslationFaultKind::EffectMismatch, entryLirIndex, 2, 2);
+    }
+  }
+
+  // Leaf LIR: one pointer parameter, no body locals, single block returning the
+  // integer constant the MIR leaf returns.
+  {
+    const Function& lirLeafFn = functions[leafLirIndex];
+    if (lirLeafFn.returnCarrier() != resultCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    if (lirLeafFn.parameters().size() != 1 || lirLeafFn.locals().size() != 0) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    const auto& params = lirLeafFn.parameters();
+    if (params[0].ordinal() != 1 || params[0].carrier() != pointerCarrierValue) {
+      return fault(TranslationFaultKind::SlotSetMismatch, leafLirIndex);
+    }
+    if (lirLeafFn.blocks().size() != 1) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, leafLirIndex);
+    }
+    const auto& block = lirLeafFn.blocks()[0];
+    if (block.id().ordinal() != 1 || block.statements().size() != 0) {
+      return fault(TranslationFaultKind::BlockBijectionMismatch, leafLirIndex);
+    }
+    const auto& term = block.terminator();
+    if (term.kind() != TerminatorKind::ReturnInteger) {
+      return fault(TranslationFaultKind::EffectMismatch, leafLirIndex, 1, 1);
+    }
+    const auto& leafMirReturn = ZC_ASSERT_NONNULL(leaf.blocks[0].terminator.returnValue().value);
+    if (!sameConstant(Operand::constant(term.returnIntegerValue()), leafMirReturn,
+                      resultCarrierValue)) {
+      return fault(TranslationFaultKind::ConstantMismatch, 0, 1, 1);
+    }
+  }
+
+  return zc::none;
+}
+
 }  // namespace
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
@@ -4705,6 +5138,18 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     if (existentialCallShape != zc::none) {
       return validateExistentialCallResult(ZC_ASSERT_NONNULL(existentialCallShape), mirFunctions,
                                            lirModule, types);
+    }
+  }
+  // The dyn-field-access-return two-function module is validated as a unit
+  // because the per-field Erase rvalues lower to GlobalAddr + VtableAddr +
+  // InsertField + InsertField sequences, and the field read + indirect call
+  // add ExtractField + VtableSlotLoad + IndirectCall, all of which break the
+  // 1:1 MIR-to-LIR statement correspondence.
+  {
+    auto dynFieldAccessShape = matchDynFieldAccessReturn(mirFunctions);
+    if (dynFieldAccessShape != zc::none) {
+      return validateDynFieldAccessReturn(ZC_ASSERT_NONNULL(dynFieldAccessShape), mirFunctions,
+                                          lirModule, types);
     }
   }
   // The existential return is validated as a unit because the Erase rvalue

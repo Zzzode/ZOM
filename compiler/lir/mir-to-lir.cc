@@ -9850,4 +9850,401 @@ zc::Maybe<Module> MirToLirLowering::lowerDynFieldAggregateReturn(
   return Module(zc::mv(functions), zc::mv(vtables), zc::mv(globals));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerDynFieldAccessReturnModule(
+    const mir::MirFunction& entry, const mir::MirFunction& leaf,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Leaf: a Method-sourced scalar constant-return function with one receiver
+  // parameter local (the same shape lowerIndirectCallModuleWithLeaf admits).
+  if (leaf.kind != mir::MirFunctionKind::Function ||
+      leaf.sourceDefinitionKind != identity::DefinitionKind::Method || leaf.locals.size() != 1 ||
+      leaf.blocks.size() != 1) {
+    return zc::none;
+  }
+  const auto& leafReceiver = leaf.locals[0];
+  if (leafReceiver.kind != mir::MirLocalKind::Parameter) { return zc::none; }
+  auto leafCarrier = integerCarrierFor(leaf.resultType, semanticTypes);
+  if (leafCarrier == zc::none) { return zc::none; }
+  const auto leafCarrierValue = ZC_REQUIRE_NONNULL(leafCarrier);
+  const auto& leafBlock = leaf.blocks[0];
+  if (leafBlock.statements.size() != 0 ||
+      leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& leafReturn = leafBlock.terminator.returnValue().value;
+  if (leafReturn == zc::none) { return zc::none; }
+  zc::Maybe<IntegerConstant> leafConstant;
+  ZC_IF_SOME(value, leafReturn) {
+    if (value.kind() != mir::MirOperandKind::Constant ||
+        value.constantValue().type != leaf.resultType) {
+      return zc::none;
+    }
+    const auto integer = value.constantValue().value.integerValue();
+    if (integer == zc::none) { return zc::none; }
+    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
+    if (bits == zc::none) { return zc::none; }
+    leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
+  }
+  if (leafConstant == zc::none) { return zc::none; }
+
+  // Entry: a Function with 2*N+3 locals and 2 blocks. Block 1 has 4*N+5
+  // statements followed by an IndirectCall terminator; block 2 is a Return.
+  if (entry.kind != mir::MirFunctionKind::Function ||
+      entry.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      entry.sourceScopes.size() != 1 || entry.blocks.size() != 2 ||
+      entry.resultType != leaf.resultType) {
+    return zc::none;
+  }
+  if (entry.locals.size() < 5 || (entry.locals.size() - 3) % 2 != 0) { return zc::none; }
+  const size_t erasedCount = (entry.locals.size() - 3) / 2;
+  const auto& entryBlock = entry.blocks[0];
+  const auto& contBlock = entry.blocks[1];
+  if (entryBlock.statements.size() != 4 * erasedCount + 5 ||
+      entryBlock.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
+      contBlock.statements.size() != 0 ||
+      contBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+
+  // Validate and extract each erased field's concrete aggregate.
+  struct ErasedFieldInfo {
+    identity::SemanticTypeId concreteType;
+    identity::SemanticTypeId existentialType;
+    identity::DefId concreteDefinition;
+    zc::Vector<ValueType> concreteFieldCarriers;
+    zc::Vector<Operand> concreteFieldOperands;
+  };
+  zc::Vector<ErasedFieldInfo> erasedFields;
+
+  size_t localIdx = 0;
+  size_t stmtIdx = 0;
+  for (size_t i = 0; i < erasedCount; ++i) {
+    const auto& concreteLocal = entry.locals[localIdx];
+    const auto& existentialLocal = entry.locals[localIdx + 1];
+    if (concreteLocal.kind != mir::MirLocalKind::Temporary ||
+        existentialLocal.kind != mir::MirLocalKind::Temporary) {
+      return zc::none;
+    }
+    if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+        entryBlock.statements[stmtIdx].storageLocal() != concreteLocal.id) {
+      return zc::none;
+    }
+    const auto& concreteAssign = entryBlock.statements[stmtIdx + 1].assignmentValue();
+    if (entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+        concreteAssign.destination.local() != concreteLocal.id ||
+        concreteAssign.destination.projections().size() != 0 ||
+        concreteAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+      return zc::none;
+    }
+    const auto& innerAggregate = concreteAssign.value.nominalAggregateValue();
+    if (innerAggregate.type != concreteLocal.type || innerAggregate.elements.size() == 0) {
+      return zc::none;
+    }
+    ErasedFieldInfo info;
+    info.concreteType = concreteLocal.type;
+    info.existentialType = existentialLocal.type;
+    info.concreteDefinition = innerAggregate.definition;
+    for (size_t fi = 0; fi < innerAggregate.elements.size(); ++fi) {
+      const auto& elem = innerAggregate.elements[fi];
+      if (elem.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+      auto operand = lirOperandFor(elem.operand, carrierValue);
+      if (operand == zc::none) { return zc::none; }
+      info.concreteFieldCarriers.add(carrierValue);
+      info.concreteFieldOperands.add(zc::mv(ZC_REQUIRE_NONNULL(operand)));
+    }
+    if (entryBlock.statements[stmtIdx + 2].kind() != mir::MirStatementKind::StorageLive ||
+        entryBlock.statements[stmtIdx + 2].storageLocal() != existentialLocal.id) {
+      return zc::none;
+    }
+    const auto& eraseAssign = entryBlock.statements[stmtIdx + 3].assignmentValue();
+    if (entryBlock.statements[stmtIdx + 3].kind() != mir::MirStatementKind::Assign ||
+        eraseAssign.destination.local() != existentialLocal.id ||
+        eraseAssign.destination.projections().size() != 0 ||
+        eraseAssign.value.kind() != mir::MirRvalueKind::Erase) {
+      return zc::none;
+    }
+    const auto& erase = eraseAssign.value.eraseValue();
+    if (erase.sourceType != concreteLocal.type || erase.targetType != existentialLocal.type ||
+        erase.source.kind() != mir::MirOperandKind::Move ||
+        erase.source.place().local() != concreteLocal.id ||
+        erase.source.place().projections().size() != 0) {
+      return zc::none;
+    }
+    erasedFields.add(zc::mv(info));
+    localIdx += 2;
+    stmtIdx += 4;
+  }
+
+  // Zoo local (aggregate user local).
+  const auto& zooLocal = entry.locals[localIdx];
+  if (zooLocal.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != zooLocal.id) {
+    return zc::none;
+  }
+  const auto& outerAssign = entryBlock.statements[stmtIdx + 1].assignmentValue();
+  if (entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+      outerAssign.destination.local() != zooLocal.id ||
+      outerAssign.destination.projections().size() != 0 ||
+      outerAssign.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& outerAggregate = outerAssign.value.nominalAggregateValue();
+  if (outerAggregate.type != zooLocal.type) { return zc::none; }
+  stmtIdx += 2;
+  ++localIdx;
+
+  // Animal local (field-read user local).
+  const auto& animalLocal = entry.locals[localIdx];
+  if (animalLocal.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != animalLocal.id) {
+    return zc::none;
+  }
+  const auto& fieldAssign = entryBlock.statements[stmtIdx + 1].assignmentValue();
+  if (entryBlock.statements[stmtIdx + 1].kind() != mir::MirStatementKind::Assign ||
+      fieldAssign.destination.local() != animalLocal.id ||
+      fieldAssign.destination.projections().size() != 0 ||
+      fieldAssign.value.kind() != mir::MirRvalueKind::Use) {
+    return zc::none;
+  }
+  const auto& fieldUse = fieldAssign.value.useValue().operand;
+  if (fieldUse.kind() != mir::MirOperandKind::Move || fieldUse.place().local() != zooLocal.id ||
+      fieldUse.place().projections().size() != 1) {
+    return zc::none;
+  }
+  const auto& fieldProjection = fieldUse.place().projections()[0];
+  if (fieldProjection.kind() != mir::MirProjectionKind::Field) { return zc::none; }
+  // Find the field index in the outer aggregate that matches the projection.
+  zc::Maybe<size_t> animalFieldIndex;
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    if (outerAggregate.elements[i].field == fieldProjection.fieldValue().field) {
+      animalFieldIndex = i;
+      break;
+    }
+  }
+  if (animalFieldIndex == zc::none) { return zc::none; }
+  stmtIdx += 2;
+  ++localIdx;
+
+  // Result local.
+  const auto& resultLocal = entry.locals[localIdx];
+  if (resultLocal.kind != mir::MirLocalKind::Temporary || resultLocal.type != entry.resultType) {
+    return zc::none;
+  }
+  if (entryBlock.statements[stmtIdx].kind() != mir::MirStatementKind::StorageLive ||
+      entryBlock.statements[stmtIdx].storageLocal() != resultLocal.id) {
+    return zc::none;
+  }
+
+  // IndirectCall terminator.
+  const auto& indirectCall = entryBlock.terminator.indirectCallValue();
+  if (indirectCall.arguments.size() != 0 ||
+      indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      indirectCall.destination.local() != resultLocal.id ||
+      indirectCall.destination.projections().size() != 0 ||
+      indirectCall.normalTarget != contBlock.id || indirectCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
+      indirectCall.receiver.place().local() != animalLocal.id ||
+      indirectCall.receiver.place().projections().size() != 0) {
+    return zc::none;
+  }
+  // Continuation: return the result local.
+  const auto& contReturn = contBlock.terminator.returnValue().value;
+  if (contReturn == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, contReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  // Build the existential carrier {dataPtr, vtablePtr}.
+  const auto pointerCarrier = ValueType::pointer(0);
+  zc::Vector<AggregateField> existentialFields;
+  existentialFields.add(AggregateField(zc::str("data"), pointerCarrier));
+  existentialFields.add(AggregateField(zc::str("vtable"), pointerCarrier));
+  auto existentialCarrier = ValueType::aggregate(zc::mv(existentialFields));
+  if (existentialCarrier == zc::none) { return zc::none; }
+  const auto existentialCarrierValue = ZC_REQUIRE_NONNULL(existentialCarrier);
+
+  // Build the outer aggregate carrier: one field per outer element.
+  zc::Vector<AggregateField> outerFields;
+  zc::Vector<size_t> erasedElementIndices;
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    const auto& elem = outerAggregate.elements[i];
+    if (elem.operand.kind() == mir::MirOperandKind::Move) {
+      bool found = false;
+      for (size_t j = 0; j < erasedFields.size(); ++j) {
+        if (elem.operand.place().local().ordinal() == 2 + 2 * j) {
+          outerFields.add(AggregateField(zc::str("field", i), existentialCarrierValue));
+          erasedElementIndices.add(j);
+          found = true;
+          break;
+        }
+      }
+      if (!found) { return zc::none; }
+    } else if (elem.operand.kind() == mir::MirOperandKind::Constant) {
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      outerFields.add(AggregateField(zc::str("field", i), ZC_REQUIRE_NONNULL(carrier)));
+      erasedElementIndices.add(SIZE_MAX);
+    } else {
+      return zc::none;
+    }
+  }
+  auto outerCarrier = ValueType::aggregate(zc::mv(outerFields));
+  if (outerCarrier == zc::none) { return zc::none; }
+  const auto outerCarrierValue = ZC_REQUIRE_NONNULL(outerCarrier);
+
+  auto resultCarrier = integerCarrierFor(entry.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+
+  // LIR local layout:
+  //   Ordinal 1: zooLocal (aggregate carrier)
+  //   Per erased field i: dataPtr (2+4i), vtablePtr (3+4i), existentialTmp
+  //   (4+4i), existential (5+4i)
+  //   After erased fields: animalLocal (2+4N), animalDataPtr (3+4N),
+  //   animalVtablePtr (4+4N), fnPtr (5+4N), resultLocal (6+4N)
+  constexpr uint32_t zooOrdinal = 1;
+  const uint32_t animalOrdinal = 2 + 4 * static_cast<uint32_t>(erasedCount);
+  const uint32_t animalDataPtrOrdinal = animalOrdinal + 1;
+  const uint32_t animalVtablePtrOrdinal = animalOrdinal + 2;
+  const uint32_t fnPtrOrdinal = animalOrdinal + 3;
+  const uint32_t resultOrdinal = animalOrdinal + 4;
+
+  zc::Vector<Local> entryLocals;
+  entryLocals.add(Local(zooOrdinal, outerCarrierValue));
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+    entryLocals.add(Local(base, pointerCarrier));
+    entryLocals.add(Local(base + 1, pointerCarrier));
+    entryLocals.add(Local(base + 2, existentialCarrierValue));
+    entryLocals.add(Local(base + 3, existentialCarrierValue));
+  }
+  entryLocals.add(Local(animalOrdinal, existentialCarrierValue));
+  entryLocals.add(Local(animalDataPtrOrdinal, pointerCarrier));
+  entryLocals.add(Local(animalVtablePtrOrdinal, pointerCarrier));
+  entryLocals.add(Local(fnPtrOrdinal, pointerCarrier));
+  entryLocals.add(Local(resultOrdinal, resultCarrierValue));
+
+  // LIR statements.
+  zc::Vector<Statement> entryStatements;
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    const uint32_t base = 2 + 4 * static_cast<uint32_t>(i);
+    const uint32_t dataPtrOrdinal = base;
+    const uint32_t vtablePtrOrdinal = base + 1;
+    const uint32_t existentialTmpOrdinal = base + 2;
+    const uint32_t existentialOrdinal = base + 3;
+    entryStatements.add(
+        Statement::globalAddr(dataPtrOrdinal, /*globalOrdinal=*/static_cast<uint32_t>(i + 1)));
+    entryStatements.add(
+        Statement::vtableAddr(vtablePtrOrdinal, /*vtableOrdinal=*/static_cast<uint32_t>(i + 1)));
+    entryStatements.add(Statement::insertField(existentialTmpOrdinal, existentialOrdinal,
+                                               /*fieldIndex=*/0,
+                                               Operand::localUse(dataPtrOrdinal)));
+    entryStatements.add(Statement::insertField(existentialOrdinal, existentialTmpOrdinal,
+                                               /*fieldIndex=*/1,
+                                               Operand::localUse(vtablePtrOrdinal)));
+  }
+  // Insert each outer element into the zoo aggregate.
+  for (size_t i = 0; i < outerAggregate.elements.size(); ++i) {
+    const auto& elem = outerAggregate.elements[i];
+    if (elem.operand.kind() == mir::MirOperandKind::Move) {
+      const size_t erasedIdx = erasedElementIndices[i];
+      const uint32_t existentialOrdinal = 2 + 4 * static_cast<uint32_t>(erasedIdx) + 3;
+      entryStatements.add(Statement::insertField(zooOrdinal, zooOrdinal, static_cast<uint32_t>(i),
+                                                 Operand::localUse(existentialOrdinal)));
+    } else {
+      auto carrier = integerCarrierFor(elem.operand.constantValue().type, semanticTypes);
+      if (carrier == zc::none) { return zc::none; }
+      auto operand = lirOperandFor(elem.operand, ZC_REQUIRE_NONNULL(carrier));
+      if (operand == zc::none) { return zc::none; }
+      entryStatements.add(Statement::insertField(zooOrdinal, zooOrdinal, static_cast<uint32_t>(i),
+                                                 zc::mv(ZC_REQUIRE_NONNULL(operand))));
+    }
+  }
+  // Extract the animal field from the zoo aggregate.
+  const uint32_t animalFieldIdx = static_cast<uint32_t>(ZC_ASSERT_NONNULL(animalFieldIndex));
+  entryStatements.add(Statement::extractField(animalOrdinal, zooOrdinal, animalFieldIdx));
+  // Extract the data and vtable pointers from the existential carrier.
+  entryStatements.add(
+      Statement::extractField(animalDataPtrOrdinal, animalOrdinal, /*fieldIndex=*/0));
+  entryStatements.add(
+      Statement::extractField(animalVtablePtrOrdinal, animalOrdinal, /*fieldIndex=*/1));
+  // Load the method function pointer from the vtable slot.
+  entryStatements.add(
+      Statement::vtableSlotLoad(fnPtrOrdinal, animalVtablePtrOrdinal, /*slotIndex=*/0));
+
+  // Indirect call through the function pointer, passing the data pointer as
+  // the receiver argument.
+  zc::Vector<Operand> arguments;
+  arguments.add(Operand::localUse(animalDataPtrOrdinal));
+  zc::Vector<ValueType> parameterCarriers;
+  parameterCarriers.add(pointerCarrier);
+  auto entryId = LirBlockId::fromOrdinal(1);
+  auto contId = LirBlockId::fromOrdinal(2);
+  if (entryId == zc::none || contId == zc::none) { return zc::none; }
+  auto indirectTerminator =
+      Terminator::indirectCall(fnPtrOrdinal, resultOrdinal, zc::mv(arguments), resultCarrierValue,
+                               zc::mv(parameterCarriers), ZC_REQUIRE_NONNULL(contId));
+  if (indirectTerminator == zc::none) { return zc::none; }
+
+  zc::Vector<BasicBlock> entryBlocks;
+  entryBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
+                             ZC_REQUIRE_NONNULL(zc::mv(indirectTerminator))));
+  entryBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(contId), Terminator::returnLocal(resultOrdinal)));
+
+  zc::Vector<Function> functions;
+  zc::Vector<Local> noParameters;
+  functions.add(Function(entry.owner, zc::heapString("zom.module_init"), resultCarrierValue,
+                         zc::mv(noParameters), zc::mv(entryLocals), zc::mv(entryBlocks)));
+
+  // Leaf function: one-block constant return with a receiver pointer parameter.
+  {
+    auto leafEntryId = LirBlockId::fromOrdinal(1);
+    if (leafEntryId == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> leafBlocks;
+    leafBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                              Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    zc::Vector<Local> leafParameters;
+    leafParameters.add(Local(leafReceiver.id.ordinal(), pointerCarrier));
+    zc::Vector<Local> noLocals;
+    functions.add(Function(leaf.owner, zc::heapString("zom.leaf"), leafCarrierValue,
+                           zc::mv(leafParameters), zc::mv(noLocals), zc::mv(leafBlocks)));
+  }
+
+  // Vtable: the interface from the IndirectCall terminator, with the leaf
+  // function index (1) as the sole method implementation.
+  zc::Vector<Vtable> vtables;
+  zc::Vector<uint32_t> functionIndices;
+  functionIndices.add(/*leafFunctionIndex=*/1);
+  vtables.add(
+      Vtable(/*ordinal=*/1, indirectCall.interface, identity::ImplId{}, zc::mv(functionIndices)));
+
+  // Globals: one per erased field, holding the concrete aggregate constant.
+  zc::Vector<GlobalData> globals;
+  for (size_t i = 0; i < erasedFields.size(); ++i) {
+    auto& ef = erasedFields[i];
+    zc::Vector<AggregateField> aggFields;
+    for (size_t fi = 0; fi < ef.concreteFieldCarriers.size(); ++fi) {
+      aggFields.add(AggregateField(zc::str("field", fi), ef.concreteFieldCarriers[fi]));
+    }
+    auto aggCarrier = ValueType::aggregate(zc::mv(aggFields));
+    if (aggCarrier == zc::none) { return zc::none; }
+    auto aggConstant =
+        AggregateConstant::from(ZC_REQUIRE_NONNULL(aggCarrier), zc::mv(ef.concreteFieldOperands));
+    if (aggConstant == zc::none) { return zc::none; }
+    globals.add(GlobalData(/*ordinal=*/static_cast<uint32_t>(i + 1),
+                           zc::mv(ZC_REQUIRE_NONNULL(aggConstant))));
+  }
+
+  return Module(zc::mv(functions), zc::mv(vtables), zc::mv(globals));
+}
+
 }  // namespace zomlang::compiler::lir

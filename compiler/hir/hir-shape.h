@@ -187,6 +187,14 @@ struct FunctionReturnShape final {
   // whose declared type is existential; the concrete type is not statically
   // known, so the call dispatches indirectly through a vtable at runtime.
   bool returnsParameterReceiverCall = false;
+  // Three-statement dyn field-access shape: an aggregate-initialized local
+  // with per-field erasure (`let zoo = Zoo { animal: Dog { .. } };`), a
+  // field-read local (`let a: dyn I = zoo.animal;`), and a trailing
+  // method-call return (`return a.speak();`). The aggregate carries a
+  // concrete-to-existential erasure on its dyn-typed field; the field read
+  // copies the fat-pointer carrier into the second local; the method call
+  // dispatches indirectly through the vtable.
+  bool dynFieldAccessReturn = false;
   // Two-statement by-value struct call shape: a leading aggregate-initialized
   // local passed as the sole argument of a returned direct free-function call:
   // `let p: P = P { .. }; return f(p);`.
@@ -484,6 +492,10 @@ struct FunctionReturnShape final {
 };
 
 zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statement);
+
+/// \brief Extracts the single VariableDeclarator from a let statement.
+/// Returns none when the statement is not a let with exactly one declarator.
+zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statement);
 
 zc::Maybe<ast::NodeId> reborrowReference(const ast::Tree& tree, ast::NodeId expression);
 

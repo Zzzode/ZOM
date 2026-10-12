@@ -1871,6 +1871,138 @@ zc::Maybe<RecursiveFunctionProduct> buildDynFieldAggregateReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a dyn field-access consumer return:
+/// `fn entry() -> T { let zoo = Zoo { animal: Dog { ..constants.. } };
+/// let a: dyn Animal = zoo.animal; return a.speak(); }`.
+/// The aggregate user local stores the struct with a per-field erased
+/// existential. The field-read user local extracts the existential carrier
+/// from the aggregate through a field projection. The trailing return
+/// dispatches a dyn-trait method indirectly through the existential carrier's
+/// vtable.
+zc::Maybe<RecursiveFunctionProduct> buildDynFieldAccessReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& aggregateBinding,
+    const hir::HirNominalAggregateExpression& aggregate, const hir::HirLocalBinding& fieldBinding,
+    const hir::HirLocalFieldProjectionExpression& projection,
+    const hir::HirReturnStatement& sourceReturn,
+    const hir::HirLocalReferenceExpression& receiverReference,
+    const hir::HirReceiverCallExpression& call, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (call.interface == zc::none) return zc::none;
+  if (call.arguments.size() != 0 || call.resultType != declaration.resultType) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  // Build the aggregate with per-field erasure: for each erased element, build
+  // a concrete temporary, an existential temporary, and an Erase rvalue.
+  zc::Vector<MirNominalAggregateElement> outerElements;
+  for (const auto& element : aggregate.elements) {
+    if (element.erasure != zc::none) {
+      const auto& erasure = ZC_ASSERT_NONNULL(element.erasure);
+      const MirLocalId concreteLocal = ctx.declareLocal(MirLocalKind::Temporary, erasure.sourceType,
+                                                        scope, aggregate.sourceSpan.clone());
+      zc::Vector<MirNominalAggregateElement> innerElements;
+      for (const auto& ce : element.concreteElements) {
+        innerElements.add(
+            MirNominalAggregateElement{ce.field, MirOperand::constant(ce.type, ce.value.clone())});
+      }
+      ctx.appendStatement(MirStatement::storageLive(concreteLocal, aggregate.sourceSpan.clone()));
+      zc::Vector<MirProjection> concreteProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(concreteLocal, erasure.sourceType, zc::mv(concreteProjections),
+                   erasure.sourceType),
+          MirRvalue::nominalAggregate(erasure.concreteDefinition, erasure.sourceType,
+                                      zc::mv(innerElements)),
+          MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+      const MirLocalId existentialLocal = ctx.declareLocal(
+          MirLocalKind::Temporary, erasure.targetType, scope, sourceReturn.sourceSpan.clone());
+      ctx.appendStatement(
+          MirStatement::storageLive(existentialLocal, sourceReturn.sourceSpan.clone()));
+      zc::Vector<MirProjection> eraseProjections;
+      zc::Vector<MirProjection> eraseSourceProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(existentialLocal, erasure.targetType, zc::mv(eraseProjections),
+                   erasure.targetType),
+          MirRvalue::erase(
+              MirOperand::move(MirPlace(concreteLocal, erasure.sourceType,
+                                        zc::mv(eraseSourceProjections), erasure.sourceType)),
+              erasure.sourceType, erasure.targetType),
+          MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+      zc::Vector<MirProjection> elemProjections;
+      outerElements.add(MirNominalAggregateElement{
+          element.field, MirOperand::move(MirPlace(existentialLocal, erasure.targetType,
+                                                   zc::mv(elemProjections), erasure.targetType))});
+    } else {
+      outerElements.add(MirNominalAggregateElement{
+          element.field, MirOperand::constant(element.type, element.value.clone())});
+    }
+  }
+
+  // Aggregate user local receives the constructed struct.
+  const MirLocalId zooLocal = ctx.declareLocal(MirLocalKind::UserLocal, aggregateBinding.type,
+                                               scope, aggregateBinding.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(zooLocal, aggregateBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> zooProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(zooLocal, aggregateBinding.type, zc::mv(zooProjections), aggregateBinding.type),
+      MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(outerElements)),
+      MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+
+  // Field-read user local: extract the existential carrier from the aggregate
+  // through a field projection.
+  const MirLocalId animalLocal = ctx.declareLocal(MirLocalKind::UserLocal, fieldBinding.type, scope,
+                                                  fieldBinding.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(animalLocal, fieldBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> fieldProjections;
+  fieldProjections.add(
+      MirProjection::field(projection.field, aggregateBinding.type, projection.type));
+  auto fieldOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(zooLocal, aggregateBinding.type, zc::mv(fieldProjections), projection.type));
+  zc::Vector<MirProjection> animalDestProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(animalLocal, fieldBinding.type, zc::mv(animalDestProjections), fieldBinding.type),
+      MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(fieldOperand))), MirInitializationKind::Initialize,
+      fieldBinding.sourceSpan.clone()));
+
+  // Indirect call through the existential carrier's vtable.
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, call.resultType, scope, call.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, call.sourceSpan.clone()));
+  zc::Vector<MirProjection> receiverProjections;
+  auto receiverOperand = placeUse(proofs, copyMarker,
+                                  MirPlace(animalLocal, receiverReference.type,
+                                           zc::mv(receiverProjections), receiverReference.type));
+  zc::Vector<MirOperand> arguments;
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> resultProjections;
+  ctx.terminateBlock(MirTerminator::indirectCall(
+      ZC_ASSERT_NONNULL(call.interface), call.callee, zc::mv(ZC_ASSERT_NONNULL(receiverOperand)),
+      zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
+      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone()));
+
+  // Block 2: return the result temporary.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(resultLocal, call.resultType, zc::mv(returnProjections), call.resultType));
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a by-value aggregate caller:
 /// `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. One
 /// UserLocal of nominal type P at localId(1) is initialized from constant
@@ -3905,6 +4037,56 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
                 declaration, binding, aggregate, ZC_ASSERT_NONNULL(sourceReturn), setReceiver,
                 discardedCall, getReceiver, trailingCall, identities, proofs, copyMarker,
                 discardedSharedValue);
+            if (product != zc::none) return product;
+          }
+        }
+      }
+    }
+  }
+
+  // Dyn field-access consumer return:
+  // `fn entry() -> T { let zoo = Zoo { animal: Dog { ..constants.. } };
+  // let a: dyn Animal = zoo.animal; return a.speak(); }`.
+  // Three statements: an aggregate-initialized user local with per-field
+  // erasure, a field-read user local initialized by a local field projection,
+  // and a trailing return whose value is a dyn-trait receiver call on the
+  // field-read local.
+  if (block.statements.size() == 3 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto aggregateBindingRecord = localFor(hirModule, block.statements[0]);
+    auto fieldBindingRecord = localFor(hirModule, block.statements[1]);
+    if (aggregateBindingRecord != zc::none && fieldBindingRecord != zc::none) {
+      const auto& aggregateBinding = ZC_ASSERT_NONNULL(aggregateBindingRecord);
+      const auto& fieldBinding = ZC_ASSERT_NONNULL(fieldBindingRecord);
+      hir::HirNodeId aggregateInitNode;
+      ZC_IF_SOME(init, aggregateBinding.initializer) { aggregateInitNode = init; }
+      hir::HirNodeId fieldInitNode;
+      ZC_IF_SOME(init, fieldBinding.initializer) { fieldInitNode = init; }
+      auto aggregateRecord = aggregateFor(hirModule, aggregateInitNode);
+      auto projectionRecord = localFieldProjectionFor(hirModule, fieldInitNode);
+      auto trailingCallRecord = receiverCallFor(hirModule, valueNode);
+      if (aggregateRecord != zc::none && projectionRecord != zc::none &&
+          trailingCallRecord != zc::none) {
+        const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
+        const auto& projection = ZC_ASSERT_NONNULL(projectionRecord);
+        const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
+        auto receiverReferenceRecord = localReferenceFor(hirModule, trailingCall.receiver);
+        if (receiverReferenceRecord != zc::none) {
+          const auto& receiverReference = ZC_ASSERT_NONNULL(receiverReferenceRecord);
+          if (aggregateBinding.local.ordinal() == 1 && fieldBinding.local.ordinal() == 2 &&
+              aggregateBinding.initializer == aggregate.node &&
+              aggregateBinding.type == aggregate.type &&
+              fieldBinding.initializer == projection.node && fieldBinding.type == projection.type &&
+              projection.local == aggregateBinding.local &&
+              projection.type == trailingCall.receiverSourceType &&
+              receiverReference.local == fieldBinding.local &&
+              trailingCall.receiver == receiverReference.node &&
+              trailingCall.interface != zc::none &&
+              trailingCall.resultType == declaration.resultType) {
+            auto product = buildDynFieldAccessReturn(
+                declaration, aggregateBinding, aggregate, fieldBinding, projection,
+                ZC_ASSERT_NONNULL(sourceReturn), receiverReference, trailingCall, identities,
+                proofs, copyMarker);
             if (product != zc::none) return product;
           }
         }

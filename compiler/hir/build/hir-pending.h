@@ -644,6 +644,22 @@ struct PendingVoidLetBinding final {
   checker::checked::CanonicalConstValue literal;
 };
 
+// Three-statement dyn field-access shape: an aggregate-initialized local with
+// per-field erasure (`let zoo = Zoo { animal: Dog { .. } };`), a field-read
+// local (`let a: dyn I = zoo.animal;`), and a trailing method-call return
+// (`return a.speak();`). The aggregate carries a concrete-to-existential
+// erasure on its dyn-typed field; the field read copies the fat-pointer
+// carrier into the second local; the method call dispatches indirectly
+// through the vtable.
+struct PendingDynFieldAccessReturn final {
+  HirLocalBinding aggregateLocal;
+  HirNominalAggregateExpression aggregate;
+  HirLocalBinding fieldLocal;
+  HirLocalFieldProjectionExpression fieldProjection;
+  HirLocalReferenceExpression receiverReference;
+  HirReceiverCallExpression receiverCall;
+};
+
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
   /// The AST node of the function/method declaration this pending record
@@ -821,6 +837,11 @@ struct PendingFunctionDeclaration final {
   /// shape. The checker-produced facts (node-type, member, place, literal) are
   /// not materialized as HIR nodes, so the fact-count equations subtract them.
   bool isDestructorFieldWriteBody = false;
+  /// Populated for the dyn field-access shape: an aggregate-initialized local
+  /// with per-field erasure, a field-read local, and a trailing method-call
+  /// return. The lowering function materializes the two locals, the aggregate,
+  /// the field projection, the receiver reference, and the receiver call.
+  zc::Maybe<PendingDynFieldAccessReturn> dynFieldAccessReturn = zc::none;
 };
 
 }  // namespace detail

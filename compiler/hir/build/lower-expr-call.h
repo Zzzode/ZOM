@@ -68,5 +68,14 @@ void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnC
 /// receiver call dispatches indirectly through the vtable at runtime.
 void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one dyn field-access body through the recursive driver:
+/// `let zoo = Zoo { animal: Dog { .. } }; let a: dyn I = zoo.animal;
+/// return a.method();`. Node stride: function, body, aggregate local, aggregate
+/// initializer, field-read local, field projection, return, receiver reference,
+/// receiver call. The aggregate carries a per-field erasure, the field read
+/// copies the fat-pointer carrier into the second local, and the receiver call
+/// dispatches indirectly through the vtable.
+void lowerDynFieldAccessReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

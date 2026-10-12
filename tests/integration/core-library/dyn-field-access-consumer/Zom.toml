@@ -1,0 +1,8 @@
+[package]
+name = "dyn_field_access_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "dyn_field_access_consumer"
+path = "src/main.zom"

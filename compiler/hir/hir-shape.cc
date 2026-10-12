@@ -18,6 +18,38 @@ zc::Maybe<ast::NodeId> statementItem(const ast::Tree& tree, ast::NodeId statemen
   return item;
 }
 
+zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return zc::none;
+  ast::NodeId local;
+  ZC_IF_SOME(value, item) { local = value; }
+  if (tree.node(local).kind != ast::SyntaxKind::LetStmt) return zc::none;
+  const ast::NodeId declarations(tree.node(local).payload.words[ast::kLetStmtDeclarationsWord]);
+  if (!tree.contains(declarations) ||
+      tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+    return zc::none;
+  }
+  const auto& declarationList = tree.node(declarations);
+  const ast::NodeList declarators{
+      declarationList.payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+      declarationList.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+  if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
+  const ast::NodeId declarator(tree.list(declarators)[0]);
+  if (!tree.contains(declarator) ||
+      tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+    return zc::none;
+  }
+  const ast::NodeId pattern(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+  const ast::NodeId initializer(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+  if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+      !tree.contains(initializer)) {
+    return zc::none;
+  }
+  return declarator;
+}
+
 namespace {
 
 // Returns true when the syntactic binary operator is one of the six relational
@@ -210,38 +242,6 @@ zc::Maybe<MethodParameterLayout> methodParameterLayout(const ast::Tree& tree,
     }
   }
   return MethodParameterLayout{hasReceiver, ordinaryCount};
-}
-
-zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statement) {
-  auto item = statementItem(tree, statement);
-  if (item == zc::none) return zc::none;
-  ast::NodeId local;
-  ZC_IF_SOME(value, item) { local = value; }
-  if (tree.node(local).kind != ast::SyntaxKind::LetStmt) return zc::none;
-  const ast::NodeId declarations(tree.node(local).payload.words[ast::kLetStmtDeclarationsWord]);
-  if (!tree.contains(declarations) ||
-      tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
-    return zc::none;
-  }
-  const auto& declarationList = tree.node(declarations);
-  const ast::NodeList declarators{
-      declarationList.payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
-      declarationList.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
-  if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
-  const ast::NodeId declarator(tree.list(declarators)[0]);
-  if (!tree.contains(declarator) ||
-      tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
-    return zc::none;
-  }
-  const ast::NodeId pattern(
-      tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
-  const ast::NodeId initializer(
-      tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-  if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
-      !tree.contains(initializer)) {
-    return zc::none;
-  }
-  return declarator;
 }
 
 // Classifies one statement as the conditional-return shape: an `if` with block
@@ -2920,6 +2920,59 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.value = value;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
+  }
+  // Dyn field-access shape: exactly three statements -- an aggregate-initialized
+  // local with per-field erasure, a field-read local, and a trailing
+  // method-call return on the field-read local.
+  if (statements.size == 3) {
+    auto aggregateDeclarator = localDeclarator(tree, tree.list(statements)[0]);
+    auto fieldReadDeclarator = localDeclarator(tree, tree.list(statements)[1]);
+    if (aggregateDeclarator != zc::none && fieldReadDeclarator != zc::none) {
+      ast::NodeId aggregateDecl;
+      ZC_IF_SOME(v, aggregateDeclarator) { aggregateDecl = v; }
+      ast::NodeId fieldReadDecl;
+      ZC_IF_SOME(v, fieldReadDeclarator) { fieldReadDecl = v; }
+      const ast::NodeId aggregatePattern(
+          tree.node(aggregateDecl).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId aggregateInit(
+          tree.node(aggregateDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      const ast::NodeId fieldReadPattern(
+          tree.node(fieldReadDecl).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId fieldReadInit(
+          tree.node(fieldReadDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (tree.contains(aggregateInit) &&
+          tree.node(aggregateInit).kind == ast::SyntaxKind::StructLiteralExpr &&
+          tree.contains(fieldReadInit) &&
+          tree.node(fieldReadInit).kind == ast::SyntaxKind::MemberExpression &&
+          static_cast<ast::MemberAccessKind>(
+              tree.node(fieldReadInit).payload.words[ast::kMemberExpressionAccessWord]) ==
+              ast::MemberAccessKind::Dot &&
+          matchesLocalReference(
+              tree, aggregatePattern,
+              ast::NodeId(
+                  tree.node(fieldReadInit).payload.words[ast::kMemberExpressionObjectWord])) &&
+          tree.node(value).kind == ast::SyntaxKind::CallExpression) {
+        const ast::NodeId callCallee(
+            tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+        if (tree.contains(callCallee) &&
+            tree.node(callCallee).kind == ast::SyntaxKind::MemberExpression &&
+            static_cast<ast::MemberAccessKind>(
+                tree.node(callCallee).payload.words[ast::kMemberExpressionAccessWord]) ==
+                ast::MemberAccessKind::Dot &&
+            matchesLocalReference(
+                tree, fieldReadPattern,
+                ast::NodeId(
+                    tree.node(callCallee).payload.words[ast::kMemberExpressionObjectWord]))) {
+          FunctionReturnShape shape{};
+          shape.body = body;
+          shape.returnStatement = returnNode;
+          shape.value = value;
+          shape.dynFieldAccessReturn = true;
+          shape.unsafeBlock = zc::mv(unsafeBlock);
+          return shape;
+        }
+      }
+    }
   }
   {
     auto sequential = sequentialLocalShape(tree, body);

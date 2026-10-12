@@ -467,6 +467,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/existential-call-result-consumer/Zom.toml::existential_call_result_consumer::existential_call_result_consumer::41"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-field-access-consumer/Zom.toml::dyn_field_access_consumer::dyn_field_access_consumer::41"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-expr-consumer/Zom.toml::match_expr_consumer::match_expr_consumer::41"

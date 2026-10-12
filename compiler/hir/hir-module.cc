@@ -987,6 +987,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) {
       isDestructorFieldWriteBodyShape = value.isDestructorFieldWriteBody;
     }
+    bool isDynFieldAccessShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) { isDynFieldAccessShape = value.dynFieldAccessReturn; }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -4063,7 +4065,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         paramCallRecord = call;
       }
-      if (function.receiver == zc::none && paramCallRecord != zc::none &&
+      if (function.receiver == zc::none && !isDynFieldAccessShape && paramCallRecord != zc::none &&
           ZC_ASSERT_NONNULL(paramCallRecord).interface != zc::none &&
           ZC_ASSERT_NONNULL(paramCallRecord).receiver != HirNodeId()) {
         const auto& paramCall = ZC_ASSERT_NONNULL(paramCallRecord);
@@ -4296,6 +4298,378 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         nextFunction += 5;
         continue;
       }
+    }
+    // Dyn field-access return shape: a three-statement function body with an
+    // aggregate-initialized local, a field-read local, and a trailing
+    // method-call return on the field-read local. Nine node ids: function,
+    // body, aggregate local, aggregate, field-read local, field projection,
+    // return, receiver reference, receiver call. The receiver call dispatches
+    // indirectly through the vtable at runtime.
+    if (isDynFieldAccessShape) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto aggregateLocalNodeId = hirId(expectedFunction + 2);
+      const auto aggregateNodeId = hirId(expectedFunction + 3);
+      const auto fieldLocalNodeId = hirId(expectedFunction + 4);
+      const auto projectionNodeId = hirId(expectedFunction + 5);
+      const auto returnNodeId = hirId(expectedFunction + 6);
+      const auto receiverNodeId = hirId(expectedFunction + 7);
+      const auto callNodeId = hirId(expectedFunction + 8);
+      // Validate the HIR node layout.
+      if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
+          function.body != block.node || block.statements.size() != 3 ||
+          block.statements[0] != aggregateLocalNodeId || block.statements[1] != fieldLocalNodeId ||
+          block.statements[2] != returnNodeId || returnStatement.node != returnNodeId ||
+          returnStatement.value != callNodeId ||
+          returnStatement.resultType != function.resultType) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Look up the aggregate local binding.
+      zc::Maybe<const HirLocalBinding&> aggregateLocalRecord;
+      for (const auto& local : candidate.impl->locals) {
+        if (local.node != aggregateLocalNodeId) continue;
+        if (aggregateLocalRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        aggregateLocalRecord = local;
+      }
+      if (aggregateLocalRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      // Look up the aggregate expression.
+      zc::Maybe<const HirNominalAggregateExpression&> aggregateRecord;
+      for (const auto& aggregate : candidate.impl->aggregates) {
+        if (aggregate.node != aggregateNodeId) continue;
+        if (aggregateRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        aggregateRecord = aggregate;
+      }
+      if (aggregateRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      // Look up the field-read local binding.
+      zc::Maybe<const HirLocalBinding&> fieldLocalRecord;
+      for (const auto& local : candidate.impl->locals) {
+        if (local.node != fieldLocalNodeId) continue;
+        if (fieldLocalRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        fieldLocalRecord = local;
+      }
+      if (fieldLocalRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      // Look up the field projection.
+      zc::Maybe<const HirLocalFieldProjectionExpression&> projectionRecord;
+      for (const auto& projection : candidate.impl->localFieldProjections) {
+        if (projection.node != projectionNodeId) continue;
+        if (projectionRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        projectionRecord = projection;
+      }
+      if (projectionRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      // Look up the receiver reference.
+      zc::Maybe<const HirLocalReferenceExpression&> receiverReferenceRecord;
+      for (const auto& reference : candidate.impl->localReferences) {
+        if (reference.node != receiverNodeId) continue;
+        if (receiverReferenceRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        receiverReferenceRecord = reference;
+      }
+      if (receiverReferenceRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      // Look up the receiver call.
+      zc::Maybe<const HirReceiverCallExpression&> receiverCallRecord;
+      for (const auto& call : candidate.impl->receiverCalls) {
+        if (call.node != callNodeId) continue;
+        if (receiverCallRecord != zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::AdditionalFact, module, registries,
+                                              index + 1);
+        }
+        receiverCallRecord = call;
+      }
+      if (receiverCallRecord == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      const auto& aggregateLocal = ZC_ASSERT_NONNULL(aggregateLocalRecord);
+      const auto& aggregateExpr = ZC_ASSERT_NONNULL(aggregateRecord);
+      const auto& fieldLocal = ZC_ASSERT_NONNULL(fieldLocalRecord);
+      const auto& projection = ZC_ASSERT_NONNULL(projectionRecord);
+      const auto& receiverReference = ZC_ASSERT_NONNULL(receiverReferenceRecord);
+      const auto& receiverCall = ZC_ASSERT_NONNULL(receiverCallRecord);
+      // Validate the HIR fact consistency.
+      if (aggregateLocal.local != hirLocalId(1) || aggregateLocal.initializer != aggregateNodeId ||
+          aggregateLocal.type != aggregateExpr.type || fieldLocal.local != hirLocalId(2) ||
+          fieldLocal.initializer != projectionNodeId || fieldLocal.type != projection.type ||
+          projection.local != hirLocalId(1) || projection.type != receiverReference.type ||
+          projection.category != HirValueCategory::Place ||
+          receiverReference.local != hirLocalId(2) ||
+          receiverReference.category != HirValueCategory::Place ||
+          receiverCall.receiver != receiverNodeId || receiverCall.interface == zc::none ||
+          receiverCall.resultType != function.resultType ||
+          aggregateExpr.category != HirValueCategory::Value) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source definition.
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t sourceDefinitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { sourceDefinitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[sourceDefinitionSlot];
+      const auto& tree = bound.tree();
+      if (sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !hasExecutableBody(sourceDefinition, definitions) ||
+          !definitionBelongsToModule(sourceDefinition, definitions) ||
+          !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source body has exactly three statements.
+      const auto& sourceBlock = tree.node(source.body);
+      const ast::NodeList sourceStatements{sourceBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                           sourceBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+      if (!tree.contains(sourceStatements) || sourceStatements.size != 3) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source aggregate initializer.
+      const ast::NodeId aggregateLetStmt = tree.list(sourceStatements)[0];
+      auto aggregateDeclarator = localDeclarator(tree, aggregateLetStmt);
+      if (aggregateDeclarator == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      ast::NodeId aggregateDecl;
+      ZC_IF_SOME(v, aggregateDeclarator) { aggregateDecl = v; }
+      const ast::NodeId aggregateInit(
+          tree.node(aggregateDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(aggregateInit) ||
+          tree.node(aggregateInit).kind != ast::SyntaxKind::StructLiteralExpr) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source field-read initializer.
+      const ast::NodeId fieldReadLetStmt = tree.list(sourceStatements)[1];
+      auto fieldReadDeclarator = localDeclarator(tree, fieldReadLetStmt);
+      if (fieldReadDeclarator == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      ast::NodeId fieldReadDecl;
+      ZC_IF_SOME(v, fieldReadDeclarator) { fieldReadDecl = v; }
+      const ast::NodeId fieldReadInit(
+          tree.node(fieldReadDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(fieldReadInit) ||
+          tree.node(fieldReadInit).kind != ast::SyntaxKind::MemberExpression) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the source return value is a call expression.
+      if (!tree.contains(source.value) ||
+          tree.node(source.value).kind != ast::SyntaxKind::CallExpression) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the checker facts.
+      auto aggregateTypeIndex = factIndex(facts.nodeTypes(), aggregateInit);
+      auto fieldReadTypeIndex = factIndex(facts.nodeTypes(), fieldReadInit);
+      auto aggregateIndex = factIndex(facts.aggregates(), aggregateInit);
+      auto memberIndex = factIndex(facts.members(), fieldReadInit);
+      auto placeIndex = factIndex(facts.places(), fieldReadInit);
+      if (aggregateTypeIndex == zc::none || fieldReadTypeIndex == zc::none ||
+          aggregateIndex == zc::none || memberIndex == zc::none || placeIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t aggregateTypeSlot = 0;
+      size_t fieldReadTypeSlot = 0;
+      size_t aggregateSlot = 0;
+      size_t memberSlot = 0;
+      size_t placeSlot = 0;
+      ZC_IF_SOME(value, aggregateTypeIndex) { aggregateTypeSlot = value; }
+      ZC_IF_SOME(value, fieldReadTypeIndex) { fieldReadTypeSlot = value; }
+      ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
+      ZC_IF_SOME(value, memberIndex) { memberSlot = value; }
+      ZC_IF_SOME(value, placeIndex) { placeSlot = value; }
+      const auto aggregateType = facts.nodeTypes().entries()[aggregateTypeSlot].value;
+      const auto fieldReadType = facts.nodeTypes().entries()[fieldReadTypeSlot].value;
+      const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
+      const auto& projMember = facts.members().entries()[memberSlot].value;
+      const auto& projPlace = facts.places().entries()[placeSlot].value;
+      // Validate the aggregate fact.
+      if (sourceAggregate.node != aggregateInit ||
+          !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+          sourceAggregate.resultType != aggregateType ||
+          !typeExists(aggregateType, semanticTypes) || !typeExists(fieldReadType, semanticTypes)) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      const auto& sourceNominal =
+          sourceAggregate.kind.variant().get<checker::checked::NominalAggregate>();
+      if (sourceNominal.definition != aggregateExpr.definition ||
+          aggregateExpr.type != aggregateType) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the member and place facts for the field projection.
+      const auto& projRoot = projPlace.root.variant();
+      if (projMember.node != fieldReadInit || projMember.receiverType != aggregateType ||
+          projMember.memberType != fieldReadType || projMember.adjustment != zc::none ||
+          !projRoot.is<checker::checked::OwnerLocalPlaceRoot>() ||
+          projPlace.projections.size() != 1 ||
+          !projPlace.projections[0].variant().is<checker::checked::FieldProjection>() ||
+          projPlace.projections[0].variant().get<checker::checked::FieldProjection>().field !=
+              projMember.member ||
+          projPlace.type != fieldReadType || !projPlace.movable) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the projection field matches.
+      if (projection.field != projMember.member || projection.receiverType != aggregateType ||
+          projection.type != fieldReadType) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the receiver call dispatch facts.
+      const auto& sourceCall = tree.node(source.value);
+      const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeId receiverNode(
+          tree.node(calleeNode).payload.words[ast::kMemberExpressionObjectWord]);
+      auto receiverTypeIndex = factIndex(facts.nodeTypes(), receiverNode);
+      auto calleeMemberIndex = factIndex(facts.members(), calleeNode);
+      auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+      auto checkedCallIndex = factIndex(facts.calls(), source.value);
+      auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.value);
+      auto dispatchIndex =
+          callKey == zc::none
+              ? zc::none
+              : dispatchFactIndex(candidate.impl->checkedModule.dispatchFacts().facts(),
+                                  ZC_ASSERT_NONNULL(callKey));
+      if (receiverTypeIndex == zc::none || calleeMemberIndex == zc::none ||
+          calleeTypeIndex == zc::none || checkedCallIndex == zc::none || callKey == zc::none ||
+          dispatchIndex == zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::MissingRequiredFact, module,
+                                            registries, index + 1);
+      }
+      size_t receiverTypeSlot = 0;
+      size_t calleeMemberSlot = 0;
+      size_t calleeTypeSlot = 0;
+      size_t checkedCallSlot = 0;
+      size_t dispatchSlot = 0;
+      ZC_IF_SOME(value, receiverTypeIndex) { receiverTypeSlot = value; }
+      ZC_IF_SOME(value, calleeMemberIndex) { calleeMemberSlot = value; }
+      ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+      ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+      ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+      const auto& calleeMember = facts.members().entries()[calleeMemberSlot].value;
+      const auto& invocation = facts.calls().entries()[checkedCallSlot].value.invocation;
+      const auto& selected = invocation.selected.variant();
+      const auto& dispatch = candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+      const auto& target = dispatch.fact.target.variant();
+      const auto& transform = dispatch.fact.resultTransform.variant();
+      if (!selected.is<checker::checked::DynMethodCallable>() ||
+          !target.is<checker::dispatch::DynMethodTarget>() ||
+          !transform.is<checker::dispatch::IdentityResultTransform>() ||
+          selected.get<checker::checked::DynMethodCallable>().method != calleeMember.member ||
+          target.get<checker::dispatch::DynMethodTarget>().method != calleeMember.member ||
+          selected.get<checker::checked::DynMethodCallable>().interface !=
+              ZC_ASSERT_NONNULL(receiverCall.interface) ||
+          calleeMember.node != calleeNode ||
+          calleeMember.memberType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+          calleeMember.adjustment != zc::none || invocation.calleeType != calleeMember.memberType ||
+          invocation.successType != function.resultType ||
+          invocation.resultType != function.resultType || invocation.receiver == zc::none ||
+          invocation.receiverMode == zc::none || invocation.receiverAdjustment == zc::none ||
+          invocation.arguments.size() != 0 || invocation.substitutions != zc::none ||
+          invocation.witnesses != zc::none || invocation.raises != zc::none ||
+          dispatch.fact.receiver == zc::none || dispatch.fact.arguments.size() != 0 ||
+          dispatch.fact.successType != function.resultType ||
+          dispatch.fact.resultType != function.resultType ||
+          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          dispatch.fact.raises != zc::none) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate the receiver call type consistency.
+      if (receiverCall.callee != calleeMember.member ||
+          receiverCall.calleeType != calleeMember.memberType ||
+          receiverCall.receiverSourceType != facts.nodeTypes().entries()[receiverTypeSlot].value ||
+          receiverCall.resultType != function.resultType || receiverCall.arguments.size() != 0) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      // Validate spans.
+      auto bodySpan = bound.parsedModule().spanFor(tree.node(source.body).range);
+      auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
+      auto callSpan = bound.parsedModule().spanFor(sourceCall.range);
+      auto aggregateInitSpan = bound.parsedModule().spanFor(tree.node(aggregateInit).range);
+      auto fieldReadInitSpan = bound.parsedModule().spanFor(tree.node(fieldReadInit).range);
+      if (bodySpan == zc::none || returnSpan == zc::none || callSpan == zc::none ||
+          aggregateInitSpan == zc::none || fieldReadInitSpan == zc::none ||
+          !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
+          !sameSpan(returnStatement.sourceSpan, ZC_ASSERT_NONNULL(returnSpan)) ||
+          !sameSpan(receiverCall.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
+          !sameSpan(aggregateExpr.sourceSpan, ZC_ASSERT_NONNULL(aggregateInitSpan)) ||
+          !sameSpan(projection.sourceSpan, ZC_ASSERT_NONNULL(fieldReadInitSpan))) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
+      }
+      nextFunction += 9;
+      continue;
     }
     // Conditional shape: if/else with scalar returns in both branches.
     {
@@ -6150,8 +6524,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-        } else if (conditionHasConjunctiveStride) {  // Match-guard conjunctive condition: the HIR
-                                                     // materializes an 11-node
+        } else if (conditionHasConjunctiveStride) {  // Match-guard conjunctive condition:
+                                                     // the HIR materializes an 11-node
           // stride: function, body, scrutinee parameter reference, guard left
           // operand, guard right operand, guard comparison, conjunction
           // (BitAnd), then arm, else arm, conditional, return. The conjunction

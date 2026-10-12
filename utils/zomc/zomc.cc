@@ -1632,6 +1632,42 @@ private:
           }
         }
         if (lir == zc::none) {
+          // Dyn field-access module: one Function-sourced two-block entry
+          // whose entry block ends in an IndirectCall, plus one Method-sourced
+          // one-block constant-return leaf. The entry constructs a struct
+          // with a per-field erased dyn-typed field, reads the field into a
+          // dyn-typed local, and dispatches through the vtable to the leaf.
+          zc::Maybe<size_t> dynEntryIndex;
+          zc::Maybe<size_t> dynLeafIndex;
+          for (size_t index = 0; index < functions.size(); ++index) {
+            const auto& fn = functions[index];
+            if (fn.kind == mir::MirFunctionKind::Function &&
+                fn.sourceDefinitionKind == identity::DefinitionKind::Function &&
+                fn.blocks.size() == 2 &&
+                fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
+              if (dynEntryIndex != zc::none) {
+                dynEntryIndex = zc::none;
+                break;
+              }
+              dynEntryIndex = index;
+            } else if (fn.kind == mir::MirFunctionKind::Function &&
+                       fn.sourceDefinitionKind == identity::DefinitionKind::Method &&
+                       fn.blocks.size() == 1) {
+              if (dynLeafIndex != zc::none) {
+                dynLeafIndex = zc::none;
+                break;
+              }
+              dynLeafIndex = index;
+            }
+          }
+          if (dynEntryIndex != zc::none && dynLeafIndex != zc::none &&
+              ZC_ASSERT_NONNULL(dynEntryIndex) != ZC_ASSERT_NONNULL(dynLeafIndex)) {
+            lir = lir::MirToLirLowering::lowerDynFieldAccessReturnModule(
+                functions[ZC_ASSERT_NONNULL(dynEntryIndex)],
+                functions[ZC_ASSERT_NONNULL(dynLeafIndex)], types);
+          }
+        }
+        if (lir == zc::none) {
           // Standalone multi-function module: no caller/callee pair exists.
           // Lower each function individually through the full single-function
           // ladder and combine into one LIR module.

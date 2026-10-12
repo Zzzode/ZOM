@@ -306,5 +306,74 @@ void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, H
       call.sourceSpan.clone(), zc::mv(call.interface)});
 }
 
+void lowerDynFieldAccessReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  auto pending = zc::mv(ZC_ASSERT_NONNULL(function.dynFieldAccessReturn));
+  const identity::SemanticTypeId aggregateType = pending.aggregateLocal.type;
+  identity::SourceSpan aggregateLetSpan = pending.aggregateLocal.sourceSpan.clone();
+  identity::SourceSpan aggregateInitSpan =
+      ZC_ASSERT_NONNULL(pending.aggregateLocal.initializerSpan).clone();
+  const identity::DefId aggregateDefinition = pending.aggregate.definition;
+  const identity::SemanticTypeId aggregateExprType = pending.aggregate.type;
+  const HirValueCategory aggregateCategory = pending.aggregate.category;
+  identity::SourceSpan aggregateSpan = pending.aggregate.sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements = zc::mv(pending.aggregate.elements);
+  const identity::SemanticTypeId fieldType = pending.fieldLocal.type;
+  identity::SourceSpan fieldLetSpan = pending.fieldLocal.sourceSpan.clone();
+  identity::SourceSpan fieldInitSpan =
+      ZC_ASSERT_NONNULL(pending.fieldLocal.initializerSpan).clone();
+  const identity::DefId projectionField = pending.fieldProjection.field;
+  const identity::SemanticTypeId projectionReceiverType = pending.fieldProjection.receiverType;
+  const identity::SemanticTypeId projectionType = pending.fieldProjection.type;
+  const HirValueCategory projectionCategory = pending.fieldProjection.category;
+  identity::SourceSpan projectionSpan = pending.fieldProjection.sourceSpan.clone();
+  const identity::SemanticTypeId receiverType = pending.receiverReference.type;
+  const HirValueCategory receiverCategory = pending.receiverReference.category;
+  identity::SourceSpan receiverSpan = pending.receiverReference.sourceSpan.clone();
+  HirReceiverCallExpression call = zc::mv(pending.receiverCall);
+
+  // Fixed source-preorder stride: function F, body F+1, aggregate local F+2,
+  // aggregate F+3, field-read local F+4, field projection F+5, return F+6,
+  // receiver reference F+7, receiver call F+8. The receiver call is the
+  // return value.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId aggregateLocalId = ctx.allocNode(ast::NodeId());
+  const HirNodeId aggregateId = ctx.allocNode(ast::NodeId());
+  const HirNodeId fieldLocalId = ctx.allocNode(ast::NodeId());
+  const HirNodeId projectionId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId receiverId = ctx.allocNode(ast::NodeId());
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(aggregateLocalId);
+  statements.add(fieldLocalId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  ctx.addLocal(HirLocalBinding{aggregateLocalId, hirLocalId(1), aggregateType, aggregateId,
+                               zc::mv(aggregateLetSpan), zc::mv(aggregateInitSpan)});
+  ctx.addAggregate(HirNominalAggregateExpression{aggregateId, aggregateDefinition,
+                                                 aggregateExprType, zc::mv(aggregateElements),
+                                                 aggregateCategory, zc::mv(aggregateSpan)});
+  ctx.addLocal(HirLocalBinding{fieldLocalId, hirLocalId(2), fieldType, projectionId,
+                               zc::mv(fieldLetSpan), zc::mv(fieldInitSpan)});
+  ctx.addLocalFieldProjection(HirLocalFieldProjectionExpression{
+      projectionId, hirLocalId(1), projectionField, projectionReceiverType, projectionType,
+      projectionCategory, zc::mv(projectionSpan)});
+  ctx.addLocalReference(HirLocalReferenceExpression{receiverId, hirLocalId(2), receiverType,
+                                                    receiverCategory, zc::mv(receiverSpan)});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addReceiverCall(HirReceiverCallExpression{
+      callId, receiverId, call.callee, call.calleeType, call.receiverSourceType, call.receiverType,
+      call.receiverMode, zc::mv(call.receiverAdjustments), call.resultType, zc::mv(call.arguments),
+      call.sourceSpan.clone(), zc::mv(call.interface)});
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

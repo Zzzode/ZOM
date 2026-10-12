@@ -7003,6 +7003,287 @@ bool validDynFieldAggregateReturnFunction(
   return false;
 }
 
+bool validDynFieldAccessReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& aggregateBinding,
+    const hir::HirNominalAggregateExpression& aggregate, const hir::HirLocalBinding& fieldBinding,
+    const hir::HirLocalFieldProjectionExpression& projection,
+    const hir::HirReturnStatement& sourceReturn,
+    const hir::HirLocalReferenceExpression& receiverReference,
+    const hir::HirReceiverCallExpression& call, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 2 || declaration.body != sourceBlock.node ||
+      sourceBlock.statements.size() != 3 || sourceBlock.statements[2] != sourceReturn.node ||
+      sourceReturn.value != call.node || call.interface == zc::none || call.arguments.size() != 0 ||
+      call.resultType != declaration.resultType) {
+    return false;
+  }
+
+  // Count erased elements in the aggregate.
+  size_t erasedCount = 0;
+  for (const auto& element : aggregate.elements) {
+    if (element.erasure != zc::none) ++erasedCount;
+  }
+  if (erasedCount == 0) return false;
+
+  // Locals: 2 per erased field (concrete + existential) + zooLocal + animalLocal
+  // + resultLocal.
+  const size_t expectedLocals = 2 * erasedCount + 3;
+  if (function.locals.size() != expectedLocals) return false;
+
+  // Block 1 statements: 4 per erased field + 2 (zoo) + 2 (animal) + 1 (result).
+  const size_t expectedStatements = 4 * erasedCount + 5;
+  const auto& scope = function.sourceScopes[0];
+  const auto& entry = function.blocks[0];
+  const auto& continuation = function.blocks[1];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || entry.id != blockId(1) ||
+      entry.sourceScope != scope.id || entry.statements.size() != expectedStatements ||
+      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation.id != blockId(2) ||
+      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
+      continuation.terminator.kind() != MirTerminatorKind::Return ||
+      continuation.terminator.returnValue().value == zc::none ||
+      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+
+  // Validate each erased field's concrete + existential pair.
+  size_t localIndex = 0;
+  size_t stmtIndex = 0;
+  for (const auto& element : aggregate.elements) {
+    if (element.erasure == zc::none) continue;
+    const auto& erasure = ZC_ASSERT_NONNULL(element.erasure);
+    const auto& concreteLocal = function.locals[localIndex];
+    const auto& existentialLocal = function.locals[localIndex + 1];
+    if (concreteLocal.id != localId(static_cast<uint32_t>(localIndex + 1)) ||
+        concreteLocal.kind != MirLocalKind::Temporary || concreteLocal.type != erasure.sourceType ||
+        concreteLocal.sourceScope != scope.id ||
+        !sameSpan(concreteLocal.sourceSpan, aggregate.sourceSpan) ||
+        existentialLocal.id != localId(static_cast<uint32_t>(localIndex + 2)) ||
+        existentialLocal.kind != MirLocalKind::Temporary ||
+        existentialLocal.type != erasure.targetType || existentialLocal.sourceScope != scope.id ||
+        !sameSpan(existentialLocal.sourceSpan, sourceReturn.sourceSpan)) {
+      return false;
+    }
+    // StorageLive(concreteLocal).
+    if (entry.statements[stmtIndex].kind() != MirStatementKind::StorageLive ||
+        entry.statements[stmtIndex].storageLocal() != concreteLocal.id ||
+        !sameSpan(entry.statements[stmtIndex].sourceSpan(), aggregate.sourceSpan)) {
+      return false;
+    }
+    // Assign(concreteLocal = NominalAggregate(concreteDef, ...)).
+    const auto& concreteAssign = entry.statements[stmtIndex + 1].assignmentValue();
+    if (entry.statements[stmtIndex + 1].kind() != MirStatementKind::Assign ||
+        concreteAssign.initialization != MirInitializationKind::Initialize ||
+        concreteAssign.destination.local() != concreteLocal.id ||
+        concreteAssign.destination.rootType() != concreteLocal.type ||
+        concreteAssign.destination.resultType() != concreteLocal.type ||
+        concreteAssign.destination.projections().size() != 0 ||
+        concreteAssign.value.kind() != MirRvalueKind::NominalAggregate ||
+        !sameSpan(entry.statements[stmtIndex + 1].sourceSpan(), aggregate.sourceSpan)) {
+      return false;
+    }
+    const auto& innerAggregate = concreteAssign.value.nominalAggregateValue();
+    if (innerAggregate.definition != erasure.concreteDefinition ||
+        innerAggregate.type != erasure.sourceType ||
+        innerAggregate.elements.size() != element.concreteElements.size()) {
+      return false;
+    }
+    for (size_t ci = 0; ci < element.concreteElements.size(); ++ci) {
+      const auto& expected = element.concreteElements[ci];
+      const auto& actual = innerAggregate.elements[ci];
+      if (actual.field != expected.field || actual.operand.kind() != MirOperandKind::Constant ||
+          actual.operand.constantValue().type != expected.type ||
+          !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+                        semanticTypes)) {
+        return false;
+      }
+    }
+    // StorageLive(existentialLocal).
+    if (entry.statements[stmtIndex + 2].kind() != MirStatementKind::StorageLive ||
+        entry.statements[stmtIndex + 2].storageLocal() != existentialLocal.id ||
+        !sameSpan(entry.statements[stmtIndex + 2].sourceSpan(), sourceReturn.sourceSpan)) {
+      return false;
+    }
+    // Assign(existentialLocal = Erase(Move(concreteLocal), ...)).
+    const auto& eraseAssign = entry.statements[stmtIndex + 3].assignmentValue();
+    if (entry.statements[stmtIndex + 3].kind() != MirStatementKind::Assign ||
+        eraseAssign.initialization != MirInitializationKind::Initialize ||
+        eraseAssign.destination.local() != existentialLocal.id ||
+        eraseAssign.destination.rootType() != existentialLocal.type ||
+        eraseAssign.destination.resultType() != existentialLocal.type ||
+        eraseAssign.destination.projections().size() != 0 ||
+        eraseAssign.value.kind() != MirRvalueKind::Erase ||
+        !sameSpan(entry.statements[stmtIndex + 3].sourceSpan(), sourceReturn.sourceSpan)) {
+      return false;
+    }
+    const auto& erase = eraseAssign.value.eraseValue();
+    if (erase.sourceType != erasure.sourceType || erase.targetType != erasure.targetType ||
+        erase.source.kind() != MirOperandKind::Move ||
+        erase.source.place().local() != concreteLocal.id ||
+        erase.source.place().rootType() != concreteLocal.type ||
+        erase.source.place().resultType() != concreteLocal.type ||
+        erase.source.place().projections().size() != 0) {
+      return false;
+    }
+    localIndex += 2;
+    stmtIndex += 4;
+  }
+
+  // Zoo local (aggregate user local).
+  const auto& zooLocal = function.locals[localIndex];
+  if (zooLocal.id != localId(static_cast<uint32_t>(localIndex + 1)) ||
+      zooLocal.kind != MirLocalKind::UserLocal || zooLocal.type != aggregateBinding.type ||
+      zooLocal.sourceScope != scope.id ||
+      !sameSpan(zooLocal.sourceSpan, aggregateBinding.sourceSpan)) {
+    return false;
+  }
+  // StorageLive(zooLocal).
+  if (entry.statements[stmtIndex].kind() != MirStatementKind::StorageLive ||
+      entry.statements[stmtIndex].storageLocal() != zooLocal.id ||
+      !sameSpan(entry.statements[stmtIndex].sourceSpan(), aggregateBinding.sourceSpan)) {
+    return false;
+  }
+  // Assign(zooLocal = NominalAggregate(outerDef, ...)).
+  const auto& outerAssign = entry.statements[stmtIndex + 1].assignmentValue();
+  if (entry.statements[stmtIndex + 1].kind() != MirStatementKind::Assign ||
+      outerAssign.initialization != MirInitializationKind::Initialize ||
+      outerAssign.destination.local() != zooLocal.id ||
+      outerAssign.destination.rootType() != zooLocal.type ||
+      outerAssign.destination.resultType() != zooLocal.type ||
+      outerAssign.destination.projections().size() != 0 ||
+      outerAssign.value.kind() != MirRvalueKind::NominalAggregate ||
+      !sameSpan(entry.statements[stmtIndex + 1].sourceSpan(), aggregate.sourceSpan)) {
+    return false;
+  }
+  const auto& outerAggregate = outerAssign.value.nominalAggregateValue();
+  if (outerAggregate.definition != aggregate.definition || outerAggregate.type != aggregate.type ||
+      outerAggregate.elements.size() != aggregate.elements.size()) {
+    return false;
+  }
+  // Validate outer elements: erased elements are Move(existentialLocal),
+  // non-erased elements are Constant.
+  size_t elemLocalIndex = 0;
+  for (size_t i = 0; i < aggregate.elements.size(); ++i) {
+    const auto& expected = aggregate.elements[i];
+    const auto& actual = outerAggregate.elements[i];
+    if (actual.field != expected.field) return false;
+    if (expected.erasure != zc::none) {
+      const auto& erasure = ZC_ASSERT_NONNULL(expected.erasure);
+      if (actual.operand.kind() != MirOperandKind::Move ||
+          actual.operand.place().local() != function.locals[elemLocalIndex + 1].id ||
+          actual.operand.place().rootType() != erasure.targetType ||
+          actual.operand.place().resultType() != erasure.targetType ||
+          actual.operand.place().projections().size() != 0) {
+        return false;
+      }
+      elemLocalIndex += 2;
+    } else {
+      if (actual.operand.kind() != MirOperandKind::Constant ||
+          actual.operand.constantValue().type != expected.type ||
+          !sameConstant(actual.operand.constantValue().value, expected.value, module, identities,
+                        semanticTypes)) {
+        return false;
+      }
+    }
+  }
+  stmtIndex += 2;
+  ++localIndex;
+
+  // Animal local (field-read user local).
+  const auto& animalLocal = function.locals[localIndex];
+  if (animalLocal.id != localId(static_cast<uint32_t>(localIndex + 1)) ||
+      animalLocal.kind != MirLocalKind::UserLocal || animalLocal.type != fieldBinding.type ||
+      animalLocal.sourceScope != scope.id ||
+      !sameSpan(animalLocal.sourceSpan, fieldBinding.sourceSpan)) {
+    return false;
+  }
+  // StorageLive(animalLocal).
+  if (entry.statements[stmtIndex].kind() != MirStatementKind::StorageLive ||
+      entry.statements[stmtIndex].storageLocal() != animalLocal.id ||
+      !sameSpan(entry.statements[stmtIndex].sourceSpan(), fieldBinding.sourceSpan)) {
+    return false;
+  }
+  // Assign(animalLocal = Use(Move(zooLocal.animal))).
+  const auto& fieldAssign = entry.statements[stmtIndex + 1].assignmentValue();
+  if (entry.statements[stmtIndex + 1].kind() != MirStatementKind::Assign ||
+      fieldAssign.initialization != MirInitializationKind::Initialize ||
+      fieldAssign.destination.local() != animalLocal.id ||
+      fieldAssign.destination.rootType() != animalLocal.type ||
+      fieldAssign.destination.resultType() != animalLocal.type ||
+      fieldAssign.destination.projections().size() != 0 ||
+      fieldAssign.value.kind() != MirRvalueKind::Use ||
+      !sameSpan(entry.statements[stmtIndex + 1].sourceSpan(), fieldBinding.sourceSpan)) {
+    return false;
+  }
+  const auto& fieldUse = fieldAssign.value.useValue().operand;
+  if (fieldUse.kind() != MirOperandKind::Move || fieldUse.place().local() != zooLocal.id ||
+      fieldUse.place().rootType() != aggregateBinding.type ||
+      fieldUse.place().resultType() != projection.type ||
+      fieldUse.place().projections().size() != 1) {
+    return false;
+  }
+  const auto& fieldProjection = fieldUse.place().projections()[0];
+  if (fieldProjection.kind() != MirProjectionKind::Field ||
+      fieldProjection.fieldValue().field != projection.field ||
+      fieldProjection.inputType() != aggregateBinding.type ||
+      fieldProjection.resultType() != projection.type) {
+    return false;
+  }
+  stmtIndex += 2;
+  ++localIndex;
+
+  // Result local.
+  const auto& resultLocal = function.locals[localIndex];
+  if (resultLocal.id != localId(static_cast<uint32_t>(localIndex + 1)) ||
+      resultLocal.kind != MirLocalKind::Temporary || resultLocal.type != call.resultType ||
+      resultLocal.sourceScope != scope.id || !sameSpan(resultLocal.sourceSpan, call.sourceSpan)) {
+    return false;
+  }
+  // StorageLive(resultLocal).
+  if (entry.statements[stmtIndex].kind() != MirStatementKind::StorageLive ||
+      entry.statements[stmtIndex].storageLocal() != resultLocal.id ||
+      !sameSpan(entry.statements[stmtIndex].sourceSpan(), call.sourceSpan)) {
+    return false;
+  }
+
+  // IndirectCall terminator.
+  const auto& terminator = entry.terminator.indirectCallValue();
+  if (terminator.interface != ZC_ASSERT_NONNULL(call.interface) ||
+      terminator.method != call.callee || terminator.arguments.size() != 0 ||
+      terminator.destination.local() != resultLocal.id ||
+      terminator.destination.rootType() != resultLocal.type ||
+      terminator.destination.resultType() != resultLocal.type ||
+      terminator.destination.projections().size() != 0 ||
+      terminator.effect.kind() != MirCallEffectKind::NoActivation ||
+      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+    return false;
+  }
+  // Receiver operand: a place-use of the animal local.
+  if (!matchesPlaceUse(terminator.receiver, proofs, copy, receiverReference.type) ||
+      terminator.receiver.place().local() != animalLocal.id ||
+      terminator.receiver.place().rootType() != receiverReference.type ||
+      terminator.receiver.place().resultType() != receiverReference.type ||
+      terminator.receiver.place().projections().size() != 0) {
+    return false;
+  }
+
+  // Continuation terminator: return the result local.
+  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
+           value.place().local() == resultLocal.id &&
+           value.place().rootType() == resultLocal.type &&
+           value.place().resultType() == resultLocal.type &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validLocalAggregateFieldOverwriteReturnFunction(
     const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
     const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& sourceLocal,
@@ -17150,6 +17431,94 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                             function, sourceDeclaration, callerBlock, binding, aggregate,
                             sourceReturn, setReceiver, discardedCall, getReceiver, trailingCall,
                             proofs, copy, module, identities, semanticTypes, discardedSharedValue);
+                      }
+                      if (!valid) {
+                        return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                           ir::IrFailureKind::InvalidFact, module,
+                                                           function.owner, identities,
+                                                           static_cast<uint32_t>(index + 1));
+                      }
+                      auto owner = identities.definition(function.owner);
+                      auto record = encodeFunction(function, module, identities, semanticTypes);
+                      if (owner == zc::none || record == zc::none) {
+                        return rejectMir<VerifiedBuiltMir>(
+                            ir::IrFailurePhase::BuiltMirVerification,
+                            ir::IrFailureKind::CanonicalCodecMismatch, module, function.owner,
+                            identities, static_cast<uint32_t>(index + 1));
+                      }
+                      zc::Array<uint8_t> ownerBytes;
+                      ZC_IF_SOME(value, owner) { ownerBytes = value.key().encode(); }
+                      if (index != 0 && !lessBytes(previousOwner.asPtr(), ownerBytes.asPtr())) {
+                        return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                                           ir::IrFailureKind::InvalidFact, module,
+                                                           function.owner, identities,
+                                                           static_cast<uint32_t>(index + 1));
+                      }
+                      previousOwner = zc::mv(ownerBytes);
+                      ZC_IF_SOME(value, record) {
+                        if (value.asPtr() != candidate.canonicalFunctions[index].asPtr()) {
+                          return rejectMir<VerifiedBuiltMir>(
+                              ir::IrFailurePhase::BuiltMirVerification,
+                              ir::IrFailureKind::CanonicalCodecMismatch, module, function.owner,
+                              identities, static_cast<uint32_t>(index + 1));
+                        }
+                        recomputedFunctions.add(zc::mv(value));
+                      }
+                      continue;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      // Dyn field-access consumer return:
+      // `fn entry() -> T { let zoo = Zoo { animal: Dog { ..constants.. } };
+      // let a: dyn Animal = zoo.animal; return a.speak(); }`.
+      // Three statements: an aggregate-initialized user local with per-field
+      // erasure, a field-read user local initialized by a local field
+      // projection, and a trailing return whose value is a dyn-trait receiver
+      // call on the field-read local.
+      if (sourceBlock != zc::none && sourceDeclaration.receiver == zc::none &&
+          ZC_ASSERT_NONNULL(sourceBlock).statements.size() == 3) {
+        const auto& callerBlock = ZC_ASSERT_NONNULL(sourceBlock);
+        auto callerAggregateBinding = localFor(hirModule, callerBlock.statements[0]);
+        auto callerFieldBinding = localFor(hirModule, callerBlock.statements[1]);
+        auto callerReturn = returnFor(hirModule, callerBlock.statements[2]);
+        ZC_IF_SOME(aggregateBinding, callerAggregateBinding) {
+          ZC_IF_SOME(fieldBinding, callerFieldBinding) {
+            ZC_IF_SOME(sourceReturn, callerReturn) {
+              hir::HirNodeId aggregateInitNode;
+              ZC_IF_SOME(init, aggregateBinding.initializer) { aggregateInitNode = init; }
+              hir::HirNodeId fieldInitNode;
+              ZC_IF_SOME(init, fieldBinding.initializer) { fieldInitNode = init; }
+              auto aggregateRecord = aggregateFor(hirModule, aggregateInitNode);
+              auto projectionRecord = localFieldProjectionFor(hirModule, fieldInitNode);
+              auto trailingCallRecord = receiverCallFor(hirModule, sourceReturn.value);
+              ZC_IF_SOME(aggregate, aggregateRecord) {
+                ZC_IF_SOME(projection, projectionRecord) {
+                  ZC_IF_SOME(trailingCall, trailingCallRecord) {
+                    auto receiverRefRecord = localReferenceFor(hirModule, trailingCall.receiver);
+                    ZC_IF_SOME(receiverRef, receiverRefRecord) {
+                      const bool gate = aggregateBinding.local.ordinal() == 1 &&
+                                        fieldBinding.local.ordinal() == 2 &&
+                                        aggregateBinding.initializer == aggregate.node &&
+                                        aggregateBinding.type == aggregate.type &&
+                                        fieldBinding.initializer == projection.node &&
+                                        fieldBinding.type == projection.type &&
+                                        projection.local == aggregateBinding.local &&
+                                        projection.type == trailingCall.receiverSourceType &&
+                                        receiverRef.local == fieldBinding.local &&
+                                        trailingCall.receiver == receiverRef.node &&
+                                        trailingCall.interface != zc::none &&
+                                        trailingCall.resultType == sourceDeclaration.resultType;
+                      bool valid = false;
+                      if (gate) {
+                        valid = validDynFieldAccessReturnFunction(
+                            function, sourceDeclaration, callerBlock, aggregateBinding, aggregate,
+                            fieldBinding, projection, sourceReturn, receiverRef, trailingCall,
+                            module, identities, semanticTypes, proofs, copy);
                       }
                       if (!valid) {
                         return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,

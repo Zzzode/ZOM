@@ -1539,6 +1539,51 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     }
   }
 
+  // Dyn field-access shape: exactly three statements -- an aggregate-initialized
+  // local `let zoo = Zoo { animal: Dog { .. } };`, a field-read local
+  // `let a: dyn I = zoo.animal;`, and a trailing method-call return
+  // `return a.speak();`. The aggregate initializer is admitted by
+  // isAdmittedAggregateInitializer (which recursively admits per-field
+  // concrete-to-existential erasure); the field-read initializer is a dot
+  // MemberExpression whose object names the aggregate local; the return is a
+  // dot-access CallExpression whose receiver names the field-read local.
+  if (statements.size == 3) {
+    auto aggregateDeclarator = localDeclarator(tree, tree.list(statements)[0]);
+    auto fieldReadDeclarator = localDeclarator(tree, tree.list(statements)[1]);
+    if (aggregateDeclarator != zc::none && fieldReadDeclarator != zc::none) {
+      ast::NodeId aggregateDecl;
+      ZC_IF_SOME(value, aggregateDeclarator) { aggregateDecl = value; }
+      ast::NodeId fieldReadDecl;
+      ZC_IF_SOME(value, fieldReadDeclarator) { fieldReadDecl = value; }
+      const ast::NodeId aggregatePattern(
+          tree.node(aggregateDecl).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId aggregateInit(
+          tree.node(aggregateDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      const ast::NodeId fieldReadPattern(
+          tree.node(fieldReadDecl).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId fieldReadInit(
+          tree.node(fieldReadDecl).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (tree.contains(aggregateInit) && isAdmittedAggregateInitializer(tree, aggregateInit) &&
+          tree.contains(fieldReadInit) &&
+          tree.node(fieldReadInit).kind == ast::SyntaxKind::MemberExpression &&
+          static_cast<ast::MemberAccessKind>(
+              tree.node(fieldReadInit).payload.words[ast::kMemberExpressionAccessWord]) ==
+              ast::MemberAccessKind::Dot &&
+          matchesLocalReference(
+              tree, aggregatePattern,
+              ast::NodeId(
+                  tree.node(fieldReadInit).payload.words[ast::kMemberExpressionObjectWord])) &&
+          isAdmittedReceiverCall(tree, returnValue) &&
+          matchesLocalReference(
+              tree, fieldReadPattern,
+              ast::NodeId(tree.node(ast::NodeId(tree.node(returnValue)
+                                                    .payload.words[ast::kCallExpressionCalleeWord]))
+                              .payload.words[ast::kMemberExpressionObjectWord]))) {
+        return true;
+      }
+    }
+  }
+
   // Sequential local shape: N leading `let <ident>: T = <initializer>;`
   // statements followed by a single `return <ident>;`. Each initializer is a
   // scalar literal, a closed nominal aggregate, an identifier reference (a

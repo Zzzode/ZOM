@@ -1,0 +1,26 @@
+// Dyn field access fixture: a dyn-typed field is read from a struct local
+// into a dyn-typed local, then dispatched through the vtable. The struct
+// local is constructed with a per-field erasure that produces a fat pointer
+// {dataPtr, vtablePtr}; reading the field copies the fat pointer, and the
+// indirect call dispatches through the vtable to the concrete method.
+interface Animal {
+  fn speak(this) -> i32;
+}
+
+struct Dog {
+  tag: i32,
+}
+
+impl Animal for Dog {
+  fn speak(this) -> i32 { return 41; }
+}
+
+struct Zoo {
+  animal: dyn Animal,
+}
+
+fn entry() -> i32 {
+  let zoo = Zoo { animal: Dog { tag: 41 } };
+  let a: dyn Animal = zoo.animal;
+  return a.speak();
+}
