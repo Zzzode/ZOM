@@ -427,6 +427,38 @@ struct PendingLoopBodyReturn final {
   ast::NodeId loopNode{};
 };
 
+// One admitted `do { <body> } while (<cond>);` loop-body return: a leading
+// `mut` local declaration, a do-while loop whose body writes that local and
+// whose condition is a binary comparison over the local and a scalar literal
+// (or a bare identifier), and a trailing local return. The declaration, body
+// writes, and return reuse the flat mut-local pending fields (`local`,
+// `localWrites`, `localWriteValues`, `localReference`); this carrier adds the
+// resolved comparison condition and the loop/body spans. The do-while
+// desugars to a body-before-condition reducible four-block CFG. Every HIR
+// expression carries an empty HirNodeId; the lowering function allocates the
+// node ids.
+struct PendingDoWhileLoopBodyReturn final {
+  // The loop condition comparison, resolved to a primitive binary expression.
+  // The left operand is a reference to the accumulator local; the right
+  // operand is a scalar literal.
+  HirPrimitiveBinaryExpression condition;
+  // The comparison's left operand: a place reference to the accumulator local.
+  HirLocalReferenceExpression conditionLeft;
+  // The comparison's right operand: a scalar literal.
+  HirScalarLiteralExpression conditionRight;
+  // The loop's source span.
+  identity::SourceSpan loopSpan;
+  // A trailing unlabeled `break;` or `continue;` source span, carried so the
+  // materialized `HirLoopStatement` can select the body block terminator. At
+  // most one is set; both are none for a write-only body.
+  zc::Maybe<identity::SourceSpan> breakSpan;
+  zc::Maybe<identity::SourceSpan> continueSpan;
+  /// The AST DoWhileStatement node this loop was lowered from.
+  ast::NodeId loopNode{};
+  /// The AST ReturnStmt node of the trailing local return.
+  ast::NodeId returnNode{};
+};
+
 // One admitted C-style `for` loop return: `for (let id = <lit>; <ident> <cmp>
 // <lit>; <ident> = <binary>) {}` followed by a scalar return. The for-loop
 // desugars to a leading local binding plus a loop whose condition is the
@@ -728,6 +760,11 @@ struct PendingFunctionDeclaration final {
   // return reuse the flat mut-local fields; this holds only the loop condition
   // parameter reference and the loop span.
   zc::Maybe<PendingLoopBodyReturn> loopBodyReturn;
+  // Populated for the do-while loop-body composite shape (a leading mut-local,
+  // a `do { <body> } while (<cond>);` whose body writes it, and a local
+  // return). The declaration, writes, and return reuse the flat mut-local
+  // fields; this holds the resolved comparison condition and the loop span.
+  zc::Maybe<PendingDoWhileLoopBodyReturn> doWhileLoopBodyReturn;
   // Populated for the C-style for-loop shape: a `for (let id = <lit>;
   // <ident> <cmp> <lit>; <ident> = <binary>) {}` followed by a scalar
   // return. The init local, comparison condition, and update write are

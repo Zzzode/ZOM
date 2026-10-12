@@ -4880,6 +4880,195 @@ bool validLoopBodyReturnFunction(
   return false;
 }
 
+// Validates the do-while loop-body composite function: `mut x = <lit>; do {
+// <writes to x> } while (<ident> <cmp> <lit>); return x;` lowered to a
+// reducible four-block CFG with body-before-condition layout. Parameters
+// occupy localId(1..P); the user local x is localId(P+1); the comparison temp
+// is localId(P+2). The entry block declares and initializes x then jumps to
+// the body; the body carries the write assignments (Overwrite) then jumps to
+// the condition block; the condition block evaluates the comparison into the
+// temp and switches on it back to the body (true, the reducible back-edge) or
+// the exit (default); the exit returns a place-use of x.
+bool validDoWhileLoopBodyReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& local,
+    const hir::HirLoopStatement& loop, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirLocalReferenceExpression& reference,
+    const hir::HirPrimitiveBinaryExpression& condition, const hir::VerifiedHirModule& hirModule,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != parameterCount + 2 || function.blocks.size() != 4 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 3 ||
+      sourceBlock.statements[0] != local.node || sourceBlock.statements[1] != loop.node ||
+      sourceBlock.statements[2] != sourceReturn.node || sourceReturn.value != reference.node ||
+      sourceReturn.resultType != declaration.resultType || loop.condition != condition.node ||
+      loop.type != condition.type || local.type != declaration.resultType ||
+      reference.type != declaration.resultType ||
+      reference.category != hir::HirValueCategory::Place || local.local != reference.local ||
+      loop.body.size() == 0) {
+    return false;
+  }
+  const auto resultLocal = localId(parameterCount + 1);
+  const auto conditionTemp = localId(parameterCount + 2);
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (uint32_t i = 0; i < parameterCount; ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(i + 1) || parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto& result = function.locals[parameterCount];
+  if (result.id != resultLocal || result.kind != MirLocalKind::UserLocal ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, local.sourceSpan)) {
+    return false;
+  }
+  const auto& temp = function.locals[parameterCount + 1];
+  if (temp.id != conditionTemp || temp.kind != MirLocalKind::Temporary ||
+      temp.type != condition.type || temp.sourceScope != scopeId(1) ||
+      !sameSpan(temp.sourceSpan, condition.sourceSpan)) {
+    return false;
+  }
+  const auto& entry = function.blocks[0];
+  const auto& body = function.blocks[1];
+  const auto& conditionBlock = function.blocks[2];
+  const auto& exit = function.blocks[3];
+  // A trailing break exits the body to the loop exit (bb4); a trailing
+  // continue or a write-only body jumps to the condition block (bb3).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(3);
+  // Entry: StorageLive(x) ; StorageLive(temp) ; Assign(x = initializer,
+  // Initialize) ; Goto(bb2).
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
+  auto initializer = expressionFor(hirModule, initializerNode);
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 3 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), local.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::StorageLive ||
+      entry.statements[1].storageLocal() != conditionTemp ||
+      !sameSpan(entry.statements[1].sourceSpan(), condition.sourceSpan) ||
+      entry.statements[2].kind() != MirStatementKind::Assign ||
+      entry.terminator.kind() != MirTerminatorKind::Goto ||
+      entry.terminator.gotoValue().target != blockId(2) || body.id != blockId(2) ||
+      body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
+      body.terminator.kind() != MirTerminatorKind::Goto ||
+      body.terminator.gotoValue().target != expectedBodyTarget || conditionBlock.id != blockId(3) ||
+      conditionBlock.sourceScope != scopeId(1) || conditionBlock.statements.size() != 1 ||
+      conditionBlock.terminator.kind() != MirTerminatorKind::SwitchInt || exit.id != blockId(4) ||
+      exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
+      exit.terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  const auto& initAssign = entry.statements[2].assignmentValue();
+  if (initializer == zc::none || initAssign.initialization != MirInitializationKind::Initialize ||
+      initAssign.destination.local() != resultLocal ||
+      initAssign.destination.rootType() != declaration.resultType ||
+      initAssign.destination.resultType() != declaration.resultType ||
+      initAssign.destination.projections().size() != 0 ||
+      initAssign.value.kind() != MirRvalueKind::Use ||
+      initAssign.value.useValue().operand.kind() != MirOperandKind::Constant ||
+      initAssign.value.useValue().operand.constantValue().type !=
+          ZC_ASSERT_NONNULL(initializer).type ||
+      !sameConstant(initAssign.value.useValue().operand.constantValue().value,
+                    ZC_ASSERT_NONNULL(initializer).value, module, identities, semanticTypes)) {
+    return false;
+  }
+  // Condition block: Assign(temp = Comparison(op, copy(x), <lit>), Overwrite).
+  // The condition block is the loop header (the body jumps back to it), so the
+  // assignment must be Overwrite to survive the ownership fixpoint iteration.
+  const auto& condAssign = conditionBlock.statements[0].assignmentValue();
+  if (condAssign.initialization != MirInitializationKind::Overwrite ||
+      condAssign.destination.local() != conditionTemp ||
+      condAssign.destination.rootType() != condition.type ||
+      condAssign.destination.resultType() != condition.type ||
+      condAssign.destination.projections().size() != 0 ||
+      condAssign.value.kind() != MirRvalueKind::Comparison ||
+      !sameSpan(conditionBlock.statements[0].sourceSpan(), condition.sourceSpan)) {
+    return false;
+  }
+  const auto& comparison = condAssign.value.comparisonValue();
+  const auto comparisonOperator = mirComparisonOperatorFor(condition.operation);
+  if (comparisonOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(comparisonOperator)) {
+    return false;
+  }
+  // Left operand: copy place-use of the user local x.
+  if (comparison.left.kind() != MirOperandKind::Copy ||
+      comparison.left.place().local() != resultLocal ||
+      comparison.left.place().rootType() != condition.operandType ||
+      comparison.left.place().resultType() != condition.operandType ||
+      comparison.left.place().projections().size() != 0) {
+    return false;
+  }
+  // Right operand: scalar literal constant.
+  auto conditionRight = expressionFor(hirModule, condition.right);
+  if (conditionRight == zc::none || comparison.right.kind() != MirOperandKind::Constant ||
+      comparison.right.constantValue().type != ZC_ASSERT_NONNULL(conditionRight).type ||
+      !sameConstant(comparison.right.constantValue().value, ZC_ASSERT_NONNULL(conditionRight).value,
+                    module, identities, semanticTypes)) {
+    return false;
+  }
+  // SwitchInt on the condition temp: [true -> bb2], default = bb4.
+  const auto& switchInt = conditionBlock.terminator.switchIntValue();
+  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  const auto& trueArm = switchInt.arms[0];
+  if (trueArm.target != blockId(2)) return false;
+  auto trueValue = trueArm.value.booleanValue();
+  if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
+  if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != conditionTemp ||
+      switchInt.discriminant.place().rootType() != condition.type ||
+      switchInt.discriminant.place().resultType() != condition.type ||
+      switchInt.discriminant.place().projections().size() != 0) {
+    return false;
+  }
+  // Body: one Overwrite of x per loop-body write, in order.
+  for (size_t writeIndex = 0; writeIndex < loop.body.size(); ++writeIndex) {
+    auto write = localWriteFor(hirModule, loop.body[writeIndex]);
+    if (write == zc::none || ZC_ASSERT_NONNULL(write).local != local.local ||
+        ZC_ASSERT_NONNULL(write).field != zc::none ||
+        ZC_ASSERT_NONNULL(write).type != declaration.resultType ||
+        ZC_ASSERT_NONNULL(write).kind != hir::HirLocalWriteKind::Overwrite) {
+      return false;
+    }
+    const auto& statement = body.statements[writeIndex];
+    if (statement.kind() != MirStatementKind::Assign ||
+        !sameSpan(statement.sourceSpan(), ZC_ASSERT_NONNULL(write).sourceSpan)) {
+      return false;
+    }
+    const auto& assignment = statement.assignmentValue();
+    if (assignment.initialization != MirInitializationKind::Overwrite ||
+        assignment.destination.local() != resultLocal ||
+        assignment.destination.rootType() != declaration.resultType ||
+        assignment.destination.resultType() != declaration.resultType ||
+        assignment.destination.projections().size() != 0) {
+      return false;
+    }
+  }
+  // Exit: Return(placeUse(x)).
+  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 // Validates the for-loop composite function: `for (let i = <lit>; i < <lit>;
 // i = i <bin> <lit>) {} return <lit>;` lowered to a reducible four-block CFG.
 // Parameters occupy localId(1..P); the init local i is localId(P+1); the
@@ -10903,6 +11092,30 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       forLoopAccumulatorCorrection += static_cast<int64_t>(accCount) - 1;
     }
   }
+  // Do-while loop-body functions (`mut x = <lit>; do { <writes> } while (<ident>
+  // <cmp> <lit>); return x;`) carry a checksum imbalance: the comparison
+  // primitive binary adds one lhs node, but the return is a local reference
+  // (not a value node), so the rhs lacks the matching node that a for-loop's
+  // literal return would contribute. Each such function adds one rhs term.
+  int64_t doWhileLoopBodyReturnCount = 0;
+  for (const auto& doWhileFunction : hirModule.functions()) {
+    auto doWhileBlock = blockFor(hirModule, doWhileFunction.body);
+    ZC_IF_SOME(block, doWhileBlock) {
+      if (block.statements.size() != 3) continue;
+      auto sourceLocal = localFor(hirModule, block.statements[0]);
+      auto loop = loopFor(hirModule, block.statements[1]);
+      auto sourceReturn = returnFor(hirModule, block.statements[2]);
+      if (sourceLocal == zc::none || loop == zc::none || sourceReturn == zc::none) continue;
+      ZC_IF_SOME(loopValue, loop) {
+        ZC_IF_SOME(returnStatement, sourceReturn) {
+          if (primitiveBinaryFor(hirModule, loopValue.condition) != zc::none &&
+              localReferenceFor(hirModule, returnStatement.value) != zc::none) {
+            ++doWhileLoopBodyReturnCount;
+          }
+        }
+      }
+    }
+  }
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
@@ -10918,7 +11131,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            receiverSelfCallValueNodes + voidFunctionCount - voidLetBodyCount -
                            localAliasReborrowCount - hirModule.localWrites().size() -
                            hirModule.parameterFieldWrites().size()) +
-      binaryWriteLocalOperandCount;
+      binaryWriteLocalOperandCount + doWhileLoopBodyReturnCount;
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=
@@ -11785,6 +11998,352 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
                       pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
                       continue;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      // Do-while loop-body composite body: `mut x = <lit>; do { <writes to x>
+      // } while (<ident> <cmp> <lit>); return x;`. Lowers to a reducible
+      // four-block CFG with body-before-condition layout. Parameters occupy
+      // localId(1..P); the user local x is localId(P+1); the comparison temp
+      // is localId(P+2). The entry block declares and initializes x then jumps
+      // to the body; the body carries the write assignments (Overwrite) then
+      // jumps to the condition block; the condition block evaluates the
+      // comparison into the temp and switches on it back to the body (true,
+      // the reducible back-edge) or the exit (default); the exit returns a
+      // place-use of x.
+      if (block.statements.size() == 3) {
+        auto sourceLocal = localFor(hirModule, block.statements[0]);
+        auto loop = loopFor(hirModule, block.statements[1]);
+        auto sourceReturn = returnFor(hirModule, block.statements[2]);
+        auto definition = identities.definition(declaration.definition);
+        ZC_IF_SOME(local, sourceLocal) {
+          ZC_IF_SOME(loopValue, loop) {
+            ZC_IF_SOME(returnStatement, sourceReturn) {
+              hir::HirNodeId initializerNode;
+              ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
+              auto initializer = expressionFor(hirModule, initializerNode);
+              auto reference = localReferenceFor(hirModule, returnStatement.value);
+              auto conditionBinary = primitiveBinaryFor(hirModule, loopValue.condition);
+              const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+              const auto userLocalId = localId(parameterCount + 1);
+              const auto conditionTempId = localId(parameterCount + 2);
+              ZC_IF_SOME(initialValue, initializer) {
+                ZC_IF_SOME(localReference, reference) {
+                  ZC_IF_SOME(condition, conditionBinary) {
+                    const auto comparisonOperator = mirComparisonOperatorFor(condition.operation);
+                    if (local.initializer != zc::none && local.local == localReference.local &&
+                        local.type == declaration.resultType && initialValue.type == local.type &&
+                        localReference.type == local.type &&
+                        localReference.category == hir::HirValueCategory::Place &&
+                        comparisonOperator != zc::none && condition.operandType == local.type &&
+                        definition != zc::none) {
+                      auto conditionLeft = localReferenceFor(hirModule, condition.left);
+                      auto conditionRight = expressionFor(hirModule, condition.right);
+                      ZC_IF_SOME(condLeft, conditionLeft) {
+                        ZC_IF_SOME(condRight, conditionRight) {
+                          if (condLeft.local != local.local || condLeft.type != local.type ||
+                              condRight.type != local.type) {
+                            // Not a do-while shape; fall through to the next
+                            // arm.
+                          } else {
+                            // Build the loop-body write assignments. Each write
+                            // is an Overwrite of x whose value is a literal
+                            // constant, a copy place-use of a parameter, or an
+                            // Arithmetic/Comparison rvalue, reusing the flat
+                            // mut-local write lowering.
+                            zc::Vector<MirStatement> bodyStatements;
+                            bool built = true;
+                            for (size_t writeIndex = 0; built && writeIndex < loopValue.body.size();
+                                 ++writeIndex) {
+                              auto write = localWriteFor(hirModule, loopValue.body[writeIndex]);
+                              if (write == zc::none ||
+                                  ZC_ASSERT_NONNULL(write).local != local.local ||
+                                  ZC_ASSERT_NONNULL(write).field != zc::none ||
+                                  ZC_ASSERT_NONNULL(write).type != local.type ||
+                                  ZC_ASSERT_NONNULL(write).kind !=
+                                      hir::HirLocalWriteKind::Overwrite) {
+                                built = false;
+                                break;
+                              }
+                              const auto valueNode = ZC_ASSERT_NONNULL(write).value;
+                              auto writeLiteral = expressionFor(hirModule, valueNode);
+                              auto writeParameter = parameterReferenceFor(hirModule, valueNode);
+                              auto writeBinary = primitiveBinaryFor(hirModule, valueNode);
+                              zc::Maybe<MirRvalue> rvalue;
+                              ZC_IF_SOME(literalValue, writeLiteral) {
+                                if (literalValue.type != local.type) {
+                                  built = false;
+                                } else {
+                                  rvalue = MirRvalue::use(
+                                      MirOperand::constant(local.type, literalValue.value.clone()));
+                                }
+                              }
+                              ZC_IF_SOME(parameterValue, writeParameter) {
+                                size_t parameterIndex = 0;
+                                bool found = false;
+                                for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+                                  if (declaration.parameters[p].key == parameterValue.parameter) {
+                                    parameterIndex = p;
+                                    found = true;
+                                    break;
+                                  }
+                                }
+                                if (!found || parameterValue.type != local.type ||
+                                    parameterValue.category != hir::HirValueCategory::Place) {
+                                  built = false;
+                                } else {
+                                  zc::Vector<MirProjection> projections;
+                                  auto operand = placeUse(
+                                      proofs, copy,
+                                      MirPlace(localId(static_cast<uint32_t>(parameterIndex) + 1),
+                                               local.type, zc::mv(projections), local.type));
+                                  if (operand == zc::none) {
+                                    built = false;
+                                  } else {
+                                    rvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+                                  }
+                                }
+                              }
+                              ZC_IF_SOME(binaryValue, writeBinary) {
+                                const auto writeComparisonOperator =
+                                    mirComparisonOperatorFor(binaryValue.operation);
+                                const auto writeArithmeticOperator =
+                                    mirArithmeticOperatorFor(binaryValue.operation);
+                                const bool isArithmeticBinary =
+                                    writeComparisonOperator == zc::none &&
+                                    writeArithmeticOperator != zc::none;
+                                if (binaryValue.type != local.type ||
+                                    binaryValue.category != hir::HirValueCategory::Value ||
+                                    (writeComparisonOperator == zc::none &&
+                                     writeArithmeticOperator == zc::none) ||
+                                    (isArithmeticBinary && binaryValue.operandType != local.type)) {
+                                  built = false;
+                                } else {
+                                  auto buildOperand =
+                                      [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+                                    auto operandLiteral = expressionFor(hirModule, operandNode);
+                                    ZC_IF_SOME(literalValue, operandLiteral) {
+                                      if (literalValue.type != binaryValue.operandType)
+                                        return zc::none;
+                                      return MirOperand::constant(binaryValue.operandType,
+                                                                  literalValue.value.clone());
+                                    }
+                                    auto operandParameter =
+                                        parameterReferenceFor(hirModule, operandNode);
+                                    ZC_IF_SOME(parameter, operandParameter) {
+                                      if (parameter.type != binaryValue.operandType)
+                                        return zc::none;
+                                      size_t parameterIndex = 0;
+                                      bool found = false;
+                                      for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+                                        if (declaration.parameters[p].key == parameter.parameter) {
+                                          parameterIndex = p;
+                                          found = true;
+                                          break;
+                                        }
+                                      }
+                                      if (!found) return zc::none;
+                                      zc::Vector<MirProjection> projections;
+                                      return placeUse(
+                                          proofs, copy,
+                                          MirPlace(
+                                              localId(static_cast<uint32_t>(parameterIndex) + 1),
+                                              binaryValue.operandType, zc::mv(projections),
+                                              binaryValue.operandType));
+                                    }
+                                    // A local operand reads the written user
+                                    // local (`x = x + 1`): a copy place-use
+                                    // of that local.
+                                    auto operandLocal = localReferenceFor(hirModule, operandNode);
+                                    ZC_IF_SOME(localRef, operandLocal) {
+                                      if (localRef.type != binaryValue.operandType ||
+                                          localRef.local != local.local) {
+                                        return zc::none;
+                                      }
+                                      zc::Vector<MirProjection> projections;
+                                      return placeUse(
+                                          proofs, copy,
+                                          MirPlace(userLocalId, binaryValue.operandType,
+                                                   zc::mv(projections), binaryValue.operandType));
+                                    }
+                                    return zc::none;
+                                  };
+                                  auto leftOperand = buildOperand(binaryValue.left);
+                                  auto rightOperand = buildOperand(binaryValue.right);
+                                  if (leftOperand == zc::none || rightOperand == zc::none) {
+                                    built = false;
+                                  } else {
+                                    rvalue = isArithmeticBinary
+                                                 ? MirRvalue::arithmetic(
+                                                       ZC_ASSERT_NONNULL(writeArithmeticOperator),
+                                                       zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                       zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                       binaryValue.type)
+                                                 : MirRvalue::comparison(
+                                                       ZC_ASSERT_NONNULL(writeComparisonOperator),
+                                                       zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                                       zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+                                                       binaryValue.type);
+                                  }
+                                }
+                              }
+                              if (!built || rvalue == zc::none) {
+                                built = false;
+                                break;
+                              }
+                              zc::Vector<MirProjection> overwriteProjections;
+                              bodyStatements.add(MirStatement::assign(
+                                  MirPlace(userLocalId, local.type, zc::mv(overwriteProjections),
+                                           local.type),
+                                  zc::mv(ZC_ASSERT_NONNULL(rvalue)),
+                                  MirInitializationKind::Overwrite,
+                                  ZC_ASSERT_NONNULL(write).sourceSpan.clone()));
+                            }
+                            if (!built) {
+                              return rejectMir<BuiltMirCandidate>(
+                                  ir::IrFailurePhase::MirConstruction,
+                                  ir::IrFailureKind::InvalidFact, module, declaration.definition,
+                                  identities, static_cast<uint32_t>(pending.size() + 1));
+                            }
+                            // Build the reducible four-block CFG.
+                            zc::Vector<MirSourceScope> scopes;
+                            zc::Maybe<MirSourceScopeId> noParent;
+                            scopes.add(MirSourceScope{scopeId(1), zc::mv(noParent),
+                                                      declaration.sourceSpan.clone()});
+                            zc::Vector<MirLocalDeclaration> locals;
+                            for (uint32_t p = 0; p < parameterCount; ++p) {
+                              locals.add(MirLocalDeclaration{
+                                  localId(p + 1), MirLocalKind::Parameter,
+                                  declaration.parameters[p].type, scopeId(1),
+                                  declaration.parameters[p].sourceSpan.clone()});
+                            }
+                            locals.add(MirLocalDeclaration{userLocalId, MirLocalKind::UserLocal,
+                                                           local.type, scopeId(1),
+                                                           local.sourceSpan.clone()});
+                            locals.add(MirLocalDeclaration{conditionTempId, MirLocalKind::Temporary,
+                                                           condition.type, scopeId(1),
+                                                           condition.sourceSpan.clone()});
+                            // Entry: StorageLive(x), StorageLive(temp),
+                            // Assign(x = init, Initialize), Goto(bb2).
+                            zc::Vector<MirStatement> entryStatements;
+                            entryStatements.add(
+                                MirStatement::storageLive(userLocalId, local.sourceSpan.clone()));
+                            entryStatements.add(MirStatement::storageLive(
+                                conditionTempId, condition.sourceSpan.clone()));
+                            zc::Vector<MirProjection> initializeProjections;
+                            entryStatements.add(MirStatement::assign(
+                                MirPlace(userLocalId, local.type, zc::mv(initializeProjections),
+                                         local.type),
+                                MirRvalue::use(
+                                    MirOperand::constant(local.type, initialValue.value.clone())),
+                                MirInitializationKind::Initialize,
+                                initialValue.sourceSpan.clone()));
+                            // Condition: Assign(temp = Comparison(op, copy(x),
+                            // <lit>), Overwrite), SwitchInt(copy(temp),
+                            // [true->bb2], default=bb4).
+                            //
+                            // The condition block is the loop header: the body
+                            // jumps back to it, so the fixpoint iteration in
+                            // the ownership facts processes it more than once.
+                            // Overwrite is required because the temp may already
+                            // be initialized on the second and later passes.
+                            zc::Vector<MirProjection> condLeftProjections;
+                            auto condLeftOperand = placeUse(
+                                proofs, copy,
+                                MirPlace(userLocalId, condition.operandType,
+                                         zc::mv(condLeftProjections), condition.operandType));
+                            if (condLeftOperand == zc::none) {
+                              return rejectMir<BuiltMirCandidate>(
+                                  ir::IrFailurePhase::MirConstruction,
+                                  ir::IrFailureKind::InvalidFact, module, declaration.definition,
+                                  identities, static_cast<uint32_t>(pending.size() + 1));
+                            }
+                            zc::Vector<MirStatement> conditionStatements;
+                            zc::Vector<MirProjection> tempProjections;
+                            conditionStatements.add(MirStatement::assign(
+                                MirPlace(conditionTempId, condition.type, zc::mv(tempProjections),
+                                         condition.type),
+                                MirRvalue::comparison(
+                                    ZC_ASSERT_NONNULL(comparisonOperator),
+                                    zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                                    MirOperand::constant(condRight.type, condRight.value.clone()),
+                                    condition.type),
+                                MirInitializationKind::Overwrite, condition.sourceSpan.clone()));
+                            zc::Vector<MirProjection> discriminantProjections;
+                            auto discriminant =
+                                placeUse(proofs, copy,
+                                         MirPlace(conditionTempId, condition.type,
+                                                  zc::mv(discriminantProjections), condition.type));
+                            if (discriminant == zc::none) {
+                              return rejectMir<BuiltMirCandidate>(
+                                  ir::IrFailurePhase::MirConstruction,
+                                  ir::IrFailureKind::InvalidFact, module, declaration.definition,
+                                  identities, static_cast<uint32_t>(pending.size() + 1));
+                            }
+                            zc::Vector<MirSwitchIntArm> arms;
+                            arms.add(MirSwitchIntArm{
+                                checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+                            // A trailing break exits the body to the loop exit
+                            // (bb4); a trailing continue or a write-only body
+                            // jumps to the condition block (bb3).
+                            const auto bodyTerminatorTarget =
+                                loopValue.breakSpan != zc::none ? blockId(4) : blockId(3);
+                            const auto& bodyTerminatorSpan =
+                                loopValue.breakSpan != zc::none
+                                    ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+                                    : (loopValue.continueSpan != zc::none
+                                           ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                           : loopValue.sourceSpan);
+                            zc::Vector<MirProjection> returnProjections;
+                            auto returnOperand =
+                                placeUse(proofs, copy,
+                                         MirPlace(userLocalId, local.type,
+                                                  zc::mv(returnProjections), local.type));
+                            if (returnOperand == zc::none) {
+                              return rejectMir<BuiltMirCandidate>(
+                                  ir::IrFailurePhase::MirConstruction,
+                                  ir::IrFailureKind::InvalidFact, module, declaration.definition,
+                                  identities, static_cast<uint32_t>(pending.size() + 1));
+                            }
+                            zc::Vector<MirStatement> exitStatements;
+                            zc::Vector<MirBasicBlock> blocks;
+                            blocks.add(
+                                MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements),
+                                              MirTerminator::gotoTarget(
+                                                  blockId(2), loopValue.sourceSpan.clone())});
+                            blocks.add(MirBasicBlock{
+                                blockId(2), scopeId(1), zc::mv(bodyStatements),
+                                MirTerminator::gotoTarget(bodyTerminatorTarget,
+                                                          bodyTerminatorSpan.clone())});
+                            blocks.add(MirBasicBlock{
+                                blockId(3), scopeId(1), zc::mv(conditionStatements),
+                                MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                         zc::mv(arms), blockId(4),
+                                                         loopValue.sourceSpan.clone())});
+                            blocks.add(MirBasicBlock{
+                                blockId(4), scopeId(1), zc::mv(exitStatements),
+                                MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                           returnStatement.sourceSpan.clone())});
+                            MirFunction function{declaration.definition,
+                                                 MirFunctionKind::Function,
+                                                 identity::DefinitionKind::Function,
+                                                 declaration.resultType,
+                                                 declaration.sourceSpan.clone(),
+                                                 zc::mv(scopes),
+                                                 zc::mv(locals),
+                                                 zc::mv(blocks)};
+                            zc::Array<uint8_t> ownerKey;
+                            ZC_IF_SOME(key, definition) { ownerKey = key.key().encode(); }
+                            pending.add(PendingMirFunction{zc::mv(function), zc::mv(ownerKey)});
+                            continue;
+                          }
+                        }
+                      }
                     }
                   }
                 }
@@ -17788,6 +18347,19 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                                                        loopValue, returnStatement, condition,
                                                        returnValue, hirModule, proofs, copy, module,
                                                        identities, semanticTypes);
+                  }
+                }
+                // Do-while loop-body composite: the return is a local
+                // reference and the condition is a comparison binary.
+                if (!valid) {
+                  auto reference = localReferenceFor(hirModule, returnStatement.value);
+                  ZC_IF_SOME(referenceValue, reference) {
+                    ZC_IF_SOME(condition, conditionBinary) {
+                      valid = validDoWhileLoopBodyReturnFunction(
+                          function, sourceDeclaration, block, local, loopValue, returnStatement,
+                          referenceValue, condition, hirModule, proofs, copy, module, identities,
+                          semanticTypes);
+                    }
                   }
                 }
                 // Loop-body composite: the return is a local reference and the

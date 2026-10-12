@@ -2567,25 +2567,54 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   }
   if (statements.size == 3) {
     // Loop-body composite shape: a leading `mut` local declaration, an admitted
-    // `while` whose bare-identifier condition guards a body that writes that
-    // local, and a trailing `return <ident>;`. The loop body writes reuse the
-    // mut-local write lowering; they become the loop statement's body node ids.
+    // `while` or `do { <body> } while (<cond>);` loop whose body writes that
+    // local, and a trailing `return <ident>;`. The while-loop condition is a
+    // bare identifier; the do-while condition is a binary comparison with
+    // ident/literal operands or a bare identifier. The loop body writes reuse
+    // the mut-local write lowering; they become the loop statement's body node
+    // ids.
     auto middleItem = statementItem(tree, tree.list(statements)[1]);
     ast::NodeId middleStmt;
     ZC_IF_SOME(item, middleItem) { middleStmt = item; }
-    if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt) {
+    if (middleItem != zc::none &&
+        (tree.node(middleStmt).kind == ast::SyntaxKind::WhileStmt ||
+         tree.node(middleStmt).kind == ast::SyntaxKind::DoWhileStatement)) {
+      const bool isDoWhile = tree.node(middleStmt).kind == ast::SyntaxKind::DoWhileStatement;
       auto leadingItem = statementItem(tree, tree.list(statements)[0]);
       ast::NodeId letNode;
       ZC_IF_SOME(item, leadingItem) { letNode = item; }
       const auto& loop = tree.node(middleStmt);
-      const ast::NodeId loopCondition(loop.payload.words[ast::kWhileStmtCondWord]);
-      const ast::NodeId loopBody(loop.payload.words[ast::kWhileStmtBodyWord]);
+      // WhileStmt stores (cond, body); DoWhileStatement stores (body, cond).
+      const ast::NodeId loopCondition(isDoWhile ? loop.payload.words[ast::kDoWhileStatementCondWord]
+                                                : loop.payload.words[ast::kWhileStmtCondWord]);
+      const ast::NodeId loopBody(isDoWhile ? loop.payload.words[ast::kDoWhileStatementBodyWord]
+                                           : loop.payload.words[ast::kWhileStmtBodyWord]);
+      // The while-loop condition is a bare identifier. The do-while condition
+      // admits a binary comparison with ident/literal operands (at least one
+      // identifier) or a bare identifier.
+      bool conditionOk = false;
+      if (tree.contains(loopCondition)) {
+        if (tree.node(loopCondition).kind == ast::SyntaxKind::IdentExpr) {
+          conditionOk = true;
+        } else if (isDoWhile && tree.node(loopCondition).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId condLeft(
+              tree.node(loopCondition).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId condRight(
+              tree.node(loopCondition).payload.words[ast::kBinaryExprRhsWord]);
+          if (tree.contains(condLeft) && tree.contains(condRight)) {
+            const bool leftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+            const bool rightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+            const bool leftOk = leftIdent || isScalarLiteral(tree.node(condLeft).kind);
+            const bool rightOk = rightIdent || isScalarLiteral(tree.node(condRight).kind);
+            conditionOk = leftOk && rightOk && (leftIdent || rightIdent);
+          }
+        }
+      }
       if (leadingItem == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
           static_cast<ast::BindingDeclarationKind>(
               tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
               ast::BindingDeclarationKind::Mut ||
-          !tree.contains(loopCondition) ||
-          tree.node(loopCondition).kind != ast::SyntaxKind::IdentExpr || !tree.contains(loopBody) ||
+          !conditionOk || !tree.contains(loopBody) ||
           tree.node(loopBody).kind != ast::SyntaxKind::BlockStmt ||
           tree.node(value).kind != ast::SyntaxKind::IdentExpr) {
         return zc::none;
@@ -2674,6 +2703,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.returnsLocal = true;
       shape.localReference = value;
       shape.isLoopBody = true;
+      shape.isDoWhileLoopBody = isDoWhile;
       shape.loopCondition = loopCondition;
       shape.loopStatement = middleStmt;
       shape.loopBodyBreak = trailingBreak;

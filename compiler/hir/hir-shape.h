@@ -344,6 +344,12 @@ struct FunctionReturnShape final {
   // localReference, returnsLocal) and adds only the loop discriminator, the loop
   // condition node, and the loop statement node.
   bool isLoopBody = false;
+  // True when the loop-body composite's loop statement is a `do { <body> }
+  // while (<cond>);` rather than a `while`. The condition is a binary
+  // comparison (ident/literal operands) or a bare identifier, and the CFG is
+  // body-before-condition. The loop condition and statement nodes reuse
+  // `loopCondition` and `loopStatement`.
+  bool isDoWhileLoopBody = false;
   // Loop-body composite: when the loop body's trailing statement is a
   // `break;` or `continue;` (labeled or unlabeled), these record its AST
   // node (empty otherwise). At most one is set; both are empty when the body

@@ -996,6 +996,63 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   return hasWrite;
 }
 
+/// \brief Shape-matches a `do { <body> } while (<cond>);` loop that has an
+/// admitted semantic contract.
+///
+/// The admitted do-while body contract is identical to the while-loop body:
+/// a block whose statements are admitted scalar-local write statements
+/// (`<ident> = <lit | ident | binary>;`) optionally followed by one trailing
+/// unlabeled `break;` or `continue;`. The condition admits a binary comparison
+/// whose operands are each an identifier or a scalar literal (with at least
+/// one identifier operand), or a bare identifier. Which comparison operators
+/// are supported is a checker decision. The do-while desugars to a
+/// body-before-condition reducible four-block CFG downstream. Structure only;
+/// the checker/HIR decide which local each write targets and which operators
+/// are supported.
+bool isAdmittedDoWhileStatement(const ast::Tree& tree, ast::NodeId doWhileStmt) {
+  if (!tree.contains(doWhileStmt) ||
+      tree.node(doWhileStmt).kind != ast::SyntaxKind::DoWhileStatement) {
+    return false;
+  }
+  const auto& loop = tree.node(doWhileStmt);
+  const ast::NodeId body(loop.payload.words[ast::kDoWhileStatementBodyWord]);
+  const ast::NodeId condition(loop.payload.words[ast::kDoWhileStatementCondWord]);
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
+  // Condition: a binary comparison with identifier/literal operands (at least
+  // one identifier), or a bare identifier.
+  if (tree.contains(condition) && tree.node(condition).kind == ast::SyntaxKind::BinaryExpr) {
+    const ast::NodeId condLeft(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId condRight(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(condLeft) || !tree.contains(condRight)) return false;
+    const bool condLeftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+    const bool condRightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+    const bool condLeftOk = condLeftIdent || isScalarLiteral(tree.node(condLeft).kind);
+    const bool condRightOk = condRightIdent || isScalarLiteral(tree.node(condRight).kind);
+    if (!condLeftOk || !condRightOk || (!condLeftIdent && !condRightIdent)) return false;
+  } else if (!tree.contains(condition) || tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements)) return false;
+  const auto statementNodes = tree.list(statements);
+  bool hasWrite = false;
+  for (size_t index = 0; index < statementNodes.size(); ++index) {
+    if (isAdmittedLoopBodyWrite(tree, statementNodes[index])) {
+      hasWrite = true;
+      continue;
+    }
+    // A break/continue is admitted only as the trailing body statement.
+    if (index + 1 == statementNodes.size() &&
+        isAdmittedLoopBodyControlFlow(tree, statementNodes[index])) {
+      continue;
+    }
+    return false;
+  }
+  return hasWrite;
+}
+
 /// \brief Shape-matches a C-style `for` loop that has an admitted semantic
 /// contract.
 ///
@@ -2157,7 +2214,8 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
                (syntax.kind == ast::SyntaxKind::ForStmt &&
                 !isAdmittedForStatement(boundModule.tree(), nodeId)) ||
                syntax.kind == ast::SyntaxKind::ForInStatement ||
-               syntax.kind == ast::SyntaxKind::DoWhileStatement) {
+               (syntax.kind == ast::SyntaxKind::DoWhileStatement &&
+                !isAdmittedDoWhileStatement(boundModule.tree(), nodeId))) {
       kind = SurfaceSyntaxKind::Loop;
       rejected = true;
     } else if (syntax.kind == ast::SyntaxKind::BreakStmt ||
@@ -2219,6 +2277,16 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
     if (syntax.kind == ast::SyntaxKind::WhileStmt &&
         isAdmittedLoopStatement(boundModule.tree(), nodeId)) {
       const ast::NodeId condition(syntax.payload.words[ast::kWhileStmtCondWord]);
+      if (boundModule.tree().contains(condition)) { self(condition, self); }
+      return;
+    }
+    // An admitted do-while loop body is validated by
+    // isAdmittedDoWhileStatement; skip the body block so its trailing
+    // break/continue is not rejected as LoopControl. The condition (a
+    // comparison or bare identifier) is still traversed.
+    if (syntax.kind == ast::SyntaxKind::DoWhileStatement &&
+        isAdmittedDoWhileStatement(boundModule.tree(), nodeId)) {
+      const ast::NodeId condition(syntax.payload.words[ast::kDoWhileStatementCondWord]);
       if (boundModule.tree().contains(condition)) { self(condition, self); }
       return;
     }

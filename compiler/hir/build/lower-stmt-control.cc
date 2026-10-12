@@ -497,6 +497,138 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
                                                     placeCategory, placeSpan.clone()});
 }
 
+void lowerDoWhileLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  PendingDoWhileLoopBodyReturn doWhile = zc::mv(ZC_ASSERT_NONNULL(function.doWhileLoopBodyReturn));
+  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
+  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  const identity::SourceSpan initializerSpan =
+      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
+  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
+  const identity::SourceSpan placeSpan =
+      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+  const size_t writeCount = function.localWrites.size();
+
+  // Fixed-id layout: function, body, local, initializer, per-write
+  // (write node, write value node), comparison left, comparison right,
+  // comparison condition, loop, return, return value, then per-binary
+  // left+right. The body block lists [local, loop, return]; the loop
+  // statement carries the write node ids as its body.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  zc::Vector<HirNodeId> writeIds;
+  zc::Vector<HirNodeId> writeValueIds;
+  for (size_t index = 0; index < writeCount; ++index) {
+    ast::NodeId writeSource;
+    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    writeIds.add(ctx.allocNode(writeSource));
+    writeValueIds.add(ctx.allocNode(writeSource));
+  }
+  const HirNodeId comparisonLeftId = ctx.allocNode(ast::NodeId());
+  const HirNodeId comparisonRightId = ctx.allocNode(ast::NodeId());
+  const HirNodeId conditionId = ctx.allocNode(ast::NodeId());
+  const HirNodeId loopId = ctx.allocNode(doWhile.loopNode);
+  const HirNodeId returnId = ctx.allocNode(doWhile.returnNode);
+  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
+  // Binary operand nodes trail after the return value, matching the
+  // verifier's fixed-id layout.
+  zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
+  zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
+  for (const auto& writeValue : function.localWriteValues) {
+    zc::Maybe<HirNodeId> leftId;
+    zc::Maybe<HirNodeId> rightId;
+    if (writeValue.binary != zc::none) {
+      leftId = ctx.allocNode(ZC_ASSERT_NONNULL(writeValue.binary).left.sourceNode);
+      rightId = ctx.allocNode(ZC_ASSERT_NONNULL(writeValue.binary).right.sourceNode);
+    }
+    binaryLeftIds.add(zc::mv(leftId));
+    binaryRightIds.add(zc::mv(rightId));
+  }
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(loopId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  // Comparison condition: `<local> <cmp> <literal>`. The bool result drives
+  // the condition block's SwitchInt terminator in the MIR builder.
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      comparisonLeftId, doWhile.conditionLeft.local, doWhile.conditionLeft.type,
+      doWhile.conditionLeft.category, doWhile.conditionLeft.sourceSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{
+      comparisonRightId, doWhile.conditionRight.type, zc::mv(doWhile.conditionRight.value),
+      doWhile.conditionRight.category, doWhile.conditionRight.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+      conditionId, comparisonLeftId, comparisonRightId, doWhile.condition.operandType,
+      doWhile.condition.type, doWhile.condition.category, doWhile.condition.operation,
+      doWhile.condition.sourceSpan.clone()});
+
+  zc::Vector<HirNodeId> loopStatements;
+  for (const auto writeId : writeIds) { loopStatements.add(writeId); }
+  ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), doWhile.condition.type,
+                               HirValueCategory::Place, zc::mv(doWhile.loopSpan),
+                               zc::mv(doWhile.breakSpan), zc::mv(doWhile.continueSpan)});
+  ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
+                                   function.returnSpan.clone()});
+
+  // Initializer leaf (literal or parameter) at the initializer node, matching
+  // the flat mut-local write arm.
+  if (function.literal != zc::none) {
+    ZC_IF_SOME(literal, function.literal) {
+      ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, literal.clone(),
+                                                   HirValueCategory::Value,
+                                                   initializerSpan.clone()});
+    }
+  } else {
+    ZC_IF_SOME(reference, function.parameterReference) {
+      ctx.addParameterReference(HirParameterReferenceExpression{
+          initializerId, reference.parameter.clone(), reference.type, reference.category,
+          reference.sourceSpan.clone()});
+    }
+  }
+
+  for (size_t index = 0; index < writeCount; ++index) {
+    const HirLocalWriteStatement& write = function.localWrites[index];
+    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    ZC_IF_SOME(literal, writeValue.literal) {
+      ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
+                                                   literal.clone(), HirValueCategory::Value,
+                                                   write.valueSpan.clone()});
+    }
+    ZC_IF_SOME(parameter, writeValue.parameter) {
+      ctx.addParameterReference(HirParameterReferenceExpression{
+          writeValueIds[index], parameter.parameter.clone(), write.type, parameter.category,
+          parameter.sourceSpan.clone()});
+    }
+    ZC_IF_SOME(binary, writeValue.binary) {
+      HirNodeId leftId;
+      HirNodeId rightId;
+      ZC_IF_SOME(id, binaryLeftIds[index]) { leftId = id; }
+      ZC_IF_SOME(id, binaryRightIds[index]) { rightId = id; }
+      ctx.lowerArmLeaf(leftId, binary.left);
+      ctx.lowerArmLeaf(rightId, binary.right);
+      ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+          writeValueIds[index], leftId, rightId, binary.operandType, binary.type,
+          HirValueCategory::Value, binary.operation, binary.sourceSpan.clone()});
+    }
+    ctx.addLocalWrite(HirLocalWriteStatement{writeIds[index], hirLocalId(1), write.field,
+                                             write.type, writeValueIds[index], write.kind,
+                                             write.sourceSpan.clone(), write.valueSpan.clone()});
+  }
+
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
+                               initializerSpan.clone()});
+  ctx.addLocalReference(HirLocalReferenceExpression{returnValueId, hirLocalId(1), placeType,
+                                                    placeCategory, placeSpan.clone()});
+}
+
 void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingForLoopReturn forLoop = zc::mv(ZC_ASSERT_NONNULL(function.forLoopReturn));
 

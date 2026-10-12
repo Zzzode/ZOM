@@ -247,6 +247,29 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerLoopBodyReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one reducible four-block do-while loop-body return to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validDoWhileLoopBodyReturnFunction` accepts: a `Function` with zero
+  /// or more integer parameters, an integer user local (the accumulator), and
+  /// a boolean temporary (the comparison result); a reducible four-block
+  /// body-before-condition loop (`entry: StorageLive(local); Assign(local =
+  /// constant, Initialize); Goto(body)`; `body: Assign(local = rvalue,
+  /// Overwrite)...; Goto(condition)`; `condition: Assign(temp = Comparison(op,
+  /// copy(local), constant), Initialize); SwitchInt(copy(temp)) [true -> body],
+  /// default = exit`; `exit: Return(place-use local)`). The entry init assign
+  /// lowers to a LIR `Assign`, the body writes to LIR `Assign`/`Arithmetic`/
+  /// `Compare` statements, the condition comparison to a LIR `Compare`
+  /// statement, the condition `SwitchInt` to a `CondBranch`, the
+  /// entry/body `Goto`s to LIR `Goto`, and the place-use return to
+  /// `ReturnLocal`. Every shape outside this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerDoWhileLoopBodyReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one reducible four-block for-loop return to LIR.
   ///
   /// Admits the verified Built MIR shape that `mir::validForLoopReturnFunction`

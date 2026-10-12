@@ -1429,7 +1429,8 @@ private:
     // Select the MIR -> LIR lowering by module shape. A single function is
     // tried against every single-function lowering shape in order (the
     // scalar-initializer slice, then the boolean-conditional diamond, the
-    // reducible while-loop, the comparison-driven conditional, the aggregate
+    // reducible while-loop, the do-while loop-body, the comparison-driven
+    // conditional, the aggregate
     // field-return, and so on through the full ladder). A two-function module
     // is tried against the same-module direct-call slices (KR5.2 C4/C5): the
     // caller and the callee are identified by block count, and the deeper
@@ -1468,6 +1469,9 @@ private:
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerLoopReturn(fn, types); }
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerLoopBodyReturn(fn, types);
+        }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerDoWhileLoopBodyReturn(fn, types);
         }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerForLoopReturn(fn, types); }
         if (lowered == zc::none) {
@@ -1982,7 +1986,8 @@ private:
     if (lir == zc::none) {
       return NativeObjectResult(
           zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
-                  "boolean-conditional, reducible while-loop, comparison-driven conditional, "
+                  "boolean-conditional, reducible while-loop, do-while loop-body, "
+                  "comparison-driven conditional, "
                   "leading-local comparison conditional, "
                   "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
                   "by-value aggregate call, scalar-local direct call, boolean-conditional callee "

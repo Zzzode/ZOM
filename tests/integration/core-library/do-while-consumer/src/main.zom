@@ -1,0 +1,10 @@
+// Do-while fixture: a body-before-condition loop increments x until x reaches
+// 41, exercising the reducible four-block do-while CFG through the full IR
+// pipeline.
+fn entry() -> i32 {
+  mut x = 0;
+  do {
+    x = x + 1;
+  } while (x < 41);
+  return x;
+}

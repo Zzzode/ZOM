@@ -51,6 +51,15 @@ void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
 /// materializer's fixed-id layout byte-identically.
 void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one do-while loop-body composite through the recursive
+/// driver: one initialized mut local, an admitted `do { <body> } while
+/// (<cond>);` whose body writes that local (literal, parameter, or
+/// primitive-binary write values) and whose condition is a binary comparison
+/// over the local and a scalar literal, and a local-reference return. The
+/// comparison operands and condition allocate between the write-value ids and
+/// the loop id, reproducing the generic materializer's fixed-id layout.
+void lowerDoWhileLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one C-style for-loop return through the recursive driver:
 /// `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>) {}` followed
 /// by a scalar return. The for-loop desugars to a leading local binding, a loop
