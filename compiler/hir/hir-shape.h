@@ -272,6 +272,11 @@ struct FunctionReturnShape final {
   bool conditionIsUnary = false;
   ast::NodeId conditionUnaryOperand;
   bool conditionUnaryOperandIsLiteral = false;
+  // When the condition is a bare bool identifier (a parameter or local
+  // reference), the HIR builder desugars it to `c == true`, reusing the
+  // comparison condition path. The condition node is the IdentExpr; the
+  // synthetic true operand has no AST node and carries no checker fact.
+  bool conditionIsBoolReference = false;
   ast::NodeId thenReturnValue;
   ast::NodeId elseReturnValue;
   // When the body is a single `return <BinaryExpr comparison>` of two same-typed

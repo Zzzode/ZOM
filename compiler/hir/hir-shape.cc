@@ -386,6 +386,10 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
         }
       }
     }
+  } else if (tree.contains(condition) && tree.node(condition).kind == ast::SyntaxKind::IdentExpr) {
+    // A bare bool identifier condition (a parameter or local reference). The
+    // HIR builder desugars it to `c == true`, reusing the comparison path.
+    shape.conditionIsBoolReference = true;
   }
   return shape;
 }
@@ -1461,6 +1465,8 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     if (!tree.contains(initializer)) return zc::none;
     SequentialInitializerKind kind;
     size_t referencedLocal = 0;
+    zc::Maybe<SequentialBinaryOperand> leftOperand;
+    zc::Maybe<SequentialBinaryOperand> rightOperand;
     if (isScalarLiteral(tree.node(initializer).kind)) {
       kind = SequentialInitializerKind::Literal;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
@@ -1472,12 +1478,43 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
           break;
         }
       }
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::BinaryExpr &&
+               isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+                   tree.node(initializer).payload.words[ast::kBinaryExprOpWord]))) {
+      // A primitive binary operation whose two leaf operands are each a scalar
+      // literal, a parameter reference, or a reference to an earlier local.
+      // Two-level nesting is unsupported (each leaf is never a binary).
+      kind = SequentialInitializerKind::PrimitiveBinary;
+      const ast::NodeId binaryLeft(tree.node(initializer).payload.words[ast::kBinaryExprLhsWord]);
+      const ast::NodeId binaryRight(tree.node(initializer).payload.words[ast::kBinaryExprRhsWord]);
+      if (!tree.contains(binaryLeft) || !tree.contains(binaryRight)) return zc::none;
+      auto classifyLeaf = [&](ast::NodeId operandNode) -> zc::Maybe<SequentialBinaryOperand> {
+        if (isScalarLiteral(tree.node(operandNode).kind)) {
+          return SequentialBinaryOperand{
+              operandNode, SequentialBinaryOperandKind::Literal, 0, zc::none, zc::none, zc::none};
+        }
+        if (tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) return zc::none;
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, operandNode)) {
+            return SequentialBinaryOperand{operandNode, SequentialBinaryOperandKind::LocalReference,
+                                           earlier,     zc::none,
+                                           zc::none,    zc::none};
+          }
+        }
+        return SequentialBinaryOperand{operandNode, SequentialBinaryOperandKind::ParameterReference,
+                                       0,           zc::none,
+                                       zc::none,    zc::none};
+      };
+      leftOperand = classifyLeaf(binaryLeft);
+      rightOperand = classifyLeaf(binaryRight);
+      if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
     } else {
       return zc::none;
     }
-    shape.bindings.add(SequentialLocalBinding{
-        declarator, pattern, initializer, kind, referencedLocal, zc::none, zc::none, zc::none,
-        zc::none, ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
+    shape.bindings.add(
+        SequentialLocalBinding{declarator, pattern, initializer, kind, referencedLocal,
+                               zc::mv(leftOperand), zc::mv(rightOperand), zc::none, zc::none,
+                               ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
   }
   auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (tailItem == zc::none) return zc::none;
@@ -1487,7 +1524,8 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   auto conditional = conditionalReturnShape(tree, body, tailStatement);
   if (conditional == zc::none) return zc::none;
   if (!ZC_ASSERT_NONNULL(conditional).conditionIsEquality &&
-      !ZC_ASSERT_NONNULL(conditional).conditionIsUnary) {
+      !ZC_ASSERT_NONNULL(conditional).conditionIsUnary &&
+      !ZC_ASSERT_NONNULL(conditional).conditionIsBoolReference) {
     return zc::none;
   }
   // Arms must be one of: scalar literal, bare identifier (parameter or local

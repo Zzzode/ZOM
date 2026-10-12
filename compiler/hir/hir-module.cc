@@ -5199,27 +5199,19 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             auto patternSpan = bound.parsedModule().spanFor(tree.node(binding.pattern).range);
             auto initializerSpan =
                 bound.parsedModule().spanFor(tree.node(binding.initializer).range);
-            // A synthesized arithmetic binding has no source VariableDeclarator,
-            // so there is no owner-local binding to match against.
-            const bool isArithmeticBinding =
-                binding.initializerKind == SequentialInitializerKind::PrimitiveBinary;
-            zc::Maybe<binder::OwnerLocalBindingId> ownerBinding;
-            if (!isArithmeticBinding) {
-              ownerBinding = ownerLocalBindingForPattern(definitions, binding.pattern, tree);
-            }
+            zc::Maybe<binder::OwnerLocalBindingId> ownerBinding =
+                ownerLocalBindingForPattern(definitions, binding.pattern, tree);
             if (patternSpan == zc::none || initializerSpan == zc::none ||
-                (!isArithmeticBinding && ownerBinding == zc::none)) {
+                ownerBinding == zc::none) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::MissingRequiredFact, module,
                                                   registries, index + 1);
             }
-            if (!isArithmeticBinding) {
-              for (const auto existing : localBindingIds) {
-                if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
-                  return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                                      ir::IrFailureKind::AdditionalFact, module,
-                                                      registries, index + 1);
-                }
+            for (const auto existing : localBindingIds) {
+              if (existing == ZC_ASSERT_NONNULL(ownerBinding)) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::AdditionalFact, module,
+                                                    registries, index + 1);
               }
             }
             auto initializerTypeIndex = factIndex(facts.nodeTypes(), binding.initializer);
@@ -5239,9 +5231,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 localValue.initializerSpan == zc::none ||
                 !sameSpan(ZC_ASSERT_NONNULL(localValue.initializerSpan),
                           ZC_ASSERT_NONNULL(initializerSpan)) ||
-                (!isArithmeticBinding &&
-                 !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
-                                    tree))) {
+                !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), binding.pattern,
+                                   tree)) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
@@ -5376,7 +5367,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            if (!isArithmeticBinding) { localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding)); }
+            localBindingIds.add(ZC_ASSERT_NONNULL(ownerBinding));
           }
           // Condition call fact: equality comparison or unary logical-not. The
           // unary `!x` desugars to `x == false` in HIR, so the tail verification
@@ -5424,6 +5415,21 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   registries, index + 1);
             }
             // The HIR materialization desugars `!x` to `x == false`.
+            hirOperation = checker::PrimitiveOperation::Eq;
+          } else if (source.conditionIsBoolReference) {
+            // A bare bool identifier condition desugars to `c == true`. Validate
+            // the operand node type; the synthetic true operand has no AST node
+            // and carries no checker-produced fact.
+            auto operandTypeIndex = factIndex(facts.nodeTypes(), source.condition);
+            leftSpan = bound.parsedModule().spanFor(tree.node(source.condition).range);
+            if (operandTypeIndex == zc::none || leftSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t operandTypeSlot = 0;
+            ZC_IF_SOME(value, operandTypeIndex) { operandTypeSlot = value; }
+            operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
             hirOperation = checker::PrimitiveOperation::Eq;
           } else if (source.isMatchEquality) {
             // Match-equality: the comparison `scrutinee == literal` is
@@ -5575,6 +5581,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             // to cross-check.
             if (!verifyConditionOperand(source.conditionUnaryOperandIsLiteral,
                                         source.conditionUnaryOperand, leftId,
+                                        ZC_ASSERT_NONNULL(leftSpan))) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (source.conditionIsBoolReference) {
+            // The bool-reference condition has one real operand (the identifier
+            // itself); the synthetic true right operand has no AST node and no
+            // HIR record to cross-check.
+            if (!verifyConditionOperand(false, source.condition, leftId,
                                         ZC_ASSERT_NONNULL(leftSpan))) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,

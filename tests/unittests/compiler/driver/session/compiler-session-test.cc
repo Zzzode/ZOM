@@ -1154,22 +1154,20 @@ ZC_TEST("CompilerSessionTest.AcceptsBinaryInitializerInSequentialLocalBody") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
-ZC_TEST("CompilerSessionTest.LogicalInitializerReportsUnsupportedOperator") {
-  // A logical short-circuit `&&` is not a primitive binary operation. Its operand
-  // structure is admitted at the surface and the checker leaves the BinaryExpr
-  // production unsupported, but `&&` is specified language syntax, so the refusal
-  // reaches the user as ZOM4103 rather than as a compiler incident.
+ZC_TEST("CompilerSessionTest.LogicalInitializerAdmitsPrimitiveBinaryOperation") {
+  // A logical short-circuit `&&` in a let-binding initializer is admitted as a
+  // primitive binary operation. The checker produces a PrimitiveCallable fact
+  // and the full IR pipeline succeeds without diagnostics or incidents.
   auto session = packageSession(
       "fn entry(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
-  ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(session->hasDiagnosticErrors());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
   ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::BinaryOperatorSemanticsUnavailable) ==
-            1);
+            0);
   ZC_EXPECT(session->getIncidents().descriptors().size() == 0);
-  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
 }
 
 ZC_TEST(

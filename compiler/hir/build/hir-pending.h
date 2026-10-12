@@ -389,6 +389,10 @@ struct PendingLeadingLocalConditionalReturn final {
   identity::SourceSpan elseSpan;
   identity::SourceSpan returnSpan;
   bool isUnaryDesugar;
+  /// True when the condition was a bare bool identifier desugared to `c == true`.
+  /// Unlike the unary case, the checker produces no call fact for the condition,
+  /// so the calls count equation must subtract one.
+  bool isBoolReferenceDesugar = false;
   /// The AST IfStmt node this conditional was lowered from.
   ast::NodeId conditionalNode{};
 };

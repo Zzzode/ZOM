@@ -902,17 +902,24 @@ ZC_TEST("PrimitiveBinaryOperation.RejectsArithmeticConditionAsNonBool") {
             checked::CheckerErrorId::FunctionBodySemanticsUnavailable());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalShortCircuitBinaryOperation") {
-  // Logical `&&` has short-circuit semantics and the checker does not implement
-  // it yet. It is specified language syntax, so the refusal reports ZOM4103
-  // rather than a compiler invariant.
+ZC_TEST("PrimitiveBinaryOperation.EmitsLogicalAndCallFactForReturnPosition") {
+  // Logical `&&` lowers to a PrimitiveCallable{LogicalAnd} call fact. The
+  // body checker admits it as a primitive binary operation on Bool.
   PrimitiveBinaryFixture fixture("fn conj(a: bool, b: bool) -> bool { return a && b; }\n"_zc);
-  auto result = fixture.runBodyChecker();
-  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
-  ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::LogicalAnd);
+
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == boolType);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == boolType);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == boolType);
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsPrimitiveArithmeticCallFactForBinaryLocalInitializer") {
@@ -1047,17 +1054,25 @@ ZC_TEST("PrimitiveBinaryOperation.ReportsTypeMismatchedComparisonLocalInitialize
   ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
 }
 
-ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalBinaryLocalInitializer") {
-  // A logical `&&` local initializer names an operator the checker does not
-  // implement yet, so it reports ZOM4103.
+ZC_TEST("PrimitiveBinaryOperation.EmitsLogicalAndCallFactForBoolLocalInitializer") {
+  // `let x: bool = a && b` produces a PrimitiveCallable{LogicalAnd} call fact
+  // whose result type is the operand type Bool.
   PrimitiveBinaryFixture fixture(
       "fn f(a: bool, b: bool) -> bool { let x: bool = a && b; let y: bool = x; return y; }\n"_zc);
-  auto result = fixture.runBodyChecker();
-  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
-  ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::LogicalAnd);
+
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  ZC_EXPECT(call.invocation.calleeType == boolType);
+  ZC_EXPECT(call.invocation.resultType == boolType);
+  ZC_REQUIRE(call.invocation.arguments.size() == 2);
+  ZC_EXPECT(call.invocation.arguments[0].sourceType == boolType);
+  ZC_EXPECT(call.invocation.arguments[1].sourceType == boolType);
 }
 
 ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") {
@@ -1085,19 +1100,30 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsTwoArithmeticCallFactsForNestedOperand") 
   ZC_EXPECT(sawMul);
 }
 
-ZC_TEST("PrimitiveBinaryOperation.ReportsLogicalOuterWithNestedArithmeticOperand") {
-  // `a && b * c` admits structurally (one nested operand), but the outer `&&`
-  // is an operator the checker does not implement yet, so it reports ZOM4103.
-  // This keeps the operator-support decision on the single checker rail.
+ZC_TEST("PrimitiveBinaryOperation.EmitsLogicalAndWithNestedLogicalOrCallFacts") {
+  // `(a || b) && c` nests a `a || b` binary as the left operand of the outer
+  // `&&`. Both the outer LogicalAnd and the inner LogicalOr produce
+  // PrimitiveCallable facts, so the body carries two primitive call facts.
   PrimitiveBinaryFixture fixture(
-      "fn f(a: bool, b: bool, c: bool) -> bool { let z: bool = a && b * c; let w: bool = z; "
+      "fn f(a: bool, b: bool, c: bool) -> bool { let z: bool = (a || b) && c; let w: bool = z; "
       "return w; }\n"_zc);
-  auto result = fixture.runBodyChecker();
-  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
-  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
-  ZC_REQUIRE(rejection.failures.size() == 1);
-  ZC_EXPECT(rejection.failures[0].diagnostic ==
-            checked::CheckerErrorId::BinaryOperatorSemanticsUnavailable());
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 2);
+  const auto boolType = fixture.primitive(type::semantic::PrimitiveKind::Bool);
+  bool sawLogicalAnd = false;
+  bool sawLogicalOr = false;
+  for (const auto& entry : facts.calls().entries()) {
+    const auto& selected = entry.value.invocation.selected.variant();
+    ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+    const auto operation = selected.get<checked::PrimitiveCallable>().operation;
+    if (operation == PrimitiveOperation::LogicalAnd) sawLogicalAnd = true;
+    if (operation == PrimitiveOperation::LogicalOr) sawLogicalOr = true;
+    ZC_EXPECT(entry.value.invocation.calleeType == boolType);
+    ZC_EXPECT(entry.value.invocation.resultType == boolType);
+  }
+  ZC_EXPECT(sawLogicalAnd);
+  ZC_EXPECT(sawLogicalOr);
 }
 
 ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer") {

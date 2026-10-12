@@ -1,0 +1,14 @@
+// Logical operators in let-binding initializer fixture: two bool owner locals
+// initialized from `true` literals feed a `&&` short-circuit conjunction whose
+// result guards a conditional return. The true conjunction selects the arm
+// that exits 41.
+fn entry() -> i32 {
+  let a = true;
+  let b = true;
+  let c = a && b;
+  if (c) {
+    return 41;
+  } else {
+    return 0;
+  }
+}

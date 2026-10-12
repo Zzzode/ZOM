@@ -2,4 +2,4 @@ section: "05-statements let declaration syntax"
 covers_rule: "letDeclaration"
 expected: "ACCEPT"
 notes:
-  - "Syntax is valid; diagnostics runner checks the ZOM4103 unsupported-operator rejection."
+  - "Syntax is valid; diagnostics runner confirms the compiler accepts `&&` in a let initializer."

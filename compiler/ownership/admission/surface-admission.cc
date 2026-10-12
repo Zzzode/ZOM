@@ -1439,7 +1439,8 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
               tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
           if (!tree.contains(leadingInitializer) ||
               (!isScalarLiteral(tree.node(leadingInitializer).kind) &&
-               tree.node(leadingInitializer).kind != ast::SyntaxKind::IdentExpr)) {
+               tree.node(leadingInitializer).kind != ast::SyntaxKind::IdentExpr &&
+               !isAdmittedPrimitiveBinary(tree, leadingInitializer))) {
             allLeadingBindings = false;
             break;
           }
@@ -1483,6 +1484,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
           };
           if (tree.contains(condition) &&
               (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr ||
+               tree.node(condition).kind == ast::SyntaxKind::IdentExpr ||
                (tree.node(condition).kind == ast::SyntaxKind::UnaryExpression &&
                 static_cast<ast::UnaryOperatorKind>(
                     tree.node(condition).payload.words[ast::kUnaryExpressionOpWord]) ==

@@ -3289,6 +3289,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       if (carrier == zc::none) {
         carrier = floatCarrierFor(function.locals[i].type, semanticTypes);
       }
+      if (carrier == zc::none) { carrier = boolCarrierFor(function.locals[i].type, semanticTypes); }
       if (carrier == zc::none) { return zc::none; }
       // The result local must match the integer result carrier; leading
       // locals may differ (e.g. float comparison operands).
@@ -3333,9 +3334,10 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
       return zc::none;
     }
     // Resolve this leading local's own carrier. Integer locals share the
-    // result carrier; float locals carry their own float format.
+    // result carrier; float and bool locals carry their own format.
     auto localCarrier = integerCarrierFor(localDecl.type, semanticTypes);
     if (localCarrier == zc::none) { localCarrier = floatCarrierFor(localDecl.type, semanticTypes); }
+    if (localCarrier == zc::none) { localCarrier = boolCarrierFor(localDecl.type, semanticTypes); }
     if (localCarrier == zc::none) { return zc::none; }
     const auto localCarrierValue = ZC_REQUIRE_NONNULL(localCarrier);
     if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
@@ -3374,11 +3376,15 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     if (operand.kind() == mir::MirOperandKind::Constant) {
       auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
       if (carrier != zc::none) { return carrier; }
-      return floatCarrierFor(operand.constantValue().type, semanticTypes);
+      carrier = floatCarrierFor(operand.constantValue().type, semanticTypes);
+      if (carrier != zc::none) { return carrier; }
+      return boolCarrierFor(operand.constantValue().type, semanticTypes);
     }
     auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
     if (carrier != zc::none) { return carrier; }
-    return floatCarrierFor(operand.place().rootType(), semanticTypes);
+    carrier = floatCarrierFor(operand.place().rootType(), semanticTypes);
+    if (carrier != zc::none) { return carrier; }
+    return boolCarrierFor(operand.place().rootType(), semanticTypes);
   };
   auto leftCarrier = operandCarrierFor(comparison.left);
   auto rightCarrier = operandCarrierFor(comparison.right);
@@ -3497,6 +3503,9 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     auto carrier = integerCarrierFor(function.locals[parameterCount + i].type, semanticTypes);
     if (carrier == zc::none) {
       carrier = floatCarrierFor(function.locals[parameterCount + i].type, semanticTypes);
+    }
+    if (carrier == zc::none) {
+      carrier = boolCarrierFor(function.locals[parameterCount + i].type, semanticTypes);
     }
     locals.add(
         Local(function.locals[parameterCount + i].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));

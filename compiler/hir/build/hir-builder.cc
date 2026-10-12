@@ -1054,6 +1054,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               zc::Maybe<checker::checked::CanonicalConstValue> bindingLiteral;
               zc::Maybe<identity::CallableParameterKey> bindingParameter;
               size_t referencedLocal = 0;
+              zc::Maybe<checker::PrimitiveOperation> bindingArithmeticOperation;
+              zc::Maybe<PendingLeadingConditionOperand> bindingArithmeticLeft;
+              zc::Maybe<PendingLeadingConditionOperand> bindingArithmeticRight;
               if (binding.initializerKind == SequentialInitializerKind::Literal) {
                 auto literalIndex = factIndex(facts.literals(), binding.initializer);
                 if (literalIndex == zc::none) { break; }
@@ -1092,6 +1095,112 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   break;
                 }
                 referencedLocal = binding.referencedLocal;
+              } else if (binding.initializerKind == SequentialInitializerKind::PrimitiveBinary) {
+                // A primitive binary initializer: validate its checked call fact
+                // and resolve each leaf operand to a literal, a parameter, or an
+                // earlier local.
+                auto callIndex = factIndex(facts.calls(), binding.initializer);
+                if (callIndex == zc::none || binding.leftOperand == zc::none ||
+                    binding.rightOperand == zc::none) {
+                  break;
+                }
+                size_t callSlot = 0;
+                ZC_IF_SOME(index, callIndex) { callSlot = index; }
+                const auto& callFact = facts.calls().entries()[callSlot].value;
+                const auto& call = callFact.invocation;
+                const auto& selected = call.selected.variant();
+                if (!selected.is<checker::checked::PrimitiveCallable>()) { break; }
+                const auto binaryOperation =
+                    selected.get<checker::checked::PrimitiveCallable>().operation;
+                const bool comparison = isScalarComparisonOperation(binaryOperation);
+                const bool arithmetic = isScalarArithmeticOperation(binaryOperation);
+                // The operand type is the shared argument type; a comparison
+                // yields a bool result while an arithmetic or logical operator
+                // yields its operand type.
+                const auto binaryOperandType =
+                    call.arguments.size() == 2 ? call.arguments[0].sourceType : bindingType;
+                const bool operationSupported =
+                    comparison || (arithmetic && bindingType == binaryOperandType);
+                const ast::NodeId binaryLeft(
+                    tree.node(binding.initializer).payload.words[ast::kBinaryExprLhsWord]);
+                const ast::NodeId binaryRight(
+                    tree.node(binding.initializer).payload.words[ast::kBinaryExprRhsWord]);
+                if (!operationSupported || callFact.node != binding.initializer ||
+                    call.calleeType != binaryOperandType || call.receiver != zc::none ||
+                    call.receiverMode != zc::none || call.receiverAdjustment != zc::none ||
+                    call.arguments.size() != 2 || call.arguments[0].sourceNode != binaryLeft ||
+                    call.arguments[0].sourceType != binaryOperandType ||
+                    call.arguments[1].sourceNode != binaryRight ||
+                    call.arguments[1].sourceType != binaryOperandType ||
+                    call.successType != bindingType || call.resultType != bindingType ||
+                    call.substitutions != zc::none || call.witnesses != zc::none ||
+                    call.raises != zc::none) {
+                  break;
+                }
+                // Resolve each classified leaf operand to a materializable
+                // condition operand.
+                auto resolveLeaf = [&](const SequentialBinaryOperand& leaf)
+                    -> zc::Maybe<PendingLeadingConditionOperand> {
+                  auto leafSpan = bound.parsedModule().spanFor(tree.node(leaf.node).range);
+                  if (leafSpan == zc::none) return zc::none;
+                  if (leaf.kind == SequentialBinaryOperandKind::Literal) {
+                    auto leafLiteral = factIndex(facts.literals(), leaf.node);
+                    if (leafLiteral == zc::none) return zc::none;
+                    size_t leafLiteralSlot = 0;
+                    ZC_IF_SOME(index, leafLiteral) { leafLiteralSlot = index; }
+                    const auto& literalFact = facts.literals().entries()[leafLiteralSlot].value;
+                    if (literalFact.type != binaryOperandType) return zc::none;
+                    return PendingLeadingConditionOperand{binaryOperandType,
+                                                          ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                          literalFact.literal.clone(),
+                                                          zc::none,
+                                                          0,
+                                                          false,
+                                                          leaf.node};
+                  }
+                  if (leaf.kind == SequentialBinaryOperandKind::LocalReference) {
+                    if (leaf.referencedLocal >= localBindingIds.size()) return zc::none;
+                    auto referenceBinding = resolvedOwnerLocal(bound.bindings(), leaf.node);
+                    if (referenceBinding == zc::none || ZC_ASSERT_NONNULL(referenceBinding) !=
+                                                            localBindingIds[leaf.referencedLocal]) {
+                      return zc::none;
+                    }
+                    return PendingLeadingConditionOperand{binaryOperandType,
+                                                          ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                          zc::none,
+                                                          zc::none,
+                                                          leaf.referencedLocal,
+                                                          true,
+                                                          leaf.node};
+                  }
+                  auto parameterHandle = resolvedCallableParameter(bound.bindings(), leaf.node);
+                  if (parameterHandle == zc::none) return zc::none;
+                  zc::Maybe<identity::CallableParameterKey> resolvedKey;
+                  ZC_IF_SOME(handle, parameterHandle) {
+                    auto authority = registries.callableParameter(handle);
+                    ZC_IF_SOME(entry, authority) {
+                      for (const auto& parameter : parameters) {
+                        if (parameter.key == entry.key() && parameter.type == binaryOperandType) {
+                          resolvedKey = entry.key().clone();
+                        }
+                      }
+                    }
+                  }
+                  if (resolvedKey == zc::none) return zc::none;
+                  return PendingLeadingConditionOperand{binaryOperandType,
+                                                        ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                        zc::none,
+                                                        zc::mv(resolvedKey),
+                                                        0,
+                                                        false,
+                                                        leaf.node};
+                };
+                auto leftResolved = resolveLeaf(ZC_ASSERT_NONNULL(binding.leftOperand));
+                auto rightResolved = resolveLeaf(ZC_ASSERT_NONNULL(binding.rightOperand));
+                if (leftResolved == zc::none || rightResolved == zc::none) break;
+                bindingArithmeticOperation = binaryOperation;
+                bindingArithmeticLeft = zc::mv(leftResolved);
+                bindingArithmeticRight = zc::mv(rightResolved);
               } else {
                 auto parameterHandle =
                     resolvedCallableParameter(bound.bindings(), binding.initializer);
@@ -1113,8 +1222,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               pendingBindings.add(PendingLeadingLocalBinding{
                   bindingType, ZC_ASSERT_NONNULL(patternSpan).clone(),
                   ZC_ASSERT_NONNULL(initializerSpan).clone(), binding.initializerKind,
-                  zc::mv(bindingLiteral), zc::mv(bindingParameter), referencedLocal, zc::none,
-                  zc::none, zc::none, binding.declarator, binding.initializer});
+                  zc::mv(bindingLiteral), zc::mv(bindingParameter), referencedLocal,
+                  zc::mv(bindingArithmeticOperation), zc::mv(bindingArithmeticLeft),
+                  zc::mv(bindingArithmeticRight), binding.declarator, binding.initializer});
             }
           }
           if (synthesizedArithmetic && leadingShapeMaybe != zc::none) {
@@ -1343,6 +1453,41 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             // The synthetic false operand: `!x` desugars to `x == false`.
             auto syntheticValue = checker::checked::CanonicalConstValue::boolean(false);
+            rightOperand = PendingLeadingConditionOperand{operandType,
+                                                          ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                          zc::mv(syntheticValue),
+                                                          zc::none,
+                                                          0,
+                                                          false};
+            operation = checker::PrimitiveOperation::Eq;
+          } else if (shape.conditionIsBoolReference) {
+            // A bare bool identifier condition desugars to `c == true`. The
+            // operand is a leading local or parameter reference; the synthetic
+            // true operand has no AST node and carries no checker-produced fact.
+            auto operandTypeIndex = factIndex(facts.nodeTypes(), shape.condition);
+            if (leadingRejected || operandTypeIndex == zc::none) {
+              // A bool-reference condition whose type fact is missing (the body
+              // checker drained the construct, or a leading binding could not
+              // be resolved) is legal source the lowering carrier does not
+              // implement yet. Drain it as a per-definition capability
+              // rejection (ZOM4099) rather than an internal missing-fact
+              // incident.
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            size_t operandTypeSlot = 0;
+            ZC_IF_SOME(index, operandTypeIndex) { operandTypeSlot = index; }
+            operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+            leftOperand =
+                resolveConditionOperand(shape.condition, false, ZC_ASSERT_NONNULL(conditionSpan));
+            if (leftOperand == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            // The synthetic true operand: `c` desugars to `c == true`.
+            auto syntheticValue = checker::checked::CanonicalConstValue::boolean(true);
             rightOperand = PendingLeadingConditionOperand{operandType,
                                                           ZC_ASSERT_NONNULL(conditionSpan).clone(),
                                                           zc::mv(syntheticValue),
@@ -1655,22 +1800,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                 definition.source.clone());
           }
-          auto leadingPending =
-              PendingLeadingLocalConditionalReturn{zc::mv(pendingBindings),
-                                                   zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-                                                   zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
-                                                   operandType,
-                                                   conditionType,
-                                                   operation,
-                                                   ZC_ASSERT_NONNULL(conditionSpan).clone(),
-                                                   zc::mv(ZC_ASSERT_NONNULL(thenArm)),
-                                                   zc::mv(ZC_ASSERT_NONNULL(elseArm)),
-                                                   callable.success,
-                                                   ZC_ASSERT_NONNULL(thenSpan).clone(),
-                                                   ZC_ASSERT_NONNULL(elseSpan).clone(),
-                                                   returnSpanValue.clone(),
-                                                   shape.conditionIsUnary,
-                                                   leadingShape.ifStatement};
+          auto leadingPending = PendingLeadingLocalConditionalReturn{
+              zc::mv(pendingBindings),
+              zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+              zc::mv(ZC_ASSERT_NONNULL(rightOperand)),
+              operandType,
+              conditionType,
+              operation,
+              ZC_ASSERT_NONNULL(conditionSpan).clone(),
+              zc::mv(ZC_ASSERT_NONNULL(thenArm)),
+              zc::mv(ZC_ASSERT_NONNULL(elseArm)),
+              callable.success,
+              ZC_ASSERT_NONNULL(thenSpan).clone(),
+              ZC_ASSERT_NONNULL(elseSpan).clone(),
+              returnSpanValue.clone(),
+              shape.conditionIsUnary || shape.conditionIsBoolReference,
+              shape.conditionIsBoolReference,
+              leadingShape.ifStatement};
           pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                           definition.node,
                                                           callable.success,
@@ -11206,6 +11352,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // checker-produced node-type or literal fact, so the digest equations
   // subtract one per such conditional.
   size_t leadingLocalConditionalUnaryCount = 0;
+  // Leading-local conditionals that desugar a bare bool identifier condition
+  // `c` to `c == true`. Unlike the unary case, the checker produces no call
+  // fact for the condition, so the calls count equation subtracts one per
+  // such conditional.
+  size_t leadingLocalConditionalBoolReferenceCount = 0;
   // Comparison operands of that shape written as scalar literals rather than
   // reads of a leading binding. Each adds one literal fact of its own.
   size_t leadingLocalConditionalLiteralOperandCount = 0;
@@ -11671,6 +11822,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (leading.left.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
         if (leading.right.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
         if (leading.isUnaryDesugar) ++leadingLocalConditionalUnaryCount;
+        if (leading.isBoolReferenceDesugar) ++leadingLocalConditionalBoolReferenceCount;
         for (const auto& binding : leading.bindings) {
           if (binding.kind == SequentialInitializerKind::PrimitiveBinary) {
             ++leadingLocalConditionalBinaryCount;
@@ -12255,9 +12407,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       equalityConditionalCount + conditionalBinaryArmCount - matchEqualityReturnCount -
       matchGuardPhantomCount + comparisonReturnCount + sequentialBinaryCount +
       receiverFieldArithmeticCount + binaryWriteCount + nestedBinaryWriteOperandCount -
-      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount +
-      receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
-      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
+      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount -
+      leadingLocalConditionalBoolReferenceCount + receiverCallComparisonArgumentCount +
+      forLoopReturnCount * 2 + forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
       forLoopAccumulatorGuardedBreakCount + nestedForLoopAccumulatorReturnCount * 2 +
       postfixReturnCount + directExistentialCallCount;
   if (facts.calls().size() != expectedCalls ||

@@ -3309,17 +3309,7 @@ zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput&
       static_cast<ast::BinaryOperatorKind>(tree.node(node).payload.words[ast::kBinaryExprOpWord]);
   if (scalarComparisonOperation(binaryOperator) != zc::none) return zc::none;
   auto arithmetic = scalarArithmeticOperation(binaryOperator);
-  if (arithmetic != zc::none) {
-    // Logical operators are classified as arithmetic for fact production, but
-    // the shape validator only admits them in condition positions. A logical
-    // operator outside a condition is an unsupported operator (ZOM4103).
-    if ((arithmetic == PrimitiveOperation::LogicalAnd ||
-         arithmetic == PrimitiveOperation::LogicalOr) &&
-        !isConditionPosition(input.boundModule, node)) {
-      return arithmetic;
-    }
-    return zc::none;
-  }
+  if (arithmetic != zc::none) { return zc::none; }
   ZC_IF_SOME(kind, OperatorKind::fromBinary(binaryOperator)) {
     const auto& variant = kind.variant();
     if (!variant.is<PrimitiveOperation>()) return zc::none;
@@ -3435,9 +3425,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // type. A comparison is lowerable in any position; an arithmetic operation is
   // lowerable only outside a condition, since a non-bool value cannot drive an
   // `if` / `while` discriminant. The logical short-circuit operators (`&&` /
-  // `||`) produce bool like a comparison, but the HIR builder only lowers them
-  // as a conditional discriminant, so they are admitted in condition positions
-  // only and rejected with ZOM4103 elsewhere.
+  // `||`) produce bool like a comparison and are lowerable in any position.
   const auto binaryOperator =
       static_cast<ast::BinaryOperatorKind>(syntax.payload.words[ast::kBinaryExprOpWord]);
   auto comparison = scalarComparisonOperation(binaryOperator);
@@ -3448,7 +3436,6 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   auto operation = comparison != zc::none ? comparison : arithmetic;
   if (operation == zc::none) return zc::none;
   if (isArithmetic && isConditionPosition(input.boundModule, node)) return zc::none;
-  if (isLogical && !isConditionPosition(input.boundModule, node)) return zc::none;
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
