@@ -1,0 +1,5 @@
+// Fail-closed fixture: a generic function has no monomorphization path, so the
+// checker rejects the generic definition with ZOM4083 (returned borrow relation
+// requires an explicit region contract) instead of admitting it.
+fn identity<T>(x: T) -> T { return x; }
+fn entry() -> i32 { return identity(41); }

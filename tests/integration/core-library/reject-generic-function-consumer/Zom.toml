@@ -1,0 +1,8 @@
+[package]
+name = "reject_generic_function_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "reject_generic_function_consumer"
+path = "src/main.zom"

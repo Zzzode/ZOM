@@ -1,0 +1,8 @@
+// Fail-closed fixture: a spawn expression has no concurrency admission path,
+// so surface admission rejects it with ZOM4095 (concurrency construct not
+// supported yet) instead of admitting the spawned task.
+fn compute(x: i32) -> i32 { return x + 1; }
+fn entry() -> i32 {
+    let task = spawn compute(41);
+    return 0;
+}

@@ -1,0 +1,8 @@
+// Fail-closed fixture: a dynamic array (i32[]) has no admission path, so the
+// checker fails closed on the constructing and indexing body instead of
+// emitting an object. The fixed-size [i32; N] shape is admitted; only the
+// dynamic slice type is rejected here.
+fn entry() -> i32 {
+    let a: i32[] = [1, 2, 3];
+    return a[0];
+}

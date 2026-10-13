@@ -1,0 +1,5 @@
+// Fail-closed fixture: an extern declaration has no FFI admission path, so the
+// checker rejects the calling body with ZOM4099 (construct the compiler cannot
+// generate code for yet) instead of admitting the extern call.
+extern "C" { fn abs(x: i32) -> i32; }
+fn entry() -> i32 { return abs(-41); }

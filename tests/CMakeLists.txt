@@ -337,6 +337,16 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-for-break-only-consumer/Zom.toml::reject_for_break_only_consumer::reject_for_break_only_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-unsafe-block-consumer/Zom.toml::reject_unsafe_block_consumer::reject_unsafe_block_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-closure-consumer/Zom.toml::reject_closure_consumer::reject_closure_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-generic-function-consumer/Zom.toml::reject_generic_function_consumer::reject_generic_function_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-ffi-extern-consumer/Zom.toml::reject_ffi_extern_consumer::reject_ffi_extern_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-spawn-consumer/Zom.toml::reject_spawn_consumer::reject_spawn_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-dynamic-array-consumer/Zom.toml::reject_dynamic_array_consumer::reject_dynamic_array_consumer"
       --incident-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/installed-consumer/Zom.toml::installed_consumer::installed_consumer"
       --string-case
@@ -538,6 +548,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-multi-let-body-consumer/Zom.toml::destructor_multi_let_body_consumer::destructor_multi_let_body_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-field-write-consumer/Zom.toml::destructor_field_write_consumer::destructor_field_write_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-method-call-consumer/Zom.toml::destructor_method_call_consumer::destructor_method_call_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer::41"
       --run-case
