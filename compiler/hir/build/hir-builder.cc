@@ -4492,6 +4492,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool returnsFoldedStringConcat = false;
       bool returnsFoldedFloatCast = false;
       bool returnsArrayIndexFold = false;
+      bool returnsArrayLengthFold = false;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
       zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
@@ -6215,7 +6216,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                 zc::mv(noInitializerSpan)};
         if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
             !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
-            !shape.returnsDirectExistentialCall && !shape.returnsArrayIndexFold) {
+            !shape.returnsDirectExistentialCall && !shape.returnsArrayIndexFold &&
+            !shape.returnsArrayLengthFold) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -6234,11 +6236,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if ((!shape.returnsLocalField && !shape.returnsReceiverCall &&
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
-               !shape.returnsArrayIndexFold && initializerType != nodeType.value) ||
+               !shape.returnsArrayIndexFold && !shape.returnsArrayLengthFold &&
+               initializerType != nodeType.value) ||
               (!shape.returnsLocalField && !shape.returnsReceiverCall &&
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
-               !shape.returnsArrayIndexFold && initializerType != callable.success) ||
+               !shape.returnsArrayIndexFold && !shape.returnsArrayLengthFold &&
+               initializerType != callable.success) ||
               (shape.returnsLocalBorrow && initializerType != localType)) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
@@ -6285,7 +6289,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
               !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
               !shape.returnsDirectScalarLocalCall && !shape.returnsDirectExistentialCall &&
-              !shape.returnsArrayIndexFold) {
+              !shape.returnsArrayIndexFold && !shape.returnsArrayLengthFold) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -7518,12 +7522,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ordinal + 2);
           }
         }
-        if (shape.returnsArrayIndexFold) {
-          // Array index fold: `return a[0];` where `a` is an array-literal-
-          // initialized local. The body checker folds the constant index read
-          // to a scalar literal fact, so the return value lowers to that
-          // literal. The array aggregate itself is validated above but not
-          // lowered to a HIR expression.
+        if (shape.returnsArrayIndexFold || shape.returnsArrayLengthFold) {
+          // Array index or length fold: `return a[0];` or `return a.length;`
+          // where `a` is an array-literal-initialized local. The body checker
+          // folds the constant read to a scalar literal fact, so the return
+          // value lowers to that literal. The array aggregate itself is
+          // validated above but not lowered to a HIR expression.
           auto literalIndex = factIndex(facts.literals(), shape.value);
           if (literalIndex == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7541,6 +7545,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           literal = sourceLiteral.literal.clone();
           returnsArrayIndexFold = shape.returnsArrayIndexFold;
+          returnsArrayLengthFold = shape.returnsArrayLengthFold;
         }
       } else if (shape.returnsEnumConstruction) {
         // Single-statement enum construction return: `return Result::Ok(41);`.
@@ -7762,7 +7767,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            eraseStep.interface.interface};
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
-                 shape.returnsFoldedFloatCast || shape.returnsArrayIndexFold) {
+                 shape.returnsFoldedFloatCast || shape.returnsArrayIndexFold ||
+                 shape.returnsArrayLengthFold) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
         if (literalIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -7782,6 +7788,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         returnsFoldedStringConcat = shape.returnsFoldedStringConcat;
         returnsFoldedFloatCast = shape.returnsFoldedFloatCast;
         returnsArrayIndexFold = shape.returnsArrayIndexFold;
+        returnsArrayLengthFold = shape.returnsArrayLengthFold;
       } else if (shape.returnsRawDereference) {
         // Raw-pointer dereference return: `return unsafe { *ptr };` where
         // `ptr` is a raw-pointer parameter. The operand resolves to a callable
@@ -11351,7 +11358,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // call's error-union result type.
       const identity::SemanticTypeId functionResultType = callable.success;
       uint32_t arrayLiteralElementCount = 0;
-      if (shape.returnsArrayIndexFold) {
+      if (shape.returnsArrayIndexFold || shape.returnsArrayLengthFold) {
         auto aggregateIndex = factIndex(facts.aggregates(), shape.localInitializer);
         if (aggregateIndex != zc::none) {
           size_t aggregateSlot = 0;
@@ -11432,7 +11439,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::mv(rawDereferenceWrite),
                                                       zc::mv(writeUnsafeBlockSpan),
                                                       zc::mv(rawDereferenceWriteLiteral),
-                                                      arrayLiteralElementCount});
+                                                      arrayLiteralElementCount,
+                                                      returnsArrayLengthFold});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -11807,6 +11815,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t foldedArrayIndexFoldCount = 0;
   size_t arrayIndexFoldElementCount = 0;
   size_t arrayIndexFoldAggregateCount = 0;
+  // Array-length-fold returns (`return a.length` on an array-literal local).
+  // The MemberExpression node carries a literal fact; the base IdentExpr node
+  // carries its own node-type fact. The footprint is the same as the
+  // array-index fold minus the index node (2 extra node types instead of 3,
+  // 1 extra literal instead of 2).
+  size_t foldedArrayLengthFoldCount = 0;
+  size_t arrayLengthFoldElementCount = 0;
+  size_t arrayLengthFoldAggregateCount = 0;
   // Comparison-return functions (`return <a CMP b>`) and, of their two operands,
   // the count that are scalar literals rather than parameter references.
   size_t comparisonReturnCount = 0;
@@ -11939,6 +11955,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ++foldedArrayIndexFoldCount;
       ++arrayIndexFoldAggregateCount;
       arrayIndexFoldElementCount += function.arrayLiteralElementCount;
+    }
+    if (function.returnsArrayLengthFold) {
+      ++foldedArrayLengthFoldCount;
+      ++arrayLengthFoldAggregateCount;
+      arrayLengthFoldElementCount += function.arrayLiteralElementCount;
     }
     if (function.returnsLocalIncrement) ++incrementReturnCount;
     if (function.returnsLocalPostfixIncrement) ++postfixReturnCount;
@@ -12626,7 +12647,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
         !isDirectAggregateCall && !isDirectScalarLocalCall && !isDirectExistentialCall &&
-        !isVoidLetBody && !function.returnsArrayIndexFold) {
+        !isVoidLetBody && !function.returnsArrayIndexFold && !function.returnsArrayLengthFold) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -12761,12 +12782,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       parameterFieldWriteCount * 4 + discardedStatementCallCount +
       leadingLocalConditionalBindingCount + castCount + foldedStringLengthCount +
       foldedStringConcatCount * 2 + foldedFloatCastCount + foldedArrayIndexFoldCount * 3 +
-      arrayIndexFoldElementCount + sequentialFoldedStringConcatCount * 2 +
-      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
-      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
-      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount +
-      postfixReturnCount - sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 +
-      forLoopReturnCount * 9 + forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
+      arrayIndexFoldElementCount + foldedArrayLengthFoldCount * 2 + arrayLengthFoldElementCount +
+      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
+      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
+      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      incrementWriteCount * 3 - incrementReturnCount + postfixReturnCount -
+      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
+      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount + destructorFieldWriteBodyCount * 4 +
       destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 + doWhileLoopBodyReturnCount * 3;
@@ -12809,6 +12831,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(foldedFloatCastCount) +
           static_cast<int64_t>(foldedArrayIndexFoldCount) * 2 +
           static_cast<int64_t>(arrayIndexFoldElementCount) +
+          static_cast<int64_t>(foldedArrayLengthFoldCount) +
+          static_cast<int64_t>(arrayLengthFoldElementCount) +
           static_cast<int64_t>(destructorFieldWriteBodyCount) +
           static_cast<int64_t>(rawPointerWriteCount) +
           static_cast<int64_t>(doWhileLoopBodyReturnCount)) +
@@ -12838,8 +12862,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 5);
   }
-  if (facts.aggregates().size() !=
-      aggregateCount + innerAggregateCount + arrayIndexFoldAggregateCount) {
+  if (facts.aggregates().size() != aggregateCount + innerAggregateCount +
+                                       arrayIndexFoldAggregateCount +
+                                       arrayLengthFoldAggregateCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }
@@ -13121,19 +13146,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
         value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
-    // Array index fold: `let a: [T; N] = [...]; return a[k];` where the index
-    // read is folded to a scalar literal. The local binding exists but the
-    // return value is a literal, not a local reference.
+    // Array index or length fold: `let a: [T; N] = [...]; return a[k];` or
+    // `return a.length;` where the read is folded to a scalar literal. The
+    // local binding exists but the return value is a literal, not a local
+    // reference.
     const bool arrayIndexFoldLocal =
         value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.returnsArrayIndexFold && value.call == zc::none && value.receiverCall == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+        (value.returnsArrayIndexFold || value.returnsArrayLengthFold) && value.call == zc::none &&
+        value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
+        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
+        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.unsafeBlockSpan == zc::none;
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal || arrayIndexFoldLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13238,8 +13265,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
-        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13272,8 +13300,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
-        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13304,8 +13333,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
         !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
         !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsLocalIncrement &&
-        !value.returnsLocalPostfixIncrement && value.unsafeBlockSpan == zc::none) {
+        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
+        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
+        value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,

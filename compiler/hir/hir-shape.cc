@@ -3280,7 +3280,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsLocalIncrement = false;
   bool returnsLocalPostfixIncrement = false;
   bool returnsArrayIndexFold = false;
-  const bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
+  bool returnsArrayLengthFold = false;
+  bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
   if (tree.node(value).kind == ast::SyntaxKind::CallExpression) {
@@ -3315,6 +3316,22 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       return zc::none;
     }
   } else if (returnsLocalField) {
+    // A `x.length` read on an array-literal-initialized local folds to the
+    // array length at compile time. The body checker emits a literal fact for
+    // the MemberExpression node; the builder lowers the return to that
+    // literal. The shape only verifies the structure (Dot access, property
+    // `length`, IdentExpr object); the initializer kind is validated below
+    // after the initializer node is resolved.
+    const auto lengthAccessKind = static_cast<ast::MemberAccessKind>(
+        tree.node(value).payload.words[ast::kMemberExpressionAccessWord]);
+    if (lengthAccessKind == ast::MemberAccessKind::Dot) {
+      const auto lengthPropertyName = tree.ident(
+          ast::IdentId(tree.node(value).payload.words[ast::kMemberExpressionPropertyWord]));
+      if (lengthPropertyName == "length"_zc) {
+        returnsArrayLengthFold = true;
+        returnsLocalField = false;
+      }
+    }
     localReference = ast::NodeId(tree.node(value).payload.words[ast::kMemberExpressionObjectWord]);
   } else if (reborrow != zc::none) {
     ZC_IF_SOME(reference, reborrow) { localReference = reference; }
@@ -3398,6 +3415,12 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     return zc::none;
   }
   if (!tree.contains(initializer) && statements.size == 2) {
+    // An uninitialized local cannot drive an array-length fold; restore the
+    // local-field classification so the builder uses the member-fact path.
+    if (returnsArrayLengthFold) {
+      returnsArrayLengthFold = false;
+      returnsLocalField = true;
+    }
     // A local borrow requires the referent to be initialized at the borrow point.
     if (localBorrow != zc::none) return zc::none;
     // An uninitialized local passed as a direct-call argument is outside both
@@ -3428,6 +3451,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             tree.node(initializer).payload.words[ast::kMemberExpressionAccessWord]) ==
             ast::MemberAccessKind::Qualified)) {
     return zc::none;
+  }
+  // An array-length fold requires an ArrayLiteral initializer. A `x.length`
+  // access on any other initializer kind (e.g. a StringLiteralExpr) keeps the
+  // local-field classification so the builder uses the member-fact path.
+  if (returnsArrayLengthFold && tree.contains(initializer) &&
+      tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral) {
+    returnsArrayLengthFold = false;
+    returnsLocalField = true;
   }
   // Split the sole-local direct-call carrier by initializer kind. A struct
   // literal initializer rides the by-value aggregate slice, a scalar literal
@@ -3467,6 +3498,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.returnsArrayIndexFold = returnsArrayIndexFold;
+    shape.returnsArrayLengthFold = returnsArrayLengthFold;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
   }

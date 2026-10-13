@@ -61,6 +61,7 @@ enum class BodyProductionKind : uint8_t {
   RawPointerWrite = 0x25,
   ArrayLiteral = 0x26,
   ArrayIndexFold = 0x27,
+  ArrayLengthFold = 0x28,
   Unsupported = 0x17
 };
 
@@ -2623,6 +2624,39 @@ bool isArrayIndexFoldSite(const driver::module_graph_query::CheckerBoundModuleVi
     return false;
   }
   const auto binding = resolvedOwnerLocal(boundModule.bindings(), base);
+  if (binding == zc::none) { return false; }
+  const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
+  if (initializer == zc::none) { return false; }
+  return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
+         tree.node(ZC_ASSERT_NONNULL(initializer)).kind == ast::SyntaxKind::ArrayLiteral;
+}
+
+/// \brief Whether a member access `a.length` folds to the array length at
+/// compile time.
+///
+/// The fold is purely structural: a Dot member access whose property is
+/// `length`, whose object names an owner local, and whose local initializer is
+/// an array literal. The check loop verifies the receiver type is a fixed
+/// array and emits the folded integer constant. Every other member access
+/// stays on the field-reference rail.
+bool isArrayLengthFoldSite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                           const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::MemberExpression) {
+    return false;
+  }
+  const auto& member = tree.node(node);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return false;
+  }
+  const auto propertyName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  if (propertyName != "length"_zc) { return false; }
+  const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+    return false;
+  }
+  const auto binding = resolvedOwnerLocal(boundModule.bindings(), object);
   if (binding == zc::none) { return false; }
   const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
   if (initializer == zc::none) { return false; }
@@ -6432,7 +6466,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             }
           }
         }
-        if (isEnumVariant || isStringLengthFoldSite(boundModule, tree, node)) {
+        if (isEnumVariant || isStringLengthFoldSite(boundModule, tree, node) ||
+            isArrayLengthFoldSite(boundModule, tree, node)) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
           if (isEnumVariant) {
             // A qualified enum variant access used as an initializer whose
@@ -6581,6 +6616,12 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             // A `s.length` read on a string-literal-initialized local folds to
             // its UTF-8 byte length at compile time.
             production = BodyProductionKind::StringLengthFold;
+          }
+          if (production == BodyProductionKind::Unsupported &&
+              isArrayLengthFoldSite(boundModule, tree, node)) {
+            // An `a.length` read on an array-literal-initialized local folds to
+            // the array length at compile time.
+            production = BodyProductionKind::ArrayLengthFold;
           }
           if (production == BodyProductionKind::Unsupported) {
             production = isMethodCallCallee(tree, node)
@@ -9540,6 +9581,65 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             site.node,
             checked::CheckedLiteralFact{site.node, selected.literal.clone(), array.element,
                                         site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::ArrayLengthFold) {
+        // An `a.length` read on an array-literal-initialized local folds to the
+        // array length at compile time. The classification precondition (the
+        // local initializer is an array literal) guarantees the receiver is a
+        // fixed array. The folded value is emitted as an i32 integer literal
+        // fact so the HIR builder lowers it to a scalar constant.
+        const auto& tree = input.boundModule.tree();
+        const auto& member = tree.node(site.node);
+        const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
+        const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), object);
+        const auto initializer =
+            binding == zc::none
+                ? zc::none
+                : ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(binding));
+        if (initializer == zc::none || !tree.contains(ZC_ASSERT_NONNULL(initializer)) ||
+            tree.node(ZC_ASSERT_NONNULL(initializer)).kind != ast::SyntaxKind::ArrayLiteral) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        // Resolve the array type from the binding annotation to obtain the
+        // fixed array length.
+        auto declared =
+            ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                              input.semanticTypes, ZC_ASSERT_NONNULL(initializer));
+        if (declared == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto arrayLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(declared));
+        if (!arrayLookup.is<type::SemanticTypeLookup>()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& arrayData = arrayLookup.get<type::SemanticTypeLookup>().data();
+        if (!arrayData.is<type::semantic::FixedArrayTypeData>()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto& array = arrayData.get<type::semantic::FixedArrayTypeData>();
+        auto i32Type = internPrimitiveKind(input, type::semantic::PrimitiveKind::I32);
+        if (i32Type == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = ZC_ASSERT_NONNULL(i32Type);
+        auto magnitude = magnitudeBytes(array.length);
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{
+                site.node,
+                signature::CanonicalConstValue::integer(signature::CanonicalInteger{
+                    signature::IntegerSign::NonNegative, zc::mv(magnitude)}),
+                ZC_ASSERT_NONNULL(i32Type), site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::StringConcatFold) {
         // A `"a" + "b"` binary folds to the concatenation of its two

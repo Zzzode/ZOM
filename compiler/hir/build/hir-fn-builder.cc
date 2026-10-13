@@ -279,10 +279,10 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
 
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  if (function.returnsArrayIndexFold) {
-    // Array index fold: the initializer is an array literal (validated by the
-    // builder but not lowered to a HIR expression), and the return value is
-    // the folded scalar literal.
+  if (function.returnsArrayIndexFold || function.returnsArrayLengthFold) {
+    // Array index or length fold: the initializer is an array literal
+    // (validated by the builder but not lowered to a HIR expression), and the
+    // return value is the folded scalar literal.
     lowerScalarLeaf(valueId, function.resultType, function.valueSpan, function.literal,
                     function.parameterReference, ctx);
   } else {

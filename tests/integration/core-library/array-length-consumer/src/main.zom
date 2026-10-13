@@ -1,0 +1,5 @@
+// Array length property access: a single function that initializes a
+// fixed-size array with constants and returns the array's length. The length
+// read is folded at compile time, so it lowers to the reserved no-argument
+// i32 `zom.module_init` shape and emits a verified native ELF object.
+fn entry() -> i32 { let a: [i32; 3] = [1, 2, 3]; return a.length; }

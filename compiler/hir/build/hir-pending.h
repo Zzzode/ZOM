@@ -921,6 +921,11 @@ struct PendingFunctionDeclaration final {
   // per element plus one for the ArrayLiteral node itself and one for the
   // base IdentExpr; the count equation adds this count plus two.
   uint32_t arrayLiteralElementCount = 0;
+  // True when the return value is a compile-time-folded array length access
+  // (`return a.length` on an array-literal-initialized local). The body
+  // checker emits a literal fact for the MemberExpression node; the base
+  // IdentExpr node carries its own node-type fact.
+  bool returnsArrayLengthFold = false;
 };
 
 }  // namespace detail
