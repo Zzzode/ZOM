@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check 05-statements/logical_operator_return_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// `&&` and `||` in a return position are admitted by the checker and lower
+// through HIR, MIR, and LIR to BitAnd/BitOr on bool carriers. The compiler
+// exits 0.
+
+// CHECK-NOT: Error
