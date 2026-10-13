@@ -4832,5 +4832,598 @@ ZC_TEST("HIR pipeline lowers a by-value aggregate call and its parameter field c
   }
 }
 
+// Finds the destructor function in a module that also declares an `entry`
+// helper. The destructor body block carries no return statement node, while
+// the entry block does, so the function whose body block has no return is the
+// destructor.
+const HirFunctionDeclaration& destructorFunction(const VerifiedHirModule& module) {
+  for (const auto& function : module.functions()) {
+    for (const auto& block : module.blocks()) {
+      if (block.node != function.body) continue;
+      bool hasReturn = false;
+      for (const auto& ret : module.returns()) {
+        for (const auto statement : block.statements) {
+          if (statement == ret.node) hasReturn = true;
+        }
+      }
+      if (!hasReturn) return function;
+    }
+  }
+  ZC_FAIL_REQUIRE("no destructor function found");
+}
+
+ZC_TEST("HIR pipeline lowers a return-position unary negation") {
+  HirPipelineFixture fixture("fn negate(a: i32) -> i32 { return -a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // Neg desugars to 0 - a: one primitive-binary node, one parameter reference
+  // for the real operand, one synthetic zero literal.
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& parameter = module.parameterReferences()[0];
+  const auto& synthetic = module.expressions()[0];
+  // Six-node stride: function 1, body 2, synthetic left 3, parameter right 4,
+  // binary 5, return 6.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(binary.node.ordinal() == 5);
+  ZC_EXPECT(returnStatement.node.ordinal() == 6);
+  ZC_EXPECT(returnStatement.value == binary.node);
+  ZC_EXPECT(binary.operation == checker::PrimitiveOperation::Sub);
+  ZC_EXPECT(binary.isUnaryDesugar);
+  ZC_EXPECT(binary.left == synthetic.node);
+  ZC_EXPECT(binary.right == parameter.node);
+  ZC_EXPECT(parameter.parameter == function.parameters[0].key);
+  ZC_EXPECT(synthetic.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  ZC_EXPECT(binary.operandType == function.parameters[0].type);
+  ZC_EXPECT(binary.type == function.resultType);
+}
+
+ZC_TEST("HIR pipeline lowers a return-position unary logical-not") {
+  HirPipelineFixture fixture("fn negate(a: bool) -> bool { return !a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  const auto& parameter = module.parameterReferences()[0];
+  const auto& synthetic = module.expressions()[0];
+  // LogicalNot desugars to a == false: synthetic false on the right.
+  ZC_EXPECT(binary.operation == checker::PrimitiveOperation::Eq);
+  ZC_EXPECT(binary.isUnaryDesugar);
+  ZC_EXPECT(binary.left == parameter.node);
+  ZC_EXPECT(binary.right == synthetic.node);
+  ZC_EXPECT(parameter.parameter == function.parameters[0].key);
+  ZC_EXPECT(synthetic.value.tag() == checker::signature::CanonicalConstValueTag::Bool);
+  ZC_EXPECT(binary.type == function.resultType);
+}
+
+ZC_TEST("HIR pipeline lowers a return-position unary bitwise-not") {
+  HirPipelineFixture fixture("fn bitnot(a: i32) -> i32 { return ~a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  const auto& parameter = module.parameterReferences()[0];
+  const auto& synthetic = module.expressions()[0];
+  // BitNot desugars to a ^ -1: synthetic -1 on the right.
+  ZC_EXPECT(binary.operation == checker::PrimitiveOperation::BitXor);
+  ZC_EXPECT(binary.isUnaryDesugar);
+  ZC_EXPECT(binary.left == parameter.node);
+  ZC_EXPECT(binary.right == synthetic.node);
+  ZC_EXPECT(synthetic.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline lowers a direct enum construction return") {
+  HirPipelineFixture fixture(
+      "enum Result { Ok(i32), Err(i32) }\n"
+      "fn fetch() -> Result { return Result::Ok(41); }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& aggregate = module.aggregates()[0];
+  const auto& returnStatement = module.returns()[0];
+  // The enum construction lowers to a nominal aggregate wired to the return.
+  ZC_EXPECT(returnStatement.value == aggregate.node);
+  ZC_EXPECT(aggregate.type == function.resultType);
+  ZC_EXPECT(aggregate.category == HirValueCategory::Value);
+  // The aggregate carries the discriminant/tag element plus the payload.
+  ZC_REQUIRE(aggregate.elements.size() == 2);
+  for (const auto& element : aggregate.elements) {
+    ZC_EXPECT(element.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a two-arm boolean match return") {
+  HirPipelineFixture fixture(
+      "fn matchBool(b: bool) -> i32 {\n"
+      "  match (b) { when true => return 41; when false => return 7; }\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  // The scrutinee is one parameter reference; both arms are scalar literals.
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& scrutinee = module.parameterReferences()[0];
+  const auto& thenValue = module.expressions()[0];
+  const auto& elseValue = module.expressions()[1];
+  ZC_EXPECT(conditional.condition == scrutinee.node);
+  ZC_EXPECT(scrutinee.parameter == function.parameters[0].key);
+  ZC_EXPECT(conditional.thenReturnValue == thenValue.node);
+  ZC_EXPECT(conditional.elseReturnValue == elseValue.node);
+  ZC_EXPECT(conditional.type == function.resultType);
+  ZC_EXPECT(thenValue.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  ZC_EXPECT(elseValue.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline lowers a boolean match with a default arm") {
+  HirPipelineFixture fixture(
+      "fn matchDefault(b: bool) -> i32 {\n"
+      "  match (b) { when true => return 41; default => return 7; }\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  const auto& conditional = module.conditionals()[0];
+  const auto& scrutinee = module.parameterReferences()[0];
+  // The default arm covers the remaining bool value; the conditional path is
+  // the same as a two-arm literal match.
+  ZC_EXPECT(conditional.condition == scrutinee.node);
+  ZC_EXPECT(conditional.thenReturnValue == module.expressions()[0].node);
+  ZC_EXPECT(conditional.elseReturnValue == module.expressions()[1].node);
+}
+
+ZC_TEST("HIR pipeline lowers a two-variant enum match return") {
+  HirPipelineFixture fixture(
+      "enum Color { Red, Green }\n"
+      "fn matchEnum(c: Color) -> i32 {\n"
+      "  match (c) { when Color.Red => return 41; when Color.Green => return 7; }\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  // A two-variant enum match synthesizes one equality comparison
+  // (scrutinee == discriminant) as the conditional condition.
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& comparison = module.primitiveBinaryOperations()[0];
+  const auto& scrutinee = module.parameterReferences()[0];
+  // The conditional condition is the equality comparison node, not the bare
+  // scrutinee parameter reference.
+  ZC_EXPECT(conditional.condition == comparison.node);
+  ZC_EXPECT(comparison.operation == checker::PrimitiveOperation::Eq);
+  ZC_EXPECT(comparison.left == scrutinee.node);
+  ZC_EXPECT(scrutinee.parameter == function.parameters[0].key);
+  ZC_EXPECT(conditional.type == function.resultType);
+}
+
+ZC_TEST("HIR pipeline lowers a folded float-to-int cast return") {
+  HirPipelineFixture fixture("fn entry() -> i32 { return 1.5 as i32; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // The cast is folded to an integer constant at compile time, so the return
+  // feeds one scalar literal expression.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(returnStatement.value == literal.node);
+  ZC_EXPECT(literal.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline lowers a folded string concatenation return") {
+  HirPipelineFixture fixture("fn entry() -> str { return \"hello\" + \" world\"; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // The concatenation is folded to a string constant at compile time.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(returnStatement.value == literal.node);
+  ZC_EXPECT(literal.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::String);
+}
+
+ZC_TEST("HIR pipeline lowers a constant array index fold return") {
+  HirPipelineFixture fixture("fn entry() -> i32 { let a: [i32; 3] = [1, 2, 3]; return a[0]; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  // The constant index read is folded to the selected element at compile time.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& local = module.locals()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(local.initializer != zc::none);
+  ZC_EXPECT(returnStatement.value == literal.node);
+  ZC_EXPECT(literal.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline lowers a raw-pointer dereference return") {
+  HirPipelineFixture fixture("fn entry(ptr: *const i32) -> i32 { return unsafe { *ptr }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  const auto& parameter = module.parameterReferences()[0];
+  const auto& returnStatement = module.returns()[0];
+  // The deref lowers to a parameter reference wrapped in an unsafe block; the
+  // return feeds the parameter reference node directly.
+  ZC_EXPECT(function.unsafeBlock != zc::none);
+  ZC_EXPECT(unsafeBlock.node == ZC_ASSERT_NONNULL(function.unsafeBlock));
+  ZC_EXPECT(unsafeBlock.body == parameter.node);
+  ZC_EXPECT(unsafeBlock.type == function.resultType);
+  ZC_EXPECT(returnStatement.value == parameter.node);
+  ZC_EXPECT(parameter.parameter == function.parameters[0].key);
+}
+
+ZC_TEST("HIR pipeline lowers a raw-pointer write-read body") {
+  HirPipelineFixture fixture(
+      "fn entry(ptr: *mut i32) -> i32 {\n"
+      "  unsafe { *ptr = 41; };\n"
+      "  return unsafe { *ptr };\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // Two unsafe blocks (write + read), one raw-pointer write, one written
+  // literal, one read parameter reference.
+  ZC_REQUIRE(module.unsafeBlocks().size() == 2);
+  ZC_REQUIRE(module.rawPointerWrites().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& write = module.rawPointerWrites()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& parameter = module.parameterReferences()[0];
+  ZC_EXPECT(write.parameter == function.parameters[0].key);
+  ZC_EXPECT(write.value == literal.node);
+  ZC_EXPECT(write.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+  ZC_EXPECT(parameter.parameter == function.parameters[0].key);
+}
+
+ZC_TEST("HIR pipeline lowers an error-propagate call return") {
+  HirPipelineFixture fixture(
+      "fn fetch() -> i32 raises str { return 42; }\n"
+      "fn answer() -> i32 raises str { return fetch()?!; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& fetch = module.functions()[0];
+  const auto& answer = module.functions()[1];
+  const auto& call = module.calls()[0];
+  // The ?! operator is a codegen no-op: the call result passes through as the
+  // function success type.
+  ZC_EXPECT(call.callee == fetch.definition);
+  ZC_EXPECT(call.resultType == answer.resultType);
+  ZC_EXPECT(answer.resultType == fetch.resultType);
+  ZC_EXPECT(module.returns()[1].value == call.node);
+}
+
+ZC_TEST("HIR pipeline lowers a forced-unwrap call return") {
+  HirPipelineFixture fixture(
+      "fn fetch() -> i32 raises str { return 42; }\n"
+      "fn entry() -> i32 raises bool { return fetch()!!; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& fetch = module.functions()[0];
+  const auto& entry = module.functions()[1];
+  const auto& call = module.calls()[0];
+  ZC_EXPECT(call.callee == fetch.definition);
+  // The forced-unwrap flag and the tag/bool types for the trap CFG are
+  // retained on the function declaration.
+  ZC_EXPECT(entry.returnsErrorUnwrapCall);
+  ZC_EXPECT(entry.errorUnwrapTagType != zc::none);
+  ZC_EXPECT(entry.errorUnwrapBoolType != zc::none);
+  ZC_EXPECT(module.returns()[1].value == call.node);
+}
+
+ZC_TEST("HIR pipeline lowers a for-loop accumulator body") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 {\n"
+      "  mut sum = 0;\n"
+      "  for (let i = 0; i < 10; i = i + 1) { sum = sum + i; }\n"
+      "  return sum;\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  const auto& loop = module.loops()[0];
+  const auto& returnStatement = module.returns()[0];
+  // The loop condition is a comparison node; the body carries the accumulator
+  // write. The return feeds a local reference.
+  ZC_EXPECT(loop.breakSpan == zc::none);
+  ZC_EXPECT(loop.continueSpan == zc::none);
+  ZC_EXPECT(loop.body.size() >= 1);
+  ZC_REQUIRE(module.localReferences().size() >= 1);
+  bool returnIsLocal = false;
+  for (const auto& reference : module.localReferences()) {
+    if (returnStatement.value == reference.node) returnIsLocal = true;
+  }
+  ZC_EXPECT(returnIsLocal);
+}
+
+ZC_TEST("HIR pipeline lowers a do-while loop body") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 {\n"
+      "  mut x = 0;\n"
+      "  do { x = x + 1; } while (x < 41);\n"
+      "  return x;\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  const auto& loop = module.loops()[0];
+  // The do-while reuses the loop pool; its condition is a comparison and its
+  // body carries the increment write.
+  ZC_EXPECT(loop.body.size() >= 1);
+  ZC_EXPECT(loop.breakSpan == zc::none);
+  // The condition is a primitive-binary comparison node.
+  bool conditionIsBinary = false;
+  for (const auto& binary : module.primitiveBinaryOperations()) {
+    if (loop.condition == binary.node) conditionIsBinary = true;
+  }
+  ZC_EXPECT(conditionIsBinary);
+}
+
+ZC_TEST("HIR pipeline lowers a for-loop with a trailing break") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 {\n"
+      "  mut sum = 0;\n"
+      "  for (let i = 0; i < 10; i = i + 1) { sum = sum + i; break; }\n"
+      "  return sum;\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.loops().size() == 1);
+  const auto& loop = module.loops()[0];
+  // The trailing break records its source span so the MIR builder routes the
+  // body terminator to the loop exit.
+  ZC_EXPECT(loop.breakSpan != zc::none);
+  ZC_EXPECT(loop.continueSpan == zc::none);
+  ZC_EXPECT(!loop.breakTargetsEnclosing);
+}
+
+ZC_TEST("HIR pipeline lowers logical operators in a let-binding initializer") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 {\n"
+      "  let a = true;\n"
+      "  let b = true;\n"
+      "  let c = a && b;\n"
+      "  if (c) { return 41; } else { return 0; }\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 3);
+  // Five scalar literals: true (a), true (b), the folded a&&b result, 41, 0.
+  ZC_REQUIRE(module.expressions().size() == 5);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  ZC_EXPECT(conditional.type == function.resultType);
+  // The then/else return values are scalar integer literals somewhere in the
+  // expressions pool (41 and 0).
+  bool thenIsIntLiteral = false;
+  bool elseIsIntLiteral = false;
+  for (const auto& expression : module.expressions()) {
+    if (conditional.thenReturnValue == expression.node &&
+        expression.value.tag() == checker::signature::CanonicalConstValueTag::Integer) {
+      thenIsIntLiteral = true;
+    }
+    if (conditional.elseReturnValue == expression.node &&
+        expression.value.tag() == checker::signature::CanonicalConstValueTag::Integer) {
+      elseIsIntLiteral = true;
+    }
+  }
+  ZC_EXPECT(thenIsIntLiteral);
+  ZC_EXPECT(elseIsIntLiteral);
+}
+
+ZC_TEST("HIR pipeline lowers a dyn field access through an existential local") {
+  HirPipelineFixture fixture(
+      "interface Animal { fn speak(this) -> i32; }\n"
+      "struct Dog { tag: i32, }\n"
+      "impl Animal for Dog { fn speak(this) -> i32 { return 41; } }\n"
+      "struct Zoo { animal: dyn Animal, }\n"
+      "fn entry() -> i32 {\n"
+      "  let zoo = Zoo { animal: Dog { tag: 41 } };\n"
+      "  let a: dyn Animal = zoo.animal;\n"
+      "  return a.speak();\n"
+      "}"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  // The trailing method call on the existential local dispatches indirectly
+  // through the vtable, so it lands in the receiver-call pool with an
+  // interface set.
+  ZC_REQUIRE(module.receiverCalls().size() == 1);
+  const auto& entry = module.functions()[1];
+  const auto& call = module.receiverCalls()[0];
+  ZC_EXPECT(call.resultType == entry.resultType);
+  ZC_EXPECT(call.interface != zc::none);
+  // The Zoo construction is dead-folded (only zoo.animal is read), so only the
+  // inner Dog concrete value survives as a nominal aggregate.
+  ZC_REQUIRE(module.aggregates().size() == 1);
+}
+
+ZC_TEST("HIR pipeline lowers an existential aggregate construction return") {
+  HirPipelineFixture fixture(
+      "interface Animal { fn speak(this) -> i32; }\n"
+      "struct Dog { tag: i32, }\n"
+      "impl Animal for Dog { fn speak(this) -> i32 { return 41; } }\n"
+      "fn makeAnimal() -> dyn Animal { return Dog { tag: 0 }; }"_zc);
+  const auto& module = fixture.hirModule();
+  // Two function definitions: the impl's speak method and makeAnimal.
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  // makeAnimal is the second function (the impl method is materialized first).
+  const auto& makeAnimal = module.functions()[1];
+  const auto& aggregate = module.aggregates()[0];
+  // The concrete Dog construction is erased to the existential return type;
+  // the erasure record is retained on the function declaration.
+  ZC_EXPECT(makeAnimal.returnErasure != zc::none);
+  ZC_EXPECT(aggregate.category == HirValueCategory::Value);
+  ZC_REQUIRE(aggregate.elements.size() == 1);
+  ZC_EXPECT(aggregate.elements[0].value.tag() ==
+            checker::signature::CanonicalConstValueTag::Integer);
+  // The return feeds the aggregate node; the aggregate type is the concrete
+  // Dog type, not the existential dyn Animal type.
+  ZC_EXPECT(module.returns()[1].value == aggregate.node);
+}
+
+ZC_TEST("HIR pipeline lowers a destructor empty body") {
+  HirPipelineFixture fixture(
+      "struct Resource { let handle: i32, deinit() { } }\n"
+      "fn entry() -> i32 { return 41; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  const auto& deinit = destructorFunction(module);
+  // The empty-body destructor has no parameters, no receiver, no return, and
+  // an empty body block.
+  ZC_EXPECT(deinit.parameters.size() == 0);
+  ZC_EXPECT(deinit.receiver == zc::none);
+  ZC_EXPECT(deinit.unsafeBlock == zc::none);
+  for (const auto& block : module.blocks()) {
+    if (block.node == deinit.body) { ZC_EXPECT(block.statements.size() == 0); }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a destructor void-let body") {
+  HirPipelineFixture fixture(
+      "struct Resource { let handle: i32, deinit() { let x: i32 = 0; } }\n"
+      "fn entry() -> i32 { return 41; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  const auto& deinit = destructorFunction(module);
+  // The void-let body retains one scalar local binding and its literal
+  // initializer; no return is materialized.
+  ZC_EXPECT(deinit.parameters.size() == 0);
+  ZC_EXPECT(deinit.receiver == zc::none);
+  ZC_REQUIRE(module.locals().size() == 1);
+  const auto& local = module.locals()[0];
+  ZC_EXPECT(local.initializer != zc::none);
+  for (const auto& block : module.blocks()) {
+    if (block.node == deinit.body) {
+      ZC_REQUIRE(block.statements.size() == 1);
+      ZC_EXPECT(block.statements[0] == local.node);
+    }
+  }
+}
+
+ZC_TEST("HIR pipeline dead-folds a destructor field-write body") {
+  HirPipelineFixture fixture(
+      "struct Resource { let handle: i32, deinit() { this.handle = 0; } }\n"
+      "fn entry() -> i32 { return 41; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  const auto& deinit = destructorFunction(module);
+  // The field-write store is dead-folded, so the destructor produces the same
+  // HIR as an empty body: no parameter field write, no statements.
+  ZC_EXPECT(module.parameterFieldWrites().size() == 0);
+  ZC_EXPECT(deinit.parameters.size() == 0);
+  for (const auto& block : module.blocks()) {
+    if (block.node == deinit.body) { ZC_EXPECT(block.statements.size() == 0); }
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a postfix-increment expression statement") {
+  HirPipelineFixture fixture("fn entry() -> i32 { mut x = 41; x++; return x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // Two local references: one for the postfix-increment read and one for the
+  // return read.
+  ZC_REQUIRE(module.localReferences().size() == 2);
+  const auto& local = module.locals()[0];
+  const auto& returnStatement = module.returns()[0];
+  // The return feeds one of the local references (the incremented value).
+  bool returnIsLocal = false;
+  for (const auto& reference : module.localReferences()) {
+    if (returnStatement.value == reference.node) {
+      returnIsLocal = true;
+      ZC_EXPECT(reference.local == local.local);
+    }
+  }
+  ZC_EXPECT(returnIsLocal);
+  ZC_EXPECT(local.initializer != zc::none);
+}
+
+ZC_TEST("HIR pipeline lowers a nested unsafe block return") {
+  HirPipelineFixture fixture("fn entry() -> i32 { return unsafe { unsafe { 41 } }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  // The inner unsafe block is folded into the outer one, so only one unsafe
+  // block survives with the scalar literal as its direct body.
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& unsafeBlock = module.unsafeBlocks()[0];
+  ZC_EXPECT(function.unsafeBlock != zc::none);
+  ZC_EXPECT(unsafeBlock.node == ZC_ASSERT_NONNULL(function.unsafeBlock));
+  ZC_EXPECT(unsafeBlock.body == literal.node);
+  ZC_EXPECT(unsafeBlock.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline retains module visibility on a private free function") {
+  HirPipelineFixture fixture("fn entry() -> i32 { return 1; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  const auto& function = module.functions()[0];
+  // A module-scope function without `pub` has module visibility and internal
+  // linkage.
+  ZC_EXPECT(function.visibility.kind() == HirVisibilityKind::Module);
+  ZC_EXPECT(function.visibility.visibleModule() != zc::none);
+  ZC_EXPECT(function.linkage == HirLinkage::Internal);
+}
+
+ZC_TEST("HIR pipeline retains external visibility on a public method") {
+  HirPipelineFixture fixture(
+      "struct S { public fn f(this) -> i32 { return 1; } }\n"
+      "fn entry() -> i32 { let s = S {}; return s.f(); }"_zc);
+  const auto& module = fixture.hirModule();
+  // Two functions: the public method f and the entry helper.
+  ZC_REQUIRE(module.functions().size() == 2);
+  // The method is materialized first and carries external visibility because
+  // it is declared `public`.
+  const auto& method = module.functions()[0];
+  ZC_EXPECT(method.visibility.kind() == HirVisibilityKind::External);
+  ZC_EXPECT(method.visibility.visibleModule() == zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir
