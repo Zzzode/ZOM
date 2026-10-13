@@ -37,10 +37,14 @@ void setBool(void* context) {
   value = true;
 }
 
+void incrementCounter(void* context) { ++*static_cast<int*>(context); }
+
+void writeSentinelToContext(void* context) { *static_cast<int*>(context) = 1234; }
+
 #if !_WIN32
 using PanicEntry = void (*)(const ZomPanicInfo*);
 
-bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo& info,
+bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo* info,
                                         zc::StringPtr expected) {
   int pipeFds[2]{};
   ZC_SYSCALL(zc::miniposix::pipe(pipeFds));
@@ -52,7 +56,7 @@ bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo& in
     zc::miniposix::close(pipeFds[0]);
     if (dup2(pipeFds[1], STDERR_FILENO) < 0) { _exit(127); }
     zc::miniposix::close(pipeFds[1]);
-    entry(&info);
+    entry(info);
   }
 
   zc::miniposix::close(pipeFds[1]);
@@ -74,6 +78,11 @@ bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo& in
   ZC_EXPECT(signaled);
   ZC_EXPECT(matches);
   return signaled && matches;
+}
+
+bool panicEntryWritesToStderrAndSignals(PanicEntry entry, const ZomPanicInfo& info,
+                                        zc::StringPtr expected) {
+  return panicEntryWritesToStderrAndSignals(entry, &info, expected);
 }
 #endif
 
@@ -211,6 +220,215 @@ ZC_TEST("Runtime.PanicAbiSymbolsAreLinkable") {
   ZC_EXPECT(__zom_abort_panic != nullptr);
   ZC_EXPECT(__zom_begin_panic_unwind != nullptr);
   ZC_EXPECT(__zom_catch_unwind != nullptr);
+}
+
+ZC_TEST("Runtime.PanicInfoDefaultsAreStable") {
+  ZomPanicInfo info;
+  ZC_EXPECT(info.kind == ZomPanicKind::Runtime);
+  ZC_EXPECT(info.span.file == nullptr);
+  ZC_EXPECT(info.span.line == 0);
+  ZC_EXPECT(info.span.column == 0);
+  ZC_EXPECT(info.span.byteStart == 0);
+  ZC_EXPECT(info.span.byteEnd == 0);
+  ZC_EXPECT(info.message == nullptr);
+  ZC_EXPECT(info.payload == nullptr);
+  ZC_EXPECT(info.backtrace == nullptr);
+  ZC_EXPECT(info.taskId == 0);
+}
+
+ZC_TEST("Runtime.SourceSpanDefaultsAreStable") {
+  ZomSourceSpan span;
+  ZC_EXPECT(span.file == nullptr);
+  ZC_EXPECT(span.line == 0);
+  ZC_EXPECT(span.column == 0);
+  ZC_EXPECT(span.byteStart == 0);
+  ZC_EXPECT(span.byteEnd == 0);
+}
+
+ZC_TEST("Runtime.PanicKindDiscriminantsAreStable") {
+  // The panic ABI carries the kind as a uint8 discriminant; pin the wire values.
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::ForcedUnwrap) == 0);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::ExplicitPanic) == 1);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Unreachable) == 2);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Todo) == 3);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Assertion) == 4);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Bounds) == 5);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Overflow) == 6);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicKind::Runtime) == 7);
+}
+
+ZC_TEST("Runtime.PanicStrategyDiscriminantsAreStable") {
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicStrategy::Abort) == 0);
+  ZC_EXPECT(static_cast<uint8_t>(ZomPanicStrategy::Unwind) == 1);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoIgnoresPayloadAndBacktrace") {
+  ZomPanicInfo info;
+  int payload = 1;
+  int backtrace = 2;
+  info.payload = &payload;
+  info.backtrace = &backtrace;
+  // payload and backtrace are carried for future strategies; the abort
+  // formatter must not render them.
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+            "message=<none>, task=0)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoPrintsEmptyMessageVerbatim") {
+  ZomPanicInfo info;
+  info.message = "";
+  // An empty message is present (not missing), so it renders as empty text.
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+            "message=, task=0)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoPrintsEmptyFileVerbatim") {
+  ZomPanicInfo info;
+  info.span.file = "";
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=, line=0, column=0, bytes=0..0, "
+            "message=<none>, task=0)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoHandlesMaxUIntFields") {
+  ZomPanicInfo info;
+  info.span.line = UINT32_MAX;
+  info.span.column = UINT32_MAX;
+  info.span.byteStart = UINT32_MAX;
+  info.span.byteEnd = UINT32_MAX;
+  info.taskId = UINT64_MAX;
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=<unknown>, line=4294967295, column=4294967295, "
+            "bytes=4294967295..4294967295, message=<none>, task=18446744073709551615)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoAcceptsInvertedByteRange") {
+  ZomPanicInfo info;
+  info.span.byteStart = 100;
+  info.span.byteEnd = 5;
+  // The formatter renders the span verbatim; range validation belongs to the
+  // producer, not the runtime.
+  ZC_EXPECT(formatPanicInfo(info) ==
+            "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=100..5, "
+            "message=<none>, task=0)"_zc);
+}
+
+ZC_TEST("Runtime.FormatPanicInfoIsDeterministic") {
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::Todo;
+  info.span.file = "todo.zom";
+  info.span.line = 1;
+  info.message = "not yet implemented";
+  ZC_EXPECT(formatPanicInfo(info) == formatPanicInfo(info));
+}
+
+ZC_TEST("Runtime.FormatPanicInfoIncludesEveryKindName") {
+  const ZomPanicKind kinds[] = {ZomPanicKind::ForcedUnwrap, ZomPanicKind::ExplicitPanic,
+                                ZomPanicKind::Unreachable,  ZomPanicKind::Todo,
+                                ZomPanicKind::Assertion,    ZomPanicKind::Bounds,
+                                ZomPanicKind::Overflow,     ZomPanicKind::Runtime};
+  for (ZomPanicKind kind : kinds) {
+    ZomPanicInfo info;
+    info.kind = kind;
+    ZC_EXPECT(formatPanicInfo(info).contains(zc::str("kind=", panicKindName(kind), ", ")));
+  }
+}
+
+ZC_TEST("Runtime.CatchUnwindResetsOutInfoBeforeRunningThunk") {
+  int calls = 0;
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::Assertion;
+  info.span.file = "old.zom";
+  info.span.line = 42;
+  info.message = "old message";
+  info.taskId = 55;
+
+  bool caught = __zom_catch_unwind(incrementCounter, &calls, &info);
+
+  ZC_EXPECT(!caught);
+  ZC_EXPECT(calls == 1);
+  ZC_EXPECT(info.kind == ZomPanicKind::Runtime);
+  ZC_EXPECT(info.span.file == nullptr);
+  ZC_EXPECT(info.span.line == 0);
+  ZC_EXPECT(info.message == nullptr);
+  ZC_EXPECT(info.taskId == 0);
+}
+
+ZC_TEST("Runtime.CatchUnwindAcceptsNullOutInfo") {
+  int calls = 0;
+  bool caught = __zom_catch_unwind(incrementCounter, &calls, nullptr);
+  ZC_EXPECT(!caught);
+  ZC_EXPECT(calls == 1);
+}
+
+ZC_TEST("Runtime.CatchUnwindAcceptsNullThunkAndNullOutInfo") {
+  bool caught = __zom_catch_unwind(nullptr, nullptr, nullptr);
+  ZC_EXPECT(!caught);
+}
+
+ZC_TEST("Runtime.CatchUnwindRunsThunkExactlyOnce") {
+  int calls = 0;
+  ZomPanicInfo info;
+  bool caught = __zom_catch_unwind(incrementCounter, &calls, &info);
+  ZC_EXPECT(!caught);
+  ZC_EXPECT(calls == 1);
+}
+
+ZC_TEST("Runtime.CatchUnwindForwardsContextVerbatim") {
+  int value = 0;
+  ZomPanicInfo info;
+  bool caught = __zom_catch_unwind(writeSentinelToContext, &value, &info);
+  ZC_EXPECT(!caught);
+  ZC_EXPECT(value == 1234);
+}
+
+ZC_TEST("Runtime.AbortPanicWithNullInfoUsesDefaults") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_abort_panic(nullptr));
+#else
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_abort_panic, nullptr,
+      "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+      "message=<none>, task=0)\n"_zc));
+#endif
+}
+
+ZC_TEST("Runtime.PanicWithNullInfoUsesDefaults") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_panic(nullptr));
+#else
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_panic, nullptr,
+      "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+      "message=<none>, task=0)\n"_zc));
+#endif
+}
+
+ZC_TEST("Runtime.BeginPanicUnwindWithNullInfoUsesDefaults") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_begin_panic_unwind(nullptr));
+#else
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_begin_panic_unwind, nullptr,
+      "panic(kind=runtime, file=<unknown>, line=0, column=0, bytes=0..0, "
+      "message=<none>, task=0)\n"_zc));
+#endif
+}
+
+ZC_TEST("Runtime.AbortPanicWritesEmptyMessageVerbatim") {
+#if _WIN32
+  ZC_EXPECT_SIGNAL(SIGABRT, __zom_abort_panic(nullptr));
+#else
+  ZomPanicInfo info;
+  info.kind = ZomPanicKind::ExplicitPanic;
+  info.message = "";
+  ZC_EXPECT(panicEntryWritesToStderrAndSignals(
+      __zom_abort_panic, info,
+      "panic(kind=explicit_panic, file=<unknown>, line=0, column=0, bytes=0..0, "
+      "message=, task=0)\n"_zc));
+#endif
 }
 
 }  // namespace runtime
