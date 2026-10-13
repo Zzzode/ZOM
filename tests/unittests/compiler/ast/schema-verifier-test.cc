@@ -100,6 +100,25 @@ Tree wrapExprInSourceFile(TreeBuilder& builder, NodeId exprNode) {
   return builder.finish();
 }
 
+/// Build a minimal valid empty SourceFile root on \p builder and set it as the
+/// tree root.  Tests that need to validate an unrelated node in the same tree
+/// use this so the root check passes and the node under test is reached.
+NodeId makeEmptySourceFileRoot(TreeBuilder& builder) {
+  zc::Vector<NodeId> stmts;
+  const NodeList stmtList = builder.makeList(stmts.asPtr());
+  const StringId fileName = builder.internString("test.zom"_zc);
+
+  NodePayload sourcePayload;
+  sourcePayload.words[kSourceFileFileNameWord] = fileName.value;
+  sourcePayload.words[kSourceFileModuleWord] = 0;
+  sourcePayload.words[kSourceFileStatementsFirstWord] = stmtList.first;
+  sourcePayload.words[kSourceFileStatementsSizeWord] = stmtList.size;
+  const NodeId root =
+      builder.makeNode(SyntaxKind::SourceFile, source::SourceRange(), sourcePayload);
+  builder.setRoot(root);
+  return root;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -502,6 +521,398 @@ ZC_TEST("SchemaVerifier.OutOfRangeFloatIdFails") {
 
   ZC_EXPECT(!verifySchema(tree));
   ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 7. Empty tree (no root) fails verification
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.EmptyTreeFails") {
+  Tree tree;
+
+  ZC_EXPECT(!verifySchema(tree));
+  auto failure = verifySchemaFailure(tree);
+  ZC_EXPECT(failure != zc::none);
+  ZC_IF_SOME(message, failure) { ZC_EXPECT(message.contains("root")); }
+}
+
+// ---------------------------------------------------------------------------
+// 8. Root that is not a SourceFile fails verification
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.RootNotSourceFileFails") {
+  TreeBuilder builder;
+
+  const NodeId root = builder.makeNode(SyntaxKind::IdentExpr, source::SourceRange());
+  builder.setRoot(root);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 9. A token kind stored as an AST node fails the known-kind check
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.UnknownNodeKindFails") {
+  TreeBuilder builder;
+
+  // Identifier is a lexical token kind, not a schema-backed AST node.
+  builder.makeNode(SyntaxKind::Identifier, source::SourceRange());
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 10. Enum field outside its declared domain fails
+// ---------------------------------------------------------------------------
+//
+// UnaryExpression.op is an Enum field over UnaryOperatorKind (0..8).  Value
+// 99 is outside the domain and must be rejected.
+
+ZC_TEST("SchemaVerifier.EnumFieldOutOfDomainFails") {
+  TreeBuilder builder;
+
+  const NodeId operand = builder.makeNode(SyntaxKind::ThisExpr, source::SourceRange());
+  NodePayload unaryPayload;
+  unaryPayload.words[kUnaryExpressionOpWord] = 99;  // outside UnaryOperatorKind
+  unaryPayload.words[kUnaryExpressionOperandWord] = operand.value;
+  const NodeId unary =
+      builder.makeNode(SyntaxKind::UnaryExpression, source::SourceRange(), unaryPayload);
+  Tree tree = wrapExprInSourceFile(builder, unary);
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 11. Bool field outside {0, 1} fails
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.BoolFieldOutOfDomainFails") {
+  TreeBuilder builder;
+
+  const IdentId name = builder.internIdent("x"_zc);
+  NodePayload patternPayload;
+  patternPayload.words[kBindingPatternNameWord] = name.value;
+  patternPayload.words[kBindingPatternIsMutWord] = 2;  // Bool must be 0 or 1
+  patternPayload.words[kBindingPatternIsRefWord] = 0;
+  patternPayload.words[kBindingPatternSubWord] = 0;
+  builder.makeNode(SyntaxKind::BindingPattern, source::SourceRange(), patternPayload);
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 12. UInt8 field above 255 fails
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.UInt8FieldOutOfDomainFails") {
+  TreeBuilder builder;
+
+  const BigIntId value = builder.internBigInt("42"_zc);
+  NodePayload literalPayload;
+  literalPayload.words[kIntLiteralBaseWord] = 256;  // UInt8 max is 255
+  literalPayload.words[kIntLiteralValueWord] = value.value;
+  builder.makeNode(SyntaxKind::IntLiteral, source::SourceRange(), literalPayload);
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 13. Required interned-identifier field left empty fails
+// ---------------------------------------------------------------------------
+//
+// IdentExpr.name is a required IdentId.  Leaving it zero must trigger the
+// required-scalar check in the interned-field validator.
+
+ZC_TEST("SchemaVerifier.RequiredIdentFieldEmptyFails") {
+  TreeBuilder builder;
+
+  NodePayload identPayload;  // all zero: name (required IdentId) is empty
+  builder.makeNode(SyntaxKind::IdentExpr, source::SourceRange(), identPayload);
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 14. Optional NodeId field may be empty
+// ---------------------------------------------------------------------------
+//
+// IfStmt.else_stmt is optional.  A well-formed IfStmt with no else branch must
+// pass verification.
+
+ZC_TEST("SchemaVerifier.OptionalNodeIdEmptyPasses") {
+  TreeBuilder builder;
+
+  // cond: BoolLiteral { value = true }
+  NodePayload boolPayload;
+  boolPayload.words[kBoolLiteralValueWord] = 1;
+  const NodeId cond = builder.makeNode(SyntaxKind::BoolLiteral, source::SourceRange(), boolPayload);
+
+  // then: BlockStmt { stmts = empty }
+  zc::Vector<NodeId> blockStmts;
+  const NodeList blockList = builder.makeList(blockStmts.asPtr());
+  NodePayload blockPayload;
+  blockPayload.words[kBlockStmtStmtsFirstWord] = blockList.first;
+  blockPayload.words[kBlockStmtStmtsSizeWord] = blockList.size;
+  const NodeId thenBlock =
+      builder.makeNode(SyntaxKind::BlockStmt, source::SourceRange(), blockPayload);
+
+  // IfStmt { cond, then_stmt, else_stmt = empty (optional) }
+  NodePayload ifPayload;
+  ifPayload.words[kIfStmtCondWord] = cond.value;
+  ifPayload.words[kIfStmtThenStmtWord] = thenBlock.value;
+  ifPayload.words[kIfStmtElseStmtWord] = 0;
+  const NodeId ifStmt = builder.makeNode(SyntaxKind::IfStmt, source::SourceRange(), ifPayload);
+
+  Tree tree = wrapExprInSourceFile(builder, ifStmt);
+  ZC_EXPECT(verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) == zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 15. NodeList field pointing past list storage fails
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.NodeListOutOfRangeFails") {
+  TreeBuilder builder;
+
+  NodePayload blockPayload;
+  blockPayload.words[kBlockStmtStmtsFirstWord] = 100;  // past list storage
+  blockPayload.words[kBlockStmtStmtsSizeWord] = 5;
+  builder.makeNode(SyntaxKind::BlockStmt, source::SourceRange(), blockPayload);
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 16. IdentList field pointing past identifier-list storage fails
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.IdentListOutOfRangeFails") {
+  TreeBuilder builder;
+
+  NodePayload pathPayload;
+  pathPayload.words[kModulePathSegmentsFirstWord] = 100;  // past ident-list storage
+  pathPayload.words[kModulePathSegmentsSizeWord] = 3;
+  pathPayload.words[kModulePathRootWord] = 0;  // Relative
+  builder.makeNode(SyntaxKind::ModulePath, source::SourceRange(), pathPayload);
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(!verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) != zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 17. Valid empty SourceFile passes
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.ValidEmptySourceFilePasses") {
+  TreeBuilder builder;
+  makeEmptySourceFileRoot(builder);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) == zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 18. Valid let-statement tree passes
+// ---------------------------------------------------------------------------
+//
+// Covers BindingPattern, IntLiteral, VariableDeclarator,
+// VariableDeclaratorList, and LetStmt with their cast-target checks.
+
+ZC_TEST("SchemaVerifier.ValidLetStatementPasses") {
+  TreeBuilder builder;
+
+  // BindingPattern { name, is_mut = false, is_ref = false, sub = none }
+  const IdentId name = builder.internIdent("x"_zc);
+  NodePayload patternPayload;
+  patternPayload.words[kBindingPatternNameWord] = name.value;
+  patternPayload.words[kBindingPatternIsMutWord] = 0;
+  patternPayload.words[kBindingPatternIsRefWord] = 0;
+  patternPayload.words[kBindingPatternSubWord] = 0;
+  const NodeId pattern =
+      builder.makeNode(SyntaxKind::BindingPattern, source::SourceRange(), patternPayload);
+
+  // IntLiteral { base = 10, value }
+  const BigIntId value = builder.internBigInt("42"_zc);
+  NodePayload literalPayload;
+  literalPayload.words[kIntLiteralBaseWord] = 10;
+  literalPayload.words[kIntLiteralValueWord] = value.value;
+  const NodeId literal =
+      builder.makeNode(SyntaxKind::IntLiteral, source::SourceRange(), literalPayload);
+
+  // VariableDeclarator { pattern, ty = none, init = literal }
+  NodePayload declPayload;
+  declPayload.words[kVariableDeclaratorPatternWord] = pattern.value;
+  declPayload.words[kVariableDeclaratorTyWord] = 0;
+  declPayload.words[kVariableDeclaratorInitWord] = literal.value;
+  const NodeId declarator =
+      builder.makeNode(SyntaxKind::VariableDeclarator, source::SourceRange(), declPayload);
+
+  // VariableDeclaratorList { n_decls = 1, decls = [declarator] }
+  zc::Vector<NodeId> decls;
+  decls.add(declarator);
+  const NodeList declList = builder.makeList(decls.asPtr());
+  NodePayload listPayload;
+  listPayload.words[kVariableDeclaratorListNDeclsWord] = 1;
+  listPayload.words[kVariableDeclaratorListDeclsFirstWord] = declList.first;
+  listPayload.words[kVariableDeclaratorListDeclsSizeWord] = declList.size;
+  const NodeId listNode =
+      builder.makeNode(SyntaxKind::VariableDeclaratorList, source::SourceRange(), listPayload);
+
+  // LetStmt { kind = Let, declarations = listNode }
+  NodePayload letPayload;
+  letPayload.words[kLetStmtKindWord] = 0;  // Let
+  letPayload.words[kLetStmtDeclarationsWord] = listNode.value;
+  const NodeId letStmt = builder.makeNode(SyntaxKind::LetStmt, source::SourceRange(), letPayload);
+
+  Tree tree = wrapExprInSourceFile(builder, letStmt);
+  ZC_EXPECT(verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) == zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 19. Valid function declaration passes
+// ---------------------------------------------------------------------------
+//
+// Covers FunctionDecl, FunctionParameterList, FunctionParameterDecl,
+// PredefinedTypeExpr, and BlockStmt with their cast-target checks.
+
+ZC_TEST("SchemaVerifier.ValidFunctionDeclPasses") {
+  TreeBuilder builder;
+
+  // PredefinedTypeExpr { kind = I32 } for the parameter type.
+  NodePayload tyPayload;
+  tyPayload.words[kPredefinedTypeExprKindWord] = 2;  // I32
+  const NodeId paramTy =
+      builder.makeNode(SyntaxKind::PredefinedTypeExpr, source::SourceRange(), tyPayload);
+
+  // FunctionParameterDecl { name, ty, default = none, attrs = none }
+  const IdentId paramName = builder.internIdent("a"_zc);
+  NodePayload paramPayload;
+  paramPayload.words[kFunctionParameterDeclNameWord] = paramName.value;
+  paramPayload.words[kFunctionParameterDeclTyWord] = paramTy.value;
+  paramPayload.words[kFunctionParameterDeclDefaultWord] = 0;
+  paramPayload.words[kFunctionParameterDeclAttrsWord] = 0;
+  const NodeId param =
+      builder.makeNode(SyntaxKind::FunctionParameterDecl, source::SourceRange(), paramPayload);
+
+  // FunctionParameterList { nparams = 1, params = [param] }
+  zc::Vector<NodeId> params;
+  params.add(param);
+  const NodeList paramList = builder.makeList(params.asPtr());
+  NodePayload paramListPayload;
+  paramListPayload.words[kFunctionParameterListNparamsWord] = 1;
+  paramListPayload.words[kFunctionParameterListParamsFirstWord] = paramList.first;
+  paramListPayload.words[kFunctionParameterListParamsSizeWord] = paramList.size;
+  const NodeId paramListNode =
+      builder.makeNode(SyntaxKind::FunctionParameterList, source::SourceRange(), paramListPayload);
+
+  // BlockStmt { stmts = empty } for the body.
+  zc::Vector<NodeId> bodyStmts;
+  const NodeList bodyList = builder.makeList(bodyStmts.asPtr());
+  NodePayload bodyPayload;
+  bodyPayload.words[kBlockStmtStmtsFirstWord] = bodyList.first;
+  bodyPayload.words[kBlockStmtStmtsSizeWord] = bodyList.size;
+  const NodeId body = builder.makeNode(SyntaxKind::BlockStmt, source::SourceRange(), bodyPayload);
+
+  // FunctionDecl { name, params, type_params = none, ret_ty = none,
+  //                raises = none, body }
+  const IdentId fnName = builder.internIdent("identity"_zc);
+  NodePayload fnPayload;
+  fnPayload.words[kFunctionDeclNameWord] = fnName.value;
+  fnPayload.words[kFunctionDeclParamsIdWord] = paramListNode.value;
+  fnPayload.words[kFunctionDeclTypeParamsIdWord] = 0;
+  fnPayload.words[kFunctionDeclRetTyWord] = 0;
+  fnPayload.words[kFunctionDeclRaisesTyWord] = 0;
+  fnPayload.words[kFunctionDeclBodyWord] = body.value;
+  const NodeId fn = builder.makeNode(SyntaxKind::FunctionDecl, source::SourceRange(), fnPayload);
+
+  Tree tree = wrapExprInSourceFile(builder, fn);
+  ZC_EXPECT(verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) == zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 20. Valid module declaration attached to SourceFile.module passes
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.ValidModuleDeclarationPasses") {
+  TreeBuilder builder;
+
+  // ModuleDeclaration { form = RootDeclaration, declared_name, alias_target = none,
+  //                      inline_items = empty, exported_alias = false }
+  const IdentId name = builder.internIdent("my_module"_zc);
+  NodePayload modulePayload;
+  modulePayload.words[kModuleDeclarationFormWord] = 0;  // RootDeclaration
+  modulePayload.words[kModuleDeclarationDeclaredNameWord] = name.value;
+  modulePayload.words[kModuleDeclarationAliasTargetWord] = 0;
+  modulePayload.words[kModuleDeclarationInlineItemsFirstWord] = 0;
+  modulePayload.words[kModuleDeclarationInlineItemsSizeWord] = 0;
+  modulePayload.words[kModuleDeclarationExportedAliasWord] = 0;
+  const NodeId module =
+      builder.makeNode(SyntaxKind::ModuleDeclaration, source::SourceRange(), modulePayload);
+
+  // SourceFile { file_name, module, statements = empty }
+  zc::Vector<NodeId> stmts;
+  const NodeList stmtList = builder.makeList(stmts.asPtr());
+  const StringId fileName = builder.internString("test.zom"_zc);
+  NodePayload sourcePayload;
+  sourcePayload.words[kSourceFileFileNameWord] = fileName.value;
+  sourcePayload.words[kSourceFileModuleWord] = module.value;
+  sourcePayload.words[kSourceFileStatementsFirstWord] = stmtList.first;
+  sourcePayload.words[kSourceFileStatementsSizeWord] = stmtList.size;
+  const NodeId root =
+      builder.makeNode(SyntaxKind::SourceFile, source::SourceRange(), sourcePayload);
+  builder.setRoot(root);
+  Tree tree = builder.finish();
+
+  ZC_EXPECT(verifySchema(tree));
+  ZC_EXPECT(verifySchemaFailure(tree) == zc::none);
+}
+
+// ---------------------------------------------------------------------------
+// 21. Parsed declaration-heavy sources pass schema verification
+// ---------------------------------------------------------------------------
+
+ZC_TEST("SchemaVerifier.ParsedDeclarationsPass") {
+  auto checkCase = [](zc::StringPtr source) {
+    auto parsed = parseSource(source);
+    ZC_EXPECT(parsed.tree != zc::none, zc::str("Should parse: ", source));
+    ZC_IF_SOME(tree, parsed.tree) {
+      ZC_EXPECT(verifySchema(tree), zc::str("Schema should pass for: ", source));
+      ZC_EXPECT(verifySchemaFailure(tree) == zc::none, zc::str("No schema failure for: ", source));
+      ZC_EXPECT(noRequiredNodeIdIsNull(tree), zc::str("No required NodeId null for: ", source));
+    }
+  };
+
+  checkCase("struct Vec3 { x: f64; y: f64; z: f64; }");
+  checkCase("enum Color { Red, Green, Blue, }");
+  checkCase("alias Id = i64;");
+  checkCase("import std::io;");
+  checkCase("const PI = 3.14;");
+  checkCase("fn identity(a: i32) -> i32 { return a; }");
 }
 
 }  // namespace ast
