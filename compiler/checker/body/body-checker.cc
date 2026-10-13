@@ -1924,6 +1924,38 @@ zc::Maybe<ThisReceiverFieldShape> thisReceiverFieldShape(const BodyCheckingInput
                                 ZC_ASSERT_NONNULL(receiver).receiverMutable};
 }
 
+/// \brief Resolves the owner nominal definition of the destructor enclosing a
+/// `this` expression. The destructor's signature scope is
+/// ModuleDefinitionSignatureScope (the binder classifies it as a module-scope
+/// callable), so the owner nominal cannot be read from the signature scope.
+/// Walk the destructor's stable owners to find the enclosing nominal.
+zc::Maybe<identity::DefId> destructorOwnerDefinition(const BodyCheckingInput& input,
+                                                     ast::NodeId object) {
+  auto owner = enclosingBodyOwner(input.boundModule, object);
+  if (owner == zc::none) { return zc::none; }
+  zc::Maybe<identity::DefId> ownerDefinition;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.definition != ZC_ASSERT_NONNULL(owner)) { continue; }
+    const auto owners = definition.record.owners();
+    for (size_t remaining = owners.size(); remaining > 0; --remaining) {
+      const auto& stableOwner = owners[remaining - 1];
+      if (stableOwner.kind() != identity::EnclosingStableOwnerKind::Definition) { continue; }
+      auto ownerKey = stableOwner.definitionKey();
+      ZC_IF_SOME(key, ownerKey) {
+        for (const auto& candidate : input.boundModule.definitions().definitions()) {
+          if (candidate.key == key) {
+            ownerDefinition = candidate.definition;
+            break;
+          }
+        }
+      }
+      break;
+    }
+    break;
+  }
+  return ownerDefinition;
+}
+
 /// \brief Resolved field access through the implicit destruction place of a
 /// destructor body: the owner nominal definition, the owner nominal type, a
 /// mutable reference to that type, the projected field, and the field type.
@@ -1960,32 +1992,7 @@ zc::Maybe<DestructorFieldShape> destructorFieldShape(const BodyCheckingInput& in
   if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::ThisExpr) {
     return zc::none;
   }
-  auto owner = enclosingBodyOwner(input.boundModule, object);
-  if (owner == zc::none) { return zc::none; }
-  // The destructor's signature scope is ModuleDefinitionSignatureScope (the
-  // binder classifies it as a module-scope callable), so the owner nominal
-  // cannot be read from the signature scope. Walk the destructor's stable
-  // owners to find the enclosing nominal definition.
-  zc::Maybe<identity::DefId> ownerDefinition;
-  for (const auto& definition : input.boundModule.definitions().definitions()) {
-    if (definition.definition != ZC_ASSERT_NONNULL(owner)) { continue; }
-    const auto owners = definition.record.owners();
-    for (size_t remaining = owners.size(); remaining > 0; --remaining) {
-      const auto& stableOwner = owners[remaining - 1];
-      if (stableOwner.kind() != identity::EnclosingStableOwnerKind::Definition) { continue; }
-      auto ownerKey = stableOwner.definitionKey();
-      ZC_IF_SOME(key, ownerKey) {
-        for (const auto& candidate : input.boundModule.definitions().definitions()) {
-          if (candidate.key == key) {
-            ownerDefinition = candidate.definition;
-            break;
-          }
-        }
-      }
-      break;
-    }
-    break;
-  }
+  auto ownerDefinition = destructorOwnerDefinition(input, object);
   if (ownerDefinition == zc::none) { return zc::none; }
   auto field = nominalFieldShape(
       input, ZC_ASSERT_NONNULL(ownerDefinition),
@@ -4856,6 +4863,152 @@ zc::Maybe<ConcreteMethodCallShape> thisReceiverMethodCallShape(const BodyCheckin
   ZC_UNREACHABLE
 }
 
+/// \brief Resolves a zero-argument self-call (`this.<method>()`) inside a
+/// destructor body. The destruction place is a mutable reference to the owner
+/// nominal; the target method's shared receiver is reached through a
+/// mutable-to-shared reborrow recorded by the call's receiver adjustment.
+///
+/// RFC 0014 designs the destructor receiver as a DestructionPlace rather than
+/// an ordinary callable receiver. The minimal slice admits the self-call by
+/// resolving the owner nominal from the destructor's stable owners and treating
+/// the place as mutable. The HIR builder dead-folds the call when the
+/// destructor is never called.
+zc::Maybe<ConcreteMethodCallShape> destructorSelfCallShape(const BodyCheckingInput& input,
+                                                           ast::NodeId callNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty() || !tree.contains(arguments) ||
+      !arguments.empty()) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::ThisExpr) {
+    return zc::none;
+  }
+  auto ownerDefinition = destructorOwnerDefinition(input, receiverNode);
+  if (ownerDefinition == zc::none) { return zc::none; }
+
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> selected;
+  zc::Maybe<identity::SemanticTypeId> success;
+  for (const auto& nominalSignature : input.signatureFacts.signatures()) {
+    if (nominalSignature.definition != ZC_ASSERT_NONNULL(ownerDefinition) ||
+        !nominalSignature.payload.variant().is<signature::NominalSignature>()) {
+      continue;
+    }
+    const auto& nominalFacts =
+        nominalSignature.payload.variant().get<signature::NominalSignature>();
+    if (nominalFacts.genericParameters.size() != 0) return zc::none;
+    for (const auto candidate : nominalFacts.members) {
+      bool namedMethod = false;
+      for (const auto& definition : input.boundModule.definitions().definitions()) {
+        if (definition.definition == candidate &&
+            definition.record.kind() == identity::DefinitionKind::Method &&
+            definition.record.name() == memberName) {
+          namedMethod = true;
+        }
+      }
+      if (!namedMethod) continue;
+      if (selected != zc::none) return zc::none;
+      for (const auto& methodSignature : input.signatureFacts.signatures()) {
+        if (methodSignature.definition != candidate ||
+            !methodSignature.scope.variant().is<signature::MemberSignatureScope>() ||
+            !methodSignature.payload.variant().is<signature::CallableSignature>()) {
+          continue;
+        }
+        const auto& scope = methodSignature.scope.variant().get<signature::MemberSignatureScope>();
+        const auto& callable =
+            methodSignature.payload.variant().get<signature::CallableSignature>();
+        if (scope.owner != ZC_ASSERT_NONNULL(ownerDefinition) ||
+            callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
+            callable.raises != zc::none || callable.abi != zc::none) {
+          return zc::none;
+        }
+        ZC_IF_SOME(targetReceiver, callable.receiver) {
+          if (targetReceiver.mode != signature::ReceiverMode::Shared) { return zc::none; }
+        }
+        if (callable.parameters.size() != 0) { return zc::none; }
+        selected = candidate;
+        success = callable.success;
+      }
+    }
+  }
+  if (selected == zc::none || success == zc::none) { return zc::none; }
+  bool deferredMember = false;
+  for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+    if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+        fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != binder::Namespace::Value ||
+        fact.genericArguments.size() != 0 || deferredMember) {
+      continue;
+    }
+    deferredMember = true;
+  }
+  if (!deferredMember) return zc::none;
+
+  auto admitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::NominalTypeData{ZC_ASSERT_NONNULL(ownerDefinition), {}}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  const auto ownerType = interned.get<type::SemanticTypeInterned>().id;
+  auto mutableReferenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{type::semantic::Mutability::Mutable, ownerType}));
+  if (!mutableReferenceAdmitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto mutableReferenceInterned = input.semanticTypes.intern(
+      zc::mv(mutableReferenceAdmitted).get<type::semantic::CanonicalTypeData>());
+  if (!mutableReferenceInterned.is<type::SemanticTypeInterned>()) return zc::none;
+  const auto ownerMutableReferenceType =
+      mutableReferenceInterned.get<type::SemanticTypeInterned>().id;
+  auto sharedReferenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{type::semantic::Mutability::Const, ownerType}));
+  if (!sharedReferenceAdmitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto sharedReferenceInterned = input.semanticTypes.intern(
+      zc::mv(sharedReferenceAdmitted).get<type::semantic::CanonicalTypeData>());
+  if (!sharedReferenceInterned.is<type::SemanticTypeInterned>()) return zc::none;
+  const auto ownerSharedReferenceType =
+      sharedReferenceInterned.get<type::SemanticTypeInterned>().id;
+
+  zc::Vector<identity::SemanticTypeId> noParameters;
+  zc::Maybe<identity::SemanticTypeId> noRaises;
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::FunctionTypeData{
+          zc::mv(noParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto functionInterned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!functionInterned.is<type::SemanticTypeInterned>()) return zc::none;
+  ZC_IF_SOME(method, selected) {
+    return ConcreteMethodCallShape{receiverNode,
+                                   method,
+                                   ownerMutableReferenceType,
+                                   ownerSharedReferenceType,
+                                   functionInterned.get<type::SemanticTypeInterned>().id,
+                                   ZC_ASSERT_NONNULL(success),
+                                   signature::ReceiverMode::Shared,
+                                   zc::Vector<identity::SemanticTypeId>{},
+                                   zc::Maybe<identity::ImplId>(),
+                                   zc::Maybe<identity::DefId>()};
+  }
+  ZC_UNREACHABLE
+}
+
 zc::Maybe<uint32_t> definitionPreorder(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule,
     identity::DefId definition) {
@@ -7303,6 +7456,40 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 site.node, ZC_ASSERT_NONNULL(admittedThisCallReceiver), zc::Array<uint8_t>()});
             continue;
           }
+          // A `this` expression inside a destructor body that is the receiver
+          // of an admitted zero-arg self-call (`this.method()`) is typed as
+          // the destruction-place mutable reference; the call site supplies
+          // the typed call fact.
+          zc::Maybe<identity::SemanticTypeId> admittedDestructorCallReceiver;
+          for (size_t index = 0; index < tree.nodeCount(); ++index) {
+            const ast::NodeId candidate(static_cast<uint32_t>(index));
+            if (!tree.contains(candidate) ||
+                tree.node(candidate).kind != ast::SyntaxKind::CallExpression) {
+              continue;
+            }
+            const ast::NodeId callCallee(
+                tree.node(candidate).payload.words[ast::kCallExpressionCalleeWord]);
+            if (!tree.contains(callCallee) ||
+                tree.node(callCallee).kind != ast::SyntaxKind::MemberExpression) {
+              continue;
+            }
+            const ast::NodeId callObject(
+                tree.node(callCallee).payload.words[ast::kMemberExpressionObjectWord]);
+            if (callObject != site.node) { continue; }
+            auto shape = destructorSelfCallShape(input, candidate);
+            if (shape == zc::none) { continue; }
+            if (admittedDestructorCallReceiver != zc::none) {
+              admittedDestructorCallReceiver = zc::none;
+              break;
+            }
+            admittedDestructorCallReceiver = ZC_ASSERT_NONNULL(shape).receiverSourceType;
+          }
+          if (admittedDestructorCallReceiver != zc::none) {
+            nodeTypes.add(checked::NodeTypeMap::Entry{
+                site.node, ZC_ASSERT_NONNULL(admittedDestructorCallReceiver),
+                zc::Array<uint8_t>()});
+            continue;
+          }
         }
         ZC_IF_SOME(method, unsupportedInherentMethodThis(input, site.node)) {
           return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(method));
@@ -7453,6 +7640,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           // the same typed call shape with the enclosing receiver reference
           // forwarded directly.
           shape = thisReceiverMethodCallShape(input, site.node);
+        }
+        if (shape == zc::none) {
+          // A zero-argument self-call inside a destructor body resolves
+          // through the destruction-place mutable reference.
+          shape = destructorSelfCallShape(input, site.node);
         }
         if (shape == zc::none) {
           // A dot-method call on a dyn-trait local whose concrete type is
@@ -7649,7 +7841,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               input.boundModule.tree().contains(value.receiverNode) &&
               input.boundModule.tree().node(value.receiverNode).kind == ast::SyntaxKind::ThisExpr;
           zc::Vector<checked::ReceiverAdjustmentStep> adjustmentSteps;
-          if (receiverIsThis) {
+          if (receiverIsThis && value.receiverMode == signature::ReceiverMode::Shared &&
+              value.receiverSourceType == value.receiverParameterType) {
             // `this` is already a shared receiver parameter; the self-call
             // forwards it directly rather than borrowing an owner local.
             adjustmentSteps.add(checked::ReceiverAdjustmentStep::ReborrowShared);
@@ -8720,6 +8913,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto shape =
             concreteMethodCallShape(input, callNode, nodeTypes.asPtr(), &immutableReceiver);
         if (shape == zc::none) { shape = thisReceiverMethodCallShape(input, callNode); }
+        if (shape == zc::none) { shape = destructorSelfCallShape(input, callNode); }
         if (shape == zc::none) {
           shape = devirtualizedMethodCallShape(input, callNode, nodeTypes.asPtr());
         }

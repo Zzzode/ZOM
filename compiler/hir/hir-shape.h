@@ -454,6 +454,11 @@ struct FunctionReturnShape final {
   // receiverWriteAssignment, and receiverWriteValue. The store is dead-folded
   // by the HIR builder when the destructor is never called.
   bool isDestructorFieldWriteBody = false;
+  // Destructor method-call-body shape: `deinit() { this.<method>(); }` with
+  // exactly one statement. The callable result is Unit; there is no return
+  // statement or return value. The call is dead-folded by the HIR builder
+  // when the destructor is never called.
+  bool isDestructorMethodCallBody = false;
   // Function shape: a leading aggregate-initialized owner local, one discarded
   // receiver-call expression statement on that local, and a trailing
   // `return <owner-local>.<method>(...);`. This slice admits exactly one

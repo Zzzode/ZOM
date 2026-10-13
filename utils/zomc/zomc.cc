@@ -1850,8 +1850,39 @@ private:
                       }
                     }
                     ZC_IF_SOME(leaf, leafIndex) {
-                      lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
-                          functions[caller], functions[callee], functions[leaf], types);
+                      // A dead-folded destructor (empty body, ReturnVoid) is not
+                      // a scalar leaf; it is never called at runtime. When the
+                      // leaf is a dead-folded destructor, lower the caller/callee
+                      // pair as a two-function receiver-call module, then append
+                      // the destructor as a third LIR function so the translation
+                      // validator sees the full MIR function set.
+                      const auto& leafFn = functions[leaf];
+                      const bool leafIsDeadFoldedDestructor =
+                          leafFn.sourceDefinitionKind == identity::DefinitionKind::Destructor &&
+                          leafFn.blocks.size() == 1 && leafFn.blocks[0].statements.size() == 0 &&
+                          leafFn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return &&
+                          leafFn.blocks[0].terminator.returnValue().value == zc::none;
+                      if (leafIsDeadFoldedDestructor) {
+                        auto pair = lir::MirToLirLowering::lowerReceiverCallModule(
+                            functions[caller], functions[callee], types);
+                        if (pair != zc::none) {
+                          auto loweredFns = zc::mv(ZC_ASSERT_NONNULL(pair)).takeFunctions();
+                          auto entryId = lir::LirBlockId::fromOrdinal(1);
+                          if (entryId != zc::none) {
+                            zc::Vector<lir::BasicBlock> destructorBlocks;
+                            destructorBlocks.add(lir::BasicBlock(ZC_ASSERT_NONNULL(entryId),
+                                                                 lir::Terminator::returnVoid()));
+                            loweredFns.add(
+                                lir::Function(leafFn.owner, zc::heapString("zom.destructor"),
+                                              lir::ValueType::unit(), zc::mv(destructorBlocks)));
+                            lir = lir::Module(zc::mv(loweredFns));
+                          }
+                        }
+                      }
+                      if (lir == zc::none) {
+                        lir = lir::MirToLirLowering::lowerCallModuleWithLeaf(
+                            functions[caller], functions[callee], functions[leaf], types);
+                      }
                       // Two-impl devirtualization: the caller/callee/leaf triple
                       // is the same identification, but the callee and leaf are
                       // Method-sourced constant-return functions (one receiver

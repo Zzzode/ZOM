@@ -1,0 +1,6 @@
+struct Resource {
+  handle: i32,
+  fn cleanup(this) -> i32 { return 41; }
+  deinit() { this.cleanup(); }
+}
+fn entry() -> i32 { let resource = Resource { handle: 0 }; return resource.cleanup(); }

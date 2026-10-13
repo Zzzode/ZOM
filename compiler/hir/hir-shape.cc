@@ -1629,6 +1629,49 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
+    // Destructor method-call body: `deinit() { this.<method>(); }` with exactly
+    // one statement. The callable result is Unit; there is no return statement
+    // or return value. The call is dead-folded by the HIR builder when the
+    // destructor is never called.
+    if (statements.size == 1) {
+      auto callItem = statementItem(tree, tree.list(statements)[0]);
+      if (callItem != zc::none) {
+        ast::NodeId callStatement;
+        ZC_IF_SOME(value, callItem) { callStatement = value; }
+        if (tree.contains(callStatement) &&
+            tree.node(callStatement).kind == ast::SyntaxKind::ExpressionStatement) {
+          const ast::NodeId callExpression(
+              tree.node(callStatement).payload.words[ast::kExpressionStatementExpressionWord]);
+          if (tree.contains(callExpression) &&
+              tree.node(callExpression).kind == ast::SyntaxKind::CallExpression) {
+            const auto& call = tree.node(callExpression);
+            const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+            const ast::NodeList typeArguments{
+                call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+            const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                          call.payload.words[ast::kCallExpressionArgsSizeWord]};
+            if (tree.contains(callee) &&
+                tree.node(callee).kind == ast::SyntaxKind::MemberExpression &&
+                static_cast<ast::MemberAccessKind>(
+                    tree.node(callee).payload.words[ast::kMemberExpressionAccessWord]) ==
+                    ast::MemberAccessKind::Dot &&
+                tree.contains(typeArguments) && typeArguments.empty() && tree.contains(arguments) &&
+                arguments.empty()) {
+              const ast::NodeId callObject(
+                  tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
+              if (tree.contains(callObject) &&
+                  tree.node(callObject).kind == ast::SyntaxKind::ThisExpr) {
+                FunctionReturnShape shape{};
+                shape.body = body;
+                shape.isDestructorMethodCallBody = true;
+                return shape;
+              }
+            }
+          }
+        }
+      }
+    }
     zc::Vector<VoidLetBinding> bindings;
     for (size_t i = 0; i < statements.size; ++i) {
       auto letItem = statementItem(tree, tree.list(statements)[i]);

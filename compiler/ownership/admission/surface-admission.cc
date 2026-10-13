@@ -335,7 +335,13 @@ bool isAdmittedReceiverCall(const ast::Tree& tree, ast::NodeId expression) {
     return false;
   }
   const ast::NodeId receiver(tree.node(callee).payload.words[ast::kMemberExpressionObjectWord]);
-  return tree.contains(receiver) && tree.node(receiver).kind == ast::SyntaxKind::IdentExpr &&
+  // A receiver call on the implicit `this` receiver (`this.method()`) is
+  // admitted structurally; whether the enclosing method or destructor's
+  // receiver mode is compatible is a checker decision, kept out of surface
+  // admission.
+  return tree.contains(receiver) &&
+         (tree.node(receiver).kind == ast::SyntaxKind::IdentExpr ||
+          tree.node(receiver).kind == ast::SyntaxKind::ThisExpr) &&
          hasAdmittedArguments(tree, call, receiver);
 }
 

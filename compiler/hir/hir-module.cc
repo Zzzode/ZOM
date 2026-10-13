@@ -995,6 +995,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) {
       isDestructorFieldWriteBodyShape = value.isDestructorFieldWriteBody;
     }
+    bool isDestructorMethodCallBodyShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) {
+      isDestructorMethodCallBodyShape = value.isDestructorMethodCallBody;
+    }
     bool isDynFieldAccessShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isDynFieldAccessShape = value.dynFieldAccessReturn; }
     bool isArrayIndexFoldShape = false;
@@ -1224,11 +1228,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += 4;
       continue;
     }
-    if (isEmptyBodyShape || isDestructorFieldWriteBodyShape) {
-      // Empty-body or field-write destructor branch: `deinit() { }` or
-      // `deinit() { this.<field> = <scalar-literal>; }`. The field-write
-      // store is dead-folded, so both shapes produce the same HIR: two node
-      // ids in source preorder (function F, body F+1), no statements, no
+    if (isEmptyBodyShape || isDestructorFieldWriteBodyShape || isDestructorMethodCallBodyShape) {
+      // Empty-body, field-write, or method-call destructor branch:
+      // `deinit() { }`, `deinit() { this.<field> = <scalar-literal>; }`, or
+      // `deinit() { this.<method>(); }`. The field-write store and the
+      // method-call are dead-folded, so all shapes produce the same HIR: two
+      // node ids in source preorder (function F, body F+1), no statements, no
       // return. The callable result is Unit.
       const FunctionReturnShape& emptySource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       if (!block.statements.empty()) {

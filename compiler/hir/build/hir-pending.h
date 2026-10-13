@@ -883,6 +883,12 @@ struct PendingFunctionDeclaration final {
   /// shape. The checker-produced facts (node-type, member, place, literal) are
   /// not materialized as HIR nodes, so the fact-count equations subtract them.
   bool isDestructorFieldWriteBody = false;
+  /// True for the destructor method-call body shape
+  /// (`deinit() { this.<method>(); }`). The call is dead-folded: the HIR is
+  /// the same single-block ReturnVoid as the empty-body shape. The
+  /// checker-produced facts (node-type, call, member) are not materialized as
+  /// HIR nodes, so the fact-count equations subtract them.
+  bool isDestructorMethodCallBody = false;
   /// Populated for the dyn field-access shape: an aggregate-initialized local
   /// with per-field erasure, a field-read local, and a trailing method-call
   /// return. The lowering function materializes the two locals, the aggregate,
