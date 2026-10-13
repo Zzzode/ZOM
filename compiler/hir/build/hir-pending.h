@@ -272,14 +272,27 @@ struct PendingConjunctiveCondition final {
   ast::NodeId sourceNode{};
 };
 
+// One call condition: a direct free-function call whose bool result drives the
+// conditional. The HIR builder materializes the call as a
+// HirDirectCallExpression; the MIR builder evaluates it into a temporary
+// before the SwitchInt terminator.
+struct PendingCallCondition final {
+  HirDirectCallExpression call;
+  identity::SourceSpan sourceSpan;
+  /// The AST CallExpression node this condition was lowered from.
+  ast::NodeId sourceNode{};
+};
+
 // One conditional condition is either a bare bool parameter reference, an
-// `a == b` equality comparison of two parameter references, or a conjunctive
-// condition (bool parameter AND comparison). Exactly one of the three Maybe
-// fields is populated; the condition kind is discriminated by which.
+// `a == b` equality comparison of two parameter references, a conjunctive
+// condition (bool parameter AND comparison), or a direct call whose bool
+// result drives the conditional. Exactly one of the four Maybe fields is
+// populated; the condition kind is discriminated by which.
 struct PendingConditionalCondition final {
   zc::Maybe<HirParameterReferenceExpression> parameter;
   zc::Maybe<PendingEqualityCondition> equality;
   zc::Maybe<PendingConjunctiveCondition> conjunctive;
+  zc::Maybe<PendingCallCondition> call;
 };
 
 struct PendingConditionalReturn final {

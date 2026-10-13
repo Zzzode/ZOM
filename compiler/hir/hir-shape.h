@@ -277,6 +277,12 @@ struct FunctionReturnShape final {
   // comparison condition path. The condition node is the IdentExpr; the
   // synthetic true operand has no AST node and carries no checker fact.
   bool conditionIsBoolReference = false;
+  // When the condition is a direct call expression (`if (f(args))`), the
+  // condition node is a CallExpression and this flag is set. The HIR builder
+  // resolves the checked call fact and lowers the call result as the
+  // conditional discriminant. The callee is an IdentExpr naming a free
+  // function; every argument is a scalar literal or an identifier.
+  bool conditionIsCall = false;
   ast::NodeId thenReturnValue;
   ast::NodeId elseReturnValue;
   // When the body is a single `return <BinaryExpr comparison>` of two same-typed

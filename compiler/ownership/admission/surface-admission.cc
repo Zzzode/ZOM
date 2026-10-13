@@ -1286,6 +1286,26 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
         !isScalarLiteral(tree.node(operand).kind)) {
       return false;
     }
+  } else if (tree.node(condition).kind == ast::SyntaxKind::CallExpression) {
+    // Admit a direct call condition: the callee is an identifier (a function
+    // reference resolved downstream) and every argument is a scalar literal
+    // or an identifier. The body checker verifies the call returns bool and
+    // the HIR builder lowers the call result as the conditional discriminant.
+    const ast::NodeId callee(tree.node(condition).payload.words[ast::kCallExpressionCalleeWord]);
+    if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
+      return false;
+    }
+    const ast::NodeList arguments{
+        tree.node(condition).payload.words[ast::kCallExpressionArgsFirstWord],
+        tree.node(condition).payload.words[ast::kCallExpressionArgsSizeWord]};
+    if (!tree.contains(arguments)) return false;
+    for (const auto argument : tree.list(arguments)) {
+      if (!tree.contains(argument)) return false;
+      if (tree.node(argument).kind != ast::SyntaxKind::IdentExpr &&
+          !isScalarLiteral(tree.node(argument).kind)) {
+        return false;
+      }
+    }
   } else if (tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
     return false;
   }

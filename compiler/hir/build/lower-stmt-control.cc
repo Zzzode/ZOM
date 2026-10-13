@@ -96,6 +96,37 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
     return;
   }
 
+  ZC_IF_SOME(callCondition, conditional.condition.call) {
+    // Call-condition stride (7 + 2K nodes, where K is the count of binary
+    // arms): function, body, call expression, then arm value(s), else arm
+    // value(s), conditional, return. The call expression is the conditional's
+    // condition; the MIR builder evaluates it into a temporary before the
+    // SwitchInt terminator.
+    HirDirectCallExpression callExpression = zc::mv(callCondition.call);
+    const HirNodeId callId = ctx.allocNode(callCondition.sourceNode);
+    const HirNodeId thenValueId = ctx.lowerArmValue(conditional.thenArm);
+    const HirNodeId elseValueId = ctx.lowerArmValue(conditional.elseArm);
+    const HirNodeId conditionalId = ctx.allocNode(conditional.conditionalNode);
+    const HirNodeId returnId = ctx.allocNode(function.returnNode);
+
+    ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                           zc::mv(function.parameters), zc::mv(function.receiver),
+                                           function.visibility.clone(), function.linkage,
+                                           function.declarationSpan.clone(), bodyId, zc::none});
+    zc::Vector<HirNodeId> statements;
+    statements.add(returnId);
+    ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+    ctx.addReturn(HirReturnStatement{returnId, function.resultType, conditionalId,
+                                     function.returnSpan.clone()});
+    ctx.addDirectCall(HirDirectCallExpression{
+        callId, callExpression.callee, callExpression.calleeType, callExpression.resultType,
+        zc::mv(callExpression.arguments), callExpression.sourceSpan.clone()});
+    ctx.addConditional(HirConditionalExpression{conditionalId, callId, thenValueId, elseValueId,
+                                                function.resultType, HirValueCategory::Value,
+                                                conditional.conditionalSpan.clone()});
+    return;
+  }
+
   // Parameter-condition stride (7 + 2K nodes, where K is the count of binary
   // arms): function, body, condition parameter reference, then arm value(s),
   // else arm value(s), conditional, return.

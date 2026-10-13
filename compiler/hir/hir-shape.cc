@@ -390,6 +390,29 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     // A bare bool identifier condition (a parameter or local reference). The
     // HIR builder desugars it to `c == true`, reusing the comparison path.
     shape.conditionIsBoolReference = true;
+  } else if (tree.contains(condition) &&
+             tree.node(condition).kind == ast::SyntaxKind::CallExpression) {
+    // A direct call condition: the callee is an IdentExpr naming a free
+    // function and every argument is a scalar literal or an identifier. The
+    // body checker verifies the call returns bool; the HIR builder resolves
+    // the checked call fact and lowers the call result as the conditional
+    // discriminant.
+    const ast::NodeId callee(tree.node(condition).payload.words[ast::kCallExpressionCalleeWord]);
+    if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::IdentExpr) {
+      return zc::none;
+    }
+    const ast::NodeList arguments{
+        tree.node(condition).payload.words[ast::kCallExpressionArgsFirstWord],
+        tree.node(condition).payload.words[ast::kCallExpressionArgsSizeWord]};
+    if (!tree.contains(arguments)) return zc::none;
+    for (const auto argument : tree.list(arguments)) {
+      if (!tree.contains(argument)) return zc::none;
+      if (tree.node(argument).kind != ast::SyntaxKind::IdentExpr &&
+          !isScalarLiteral(tree.node(argument).kind)) {
+        return zc::none;
+      }
+    }
+    shape.conditionIsCall = true;
   }
   return shape;
 }

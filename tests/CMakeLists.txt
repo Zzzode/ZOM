@@ -554,6 +554,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-literal-index/Zom.toml::array_literal_index::array_literal_index::1"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-in-condition-consumer/Zom.toml::call_in_condition_consumer::call_in_condition_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

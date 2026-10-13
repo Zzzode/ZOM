@@ -1575,6 +1575,13 @@ private:
               fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
             return true;
           }
+          // The call-in-condition caller has a 5-block CFG whose entry
+          // block is a Call terminator (entry Call, switch SwitchInt,
+          // then/else Assign+Goto, join Return).
+          if (fn.blocks.size() == 5 && !fn.blocks.empty() &&
+              fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call) {
+            return true;
+          }
           return false;
         };
         auto isCallee = [](const mir::MirFunction& fn) {
@@ -1637,6 +1644,10 @@ private:
             }
             if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerErrorUnwrapCallModule(functions[caller],
+                                                                      functions[callee], types);
+            }
+            if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallInConditionModule(functions[caller],
                                                                       functions[callee], types);
             }
           }

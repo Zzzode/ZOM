@@ -2588,6 +2588,167 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           pendingCondition.conjunctive = PendingConjunctiveCondition{
               zc::mv(ZC_ASSERT_NONNULL(scrutineeRef)), zc::mv(guardEquality),
               ZC_ASSERT_NONNULL(conditionSpan).clone(), shape.matchGuard};
+        } else if (shape.conditionIsCall) {
+          // A direct call condition: `if (f(args))`. The checked call fact on
+          // the condition node resolves to a DirectCallable whose callee is a
+          // free function. The call result is bool and drives the conditional.
+          // The HIR builder materializes the call as a HirDirectCallExpression;
+          // the MIR builder evaluates it into a temporary before SwitchInt.
+          const auto& sourceCall = tree.node(shape.condition);
+          const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+          const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                        sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+          auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+          auto checkedCallIndex = factIndex(facts.calls(), shape.condition);
+          auto callKey = checkedNodeKey(tree, bound.parsedModule(), shape.condition);
+          auto dispatchIndex = callKey == zc::none
+                                   ? zc::none
+                                   : dispatchFactIndex(checkedModule.dispatchFacts().facts(),
+                                                       ZC_ASSERT_NONNULL(callKey));
+          auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+          if (!tree.contains(calleeNode) ||
+              tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+              !tree.contains(arguments) || calleeTypeIndex == zc::none ||
+              checkedCallIndex == zc::none || callKey == zc::none || dispatchIndex == zc::none ||
+              callee == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t calleeTypeSlot = 0;
+          size_t checkedCallSlot = 0;
+          size_t dispatchSlot = 0;
+          ZC_IF_SOME(index, calleeTypeIndex) { calleeTypeSlot = index; }
+          ZC_IF_SOME(index, checkedCallIndex) { checkedCallSlot = index; }
+          ZC_IF_SOME(index, dispatchIndex) { dispatchSlot = index; }
+          const auto& checkedCall = facts.calls().entries()[checkedCallSlot].value;
+          const auto& invocation = checkedCall.invocation;
+          const auto& selected = invocation.selected.variant();
+          const auto& dispatch = checkedModule.dispatchFacts().facts()[dispatchSlot];
+          const auto& target = dispatch.fact.target.variant();
+          const auto& transform = dispatch.fact.resultTransform.variant();
+          bool dispatchOwnerMatches = false;
+          ZC_IF_SOME(owner, dispatch.owner) {
+            dispatchOwnerMatches = owner == definition.definition;
+          }
+          if (!selected.is<checker::checked::DirectCallable>() ||
+              selected.get<checker::checked::DirectCallable>().callee !=
+                  ZC_ASSERT_NONNULL(callee) ||
+              invocation.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
+              invocation.successType != conditionType || invocation.resultType != conditionType ||
+              invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+              invocation.receiverAdjustment != zc::none ||
+              invocation.arguments.size() != arguments.size ||
+              invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+              invocation.raises != zc::none || !dispatchOwnerMatches ||
+              !target.is<checker::dispatch::DirectTarget>() ||
+              target.get<checker::dispatch::DirectTarget>().callee != ZC_ASSERT_NONNULL(callee) ||
+              !transform.is<checker::dispatch::IdentityResultTransform>() ||
+              dispatch.fact.receiver != zc::none ||
+              dispatch.fact.arguments.size() != arguments.size ||
+              dispatch.fact.successType != conditionType ||
+              dispatch.fact.resultType != conditionType ||
+              dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+              dispatch.fact.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Build the call arguments: each is a scalar literal or a parameter
+          // reference, matching the shape classification contract.
+          zc::Vector<HirDirectCallArgument> callArguments;
+          const auto argumentNodes = tree.list(arguments);
+          for (size_t index = 0; index < argumentNodes.size(); ++index) {
+            const auto argument = argumentNodes[index];
+            auto argumentTypeIndex = factIndex(facts.nodeTypes(), argument);
+            auto argumentSpan = bound.parsedModule().spanFor(tree.node(argument).range);
+            const bool isLiteralArgument =
+                tree.contains(argument) && isScalarLiteral(tree.node(argument).kind);
+            const bool isParameterArgument =
+                tree.contains(argument) && tree.node(argument).kind == ast::SyntaxKind::IdentExpr;
+            if ((!isLiteralArgument && !isParameterArgument) || argumentTypeIndex == zc::none ||
+                argumentSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t argumentTypeSlot = 0;
+            ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+            const auto& checkedArgument = invocation.arguments[index];
+            const auto& dispatchArgument = dispatch.fact.arguments[index];
+            const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+            if (checkedArgument.sourceNode != argument ||
+                checkedArgument.sourceType != argumentType ||
+                checkedArgument.parameterType != argumentType ||
+                checkedArgument.adjustment != zc::none ||
+                dispatchArgument.sourceType != argumentType ||
+                dispatchArgument.parameterType != argumentType ||
+                dispatchArgument.adjustment != zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            if (isLiteralArgument) {
+              auto literalIndex = factIndex(facts.literals(), argument);
+              if (literalIndex == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+              const auto& literal = facts.literals().entries()[literalSlot].value;
+              if (literal.node != argument || literal.type != argumentType) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+              zc::Maybe<identity::CallableParameterKey> noParameter;
+              callArguments.add(HirDirectCallArgument{
+                  argumentType, literal.literal.clone(), zc::mv(noParameter), zc::none, zc::none,
+                  zc::none, ZC_ASSERT_NONNULL(argumentSpan).clone()});
+            } else {
+              auto parameter = resolvedCallableParameter(bound.bindings(), argument);
+              if (parameter == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::InvalidFact, module,
+                                                     registries, ordinal + 2);
+              }
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              zc::Maybe<identity::CallableParameterKey> parameterKey;
+              ZC_IF_SOME(entry, authority) {
+                bool matches = false;
+                for (const auto& parameterCandidate : parameters) {
+                  if (parameterCandidate.key == entry.key() &&
+                      parameterCandidate.type == argumentType) {
+                    matches = true;
+                  }
+                }
+                if (!matches) {
+                  return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                       ir::IrFailureKind::InvalidFact, module,
+                                                       registries, ordinal + 2);
+                }
+                parameterKey = entry.key().clone();
+              }
+              zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+              callArguments.add(HirDirectCallArgument{
+                  argumentType, zc::mv(noValue), zc::mv(parameterKey), zc::none, zc::none, zc::none,
+                  ZC_ASSERT_NONNULL(argumentSpan).clone()});
+            }
+          }
+          pendingCondition.call = PendingCallCondition{
+              HirDirectCallExpression{HirNodeId(), ZC_ASSERT_NONNULL(callee), invocation.calleeType,
+                                      conditionType, zc::mv(callArguments),
+                                      ZC_ASSERT_NONNULL(conditionSpan).clone()},
+              ZC_ASSERT_NONNULL(conditionSpan).clone(), shape.condition};
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), shape.condition);
           if (conditionParameter == zc::none) {
@@ -11533,6 +11694,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // per guard, but the nodeTypes and calls equations must each subtract 1 for
   // the phantom conjunction's missing leaf operand and missing call fact.
   size_t matchGuardPhantomCount = 0;
+  // Call-condition shapes: a conditional whose condition is a direct call
+  // expression (`if (f(args))`). The call expression materializes one HIR
+  // node (the HirDirectCallExpression) and carries one call fact. Each
+  // argument carries one node-type fact; literal arguments additionally
+  // carry one literal fact.
+  size_t callConditionalCount = 0;
+  size_t callConditionalArgumentCount = 0;
+  size_t callConditionalLiteralArgumentCount = 0;
   // Ternary conditional-expression bindings in sequential local return bodies.
   // Each materializes one HirConditionalExpression (the binding initializer,
   // counted by localReturnCount) plus its condition and two arm-literal
@@ -12093,6 +12262,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           ++matchGuardPhantomCount;
         }
+        ZC_IF_SOME(callCondition, conditional.condition.call) {
+          ++callConditionalCount;
+          callConditionalArgumentCount += callCondition.call.arguments.size();
+          for (const auto& argument : callCondition.call.arguments) {
+            if (argument.value != zc::none) { ++callConditionalLiteralArgumentCount; }
+          }
+        }
         for (const auto* arm : {&conditional.thenArm, &conditional.elseArm}) {
           if (arm->literal != zc::none) { ++conditionalLiteralArmCount; }
           if (arm->parameterFieldProjection != zc::none) {
@@ -12577,20 +12753,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       receiverCallArgumentCount + receiverCallFieldArgumentCount +
       receiverCallComparisonArgumentCount * 3 + localBorrowCount + unsafeBlockCount +
       rawDereferenceCount + conditionalCount * 2 + equalityConditionalCount * 2 +
-      conditionalBinaryArmCount * 2 - matchEqualityReturnCount * 2 - matchGuardPhantomCount +
-      matchReturnCount * 2 - matchDefaultArmCount + loopCount + comparisonReturnCount * 2 -
-      unaryReturnCount + sequentialBinaryCount * 2 + binaryWriteCount * 2 +
-      nestedBinaryWriteOperandCount * 2 + parameterFieldProjectionCount +
-      receiverFieldArithmeticCount * 3 + parameterFieldWriteCount * 4 +
-      discardedStatementCallCount + leadingLocalConditionalBindingCount + castCount +
-      foldedStringLengthCount + foldedStringConcatCount * 2 + foldedFloatCastCount +
-      foldedArrayIndexFoldCount * 3 + arrayIndexFoldElementCount +
-      sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
-      sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
-      leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
-      incrementWriteCount * 3 - incrementReturnCount + postfixReturnCount -
-      sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
-      forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
+      callConditionalCount + callConditionalArgumentCount + conditionalBinaryArmCount * 2 -
+      matchEqualityReturnCount * 2 - matchGuardPhantomCount + matchReturnCount * 2 -
+      matchDefaultArmCount + loopCount + comparisonReturnCount * 2 - unaryReturnCount +
+      sequentialBinaryCount * 2 + binaryWriteCount * 2 + nestedBinaryWriteOperandCount * 2 +
+      parameterFieldProjectionCount + receiverFieldArithmeticCount * 3 +
+      parameterFieldWriteCount * 4 + discardedStatementCallCount +
+      leadingLocalConditionalBindingCount + castCount + foldedStringLengthCount +
+      foldedStringConcatCount * 2 + foldedFloatCastCount + foldedArrayIndexFoldCount * 3 +
+      arrayIndexFoldElementCount + sequentialFoldedStringConcatCount * 2 +
+      sequentialTernaryCount * 3 + sequentialMatchExprCount * 2 +
+      sequentialMatchExprDefaultArmCount + leadingLocalConditionalBinaryCount * 2 -
+      leadingLocalConditionalUnaryCount - incrementWriteCount * 3 - incrementReturnCount +
+      postfixReturnCount - sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 +
+      forLoopReturnCount * 9 + forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount + destructorFieldWriteBodyCount * 4 +
       destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 + doWhileLoopBodyReturnCount * 3;
@@ -12611,7 +12787,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           parameterReborrowCount - parameterFieldProjectionCount +
           armParameterFieldProjectionCount - binaryWriteLocalOperandCount +
           localAliasReborrowCount + localWriteCount + aggregateElementCount -
-          aggregateErasedElementCount + directCallLiteralArgumentCount + receiverCallArgumentCount -
+          aggregateErasedElementCount + directCallLiteralArgumentCount +
+          callConditionalLiteralArgumentCount + receiverCallArgumentCount -
           receiverCallFieldArgumentCount + conditionalLiteralArmCount +
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
@@ -12642,12 +12819,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   const size_t expectedCalls =
       directCallCount + receiverCallCount + receiverSelfCallCount + parameterIndexCount +
-      equalityConditionalCount + conditionalBinaryArmCount - matchEqualityReturnCount -
-      matchGuardPhantomCount + comparisonReturnCount + sequentialBinaryCount +
-      receiverFieldArithmeticCount + binaryWriteCount + nestedBinaryWriteOperandCount -
-      compoundAssignmentWriteCount + leadingLocalConditionalBinaryCount -
-      leadingLocalConditionalBoolReferenceCount + receiverCallComparisonArgumentCount +
-      forLoopReturnCount * 2 + forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
+      equalityConditionalCount + callConditionalCount + conditionalBinaryArmCount -
+      matchEqualityReturnCount - matchGuardPhantomCount + comparisonReturnCount +
+      sequentialBinaryCount + receiverFieldArithmeticCount + binaryWriteCount +
+      nestedBinaryWriteOperandCount - compoundAssignmentWriteCount +
+      leadingLocalConditionalBinaryCount - leadingLocalConditionalBoolReferenceCount +
+      receiverCallComparisonArgumentCount + forLoopReturnCount * 2 +
+      forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
       forLoopAccumulatorGuardedBreakCount + nestedForLoopAccumulatorReturnCount * 2 +
       postfixReturnCount + directExistentialCallCount + destructorMethodCallBodyCount +
       doWhileLoopBodyReturnCount;

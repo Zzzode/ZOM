@@ -1,0 +1,11 @@
+// Call-in-condition fixture: a direct call returning bool is used as the
+// condition of an if/else return. The entry function calls both(true, true)
+// and branches on its result. The two-function module (caller + callee)
+// compiles through the full pipeline to native code and exits with code 41.
+fn both(a: bool, b: bool) -> bool {
+  return a && b;
+}
+
+fn entry() -> i32 {
+  if (both(true, true)) { return 41; } else { return 0; }
+}

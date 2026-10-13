@@ -7098,6 +7098,182 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
+        } else if (source.conditionIsCall) {
+          // Cross-check the direct call condition against the checked call
+          // fact. The call materializes at the fixed condition node id; its
+          // bool result is the discriminant consumed by the conditional.
+          const auto& sourceCall = tree.node(source.condition);
+          const ast::NodeId calleeNode(sourceCall.payload.words[ast::kCallExpressionCalleeWord]);
+          const ast::NodeList arguments{sourceCall.payload.words[ast::kCallExpressionArgsFirstWord],
+                                        sourceCall.payload.words[ast::kCallExpressionArgsSizeWord]};
+          if (!tree.contains(calleeNode) ||
+              tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+              !tree.contains(arguments)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          auto calleeTypeIndex = factIndex(facts.nodeTypes(), calleeNode);
+          auto checkedCallIndex = factIndex(facts.calls(), source.condition);
+          auto callKey = checkedNodeKey(tree, bound.parsedModule(), source.condition);
+          auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+          if (calleeTypeIndex == zc::none || checkedCallIndex == zc::none || callKey == zc::none ||
+              callee == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          auto dispatchIndex = dispatchFactIndex(
+              candidate.impl->checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(callKey));
+          if (dispatchIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t calleeTypeSlot = 0;
+          size_t checkedCallSlot = 0;
+          size_t dispatchSlot = 0;
+          ZC_IF_SOME(value, calleeTypeIndex) { calleeTypeSlot = value; }
+          ZC_IF_SOME(value, checkedCallIndex) { checkedCallSlot = value; }
+          ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
+          const auto& checkedCall = facts.calls().entries()[checkedCallSlot].value;
+          const auto& invocation = checkedCall.invocation;
+          const auto& selected = invocation.selected.variant();
+          const auto& dispatch =
+              candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
+          const auto& target = dispatch.fact.target.variant();
+          const auto& transform = dispatch.fact.resultTransform.variant();
+          bool dispatchOwnerMatches = false;
+          ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+          zc::Maybe<const HirDirectCallExpression&> conditionCall;
+          for (const auto& candidateCall : candidate.impl->calls) {
+            if (candidateCall.node != hirId(expectedFunction + 2)) continue;
+            if (conditionCall != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            conditionCall = candidateCall;
+          }
+          if (conditionCall == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          const auto& call = ZC_ASSERT_NONNULL(conditionCall);
+          const auto argumentNodes = tree.list(arguments);
+          bool callOk = false;
+          ZC_IF_SOME(conditional, conditionalValue) {
+            ZC_IF_SOME(resolvedCallee, callee) {
+              callOk = call.node == hirId(expectedFunction + 2) && call.callee == resolvedCallee &&
+                       call.calleeType == facts.nodeTypes().entries()[calleeTypeSlot].value &&
+                       call.resultType == conditionType &&
+                       call.arguments.size() == argumentNodes.size() &&
+                       selected.is<checker::checked::DirectCallable>() &&
+                       selected.get<checker::checked::DirectCallable>().callee == resolvedCallee &&
+                       target.is<checker::dispatch::DirectTarget>() &&
+                       target.get<checker::dispatch::DirectTarget>().callee == resolvedCallee &&
+                       transform.is<checker::dispatch::IdentityResultTransform>() &&
+                       invocation.calleeType == call.calleeType &&
+                       invocation.successType == conditionType &&
+                       invocation.resultType == conditionType && invocation.receiver == zc::none &&
+                       invocation.receiverMode == zc::none &&
+                       invocation.receiverAdjustment == zc::none &&
+                       invocation.arguments.size() == argumentNodes.size() &&
+                       invocation.substitutions == zc::none && invocation.witnesses == zc::none &&
+                       invocation.raises == zc::none && dispatchOwnerMatches &&
+                       dispatch.fact.receiver == zc::none &&
+                       dispatch.fact.arguments.size() == argumentNodes.size() &&
+                       dispatch.fact.successType == conditionType &&
+                       dispatch.fact.resultType == conditionType &&
+                       dispatch.fact.substitutions == zc::none &&
+                       dispatch.fact.witnesses == zc::none && dispatch.fact.raises == zc::none &&
+                       conditional.condition == call.node &&
+                       sameSpan(call.sourceSpan, ZC_ASSERT_NONNULL(conditionSpan));
+            }
+          }
+          if (!callOk) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          for (size_t argIndex = 0; argIndex < argumentNodes.size(); ++argIndex) {
+            const auto argumentNode = argumentNodes[argIndex];
+            auto argumentTypeIndex = factIndex(facts.nodeTypes(), argumentNode);
+            auto argumentSpan = bound.parsedModule().spanFor(tree.node(argumentNode).range);
+            if (argumentTypeIndex == zc::none || argumentSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t argumentTypeSlot = 0;
+            ZC_IF_SOME(value, argumentTypeIndex) { argumentTypeSlot = value; }
+            const auto argumentType = facts.nodeTypes().entries()[argumentTypeSlot].value;
+            const auto& checkedArgument = invocation.arguments[argIndex];
+            const auto& dispatchArgument = dispatch.fact.arguments[argIndex];
+            const auto& hirArgument = call.arguments[argIndex];
+            if (checkedArgument.sourceNode != argumentNode ||
+                checkedArgument.sourceType != argumentType ||
+                checkedArgument.parameterType != argumentType ||
+                checkedArgument.adjustment != zc::none ||
+                !sameNodeKey(
+                    dispatchArgument.sourceNode,
+                    ZC_ASSERT_NONNULL(checkedNodeKey(tree, bound.parsedModule(), argumentNode))) ||
+                dispatchArgument.sourceType != argumentType ||
+                dispatchArgument.parameterType != argumentType ||
+                dispatchArgument.adjustment != zc::none || hirArgument.type != argumentType ||
+                !sameSpan(hirArgument.sourceSpan, ZC_ASSERT_NONNULL(argumentSpan))) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+            if (isScalarLiteral(tree.node(argumentNode).kind)) {
+              auto literalIndex = factIndex(facts.literals(), argumentNode);
+              if (literalIndex == zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::MissingRequiredFact, module,
+                                                    registries, index + 1);
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.node != argumentNode || literalFact.type != argumentType ||
+                  hirArgument.value == zc::none || hirArgument.parameter != zc::none ||
+                  hirArgument.local != zc::none ||
+                  !sameConstant(ZC_ASSERT_NONNULL(hirArgument.value), literalFact.literal, module,
+                                registries, semanticTypes)) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            } else {
+              auto parameter = resolvedCallableParameter(bound.bindings(), argumentNode);
+              if (parameter == zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::MissingRequiredFact, module,
+                                                    registries, index + 1);
+              }
+              bool parameterOk = false;
+              ZC_IF_SOME(authorityValue, authority) {
+                parameterOk = hirArgument.value == zc::none && hirArgument.parameter != zc::none &&
+                              hirArgument.local == zc::none &&
+                              ZC_ASSERT_NONNULL(hirArgument.parameter) == authorityValue.key();
+              }
+              if (!parameterOk) {
+                return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                    ir::IrFailureKind::InvalidFact, module,
+                                                    registries, index + 1);
+              }
+            }
+          }
         } else {
           auto conditionParameter = resolvedCallableParameter(bound.bindings(), source.condition);
           if (conditionParameter == zc::none) {

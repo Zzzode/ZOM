@@ -894,6 +894,26 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerDynFieldAccessReturnModule(
       const mir::MirFunction& entry, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers a call-in-condition conditional-return module: a caller
+  /// whose `if (f(args))` condition is a direct call to a bool-returning
+  /// free function, plus the callee itself.
+  ///
+  /// Admits a two-function module: a Function-sourced caller with five
+  /// blocks (entry StorageLive+Call, switch SwitchInt, then/else Assign+Goto,
+  /// join Return) and two locals (a bool call-result temporary and an i32
+  /// function result), and a Function-sourced callee with one block
+  /// (StorageLive+Assign(BitAnd)+Return) and three locals (two bool
+  /// parameters and a bool result). The caller folds to `zom.module_init`
+  /// when parameter-free. Every other shape returns none.
+  ///
+  /// \param caller Verified caller MIR function (five-block call-in-condition).
+  /// \param callee Verified callee MIR function (one-block BitAnd return).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallInConditionModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

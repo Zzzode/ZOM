@@ -3821,6 +3821,140 @@ zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a call-in-condition conditional return:
+/// `fn entry() -> T { if (f(args)) { return <lit>; } else { return <lit>; } }`.
+/// The condition is a direct call to a free function returning bool. The MIR
+/// evaluates the call into a bool temporary, then SwitchInts on it. Five
+/// blocks: entry (StorageLive + Call), switch (SwitchInt), then arm
+/// (Assign + Goto), else arm (Assign + Goto), join (Return).
+zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 1) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  auto sourceReturn = returnFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none) return zc::none;
+
+  auto conditional = conditionalFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (conditional == zc::none) return zc::none;
+  const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
+  if (conditionalValue.type != declaration.resultType ||
+      conditionalValue.category != hir::HirValueCategory::Value) {
+    return zc::none;
+  }
+
+  // The condition must be a direct call expression.
+  auto sourceCall = callFor(hirModule, conditionalValue.condition);
+  if (sourceCall == zc::none) return zc::none;
+  const auto& call = ZC_ASSERT_NONNULL(sourceCall);
+
+  // The arms are scalar literals.
+  auto thenLiteral = expressionFor(hirModule, conditionalValue.thenReturnValue);
+  auto elseLiteral = expressionFor(hirModule, conditionalValue.elseReturnValue);
+  if (thenLiteral == zc::none || elseLiteral == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(thenLiteral).type != declaration.resultType ||
+      ZC_ASSERT_NONNULL(elseLiteral).type != declaration.resultType) {
+    return zc::none;
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
+                       ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
+  if (resultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 1)) {
+    return zc::none;
+  }
+  const MirLocalId callResultLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, call.resultType, scope, call.sourceSpan.clone());
+  if (callResultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 2)) {
+    return zc::none;
+  }
+
+  // Block 1: StorageLive(result); StorageLive(callResult);
+  // Call(callee, args -> callResult, normalTarget=block2).
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(callResultLocal, call.sourceSpan.clone()));
+
+  zc::Vector<MirOperand> arguments;
+  for (const auto& argument : call.arguments) {
+    if (argument.value != zc::none) {
+      arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+    } else if (argument.parameter != zc::none) {
+      auto paramIndex = parameterIndexFor(declaration, ZC_ASSERT_NONNULL(argument.parameter));
+      if (paramIndex == zc::none) return zc::none;
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(paramIndex)],
+                                       argument.type, zc::mv(projections), argument.type));
+      if (operand == zc::none) return zc::none;
+      arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else {
+      return zc::none;
+    }
+  }
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> callResultProjections;
+  ctx.terminateBlock(MirTerminator::call(
+      call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(callResultLocal, call.resultType, zc::mv(callResultProjections), call.resultType),
+      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone()));
+
+  // Block 2: SwitchInt(callResult) { true -> 3, false -> 4 }, default 4.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> discriminantProjections;
+  auto discriminant = placeUse(
+      proofs, copyMarker,
+      MirPlace(callResultLocal, call.resultType, zc::mv(discriminantProjections), call.resultType));
+  if (discriminant == zc::none) return zc::none;
+  zc::Vector<MirSwitchIntArm> arms;
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(3)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(4)});
+  ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
+                                              blockId(4), conditionalValue.sourceSpan.clone()));
+
+  // Blocks 3 and 4: Initialize Assign of the arm constant then Goto block 5.
+  const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
+    (void)ctx.beginBlock(scope);
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
+        MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
+        MirInitializationKind::Initialize, literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(5), literal.sourceSpan.clone()));
+  };
+  armBlock(ZC_ASSERT_NONNULL(thenLiteral));
+  armBlock(ZC_ASSERT_NONNULL(elseLiteral));
+
+  // Block 5: Return(result).
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -3878,6 +4012,16 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
       declaration.unsafeBlock == zc::none) {
     auto product = buildConjunctiveConditionalReturn(declaration, block, hirModule, identities,
                                                      proofs, copyMarker);
+    if (product != zc::none) return product;
+  }
+
+  // Call-in-condition conditional return: a single-statement body whose return
+  // value is a conditional with a direct call expression as its condition.
+  // The arm self-gates on the HIR shape and rejects every other body.
+  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
+      declaration.unsafeBlock == zc::none) {
+    auto product =
+        buildCallConditionalReturn(declaration, block, hirModule, identities, proofs, copyMarker);
     if (product != zc::none) return product;
   }
 
