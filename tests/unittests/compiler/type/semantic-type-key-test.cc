@@ -14,11 +14,11 @@
 
 #include "compiler/type/semantic-type-key.h"
 
+#include "compiler/identity/canonical/identity-interner-set.h"
+#include "compiler/type/semantic-type-store.h"
 #include "zc/core/encoding.h"
 #include "zc/core/memory.h"
 #include "zc/ztest/test.h"
-#include "compiler/identity/canonical/identity-interner-set.h"
-#include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::type::semantic {
 namespace {
@@ -195,6 +195,123 @@ ZC_TEST("SemanticTypeKey.RejectsUnretainedGenericParameterKey") {
     ZC_EXPECT(invariant.kind() == identity::IdentityInvariantKind::InvalidHandle);
     ZC_EXPECT(invariant.phase() == identity::IdentityAllocationPhase::GenericParameter);
   }
+}
+
+namespace {
+
+identity::SemanticTypeId internType(type::SemanticTypeStore& store, TypeData&& data) {
+  auto canonical = store.canonicalizeClosed(zc::mv(data));
+  ZC_REQUIRE(canonical.is<CanonicalTypeData>());
+  auto result = store.intern(zc::mv(canonical.get<CanonicalTypeData>()));
+  ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
+  return result.get<type::SemanticTypeInterned>().id;
+}
+
+}  // namespace
+
+ZC_TEST("SemanticTypeKey.PrimitiveKeyHasExpectedPrefixAndTag") {
+  SemanticTypeStoreFixture fixture;
+  auto id = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  auto lookup = fixture.store().get(id);
+  ZC_REQUIRE(lookup.is<type::SemanticTypeLookup>());
+  const auto& stored = lookup.get<type::SemanticTypeLookup>();
+  ZC_REQUIRE(stored.key().bytes().size() == 24);
+  ZC_EXPECT(zc::encodeHex(stored.key().bytes().slice(0, 22)) ==
+            "7a6f6d2e73656d616e7469632d747970652d6b657900"_zc);
+  ZC_EXPECT(stored.key().bytes()[22] == 0x01);
+  ZC_EXPECT(stored.key().bytes()[23] == 0x03);
+}
+
+ZC_TEST("SemanticTypeKey.PrimitiveKeyKindVariesByPrimitive") {
+  SemanticTypeStoreFixture fixture;
+  auto i32Id = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  auto i64Id = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I64}));
+  auto lookup32 = fixture.store().get(i32Id);
+  auto lookup64 = fixture.store().get(i64Id);
+  ZC_REQUIRE(lookup32.is<type::SemanticTypeLookup>());
+  ZC_REQUIRE(lookup64.is<type::SemanticTypeLookup>());
+  const auto& stored32 = lookup32.get<type::SemanticTypeLookup>();
+  const auto& stored64 = lookup64.get<type::SemanticTypeLookup>();
+  ZC_EXPECT(stored32.key().bytes()[23] == 0x03);
+  ZC_EXPECT(stored64.key().bytes()[23] == 0x04);
+  ZC_EXPECT(stored32.key().bytes() != stored64.key().bytes());
+}
+
+ZC_TEST("SemanticTypeKey.SameTypeProducesIdenticalKeyBytes") {
+  SemanticTypeStoreFixture fixture;
+  auto id1 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::Bool}));
+  auto id2 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::Bool}));
+  ZC_EXPECT(id1 == id2);
+  auto lookup1 = fixture.store().get(id1);
+  auto lookup2 = fixture.store().get(id2);
+  ZC_REQUIRE(lookup1.is<type::SemanticTypeLookup>());
+  ZC_REQUIRE(lookup2.is<type::SemanticTypeLookup>());
+  const auto& stored1 = lookup1.get<type::SemanticTypeLookup>();
+  const auto& stored2 = lookup2.get<type::SemanticTypeLookup>();
+  ZC_EXPECT(stored1.key().bytes() == stored2.key().bytes());
+}
+
+ZC_TEST("SemanticTypeKey.CompositeKeyLongerThanPrimitiveKey") {
+  SemanticTypeStoreFixture fixture;
+  auto i32 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  auto boolType = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::Bool}));
+  zc::Vector<identity::SemanticTypeId> elements;
+  elements.add(i32);
+  elements.add(boolType);
+  auto tupleId = internType(fixture.store(), TypeData(TupleTypeData{zc::mv(elements)}));
+  auto primitiveLookup = fixture.store().get(i32);
+  auto tupleLookup = fixture.store().get(tupleId);
+  ZC_REQUIRE(primitiveLookup.is<type::SemanticTypeLookup>());
+  ZC_REQUIRE(tupleLookup.is<type::SemanticTypeLookup>());
+  const auto& primitiveKey = primitiveLookup.get<type::SemanticTypeLookup>().key();
+  const auto& tupleKey = tupleLookup.get<type::SemanticTypeLookup>().key();
+  ZC_EXPECT(tupleKey.bytes().size() > primitiveKey.bytes().size());
+}
+
+ZC_TEST("SemanticTypeKey.FixedArrayKeyIncludesLength") {
+  SemanticTypeStoreFixture fixture;
+  auto i32 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  auto id10 = internType(fixture.store(), TypeData(FixedArrayTypeData{i32, 10}));
+  auto id20 = internType(fixture.store(), TypeData(FixedArrayTypeData{i32, 20}));
+  ZC_EXPECT(id10 != id20);
+  auto lookup10 = fixture.store().get(id10);
+  auto lookup20 = fixture.store().get(id20);
+  ZC_REQUIRE(lookup10.is<type::SemanticTypeLookup>());
+  ZC_REQUIRE(lookup20.is<type::SemanticTypeLookup>());
+  const auto& stored10 = lookup10.get<type::SemanticTypeLookup>();
+  const auto& stored20 = lookup20.get<type::SemanticTypeLookup>();
+  ZC_EXPECT(stored10.key().bytes() != stored20.key().bytes());
+}
+
+ZC_TEST("SemanticTypeKey.RejectsTupleWithOneElement") {
+  SemanticTypeStoreFixture fixture;
+  auto i32 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  zc::Vector<identity::SemanticTypeId> elements;
+  elements.add(i32);
+  auto result = fixture.store().canonicalizeClosed(TypeData(TupleTypeData{zc::mv(elements)}));
+  ZC_REQUIRE(result.is<identity::IdentityInvariant>());
+  const auto& invariant = result.get<identity::IdentityInvariant>();
+  ZC_EXPECT(invariant.kind() == identity::IdentityInvariantKind::InvalidClosedValue);
+}
+
+ZC_TEST("SemanticTypeKey.RejectsInvalidPrimitiveKind") {
+  SemanticTypeStoreFixture fixture;
+  auto result = fixture.store().canonicalizeClosed(
+      TypeData(PrimitiveTypeData{static_cast<PrimitiveKind>(0x00)}));
+  ZC_REQUIRE(result.is<identity::IdentityInvariant>());
+  const auto& invariant = result.get<identity::IdentityInvariant>();
+  ZC_EXPECT(invariant.kind() == identity::IdentityInvariantKind::InvalidClosedValue);
+}
+
+ZC_TEST("SemanticTypeKey.RejectsUnionWithOneAlternative") {
+  SemanticTypeStoreFixture fixture;
+  auto i32 = internType(fixture.store(), TypeData(PrimitiveTypeData{PrimitiveKind::I32}));
+  zc::Vector<identity::SemanticTypeId> alternatives;
+  alternatives.add(i32);
+  auto result = fixture.store().canonicalizeClosed(TypeData(UnionTypeData{zc::mv(alternatives)}));
+  ZC_REQUIRE(result.is<identity::IdentityInvariant>());
+  const auto& invariant = result.get<identity::IdentityInvariant>();
+  ZC_EXPECT(invariant.kind() == identity::IdentityInvariantKind::InvalidClosedValue);
 }
 
 }  // namespace zomlang::compiler::type::semantic
