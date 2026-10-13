@@ -1,0 +1,6 @@
+// Tuple literal construction and destructuring: a single function that
+// builds a two-element tuple from scalar literals, destructures it into
+// two locals, and returns the first element. The tuple type is inferred
+// from the element types, and the destructured bindings are independent
+// owner locals that lower through the sequential-local HIR shape.
+fn entry() -> i32 { let (a, b) = (41, 0); return a; }

@@ -4499,6 +4499,108 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit the verified sequential-local-return shape where every binding is
+  // initialized by a constant literal: one block with N >= 2 user locals, each
+  // brought to life by StorageLive plus an initializing Assign of a constant,
+  // and a place-copy return of one of the user locals. This is the
+  // tuple-destructure and multi-let literal slice of the broader
+  // sequential-local-return family that mir::validSequentialLocalReturnFunction
+  // accepts; binary and aggregate initializers are outside this slice.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() != 1 || function.locals.size() < 2) {
+    return zc::none;
+  }
+  for (const auto& local : function.locals) {
+    if (local.kind != mir::MirLocalKind::UserLocal) { return zc::none; }
+  }
+
+  auto resultCarrier = integerCarrierFor(function.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
+  for (const auto& local : function.locals) {
+    auto carrier = integerCarrierFor(local.type, semanticTypes);
+    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
+      return zc::none;
+    }
+  }
+
+  const auto& block = function.blocks[0];
+  const size_t localCount = function.locals.size();
+  if (block.statements.size() != localCount * 2) { return zc::none; }
+
+  // Each pair must be StorageLive(local_i) followed by Assign(local_i = const).
+  for (size_t i = 0; i < localCount; ++i) {
+    const auto& liveStatement = block.statements[i * 2];
+    const auto& assignStatement = block.statements[i * 2 + 1];
+    if (liveStatement.kind() != mir::MirStatementKind::StorageLive ||
+        liveStatement.storageLocal() != function.locals[i].id) {
+      return zc::none;
+    }
+    if (assignStatement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& assign = assignStatement.assignmentValue();
+    if (assign.destination.local() != function.locals[i].id ||
+        assign.destination.projections().size() != 0 ||
+        assign.initialization != mir::MirInitializationKind::Initialize ||
+        assign.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    const auto& operand = assign.value.useValue().operand;
+    if (operand.kind() != mir::MirOperandKind::Constant ||
+        operand.constantValue().type != function.locals[i].type) {
+      return zc::none;
+    }
+  }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  uint32_t returnOrdinal = 0;
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant) { return zc::none; }
+    if (value.place().projections().size() != 0) { return zc::none; }
+    returnOrdinal = value.place().local().ordinal();
+    bool declared = false;
+    for (const auto& local : function.locals) {
+      if (local.id.ordinal() == returnOrdinal) {
+        declared = true;
+        break;
+      }
+    }
+    if (!declared) { return zc::none; }
+  }
+
+  zc::Vector<Statement> statements;
+  for (size_t i = 0; i < localCount; ++i) {
+    const auto& assign = block.statements[i * 2 + 1].assignmentValue();
+    const auto& operand = assign.value.useValue().operand;
+    auto lowered = lirOperandFor(operand, resultCarrierValue);
+    if (lowered == zc::none) { return zc::none; }
+    statements.add(
+        Statement::assign(function.locals[i].id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(lowered))));
+  }
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(returnOrdinal)));
+
+  zc::Vector<Local> locals;
+  for (const auto& local : function.locals) {
+    locals.add(Local(local.id.ordinal(), resultCarrierValue));
+  }
+
+  zc::String symbol = zc::heapString("zom.module_init");
+  zc::Vector<Function> functions;
+  zc::Vector<Local> parameters;
+  functions.add(Function(function.owner, zc::mv(symbol), resultCarrierValue, zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& caller,
                                                     const mir::MirFunction& callee,
                                                     const type::SemanticTypeStore& semanticTypes) {

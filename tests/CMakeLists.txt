@@ -314,6 +314,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-literal-index/Zom.toml::array_literal_index::array_literal_index"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/tuple-destructure-consumer/Zom.toml::tuple_destructure_consumer::tuple_destructure_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-length-consumer/Zom.toml::array_length_consumer::array_length_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
@@ -556,6 +558,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-literal-index/Zom.toml::array_literal_index::array_literal_index::1"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/tuple-destructure-consumer/Zom.toml::tuple_destructure_consumer::tuple_destructure_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-length-consumer/Zom.toml::array_length_consumer::array_length_consumer::3"
       --run-case

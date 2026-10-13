@@ -1511,6 +1511,9 @@ private:
           lowered = lir::MirToLirLowering::lowerScalarLocalOverwriteReturn(fn, types);
         }
         if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerSequentialLocalReturn(fn, types);
+        }
+        if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerRawPointerWriteReturn(fn, types);
         }
         if (lowered == zc::none) {
@@ -2048,7 +2051,8 @@ private:
                   "void-setter-then-value-getter receiver-call, "
                   "standalone multi-function, "
                   "empty-body void, "
-                  "array-literal constant-index fold, and "
+                  "array-literal constant-index fold, "
+                  "sequential local return, and "
                   "string literal return slices)."));
     }
     backend::llvm::LlvmTranslator translator;

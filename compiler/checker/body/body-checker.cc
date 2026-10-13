@@ -62,6 +62,7 @@ enum class BodyProductionKind : uint8_t {
   ArrayLiteral = 0x26,
   ArrayIndexFold = 0x27,
   ArrayLengthFold = 0x28,
+  TupleLiteral = 0x29,
   Unsupported = 0x17
 };
 
@@ -201,7 +202,25 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
       continue;
     }
     const auto& declarator = tree.node(binding.introducer);
-    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorPatternWord]) != node) {
+    const ast::NodeId pattern(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+    if (pattern == node) {
+      // Direct pattern match — fall through to the body check.
+    } else if (tree.contains(pattern) && tree.node(pattern).kind == ast::SyntaxKind::TuplePattern) {
+      // A tuple-destructure sub-pattern (IdentifierPattern inside the
+      // TuplePattern) is also an owner-local pattern.
+      const auto& tuplePattern = tree.node(pattern);
+      const ast::NodeList subPatterns{tuplePattern.payload.words[ast::kTuplePatternPatsFirstWord],
+                                      tuplePattern.payload.words[ast::kTuplePatternPatsSizeWord]};
+      if (!tree.contains(subPatterns)) continue;
+      bool found = false;
+      for (const auto sub : tree.list(subPatterns)) {
+        if (sub == node) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) continue;
+    } else {
       continue;
     }
     for (const auto& definition : boundModule.definitions().definitions()) {
@@ -598,6 +617,32 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
       auto declared = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
                                                         input.semanticTypes, initializerNode);
       if (declared != zc::none) { return declared; }
+      // A tuple-destructure sub-binding (`let (a, b) = (e0, e1);`) has the
+      // tuple literal as its initializer, but the sub-binding's type is the
+      // element type at the corresponding index, not the tuple type. The
+      // pattern path `[0, index]` (0 = tuple element domain) carries the
+      // element index.
+      if (tree.contains(initializerNode) &&
+          tree.node(initializerNode).kind == ast::SyntaxKind::TupleLiteral) {
+        for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+          if (local.binding != value || !local.site.value().is<binder::PatternBindingSite>()) {
+            continue;
+          }
+          const auto& patternSite = local.site.value().get<binder::PatternBindingSite>();
+          if (patternSite.patternPath.size() >= 2 && patternSite.patternPath[0] == 0) {
+            const uint32_t elementIndex = patternSite.patternPath[1];
+            const auto& tupleLiteral = tree.node(initializerNode);
+            const ast::NodeList elems{tupleLiteral.payload.words[ast::kTupleLiteralElemsFirstWord],
+                                      tupleLiteral.payload.words[ast::kTupleLiteralElemsSizeWord]};
+            if (tree.contains(elems) && elementIndex < elems.size) {
+              const auto element = tree.list(elems)[elementIndex];
+              for (const auto& entry : nodeTypes) {
+                if (entry.key == element) return entry.value;
+              }
+            }
+          }
+        }
+      }
       for (const auto& entry : nodeTypes) {
         if (entry.key == initializerNode) return entry.value;
       }
@@ -660,7 +705,11 @@ bool dependsOnStructuredLocalInitializer(const BodyCheckingInput& input, ast::No
     ast::NodeId initializerNode;
     ZC_IF_SOME(value, initializer) { initializerNode = value; }
     if (!tree.contains(initializerNode)) return false;
-    if (tree.node(initializerNode).kind == ast::SyntaxKind::StructLiteralExpr) return true;
+    if (tree.node(initializerNode).kind == ast::SyntaxKind::StructLiteralExpr ||
+        tree.node(initializerNode).kind == ast::SyntaxKind::ArrayLiteral ||
+        tree.node(initializerNode).kind == ast::SyntaxKind::TupleLiteral) {
+      return true;
+    }
     if (tree.node(initializerNode).kind != ast::SyntaxKind::IdentExpr) return false;
     for (const auto seen : visited) {
       if (seen == initializerNode) return false;
@@ -2279,6 +2328,57 @@ zc::Maybe<ArrayLiteralShape> buildArrayLiteral(
     }
   }
   return ArrayLiteralShape{ZC_ASSERT_NONNULL(declared), array.element, zc::mv(elements)};
+}
+
+struct TupleLiteralShape final {
+  identity::SemanticTypeId type;
+  zc::Vector<checked::AggregateElementFact> elements;
+};
+
+/// \brief Resolves a tuple literal against its element types and builds the
+/// per-element aggregate facts. The tuple type is inferred from the element
+/// types produced by the scalar-literal pre-pass. Returns none when the node
+/// is not a tuple literal, any element is not a scalar literal, or an element
+/// type fact is missing.
+zc::Maybe<TupleLiteralShape> buildTupleLiteral(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::TupleLiteral) {
+    return zc::none;
+  }
+  const auto& literal = tree.node(node);
+  const ast::NodeList elems{literal.payload.words[ast::kTupleLiteralElemsFirstWord],
+                            literal.payload.words[ast::kTupleLiteralElemsSizeWord]};
+  if (!tree.contains(elems)) return zc::none;
+
+  zc::Vector<identity::SemanticTypeId> elementTypes(elems.size);
+  zc::Vector<checked::AggregateElementFact> elements(elems.size);
+  for (uint32_t index = 0; index < elems.size; ++index) {
+    const auto element = tree.list(elems)[index];
+    if (!tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) return zc::none;
+    zc::Maybe<const checked::NodeTypeMap::Entry&> elementType;
+    for (const auto& entry : nodeTypes) {
+      if (entry.key != element) continue;
+      if (elementType != zc::none) return zc::none;
+      elementType = entry;
+    }
+    if (elementType == zc::none) return zc::none;
+    ZC_IF_SOME(value, elementType) {
+      elementTypes.add(value.value);
+      zc::Maybe<identity::DefId> noField;
+      zc::Maybe<checked::CoercionAdjustment> noAdjustment;
+      elements.add(checked::AggregateElementFact{element, zc::mv(noField), index, value.value,
+                                                 value.value, zc::mv(noAdjustment)});
+    }
+  }
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::TupleTypeData{zc::mv(elementTypes)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return TupleLiteralShape{interned.get<type::SemanticTypeInterned>().id, zc::mv(elements)};
 }
 
 // Forward declaration: scalar-literal classification is defined below but is
@@ -6501,7 +6601,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Index, node, key);
           addNodeRequirement(nodeRequirements, CheckedFactGroup::MarkerObligation, node, key);
         }
-      } else if (isPattern(syntax.kind) && !(syntax.kind == ast::SyntaxKind::IdentifierPattern &&
+      } else if (isPattern(syntax.kind) && !((syntax.kind == ast::SyntaxKind::IdentifierPattern ||
+                                              syntax.kind == ast::SyntaxKind::TuplePattern) &&
                                              isOwnerLocalPattern(boundModule, node))) {
         addNodeRequirement(nodeRequirements, CheckedFactGroup::Pattern, node, key);
       } else if (syntax.kind == ast::SyntaxKind::MatchStmt) {
@@ -6642,6 +6743,9 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           break;
         case ast::SyntaxKind::ArrayLiteral:
           production = BodyProductionKind::ArrayLiteral;
+          break;
+        case ast::SyntaxKind::TupleLiteral:
+          production = BodyProductionKind::TupleLiteral;
           break;
         case ast::SyntaxKind::BinaryExpr: {
           // A literal-vs-literal `+` on two string literals folds to the
@@ -7303,6 +7407,28 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.type, zc::Array<uint8_t>()});
       }
     }
+    // Tuple literals ride the same pre-pass: scalar element types are already
+    // produced above, so build the aggregate facts here and let the main stage
+    // loop reuse the node-type entry.
+    for (const auto& site : input.requirements.impl->productionSiteValues) {
+      if (site.production != BodyProductionKind::TupleLiteral) continue;
+      if (factEntry(nodeTypes.asPtr(), site.node) != zc::none) continue;
+      auto built = buildTupleLiteral(input, site.node, nodeTypes.asPtr());
+      if (built == zc::none) {
+        return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                               site.key.schemaPreorder, zc::none, site.node,
+                               site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
+      }
+      ZC_IF_SOME(value, built) {
+        aggregates.add(checked::AggregateFactMap::Entry{
+            site.node,
+            checked::CheckedAggregateFact{
+                site.node, checked::AggregateKind(checked::TupleAggregate{}), value.type,
+                zc::mv(value.elements), site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+        nodeTypes.add(checked::NodeTypeMap::Entry{site.node, value.type, zc::Array<uint8_t>()});
+      }
+    }
   }
   for (uint8_t stage = 0; stage != 5; ++stage) {
     for (const auto& site : input.requirements.impl->productionSiteValues) {
@@ -7315,7 +7441,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  dependsOnTernaryLocalInitializer(input, site.node);
       }
       const bool structured = site.production == BodyProductionKind::StructLiteral ||
-                              site.production == BodyProductionKind::ArrayLiteral;
+                              site.production == BodyProductionKind::ArrayLiteral ||
+                              site.production == BodyProductionKind::TupleLiteral;
       const bool projected = site.production == BodyProductionKind::OwnerLocalFieldReference ||
                              site.production == BodyProductionKind::OwnerLocalMethodReference ||
                              deferredLocalReference;
@@ -7350,6 +7477,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           site.production == BodyProductionKind::DirectCall) {}
       if (site.production == BodyProductionKind::Unsupported) {
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::IdentifierPattern) {
+          continue;
+        }
+        // A tuple-destructure pattern in a let binding is an owner-local
+        // pattern whose sub-patterns carry the element types; the pattern
+        // node itself needs no production fact.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::TuplePattern) {
           continue;
         }
         // An admitted two-arm boolean match produces its exhaustiveness fact in
@@ -9238,6 +9371,30 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 zc::Array<uint8_t>()});
           }
         }
+      } else if (site.production == BodyProductionKind::TupleLiteral) {
+        // Tuple literals are processed in the reverse-order pre-pass above so
+        // nested literals have their types available. When the pre-pass already
+        // produced the type, reuse it and skip re-building the aggregate facts.
+        ZC_IF_SOME(existing, factEntry(nodeTypes.asPtr(), site.node)) {
+          producedType = existing.value;
+        } else {
+          auto built = buildTupleLiteral(input, site.node, nodeTypes.asPtr());
+          if (built == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(),
+                                   factPath(CheckedFactGroup::Aggregate));
+          }
+          ZC_IF_SOME(value, built) {
+            producedType = value.type;
+            aggregates.add(checked::AggregateFactMap::Entry{
+                site.node,
+                checked::CheckedAggregateFact{
+                    site.node, checked::AggregateKind(checked::TupleAggregate{}), value.type,
+                    zc::mv(value.elements), site.key.sourceSpan.clone()},
+                zc::Array<uint8_t>()});
+          }
+        }
       } else if (site.production == BodyProductionKind::ErrorOperator) {
         const auto& postfix = input.boundModule.tree().node(site.node);
         const auto operation = static_cast<ast::PostfixOperatorKind>(
@@ -9963,11 +10120,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       }
       ZC_IF_SOME(value, producedType) {
-        // Scalar literals, struct literals, and array literals produced in the
-        // pre-pass already have a nodeTypes entry; skip to avoid a duplicate.
+        // Scalar literals, struct literals, array literals, and tuple literals
+        // produced in the pre-pass already have a nodeTypes entry; skip to
+        // avoid a duplicate.
         if ((isScalarLiteralProduction(site.production) ||
              site.production == BodyProductionKind::StructLiteral ||
-             site.production == BodyProductionKind::ArrayLiteral) &&
+             site.production == BodyProductionKind::ArrayLiteral ||
+             site.production == BodyProductionKind::TupleLiteral) &&
             factEntry(nodeTypes.asPtr(), site.node) != zc::none) {
           // Entry already exists from the pre-pass.
         } else {

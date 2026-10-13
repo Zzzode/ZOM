@@ -11630,6 +11630,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   size_t localAliasReborrowCount = 0;
   size_t localBorrowCount = 0;
   size_t aggregateCount = 0;
+  // Tuple-destructure let statements (`let (a, b) = (e0, e1);`). Each carries
+  // one extra node-type fact and one extra aggregate fact for the TupleLiteral
+  // initializer, beyond the per-binding local and element facts counted by
+  // localReturnCount.
+  size_t tupleDestructureCount = 0;
   size_t aggregateElementCount = 0;
   // Aggregate elements erased from a concrete type to an existential field
   // type. These elements carry no literal fact themselves (their value is a
@@ -11981,8 +11986,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // literal. This term is zero for the former two-local literal/aggregate
         // source (L + A == 1), so existing bodies keep their exact counts.
         int64_t literalBearingSlots = 0;
+        const auto& seqTree = bound.tree();
+        ast::NodeId lastTupleDeclarator;
         for (const auto& binding : sequential.bindings) {
           ++localReturnCount;
+          // A tuple-destructure let (`let (a, b) = (e0, e1);`) shares one
+          // VariableDeclarator across all sub-bindings. The TupleLiteral
+          // initializer carries one extra node-type fact and one extra
+          // aggregate fact, counted once per declarator.
+          if (binding.declaratorNode != lastTupleDeclarator &&
+              seqTree.contains(binding.declaratorNode)) {
+            const ast::NodeId init(seqTree.node(binding.declaratorNode)
+                                       .payload.words[ast::kVariableDeclaratorInitWord]);
+            if (seqTree.contains(init) &&
+                seqTree.node(init).kind == ast::SyntaxKind::TupleLiteral) {
+              ++tupleDestructureCount;
+              lastTupleDeclarator = binding.declaratorNode;
+            }
+          }
           switch (binding.kind) {
             case SequentialInitializerKind::Literal:
             case SequentialInitializerKind::EnumVariant:
@@ -12791,7 +12812,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount + destructorFieldWriteBodyCount * 4 +
-      destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 + doWhileLoopBodyReturnCount * 3;
+      destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 +
+      doWhileLoopBodyReturnCount * 3 + tupleDestructureCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -12864,7 +12886,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   if (facts.aggregates().size() != aggregateCount + innerAggregateCount +
                                        arrayIndexFoldAggregateCount +
-                                       arrayLengthFoldAggregateCount) {
+                                       arrayLengthFoldAggregateCount + tupleDestructureCount) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 6);
   }

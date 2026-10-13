@@ -742,6 +742,23 @@ bool isAdmittedArrayLiteralInitializer(const ast::Tree& tree, ast::NodeId initia
   return true;
 }
 
+/// \brief Structurally admits a tuple literal `(e0, e1, ...)` as a local
+/// initializer. Every element must be a scalar literal; the tuple type and
+/// element count are checker decisions.
+bool isAdmittedTupleLiteralInitializer(const ast::Tree& tree, ast::NodeId initializer) {
+  if (!tree.contains(initializer) || tree.node(initializer).kind != ast::SyntaxKind::TupleLiteral) {
+    return false;
+  }
+  const auto& tuple = tree.node(initializer);
+  const ast::NodeList elements{tuple.payload.words[ast::kTupleLiteralElemsFirstWord],
+                               tuple.payload.words[ast::kTupleLiteralElemsSizeWord]};
+  if (!tree.contains(elements)) return false;
+  for (const auto element : tree.list(elements)) {
+    if (!tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) { return false; }
+  }
+  return true;
+}
+
 /// \brief Structurally admits a constant-index array access `a[k]` as a
 /// compile-time fold return value. The base must be a bare identifier naming
 /// the declared local; the index must be an integer literal. The fold itself
@@ -838,6 +855,7 @@ bool isAdmittedLocalInitializer(const ast::Tree& tree, ast::NodeId declarator,
       isAdmittedDirectCall(tree, initializer) ||
       isAdmittedAggregateInitializer(tree, initializer) ||
       isAdmittedArrayLiteralInitializer(tree, initializer) ||
+      isAdmittedTupleLiteralInitializer(tree, initializer) ||
       isAdmittedPrimitiveBinary(tree, initializer) || isAdmittedPrimitiveUnary(tree, initializer) ||
       isAdmittedIncrementUnary(tree, initializer) ||
       isAdmittedPostfixIncrement(tree, initializer) || isAdmittedCast(tree, initializer) ||
@@ -899,7 +917,9 @@ zc::Maybe<ast::NodeId> localDeclarator(const ast::Tree& tree, ast::NodeId statem
       tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
   const ast::NodeId initializer(
       tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-  if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+  if (!tree.contains(pattern) ||
+      (tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern &&
+       tree.node(pattern).kind != ast::SyntaxKind::TuplePattern) ||
       !tree.contains(initializer)) {
     return zc::none;
   }
@@ -1776,6 +1796,7 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
            tree.node(soleInitializer).kind == ast::SyntaxKind::UnaryExpression ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::CastExpression ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::ConditionalExpr ||
+           tree.node(soleInitializer).kind == ast::SyntaxKind::TupleLiteral ||
            tree.node(soleInitializer).kind == ast::SyntaxKind::MatchExpr)) {
         sequentialLocalShape = true;
       }

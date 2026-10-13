@@ -681,9 +681,13 @@ bool ownerLocalMatches(const binder::ImmutableDefinitionInventory& definitions,
         tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
       return false;
     }
-    return ast::NodeId(
-               tree.node(site.introducer).payload.words[ast::kVariableDeclaratorPatternWord]) ==
-           pattern;
+    // Match either the declarator's top-level pattern (a direct identifier
+    // binding) or the binding's own AST node (a tuple sub-pattern).
+    const bool matchesDeclarator =
+        ast::NodeId(
+            tree.node(site.introducer).payload.words[ast::kVariableDeclaratorPatternWord]) ==
+        pattern;
+    return matchesDeclarator || local.node == pattern;
   }
   return false;
 }
@@ -699,11 +703,13 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
         tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
       continue;
     }
-    if (ast::NodeId(
-            tree.node(site.introducer).payload.words[ast::kVariableDeclaratorPatternWord]) !=
-        pattern) {
-      continue;
-    }
+    // Match either the declarator's top-level pattern (a direct identifier
+    // binding) or the binding's own AST node (a tuple sub-pattern).
+    const bool matchesDeclarator =
+        ast::NodeId(
+            tree.node(site.introducer).payload.words[ast::kVariableDeclaratorPatternWord]) ==
+        pattern;
+    if (!matchesDeclarator && local.node != pattern) continue;
     if (result != zc::none) return zc::none;
     result = local.binding;
   }

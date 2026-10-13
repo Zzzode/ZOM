@@ -747,6 +747,71 @@ zc::Maybe<ast::NodeId> reborrowReference(const ast::Tree& tree, ast::NodeId expr
   return reference;
 }
 
+// Extracts the per-sub-binding sequential bindings from a tuple-destructure
+// let statement (`let (a, b) = (e0, e1);`). Each sub-pattern must be an
+// identifier and each tuple element must be a scalar literal; the result is
+// one Literal-kind binding per element, ready for the sequential-local path.
+// Returns none when the statement is not a tuple-destructure let or any
+// sub-pattern or element is outside the admitted slice.
+zc::Maybe<zc::Vector<SequentialLocalBinding>> tryTupleDestructureBindings(const ast::Tree& tree,
+                                                                          ast::NodeId statement) {
+  auto item = statementItem(tree, statement);
+  if (item == zc::none) return zc::none;
+  ast::NodeId local;
+  ZC_IF_SOME(value, item) { local = value; }
+  if (tree.node(local).kind != ast::SyntaxKind::LetStmt) return zc::none;
+  const ast::NodeId declarations(tree.node(local).payload.words[ast::kLetStmtDeclarationsWord]);
+  if (!tree.contains(declarations) ||
+      tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+    return zc::none;
+  }
+  const auto& declarationList = tree.node(declarations);
+  const ast::NodeList declarators{
+      declarationList.payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+      declarationList.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+  if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
+  const ast::NodeId declarator(tree.list(declarators)[0]);
+  if (!tree.contains(declarator) ||
+      tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+    return zc::none;
+  }
+  const ast::NodeId pattern(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+  const ast::NodeId initializer(
+      tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+  if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::TuplePattern ||
+      !tree.contains(initializer) || tree.node(initializer).kind != ast::SyntaxKind::TupleLiteral) {
+    return zc::none;
+  }
+  const auto& tuplePattern = tree.node(pattern);
+  const ast::NodeList subPatterns{tuplePattern.payload.words[ast::kTuplePatternPatsFirstWord],
+                                  tuplePattern.payload.words[ast::kTuplePatternPatsSizeWord]};
+  const auto& tupleLiteral = tree.node(initializer);
+  const ast::NodeList elements{tupleLiteral.payload.words[ast::kTupleLiteralElemsFirstWord],
+                               tupleLiteral.payload.words[ast::kTupleLiteralElemsSizeWord]};
+  if (!tree.contains(subPatterns) || !tree.contains(elements) ||
+      subPatterns.size != elements.size || subPatterns.size == 0) {
+    return zc::none;
+  }
+  zc::Vector<SequentialLocalBinding> bindings;
+  for (uint32_t i = 0; i < subPatterns.size; ++i) {
+    const auto subPattern = tree.list(subPatterns)[i];
+    const auto element = tree.list(elements)[i];
+    if (!tree.contains(subPattern) ||
+        tree.node(subPattern).kind != ast::SyntaxKind::IdentifierPattern ||
+        !tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) {
+      return zc::none;
+    }
+    SequentialLocalBinding binding{};
+    binding.declarator = declarator;
+    binding.pattern = subPattern;
+    binding.initializer = element;
+    binding.initializerKind = SequentialInitializerKind::Literal;
+    bindings.add(zc::mv(binding));
+  }
+  return bindings;
+}
+
 // Classifies a function body as the sequential N-local shape: N (>= 2) leading
 // `let id: T = <literal | aggregate | identifier>;` statements followed by a
 // single `return <identifier>;`. Each identifier initializer names an earlier
@@ -764,6 +829,16 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   SequentialLocalShape shape{};
   shape.body = body;
   for (size_t index = 0; index < bindingCount; ++index) {
+    // A tuple-destructure let (`let (a, b) = (e0, e1);`) expands into one
+    // sequential binding per sub-pattern, reusing the literal-initializer
+    // path for each element.
+    auto tupleBindings = tryTupleDestructureBindings(tree, tree.list(statements)[index]);
+    if (tupleBindings != zc::none) {
+      for (auto& binding : ZC_ASSERT_NONNULL(tupleBindings)) {
+        shape.bindings.add(zc::mv(binding));
+      }
+      continue;
+    }
     auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
     if (declaratorNode == zc::none) { return zc::none; }
     ast::NodeId declarator;

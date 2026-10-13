@@ -466,6 +466,24 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarLocalOverwriteReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one sequential-local-return function to LIR.
+  ///
+  /// Admits the verified Built MIR shape that
+  /// `mir::validSequentialLocalReturnFunction` accepts when every binding is
+  /// initialized by a constant literal: one block with N >= 2 user locals,
+  /// each brought to life by StorageLive plus an initializing Assign of a
+  /// constant, and a place-copy return of one of the user locals. Every
+  /// carrier is one equal integer width. The function folds to the reserved
+  /// no-argument `zom.module_init` entry when it has no parameters, and keeps
+  /// the parameterized `zom.sequential` symbol otherwise. Every shape outside
+  /// this slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerSequentialLocalReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one same-module zero-argument direct call to a two-function
   /// LIR module (caller plus its defined callee).
   ///
