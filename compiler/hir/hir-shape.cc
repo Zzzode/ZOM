@@ -3654,6 +3654,22 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       }
       if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) continue;
       if (identValue || binaryValue) return zc::none;
+      // A constant-index array element write (`a[0] = <literal>`) is admitted
+      // when the return value folds from the same array: the write is dead
+      // (the read folds to a constant) and elides at the HIR level. The base
+      // must name an owner local; the index must be an integer literal. The
+      // binding match is verified downstream by the builder.
+      if (returnsArrayIndexFold && tree.node(target).kind == ast::SyntaxKind::IndexExpression) {
+        const ast::NodeId elemBase(
+            tree.node(target).payload.words[ast::kIndexExpressionObjectWord]);
+        const ast::NodeId elemIndex(
+            tree.node(target).payload.words[ast::kIndexExpressionIndexWord]);
+        if (!tree.contains(elemBase) || tree.node(elemBase).kind != ast::SyntaxKind::IdentExpr ||
+            !tree.contains(elemIndex) || tree.node(elemIndex).kind != ast::SyntaxKind::IntLiteral) {
+          return zc::none;
+        }
+        continue;
+      }
       if (!returnsLocalField || tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
         return zc::none;
       }
@@ -3674,10 +3690,17 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   shape.localWrites = ast::NodeList{statements.first + 1, statements.size - 2};
   shape.returnsLocal = true;
   shape.localReference = localReference;
+  shape.returnsLocalIncrement = returnsLocalIncrement;
+  shape.returnsLocalPostfixIncrement = returnsLocalPostfixIncrement;
   shape.returnsLocalField = returnsLocalField;
   shape.returnsLocalReborrow = reborrow != zc::none;
   shape.returnsReceiverCall = returnsReceiverCall;
+  shape.returnsDirectAggregateCall = returnsDirectAggregateCall;
+  shape.returnsDirectScalarLocalCall = returnsDirectScalarLocalCall;
+  shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
   shape.returnsLocalBorrow = localBorrow != zc::none;
+  shape.returnsArrayIndexFold = returnsArrayIndexFold;
+  shape.returnsArrayLengthFold = returnsArrayLengthFold;
   shape.unsafeBlock = zc::mv(unsafeBlock);
   return shape;
 }

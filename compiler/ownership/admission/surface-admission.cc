@@ -222,6 +222,15 @@ bool isAdmittedExpressionStatement(const ast::Tree& tree, const ast::Node& state
       return false;
   }
   if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) return true;
+  // A constant-index array element write (`a[0] = <literal>`) is admitted
+  // structurally; the base mutability, index bounds, and element type match
+  // are checker decisions, kept out of surface admission.
+  if (tree.node(target).kind == ast::SyntaxKind::IndexExpression) {
+    const ast::NodeId elemBase(tree.node(target).payload.words[ast::kIndexExpressionObjectWord]);
+    const ast::NodeId elemIndex(tree.node(target).payload.words[ast::kIndexExpressionIndexWord]);
+    return tree.contains(elemBase) && tree.node(elemBase).kind == ast::SyntaxKind::IdentExpr &&
+           tree.contains(elemIndex) && tree.node(elemIndex).kind == ast::SyntaxKind::IntLiteral;
+  }
   if (tree.node(target).kind != ast::SyntaxKind::MemberExpression) return false;
   const ast::NodeId object(tree.node(target).payload.words[ast::kMemberExpressionObjectWord]);
   // A receiver field write (`this.field = <literal>`) is admitted structurally;
@@ -2063,6 +2072,20 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
       continue;
     }
     if (identValue || binaryValue) return false;
+    // A constant-index array element write (`a[0] = <literal>`) on the
+    // declared mutable array local. The base must name the declared local;
+    // the index must be an integer literal. The element type match and index
+    // bounds are checker decisions, kept out of surface admission.
+    if (tree.node(target).kind == ast::SyntaxKind::IndexExpression) {
+      const ast::NodeId elemBase(tree.node(target).payload.words[ast::kIndexExpressionObjectWord]);
+      const ast::NodeId elemIndex(tree.node(target).payload.words[ast::kIndexExpressionIndexWord]);
+      if (!tree.contains(elemBase) || tree.node(elemBase).kind != ast::SyntaxKind::IdentExpr ||
+          !matchesLocalReference(tree, pattern, elemBase) || !tree.contains(elemIndex) ||
+          tree.node(elemIndex).kind != ast::SyntaxKind::IntLiteral) {
+        return false;
+      }
+      continue;
+    }
     if (!returnsField || tree.node(target).kind != ast::SyntaxKind::MemberExpression) {
       return false;
     }

@@ -6631,6 +6631,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(value, writeStatement) { writeStatementNode = value; }
           const ast::NodeId write(
               tree.node(writeStatementNode).payload.words[ast::kExpressionStatementExpressionWord]);
+          // A constant-index array element write (`a[0] = <literal>`) is dead
+          // when the enclosing return folds from the same array: the read
+          // folds to a constant and the write elides at the HIR level. Skip
+          // it without contributing to localWrites/localWriteValues.
+          if (tree.node(write).kind == ast::SyntaxKind::AssignmentExpr) {
+            const ast::NodeId writeTarget(
+                tree.node(write).payload.words[ast::kAssignmentExprLhsWord]);
+            if (tree.contains(writeTarget) &&
+                tree.node(writeTarget).kind == ast::SyntaxKind::IndexExpression) {
+              continue;
+            }
+          }
           // A postfix increment/decrement (`x++` / `x--`) desugars to a binary
           // write (`x = x + 1` / `x = x - 1`). The PostfixExpression node
           // carries the call fact; the binary and its literal operand are
@@ -11625,6 +11637,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // value, write unsafe block) beyond the per-function baseline, and one extra
   // literal fact for the written scalar constant.
   size_t rawPointerWriteCount = 0;
+  // Array element writes (`a[0] = <literal>`) on a mutable fixed-size array
+  // local. Each carries five extra node-type facts (assignment, target index,
+  // target base, target index literal, write value) beyond the per-function
+  // baseline, and three extra literal facts (folded target, index, value).
+  size_t arrayElementWriteCount = 0;
   size_t parameterIndexCount = 0;
   size_t parameterReborrowCount = 0;
   size_t localAliasReborrowCount = 0;
@@ -12785,6 +12802,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       }
     }
   }
+  // Count array element write NodeType facts directly so the digest equations
+  // account for the assignment, target index, target base, index literal, and
+  // value literal facts each write produces.
+  {
+    const auto& tree = bound.tree();
+    for (const auto& entry : facts.nodeTypes().entries()) {
+      if (!tree.contains(entry.key) ||
+          tree.node(entry.key).kind != ast::SyntaxKind::AssignmentExpr) {
+        continue;
+      }
+      const ast::NodeId lhs(tree.node(entry.key).payload.words[ast::kAssignmentExprLhsWord]);
+      if (tree.contains(lhs) && tree.node(lhs).kind == ast::SyntaxKind::IndexExpression) {
+        ++arrayElementWriteCount;
+      }
+    }
+  }
   const size_t expectedNodeTypes =
       pending.size() + pendingFunctions.size() - voidFunctionCount + voidLetBodyCount +
       directCallCount + errorPropagateReturnCount + errorUnwrapReturnCount +
@@ -12812,7 +12845,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount + destructorFieldWriteBodyCount * 4 +
-      destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 +
+      destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 + arrayElementWriteCount * 5 +
       doWhileLoopBodyReturnCount * 3 + tupleDestructureCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -12857,6 +12890,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(arrayLengthFoldElementCount) +
           static_cast<int64_t>(destructorFieldWriteBodyCount) +
           static_cast<int64_t>(rawPointerWriteCount) +
+          static_cast<int64_t>(arrayElementWriteCount) * 3 +
           static_cast<int64_t>(doWhileLoopBodyReturnCount)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {

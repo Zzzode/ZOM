@@ -1,0 +1,8 @@
+// Array element write and constant-index read: a mutable fixed-size array
+// local is overwritten at a constant index and read back. The write folds at
+// compile time, so the module initializer returns 41.
+fn entry() -> i32 {
+  mut a: [i32; 3] = [1, 2, 3];
+  a[0] = 41;
+  return a[0];
+}
