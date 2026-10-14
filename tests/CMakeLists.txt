@@ -509,6 +509,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-continue-consumer/Zom.toml::for_loop_continue_consumer::for_loop_continue_consumer::45"
       --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-in-loop-accumulator-consumer/Zom.toml::for_in_loop_accumulator_consumer::for_in_loop_accumulator_consumer::6"
+      --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-loops-consumer/Zom.toml::nested_loops_consumer::nested_loops_consumer::9"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/labeled-break-consumer/Zom.toml::labeled_break_consumer::labeled_break_consumer::1"

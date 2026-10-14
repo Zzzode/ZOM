@@ -444,6 +444,21 @@ struct FunctionReturnShape final {
   // body ends with a write, so the back-edge falls through to the inner header.
   ast::NodeId nestedForLoopInnerBreak{};
   ast::NodeId nestedForLoopInnerContinue{};
+  // For-in loop accumulator shape: N leading scalar `mut` accumulator locals,
+  // a `for (let x in [<lit>, ...]) { <accumulator-write> }` loop whose body
+  // writes each accumulator using the loop binding, and a trailing
+  // `return <accumulator-local>;`. The loop is unrolled at compile time: each
+  // array element literal is substituted for the binding in the body write
+  // template, producing N sequential writes. The accumulator patterns, their
+  // scalar-literal initializers, the binding pattern, the array literal
+  // collection, and the body write AST nodes are carried for the builder.
+  bool isForInLoopAccumulator = false;
+  zc::Vector<ast::NodeId> forInAccumulatorPatterns;
+  zc::Vector<ast::NodeId> forInAccumulatorInitializers;
+  ast::NodeId forInBindingPattern{};
+  ast::NodeId forInCollection{};
+  zc::Vector<ast::NodeId> forInBodyWrites;
+  ast::NodeId forInLoopStatement{};
   // Void mutating-method shape: the sole statement is
   // `this.<field> = <ordinary-parameter>;` with no return. The callable result
   // is Unit; there is no return statement or return value. The write statement,

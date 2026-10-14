@@ -96,5 +96,13 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
 void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function,
                                                  HirFnCtx& ctx);
 
+/// Lowers a for-in loop accumulator return: N leading `mut` accumulator
+/// locals, a `for (let x in [<lit>, ...]) { <acc> = <acc> <bin> x; }` loop,
+/// and the local-reference return. The loop is compile-time unrolled: each
+/// array element literal is substituted for the binding, producing N*M
+/// sequential writes. The body block lists [accumulator-local...,
+/// unrolled-writes..., return].
+void lowerForInLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

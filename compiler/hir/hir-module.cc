@@ -11460,6 +11460,149 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         continue;
       }
     }
+    // For-in loop accumulator return: N leading scalar `mut` accumulator
+    // locals, a `for (let x in [..])` loop whose body writes each accumulator,
+    // and a trailing `return <accumulator-local>;`. Fixed-id layout relative to
+    // the function id F: 4 + 2N + 4NM nodes (N = accumulators, M = elements).
+    // This branch recognizes the shape and advances the function id cursor so
+    // the generic local machinery does not misread the unrolled body writes.
+    {
+      bool isForInLoopAccumulatorShape = false;
+      ZC_IF_SOME(source, sourceShapeMaybe) {
+        isForInLoopAccumulatorShape = source.isForInLoopAccumulator;
+      }
+      if (isForInLoopAccumulatorShape) {
+        const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+        const size_t accumulatorCount = source.forInAccumulatorPatterns.size();
+        auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+        if (sourceDefinitionIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t definitionSlot = 0;
+        ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+        const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+        const auto& tree = bound.tree();
+        if (!hasExecutableBody(sourceDefinition, definitions) ||
+            !definitionBelongsToModule(sourceDefinition, definitions) ||
+            sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+            !sourceDefinition.site.value().is<binder::DeclarationDefinitionSite>() ||
+            !tree.contains(sourceDefinition.node)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto signaturePosition =
+            signatureIndex(signatures.definitions.asPtr(), function.definition);
+        auto rootPosition = signatureRootIndex(signatures.roots.asPtr(), function.definition);
+        if (signaturePosition == zc::none || rootPosition == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t signatureSlot = 0;
+        size_t rootSlot = 0;
+        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
+        ZC_IF_SOME(value, rootPosition) { rootSlot = value; }
+        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& root = signatures.roots[rootSlot];
+        auto expectedVisibility = visibility(root.visibility);
+        if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
+            !signature.scope.variant().is<checker::signature::ModuleDefinitionSignatureScope>() ||
+            expectedVisibility == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& callable =
+            signature.payload.variant().get<checker::signature::CallableSignature>();
+        auto expectedLinkage = linkage(callable);
+        if (expectedLinkage == zc::none || signature.definition != function.definition ||
+            signature.definitionKind != identity::DefinitionKind::Function ||
+            root.canonicalDefinition != function.definition || root.sourceModule != module ||
+            callable.receiver != zc::none || callable.success != function.resultType ||
+            !sameSpan(signature.declarationSpan, sourceDefinition.source) ||
+            !sameSpan(function.sourceSpan, sourceDefinition.source) ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
+            function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
+            function.parameters.size() != callable.parameters.size()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        for (size_t parameterIndex = 0; parameterIndex < function.parameters.size();
+             ++parameterIndex) {
+          const auto& parameter = function.parameters[parameterIndex];
+          const auto& sourceParameter = callable.parameters[parameterIndex];
+          if (parameter.key != sourceParameter.parameter ||
+              parameter.type != sourceParameter.type || sourceParameter.hasDefault ||
+              !typeExists(parameter.type, semanticTypes)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        }
+        // Count the array elements in the for-in collection expression.
+        const auto& collectionNode = tree.node(source.forInCollection);
+        if (collectionNode.kind != ast::SyntaxKind::ArrayLiteral) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const size_t elementCount = collectionNode.payload.words[ast::kArrayLiteralElemsSizeWord];
+        // Verify the HIR node layout.
+        const auto expectedFunctionNode = hirId(nextFunction);
+        if (function.node.ordinal() != expectedFunctionNode.ordinal()) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto expectedBlock = hirId(nextFunction + 1);
+        if (function.body != expectedBlock) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const HirBlockStatement* block = nullptr;
+        for (const auto& candidate : candidate.impl->blocks) {
+          if (candidate.node == expectedBlock) {
+            block = &candidate;
+            break;
+          }
+        }
+        if (block == nullptr) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Body block lists [accLocal..., write..., return].
+        if (block->statements.size() != accumulatorCount + accumulatorCount * elementCount + 1) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Verify the return statement and its value reference.
+        const uint32_t totalNodes =
+            4 + 2 * static_cast<uint32_t>(accumulatorCount) +
+            4 * static_cast<uint32_t>(accumulatorCount) * static_cast<uint32_t>(elementCount);
+        const auto expectedReturn = hirId(nextFunction + totalNodes - 2);
+        const HirReturnStatement* returnStatement = nullptr;
+        for (const auto& candidate : candidate.impl->returns) {
+          if (candidate.node == expectedReturn) {
+            returnStatement = &candidate;
+            break;
+          }
+        }
+        if (returnStatement == nullptr || returnStatement->resultType != function.resultType) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        nextFunction += totalNodes;
+        continue;
+      }
+    }
     // Discarded receiver-call statement followed by a trailing receiver-call
     // return. Nine fixed node ids; this branch must run before the generic
     // local machinery, which assumes a two-statement block and would misread

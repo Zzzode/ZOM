@@ -1,0 +1,8 @@
+[package]
+name = "for_in_loop_accumulator_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "for_in_loop_accumulator_consumer"
+path = "src/main.zom"

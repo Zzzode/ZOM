@@ -1266,6 +1266,47 @@ bool isAdmittedForStatement(const ast::Tree& tree, ast::NodeId forStmt) {
   return isAdmittedLoopBodyWrite(tree, lastStmt) || isAdmittedLoopBodyControlFlow(tree, lastStmt);
 }
 
+/// \brief Structurally admits one `for (let id in [lit, ...]) { ... }` loop.
+///
+/// The binding is an identifier pattern, the collection is an array literal
+/// with one or more scalar literal elements, and the body is a block with one
+/// or more admitted loop-body writes. The loop variable is immutable and is
+/// substituted per element at HIR construction time (compile-time unrolling).
+bool isAdmittedForInStatement(const ast::Tree& tree, ast::NodeId forInStmt) {
+  if (!tree.contains(forInStmt) || tree.node(forInStmt).kind != ast::SyntaxKind::ForInStatement) {
+    return false;
+  }
+  const auto& loop = tree.node(forInStmt);
+  const ast::NodeId binding(loop.payload.words[ast::kForInStatementBindingWord]);
+  const ast::NodeId collection(loop.payload.words[ast::kForInStatementExpressionWord]);
+  const ast::NodeId body(loop.payload.words[ast::kForInStatementBodyWord]);
+  // Binding: identifier pattern.
+  if (!tree.contains(binding) || tree.node(binding).kind != ast::SyntaxKind::IdentifierPattern) {
+    return false;
+  }
+  // Collection: array literal with one or more scalar literal elements.
+  if (!tree.contains(collection) || tree.node(collection).kind != ast::SyntaxKind::ArrayLiteral) {
+    return false;
+  }
+  const auto& arrayLit = tree.node(collection);
+  const ast::NodeList elements{arrayLit.payload.words[ast::kArrayLiteralElemsFirstWord],
+                               arrayLit.payload.words[ast::kArrayLiteralElemsSizeWord]};
+  if (!tree.contains(elements) || elements.size == 0) return false;
+  for (const auto& element : tree.list(elements)) {
+    if (!tree.contains(element) || !isScalarLiteral(tree.node(element).kind)) return false;
+  }
+  // Body: a block with one or more admitted loop-body writes.
+  if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;
+  const auto& block = tree.node(body);
+  const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                 block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(statements) || statements.size == 0) return false;
+  for (const auto& stmt : tree.list(statements)) {
+    if (!isAdmittedLoopBodyWrite(tree, stmt)) return false;
+  }
+  return true;
+}
+
 // A nested arithmetic operand is a one-level binary whose own operands are
 // leaves (identifier or scalar literal), with at least one identifier leaf.
 // Used as a comparison operand in conditional bodies so the HIR builder can
@@ -1744,6 +1785,96 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
     }
   }
 
+  // For-in loop accumulator shape: N leading `mut` scalar-local bindings, an
+  // admitted `for (let x in [<lit>, ...]) { <acc> = <acc> <bin> x; }` loop,
+  // and a `return <ident>;` naming one of the accumulators. The loop is
+  // compile-time unrolled downstream; surface admission only checks the
+  // structural shape. Each body write targets one of the declared accumulator
+  // locals (checked by identifier name; the target type and mutability are a
+  // checker decision).
+  if (statements.size >= 3) {
+    auto loopItem = statementItem(tree, tree.list(statements)[statements.size - 2]);
+    if (loopItem != zc::none) {
+      ast::NodeId loopStmt;
+      ZC_IF_SOME(value, loopItem) { loopStmt = value; }
+      if (tree.node(loopStmt).kind == ast::SyntaxKind::ForInStatement &&
+          isAdmittedForInStatement(tree, loopStmt)) {
+        bool allLeadingMutLocals = true;
+        zc::Vector<ast::NodeId> accumulatorPatterns;
+        for (size_t index = 0; index + 2 < statements.size; ++index) {
+          auto declarator = localDeclarator(tree, tree.list(statements)[index]);
+          if (declarator == zc::none) {
+            allLeadingMutLocals = false;
+            break;
+          }
+          ast::NodeId declaratorNode;
+          ZC_IF_SOME(value, declarator) { declaratorNode = value; }
+          auto leadingItem = statementItem(tree, tree.list(statements)[index]);
+          ast::NodeId letNode;
+          ZC_IF_SOME(value, leadingItem) { letNode = value; }
+          if (static_cast<ast::BindingDeclarationKind>(
+                  tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
+              ast::BindingDeclarationKind::Mut) {
+            allLeadingMutLocals = false;
+            break;
+          }
+          const ast::NodeId pattern(
+              tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
+          const ast::NodeId initializer(
+              tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+          if (!tree.contains(pattern) ||
+              tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+              !tree.contains(initializer) || !isScalarLiteral(tree.node(initializer).kind)) {
+            allLeadingMutLocals = false;
+            break;
+          }
+          accumulatorPatterns.add(pattern);
+        }
+        if (allLeadingMutLocals) {
+          const ast::NodeId body(tree.node(loopStmt).payload.words[ast::kForInStatementBodyWord]);
+          const auto& bodyBlock = tree.node(body);
+          const ast::NodeList bodyStatements{bodyBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                             bodyBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+          bool allWritesTargetAccumulator = true;
+          for (const auto stmt : tree.list(bodyStatements)) {
+            auto item = statementItem(tree, stmt);
+            if (item == zc::none) {
+              allWritesTargetAccumulator = false;
+              break;
+            }
+            ast::NodeId writeStmt;
+            ZC_IF_SOME(value, item) { writeStmt = value; }
+            if (tree.node(writeStmt).kind != ast::SyntaxKind::ExpressionStatement) {
+              allWritesTargetAccumulator = false;
+              break;
+            }
+            const ast::NodeId assignment(
+                tree.node(writeStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+            const ast::NodeId target(
+                tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+            bool targetsAccumulator = false;
+            for (const auto& pattern : accumulatorPatterns) {
+              if (matchesLocalReference(tree, pattern, target)) {
+                targetsAccumulator = true;
+                break;
+              }
+            }
+            if (!targetsAccumulator) {
+              allWritesTargetAccumulator = false;
+              break;
+            }
+          }
+          if (allWritesTargetAccumulator &&
+              tree.node(returnValue).kind == ast::SyntaxKind::IdentExpr) {
+            for (const auto& pattern : accumulatorPatterns) {
+              if (matchesLocalReference(tree, pattern, returnValue)) { return true; }
+            }
+          }
+        }
+      }
+    }
+  }
+
   // Dyn field-access shape: exactly three statements -- an aggregate-initialized
   // local `let zoo = Zoo { animal: Dog { .. } };`, a field-read local
   // `let a: dyn I = zoo.animal;`, and a trailing method-call return
@@ -2134,7 +2265,8 @@ bool hasSpecificSurfaceFailure(const ast::Tree& tree, ast::NodeId body) {
         syntax.kind == ast::SyntaxKind::SuspendStatement ||
         (syntax.kind == ast::SyntaxKind::MatchStmt && !isAdmittedMatchStatement(tree, nodeId)) ||
         syntax.kind == ast::SyntaxKind::WhileStmt || syntax.kind == ast::SyntaxKind::ForStmt ||
-        syntax.kind == ast::SyntaxKind::ForInStatement ||
+        (syntax.kind == ast::SyntaxKind::ForInStatement &&
+         !isAdmittedForInStatement(tree, nodeId)) ||
         syntax.kind == ast::SyntaxKind::DoWhileStatement ||
         syntax.kind == ast::SyntaxKind::BreakStmt ||
         syntax.kind == ast::SyntaxKind::ContinueStatement ||
@@ -2339,7 +2471,8 @@ SurfaceAdmissionResult SurfaceAdmissionBuilder::admit(
                 !isAdmittedLoopStatement(boundModule.tree(), nodeId)) ||
                (syntax.kind == ast::SyntaxKind::ForStmt &&
                 !isAdmittedForStatement(boundModule.tree(), nodeId)) ||
-               syntax.kind == ast::SyntaxKind::ForInStatement ||
+               (syntax.kind == ast::SyntaxKind::ForInStatement &&
+                !isAdmittedForInStatement(boundModule.tree(), nodeId)) ||
                (syntax.kind == ast::SyntaxKind::DoWhileStatement &&
                 !isAdmittedDoWhileStatement(boundModule.tree(), nodeId))) {
       kind = SurfaceSyntaxKind::Loop;

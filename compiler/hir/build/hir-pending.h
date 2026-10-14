@@ -665,6 +665,47 @@ struct PendingNestedForLoopAccumulatorReturn final {
   bool innerContinueTargetsEnclosing = false;
 };
 
+// One admitted for-in loop accumulator return: N leading scalar `mut`
+// accumulator locals, a `for (let x in [<lit>, ...]) { <accumulator> =
+// <accumulator> <bin> x; ... }` loop, and a trailing
+// `return <accumulator-local>;`. The loop is compile-time unrolled: each array
+// element literal is substituted for the binding in the body write template,
+// producing N*M sequential writes. The accumulator locals, their initializers,
+// the body write template (binary operation and types), the element literals,
+// and the return reference are carried here. Every HIR expression carries an
+// empty HirNodeId; the lowering function allocates the node ids.
+struct PendingForInLoopAccumulatorReturn final {
+  // One accumulator: its local binding, scalar literal initializer, and AST
+  // binding node for the per-node correspondence validator.
+  struct Accumulator final {
+    HirLocalBinding local;
+    HirScalarLiteralExpression initLiteral;
+    ast::NodeId bindingNode{};
+  };
+  // The N accumulator locals and their initializers.
+  zc::Vector<Accumulator> accumulators;
+  // The body write template: an arithmetic binary over the accumulator and the
+  // for-in binding. The lowering function substitutes each element literal for
+  // the binding, producing one write per element per accumulator.
+  checker::PrimitiveOperation operation;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId resultType;
+  identity::SourceSpan writeSpan;
+  identity::SourceSpan valueSpan;
+  identity::SourceSpan leftSpan;
+  // The M array element literals, one per unrolled iteration.
+  zc::Vector<HirScalarLiteralExpression> elements;
+  // The return value: a place reference to the first accumulator local.
+  HirLocalReferenceExpression returnReference;
+  /// The AST ForInStatement node.
+  ast::NodeId loopNode{};
+  /// The AST ReturnStmt node of the trailing scalar return.
+  ast::NodeId returnNode{};
+  /// The AST body write AssignmentExpr nodes, one per accumulator, for the
+  /// per-node correspondence validator.
+  zc::Vector<ast::NodeId> bodyWriteNodes;
+};
+
 // One receiver field-arithmetic return: `return this.<field> OP
 // <literal>;`. The left operand is a projection of the implicit receiver
 // parameter, the right operand is a scalar literal, and the primitive binary
@@ -937,6 +978,11 @@ struct PendingFunctionDeclaration final {
   // checker emits a literal fact for the MemberExpression node; the base
   // IdentExpr node carries its own node-type fact.
   bool returnsArrayLengthFold = false;
+  // Populated for the for-in loop accumulator shape: N leading scalar `mut`
+  // accumulator locals, a `for (let x in [<lit>, ...]) { <accumulator> =
+  // <accumulator> <bin> x; ... }` loop, and a trailing
+  // `return <accumulator-local>;`. The loop is compile-time unrolled.
+  zc::Maybe<PendingForInLoopAccumulatorReturn> forInLoopAccumulatorReturn = zc::none;
 };
 
 }  // namespace detail

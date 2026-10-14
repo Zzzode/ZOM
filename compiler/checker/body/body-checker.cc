@@ -198,29 +198,38 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
     const auto& site = local.site.value();
     if (!site.is<binder::PatternBindingSite>()) continue;
     const auto& binding = site.get<binder::PatternBindingSite>();
-    if (!tree.contains(binding.introducer) ||
-        tree.node(binding.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
-      continue;
-    }
-    const auto& declarator = tree.node(binding.introducer);
-    const ast::NodeId pattern(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
-    if (pattern == node) {
-      // Direct pattern match — fall through to the body check.
-    } else if (tree.contains(pattern) && tree.node(pattern).kind == ast::SyntaxKind::TuplePattern) {
-      // A tuple-destructure sub-pattern (IdentifierPattern inside the
-      // TuplePattern) is also an owner-local pattern.
-      const auto& tuplePattern = tree.node(pattern);
-      const ast::NodeList subPatterns{tuplePattern.payload.words[ast::kTuplePatternPatsFirstWord],
-                                      tuplePattern.payload.words[ast::kTuplePatternPatsSizeWord]};
-      if (!tree.contains(subPatterns)) continue;
-      bool found = false;
-      for (const auto sub : tree.list(subPatterns)) {
-        if (sub == node) {
-          found = true;
-          break;
+    if (!tree.contains(binding.introducer)) { continue; }
+    // A for-in pattern binding (`x` in `for (let x in [..])`) has the
+    // ForInStatement as its introducer, not a VariableDeclarator. The pattern
+    // is the ForInStatement's binding child.
+    if (tree.node(binding.introducer).kind == ast::SyntaxKind::ForInStatement) {
+      const auto& forIn = tree.node(binding.introducer);
+      const ast::NodeId forInPattern(forIn.payload.words[ast::kForInStatementBindingWord]);
+      if (forInPattern != node) continue;
+    } else if (tree.node(binding.introducer).kind == ast::SyntaxKind::VariableDeclarator) {
+      const auto& declarator = tree.node(binding.introducer);
+      const ast::NodeId pattern(declarator.payload.words[ast::kVariableDeclaratorPatternWord]);
+      if (pattern == node) {
+        // Direct pattern match -- fall through to the body check.
+      } else if (tree.contains(pattern) &&
+                 tree.node(pattern).kind == ast::SyntaxKind::TuplePattern) {
+        // A tuple-destructure sub-pattern (IdentifierPattern inside the
+        // TuplePattern) is also an owner-local pattern.
+        const auto& tuplePattern = tree.node(pattern);
+        const ast::NodeList subPatterns{tuplePattern.payload.words[ast::kTuplePatternPatsFirstWord],
+                                        tuplePattern.payload.words[ast::kTuplePatternPatsSizeWord]};
+        if (!tree.contains(subPatterns)) continue;
+        bool found = false;
+        for (const auto sub : tree.list(subPatterns)) {
+          if (sub == node) {
+            found = true;
+            break;
+          }
         }
+        if (!found) continue;
+      } else {
+        continue;
       }
-      if (!found) continue;
     } else {
       continue;
     }
@@ -676,6 +685,27 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
           tree.node(site.introducer).kind == ast::SyntaxKind::MatchArmExpr) {
         for (const auto& entry : nodeTypes) {
           if (entry.key == local.node) return entry.value;
+        }
+        return zc::none;
+      }
+      // A for-in pattern binding (`x` in `for (let x in [..])`) has no
+      // initializer; its type is the array element type. The first element's
+      // NodeType fact is produced by the IntLiteral production site before
+      // the body references are resolved (schema preorder).
+      if (tree.node(site.introducer).kind == ast::SyntaxKind::ForInStatement) {
+        const auto& forIn = tree.node(site.introducer);
+        const ast::NodeId collection(forIn.payload.words[ast::kForInStatementExpressionWord]);
+        if (tree.contains(collection) &&
+            tree.node(collection).kind == ast::SyntaxKind::ArrayLiteral) {
+          const auto& arrayLit = tree.node(collection);
+          const ast::NodeList elems{arrayLit.payload.words[ast::kArrayLiteralElemsFirstWord],
+                                    arrayLit.payload.words[ast::kArrayLiteralElemsSizeWord]};
+          if (tree.contains(elems) && elems.size > 0) {
+            const auto firstElem = tree.list(elems)[0];
+            for (const auto& entry : nodeTypes) {
+              if (entry.key == firstElem) return entry.value;
+            }
+          }
         }
         return zc::none;
       }
@@ -6460,6 +6490,16 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       reborrowDereferences.add(operand);
     }
   });
+  // Collect for-in collection nodes: an ArrayLiteral that is the collection
+  // of a ForInStatement has no declared type and needs no NodeType fact; the
+  // for-in binding's type is resolved from the first element's NodeType fact.
+  zc::Vector<ast::NodeId> forInCollections;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind == ast::SyntaxKind::ForInStatement) {
+      const ast::NodeId collection(syntax.payload.words[ast::kForInStatementExpressionWord]);
+      if (tree.contains(collection)) { forInCollections.add(collection); }
+    }
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -6507,6 +6547,20 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                            syntax.kind == ast::SyntaxKind::SuspendStatement) &&
                           !(isPattern(syntax.kind) && isMatchArmPattern(tree, node));
     if (!bodyNode) return;
+    // A for-in collection ArrayLiteral has no declared type and needs no
+    // production site; its element types are produced by the scalar-literal
+    // pre-pass and the for-in binding's type is resolved from the first
+    // element's NodeType fact.
+    if (syntax.kind == ast::SyntaxKind::ArrayLiteral) {
+      bool isForInCollection = false;
+      for (const auto collection : forInCollections) {
+        if (collection == node) {
+          isForInCollection = true;
+          break;
+        }
+      }
+      if (isForInCollection) return;
+    }
     // Skip enum variant discriminant expressions; they belong to the variant
     // signature, not the body.
     for (const auto discriminant : enumDiscriminantNodes) {
@@ -6535,7 +6589,19 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
     ZC_IF_SOME(sourceSpan, span) {
       checked::CheckedNodeKey key{static_cast<uint32_t>(syntax.kind), ordinal, sourceSpan.clone()};
       if (isExpression(syntax.kind)) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::NodeType, node, key);
+        // A for-in collection ArrayLiteral has no declared type; its element
+        // types are produced by the scalar-literal pre-pass and the for-in
+        // binding's type is resolved from the first element's NodeType fact.
+        bool isForInCollection = false;
+        for (const auto collection : forInCollections) {
+          if (collection == node) {
+            isForInCollection = true;
+            break;
+          }
+        }
+        if (!isForInCollection) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::NodeType, node, key);
+        }
       }
       // A bare identifier initializer whose annotation is an erasable dyn
       // existential drives a concrete-to-dyn coercion, except when the source
@@ -6590,7 +6656,19 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                  syntax.kind == ast::SyntaxKind::ObjectLiteralExpr ||
                  syntax.kind == ast::SyntaxKind::StructLiteralExpr ||
                  syntax.kind == ast::SyntaxKind::NewExpression) {
-        addNodeRequirement(nodeRequirements, CheckedFactGroup::Aggregate, node, key);
+        // A for-in collection ArrayLiteral has no declared type and needs no
+        // Aggregate fact; its element types are produced by the scalar-literal
+        // pre-pass.
+        bool isForInCollection = false;
+        for (const auto collection : forInCollections) {
+          if (collection == node) {
+            isForInCollection = true;
+            break;
+          }
+        }
+        if (!isForInCollection) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Aggregate, node, key);
+        }
       } else if (syntax.kind == ast::SyntaxKind::CastExpression) {
         // A float-to-int cast fold emits a Literal fact, not a Cast fact, so it
         // needs only a Literal requirement and skips the Cast requirement.
@@ -7588,6 +7666,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // a dedicated pass after the main production loop; skip it here so the
         // Unsupported fallthrough does not reject it.
         if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::MatchStmt) {
+          continue;
+        }
+        // An admitted for-in loop is a control-flow construct whose children
+        // (array literal elements, body write expressions) carry their own
+        // production sites. Skip the wrapper so the child sites can be
+        // processed instead of draining the function.
+        if (input.boundModule.tree().node(site.node).kind == ast::SyntaxKind::ForInStatement) {
           continue;
         }
         // An ExpressionStatement wraps an inner expression that has its own
@@ -10509,6 +10594,85 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                              factPath(CheckedFactGroup::DefinitionType));
     }
     ZC_IF_SOME(site, bindingSite) {
+      // For-in pattern binding: the introducer is the ForInStatement, not a
+      // VariableDeclarator. The definition type is the array element type,
+      // read from the first element's NodeType fact. The pattern fact is
+      // produced on the IdentifierPattern node.
+      if (site.patternPath.size() == 0 && tree.contains(site.introducer) &&
+          tree.node(site.introducer).kind == ast::SyntaxKind::ForInStatement) {
+        const auto& forIn = tree.node(site.introducer);
+        const ast::NodeId collection(forIn.payload.words[ast::kForInStatementExpressionWord]);
+        if (!tree.contains(collection) ||
+            tree.node(collection).kind != ast::SyntaxKind::ArrayLiteral) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                                 definition.definition, definition.node, definition.source.clone(),
+                                 factPath(CheckedFactGroup::DefinitionType));
+        }
+        const auto& arrayLit = tree.node(collection);
+        const ast::NodeList elems{arrayLit.payload.words[ast::kArrayLiteralElemsFirstWord],
+                                  arrayLit.payload.words[ast::kArrayLiteralElemsSizeWord]};
+        if (!tree.contains(elems) || elems.size == 0) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                                 definition.definition, definition.node, definition.source.clone(),
+                                 factPath(CheckedFactGroup::DefinitionType));
+        }
+        const auto firstElem = tree.list(elems)[0];
+        auto elemType = factEntry(nodeTypes.asPtr(), firstElem);
+        if (elemType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                                 definition.definition, firstElem, definition.source.clone(),
+                                 factPath(CheckedFactGroup::DefinitionType));
+        }
+        auto declaredType = valueType(input.signatureFacts, definition.definition);
+        auto ownerPreorder = definitionPreorder(input.boundModule, definition.definition);
+        if (declaredType == zc::none || ownerPreorder == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
+                                 definition.definition, definition.node, definition.source.clone(),
+                                 factPath(CheckedFactGroup::DefinitionType));
+        }
+        ZC_IF_SOME(expectedType, declaredType) {
+          ZC_IF_SOME(ownerOrdinal, ownerPreorder) {
+            if (ZC_ASSERT_NONNULL(elemType).value != expectedType) {
+              const auto productionSiteValue =
+                  productionSite(input.requirements.impl->productionSiteValues.asPtr(), firstElem);
+              if (productionSiteValue == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                       0, definition.definition, firstElem,
+                                       definition.source.clone(),
+                                       factPath(CheckedFactGroup::DefinitionType));
+              }
+              ZC_IF_SOME(ps, productionSiteValue) {
+                return attachRecoveryLedger(rejectTypeMismatch(ps, ownerOrdinal, expectedType,
+                                                               ZC_ASSERT_NONNULL(elemType).value),
+                                            input, factStoreBrands);
+              }
+            }
+          }
+        }
+        definitionTypes.add(checked::DefinitionTypeMap::Entry{
+            definition.definition, ZC_ASSERT_NONNULL(elemType).value, zc::Array<uint8_t>()});
+        // Produce the pattern fact on the IdentifierPattern node.
+        const ast::NodeId bindingPattern(forIn.payload.words[ast::kForInStatementBindingWord]);
+        if (tree.contains(bindingPattern) &&
+            tree.node(bindingPattern).kind == ast::SyntaxKind::IdentifierPattern) {
+          auto patternProduction =
+              productionSite(input.requirements.impl->productionSiteValues.asPtr(), bindingPattern);
+          if (patternProduction != zc::none) {
+            ZC_IF_SOME(patternSite, patternProduction) {
+              auto pattern = identifierPatternFact(patternSite, definition.definition,
+                                                   ZC_ASSERT_NONNULL(elemType).value);
+              if (pattern == zc::none) {
+                return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
+                                       module, 0, definition.definition, definition.node,
+                                       definition.source.clone(),
+                                       factPath(CheckedFactGroup::Pattern));
+              }
+              ZC_IF_SOME(value, pattern) { patterns.add(zc::mv(value)); }
+            }
+          }
+        }
+        continue;
+      }
       if (site.patternPath.size() != 0 || !tree.contains(site.introducer) ||
           tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
