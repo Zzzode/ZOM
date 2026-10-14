@@ -12088,6 +12088,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // dispatched before the flat leaf branches, so it contributes nothing to the
   // shared functionCount baseline and is tallied here instead.
   size_t leadingLocalConditionalBindingCount = 0;
+  // Subset of leading-local conditional bindings whose initializer is a scalar
+  // literal. Only these carry a checker literal fact; local-reference and
+  // parameter-reference bindings do not.
+  size_t leadingLocalConditionalLiteralBindingCount = 0;
   // Leading-local conditionals that desugar a unary `!x` condition to `x ==
   // false`. The synthetic false operand has no AST node and therefore no
   // checker-produced node-type or literal fact, so the digest equations
@@ -12624,6 +12628,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         for (const auto& binding : leading.bindings) {
           if (binding.kind != SequentialInitializerKind::PrimitiveBinary) {
             ++leadingLocalConditionalBindingCount;
+            if (binding.kind == SequentialInitializerKind::Literal) {
+              ++leadingLocalConditionalLiteralBindingCount;
+            }
           }
         }
         if (leading.left.literal != zc::none) ++leadingLocalConditionalLiteralOperandCount;
@@ -13249,7 +13256,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
           primitiveUnaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
           directAggregateCallCount + directScalarLocalCallCount +
-          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
+          leadingLocalConditionalLiteralBindingCount + leadingLocalConditionalLiteralOperandCount -
           leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount -
           incrementWriteCount + static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +

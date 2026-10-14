@@ -1,0 +1,13 @@
+// Bool-local-reference conditional: a leading bool local is copied into a
+// second local, and the copy is used as the condition of a leading-local
+// conditional return. The LocalReference binding has no checker literal fact,
+// so the literals fact-count equation must count only literal bindings.
+fn entry() -> i32 {
+  let b: bool = true;
+  let c: bool = b;
+  if (c) {
+    return 7;
+  } else {
+    return 41;
+  }
+}
