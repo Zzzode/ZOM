@@ -6441,6 +6441,25 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       break;
     }
   });
+  // Collect Deref nodes that are the direct operand of a Ref/RefMut unary
+  // expression (the `*p` inside `&*p`).  The ReferenceReborrow production
+  // handles the outer node and produces no UnsafeOperation fact on the inner
+  // deref, so the operator-requirement pass must not register one for it.
+  zc::Vector<ast::NodeId> reborrowDereferences;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::UnaryExpression) return;
+    const auto op =
+        static_cast<ast::UnaryOperatorKind>(syntax.payload.words[ast::kUnaryExpressionOpWord]);
+    if (op != ast::UnaryOperatorKind::Ref && op != ast::UnaryOperatorKind::RefMut) return;
+    const ast::NodeId operand(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
+    if (!tree.contains(operand)) return;
+    const auto& inner = tree.node(operand);
+    if (inner.kind != ast::SyntaxKind::UnaryExpression) return;
+    if (static_cast<ast::UnaryOperatorKind>(inner.payload.words[ast::kUnaryExpressionOpWord]) ==
+        ast::UnaryOperatorKind::Deref) {
+      reborrowDereferences.add(operand);
+    }
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -6679,6 +6698,27 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         // needs only a Literal requirement and skips the operator requirement.
         if (syntax.kind == ast::SyntaxKind::BinaryExpr && isStringConcatFoldSite(tree, node)) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else if (syntax.kind == ast::SyntaxKind::UnaryExpression &&
+                   static_cast<ast::UnaryOperatorKind>(
+                       syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
+                       ast::UnaryOperatorKind::Deref) {
+          // A deref inside a reborrow (`&*p`) is handled by the
+          // ReferenceReborrow production on the outer node, which produces no
+          // UnsafeOperation fact.  Skip the operator requirement so the count
+          // gate does not demand a fact that will never arrive.
+          bool isReborrowDeref = false;
+          for (const auto reborrow : reborrowDereferences) {
+            if (reborrow == node) {
+              isReborrowDeref = true;
+              break;
+            }
+          }
+          if (!isReborrowDeref && !addOperatorRequirements(syntax, node, key, nodeRequirements)) {
+            failure =
+                rejectInvariant(signature::CheckerInvariantKind::InvalidFact, boundModule.module(),
+                                ordinal, zc::none, node, sourceSpan.clone());
+            return;
+          }
         } else if (!addOperatorRequirements(syntax, node, key, nodeRequirements)) {
           failure =
               rejectInvariant(signature::CheckerInvariantKind::InvalidFact, boundModule.module(),
