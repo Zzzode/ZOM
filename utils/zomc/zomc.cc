@@ -1473,6 +1473,9 @@ private:
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerDoWhileLoopBodyReturn(fn, types);
         }
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerWhileLoopBodyComparisonReturn(fn, types);
+        }
         if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerForLoopReturn(fn, types); }
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerNestedForLoopAccumulatorReturn(fn, types);

@@ -164,6 +164,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/do-while-consumer/Zom.toml::do_while_consumer::do_while_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/while-comparison-consumer/Zom.toml::while_comparison_consumer::while_comparison_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/equality-consumer/Zom.toml::equality_consumer::equality_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer"
@@ -494,6 +496,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-consumer/Zom.toml::for_loop_consumer::for_loop_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/do-while-consumer/Zom.toml::do_while_consumer::do_while_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/while-comparison-consumer/Zom.toml::while_comparison_consumer::while_comparison_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/for-loop-accumulator-consumer/Zom.toml::for_loop_accumulator_consumer::for_loop_accumulator_consumer::45"
       --run-case

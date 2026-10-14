@@ -5248,6 +5248,196 @@ bool validDoWhileLoopBodyReturnFunction(
   return false;
 }
 
+// Validates the while loop-body composite function with a comparison
+// condition: `mut x = <lit>; while (<ident> <cmp> <lit>) { <writes to x> }
+// return x;` lowered to a reducible four-block CFG with
+// condition-before-body layout. Parameters occupy localId(1..P); the user
+// local x is localId(P+1); the comparison temp is localId(P+2). The entry
+// block declares and initializes x then jumps to the header; the header
+// evaluates the comparison into the temp and switches on it into the body
+// (true) or the exit (default); the body carries the write assignments
+// (Overwrite) then jumps back to the header (the reducible back-edge); the
+// exit returns a place-use of x.
+bool validWhileLoopBodyComparisonReturnFunction(
+    const MirFunction& function, const hir::HirFunctionDeclaration& declaration,
+    const hir::HirBlockStatement& sourceBlock, const hir::HirLocalBinding& local,
+    const hir::HirLoopStatement& loop, const hir::HirReturnStatement& sourceReturn,
+    const hir::HirLocalReferenceExpression& reference,
+    const hir::HirPrimitiveBinaryExpression& condition, const hir::VerifiedHirModule& hirModule,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes) {
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != parameterCount + 2 || function.blocks.size() != 4 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 3 ||
+      sourceBlock.statements[0] != local.node || sourceBlock.statements[1] != loop.node ||
+      sourceBlock.statements[2] != sourceReturn.node || sourceReturn.value != reference.node ||
+      sourceReturn.resultType != declaration.resultType || loop.condition != condition.node ||
+      loop.type != condition.type || local.type != declaration.resultType ||
+      reference.type != declaration.resultType ||
+      reference.category != hir::HirValueCategory::Place || local.local != reference.local ||
+      loop.body.size() == 0) {
+    return false;
+  }
+  const auto resultLocal = localId(parameterCount + 1);
+  const auto conditionTemp = localId(parameterCount + 2);
+  const auto& scope = function.sourceScopes[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan)) {
+    return false;
+  }
+  for (uint32_t i = 0; i < parameterCount; ++i) {
+    const auto& parameterLocal = function.locals[i];
+    if (parameterLocal.id != localId(i + 1) || parameterLocal.kind != MirLocalKind::Parameter ||
+        parameterLocal.type != declaration.parameters[i].type ||
+        parameterLocal.sourceScope != scopeId(1) ||
+        !sameSpan(parameterLocal.sourceSpan, declaration.parameters[i].sourceSpan)) {
+      return false;
+    }
+  }
+  const auto& result = function.locals[parameterCount];
+  if (result.id != resultLocal || result.kind != MirLocalKind::UserLocal ||
+      result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
+      !sameSpan(result.sourceSpan, local.sourceSpan)) {
+    return false;
+  }
+  const auto& temp = function.locals[parameterCount + 1];
+  if (temp.id != conditionTemp || temp.kind != MirLocalKind::Temporary ||
+      temp.type != condition.type || temp.sourceScope != scopeId(1) ||
+      !sameSpan(temp.sourceSpan, condition.sourceSpan)) {
+    return false;
+  }
+  const auto& entry = function.blocks[0];
+  const auto& header = function.blocks[1];
+  const auto& body = function.blocks[2];
+  const auto& exit = function.blocks[3];
+  // A trailing break exits the body to the loop exit (bb4); a trailing
+  // continue or a write-only body jumps back to the header (bb2).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
+  // Entry: StorageLive(x) ; StorageLive(temp) ; Assign(x = initializer,
+  // Initialize) ; Goto(bb2).
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
+  auto initializer = expressionFor(hirModule, initializerNode);
+  if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 3 ||
+      entry.statements[0].kind() != MirStatementKind::StorageLive ||
+      entry.statements[0].storageLocal() != resultLocal ||
+      !sameSpan(entry.statements[0].sourceSpan(), local.sourceSpan) ||
+      entry.statements[1].kind() != MirStatementKind::StorageLive ||
+      entry.statements[1].storageLocal() != conditionTemp ||
+      !sameSpan(entry.statements[1].sourceSpan(), condition.sourceSpan) ||
+      entry.statements[2].kind() != MirStatementKind::Assign ||
+      entry.terminator.kind() != MirTerminatorKind::Goto ||
+      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
+      header.sourceScope != scopeId(1) || header.statements.size() != 1 ||
+      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
+      body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
+      body.terminator.kind() != MirTerminatorKind::Goto ||
+      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
+      exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
+      exit.terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  const auto& initAssign = entry.statements[2].assignmentValue();
+  if (initializer == zc::none || initAssign.initialization != MirInitializationKind::Initialize ||
+      initAssign.destination.local() != resultLocal ||
+      initAssign.destination.rootType() != declaration.resultType ||
+      initAssign.destination.resultType() != declaration.resultType ||
+      initAssign.destination.projections().size() != 0 ||
+      initAssign.value.kind() != MirRvalueKind::Use ||
+      initAssign.value.useValue().operand.kind() != MirOperandKind::Constant ||
+      initAssign.value.useValue().operand.constantValue().type !=
+          ZC_ASSERT_NONNULL(initializer).type ||
+      !sameConstant(initAssign.value.useValue().operand.constantValue().value,
+                    ZC_ASSERT_NONNULL(initializer).value, module, identities, semanticTypes)) {
+    return false;
+  }
+  // Header: Assign(temp = Comparison(op, copy(x), <lit>), Overwrite).
+  // The header is the loop header (the body jumps back to it), so the
+  // assignment must be Overwrite to survive the ownership fixpoint iteration.
+  const auto& condAssign = header.statements[0].assignmentValue();
+  if (condAssign.initialization != MirInitializationKind::Overwrite ||
+      condAssign.destination.local() != conditionTemp ||
+      condAssign.destination.rootType() != condition.type ||
+      condAssign.destination.resultType() != condition.type ||
+      condAssign.destination.projections().size() != 0 ||
+      condAssign.value.kind() != MirRvalueKind::Comparison ||
+      !sameSpan(header.statements[0].sourceSpan(), condition.sourceSpan)) {
+    return false;
+  }
+  const auto& comparison = condAssign.value.comparisonValue();
+  const auto comparisonOperator = mirComparisonOperatorFor(condition.operation);
+  if (comparisonOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(comparisonOperator)) {
+    return false;
+  }
+  // Left operand: copy place-use of the user local x.
+  if (comparison.left.kind() != MirOperandKind::Copy ||
+      comparison.left.place().local() != resultLocal ||
+      comparison.left.place().rootType() != condition.operandType ||
+      comparison.left.place().resultType() != condition.operandType ||
+      comparison.left.place().projections().size() != 0) {
+    return false;
+  }
+  // Right operand: scalar literal constant.
+  auto conditionRight = expressionFor(hirModule, condition.right);
+  if (conditionRight == zc::none || comparison.right.kind() != MirOperandKind::Constant ||
+      comparison.right.constantValue().type != ZC_ASSERT_NONNULL(conditionRight).type ||
+      !sameConstant(comparison.right.constantValue().value, ZC_ASSERT_NONNULL(conditionRight).value,
+                    module, identities, semanticTypes)) {
+    return false;
+  }
+  // SwitchInt on the condition temp: [true -> bb3], default = bb4.
+  const auto& switchInt = header.terminator.switchIntValue();
+  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  const auto& trueArm = switchInt.arms[0];
+  if (trueArm.target != blockId(3)) return false;
+  auto trueValue = trueArm.value.booleanValue();
+  if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
+  if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
+      switchInt.discriminant.place().local() != conditionTemp ||
+      switchInt.discriminant.place().rootType() != condition.type ||
+      switchInt.discriminant.place().resultType() != condition.type ||
+      switchInt.discriminant.place().projections().size() != 0) {
+    return false;
+  }
+  // Body: one Overwrite of x per loop-body write, in order.
+  for (size_t writeIndex = 0; writeIndex < loop.body.size(); ++writeIndex) {
+    auto write = localWriteFor(hirModule, loop.body[writeIndex]);
+    if (write == zc::none || ZC_ASSERT_NONNULL(write).local != local.local ||
+        ZC_ASSERT_NONNULL(write).field != zc::none ||
+        ZC_ASSERT_NONNULL(write).type != declaration.resultType ||
+        ZC_ASSERT_NONNULL(write).kind != hir::HirLocalWriteKind::Overwrite) {
+      return false;
+    }
+    const auto& statement = body.statements[writeIndex];
+    if (statement.kind() != MirStatementKind::Assign ||
+        !sameSpan(statement.sourceSpan(), ZC_ASSERT_NONNULL(write).sourceSpan)) {
+      return false;
+    }
+    const auto& assignment = statement.assignmentValue();
+    if (assignment.initialization != MirInitializationKind::Overwrite ||
+        assignment.destination.local() != resultLocal ||
+        assignment.destination.rootType() != declaration.resultType ||
+        assignment.destination.resultType() != declaration.resultType ||
+        assignment.destination.projections().size() != 0) {
+      return false;
+    }
+  }
+  // Exit: Return(placeUse(x)).
+  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 // Validates the for-loop composite function: `for (let i = <lit>; i < <lit>;
 // i = i <bin> <lit>) {} return <lit>;` lowered to a reducible four-block CFG.
 // Parameters occupy localId(1..P); the init local i is localId(P+1); the
@@ -11478,12 +11668,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       forLoopAccumulatorCorrection += static_cast<int64_t>(accCount) - 1;
     }
   }
-  // Do-while loop-body functions (`mut x = <lit>; do { <writes> } while (<ident>
-  // <cmp> <lit>); return x;`) carry a checksum imbalance: the comparison
-  // primitive binary adds one lhs node, but the return is a local reference
-  // (not a value node), so the rhs lacks the matching node that a for-loop's
-  // literal return would contribute. Each such function adds one rhs term.
-  int64_t doWhileLoopBodyReturnCount = 0;
+  // Comparison-condition loop-body functions (`mut x = <lit>; while (<ident>
+  // <cmp> <lit>) { <writes> } return x;` or the do-while equivalent) carry a
+  // checksum imbalance: the comparison primitive binary adds one lhs node,
+  // but the return is a local reference (not a value node), so the rhs lacks
+  // the matching node that a for-loop's literal return would contribute. Each
+  // such function adds one rhs term.
+  int64_t comparisonLoopBodyReturnCount = 0;
   for (const auto& doWhileFunction : hirModule.functions()) {
     auto doWhileBlock = blockFor(hirModule, doWhileFunction.body);
     ZC_IF_SOME(block, doWhileBlock) {
@@ -11496,7 +11687,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         ZC_IF_SOME(returnStatement, sourceReturn) {
           if (primitiveBinaryFor(hirModule, loopValue.condition) != zc::none &&
               localReferenceFor(hirModule, returnStatement.value) != zc::none) {
-            ++doWhileLoopBodyReturnCount;
+            ++comparisonLoopBodyReturnCount;
           }
         }
       }
@@ -11517,7 +11708,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            receiverSelfCallValueNodes + voidFunctionCount - voidLetBodyCount -
                            localAliasReborrowCount - hirModule.localWrites().size() -
                            hirModule.parameterFieldWrites().size()) +
-      binaryWriteLocalOperandCount + doWhileLoopBodyReturnCount;
+      binaryWriteLocalOperandCount + comparisonLoopBodyReturnCount;
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=
@@ -12672,13 +12863,21 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                   identities, static_cast<uint32_t>(pending.size() + 1));
                             }
                             zc::Vector<MirSwitchIntArm> arms;
+                            // For do-while, the true arm targets the body (bb2);
+                            // for while, the true arm targets the body (bb3).
+                            const auto conditionTrueTarget =
+                                loopValue.isDoWhile ? blockId(2) : blockId(3);
                             arms.add(MirSwitchIntArm{
-                                checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+                                checker::checked::CanonicalConstValue::boolean(true),
+                                conditionTrueTarget});
                             // A trailing break exits the body to the loop exit
                             // (bb4); a trailing continue or a write-only body
-                            // jumps to the condition block (bb3).
+                            // jumps to the condition block (bb3 for do-while,
+                            // bb2 for while).
                             const auto bodyTerminatorTarget =
-                                loopValue.breakSpan != zc::none ? blockId(4) : blockId(3);
+                                loopValue.breakSpan != zc::none
+                                    ? blockId(4)
+                                    : (loopValue.isDoWhile ? blockId(3) : blockId(2));
                             const auto& bodyTerminatorSpan =
                                 loopValue.breakSpan != zc::none
                                     ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
@@ -12702,15 +12901,29 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                 MirBasicBlock{blockId(1), scopeId(1), zc::mv(entryStatements),
                                               MirTerminator::gotoTarget(
                                                   blockId(2), loopValue.sourceSpan.clone())});
-                            blocks.add(MirBasicBlock{
-                                blockId(2), scopeId(1), zc::mv(bodyStatements),
-                                MirTerminator::gotoTarget(bodyTerminatorTarget,
-                                                          bodyTerminatorSpan.clone())});
-                            blocks.add(MirBasicBlock{
-                                blockId(3), scopeId(1), zc::mv(conditionStatements),
-                                MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                         zc::mv(arms), blockId(4),
-                                                         loopValue.sourceSpan.clone())});
+                            if (loopValue.isDoWhile) {
+                              // Do-while: bb2=body, bb3=condition.
+                              blocks.add(MirBasicBlock{
+                                  blockId(2), scopeId(1), zc::mv(bodyStatements),
+                                  MirTerminator::gotoTarget(bodyTerminatorTarget,
+                                                            bodyTerminatorSpan.clone())});
+                              blocks.add(MirBasicBlock{
+                                  blockId(3), scopeId(1), zc::mv(conditionStatements),
+                                  MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                           zc::mv(arms), blockId(4),
+                                                           loopValue.sourceSpan.clone())});
+                            } else {
+                              // While: bb2=condition, bb3=body.
+                              blocks.add(MirBasicBlock{
+                                  blockId(2), scopeId(1), zc::mv(conditionStatements),
+                                  MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                           zc::mv(arms), blockId(4),
+                                                           loopValue.sourceSpan.clone())});
+                              blocks.add(MirBasicBlock{
+                                  blockId(3), scopeId(1), zc::mv(bodyStatements),
+                                  MirTerminator::gotoTarget(bodyTerminatorTarget,
+                                                            bodyTerminatorSpan.clone())});
+                            }
                             blocks.add(MirBasicBlock{
                                 blockId(4), scopeId(1), zc::mv(exitStatements),
                                 MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
@@ -18735,16 +18948,25 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                                                        identities, semanticTypes);
                   }
                 }
-                // Do-while loop-body composite: the return is a local
-                // reference and the condition is a comparison binary.
+                // Comparison-condition loop-body composite: the return is a
+                // local reference and the condition is a comparison binary.
+                // The isDoWhile flag selects the CFG layout: body-before-
+                // condition for do-while, condition-before-body for while.
                 if (!valid) {
                   auto reference = localReferenceFor(hirModule, returnStatement.value);
                   ZC_IF_SOME(referenceValue, reference) {
                     ZC_IF_SOME(condition, conditionBinary) {
-                      valid = validDoWhileLoopBodyReturnFunction(
-                          function, sourceDeclaration, block, local, loopValue, returnStatement,
-                          referenceValue, condition, hirModule, proofs, copy, module, identities,
-                          semanticTypes);
+                      if (loopValue.isDoWhile) {
+                        valid = validDoWhileLoopBodyReturnFunction(
+                            function, sourceDeclaration, block, local, loopValue, returnStatement,
+                            referenceValue, condition, hirModule, proofs, copy, module, identities,
+                            semanticTypes);
+                      } else {
+                        valid = validWhileLoopBodyComparisonReturnFunction(
+                            function, sourceDeclaration, block, local, loopValue, returnStatement,
+                            referenceValue, condition, hirModule, proofs, copy, module, identities,
+                            semanticTypes);
+                      }
                     }
                   }
                 }

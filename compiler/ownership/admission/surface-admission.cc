@@ -1040,7 +1040,18 @@ bool isAdmittedLoopStatement(const ast::Tree& tree, ast::NodeId whileStmt) {
   const auto& loop = tree.node(whileStmt);
   const ast::NodeId condition(loop.payload.words[ast::kWhileStmtCondWord]);
   const ast::NodeId body(loop.payload.words[ast::kWhileStmtBodyWord]);
-  if (!tree.contains(condition) || tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
+  // Condition: a binary comparison with identifier/literal operands (at least
+  // one identifier), or a bare identifier.
+  if (tree.contains(condition) && tree.node(condition).kind == ast::SyntaxKind::BinaryExpr) {
+    const ast::NodeId condLeft(tree.node(condition).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId condRight(tree.node(condition).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(condLeft) || !tree.contains(condRight)) return false;
+    const bool condLeftIdent = tree.node(condLeft).kind == ast::SyntaxKind::IdentExpr;
+    const bool condRightIdent = tree.node(condRight).kind == ast::SyntaxKind::IdentExpr;
+    const bool condLeftOk = condLeftIdent || isScalarLiteral(tree.node(condLeft).kind);
+    const bool condRightOk = condRightIdent || isScalarLiteral(tree.node(condRight).kind);
+    if (!condLeftOk || !condRightOk || (!condLeftIdent && !condRightIdent)) return false;
+  } else if (!tree.contains(condition) || tree.node(condition).kind != ast::SyntaxKind::IdentExpr) {
     return false;
   }
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return false;

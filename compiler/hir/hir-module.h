@@ -488,6 +488,10 @@ struct HirLoopStatement final {
   /// continue). The MIR builder routes the body terminator to the enclosing
   /// loop's header.
   bool continueTargetsEnclosing = false;
+  /// True when the loop is a do-while (body-before-condition CFG); false for
+  /// a while loop (condition-before-body CFG). The MIR builder uses this to
+  /// select the block layout when the condition is a comparison binary.
+  bool isDoWhile = false;
 };
 
 /// \brief One scalar return statement in immutable semantic HIR.

@@ -1,0 +1,10 @@
+// While-loop fixture with a comparison condition: a condition-before-body loop
+// increments x until x reaches 41, exercising the reducible four-block while
+// CFG with a binary comparison condition through the full IR pipeline.
+fn entry() -> i32 {
+  mut x = 0;
+  while (x < 41) {
+    x = x + 1;
+  }
+  return x;
+}

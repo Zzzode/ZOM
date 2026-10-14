@@ -528,8 +528,9 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
                                                     placeCategory, placeSpan.clone()});
 }
 
-void lowerDoWhileLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingDoWhileLoopBodyReturn doWhile = zc::mv(ZC_ASSERT_NONNULL(function.doWhileLoopBodyReturn));
+void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  PendingComparisonLoopBodyReturn doWhile =
+      zc::mv(ZC_ASSERT_NONNULL(function.comparisonLoopBodyReturn));
   const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
   const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
@@ -605,7 +606,8 @@ void lowerDoWhileLoopBodyReturnFunction(PendingFunctionDeclaration&& function, H
   for (const auto writeId : writeIds) { loopStatements.add(writeId); }
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), doWhile.condition.type,
                                HirValueCategory::Place, zc::mv(doWhile.loopSpan),
-                               zc::mv(doWhile.breakSpan), zc::mv(doWhile.continueSpan)});
+                               zc::mv(doWhile.breakSpan), zc::mv(doWhile.continueSpan), HirNodeId{},
+                               false, false, doWhile.isDoWhile});
   ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
                                    function.returnSpan.clone()});
 

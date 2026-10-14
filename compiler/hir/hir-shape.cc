@@ -2731,14 +2731,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                 : loop.payload.words[ast::kWhileStmtCondWord]);
       const ast::NodeId loopBody(isDoWhile ? loop.payload.words[ast::kDoWhileStatementBodyWord]
                                            : loop.payload.words[ast::kWhileStmtBodyWord]);
-      // The while-loop condition is a bare identifier. The do-while condition
-      // admits a binary comparison with ident/literal operands (at least one
-      // identifier) or a bare identifier.
+      // The condition admits a binary comparison with ident/literal operands
+      // (at least one identifier) or a bare identifier, for both while and
+      // do-while loops.
       bool conditionOk = false;
       if (tree.contains(loopCondition)) {
         if (tree.node(loopCondition).kind == ast::SyntaxKind::IdentExpr) {
           conditionOk = true;
-        } else if (isDoWhile && tree.node(loopCondition).kind == ast::SyntaxKind::BinaryExpr) {
+        } else if (tree.node(loopCondition).kind == ast::SyntaxKind::BinaryExpr) {
           const ast::NodeId condLeft(
               tree.node(loopCondition).payload.words[ast::kBinaryExprLhsWord]);
           const ast::NodeId condRight(

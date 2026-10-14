@@ -10025,12 +10025,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // and return are already assembled above exactly as for the flat mut-local
       // shape.
       zc::Maybe<PendingLoopBodyReturn> loopBodyReturn;
-      zc::Maybe<PendingDoWhileLoopBodyReturn> doWhileLoopBodyReturn;
-      // Do-while loop-body with a comparison condition: `do { <writes> } while
-      // (<ident> <cmp> <lit>);`. The comparison is resolved like the for-loop
-      // condition: the left operand names the accumulator local and the right
-      // operand is a scalar literal. The do-while CFG is body-before-condition.
-      if (shape.isLoopBody && shape.isDoWhileLoopBody && tree.contains(shape.loopCondition) &&
+      zc::Maybe<PendingComparisonLoopBodyReturn> comparisonLoopBodyReturn;
+      // Loop-body with a comparison condition: `while (<ident> <cmp> <lit>)`
+      // or `do { <writes> } while (<ident> <cmp> <lit>);`. The comparison is
+      // resolved like the for-loop condition: the left operand names the
+      // accumulator local and the right operand is a scalar literal. The
+      // while CFG is condition-before-body; the do-while CFG is
+      // body-before-condition.
+      if (shape.isLoopBody && tree.contains(shape.loopCondition) &&
           tree.node(shape.loopCondition).kind == ast::SyntaxKind::BinaryExpr) {
         const auto& condNode = tree.node(shape.loopCondition);
         const ast::NodeId condLhs(condNode.payload.words[ast::kBinaryExprLhsWord]);
@@ -10111,7 +10113,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        doWhileLoopBodyReturn = PendingDoWhileLoopBodyReturn{
+        comparisonLoopBodyReturn = PendingComparisonLoopBodyReturn{
             HirPrimitiveBinaryExpression{HirNodeId(), HirNodeId(), HirNodeId(), condLhsType,
                                          condResultType, HirValueCategory::Value, condOperation,
                                          ZC_ASSERT_NONNULL(condSpan).clone()},
@@ -10124,6 +10126,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             ZC_ASSERT_NONNULL(loopSpan).clone(),
             zc::mv(breakSpan),
             zc::mv(continueSpan),
+            shape.isDoWhileLoopBody,
             shape.loopStatement,
             shape.returnStatement};
       } else if (shape.isLoopBody && !shape.isDoWhileLoopBody) {
@@ -11520,7 +11523,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       zc::mv(comparisonReturn),
                                                       zc::mv(loopBodyReturn),
-                                                      zc::mv(doWhileLoopBodyReturn),
+                                                      zc::mv(comparisonLoopBodyReturn),
                                                       zc::mv(forLoopReturn),
                                                       zc::mv(forLoopAccumulatorReturn),
                                                       zc::mv(nestedForLoopAccumulatorReturn),
@@ -11896,7 +11899,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // adding three node-type facts (left, right, condition), one literal fact
   // (right operand), and one call fact (the comparison primitive) beyond the
   // flat mut-local write shape it shares.
-  size_t doWhileLoopBodyReturnCount = 0;
+  size_t comparisonLoopBodyReturnCount = 0;
   // Per-function excess of literal facts a sequential N-local body carries over
   // the single-literal baseline the shared literal equation grants each
   // function: sum of (literal-bearing bindings - 1). Zero for the former
@@ -12519,7 +12522,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     // literals equation balanced). The empty-body loop shape is counted separately
     // via loopReturn above, so its exact counts are unaffected.
     if (function.loopBodyReturn != zc::none) { ++loopCount; }
-    if (function.doWhileLoopBodyReturn != zc::none) { ++doWhileLoopBodyReturnCount; }
+    if (function.comparisonLoopBodyReturn != zc::none) { ++comparisonLoopBodyReturnCount; }
     if (function.forLoopReturn != zc::none) {
       ++forLoopReturnCount;
       continue;
@@ -12974,7 +12977,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       forLoopAccumulatorGuardedBreakCount * 3 + nestedForLoopAccumulatorReturnCount * 9 +
       directExistentialCallCount + destructorFieldWriteBodyCount * 4 +
       destructorMethodCallBodyCount * 3 + rawPointerWriteCount * 4 + arrayElementWriteCount * 5 +
-      doWhileLoopBodyReturnCount * 3 + tupleDestructureCount;
+      comparisonLoopBodyReturnCount * 3 + tupleDestructureCount;
   if (facts.nodeTypes().size() != expectedNodeTypes) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                          ir::IrFailureKind::AdditionalFact, module, registries, 1);
@@ -13019,7 +13022,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           static_cast<int64_t>(destructorFieldWriteBodyCount) +
           static_cast<int64_t>(rawPointerWriteCount) +
           static_cast<int64_t>(arrayElementWriteCount) * 3 +
-          static_cast<int64_t>(doWhileLoopBodyReturnCount)) +
+          static_cast<int64_t>(comparisonLoopBodyReturnCount)) +
       sequentialLiteralAdjustment;
   if (static_cast<int64_t>(facts.literals().size()) != expectedLiterals) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -13036,7 +13039,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       forLoopAccumulatorReturnCount * 2 + forLoopAccumulatorCount +
       forLoopAccumulatorGuardedBreakCount + nestedForLoopAccumulatorReturnCount * 2 +
       postfixReturnCount + directExistentialCallCount + destructorMethodCallBodyCount +
-      doWhileLoopBodyReturnCount;
+      comparisonLoopBodyReturnCount;
   if (facts.calls().size() != expectedCalls ||
       checkedModule.dispatchFacts().facts().size() != expectedCalls) {
     return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -13156,7 +13159,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
         value.receiverSelfCall == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13183,7 +13186,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13204,7 +13207,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13231,7 +13234,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13260,7 +13263,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13289,7 +13292,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13317,7 +13320,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.forLoopReturn == zc::none && value.unsafeBlockSpan == zc::none;
     const bool singleInitializedLocal =
         value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
@@ -13328,7 +13331,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
     // Array index or length fold: `let a: [T; N] = [...]; return a[k];` or
     // `return a.length;` where the read is folded to a scalar literal. The
@@ -13343,7 +13346,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
     if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal || arrayIndexFoldLocal)) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
@@ -13393,7 +13396,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReference == zc::none && value.parameterIndex == zc::none &&
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13415,7 +13418,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
         value.localBorrow == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13437,7 +13440,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.parameterFieldWrite == zc::none && value.parameterFieldWriteLiteral == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
@@ -13461,7 +13464,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.chainedConditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
         value.forLoopAccumulatorReturn == zc::none &&
         value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
         value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
@@ -13496,7 +13499,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
         value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
         value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
@@ -13529,7 +13532,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
         value.nestedForLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
         value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
@@ -13562,7 +13565,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13584,7 +13587,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       bool writesArePlain = true;
       for (const auto& write : value.localWrites) {
@@ -13634,7 +13637,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       const bool initializedByAggregate =
           ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.aggregate != zc::none &&
           value.literal == zc::none && value.parameterReference == zc::none;
@@ -13678,7 +13681,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none;
     if (value.call != zc::none && value.literal != zc::none && value.local != zc::none &&
         ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
@@ -13775,7 +13778,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13850,7 +13853,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
     if (value.chainedConditionalReturn != zc::none) {
       // Control fields must be clear before lowering a chained conditional.
     }
@@ -13888,7 +13891,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.doWhileLoopBodyReturn == zc::none &&
+        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -13907,7 +13910,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
         value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
         value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       bool loopWritesArePlain = true;
       for (const auto& write : value.localWrites) {
         if (write.field != zc::none) loopWritesArePlain = false;
@@ -13928,7 +13931,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     // (<ident> <cmp> <lit>); return x;`. The pending carrier encodes the
     // resolved comparison condition and the loop span; the lowering arm
     // allocates the node ids in a body-before-condition CFG layout.
-    if (value.doWhileLoopBodyReturn != zc::none && value.local != zc::none &&
+    if (value.comparisonLoopBodyReturn != zc::none && value.local != zc::none &&
         ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.localWrites.size() != 0 &&
         value.localWrites.size() == value.localWriteValues.size() &&
         value.localReference != zc::none && value.call == zc::none &&
@@ -13950,7 +13953,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                        localFieldProjections, parameterFieldProjections, parameterFieldWrites,
                        rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
                        receiverCalls, conditionals, loops, sourceNodes);
-        lowerDoWhileLoopBodyReturnFunction(zc::mv(value), fnCtx);
+        lowerComparisonLoopBodyReturnFunction(zc::mv(value), fnCtx);
         continue;
       }
     }
@@ -13969,7 +13972,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
@@ -13992,7 +13995,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
         value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -14017,7 +14020,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
         value.forLoopAccumulatorReturn == zc::none && value.unsafeBlockSpan == zc::none) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
@@ -14047,7 +14050,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none;
+        value.comparisonLoopBodyReturn == zc::none;
     // A: bare parameter reborrow (no user local, no initializer reference).
     if (value.parameterReborrow != zc::none && value.local == zc::none &&
         value.literal == zc::none && value.parameterReference == zc::none &&
@@ -14131,7 +14134,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
         value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
         value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.doWhileLoopBodyReturn == zc::none &&
+        value.comparisonLoopBodyReturn == zc::none &&
         ((value.literal != zc::none) != (value.parameterReference != zc::none))) {
       HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                      localWrites, localReferences, primitiveBinaryOperations, aggregates,

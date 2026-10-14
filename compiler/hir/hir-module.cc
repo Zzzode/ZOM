@@ -8900,15 +8900,15 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     // `do { <body> } while (<cond>);` loop whose body writes that local, and a
     // trailing local return. The body block is `[local, loop, return]`; the
     // loop statement carries the write node ids, and each write reuses the
-    // mut-local write validation. The while-loop condition is a bare identifier
-    // (parameter reference); the do-while condition is a binary comparison over
-    // the accumulator local and a scalar literal, which inserts two extra nodes
+    // mut-local write validation. A parameter-reference condition is a bare
+    // identifier; a comparison condition is a binary comparison over the
+    // accumulator local and a scalar literal, which inserts two extra nodes
     // (comparison left, comparison right) between the write-value ids and the
     // condition. Fixed-id layout relative to the function id F:
-    //   while:  F+0 function, F+1 body, F+2 local, F+3 initializer,
+    //   parameter-ref: F+0 function, F+1 body, F+2 local, F+3 initializer,
     //           per-write F+(4+i*2)..F+(5+i*2), F+return, F+value,
     //           F+condition, F+loop, then binary-write operand nodes.
-    //   do-while: F+0 function, F+1 body, F+2 local, F+3 initializer,
+    //   comparison: F+0 function, F+1 body, F+2 local, F+3 initializer,
     //           per-write F+(4+i*2)..F+(5+i*2), F+cmp-left, F+cmp-right,
     //           F+condition, F+loop, F+return, F+value, then binary-write
     //           operand nodes.
@@ -8916,6 +8916,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
       bool isLoopBodyShape = false;
       bool isDoWhileShape = false;
+      bool isComparisonCondition = false;
       if (sourceDefinitionIndex != zc::none) {
         size_t definitionSlot = 0;
         ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
@@ -8926,6 +8927,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           ZC_IF_SOME(value, probe) {
             isLoopBodyShape = value.isLoopBody;
             isDoWhileShape = value.isDoWhileLoopBody;
+            if (value.isLoopBody && tree.contains(value.loopCondition) &&
+                tree.node(value.loopCondition).kind == ast::SyntaxKind::BinaryExpr) {
+              isComparisonCondition = true;
+            }
           }
         }
       }
@@ -9017,8 +9022,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const auto writeBase = expectedFunction + 4 + static_cast<uint32_t>(writeCount) * 2;
         const auto conditionNode = hirId(writeBase + 2);
         const auto loopNode = hirId(writeBase + 3);
-        const auto returnNode = isDoWhileShape ? hirId(writeBase + 4) : hirId(writeBase);
-        const auto valueNode = isDoWhileShape ? hirId(writeBase + 5) : hirId(writeBase + 1);
+        const auto returnNode = isComparisonCondition ? hirId(writeBase + 4) : hirId(writeBase);
+        const auto valueNode = isComparisonCondition ? hirId(writeBase + 5) : hirId(writeBase + 1);
         zc::Maybe<const HirLocalBinding&> localBinding;
         for (const auto& local : candidate.impl->locals) {
           if (local.node != localNode) continue;
@@ -9059,12 +9064,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           }
           conditionReference = reference;
         }
-        // Do-while condition: a comparison binary at conditionNode with a
+        // Comparison condition: a comparison binary at conditionNode with a
         // local-reference left operand and a scalar-literal right operand.
         zc::Maybe<const HirPrimitiveBinaryExpression&> conditionBinary;
         zc::Maybe<const HirLocalReferenceExpression&> conditionLeftReference;
         zc::Maybe<const HirScalarLiteralExpression&> conditionRightLiteral;
-        if (isDoWhileShape) {
+        if (isComparisonCondition) {
           for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
             if (operation.node != conditionNode) continue;
             if (conditionBinary != zc::none) {
@@ -9107,16 +9112,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         if (localBinding == zc::none || initializerLiteral == zc::none || loopValue == zc::none ||
             returnReference == zc::none ||
-            (isDoWhileShape ? (conditionBinary == zc::none || conditionLeftReference == zc::none ||
-                               conditionRightLiteral == zc::none)
-                            : conditionReference == zc::none)) {
+            (isComparisonCondition
+                 ? (conditionBinary == zc::none || conditionLeftReference == zc::none ||
+                    conditionRightLiteral == zc::none)
+                 : conditionReference == zc::none)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        // Loop condition authority. The while-loop condition is a bare bool
-        // parameter reference; the do-while condition is a binary comparison
-        // over the accumulator local and a scalar literal.
+        // Loop condition authority. The parameter-reference condition is a
+        // bare bool parameter; the comparison condition is a binary
+        // comparison over the accumulator local and a scalar literal.
         auto conditionTypeIndex = factIndex(facts.nodeTypes(), source.loopCondition);
         auto conditionSpan = bound.parsedModule().spanFor(tree.node(source.loopCondition).range);
         auto loopSpan = bound.parsedModule().spanFor(tree.node(source.loopStatement).range);
@@ -9134,8 +9140,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
         identity::SemanticTypeId conditionType{};
         zc::Maybe<const binder::MaterializedCallableParameterIdentityEntry&> conditionAuthority;
-        if (isDoWhileShape) {
-          // Do-while comparison authority: the call fact for the BinaryExpr,
+        if (isComparisonCondition) {
+          // Comparison authority: the call fact for the BinaryExpr,
           // the left operand's node type, and the right operand's literal fact.
           auto conditionCallIndex = factIndex(facts.calls(), source.loopCondition);
           const ast::NodeId condLhs(
@@ -9242,13 +9248,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                 static_cast<bool>(source.loopBodyBreak) &&
             (ZC_ASSERT_NONNULL(loopValue).continueSpan != zc::none) ==
                 static_cast<bool>(source.loopBodyContinue) &&
+            ZC_ASSERT_NONNULL(loopValue).isDoWhile == isDoWhileShape &&
             ZC_ASSERT_NONNULL(returnReference).local == ZC_ASSERT_NONNULL(localBinding).local &&
             ZC_ASSERT_NONNULL(returnReference).type == function.resultType &&
             ZC_ASSERT_NONNULL(returnReference).category == HirValueCategory::Place &&
             typeExists(function.resultType, semanticTypes) &&
             typeExists(conditionType, semanticTypes);
-        if (isDoWhileShape) {
-          // Do-while condition: comparison binary over the accumulator local
+        if (isComparisonCondition) {
+          // Comparison condition: binary over the accumulator local
           // and a scalar literal.
           structureOk =
               structureOk &&
@@ -9281,7 +9288,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             sameSpan(ZC_ASSERT_NONNULL(loopValue).sourceSpan, ZC_ASSERT_NONNULL(loopSpan)) &&
             sameSpan(ZC_ASSERT_NONNULL(returnReference).sourceSpan,
                      ZC_ASSERT_NONNULL(returnValueSpan));
-        if (isDoWhileShape) {
+        if (isComparisonCondition) {
           spansOk = spansOk && sameSpan(ZC_ASSERT_NONNULL(conditionBinary).sourceSpan,
                                         ZC_ASSERT_NONNULL(conditionSpan));
         } else {
@@ -9444,7 +9451,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               // or after the return-value node (do-while), then each earlier
               // binary write consumes two ids, matching the materializer.
               uint32_t trailingBase =
-                  isDoWhileShape ? valueNode.ordinal() + 1 : loopNode.ordinal() + 1;
+                  isComparisonCondition ? valueNode.ordinal() + 1 : loopNode.ordinal() + 1;
               uint32_t priorBinaryWrites = 0;
               for (size_t earlier = 0; earlier < writeIndex; ++earlier) {
                 auto earlierStatement = statementItem(tree, tree.list(source.localWrites)[earlier]);
@@ -9649,8 +9656,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
           }
         }
-        nextFunction +=
-            4 + static_cast<uint32_t>(writeCount) * 2 + (isDoWhileShape ? 6 : 4) + binaryWriteNodes;
+        nextFunction += 4 + static_cast<uint32_t>(writeCount) * 2 +
+                        (isComparisonCondition ? 6 : 4) + binaryWriteNodes;
         continue;
       }
     }

@@ -58,7 +58,7 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
 /// over the local and a scalar literal, and a local-reference return. The
 /// comparison operands and condition allocate between the write-value ids and
 /// the loop id, reproducing the generic materializer's fixed-id layout.
-void lowerDoWhileLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
 /// \brief Lowers one C-style for-loop return through the recursive driver:
 /// `for (let id = <lit>; <ident> <cmp> <lit>; <ident> = <binary>) {}` followed
