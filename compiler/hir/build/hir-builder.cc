@@ -13216,6 +13216,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       sequentialFoldedStringConcatCount * 2 + sequentialTernaryCount * 3 +
       sequentialMatchExprCount * 2 + sequentialMatchExprDefaultArmCount +
       leadingLocalConditionalBinaryCount * 2 - leadingLocalConditionalUnaryCount -
+      (leadingLocalConditionalBinaryCount == 0 ? leadingLocalConditionalBoolReferenceCount : 0) -
       incrementWriteCount * 3 - incrementReturnCount + postfixReturnCount -
       sequentialIncrementBindingCount - compoundAssignmentWriteCount * 2 + forLoopReturnCount * 9 +
       forLoopAccumulatorReturnCount * 9 + forLoopAccumulatorCount * 6 +

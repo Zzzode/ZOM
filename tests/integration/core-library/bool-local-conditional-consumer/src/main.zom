@@ -1,0 +1,12 @@
+// Bool-local conditional: a leading bool local is used as the condition of
+// a leading-local conditional return. The condition is a bare bool reference
+// (no comparison); the condition temp receives a copy of the bool local and
+// the SwitchInt branches on it directly.
+fn entry() -> i32 {
+  let b: bool = true;
+  if (b) {
+    return 41;
+  } else {
+    return 7;
+  }
+}

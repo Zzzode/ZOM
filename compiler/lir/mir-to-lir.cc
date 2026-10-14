@@ -3951,30 +3951,41 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   const auto& tempAssign = entry.statements[leadingLocalCount * 2 + 2].assignmentValue();
   if (tempAssign.destination.local() != tempLocalDecl.id ||
       tempAssign.destination.projections().size() != 0 ||
-      tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+      (tempAssign.value.kind() != mir::MirRvalueKind::Comparison &&
+       tempAssign.value.kind() != mir::MirRvalueKind::Use)) {
     return zc::none;
   }
-  const auto& comparison = tempAssign.value.comparisonValue();
-  auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
-    if (operand.kind() == mir::MirOperandKind::Constant) {
-      auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+  const bool isBareCondition = tempAssign.value.kind() == mir::MirRvalueKind::Use;
+  zc::Maybe<Operand> bareConditionOperand;
+  const mir::MirComparisonRvalue* comparison = nullptr;
+  zc::Maybe<Operand> lirLeft;
+  zc::Maybe<Operand> lirRight;
+  if (isBareCondition) {
+    bareConditionOperand = lirOperandFor(tempAssign.value.useValue().operand, tempCarrierValue);
+    if (bareConditionOperand == zc::none) { return zc::none; }
+  } else {
+    comparison = &tempAssign.value.comparisonValue();
+    auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
+      if (operand.kind() == mir::MirOperandKind::Constant) {
+        auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+        if (carrier != zc::none) { return carrier; }
+        carrier = floatCarrierFor(operand.constantValue().type, semanticTypes);
+        if (carrier != zc::none) { return carrier; }
+        return boolCarrierFor(operand.constantValue().type, semanticTypes);
+      }
+      auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
       if (carrier != zc::none) { return carrier; }
-      carrier = floatCarrierFor(operand.constantValue().type, semanticTypes);
+      carrier = floatCarrierFor(operand.place().rootType(), semanticTypes);
       if (carrier != zc::none) { return carrier; }
-      return boolCarrierFor(operand.constantValue().type, semanticTypes);
-    }
-    auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
-    if (carrier != zc::none) { return carrier; }
-    carrier = floatCarrierFor(operand.place().rootType(), semanticTypes);
-    if (carrier != zc::none) { return carrier; }
-    return boolCarrierFor(operand.place().rootType(), semanticTypes);
-  };
-  auto leftCarrier = operandCarrierFor(comparison.left);
-  auto rightCarrier = operandCarrierFor(comparison.right);
-  if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
-  auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
-  auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
-  if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+      return boolCarrierFor(operand.place().rootType(), semanticTypes);
+    };
+    auto leftCarrier = operandCarrierFor(comparison->left);
+    auto rightCarrier = operandCarrierFor(comparison->right);
+    if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
+    lirLeft = lirOperandFor(comparison->left, ZC_REQUIRE_NONNULL(leftCarrier));
+    lirRight = lirOperandFor(comparison->right, ZC_REQUIRE_NONNULL(rightCarrier));
+    if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+  }
 
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
@@ -4058,9 +4069,14 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     for (size_t i = 0; i < leadingLocalCount; ++i) {
       entryStatements.add(zc::mv(leadingInitializers[i]));
     }
-    entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison.op),
-                                           zc::mv(ZC_REQUIRE_NONNULL(lirLeft)),
-                                           zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
+    if (isBareCondition) {
+      entryStatements.add(
+          Statement::assign(tempOrdinal, zc::mv(ZC_REQUIRE_NONNULL(bareConditionOperand))));
+    } else {
+      entryStatements.add(Statement::compare(tempOrdinal, lirComparisonOpFor(comparison->op),
+                                             zc::mv(ZC_REQUIRE_NONNULL(lirLeft)),
+                                             zc::mv(ZC_REQUIRE_NONNULL(lirRight))));
+    }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(tempOrdinal, ZC_REQUIRE_NONNULL(thenId),
                                                  ZC_REQUIRE_NONNULL(elseId))));
@@ -5395,9 +5411,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   // StorageLive(result) + SwitchInt on the parameter), the equality-
   // conditional stride (3 locals: one parameter, one result, one bool
   // temporary; entry is StorageLive(result) + StorageLive(temp) +
-  // Assign(temp = Comparison) + SwitchInt on the temp), or the conjunctive
-  // stride (5 locals: two parameters, one result, two bool temporaries;
-  // entry is StorageLive(result) + StorageLive(guardTemp) +
+  // Assign(temp = Comparison or bare bool copy) + SwitchInt on the temp),
+  // or the conjunctive stride (5 locals: two parameters, one result, two
+  // bool temporaries; entry is StorageLive(result) + StorageLive(guardTemp) +
   // Assign(guardTemp = Comparison) + StorageLive(conjTemp) +
   // Assign(conjTemp = BitAnd) + SwitchInt on the conjTemp).
   if (callee.kind != mir::MirFunctionKind::Function || callee.sourceScopes.size() != 1 ||
@@ -5407,6 +5423,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   }
   const bool isEqualityStride = callee.locals.size() == 3;
   const bool isConjunctiveStride = callee.locals.size() == 5;
+  // Bare-condition stride: the equality stride's temp is assigned a Use (copy
+  // of a bool parameter) instead of a Comparison rvalue.
+  bool isBareCondition = false;
   const size_t calleeParameterCount =
       isConjunctiveStride ? 2 : (isEqualityStride ? 1 : callee.locals.size() - 1);
   const auto& calleeResult = callee.locals[calleeParameterCount];
@@ -5470,7 +5489,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
       return zc::none;
     }
   } else if (isEqualityStride) {
-    // Equality stride: StorageLive(result), StorageLive(temp), Assign(temp = Comparison).
+    // Equality stride: StorageLive(result), StorageLive(temp), Assign(temp = Comparison
+    // or bare bool copy).
     if (calleeEntry.statements.size() != 3 ||
         calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         calleeEntry.statements[0].storageLocal() != calleeResult.id ||
@@ -5483,9 +5503,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     const auto& tempAssign = calleeEntry.statements[2].assignmentValue();
     if (tempAssign.destination.local() != calleeTemp->id ||
         tempAssign.destination.projections().size() != 0 ||
-        tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
+        (tempAssign.value.kind() != mir::MirRvalueKind::Comparison &&
+         tempAssign.value.kind() != mir::MirRvalueKind::Use)) {
       return zc::none;
     }
+    isBareCondition = tempAssign.value.kind() == mir::MirRvalueKind::Use;
   } else {
     // Boolean stride: StorageLive(result) only.
     if (calleeEntry.statements.size() != 1 ||
@@ -5578,9 +5600,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
 
   // Equality stride: lower the comparison rvalue from the entry block's Assign
   // statement so the LIR entry block can compute the temp before branching.
+  // A bare-condition stride lowers the Use rvalue (bool parameter copy) instead.
   zc::Maybe<ComparisonOp> equalityOp;
   zc::Maybe<Operand> equalityLeft;
   zc::Maybe<Operand> equalityRight;
+  zc::Maybe<Operand> bareConditionOperand;
   // Conjunctive stride: lower the guard comparison and the conjunction.
   zc::Maybe<ComparisonOp> guardOp;
   zc::Maybe<Operand> guardLeft;
@@ -5620,30 +5644,39 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     conjRight = zc::mv(lirCRight);
   } else if (isEqualityStride) {
     const auto& tempAssign = calleeEntry.statements[2].assignmentValue();
-    const auto& comparison = tempAssign.value.comparisonValue();
-    auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
-      if (operand.kind() == mir::MirOperandKind::Constant) {
-        auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+    if (isBareCondition) {
+      // Bare bool condition: the temp receives a copy of a bool parameter.
+      auto conditionCarrier = boolCarrierFor(calleeTemp->type, semanticTypes);
+      if (conditionCarrier == zc::none) { return zc::none; }
+      bareConditionOperand =
+          lirOperandFor(tempAssign.value.useValue().operand, ZC_REQUIRE_NONNULL(conditionCarrier));
+      if (bareConditionOperand == zc::none) { return zc::none; }
+    } else {
+      const auto& comparison = tempAssign.value.comparisonValue();
+      auto operandCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
+        if (operand.kind() == mir::MirOperandKind::Constant) {
+          auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+          if (carrier == zc::none) {
+            carrier = enumCarrierFor(operand.constantValue().type, semanticTypes);
+          }
+          return carrier;
+        }
+        auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
         if (carrier == zc::none) {
-          carrier = enumCarrierFor(operand.constantValue().type, semanticTypes);
+          carrier = enumCarrierFor(operand.place().rootType(), semanticTypes);
         }
         return carrier;
-      }
-      auto carrier = integerCarrierFor(operand.place().rootType(), semanticTypes);
-      if (carrier == zc::none) {
-        carrier = enumCarrierFor(operand.place().rootType(), semanticTypes);
-      }
-      return carrier;
-    };
-    auto leftCarrier = operandCarrierFor(comparison.left);
-    auto rightCarrier = operandCarrierFor(comparison.right);
-    if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
-    auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
-    auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
-    if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
-    equalityOp = lirComparisonOpFor(comparison.op);
-    equalityLeft = zc::mv(lirLeft);
-    equalityRight = zc::mv(lirRight);
+      };
+      auto leftCarrier = operandCarrierFor(comparison.left);
+      auto rightCarrier = operandCarrierFor(comparison.right);
+      if (leftCarrier == zc::none || rightCarrier == zc::none) { return zc::none; }
+      auto lirLeft = lirOperandFor(comparison.left, ZC_REQUIRE_NONNULL(leftCarrier));
+      auto lirRight = lirOperandFor(comparison.right, ZC_REQUIRE_NONNULL(rightCarrier));
+      if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
+      equalityOp = lirComparisonOpFor(comparison.op);
+      equalityLeft = zc::mv(lirLeft);
+      equalityRight = zc::mv(lirRight);
+    }
   }
 
   // Caller: the two-block call+return shape with a single constant argument
@@ -5826,9 +5859,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
             calleeConjTemp->id.ordinal(), ArithmeticOp::BitAnd,
             zc::mv(ZC_REQUIRE_NONNULL(conjLeft)), zc::mv(ZC_REQUIRE_NONNULL(conjRight))));
       } else if (isEqualityStride) {
-        entryStatements.add(Statement::compare(
-            calleeConditionOrdinal, ZC_REQUIRE_NONNULL(equalityOp),
-            zc::mv(ZC_REQUIRE_NONNULL(equalityLeft)), zc::mv(ZC_REQUIRE_NONNULL(equalityRight))));
+        if (isBareCondition) {
+          // Bare bool condition: copy the bool parameter into the temp.
+          entryStatements.add(Statement::assign(calleeConditionOrdinal,
+                                                zc::mv(ZC_REQUIRE_NONNULL(bareConditionOperand))));
+        } else {
+          entryStatements.add(Statement::compare(
+              calleeConditionOrdinal, ZC_REQUIRE_NONNULL(equalityOp),
+              zc::mv(ZC_REQUIRE_NONNULL(equalityLeft)), zc::mv(ZC_REQUIRE_NONNULL(equalityRight))));
+        }
       }
       calleeBlocks.add(BasicBlock(
           ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(entryStatements),

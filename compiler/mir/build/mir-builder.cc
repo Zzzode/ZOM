@@ -3201,12 +3201,33 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
       conditionalValue.category != hir::HirValueCategory::Value) {
     return zc::none;
   }
+  // The condition is either a primitive binary (comparison/logical) or a bare
+  // bool local/parameter reference. A bare reference has no comparison node;
+  // the condition temp receives a copy of the bool value directly.
   auto equality = primitiveBinaryFor(hirModule, conditionalValue.condition);
-  if (equality == zc::none) return zc::none;
-  const auto& comparisonValue = ZC_ASSERT_NONNULL(equality);
-  auto comparison = comparisonOperatorFor(comparisonValue.operation);
-  auto arithmetic = arithmeticOperatorFor(comparisonValue.operation);
-  if (comparison == zc::none && arithmetic == zc::none) return zc::none;
+  auto conditionLocalRef = localReferenceFor(hirModule, conditionalValue.condition);
+  auto conditionParamRef = parameterReferenceFor(hirModule, conditionalValue.condition);
+  const bool isBareCondition = equality == zc::none;
+  if (isBareCondition && conditionLocalRef == zc::none && conditionParamRef == zc::none) {
+    return zc::none;
+  }
+  zc::Maybe<MirComparisonOperator> comparison;
+  zc::Maybe<MirArithmeticOperator> arithmetic;
+  if (!isBareCondition) {
+    comparison = comparisonOperatorFor(ZC_ASSERT_NONNULL(equality).operation);
+    arithmetic = arithmeticOperatorFor(ZC_ASSERT_NONNULL(equality).operation);
+    if (comparison == zc::none && arithmetic == zc::none) return zc::none;
+  }
+  auto conditionType = [&]() -> identity::SemanticTypeId {
+    if (!isBareCondition) return ZC_ASSERT_NONNULL(equality).type;
+    if (conditionLocalRef != zc::none) return ZC_ASSERT_NONNULL(conditionLocalRef).type;
+    return ZC_ASSERT_NONNULL(conditionParamRef).type;
+  };
+  auto conditionSpan = [&]() -> const identity::SourceSpan& {
+    if (!isBareCondition) return ZC_ASSERT_NONNULL(equality).sourceSpan;
+    if (conditionLocalRef != zc::none) return ZC_ASSERT_NONNULL(conditionLocalRef).sourceSpan;
+    return ZC_ASSERT_NONNULL(conditionParamRef).sourceSpan;
+  };
   // Resolve one conditional arm: a scalar literal, a parameter place-use, a
   // leading-local place-use, a primitive binary (arithmetic/comparison)
   // operation over two leaf operands, or a positional field extraction off a
@@ -3280,8 +3301,8 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
       static_cast<uint32_t>(declaration.parameters.size() + bindingCount + 1)) {
     return zc::none;
   }
-  const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, comparisonValue.type,
-                                                    scope, comparisonValue.sourceSpan.clone());
+  const MirLocalId conditionTemp =
+      ctx.declareLocal(MirLocalKind::Temporary, conditionType(), scope, conditionSpan().clone());
   if (conditionTemp.ordinal() !=
       static_cast<uint32_t>(declaration.parameters.size() + bindingCount + 2)) {
     return zc::none;
@@ -3372,37 +3393,66 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
         zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize, zc::mv(assignSpan)));
   }
 
-  auto leftOperand = binaryLeafOperand(hirModule, declaration, comparisonValue.left,
-                                       parameterLocals, userLocals.asPtr(), bindingCount,
-                                       comparisonValue.operandType, proofs, copyMarker);
-  auto rightOperand = binaryLeafOperand(hirModule, declaration, comparisonValue.right,
-                                        parameterLocals, userLocals.asPtr(), bindingCount,
-                                        comparisonValue.operandType, proofs, copyMarker);
-  if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+  zc::Maybe<MirRvalue> conditionRvalue;
+  if (isBareCondition) {
+    // Bare bool condition: copy the bool local/parameter into the temp.
+    zc::Maybe<MirOperand> conditionOperand;
+    ZC_IF_SOME(value, conditionLocalRef) {
+      if (value.category != hir::HirValueCategory::Place || value.local.ordinal() == 0 ||
+          value.local.ordinal() > static_cast<uint32_t>(bindingCount)) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      conditionOperand = placeUse(proofs, copyMarker,
+                                  MirPlace(userLocals[value.local.ordinal() - 1], value.type,
+                                           zc::mv(projections), value.type));
+    }
+    ZC_IF_SOME(value, conditionParamRef) {
+      auto parameterIndex = parameterIndexFor(declaration, value.parameter);
+      if (parameterIndex == zc::none || value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      conditionOperand = placeUse(proofs, copyMarker,
+                                  MirPlace(parameterLocals[ZC_ASSERT_NONNULL(parameterIndex)],
+                                           value.type, zc::mv(projections), value.type));
+    }
+    if (conditionOperand == zc::none) return zc::none;
+    conditionRvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(conditionOperand)));
+  } else {
+    const auto& comparisonValue = ZC_ASSERT_NONNULL(equality);
+    auto leftOperand = binaryLeafOperand(hirModule, declaration, comparisonValue.left,
+                                         parameterLocals, userLocals.asPtr(), bindingCount,
+                                         comparisonValue.operandType, proofs, copyMarker);
+    auto rightOperand = binaryLeafOperand(hirModule, declaration, comparisonValue.right,
+                                          parameterLocals, userLocals.asPtr(), bindingCount,
+                                          comparisonValue.operandType, proofs, copyMarker);
+    if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+    // A relational comparison lowers to a comparison rvalue; a logical
+    // short-circuit operator lowers to an arithmetic rvalue (BitAnd/BitOr)
+    // because the admitted slice only accepts side-effect-free operands.
+    conditionRvalue =
+        comparison != zc::none
+            ? MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison),
+                                    zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                    zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type)
+            : MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic),
+                                    zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                    zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type);
+  }
 
   ctx.appendStatement(
       MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
-  ctx.appendStatement(MirStatement::storageLive(conditionTemp, comparisonValue.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(conditionTemp, conditionSpan().clone()));
   zc::Vector<MirProjection> tempProjections;
-  // A relational comparison lowers to a comparison rvalue; a logical
-  // short-circuit operator lowers to an arithmetic rvalue (BitAnd/BitOr)
-  // because the admitted slice only accepts side-effect-free operands.
-  MirRvalue conditionRvalue =
-      comparison != zc::none
-          ? MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison),
-                                  zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-                                  zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type)
-          : MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic),
-                                  zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
-                                  zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparisonValue.type);
   ctx.appendStatement(MirStatement::assign(
-      MirPlace(conditionTemp, comparisonValue.type, zc::mv(tempProjections), comparisonValue.type),
-      zc::mv(conditionRvalue), MirInitializationKind::Initialize,
-      comparisonValue.sourceSpan.clone()));
+      MirPlace(conditionTemp, conditionType(), zc::mv(tempProjections), conditionType()),
+      zc::mv(ZC_ASSERT_NONNULL(conditionRvalue)), MirInitializationKind::Initialize,
+      conditionSpan().clone()));
   zc::Vector<MirProjection> discriminantProjections;
-  auto discriminant = placeUse(proofs, copyMarker,
-                               MirPlace(conditionTemp, comparisonValue.type,
-                                        zc::mv(discriminantProjections), comparisonValue.type));
+  auto discriminant = placeUse(
+      proofs, copyMarker,
+      MirPlace(conditionTemp, conditionType(), zc::mv(discriminantProjections), conditionType()));
   if (discriminant == zc::none) return zc::none;
   zc::Vector<MirSwitchIntArm> arms;
   arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});

@@ -326,6 +326,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/bool-local-conditional-consumer/Zom.toml::bool_local_conditional_consumer::bool_local_conditional_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-and-return-consumer/Zom.toml::logical_and_return_consumer::logical_and_return_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-or-return-consumer/Zom.toml::logical_or_return_consumer::logical_or_return_consumer"
@@ -594,6 +596,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/destructor-method-call-consumer/Zom.toml::destructor_method_call_consumer::destructor_method_call_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-ops-let-consumer/Zom.toml::logical_ops_let_consumer::logical_ops_let_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/bool-local-conditional-consumer/Zom.toml::bool_local_conditional_consumer::bool_local_conditional_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/logical-and-return-consumer/Zom.toml::logical_and_return_consumer::logical_and_return_consumer::0"
       --run-case

@@ -4124,13 +4124,32 @@ bool validLeadingLocalConditionalReturnFunction(
     const MirFunction& function, const hir::VerifiedHirModule& hirModule,
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
     const hir::HirReturnStatement& sourceReturn, const hir::HirConditionalExpression& conditional,
-    const hir::HirPrimitiveBinaryExpression& equality, hir::HirNodeId thenArm,
-    hir::HirNodeId elseArm, checker::marker::MarkerProofEngine& proofs, identity::DefId copy,
-    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    hir::HirNodeId thenArm, hir::HirNodeId elseArm, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   const size_t bindingCount = sourceBlock.statements.size() - 1;
   if (declaration.receiver != zc::none) return false;
   const size_t parameterCount = declaration.parameters.size();
+  // The condition is either a primitive binary (comparison/logical) or a bare
+  // bool local/parameter reference.
+  auto equality = primitiveBinaryFor(hirModule, conditional.condition);
+  auto conditionLocalRef = localReferenceFor(hirModule, conditional.condition);
+  auto conditionParamRef = parameterReferenceFor(hirModule, conditional.condition);
+  const bool isBareCondition = equality == zc::none;
+  if (isBareCondition && conditionLocalRef == zc::none && conditionParamRef == zc::none) {
+    return false;
+  }
+  auto conditionType = [&]() -> identity::SemanticTypeId {
+    if (!isBareCondition) return ZC_ASSERT_NONNULL(equality).type;
+    if (conditionLocalRef != zc::none) return ZC_ASSERT_NONNULL(conditionLocalRef).type;
+    return ZC_ASSERT_NONNULL(conditionParamRef).type;
+  };
+  auto conditionSpan = [&]() -> const identity::SourceSpan& {
+    if (!isBareCondition) return ZC_ASSERT_NONNULL(equality).sourceSpan;
+    if (conditionLocalRef != zc::none) return ZC_ASSERT_NONNULL(conditionLocalRef).sourceSpan;
+    return ZC_ASSERT_NONNULL(conditionParamRef).sourceSpan;
+  };
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.resultType != declaration.resultType ||
@@ -4139,8 +4158,8 @@ bool validLeadingLocalConditionalReturnFunction(
       declaration.body != sourceBlock.node || sourceBlock.statements.size() != bindingCount + 1 ||
       sourceBlock.statements[bindingCount] != sourceReturn.node ||
       sourceReturn.value != conditional.node || sourceReturn.resultType != declaration.resultType ||
-      conditional.condition != equality.node || conditional.thenReturnValue != thenArm ||
-      conditional.elseReturnValue != elseArm || conditional.type != declaration.resultType) {
+      conditional.thenReturnValue != thenArm || conditional.elseReturnValue != elseArm ||
+      conditional.type != declaration.resultType) {
     return false;
   }
   const auto& scope = function.sourceScopes[0];
@@ -4181,8 +4200,8 @@ bool validLeadingLocalConditionalReturnFunction(
   if (result.id != resultLocal || result.kind != MirLocalKind::FunctionResult ||
       result.type != declaration.resultType || result.sourceScope != scopeId(1) ||
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan) || temp.id != conditionTemp ||
-      temp.kind != MirLocalKind::Temporary || temp.type != equality.type ||
-      temp.sourceScope != scopeId(1) || !sameSpan(temp.sourceSpan, equality.sourceSpan)) {
+      temp.kind != MirLocalKind::Temporary || temp.type != conditionType() ||
+      temp.sourceScope != scopeId(1) || !sameSpan(temp.sourceSpan, conditionSpan())) {
     return false;
   }
   const auto& entry = function.blocks[0];
@@ -4331,7 +4350,7 @@ bool validLeadingLocalConditionalReturnFunction(
     }
     if (!operandOk) return false;
   }
-  // Result/temp StorageLive pair and the Comparison assign.
+  // Result/temp StorageLive pair and the condition assign.
   const auto& resultLive = entry.statements[bindingCount * 2];
   const auto& tempLive = entry.statements[bindingCount * 2 + 1];
   const auto& tempAssignStatement = entry.statements[bindingCount * 2 + 2];
@@ -4340,57 +4359,39 @@ bool validLeadingLocalConditionalReturnFunction(
       !sameSpan(resultLive.sourceSpan(), sourceReturn.sourceSpan) ||
       tempLive.kind() != MirStatementKind::StorageLive ||
       tempLive.storageLocal() != conditionTemp ||
-      !sameSpan(tempLive.sourceSpan(), equality.sourceSpan)) {
+      !sameSpan(tempLive.sourceSpan(), conditionSpan())) {
     return false;
   }
   if (tempAssignStatement.kind() != MirStatementKind::Assign ||
-      !sameSpan(tempAssignStatement.sourceSpan(), equality.sourceSpan)) {
+      !sameSpan(tempAssignStatement.sourceSpan(), conditionSpan())) {
     return false;
   }
   const auto& tempAssign = tempAssignStatement.assignmentValue();
-  const bool isLogicalCondition = equality.operation == checker::PrimitiveOperation::LogicalAnd ||
-                                  equality.operation == checker::PrimitiveOperation::LogicalOr;
   if (tempAssign.initialization != MirInitializationKind::Initialize ||
       tempAssign.destination.local() != conditionTemp ||
-      tempAssign.destination.rootType() != equality.type ||
-      tempAssign.destination.resultType() != equality.type ||
-      tempAssign.destination.projections().size() != 0 ||
-      tempAssign.value.kind() !=
-          (isLogicalCondition ? MirRvalueKind::Arithmetic : MirRvalueKind::Comparison)) {
+      tempAssign.destination.rootType() != conditionType() ||
+      tempAssign.destination.resultType() != conditionType() ||
+      tempAssign.destination.projections().size() != 0) {
     return false;
   }
-  const MirOperand* conditionLeft = nullptr;
-  const MirOperand* conditionRight = nullptr;
-  if (isLogicalCondition) {
-    const auto& arithmetic = tempAssign.value.arithmeticValue();
-    auto expectedOperator = mirArithmeticOperatorFor(equality.operation);
-    if (expectedOperator == zc::none || arithmetic.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-        arithmetic.resultType != equality.type) {
-      return false;
+  if (isBareCondition) {
+    // Bare bool condition: the temp receives a copy of the bool local/parameter.
+    if (tempAssign.value.kind() != MirRvalueKind::Use) return false;
+    const auto& operand = tempAssign.value.useValue().operand;
+    if (operand.kind() == MirOperandKind::Constant) return false;
+    if (!matchesPlaceUse(operand, proofs, copy, conditionType())) return false;
+    ZC_IF_SOME(value, conditionLocalRef) {
+      if (value.local.ordinal() < 1 ||
+          value.local.ordinal() > static_cast<uint32_t>(bindingCount) ||
+          operand.place().local() !=
+              localId(static_cast<uint32_t>(parameterCount + value.local.ordinal())) ||
+          operand.place().rootType() != conditionType() ||
+          operand.place().resultType() != conditionType() ||
+          operand.place().projections().size() != 0) {
+        return false;
+      }
     }
-    conditionLeft = &arithmetic.left;
-    conditionRight = &arithmetic.right;
-  } else {
-    const auto& comparison = tempAssign.value.comparisonValue();
-    auto expectedOperator = mirComparisonOperatorFor(equality.operation);
-    if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
-        comparison.resultType != equality.type) {
-      return false;
-    }
-    conditionLeft = &comparison.left;
-    conditionRight = &comparison.right;
-  }
-  // Comparison operand: a constant, a parameter copy, or a leading-local copy.
-  auto comparisonOperandOk = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
-    auto literal = expressionFor(hirModule, operandNode);
-    ZC_IF_SOME(value, literal) {
-      return operand.kind() == MirOperandKind::Constant &&
-             operand.constantValue().type == equality.operandType &&
-             sameConstant(operand.constantValue().value, value.value, module, identities,
-                          semanticTypes);
-    }
-    auto parameter = parameterReferenceFor(hirModule, operandNode);
-    ZC_IF_SOME(value, parameter) {
+    ZC_IF_SOME(value, conditionParamRef) {
       size_t parameterIndex = 0;
       bool resolved = false;
       for (size_t candidate = 0; candidate < parameterCount; ++candidate) {
@@ -4400,30 +4401,89 @@ bool validLeadingLocalConditionalReturnFunction(
           break;
         }
       }
-      return resolved && matchesPlaceUse(operand, proofs, copy, equality.operandType) &&
-             operand.kind() != MirOperandKind::Constant &&
-             operand.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
-             operand.place().rootType() == equality.operandType &&
-             operand.place().resultType() == equality.operandType &&
-             operand.place().projections().size() == 0;
+      if (!resolved ||
+          operand.place().local() != localId(static_cast<uint32_t>(parameterIndex + 1)) ||
+          operand.place().rootType() != conditionType() ||
+          operand.place().resultType() != conditionType() ||
+          operand.place().projections().size() != 0) {
+        return false;
+      }
     }
-    auto local = localReferenceFor(hirModule, operandNode);
-    ZC_IF_SOME(value, local) {
-      return value.local.ordinal() >= 1 &&
-             value.local.ordinal() <= static_cast<uint32_t>(bindingCount) &&
-             matchesPlaceUse(operand, proofs, copy, equality.operandType) &&
-             operand.kind() != MirOperandKind::Constant &&
-             operand.place().local() ==
-                 localId(static_cast<uint32_t>(parameterCount + value.local.ordinal())) &&
-             operand.place().rootType() == equality.operandType &&
-             operand.place().resultType() == equality.operandType &&
-             operand.place().projections().size() == 0;
+  } else {
+    const auto& equalityValue = ZC_ASSERT_NONNULL(equality);
+    const bool isLogicalCondition =
+        equalityValue.operation == checker::PrimitiveOperation::LogicalAnd ||
+        equalityValue.operation == checker::PrimitiveOperation::LogicalOr;
+    if (tempAssign.value.kind() !=
+        (isLogicalCondition ? MirRvalueKind::Arithmetic : MirRvalueKind::Comparison)) {
+      return false;
     }
-    return false;
-  };
-  if (!comparisonOperandOk(*conditionLeft, equality.left) ||
-      !comparisonOperandOk(*conditionRight, equality.right)) {
-    return false;
+    const MirOperand* conditionLeft = nullptr;
+    const MirOperand* conditionRight = nullptr;
+    if (isLogicalCondition) {
+      const auto& arithmetic = tempAssign.value.arithmeticValue();
+      auto expectedOperator = mirArithmeticOperatorFor(equalityValue.operation);
+      if (expectedOperator == zc::none || arithmetic.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+          arithmetic.resultType != equalityValue.type) {
+        return false;
+      }
+      conditionLeft = &arithmetic.left;
+      conditionRight = &arithmetic.right;
+    } else {
+      const auto& comparison = tempAssign.value.comparisonValue();
+      auto expectedOperator = mirComparisonOperatorFor(equalityValue.operation);
+      if (expectedOperator == zc::none || comparison.op != ZC_ASSERT_NONNULL(expectedOperator) ||
+          comparison.resultType != equalityValue.type) {
+        return false;
+      }
+      conditionLeft = &comparison.left;
+      conditionRight = &comparison.right;
+    }
+    // Comparison operand: a constant, a parameter copy, or a leading-local copy.
+    auto comparisonOperandOk = [&](const MirOperand& operand, hir::HirNodeId operandNode) -> bool {
+      auto literal = expressionFor(hirModule, operandNode);
+      ZC_IF_SOME(value, literal) {
+        return operand.kind() == MirOperandKind::Constant &&
+               operand.constantValue().type == equalityValue.operandType &&
+               sameConstant(operand.constantValue().value, value.value, module, identities,
+                            semanticTypes);
+      }
+      auto parameter = parameterReferenceFor(hirModule, operandNode);
+      ZC_IF_SOME(value, parameter) {
+        size_t parameterIndex = 0;
+        bool resolved = false;
+        for (size_t candidate = 0; candidate < parameterCount; ++candidate) {
+          if (declaration.parameters[candidate].key == value.parameter) {
+            parameterIndex = candidate;
+            resolved = true;
+            break;
+          }
+        }
+        return resolved && matchesPlaceUse(operand, proofs, copy, equalityValue.operandType) &&
+               operand.kind() != MirOperandKind::Constant &&
+               operand.place().local() == localId(static_cast<uint32_t>(parameterIndex + 1)) &&
+               operand.place().rootType() == equalityValue.operandType &&
+               operand.place().resultType() == equalityValue.operandType &&
+               operand.place().projections().size() == 0;
+      }
+      auto local = localReferenceFor(hirModule, operandNode);
+      ZC_IF_SOME(value, local) {
+        return value.local.ordinal() >= 1 &&
+               value.local.ordinal() <= static_cast<uint32_t>(bindingCount) &&
+               matchesPlaceUse(operand, proofs, copy, equalityValue.operandType) &&
+               operand.kind() != MirOperandKind::Constant &&
+               operand.place().local() ==
+                   localId(static_cast<uint32_t>(parameterCount + value.local.ordinal())) &&
+               operand.place().rootType() == equalityValue.operandType &&
+               operand.place().resultType() == equalityValue.operandType &&
+               operand.place().projections().size() == 0;
+      }
+      return false;
+    };
+    if (!comparisonOperandOk(*conditionLeft, equalityValue.left) ||
+        !comparisonOperandOk(*conditionRight, equalityValue.right)) {
+      return false;
+    }
   }
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) return false;
@@ -4438,8 +4498,8 @@ bool validLeadingLocalConditionalReturnFunction(
   }
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != conditionTemp ||
-      switchInt.discriminant.place().rootType() != equality.type ||
-      switchInt.discriminant.place().resultType() != equality.type ||
+      switchInt.discriminant.place().rootType() != conditionType() ||
+      switchInt.discriminant.place().resultType() != conditionType() ||
       switchInt.discriminant.place().projections().size() != 0) {
     return false;
   }
@@ -19644,13 +19704,20 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       if (conditional != zc::none) {
         conditionBinary = primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditional).condition);
       }
+      // The leading-local conditional shape accepts either a primitive binary
+      // condition (comparison/logical) or a bare bool local/parameter reference.
+      const bool conditionIsBare =
+          conditional != zc::none &&
+          (localReferenceFor(hirModule, ZC_ASSERT_NONNULL(conditional).condition) != zc::none ||
+           parameterReferenceFor(hirModule, ZC_ASSERT_NONNULL(conditional).condition) != zc::none);
       const bool isLeadingLocalConditional =
           sourceDeclaration.receiver == zc::none && sourceBlock != zc::none &&
           ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 1 && conditional != zc::none &&
-          conditionBinary != zc::none &&
+          (conditionBinary != zc::none || conditionIsBare) &&
           conditionalFor(hirModule, ZC_ASSERT_NONNULL(conditional).elseReturnValue) == zc::none &&
-          primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).left) == zc::none &&
-          primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).right) == zc::none;
+          (conditionBinary == zc::none ||
+           (primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).left) == zc::none &&
+            primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).right) == zc::none));
       const bool isLocalFieldReturn = localFieldProjection != zc::none;
       const bool isReceiverFieldReturn =
           receiverFieldProjection != zc::none && sourceDeclaration.receiver != zc::none;
@@ -20181,14 +20248,21 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               auto leadingElseLocal =
                   localReferenceFor(hirModule, sourceConditional.elseReturnValue);
               auto leadingEquality = primitiveBinaryFor(hirModule, sourceConditional.condition);
+              auto leadingConditionLocal =
+                  localReferenceFor(hirModule, sourceConditional.condition);
+              auto leadingConditionParam =
+                  parameterReferenceFor(hirModule, sourceConditional.condition);
               const bool thenOk = leadingThenLiteral != zc::none || leadingThenLocal != zc::none;
               const bool elseOk = leadingElseLiteral != zc::none || leadingElseLocal != zc::none;
-              if (thenOk && elseOk && leadingEquality != zc::none) {
+              const bool conditionOk = leadingEquality != zc::none ||
+                                       leadingConditionLocal != zc::none ||
+                                       leadingConditionParam != zc::none;
+              if (thenOk && elseOk && conditionOk) {
                 valid = validLeadingLocalConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
-                    sourceConditional, ZC_ASSERT_NONNULL(leadingEquality),
-                    sourceConditional.thenReturnValue, sourceConditional.elseReturnValue, proofs,
-                    copy, module, identities, semanticTypes);
+                    sourceConditional, sourceConditional.thenReturnValue,
+                    sourceConditional.elseReturnValue, proofs, copy, module, identities,
+                    semanticTypes);
               }
             }
             // Chained conditional return: a nested chain of equality
