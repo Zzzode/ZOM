@@ -8467,6 +8467,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       } else if (site.production == BodyProductionKind::ReadIndex) {
         auto shape = readIndexShape(input, site.node, nodeTypes.asPtr());
         if (shape == zc::none) {
+          // An index expression whose shape the read-index slice does not
+          // admit (e.g. indexing a string) is legal source the body slice
+          // cannot lower yet. Drain it as ZOM4099/ZOM4125 rather than a
+          // missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
