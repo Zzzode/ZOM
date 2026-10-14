@@ -4520,12 +4520,14 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
 zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit the verified sequential-local-return shape where every binding is
-  // initialized by a constant literal: one block with N >= 2 user locals, each
-  // brought to life by StorageLive plus an initializing Assign of a constant,
-  // and a place-copy return of one of the user locals. This is the
-  // tuple-destructure and multi-let literal slice of the broader
-  // sequential-local-return family that mir::validSequentialLocalReturnFunction
-  // accepts; binary and aggregate initializers are outside this slice.
+  // initialized by a constant literal or a comparison rvalue: one block with
+  // N >= 2 user locals, each brought to life by StorageLive plus an
+  // initializing Assign of a constant or a comparison over constant/place-use
+  // leaves, and a place-copy return of one of the user locals. This is the
+  // tuple-destructure, multi-let literal, and comparison-inference slice of
+  // the broader sequential-local-return family that
+  // mir::validSequentialLocalReturnFunction accepts; aggregate initializers
+  // are outside this slice.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1 || function.locals.size() < 2) {
     return zc::none;
@@ -4538,18 +4540,45 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
   if (resultCarrier == zc::none) { return zc::none; }
   const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
   if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
+
+  // Resolve each local's carrier independently. Comparison destinations are
+  // bool (Bit1) while their operands may be wider integers, so locals do not
+  // all share the result carrier.
+  zc::Vector<ValueType> localCarriers;
   for (const auto& local : function.locals) {
     auto carrier = integerCarrierFor(local.type, semanticTypes);
-    if (carrier == zc::none || ZC_REQUIRE_NONNULL(carrier) != resultCarrierValue) {
-      return zc::none;
-    }
+    if (carrier == zc::none) { return zc::none; }
+    localCarriers.add(ZC_REQUIRE_NONNULL(carrier));
   }
 
   const auto& block = function.blocks[0];
   const size_t localCount = function.locals.size();
   if (block.statements.size() != localCount * 2) { return zc::none; }
 
-  // Each pair must be StorageLive(local_i) followed by Assign(local_i = const).
+  // Resolves a comparison leaf operand to its LIR form. Constants use the
+  // carrier of their owning local (the comparison's operand type), not the
+  // result carrier, because comparison operands may be wider than the bool
+  // destination.
+  auto leafOperand = [&](const mir::MirOperand& operand,
+                         ValueType operandCarrier) -> zc::Maybe<Operand> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      return lirOperandFor(operand, operandCarrier);
+    }
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    const uint32_t ordinal = operand.place().local().ordinal();
+    bool declared = false;
+    for (const auto& local : function.locals) {
+      if (local.id.ordinal() == ordinal) {
+        declared = true;
+        break;
+      }
+    }
+    if (!declared) { return zc::none; }
+    return Operand::localUse(ordinal);
+  };
+
+  // Each pair must be StorageLive(local_i) followed by Assign(local_i = const)
+  // or Assign(local_i = comparison).
   for (size_t i = 0; i < localCount; ++i) {
     const auto& liveStatement = block.statements[i * 2];
     const auto& assignStatement = block.statements[i * 2 + 1];
@@ -4561,13 +4590,46 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
     const auto& assign = assignStatement.assignmentValue();
     if (assign.destination.local() != function.locals[i].id ||
         assign.destination.projections().size() != 0 ||
-        assign.initialization != mir::MirInitializationKind::Initialize ||
-        assign.value.kind() != mir::MirRvalueKind::Use) {
+        assign.initialization != mir::MirInitializationKind::Initialize) {
       return zc::none;
     }
-    const auto& operand = assign.value.useValue().operand;
-    if (operand.kind() != mir::MirOperandKind::Constant ||
-        operand.constantValue().type != function.locals[i].type) {
+    if (assign.value.kind() == mir::MirRvalueKind::Use) {
+      const auto& operand = assign.value.useValue().operand;
+      if (operand.kind() != mir::MirOperandKind::Constant ||
+          operand.constantValue().type != function.locals[i].type) {
+        return zc::none;
+      }
+    } else if (assign.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assign.value.comparisonValue();
+      if (comparison.resultType != function.locals[i].type) { return zc::none; }
+      // The destination must be bool (Bit1); the operands share one carrier
+      // that may differ from the destination.
+      if (localCarriers[i].kind() != ValueTypeKind::Integer ||
+          localCarriers[i].integerWidth() != IntegerBitWidth::Bit1) {
+        return zc::none;
+      }
+      // Resolve the operand carrier from the left operand's type.
+      ValueType operandCarrier = resultCarrierValue;
+      if (comparison.left.kind() == mir::MirOperandKind::Constant) {
+        auto carrier = integerCarrierFor(comparison.left.constantValue().type, semanticTypes);
+        if (carrier == zc::none) { return zc::none; }
+        operandCarrier = ZC_REQUIRE_NONNULL(carrier);
+      } else {
+        const uint32_t ordinal = comparison.left.place().local().ordinal();
+        bool found = false;
+        for (size_t j = 0; j < localCount; ++j) {
+          if (function.locals[j].id.ordinal() == ordinal) {
+            operandCarrier = localCarriers[j];
+            found = true;
+            break;
+          }
+        }
+        if (!found) { return zc::none; }
+      }
+      auto left = leafOperand(comparison.left, operandCarrier);
+      auto right = leafOperand(comparison.right, operandCarrier);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+    } else {
       return zc::none;
     }
   }
@@ -4593,11 +4655,37 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
   zc::Vector<Statement> statements;
   for (size_t i = 0; i < localCount; ++i) {
     const auto& assign = block.statements[i * 2 + 1].assignmentValue();
-    const auto& operand = assign.value.useValue().operand;
-    auto lowered = lirOperandFor(operand, resultCarrierValue);
-    if (lowered == zc::none) { return zc::none; }
-    statements.add(
-        Statement::assign(function.locals[i].id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(lowered))));
+    if (assign.value.kind() == mir::MirRvalueKind::Use) {
+      const auto& operand = assign.value.useValue().operand;
+      auto lowered = lirOperandFor(operand, localCarriers[i]);
+      if (lowered == zc::none) { return zc::none; }
+      statements.add(
+          Statement::assign(function.locals[i].id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(lowered))));
+    } else {
+      // Comparison rvalue (validated above).
+      const auto& comparison = assign.value.comparisonValue();
+      auto op = lirComparisonOpFor(comparison.op);
+      ValueType operandCarrier = resultCarrierValue;
+      if (comparison.left.kind() == mir::MirOperandKind::Constant) {
+        auto carrier = integerCarrierFor(comparison.left.constantValue().type, semanticTypes);
+        if (carrier == zc::none) { return zc::none; }
+        operandCarrier = ZC_REQUIRE_NONNULL(carrier);
+      } else {
+        const uint32_t ordinal = comparison.left.place().local().ordinal();
+        for (size_t j = 0; j < localCount; ++j) {
+          if (function.locals[j].id.ordinal() == ordinal) {
+            operandCarrier = localCarriers[j];
+            break;
+          }
+        }
+      }
+      auto left = leafOperand(comparison.left, operandCarrier);
+      auto right = leafOperand(comparison.right, operandCarrier);
+      if (left == zc::none || right == zc::none) { return zc::none; }
+      statements.add(Statement::compare(function.locals[i].id.ordinal(), op,
+                                        zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                        zc::mv(ZC_REQUIRE_NONNULL(right))));
+    }
   }
 
   auto entryId = LirBlockId::fromOrdinal(1);
@@ -4607,8 +4695,8 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
                         Terminator::returnLocal(returnOrdinal)));
 
   zc::Vector<Local> locals;
-  for (const auto& local : function.locals) {
-    locals.add(Local(local.id.ordinal(), resultCarrierValue));
+  for (size_t i = 0; i < localCount; ++i) {
+    locals.add(Local(function.locals[i].id.ordinal(), localCarriers[i]));
   }
 
   zc::String symbol = zc::heapString("zom.module_init");

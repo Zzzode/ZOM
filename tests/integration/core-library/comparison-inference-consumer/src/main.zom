@@ -1,0 +1,9 @@
+// Comparison inference slice: two inferred i32 locals feed a comparison
+// whose bool result binds a third local. The entry folds to the
+// sequential-local-return shape and exits 1 (true).
+fn entry() -> bool {
+    let x = 10;
+    let y = 20;
+    let z = x < y;
+    return z;
+}
