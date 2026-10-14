@@ -1,0 +1,9 @@
+// Logical OR in return position: two bool locals feed a short-circuit
+// disjunction whose result is returned directly. The entry folds to the
+// sequential-local-return shape and exits 1 (true).
+fn entry() -> bool {
+    let x = true;
+    let y = false;
+    let z = x || y;
+    return z;
+}

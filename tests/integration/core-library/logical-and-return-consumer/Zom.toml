@@ -1,0 +1,8 @@
+[package]
+name = "logical_and_return_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "logical_and_return_consumer"
+path = "src/main.zom"

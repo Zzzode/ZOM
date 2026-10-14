@@ -1,0 +1,9 @@
+// Logical AND in return position: two bool locals feed a short-circuit
+// conjunction whose result is returned directly. The entry folds to the
+// sequential-local-return shape and exits 0 (false).
+fn entry() -> bool {
+    let x = true;
+    let y = false;
+    let z = x && y;
+    return z;
+}
