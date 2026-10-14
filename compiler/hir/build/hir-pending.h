@@ -858,6 +858,13 @@ struct PendingFunctionDeclaration final {
   // localReturnCount node-type credit has no corresponding AST node and must
   // be subtracted, and the call fact has no corresponding HIR call node.
   bool returnsLocalPostfixIncrement = false;
+  /// True when the return value is a primitive unary operation on a local
+  /// (`return !x;`). The unary desugars to an equivalent binary with a
+  /// synthetic constant operand (e.g. `!x` -> `x == false`). The
+  /// UnaryExpression node carries the call fact, so the per-function
+  /// localReturnCount node-type credit has no corresponding AST node and must
+  /// be subtracted.
+  bool returnsPrimitiveUnary = false;
   /// True when the return value is an error-propagate call (`return f()?!;`).
   /// The PostfixExpression node carries a node-type fact beyond the direct-call
   /// baseline, so the fact-count equations add one extra node-type credit.

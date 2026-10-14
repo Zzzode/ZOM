@@ -3354,6 +3354,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsDirectExistentialCall = false;
   bool returnsLocalIncrement = false;
   bool returnsLocalPostfixIncrement = false;
+  bool returnsPrimitiveUnary = false;
   bool returnsArrayIndexFold = false;
   bool returnsArrayLengthFold = false;
   bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
@@ -3428,6 +3429,22 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           tree.node(unaryOperand).kind == ast::SyntaxKind::IdentExpr) {
         localReference = unaryOperand;
         returnsLocalIncrement = true;
+      }
+    } else if (unaryOp == ast::UnaryOperatorKind::LogicalNot ||
+               unaryOp == ast::UnaryOperatorKind::Plus ||
+               unaryOp == ast::UnaryOperatorKind::Minus ||
+               unaryOp == ast::UnaryOperatorKind::BitNot) {
+      // A primitive unary return (`return !x;` / `return +x;` / etc.)
+      // desugars to an equivalent binary with a synthetic constant operand
+      // (e.g. `!x` lowers to `x == false`). The operand must be an
+      // identifier naming the declared local or a parameter; the builder
+      // validates the call fact and resolves the operand.
+      const ast::NodeId unaryOperand(
+          tree.node(value).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (tree.contains(unaryOperand) &&
+          tree.node(unaryOperand).kind == ast::SyntaxKind::IdentExpr) {
+        localReference = unaryOperand;
+        returnsPrimitiveUnary = true;
       }
     }
   } else if (tree.node(value).kind == ast::SyntaxKind::PostfixExpression) {
@@ -3565,6 +3582,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.localReference = localReference;
     shape.returnsLocalIncrement = returnsLocalIncrement;
     shape.returnsLocalPostfixIncrement = returnsLocalPostfixIncrement;
+    shape.returnsPrimitiveUnary = returnsPrimitiveUnary;
     shape.returnsLocalField = returnsLocalField;
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;
@@ -3692,6 +3710,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   shape.localReference = localReference;
   shape.returnsLocalIncrement = returnsLocalIncrement;
   shape.returnsLocalPostfixIncrement = returnsLocalPostfixIncrement;
+  shape.returnsPrimitiveUnary = returnsPrimitiveUnary;
   shape.returnsLocalField = returnsLocalField;
   shape.returnsLocalReborrow = reborrow != zc::none;
   shape.returnsReceiverCall = returnsReceiverCall;

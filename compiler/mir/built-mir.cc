@@ -6974,6 +6974,172 @@ bool validLocalReturnFunction(
   return false;
 }
 
+bool validPrimitiveUnaryReturnFunction(
+    const MirFunction& function, const hir::VerifiedHirModule& hirModule,
+    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
+    const hir::HirLocalBinding& sourceLocal, const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirReturnStatement& sourceReturn, const hir::HirPrimitiveBinaryExpression& binary,
+    identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
+    identity::DefId copy) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return false;
+  if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
+      function.sourceDefinitionKind != identity::DefinitionKind::Function ||
+      function.resultType != declaration.resultType ||
+      !sameSpan(function.sourceSpan, declaration.sourceSpan) || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 2 || function.blocks.size() != 1 ||
+      declaration.body != sourceBlock.node || sourceBlock.statements.size() != 2 ||
+      sourceBlock.statements[0] != sourceLocal.node ||
+      sourceBlock.statements[1] != sourceReturn.node ||
+      sourceLocal.initializer != initializer.node || sourceReturn.value != binary.node ||
+      sourceLocal.type != declaration.resultType ||
+      sourceReturn.resultType != declaration.resultType) {
+    return false;
+  }
+  const auto& scope = function.sourceScopes[0];
+  const auto& userLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
+  const auto& block = function.blocks[0];
+  if (scope.id != scopeId(1) || scope.parent != zc::none ||
+      !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
+      userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
+      userLocal.sourceScope != scope.id ||
+      !sameSpan(userLocal.sourceSpan, sourceLocal.sourceSpan) || resultLocal.id != localId(2) ||
+      resultLocal.kind != MirLocalKind::FunctionResult ||
+      resultLocal.type != declaration.resultType || resultLocal.sourceScope != scope.id ||
+      !sameSpan(resultLocal.sourceSpan, sourceReturn.sourceSpan) || block.id != blockId(1) ||
+      block.sourceScope != scope.id || block.statements.size() != 4 ||
+      block.statements[0].kind() != MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != userLocal.id ||
+      !sameSpan(block.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
+      block.statements[1].kind() != MirStatementKind::Assign ||
+      block.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.statements[1].assignmentValue().destination.local() != userLocal.id ||
+      block.statements[1].assignmentValue().destination.rootType() != userLocal.type ||
+      block.statements[1].assignmentValue().destination.resultType() != userLocal.type ||
+      block.statements[1].assignmentValue().destination.projections().size() != 0 ||
+      block.statements[1].assignmentValue().value.kind() != MirRvalueKind::Use ||
+      block.statements[1].assignmentValue().value.useValue().operand.kind() !=
+          MirOperandKind::Constant ||
+      !sameSpan(block.statements[1].sourceSpan(), initializer.sourceSpan) ||
+      block.statements[2].kind() != MirStatementKind::StorageLive ||
+      block.statements[2].storageLocal() != resultLocal.id ||
+      !sameSpan(block.statements[2].sourceSpan(), sourceReturn.sourceSpan) ||
+      block.statements[3].kind() != MirStatementKind::Assign ||
+      block.statements[3].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      block.statements[3].assignmentValue().destination.local() != resultLocal.id ||
+      block.statements[3].assignmentValue().destination.rootType() != declaration.resultType ||
+      block.statements[3].assignmentValue().destination.resultType() != declaration.resultType ||
+      block.statements[3].assignmentValue().destination.projections().size() != 0 ||
+      !sameSpan(block.statements[3].sourceSpan(), binary.sourceSpan) ||
+      block.terminator.kind() != MirTerminatorKind::Return ||
+      block.terminator.returnValue().value == zc::none ||
+      !sameSpan(block.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // The initializer constant matches the HIR literal.
+  const auto& initConstant =
+      block.statements[1].assignmentValue().value.useValue().operand.constantValue();
+  if (initConstant.type != initializer.type ||
+      !sameConstant(initConstant.value, initializer.value, module, identities, semanticTypes)) {
+    return false;
+  }
+  // The binary rvalue is an Arithmetic or Comparison whose operands are a
+  // place-use of the user local and a scalar constant. The HIR builder
+  // guarantees one operand is a local reference and the other is a synthetic
+  // literal.
+  const auto expectedComparison = mirComparisonOperatorFor(binary.operation);
+  const auto expectedArithmetic = mirArithmeticOperatorFor(binary.operation);
+  const auto& assignment = block.statements[3].assignmentValue();
+  zc::Maybe<const MirOperand&> rvalueLeft;
+  zc::Maybe<const MirOperand&> rvalueRight;
+  if (assignment.value.kind() == MirRvalueKind::Comparison) {
+    const auto& comparisonValue = assignment.value.comparisonValue();
+    if (expectedComparison == zc::none ||
+        comparisonValue.op != ZC_ASSERT_NONNULL(expectedComparison) ||
+        comparisonValue.resultType != binary.type) {
+      return false;
+    }
+    rvalueLeft = comparisonValue.left;
+    rvalueRight = comparisonValue.right;
+  } else if (assignment.value.kind() == MirRvalueKind::Arithmetic) {
+    const auto& arithmeticValue = assignment.value.arithmeticValue();
+    if (expectedArithmetic == zc::none ||
+        arithmeticValue.op != ZC_ASSERT_NONNULL(expectedArithmetic) ||
+        arithmeticValue.resultType != binary.type || binary.type != binary.operandType) {
+      return false;
+    }
+    rvalueLeft = arithmeticValue.left;
+    rvalueRight = arithmeticValue.right;
+  } else {
+    return false;
+  }
+  // Resolve the HIR binary operands: one is a local reference to the binding,
+  // the other is a scalar literal.
+  auto leftLiteral = expressionFor(hirModule, binary.left);
+  auto leftRef = localReferenceFor(hirModule, binary.left);
+  auto rightLiteral = expressionFor(hirModule, binary.right);
+  auto rightRef = localReferenceFor(hirModule, binary.right);
+  const bool leftOperandOk = (leftLiteral != zc::none) != (leftRef != zc::none);
+  const bool rightOperandOk = (rightLiteral != zc::none) != (rightRef != zc::none);
+  if (!leftOperandOk || !rightOperandOk || (leftRef == zc::none && rightRef == zc::none) ||
+      (leftLiteral == zc::none && rightLiteral == zc::none)) {
+    return false;
+  }
+  // Verify the local reference points to the binding.
+  ZC_IF_SOME(value, leftRef) {
+    if (value.local != sourceLocal.local || value.type != sourceLocal.type ||
+        value.category != hir::HirValueCategory::Place) {
+      return false;
+    }
+  }
+  ZC_IF_SOME(value, rightRef) {
+    if (value.local != sourceLocal.local || value.type != sourceLocal.type ||
+        value.category != hir::HirValueCategory::Place) {
+      return false;
+    }
+  }
+  // Verify the literal types match the operand type.
+  ZC_IF_SOME(value, leftLiteral) {
+    if (value.type != binary.operandType) return false;
+  }
+  ZC_IF_SOME(value, rightLiteral) {
+    if (value.type != binary.operandType) return false;
+  }
+  auto operandMatches = [&](const MirOperand& operand,
+                            zc::Maybe<const hir::HirScalarLiteralExpression&> literal,
+                            zc::Maybe<const hir::HirLocalReferenceExpression&> reference) -> bool {
+    ZC_IF_SOME(value, literal) {
+      return operand.kind() == MirOperandKind::Constant &&
+             operand.constantValue().type == binary.operandType &&
+             sameConstant(operand.constantValue().value, value.value, module, identities,
+                          semanticTypes);
+    }
+    ZC_IF_SOME(value, reference) {
+      (void)value;
+      return matchesPlaceUse(operand, proofs, copy, binary.operandType) &&
+             operand.place().local() == userLocal.id &&
+             operand.place().rootType() == binary.operandType &&
+             operand.place().resultType() == binary.operandType &&
+             operand.place().projections().size() == 0;
+    }
+    return false;
+  };
+  if (rvalueLeft == zc::none || rvalueRight == zc::none ||
+      !operandMatches(ZC_ASSERT_NONNULL(rvalueLeft), leftLiteral, leftRef) ||
+      !operandMatches(ZC_ASSERT_NONNULL(rvalueRight), rightLiteral, rightRef)) {
+    return false;
+  }
+  ZC_IF_SOME(value, block.terminator.returnValue().value) {
+    return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
+           value.place().local() == resultLocal.id &&
+           value.place().rootType() == declaration.resultType &&
+           value.place().resultType() == declaration.resultType &&
+           value.place().projections().size() == 0;
+  }
+  return false;
+}
+
 bool validMethodScalarLocalReturnFunction(
     const MirFunction& function, const hir::VerifiedHirModule& hirModule,
     const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& sourceBlock,
@@ -19324,6 +19490,15 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       const bool isLocalBorrow = localBorrow != zc::none;
       const bool isConditionalReturn = conditional != zc::none;
       const bool isComparisonReturn = comparisonReturn != zc::none;
+      // Primitive-unary return: `let x: T = <lit>; return !x;` (or `+x` /
+      // `-x` / `~x`). The HIR builder desugars the unary to a binary with a
+      // synthetic constant operand. Two-statement body with a
+      // literal-initialized local and a primitive-binary return whose
+      // operands are a local reference and a synthetic literal.
+      const bool isPrimitiveUnaryReturn = sourceLocal != zc::none && comparisonReturn != zc::none &&
+                                          localReference == zc::none && expression == zc::none &&
+                                          initializer != zc::none && sourceOverwrite == zc::none &&
+                                          sourceDeclaration.receiver == zc::none;
       // Direct aggregate return: `return T { ..constants.. };` (including enum
       // construction `return Result::Ok(41);`). One-statement body, no local,
       // the return value is a nominal aggregate expression with no per-field
@@ -19377,6 +19552,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       const bool isLocalReturn = !isLocalFieldReturn && !isLocalAliasReborrow && !isLocalBorrow &&
                                  !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
                                  !isScalarLocalCallReturn && !isDirectExistentialCallReturn &&
+                                 !isPrimitiveUnaryReturn &&
                                  (sourceLocal != zc::none || localReference != zc::none);
       const bool hasLocalWrites =
           sourceBlock != zc::none && ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 3;
@@ -19410,52 +19586,60 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             !isByValueAggregateCallReturn && !isErasedAggregateCallReturn &&
             !isScalarLocalCallReturn && !isDirectExistentialCallReturn && !isLocalReturn &&
             !isParameterReturn && !isParameterReborrow && !isLocalBorrow && !isConditionalReturn &&
-            !isComparisonReturn && !isDirectAggregateReturn && !isDynFieldAggregateReturn &&
-            !isExistentialReturn && !isParameterReceiverCallReturn &&
+            !isComparisonReturn && !isPrimitiveUnaryReturn && !isDirectAggregateReturn &&
+            !isDynFieldAggregateReturn && !isExistentialReturn && !isParameterReceiverCallReturn &&
             (expression == zc::none) == (call == zc::none)) ||
            (isParameterReceiverCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
              isScalarLocalCallReturn || isDirectExistentialCallReturn || isLocalReturn ||
              isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
-             isComparisonReturn || isDirectAggregateReturn || isDynFieldAggregateReturn ||
-             expression != zc::none || call != zc::none || localReference != zc::none ||
-             sourceOverwrite != zc::none)) ||
+             isComparisonReturn || isPrimitiveUnaryReturn || isDirectAggregateReturn ||
+             isDynFieldAggregateReturn || expression != zc::none || call != zc::none ||
+             localReference != zc::none || sourceOverwrite != zc::none)) ||
+           (isPrimitiveUnaryReturn &&
+            (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
+             isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
+             isScalarLocalCallReturn || isDirectExistentialCallReturn || isLocalReturn ||
+             isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
+             isDirectAggregateReturn || isDynFieldAggregateReturn || isExistentialReturn ||
+             isParameterReceiverCallReturn || expression != zc::none || call != zc::none ||
+             localReference != zc::none || sourceOverwrite != zc::none)) ||
            (isByValueAggregateCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isErasedAggregateCallReturn || isScalarLocalCallReturn ||
              isDirectExistentialCallReturn || isLocalReturn || isParameterReturn ||
              isParameterReborrow || isLocalBorrow || isConditionalReturn || isComparisonReturn ||
-             expression != zc::none || localReference != zc::none ||
+             isPrimitiveUnaryReturn || expression != zc::none || localReference != zc::none ||
              sourceOverwrite != zc::none)) ||
            (isErasedAggregateCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isScalarLocalCallReturn || isDirectExistentialCallReturn || isLocalReturn ||
              isParameterReturn || isParameterReborrow || isLocalBorrow || isConditionalReturn ||
-             isComparisonReturn || expression != zc::none || localReference != zc::none ||
-             sourceOverwrite != zc::none)) ||
+             isComparisonReturn || isPrimitiveUnaryReturn || expression != zc::none ||
+             localReference != zc::none || sourceOverwrite != zc::none)) ||
            (isScalarLocalCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isDirectExistentialCallReturn || isLocalReturn || isParameterReturn ||
              isParameterReborrow || isLocalBorrow || isConditionalReturn || isComparisonReturn ||
-             expression != zc::none || localReference != zc::none ||
+             isPrimitiveUnaryReturn || expression != zc::none || localReference != zc::none ||
              sourceOverwrite != zc::none)) ||
            (isDirectExistentialCallReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isByValueParameterFieldReturn ||
              isByValueAggregateCallReturn || isErasedAggregateCallReturn ||
              isScalarLocalCallReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
-             isLocalBorrow || isConditionalReturn || isComparisonReturn ||
+             isLocalBorrow || isConditionalReturn || isComparisonReturn || isPrimitiveUnaryReturn ||
              isDirectAggregateReturn || isDynFieldAggregateReturn || isExistentialReturn ||
              expression != zc::none || localReference != zc::none ||
              sourceOverwrite != zc::none)) ||
            (isReceiverFieldReturn &&
             (isLocalFieldReturn || isLocalReturn || isParameterReturn || isParameterReborrow ||
-             isLocalBorrow || isConditionalReturn || isComparisonReturn || expression != zc::none ||
-             call != zc::none)) ||
+             isLocalBorrow || isConditionalReturn || isComparisonReturn || isPrimitiveUnaryReturn ||
+             expression != zc::none || call != zc::none)) ||
            (isByValueParameterFieldReturn &&
             (isLocalFieldReturn || isReceiverFieldReturn || isLocalReturn || isParameterReturn ||
              isParameterReborrow || isLocalBorrow || isConditionalReturn || isComparisonReturn ||
-             expression != zc::none || call != zc::none)) ||
+             isPrimitiveUnaryReturn || expression != zc::none || call != zc::none)) ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && isParameterReturn &&
             (isLocalReturn || isParameterReborrow || expression != zc::none || call != zc::none)) ||
            (!isLocalFieldReturn && !isReceiverFieldReturn && isParameterReborrow &&
@@ -19868,25 +20052,36 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             }
           }
           ZC_IF_SOME(sourceComparison, comparisonReturn) {
-            auto fieldBinaryProjection =
-                parameterFieldProjectionFor(hirModule, sourceComparison.left);
-            hir::HirNodeId fieldBinaryLiteralNode = sourceComparison.right;
-            if (fieldBinaryProjection == zc::none) {
-              fieldBinaryProjection =
-                  parameterFieldProjectionFor(hirModule, sourceComparison.right);
-              fieldBinaryLiteralNode = sourceComparison.left;
-            }
-            auto fieldBinaryLiteral = expressionFor(hirModule, fieldBinaryLiteralNode);
-            if (sourceDeclaration.receiver != zc::none && fieldBinaryProjection != zc::none &&
-                fieldBinaryLiteral != zc::none) {
-              valid = validReceiverFieldBinaryReturnFunction(
-                  function, sourceDeclaration, block, returnStatement, sourceComparison,
-                  ZC_ASSERT_NONNULL(fieldBinaryProjection), ZC_ASSERT_NONNULL(fieldBinaryLiteral),
-                  proofs, copy, module, identities, semanticTypes);
+            if (isPrimitiveUnaryReturn) {
+              ZC_IF_SOME(local, sourceLocal) {
+                ZC_IF_SOME(localInitializer, initializer) {
+                  valid = validPrimitiveUnaryReturnFunction(
+                      function, hirModule, sourceDeclaration, block, local, localInitializer,
+                      returnStatement, sourceComparison, module, identities, semanticTypes, proofs,
+                      copy);
+                }
+              }
             } else {
-              valid = validComparisonReturnFunction(function, hirModule, sourceDeclaration, block,
-                                                    returnStatement, sourceComparison, proofs, copy,
-                                                    module, identities, semanticTypes);
+              auto fieldBinaryProjection =
+                  parameterFieldProjectionFor(hirModule, sourceComparison.left);
+              hir::HirNodeId fieldBinaryLiteralNode = sourceComparison.right;
+              if (fieldBinaryProjection == zc::none) {
+                fieldBinaryProjection =
+                    parameterFieldProjectionFor(hirModule, sourceComparison.right);
+                fieldBinaryLiteralNode = sourceComparison.left;
+              }
+              auto fieldBinaryLiteral = expressionFor(hirModule, fieldBinaryLiteralNode);
+              if (sourceDeclaration.receiver != zc::none && fieldBinaryProjection != zc::none &&
+                  fieldBinaryLiteral != zc::none) {
+                valid = validReceiverFieldBinaryReturnFunction(
+                    function, sourceDeclaration, block, returnStatement, sourceComparison,
+                    ZC_ASSERT_NONNULL(fieldBinaryProjection), ZC_ASSERT_NONNULL(fieldBinaryLiteral),
+                    proofs, copy, module, identities, semanticTypes);
+              } else {
+                valid = validComparisonReturnFunction(function, hirModule, sourceDeclaration, block,
+                                                      returnStatement, sourceComparison, proofs,
+                                                      copy, module, identities, semanticTypes);
+              }
             }
           }
         }

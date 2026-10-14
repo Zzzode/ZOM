@@ -670,6 +670,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       shape.returnsArrayIndexFold,
                                                       shape.returnsLocalIncrement,
                                                       shape.returnsLocalPostfixIncrement,
+                                                      shape.returnsPrimitiveUnary,
                                                       shape.returnsErrorPropagateCall,
                                                       shape.returnsErrorUnwrapCall,
                                                       zc::none,
@@ -1877,6 +1878,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
+                                                          shape.returnsPrimitiveUnary,
                                                           shape.returnsErrorPropagateCall,
                                                           shape.returnsErrorUnwrapCall,
                                                           zc::none,
@@ -2076,6 +2078,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
+                                                          shape.returnsPrimitiveUnary,
                                                           shape.returnsErrorPropagateCall,
                                                           shape.returnsErrorUnwrapCall,
                                                           zc::none,
@@ -3084,6 +3087,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
+                                                          shape.returnsPrimitiveUnary,
                                                           shape.returnsErrorPropagateCall,
                                                           shape.returnsErrorUnwrapCall,
                                                           zc::none,
@@ -3286,6 +3290,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           shape.returnsArrayIndexFold,
                                                           shape.returnsLocalIncrement,
                                                           shape.returnsLocalPostfixIncrement,
+                                                          shape.returnsPrimitiveUnary,
                                                           shape.returnsErrorPropagateCall,
                                                           shape.returnsErrorUnwrapCall,
                                                           zc::none,
@@ -3633,6 +3638,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
+                                                        shape.returnsPrimitiveUnary,
                                                         shape.returnsErrorPropagateCall,
                                                         shape.returnsErrorUnwrapCall,
                                                         zc::none,
@@ -4042,6 +4048,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
+                                                        shape.returnsPrimitiveUnary,
                                                         shape.returnsErrorPropagateCall,
                                                         shape.returnsErrorUnwrapCall,
                                                         zc::none,
@@ -4457,6 +4464,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
+                                                        shape.returnsPrimitiveUnary,
                                                         shape.returnsErrorPropagateCall,
                                                         shape.returnsErrorUnwrapCall,
                                                         zc::none,
@@ -4479,6 +4487,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Vector<HirLocalWriteStatement> localWrites;
       zc::Vector<PendingLocalWriteValue> localWriteValues;
       zc::Maybe<HirLocalReferenceExpression> localReference;
+      zc::Maybe<PendingEqualityCondition> comparisonReturn;
       zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
       zc::Maybe<HirParameterFieldProjectionExpression> parameterFieldProjection;
       bool byValueParameterField = false;
@@ -5657,6 +5666,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         shape.returnsArrayIndexFold,
                                                         shape.returnsLocalIncrement,
                                                         shape.returnsLocalPostfixIncrement,
+                                                        shape.returnsPrimitiveUnary,
                                                         shape.returnsErrorPropagateCall,
                                                         shape.returnsErrorUnwrapCall,
                                                         zc::none,
@@ -6128,6 +6138,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         false,
                                                         false,
                                                         false,
+                                                        false,
                                                         zc::none,
                                                         zc::none,
                                                         shape.body,
@@ -6217,7 +6228,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
             !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
             !shape.returnsDirectExistentialCall && !shape.returnsArrayIndexFold &&
-            !shape.returnsArrayLengthFold) {
+            !shape.returnsArrayLengthFold && !shape.returnsPrimitiveUnary) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -6289,7 +6300,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           if (!shape.returnsLocalField && !shape.returnsLocalReborrow &&
               !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
               !shape.returnsDirectScalarLocalCall && !shape.returnsDirectExistentialCall &&
-              !shape.returnsArrayIndexFold && !shape.returnsArrayLengthFold) {
+              !shape.returnsArrayIndexFold && !shape.returnsArrayLengthFold &&
+              !shape.returnsPrimitiveUnary) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -7532,6 +7544,98 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
+          }
+        }
+        // A primitive unary return (`return !x;` / `return +x;` / etc.)
+        // desugars to an equivalent binary with a synthetic constant operand
+        // (e.g. `!x` -> `x == false`). The UnaryExpression node carries the
+        // call fact; the binary and its synthetic operand have no AST nodes.
+        // The return value is the desugared binary, not a local reference.
+        if (shape.returnsPrimitiveUnary) {
+          auto unaryTypeIndex = factIndex(facts.nodeTypes(), shape.value);
+          auto unaryCallIndex = factIndex(facts.calls(), shape.value);
+          auto unarySpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
+          if (unaryTypeIndex == zc::none || unaryCallIndex == zc::none || unarySpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t unaryTypeSlot = 0;
+          ZC_IF_SOME(index, unaryTypeIndex) { unaryTypeSlot = index; }
+          const auto& unaryType = facts.nodeTypes().entries()[unaryTypeSlot].value;
+          size_t unaryCallSlot = 0;
+          ZC_IF_SOME(index, unaryCallIndex) { unaryCallSlot = index; }
+          const auto& unaryCallFact = facts.calls().entries()[unaryCallSlot].value;
+          const auto& unaryCall = unaryCallFact.invocation;
+          const auto& unarySelected = unaryCall.selected.variant();
+          if (!unarySelected.is<checker::checked::PrimitiveCallable>() ||
+              unaryCallFact.node != shape.value || unaryCall.receiver != zc::none ||
+              unaryCall.receiverMode != zc::none || unaryCall.receiverAdjustment != zc::none ||
+              unaryCall.arguments.size() != 1 ||
+              unaryCall.arguments[0].sourceNode != shape.localReference ||
+              unaryCall.successType != unaryType || unaryCall.resultType != unaryType ||
+              unaryCall.substitutions != zc::none || unaryCall.witnesses != zc::none ||
+              unaryCall.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto unaryOperation =
+              unarySelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (!isScalarUnaryOperation(unaryOperation)) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto operandKind = primitiveKindOf(checkedModule.semanticTypes(), unaryType);
+          if (operandKind == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto desugar = desugarPrimitiveUnary(unaryOperation, ZC_ASSERT_NONNULL(operandKind));
+          if (desugar == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          auto operandSpan = bound.parsedModule().spanFor(tree.node(shape.localReference).range);
+          if (operandSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          auto localArm = PendingConditionalArm{
+              zc::none,
+              zc::none,
+              HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), unaryType,
+                                          HirValueCategory::Place,
+                                          ZC_ASSERT_NONNULL(operandSpan).clone()},
+              unaryType,
+              ZC_ASSERT_NONNULL(operandSpan).clone(),
+              zc::none,
+              shape.localReference};
+          auto syntheticArm =
+              PendingConditionalArm{ZC_ASSERT_NONNULL(desugar).syntheticValue.clone(), zc::none,
+                                    zc::none, unaryType, ZC_ASSERT_NONNULL(unarySpan).clone()};
+          if (ZC_ASSERT_NONNULL(desugar).syntheticOnLeft) {
+            comparisonReturn = PendingEqualityCondition{zc::mv(syntheticArm),
+                                                        zc::mv(localArm),
+                                                        unaryType,
+                                                        unaryType,
+                                                        ZC_ASSERT_NONNULL(desugar).binaryOperation,
+                                                        ZC_ASSERT_NONNULL(unarySpan).clone(),
+                                                        true,
+                                                        ast::NodeId()};
+          } else {
+            comparisonReturn = PendingEqualityCondition{zc::mv(localArm),
+                                                        zc::mv(syntheticArm),
+                                                        unaryType,
+                                                        unaryType,
+                                                        ZC_ASSERT_NONNULL(desugar).binaryOperation,
+                                                        ZC_ASSERT_NONNULL(unarySpan).clone(),
+                                                        true,
+                                                        ast::NodeId()};
           }
         }
         if (shape.returnsArrayIndexFold || shape.returnsArrayLengthFold) {
@@ -11414,7 +11518,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       zc::none,
                                                       zc::none,
                                                       zc::none,
-                                                      zc::none,
+                                                      zc::mv(comparisonReturn),
                                                       zc::mv(loopBodyReturn),
                                                       zc::mv(doWhileLoopBodyReturn),
                                                       zc::mv(forLoopReturn),
@@ -11435,6 +11539,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       returnsArrayIndexFold,
                                                       shape.returnsLocalIncrement,
                                                       shape.returnsLocalPostfixIncrement,
+                                                      shape.returnsPrimitiveUnary,
                                                       shape.returnsErrorPropagateCall,
                                                       shape.returnsErrorUnwrapCall,
                                                       zc::none,
@@ -11853,6 +11958,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   // node-type fact than a binary comparison return because the synthetic operand
   // has no AST node and therefore no checker-produced node type.
   size_t unaryReturnCount = 0;
+  // Primitive-unary returns with a local binding (`let x: T = <lit>; return
+  // !x;`). The local binding contributes a literal fact beyond the unary-return
+  // baseline, but the comparison-return path already counts the binary and
+  // return. The initializer literal's node-type fact is covered by
+  // localReturnCount, so only the literals equation adds this count.
+  size_t primitiveUnaryReturnCount = 0;
   // Receiver field-arithmetic methods (`return this.<field> OP
   // <literal>;`). Each carries three node-type facts beyond the per-function
   // baseline (the receiver `this`, the field projection, and the literal; the
@@ -12368,6 +12479,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       ++loopCount;
       continue;
     }
+    // Primitive-unary return with a local binding (`let x: T = <lit>; return
+    // !x;`). The local binding and its literal initializer contribute facts
+    // beyond the unary-return baseline; count both before the comparison-return
+    // path skips the local counting.
+    if (function.returnsPrimitiveUnary) {
+      ++localReturnCount;
+      ++comparisonReturnCount;
+      ++primitiveUnaryReturnCount;
+      ZC_IF_SOME(comparison, function.comparisonReturn) {
+        if (comparison.isUnaryDesugar) { ++unaryReturnCount; }
+        for (const auto* operand : {&comparison.left, &comparison.right}) {
+          if (operand->literal != zc::none) { ++comparisonReturnLiteralOperandCount; }
+        }
+      }
+      continue;
+    }
     if (function.comparisonReturn != zc::none) {
       ++comparisonReturnCount;
       ZC_IF_SOME(comparison, function.comparisonReturn) {
@@ -12685,7 +12812,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if ((function.local == zc::none) != (function.localReference == zc::none) &&
         function.localFieldProjection == zc::none && !localAliasReborrow && !hasLocalBorrow &&
         !isDirectAggregateCall && !isDirectScalarLocalCall && !isDirectExistentialCall &&
-        !isVoidLetBody && !function.returnsArrayIndexFold && !function.returnsArrayLengthFold) {
+        !isVoidLetBody && !function.returnsArrayIndexFold && !function.returnsArrayLengthFold &&
+        !function.returnsPrimitiveUnary) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::AdditionalFact, module, registries,
                                            1);
@@ -12870,11 +12998,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           conditionalBinaryArmLiteralOperandCount + matchReturnCount * 2 - matchDefaultArmCount -
           matchEqualityReturnCount + equalityLiteralOperandCount - conditionalCount +
           comparisonReturnLiteralOperandCount - comparisonReturnCount - unaryReturnCount +
-          binaryWriteCount + parameterFieldWriteCount + directAggregateCallCount +
-          directScalarLocalCallCount + leadingLocalConditionalBindingCount +
-          leadingLocalConditionalLiteralOperandCount - leadingLocalConditionalUnaryCount +
-          leadingLocalConditionalBinaryLiteralOperandCount - incrementWriteCount +
-          static_cast<int64_t>(forLoopReturnCount) * 3 +
+          primitiveUnaryReturnCount + binaryWriteCount + parameterFieldWriteCount +
+          directAggregateCallCount + directScalarLocalCallCount +
+          leadingLocalConditionalBindingCount + leadingLocalConditionalLiteralOperandCount -
+          leadingLocalConditionalUnaryCount + leadingLocalConditionalBinaryLiteralOperandCount -
+          incrementWriteCount + static_cast<int64_t>(forLoopReturnCount) * 3 +
           static_cast<int64_t>(forLoopAccumulatorReturnCount) * 2 +
           static_cast<int64_t>(forLoopAccumulatorCount) +
           static_cast<int64_t>(forLoopAccumulatorLiteralRightCount) +
@@ -13273,6 +13401,27 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
                      receiverCalls, conditionals, loops, sourceNodes);
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    // Primitive unary return: `let x: T = <lit>; return !x;` (or `+x` / `-x` /
+    // `~x`). The unary desugars to an equivalent binary with a synthetic
+    // constant operand (e.g. `!x` -> `x == false`). Eight node ids: function,
+    // body, local, initializer, left, right, binary, return.
+    if (value.comparisonReturn != zc::none && value.local != zc::none &&
+        value.localReference == zc::none && value.literal != zc::none && value.call == zc::none &&
+        value.receiverCall == zc::none && value.aggregate == zc::none &&
+        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
+        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
+        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
+        value.localBorrow == zc::none && value.conditionalReturn == zc::none &&
+        value.loopReturn == zc::none && value.loopBodyReturn == zc::none &&
+        value.doWhileLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
+      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                     receiverCalls, conditionals, loops, sourceNodes);
+      lowerPrimitiveUnaryReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     // Receiver field arithmetic: `return this.<field> OP <literal>;`

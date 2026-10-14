@@ -1,0 +1,8 @@
+// Primitive unary logical-not fixture: a parameter-free entry that binds a
+// boolean local and returns its logical negation (`!x`). The HIR builder
+// desugars the unary to an equality comparison with a synthetic `false`
+// literal, so `zomc run` executes it natively and exits 1.
+fn entry() -> bool {
+  let x: bool = false;
+  return !x;
+}

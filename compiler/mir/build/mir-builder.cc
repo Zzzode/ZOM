@@ -1372,6 +1372,98 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers the primitive-unary return shape
+/// `fn f() -> T { let x: T = <lit>; return !x; }` (or `+x` / `-x` / `~x`).
+/// The HIR builder desugars the unary operation to an equivalent binary with
+/// a synthetic constant operand. One UserLocal holds the initializer literal;
+/// one FunctionResult local holds the arithmetic/comparison rvalue whose
+/// operands are a place-use of the user local and a scalar constant.
+zc::Maybe<RecursiveFunctionProduct> buildPrimitiveUnaryReturn(
+    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirPrimitiveBinaryExpression& binary, const hir::HirReturnStatement& sourceReturn,
+    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
+    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  auto arithmetic = arithmeticOperatorFor(binary.operation);
+  auto comparison = comparisonOperatorFor(binary.operation);
+  if (arithmetic == zc::none && comparison == zc::none) return zc::none;
+  if (arithmetic != zc::none && binary.type != binary.operandType) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
+                                                sourceLocal.sourceSpan.clone());
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
+
+  // Resolve a binary operand: a scalar constant or a place-use of the user
+  // local. The HIR builder guarantees one of each; anything else rejects.
+  auto resolveOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
+    if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
+      if (ZC_ASSERT_NONNULL(literal).type != binary.operandType) return zc::none;
+      return MirOperand::constant(binary.operandType, ZC_ASSERT_NONNULL(literal).value.clone());
+    }
+    if (auto reference = localReferenceFor(hirModule, operandNode); reference != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(reference);
+      if (value.type != binary.operandType || value.category != hir::HirValueCategory::Place ||
+          value.local != sourceLocal.local) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      return placeUse(
+          proofs, copyMarker,
+          MirPlace(userLocal, binary.operandType, zc::mv(projections), binary.operandType));
+    }
+    return zc::none;
+  };
+
+  auto left = resolveOperand(binary.left);
+  auto right = resolveOperand(binary.right);
+  if (left == zc::none || right == zc::none) return zc::none;
+
+  zc::Maybe<MirRvalue> rvalue;
+  if (arithmetic != zc::none) {
+    rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                   zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+  } else {
+    rvalue = MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison), zc::mv(ZC_ASSERT_NONNULL(left)),
+                                   zc::mv(ZC_ASSERT_NONNULL(right)), binary.type);
+  }
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
+  zc::Vector<MirProjection> initProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, sourceLocal.type, zc::mv(initProjections), sourceLocal.type),
+      MirRvalue::use(MirOperand::constant(sourceLocal.type, initializer.value.clone())),
+      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(
+      MirStatement::assign(MirPlace(result, declaration.resultType, zc::mv(destinationProjections),
+                                    declaration.resultType),
+                           zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+                           binary.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(result, declaration.resultType, zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn f() -> T { let a: [T; N] = [...]; return a[k]; }` where
 /// the index read is folded to a scalar literal. The array local is declared
 /// and StorageLive'd but never initialized (the array literal is folded at
@@ -4487,6 +4579,47 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
         return buildMethodScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
                                             ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
                                             copyMarker);
+      }
+    }
+  }
+
+  // Primitive-unary return: `let x: T = <lit>; return !x;` (or `+x` / `-x` /
+  // `~x`). The HIR builder desugars the unary operation to an equivalent
+  // binary with a synthetic constant operand. One binary operand is a local
+  // reference to the binding; the other is a synthetic literal.
+  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none &&
+      declaration.receiver == zc::none) {
+    auto sourceLocal = localFor(hirModule, block.statements[0]);
+    if (sourceLocal != zc::none) {
+      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+      hir::HirNodeId initializerNode;
+      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+      auto literal = expressionFor(hirModule, initializerNode);
+      auto binary = primitiveBinaryFor(hirModule, valueNode);
+      if (literal != zc::none && binary != zc::none &&
+          binding.initializer == ZC_ASSERT_NONNULL(literal).node &&
+          binding.type == declaration.resultType &&
+          ZC_ASSERT_NONNULL(literal).type == binding.type) {
+        const auto& bin = ZC_ASSERT_NONNULL(binary);
+        auto leftLocal = localReferenceFor(hirModule, bin.left);
+        auto rightLocal = localReferenceFor(hirModule, bin.right);
+        auto leftLiteral = expressionFor(hirModule, bin.left);
+        auto rightLiteral = expressionFor(hirModule, bin.right);
+        const bool localOnLeft =
+            leftLocal != zc::none && rightLiteral != zc::none &&
+            ZC_ASSERT_NONNULL(leftLocal).local == binding.local &&
+            ZC_ASSERT_NONNULL(leftLocal).type == binding.type &&
+            ZC_ASSERT_NONNULL(leftLocal).category == hir::HirValueCategory::Place;
+        const bool localOnRight =
+            rightLocal != zc::none && leftLiteral != zc::none &&
+            ZC_ASSERT_NONNULL(rightLocal).local == binding.local &&
+            ZC_ASSERT_NONNULL(rightLocal).type == binding.type &&
+            ZC_ASSERT_NONNULL(rightLocal).category == hir::HirValueCategory::Place;
+        if (localOnLeft || localOnRight) {
+          return buildPrimitiveUnaryReturn(declaration, binding, ZC_ASSERT_NONNULL(literal), bin,
+                                           ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities,
+                                           proofs, copyMarker);
+        }
       }
     }
   }

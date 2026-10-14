@@ -156,6 +156,11 @@ struct FunctionReturnShape final {
   // is dead (the local is destroyed after return) and elides to a local
   // reference return. The PostfixExpression node carries the call fact.
   bool returnsLocalPostfixIncrement = false;
+  // Two-statement primitive-unary return: `let x: T = <lit>; return !x;`
+  // (or `+x` / `-x` / `~x`). The unary desugars to an equivalent binary
+  // with a synthetic constant operand (e.g. `!x == false`). The operand
+  // must be an identifier naming the declared local or a parameter.
+  bool returnsPrimitiveUnary = false;
   bool returnsLocalField = false;
   // Single-statement free-function shape: `return <ordinary-parameter>.<field>;`
   // reading one field of a by-value struct parameter with one field projection.

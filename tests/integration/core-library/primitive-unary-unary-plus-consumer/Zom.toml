@@ -1,0 +1,8 @@
+[package]
+name = "primitive_unary_unary_plus_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "primitive_unary_unary_plus_consumer"
+path = "src/main.zom"

@@ -1905,12 +1905,17 @@ bool isAdmittedFunctionBody(const ast::Tree& tree, const ast::Node& function) {
   } else if (tree.node(returnValue).kind == ast::SyntaxKind::UnaryExpression) {
     // A prefix increment/decrement return (`return ++x;` / `return --x;`)
     // desugars to a binary write (`x = x +/- 1`) followed by a local
-    // reference return. The operand must name the declared local; the
-    // mutability and integer type are checker decisions.
+    // reference return. A primitive unary return (`return !x;` /
+    // `return +x;` / `return -x;` / `return ~x;`) desugars to an
+    // equivalent binary with a synthetic constant operand. Both set
+    // returnReference to the operand so the local-reference match below
+    // admits the shape; the operand must name the declared local.
     const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
         tree.node(returnValue).payload.words[ast::kUnaryExpressionOpWord]);
     if (unaryOp == ast::UnaryOperatorKind::PreIncrement ||
-        unaryOp == ast::UnaryOperatorKind::PreDecrement) {
+        unaryOp == ast::UnaryOperatorKind::PreDecrement ||
+        unaryOp == ast::UnaryOperatorKind::LogicalNot || unaryOp == ast::UnaryOperatorKind::Plus ||
+        unaryOp == ast::UnaryOperatorKind::Minus || unaryOp == ast::UnaryOperatorKind::BitNot) {
       const ast::NodeId unaryOperand(
           tree.node(returnValue).payload.words[ast::kUnaryExpressionOperandWord]);
       if (tree.contains(unaryOperand) &&

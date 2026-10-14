@@ -18,5 +18,12 @@ namespace detail {
 /// binary, return.
 void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one `let x: T = <lit>; return !x;` (or `+x` / `-x` / `~x`)
+/// primitive-unary function through the recursive driver. The unary desugars to
+/// an equivalent binary with a synthetic constant operand. The local binding
+/// lowers first, then the binary operands, the binary node, and the return.
+/// Node stride: function, body, local, initializer, left, right, binary, return.
+void lowerPrimitiveUnaryReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

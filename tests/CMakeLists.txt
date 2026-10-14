@@ -248,6 +248,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-decrement-consumer/Zom.toml::postfix_let_decrement_consumer::postfix_let_decrement_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-logical-not-consumer/Zom.toml::primitive_unary_logical_not_consumer::primitive_unary_logical_not_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-unary-plus-consumer/Zom.toml::primitive_unary_unary_plus_consumer::primitive_unary_unary_plus_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-neg-consumer/Zom.toml::primitive_unary_neg_consumer::primitive_unary_neg_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-bit-not-consumer/Zom.toml::primitive_unary_bit_not_consumer::primitive_unary_bit_not_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
@@ -462,6 +470,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-increment-consumer/Zom.toml::postfix_let_increment_consumer::postfix_let_increment_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/postfix-let-decrement-consumer/Zom.toml::postfix_let_decrement_consumer::postfix_let_decrement_consumer::40"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-logical-not-consumer/Zom.toml::primitive_unary_logical_not_consumer::primitive_unary_logical_not_consumer::1"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-unary-plus-consumer/Zom.toml::primitive_unary_unary_plus_consumer::primitive_unary_unary_plus_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-neg-consumer/Zom.toml::primitive_unary_neg_consumer::primitive_unary_neg_consumer::215"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-bit-not-consumer/Zom.toml::primitive_unary_bit_not_consumer::primitive_unary_bit_not_consumer::214"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --run-case

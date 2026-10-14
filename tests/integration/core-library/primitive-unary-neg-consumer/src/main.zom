@@ -1,0 +1,8 @@
+// Primitive negation fixture: a parameter-free entry that binds an integer
+// local and returns its negation (`-x`). The HIR builder desugars the unary
+// to a subtraction from a synthetic zero literal, so `zomc run` executes it
+// natively and exits 215 (the two's-complement low byte of -41).
+fn entry() -> i32 {
+  let x: i32 = 41;
+  return -x;
+}

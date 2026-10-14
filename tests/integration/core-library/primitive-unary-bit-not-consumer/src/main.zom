@@ -1,0 +1,8 @@
+// Primitive bitwise-not fixture: a parameter-free entry that binds an integer
+// local and returns its bitwise complement (`~x`). The HIR builder desugars
+// the unary to an XOR with a synthetic all-ones literal, so `zomc run`
+// executes it natively and exits 214 (the two's-complement low byte of -42).
+fn entry() -> i32 {
+  let x: i32 = 41;
+  return ~x;
+}
