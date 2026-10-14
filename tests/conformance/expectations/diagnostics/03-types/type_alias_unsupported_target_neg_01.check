@@ -1,8 +1,11 @@
 // RUN: cd %corpus && ! %zomc compile --check 03-types/type_alias_unsupported_target_neg_01.zom > %t 2>&1
 // RUN: %FileCheck %s --input-file %t
 
-// A type alias whose target is a structural object type is parsed but its
-// target is not part of the implemented semantic type surface. The checker
-// refuses with ZOM4106 instead of raising an internal compiler error.
-// CHECK-LITERAL: Error [ZOM4106]: this type alias target is not supported yet
+// A pair of mutually recursive type aliases (A = B, B = A) cannot be
+// resolved to a semantic type. The checker detects the cycle through the
+// visiting-alias stack and refuses with ZOM4052 instead of recursing
+// infinitely.
+// CHECK-LITERAL: Error [ZOM4052]: Recursive type alias cycle
 // CHECK-LITERAL:   --> conformance/03-types/type_alias_unsupported_target_neg_01.zom:1:1
+// CHECK-LITERAL: Error [ZOM4052]: Recursive type alias cycle
+// CHECK-LITERAL:   --> conformance/03-types/type_alias_unsupported_target_neg_01.zom:2:1

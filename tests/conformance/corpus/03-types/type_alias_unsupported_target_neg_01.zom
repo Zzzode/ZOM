@@ -1,1 +1,2 @@
-alias Empty = {};
+alias A = B;
+alias B = A;

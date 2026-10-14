@@ -1449,7 +1449,8 @@ private:
       const bool isNamedType =
           kind == identity::DefinitionKind::Class || kind == identity::DefinitionKind::Struct ||
           kind == identity::DefinitionKind::Enum || kind == identity::DefinitionKind::Error ||
-          kind == identity::DefinitionKind::Interface;
+          kind == identity::DefinitionKind::Interface ||
+          kind == identity::DefinitionKind::TypeAlias;
       if (!isNamedType || definition.nameSpace != binder::Namespace::Type ||
           definition.name.text() != name || result != zc::none) {
         continue;
@@ -1584,6 +1585,35 @@ private:
           type::semantic::TypeData(type::semantic::InterfaceBoundTypeData{zc::mv(interface)}),
           TypeKeyPattern::interfaceBound(
               PatternInterfaceInstantiation{definition, zc::mv(argumentPatterns)}));
+    }
+    if (kind == identity::DefinitionKind::TypeAlias) {
+      // Resolve the alias target on demand from the AST. This avoids a
+      // dependency on the alias's own signature being built first and
+      // supports aliases that reference other aliases. A recursive alias
+      // cycle (A = B, B = A) is detected through the visiting stack and
+      // reported as ZOM4052.
+      auto aliasNode = localDefinitionNode(definition);
+      if (aliasNode == zc::none) return zc::none;
+      ZC_IF_SOME(node, aliasNode) {
+        const auto& aliasTree = boundModule.tree();
+        if (!aliasTree.contains(node) || aliasTree.node(node).kind != ast::SyntaxKind::AliasDecl) {
+          return zc::none;
+        }
+        for (const auto visiting : visitingAliases) {
+          if (visiting == definition) {
+            auto failure = signatureSourceFailure(
+                SignatureSourceDiagnostic::RecursiveTypeAliasCycle, boundModule, node, node);
+            if (failure != zc::none) { sink.add(zc::mv(ZC_ASSERT_NONNULL(failure))); }
+            return zc::none;
+          }
+        }
+        visitingAliases.add(definition);
+        const ast::NodeId target(aliasTree.node(node).payload.words[ast::kAliasDeclTargetWord]);
+        auto result = build(target);
+        visitingAliases.removeLast();
+        return result;
+      }
+      return zc::none;
     }
     if (kind != identity::DefinitionKind::Class && kind != identity::DefinitionKind::Struct &&
         kind != identity::DefinitionKind::Enum && kind != identity::DefinitionKind::Error) {
@@ -1745,8 +1775,10 @@ private:
         ast::NodeId(tree.node(principalNode).payload.words[ast::kNamedTypeExprPathWord]));
     if (definition == zc::none) { return false; }
     ZC_IF_SOME(record, identities.definition(ZC_ASSERT_NONNULL(definition))) {
-      // Type aliases are refused on the ZOM4106 rail before any type is built;
-      // leave them to that diagnostic instead of mislabeling the alias target.
+      // Type aliases resolve to their target through buildNamedDefinition,
+      // but buildInterface only admits interfaces directly. Leave the alias
+      // to the buildInterface none-return path instead of mislabeling the
+      // alias target as a non-interface principal.
       if (record.record().kind() == identity::DefinitionKind::Interface ||
           record.record().kind() == identity::DefinitionKind::TypeAlias) {
         return true;
@@ -2356,6 +2388,9 @@ private:
   zc::ArrayPtr<const identity::GenericParameterId> genericParameters;
   zc::Vector<SignatureSourceFailureRef>& sink;
   zc::Maybe<identity::DefId> contextualInterface;
+  // Stack of type alias definitions currently being resolved on this builder,
+  // used to detect recursive alias cycles (A = B, B = A).
+  zc::Vector<identity::DefId> visitingAliases;
 
   static zc::Maybe<ast::NodeList> methodParameterList(const ast::Tree& tree,
                                                       ast::NodeId methodNode) {
@@ -7955,22 +7990,57 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         continue;
       }
-      // Type aliases carry a signature only when their target type resolves to
-      // a semantic type. The alias-target type expressions admitted by the
-      // parser (function, tuple, union/intersection, dyn, container, and
-      // structural object types) are not part of the implemented semantic
-      // type surface yet, so an unresolvable target is a source rejection
-      // ("this type alias target is not supported yet"), never an internal
-      // invariant. The binding is skipped and reported through the source
-      // failure rail rather than producing a signature fact.
+      // Type aliases resolve their target type through SourceTypeBuilder,
+      // which handles every admitted type expression (predefined, named,
+      // tuple, array, function, union/intersection, object, optional, dyn,
+      // and reference/pointer types). A target that cannot be resolved to a
+      // semantic type and produced no more specific diagnostic is reported
+      // as ZOM4106 on the source failure rail rather than producing a
+      // signature fact.
       if (definitionKind == identity::DefinitionKind::TypeAlias) {
-        auto failure = signatureSourceFailure(SignatureSourceDiagnostic::TypeAliasTargetUnsupported,
-                                              input.boundModule, definition.node, definition.node);
-        if (failure == zc::none) {
-          return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
-                                              definition.node.value));
+        if (!tree.contains(definition.node) ||
+            tree.node(definition.node).kind != ast::SyntaxKind::AliasDecl) {
+          return buildReject(
+              checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
-        ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+        const auto& aliasSyntax = tree.node(definition.node);
+        const ast::NodeId target(aliasSyntax.payload.words[ast::kAliasDeclTargetWord]);
+        if (!tree.contains(target)) {
+          return buildReject(
+              checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
+        }
+        // The parser does not parse generic parameters for type aliases yet,
+        // so the alias carries no generic parameters to resolve.
+        zc::Vector<identity::GenericParameterId> noGenerics;
+        SourceTypeBuilder typeBuilder(input.boundModule, input.identities, input.semanticTypes,
+                                      noGenerics.asPtr(), sourceFailures);
+        auto builtType = typeBuilder.build(target);
+        if (builtType == zc::none) {
+          if (!sourceFailures.empty()) { continue; }
+          auto failure =
+              signatureSourceFailure(SignatureSourceDiagnostic::TypeAliasTargetUnsupported,
+                                     input.boundModule, definition.node, definition.node);
+          if (failure == zc::none) {
+            return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch, module,
+                                                definition.node.value));
+          }
+          ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          continue;
+        }
+        ZC_IF_SOME(value, builtType) {
+          ZC_IF_SOME(signatureScopeValue, scope) {
+            built.add(BuiltSignature{
+                SemanticSignature{definition.definition, definitionKind,
+                                  zc::mv(signatureScopeValue), zc::Vector<SignatureModifier>(),
+                                  zc::Vector<NormalizedAttributeFact>(),
+                                  SemanticSignaturePayload(TypeAliasSignature{
+                                      zc::Vector<GenericParameterSignature>(), value.type}),
+                                  bound.source.clone()},
+                SignatureDefinitionRequirement{definition.definition, definitionKind,
+                                               zc::Array<uint8_t>()},
+                definition.key.encode()});
+          }
+        }
         continue;
       }
       // Associated type members (`type Item;`) nested in an interface are

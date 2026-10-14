@@ -1019,6 +1019,7 @@ enum class SignatureSourceDiagnostic : uint16_t {
   ConflictingImpl = 4017,
   InvalidBinaryOperands = 4028,
   InvalidComparisonOperands = 4029,
+  RecursiveTypeAliasCycle = 4052,
   OrphanImpl = 4054,
   DynDuplicateAssociatedTypeBinding = 4055,
   BodyLiteralOutOfRange = 4077,

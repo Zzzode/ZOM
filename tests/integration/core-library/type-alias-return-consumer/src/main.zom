@@ -1,0 +1,9 @@
+// A type alias resolves to its target type in every annotation position.
+// The entry function uses the alias in a let binding and returns the
+// resolved i32 value, exiting 41.
+alias MyInt = i32;
+
+fn entry() -> i32 {
+    let x: MyInt = 41;
+    return x;
+}
