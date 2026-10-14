@@ -29,6 +29,8 @@ namespace {
 /// non-integer primitive are outside the scalar-integer initializer slice.
 zc::Maybe<IntegerBitWidth> integerWidthFor(type::semantic::PrimitiveKind kind) noexcept {
   switch (kind) {
+    case type::semantic::PrimitiveKind::Bool:
+      return IntegerBitWidth::Bit1;
     case type::semantic::PrimitiveKind::I8:
     case type::semantic::PrimitiveKind::U8:
       return IntegerBitWidth::Bit8;
@@ -795,6 +797,22 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
     if (lirConstant == zc::none) { return zc::none; }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
                           Terminator::returnString(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+    zc::Vector<Function> functions;
+    functions.add(
+        Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
+  // Boolean constants lower to i1 integer constants.
+  auto boolean = constant.value.booleanValue();
+  if (boolean != zc::none) {
+    auto carrier = boolCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto lirConstant = IntegerConstant::from(carrierValue, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
     zc::Vector<Function> functions;
     functions.add(
         Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
