@@ -1,0 +1,11 @@
+// Both-literal comparison conditional fixture: a less-than comparison whose
+// operands are both integer literals (no leading local, no parameter). Both
+// arms return a scalar literal, and the true comparison selects the arm that
+// exits 41.
+fn entry() -> i32 {
+  if (1 < 2) {
+    return 41;
+  } else {
+    return 7;
+  }
+}

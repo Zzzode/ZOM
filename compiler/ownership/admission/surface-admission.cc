@@ -1331,12 +1331,12 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
   const auto& ifNode = tree.node(ifStmt);
   // Admit two structural condition shapes: a bare identifier (a bool parameter
   // reference) or a binary comparison whose operands are each an identifier or a
-  // scalar literal, with at least one identifier operand. A literal-vs-literal
-  // comparison has no parameter to lower and would constant-fold, so it fails
-  // closed here. Which comparison operators are actually supported is a checker
-  // decision (this admits every relational-shaped comparison and the checker
-  // rejects the unsupported operators), keeping the operator-support contract in
-  // a single place. Every other condition shape fails closed.
+  // scalar literal. A literal-vs-literal comparison is admitted with the
+  // literal NodeType facts supplying the operand type. Which comparison
+  // operators are actually supported is a checker decision (this admits every
+  // relational-shaped comparison and the checker rejects the unsupported
+  // operators), keeping the operator-support contract in a single place. Every
+  // other condition shape fails closed.
   const ast::NodeId condition(ifNode.payload.words[ast::kIfStmtCondWord]);
   if (!tree.contains(condition)) return false;
   if (tree.node(condition).kind == ast::SyntaxKind::BinaryExpr) {
@@ -1351,9 +1351,7 @@ bool isAdmittedConditionalBody(const ast::Tree& tree, ast::NodeId ifStmt) {
     if (leftNested && rightNested) return false;
     const bool leftOk = leftIdent || isScalarLiteral(tree.node(left).kind) || leftNested;
     const bool rightOk = rightIdent || isScalarLiteral(tree.node(right).kind) || rightNested;
-    if (!leftOk || !rightOk || (!leftIdent && !rightIdent && !leftNested && !rightNested)) {
-      return false;
-    }
+    if (!leftOk || !rightOk) { return false; }
   } else if (tree.node(condition).kind == ast::SyntaxKind::UnaryExpression) {
     // Admit the unary `!x` condition: a LogicalNot whose operand is an
     // identifier or a scalar literal. The HIR builder desugars `!x` to

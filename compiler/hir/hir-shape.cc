@@ -348,8 +348,7 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
         classifyNestedArithmetic(right, nestedLeft, nestedRight, nestedLeftIsLiteral,
                                  nestedRightIsLiteral);
     if ((!leftIdent && !leftLiteral && !leftIsNestedArithmetic) ||
-        (!rightIdent && !rightLiteral && !rightIsNestedArithmetic) ||
-        (!leftIdent && !rightIdent && !leftIsNestedArithmetic && !rightIsNestedArithmetic)) {
+        (!rightIdent && !rightLiteral && !rightIsNestedArithmetic)) {
       return zc::none;
     }
     shape.conditionIsEquality = true;

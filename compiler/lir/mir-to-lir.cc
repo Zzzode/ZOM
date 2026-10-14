@@ -3826,11 +3826,11 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
 zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // K leading scalar UserLocal declarations sit between the parameter prefix
-  // and the function result / bool comparison temporary: the shape needs at
-  // least one leading local plus those two trailing declarations, so three
-  // locals is the floor.
+  // and the function result / bool comparison temporary. K may be zero: a
+  // single-statement body whose return value is the conditional needs only
+  // the result and temp locals, so two locals is the floor.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
-      function.blocks.size() != 4 || function.locals.size() < 3) {
+      function.blocks.size() != 4 || function.locals.size() < 2) {
     return zc::none;
   }
   size_t parameterCount = 0;
@@ -3838,7 +3838,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
          function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
     ++parameterCount;
   }
-  if (parameterCount + 2 >= function.locals.size()) return zc::none;
+  if (parameterCount + 2 > function.locals.size()) return zc::none;
   const size_t leadingLocalCount = function.locals.size() - parameterCount - 2;
   const auto& resultLocalDecl = function.locals[parameterCount + leadingLocalCount];
   const auto& tempLocalDecl = function.locals[parameterCount + leadingLocalCount + 1];

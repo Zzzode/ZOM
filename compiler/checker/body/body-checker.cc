@@ -3625,8 +3625,10 @@ zc::Maybe<PrimitiveOperation> unsupportedBinaryOperator(const BodyCheckingInput&
 /// module-level function used as a value, `g + 1`) therefore leaves the binary
 /// un-producible. Surface admission structurally lets the binary through, so the
 /// checker must drain it as ZOM4099 here rather than falling to an invariant.
-/// Operands outside the local-binary universe (receiver-field member reads in a
-/// method) are deliberately left to their own production path.
+/// A literal-vs-literal comparison in a condition position is admitted because
+/// the literal NodeType facts supply the operand type. Operands outside the
+/// local-binary universe (receiver-field member reads in a method) are
+/// deliberately left to their own production path.
 bool primitiveBinaryLacksReferenceOperand(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
@@ -3667,9 +3669,12 @@ bool primitiveBinaryLacksReferenceOperand(
   // A literal-vs-literal binary has no reference operand to anchor the operand
   // type. When the binary is the initializer of an annotated let binding, the
   // annotation supplies the closed primitive type, so the shape validator can
-  // resolve it.
-  if (allLiterals && ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
-                                                       input.semanticTypes, node) != zc::none) {
+  // resolve it. When the binary is a comparison in a condition position, the
+  // literal NodeType facts supply the operand type.
+  if (allLiterals && (ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                        input.semanticTypes, node) != zc::none ||
+                      (scalarComparisonOperation(binaryOperator) != zc::none &&
+                       isConditionPosition(input.boundModule, node)))) {
     return false;
   }
   return true;
@@ -3738,10 +3743,13 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
   // Each operand is either a value reference (an IdentExpr resolving to a
-  // callable parameter or an owner local) or a scalar literal. At least one must
-  // be a reference; a literal-vs-literal operation has no place to lower. The
-  // owner-local operand form supports a primitive binary as a local initializer
-  // whose operand is an earlier local (e.g. `let y: T = x * b`).
+  // callable parameter or an owner local) or a scalar literal. A
+  // literal-vs-literal operation is admitted only as a comparison in a
+  // condition position or as the initializer of an annotated let binding,
+  // where the operand type is resolved from the literal NodeType facts or the
+  // annotation respectively. The owner-local operand form supports a
+  // primitive binary as a local initializer whose operand is an earlier local
+  // (e.g. `let y: T = x * b`).
   auto referenceType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
     if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) {
       return zc::none;
@@ -3855,9 +3863,13 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // A literal-vs-literal binary has no reference operand to anchor the operand
   // type. When the binary is the initializer of an annotated let binding, the
   // annotation supplies the closed primitive type, and the fallback below
-  // resolves it.
-  if (!leftIsReference && !rightIsReference && !leftIsNested && !rightIsNested &&
-      !leftIsReceiverField && !rightIsReceiverField) {
+  // resolves it. When the binary is a comparison in a condition position, the
+  // literal NodeType facts supply the operand type.
+  const bool literalVsLiteral = !leftIsReference && !rightIsReference && !leftIsNested &&
+                                !rightIsNested && !leftIsReceiverField && !rightIsReceiverField;
+  const bool literalVsLiteralCondition =
+      literalVsLiteral && comparison != zc::none && isConditionPosition(input.boundModule, node);
+  if (literalVsLiteral && !literalVsLiteralCondition) {
     auto declaredType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
                                                           input.semanticTypes, node);
     if (declaredType == zc::none) return zc::none;
@@ -3883,9 +3895,15 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   if (operandType == zc::none) {
     // A literal-vs-literal binary has no reference operand to anchor the
     // operand type. When the binary is the initializer of an annotated let
-    // binding, the annotation supplies the closed primitive type.
-    operandType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
-                                                    input.semanticTypes, node);
+    // binding, the annotation supplies the closed primitive type. When the
+    // binary is a comparison in a condition position, the left literal's
+    // NodeType fact supplies the operand type.
+    if (literalVsLiteralCondition) {
+      ZC_IF_SOME(entry, factEntry(nodeTypes, left)) { operandType = entry.value; }
+    } else {
+      operandType = ownerLocalInitializerDeclaredType(input.boundModule, input.identities,
+                                                      input.semanticTypes, node);
+    }
   }
   if (operandType == zc::none) { return zc::none; }
   identity::SemanticTypeId operand;
@@ -6987,17 +7005,25 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
             // A literal-vs-literal binary has no reference operand to anchor
             // the operand type. When the binary is the initializer of an
             // annotated let binding, the annotation supplies the closed
-            // primitive type and the shape validator resolves it.
+            // primitive type and the shape validator resolves it. When the
+            // binary is a comparison in a condition position, the literal
+            // NodeType facts supply the operand type.
             bool literalVsLiteralAnnotated = false;
+            bool literalVsLiteralCondition = false;
             if (leftOk && rightOk && !leftIsReference && !rightIsReference && !leftIsNested &&
                 !rightIsNested && !leftIsReceiverField && !rightIsReceiverField) {
               literalVsLiteralAnnotated =
                   ownerLocalInitializerDeclaredType(boundModule, buildInput.identities,
                                                     buildInput.semanticTypes, node) != zc::none;
+              if (!literalVsLiteralAnnotated && isComparison &&
+                  isConditionPosition(boundModule, node)) {
+                literalVsLiteralCondition = true;
+              }
             }
             if (leftOk && rightOk &&
                 (leftIsReference || rightIsReference || leftIsNested || rightIsNested ||
-                 leftIsReceiverField || rightIsReceiverField || literalVsLiteralAnnotated)) {
+                 leftIsReceiverField || rightIsReceiverField || literalVsLiteralAnnotated ||
+                 literalVsLiteralCondition)) {
               production = BodyProductionKind::PrimitiveBinaryOperation;
             }
           }

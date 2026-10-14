@@ -4129,7 +4129,7 @@ bool validLeadingLocalConditionalReturnFunction(
     identity::ModuleId module, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes) {
   const size_t bindingCount = sourceBlock.statements.size() - 1;
-  if (bindingCount < 1 || declaration.receiver != zc::none) return false;
+  if (declaration.receiver != zc::none) return false;
   const size_t parameterCount = declaration.parameters.size();
   if (function.owner != declaration.definition || function.kind != MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
@@ -19634,11 +19634,23 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       auto overwriteBinary = primitiveBinaryFor(hirModule, overwriteValueNode);
       // K leading scalar user locals followed by one comparison conditional with
       // literal arms. Detected purely from the HIR shape; the dedicated
-      // verifier re-validates every local, statement, and operand.
+      // verifier re-validates every local, statement, and operand. K may be
+      // zero: a single-statement body whose return value is the conditional.
+      // The else-arm must not itself be a conditional — that shape belongs to
+      // the chained-conditional path. Both condition operands must be leaf
+      // nodes (literals, parameters, or locals) — a nested binary operand
+      // belongs to the conjunctive conditional path.
+      zc::Maybe<const hir::HirPrimitiveBinaryExpression&> conditionBinary;
+      if (conditional != zc::none) {
+        conditionBinary = primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditional).condition);
+      }
       const bool isLeadingLocalConditional =
           sourceDeclaration.receiver == zc::none && sourceBlock != zc::none &&
-          ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 2 && conditional != zc::none &&
-          primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditional).condition) != zc::none;
+          ZC_ASSERT_NONNULL(sourceBlock).statements.size() >= 1 && conditional != zc::none &&
+          conditionBinary != zc::none &&
+          conditionalFor(hirModule, ZC_ASSERT_NONNULL(conditional).elseReturnValue) == zc::none &&
+          primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).left) == zc::none &&
+          primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(conditionBinary).right) == zc::none;
       const bool isLocalFieldReturn = localFieldProjection != zc::none;
       const bool isReceiverFieldReturn =
           receiverFieldProjection != zc::none && sourceDeclaration.receiver != zc::none;
@@ -20185,7 +20197,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             // another conditional, so the generic arm resolution below cannot
             // match it. Detect the shape by walking the chain and dispatch to
             // the dedicated verifier.
-            if (!isLeadingLocalConditional && !valid) {
+            if (!valid) {
               auto chainedEquality = primitiveBinaryFor(hirModule, sourceConditional.condition);
               auto chainedThenLiteral = expressionFor(hirModule, sourceConditional.thenReturnValue);
               auto chainedElseConditional =
@@ -20221,9 +20233,9 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
             auto conditionRef = parameterReferenceFor(hirModule, sourceConditional.condition);
             auto equality = primitiveBinaryFor(hirModule, sourceConditional.condition);
             ZC_IF_SOME(condRef, conditionRef) {
-              if (!isLeadingLocalConditional && sourceDeclaration.receiver != zc::none &&
-                  thenArm.literal != zc::none && elseArm.literal != zc::none &&
-                  thenArm.parameter == zc::none && elseArm.parameter == zc::none) {
+              if (!valid && sourceDeclaration.receiver != zc::none && thenArm.literal != zc::none &&
+                  elseArm.literal != zc::none && thenArm.parameter == zc::none &&
+                  elseArm.parameter == zc::none) {
                 // The shared-receiver method conditional: literal arms over a
                 // bare ordinary-parameter condition, with the receiver leading
                 // the local layout.
@@ -20231,7 +20243,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                     function, sourceDeclaration, block, returnStatement, sourceConditional, condRef,
                     ZC_ASSERT_NONNULL(thenArm.literal), ZC_ASSERT_NONNULL(elseArm.literal), proofs,
                     copy, module, identities, semanticTypes);
-              } else if (thenOk && elseOk) {
+              } else if (!valid && thenOk && elseOk) {
                 valid = validConditionalReturnFunction(function, hirModule, sourceDeclaration,
                                                        block, returnStatement, sourceConditional,
                                                        condRef, thenArm, elseArm, proofs, copy,
@@ -20244,14 +20256,14 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
               // bare `&&` operator in condition position (parameters + 2
               // locals: result + temp). Dispatch on the local count so the
               // `&&` operator path reaches the equality verifier.
-              if (equalityValue.operation == checker::PrimitiveOperation::LogicalAnd &&
-                  !isLeadingLocalConditional && thenOk && elseOk &&
+              if (equalityValue.operation == checker::PrimitiveOperation::LogicalAnd && !valid &&
+                  thenOk && elseOk &&
                   function.locals.size() == sourceDeclaration.parameters.size() + 3) {
                 valid = validConjunctiveConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
                     sourceConditional, equalityValue, thenArm, elseArm, proofs, copy, module,
                     identities, semanticTypes);
-              } else if (!isLeadingLocalConditional && thenOk && elseOk) {
+              } else if (!valid && thenOk && elseOk) {
                 valid = validEqualityConditionalReturnFunction(
                     function, hirModule, sourceDeclaration, block, returnStatement,
                     sourceConditional, equalityValue, thenArm, elseArm, proofs, copy, module,
