@@ -11,7 +11,8 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingConditionalReturn conditional = zc::mv(ZC_ASSERT_NONNULL(function.conditionalReturn));
+  PendingConditionalReturn conditional =
+      zc::mv(function.shape.get<ConditionalReturn>().conditionalReturn);
 
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
@@ -157,7 +158,7 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
 
 void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingChainedConditionalReturn chained =
-      zc::mv(ZC_ASSERT_NONNULL(function.chainedConditionalReturn));
+      zc::mv(function.shape.get<ChainedConditionalReturn>().chainedConditionalReturn);
 
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
@@ -216,7 +217,7 @@ void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function
 void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& function,
                                                 HirFnCtx& ctx) {
   PendingLeadingLocalConditionalReturn leading =
-      zc::mv(ZC_ASSERT_NONNULL(function.leadingLocalConditionalReturn));
+      zc::mv(function.shape.get<LeadingLocalConditionalReturn>().leadingLocalConditionalReturn);
   const size_t bindingCount = leading.bindings.size();
 
   // Source-preorder layout: function, body, per binding (local, initializer),
@@ -376,7 +377,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
 }
 
 void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingLoopReturn loop = zc::mv(ZC_ASSERT_NONNULL(function.loopReturn));
+  PendingLoopReturn loop = zc::mv(function.shape.get<LoopReturn>().loopReturn);
 
   // Empty-body loop stride (6 nodes): function, body, condition parameter
   // reference, return literal, loop statement, return. The body block lists the
@@ -409,16 +410,16 @@ void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
 }
 
 void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingLoopBodyReturn loopBody = zc::mv(ZC_ASSERT_NONNULL(function.loopBodyReturn));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<LoopBodyReturn>();
+  PendingLoopBodyReturn loopBody = zc::mv(shape.loopBodyReturn);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan placeSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
-  const size_t writeCount = function.localWrites.size();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId placeType = shape.localReference.type;
+  const HirValueCategory placeCategory = shape.localReference.category;
+  const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
+  const size_t writeCount = shape.localWrites.size();
 
   // Fixed-id layout: function, body, local, initializer, per-write
   // (write node, write value node), return, value, condition, loop, then
@@ -432,7 +433,7 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
     ast::NodeId writeSource;
-    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    ZC_IF_SOME(binary, shape.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
     writeIds.add(ctx.allocNode(writeSource));
     writeValueIds.add(ctx.allocNode(writeSource));
   }
@@ -445,7 +446,7 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   // return, value, condition, loop, then per-binary left+right).
   zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
   zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
-  for (const auto& writeValue : function.localWriteValues) {
+  for (const auto& writeValue : shape.localWriteValues) {
     zc::Maybe<HirNodeId> leftId;
     zc::Maybe<HirNodeId> rightId;
     if (writeValue.binary != zc::none) {
@@ -479,14 +480,14 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
 
   // Initializer leaf (literal or parameter) at the initializer node, matching
   // the flat mut-local write arm.
-  if (function.literal != zc::none) {
-    ZC_IF_SOME(literal, function.literal) {
+  if (shape.literal != zc::none) {
+    ZC_IF_SOME(literal, shape.literal) {
       ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, literal.clone(),
                                                    HirValueCategory::Value,
                                                    initializerSpan.clone()});
     }
   } else {
-    ZC_IF_SOME(reference, function.parameterReference) {
+    ZC_IF_SOME(reference, shape.parameterReference) {
       ctx.addParameterReference(HirParameterReferenceExpression{
           initializerId, reference.parameter.clone(), reference.type, reference.category,
           reference.sourceSpan.clone()});
@@ -494,8 +495,8 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
   }
 
   for (size_t index = 0; index < writeCount; ++index) {
-    const HirLocalWriteStatement& write = function.localWrites[index];
-    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    const HirLocalWriteStatement& write = shape.localWrites[index];
+    const PendingLocalWriteValue& writeValue = shape.localWriteValues[index];
     ZC_IF_SOME(literal, writeValue.literal) {
       ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
                                                    literal.clone(), HirValueCategory::Value,
@@ -529,17 +530,16 @@ void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx
 }
 
 void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingComparisonLoopBodyReturn doWhile =
-      zc::mv(ZC_ASSERT_NONNULL(function.comparisonLoopBodyReturn));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<ComparisonLoopBodyReturn>();
+  PendingComparisonLoopBodyReturn doWhile = zc::mv(shape.comparisonLoopBodyReturn);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan placeSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
-  const size_t writeCount = function.localWrites.size();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId placeType = shape.localReference.type;
+  const HirValueCategory placeCategory = shape.localReference.category;
+  const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
+  const size_t writeCount = shape.localWrites.size();
 
   // Fixed-id layout: function, body, local, initializer, per-write
   // (write node, write value node), comparison left, comparison right,
@@ -554,7 +554,7 @@ void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
     ast::NodeId writeSource;
-    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    ZC_IF_SOME(binary, shape.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
     writeIds.add(ctx.allocNode(writeSource));
     writeValueIds.add(ctx.allocNode(writeSource));
   }
@@ -568,7 +568,7 @@ void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function
   // verifier's fixed-id layout.
   zc::Vector<zc::Maybe<HirNodeId>> binaryLeftIds;
   zc::Vector<zc::Maybe<HirNodeId>> binaryRightIds;
-  for (const auto& writeValue : function.localWriteValues) {
+  for (const auto& writeValue : shape.localWriteValues) {
     zc::Maybe<HirNodeId> leftId;
     zc::Maybe<HirNodeId> rightId;
     if (writeValue.binary != zc::none) {
@@ -613,14 +613,14 @@ void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function
 
   // Initializer leaf (literal or parameter) at the initializer node, matching
   // the flat mut-local write arm.
-  if (function.literal != zc::none) {
-    ZC_IF_SOME(literal, function.literal) {
+  if (shape.literal != zc::none) {
+    ZC_IF_SOME(literal, shape.literal) {
       ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, literal.clone(),
                                                    HirValueCategory::Value,
                                                    initializerSpan.clone()});
     }
   } else {
-    ZC_IF_SOME(reference, function.parameterReference) {
+    ZC_IF_SOME(reference, shape.parameterReference) {
       ctx.addParameterReference(HirParameterReferenceExpression{
           initializerId, reference.parameter.clone(), reference.type, reference.category,
           reference.sourceSpan.clone()});
@@ -628,8 +628,8 @@ void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function
   }
 
   for (size_t index = 0; index < writeCount; ++index) {
-    const HirLocalWriteStatement& write = function.localWrites[index];
-    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    const HirLocalWriteStatement& write = shape.localWrites[index];
+    const PendingLocalWriteValue& writeValue = shape.localWriteValues[index];
     ZC_IF_SOME(literal, writeValue.literal) {
       ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
                                                    literal.clone(), HirValueCategory::Value,
@@ -663,7 +663,8 @@ void lowerComparisonLoopBodyReturnFunction(PendingFunctionDeclaration&& function
 }
 
 void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingForLoopReturn forLoop = zc::mv(ZC_ASSERT_NONNULL(function.forLoopReturn));
+  auto& shape = function.shape.get<ForLoopReturn>();
+  PendingForLoopReturn forLoop = zc::mv(shape.forLoopReturn);
 
   // Fixed-id layout: function, body, local, initializer, comparison left,
   // comparison right, comparison condition, arithmetic left, arithmetic right,
@@ -739,14 +740,14 @@ void lowerForLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx&
   ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::mv(loopStatements), forLoop.condition.type,
                                HirValueCategory::Place, zc::mv(forLoop.loopSpan),
                                zc::mv(forLoop.breakSpan), zc::mv(forLoop.continueSpan)});
-  ctx.addExpression(HirScalarLiteralExpression{
-      returnValueId, function.resultType, ZC_ASSERT_NONNULL(function.literal).clone(),
-      HirValueCategory::Value, function.valueSpan.clone()});
+  ctx.addExpression(HirScalarLiteralExpression{returnValueId, function.resultType,
+                                               shape.literal.clone(), HirValueCategory::Value,
+                                               function.valueSpan.clone()});
 }
 
 void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingForLoopAccumulatorReturn forLoop =
-      zc::mv(ZC_ASSERT_NONNULL(function.forLoopAccumulatorReturn));
+      zc::mv(function.shape.get<ForLoopAccumulatorReturn>().forLoopAccumulatorReturn);
   const size_t accumulatorCount = forLoop.accumulators.size();
 
   // Fixed-id layout: function, body, then per accumulator (local binding, init
@@ -902,7 +903,7 @@ void lowerForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function
 
 void lowerForInLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingForInLoopAccumulatorReturn forIn =
-      zc::mv(ZC_ASSERT_NONNULL(function.forInLoopAccumulatorReturn));
+      zc::mv(function.shape.get<ForInLoopAccumulatorReturn>().forInLoopAccumulatorReturn);
   const size_t accumulatorCount = forIn.accumulators.size();
   const size_t elementCount = forIn.elements.size();
 
@@ -975,7 +976,7 @@ void lowerForInLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& functi
 void lowerNestedForLoopAccumulatorReturnFunction(PendingFunctionDeclaration&& function,
                                                  HirFnCtx& ctx) {
   PendingNestedForLoopAccumulatorReturn nested =
-      zc::mv(ZC_ASSERT_NONNULL(function.nestedForLoopAccumulatorReturn));
+      zc::mv(function.shape.get<NestedForLoopAccumulatorReturn>().nestedForLoopAccumulatorReturn);
   const size_t accumulatorCount = nested.accumulators.size();
 
   // Fixed-id layout: function, body, then per accumulator (local binding, init

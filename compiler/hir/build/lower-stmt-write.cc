@@ -11,15 +11,15 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  const auto& shape = function.shape.get<LocalWriteReturn>();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan placeSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
-  const size_t writeCount = function.localWrites.size();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId placeType = shape.localReference.type;
+  const HirValueCategory placeCategory = shape.localReference.category;
+  const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
+  const size_t writeCount = shape.localWrites.size();
 
   // Source-preorder stride: function, body, local, initializer leaf, then per
   // write (write node, write value node), then return and returned value. A
@@ -34,7 +34,7 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
     ast::NodeId writeSource;
-    ZC_IF_SOME(binary, function.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
+    ZC_IF_SOME(binary, shape.localWriteValues[index].binary) { writeSource = binary.sourceNode; }
     writeIds.add(ctx.allocNode(writeSource));
     writeValueIds.add(ctx.allocNode(writeSource));
   }
@@ -54,14 +54,14 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 
   // Initializer leaf (literal or parameter) at the initializer node.
-  if (function.literal != zc::none) {
-    ZC_IF_SOME(literal, function.literal) {
+  if (shape.literal != zc::none) {
+    ZC_IF_SOME(literal, shape.literal) {
       ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, literal.clone(),
                                                    HirValueCategory::Value,
                                                    initializerSpan.clone()});
     }
   } else {
-    ZC_IF_SOME(reference, function.parameterReference) {
+    ZC_IF_SOME(reference, shape.parameterReference) {
       ctx.addParameterReference(HirParameterReferenceExpression{
           initializerId, reference.parameter.clone(), reference.type, reference.category,
           reference.sourceSpan.clone()});
@@ -69,8 +69,8 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   }
 
   for (size_t index = 0; index < writeCount; ++index) {
-    const HirLocalWriteStatement& write = function.localWrites[index];
-    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    const HirLocalWriteStatement& write = shape.localWrites[index];
+    const PendingLocalWriteValue& writeValue = shape.localWriteValues[index];
     ZC_IF_SOME(literal, writeValue.literal) {
       ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
                                                    literal.clone(), HirValueCategory::Value,
@@ -103,20 +103,20 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
 }
 
 void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const HirLocalBinding& sourceLocal = ZC_ASSERT_NONNULL(function.local);
+  auto& shape = function.shape.get<LocalFieldProjectionReturn>();
+  const HirLocalBinding& sourceLocal = shape.local;
   const identity::SemanticTypeId localType = sourceLocal.type;
   const identity::SourceSpan localSpan = sourceLocal.sourceSpan.clone();
   const bool initialized = sourceLocal.initializer != zc::none;
   zc::Maybe<identity::SourceSpan> initializerSpan;
   ZC_IF_SOME(span, sourceLocal.initializerSpan) { initializerSpan = span.clone(); }
-  const HirLocalFieldProjectionExpression& projection =
-      ZC_ASSERT_NONNULL(function.localFieldProjection);
+  const HirLocalFieldProjectionExpression& projection = shape.localFieldProjection;
   const identity::DefId projectionField = projection.field;
   const identity::SemanticTypeId projectionReceiverType = projection.receiverType;
   const identity::SemanticTypeId projectionType = projection.type;
   const HirValueCategory projectionCategory = projection.category;
   const identity::SourceSpan projectionSpan = projection.sourceSpan.clone();
-  const size_t writeCount = function.localWrites.size();
+  const size_t writeCount = shape.localWrites.size();
 
   // Source-preorder stride matching the generic materializer: function, body,
   // local, then the aggregate initializer id only for an initialized local,
@@ -149,7 +149,7 @@ void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCt
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 
-  ZC_IF_SOME(aggregate, function.aggregate) {
+  ZC_IF_SOME(aggregate, shape.aggregate) {
     HirNodeId aggregateId;
     ZC_IF_SOME(id, initializerId) { aggregateId = id; }
     zc::Vector<HirNominalAggregateElement> elements = zc::mv(aggregate.elements);
@@ -159,8 +159,8 @@ void lowerLocalFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCt
   }
 
   for (size_t index = 0; index < writeCount; ++index) {
-    const HirLocalWriteStatement& write = function.localWrites[index];
-    const PendingLocalWriteValue& writeValue = function.localWriteValues[index];
+    const HirLocalWriteStatement& write = shape.localWrites[index];
+    const PendingLocalWriteValue& writeValue = shape.localWriteValues[index];
     ZC_IF_SOME(literal, writeValue.literal) {
       ctx.addExpression(HirScalarLiteralExpression{writeValueIds[index], write.type,
                                                    literal.clone(), HirValueCategory::Value,

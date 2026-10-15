@@ -11,26 +11,21 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<AggregateFieldProjectionReturn>();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::DefId aggregateDefinition = ZC_ASSERT_NONNULL(function.aggregate).definition;
-  const identity::SemanticTypeId aggregateType = ZC_ASSERT_NONNULL(function.aggregate).type;
-  const HirValueCategory aggregateCategory = ZC_ASSERT_NONNULL(function.aggregate).category;
-  const identity::SourceSpan aggregateSpan =
-      ZC_ASSERT_NONNULL(function.aggregate).sourceSpan.clone();
-  zc::Vector<HirNominalAggregateElement> aggregateElements =
-      zc::mv(ZC_ASSERT_NONNULL(function.aggregate).elements);
-  const identity::DefId projectionField = ZC_ASSERT_NONNULL(function.localFieldProjection).field;
-  const identity::SemanticTypeId projectionReceiverType =
-      ZC_ASSERT_NONNULL(function.localFieldProjection).receiverType;
-  const identity::SemanticTypeId projectionType =
-      ZC_ASSERT_NONNULL(function.localFieldProjection).type;
-  const HirValueCategory projectionCategory =
-      ZC_ASSERT_NONNULL(function.localFieldProjection).category;
-  const identity::SourceSpan projectionSpan =
-      ZC_ASSERT_NONNULL(function.localFieldProjection).sourceSpan.clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::DefId aggregateDefinition = shape.aggregate.definition;
+  const identity::SemanticTypeId aggregateType = shape.aggregate.type;
+  const HirValueCategory aggregateCategory = shape.aggregate.category;
+  const identity::SourceSpan aggregateSpan = shape.aggregate.sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements = zc::mv(shape.aggregate.elements);
+  const identity::DefId projectionField = shape.localFieldProjection.field;
+  const identity::SemanticTypeId projectionReceiverType = shape.localFieldProjection.receiverType;
+  const identity::SemanticTypeId projectionType = shape.localFieldProjection.type;
+  const HirValueCategory projectionCategory = shape.localFieldProjection.category;
+  const identity::SourceSpan projectionSpan = shape.localFieldProjection.sourceSpan.clone();
 
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, local F+2, aggregate initializer F+3, return F+4,
@@ -64,13 +59,18 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
 }
 
 void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::DefId aggregateDefinition = ZC_ASSERT_NONNULL(function.aggregate).definition;
-  const identity::SemanticTypeId aggregateType = ZC_ASSERT_NONNULL(function.aggregate).type;
-  const HirValueCategory aggregateCategory = ZC_ASSERT_NONNULL(function.aggregate).category;
-  const identity::SourceSpan aggregateSpan =
-      ZC_ASSERT_NONNULL(function.aggregate).sourceSpan.clone();
-  zc::Vector<HirNominalAggregateElement> aggregateElements =
-      zc::mv(ZC_ASSERT_NONNULL(function.aggregate).elements);
+  // Both EnumConstructionReturn and AggregateReturn carry the aggregate field.
+  HirNominalAggregateExpression aggregate = [&]() {
+    if (function.shape.is<EnumConstructionReturn>()) {
+      return zc::mv(function.shape.get<EnumConstructionReturn>().aggregate);
+    }
+    return zc::mv(function.shape.get<AggregateReturn>().aggregate);
+  }();
+  const identity::DefId aggregateDefinition = aggregate.definition;
+  const identity::SemanticTypeId aggregateType = aggregate.type;
+  const HirValueCategory aggregateCategory = aggregate.category;
+  const identity::SourceSpan aggregateSpan = aggregate.sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements = zc::mv(aggregate.elements);
 
   // Fixed source-preorder stride matching the verifier's non-local return
   // layout: function F, body F+1, return F+2, value F+3. The aggregate is
@@ -96,14 +96,13 @@ void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, 
 }
 
 void lowerExistentialReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::DefId aggregateDefinition = ZC_ASSERT_NONNULL(function.aggregate).definition;
-  const identity::SemanticTypeId aggregateType = ZC_ASSERT_NONNULL(function.aggregate).type;
-  const HirValueCategory aggregateCategory = ZC_ASSERT_NONNULL(function.aggregate).category;
-  const identity::SourceSpan aggregateSpan =
-      ZC_ASSERT_NONNULL(function.aggregate).sourceSpan.clone();
-  zc::Vector<HirNominalAggregateElement> aggregateElements =
-      zc::mv(ZC_ASSERT_NONNULL(function.aggregate).elements);
-  zc::Maybe<HirErasureRecord> erasure = zc::mv(function.returnErasure);
+  auto& shape = function.shape.get<ExistentialReturn>();
+  const identity::DefId aggregateDefinition = shape.aggregate.definition;
+  const identity::SemanticTypeId aggregateType = shape.aggregate.type;
+  const HirValueCategory aggregateCategory = shape.aggregate.category;
+  const identity::SourceSpan aggregateSpan = shape.aggregate.sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements = zc::mv(shape.aggregate.elements);
+  zc::Maybe<HirErasureRecord> erasure = zc::mv(shape.returnErasure);
 
   // Fixed source-preorder stride matching the verifier's non-local return
   // layout: function F, body F+1, return F+2, value F+3. The aggregate is

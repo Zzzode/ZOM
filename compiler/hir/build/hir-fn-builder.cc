@@ -201,26 +201,6 @@ HirNodeId HirFnCtx::lowerArmValue(const PendingConditionalArm& arm) {
 
 namespace {
 
-/// \brief Lowers the family-1 scalar leaf (literal or resolved parameter) into
-/// its destination. The scalar-return path carries the two alternatives in the
-/// pending function's top-level fields rather than an arm struct, so this
-/// adapter builds the same records as HirFnCtx::lowerArmLeaf.
-void lowerScalarLeaf(HirNodeId destination, identity::SemanticTypeId literalType,
-                     const identity::SourceSpan& literalSpan,
-                     const zc::Maybe<checker::checked::CanonicalConstValue>& literal,
-                     const zc::Maybe<HirParameterReferenceExpression>& parameter, HirFnCtx& ctx) {
-  ZC_IF_SOME(reference, parameter) {
-    ctx.addParameterReference(
-        HirParameterReferenceExpression{destination, reference.parameter.clone(), reference.type,
-                                        reference.category, reference.sourceSpan.clone()});
-    return;
-  }
-  ZC_IF_SOME(value, literal) {
-    ctx.addExpression(HirScalarLiteralExpression{destination, literalType, value.clone(),
-                                                 HirValueCategory::Value, literalSpan.clone()});
-  }
-}
-
 /// \brief Emits the shared function header record, consuming its parameters and
 /// the optional inherent-method receiver.
 HirFunctionDeclaration lowerFunctionHeader(HirNodeId functionId, HirNodeId bodyId,
@@ -249,18 +229,20 @@ void lowerScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   zc::Vector<HirNodeId> statements;
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
-  lowerScalarLeaf(valueId, function.resultType, function.valueSpan, function.literal,
-                  function.parameterReference, ctx);
+  if (function.shape.is<ScalarLiteralReturn>()) {
+    ctx.addExpression(HirScalarLiteralExpression{
+        valueId, function.resultType, zc::mv(function.shape.get<ScalarLiteralReturn>().literal),
+        HirValueCategory::Value, function.valueSpan.clone()});
+  } else {
+    const auto& ref = function.shape.get<ParameterReferenceReturn>().parameterReference;
+    ctx.addParameterReference(HirParameterReferenceExpression{
+        valueId, ref.parameter.clone(), ref.type, ref.category, ref.sourceSpan.clone()});
+  }
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
 void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
-  const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-
   // Fixed source-preorder stride for the one-binding shape, matching the
   // generic materializer: function F, body F+1, local F+2, initializer F+3,
   // return F+4, value F+5. The block lists [local, return].
@@ -277,21 +259,35 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
 
-  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
-                               initializerSpan.clone()});
-  if (function.returnsArrayIndexFold || function.returnsArrayLengthFold) {
-    // Array index or length fold: the initializer is an array literal
-    // (validated by the builder but not lowered to a HIR expression), and the
-    // return value is the folded scalar literal.
-    lowerScalarLeaf(valueId, function.resultType, function.valueSpan, function.literal,
-                    function.parameterReference, ctx);
+  if (function.shape.is<ArrayIndexFoldReturn>()) {
+    // Array index or length fold: the return value is the folded scalar literal.
+    ctx.addExpression(HirScalarLiteralExpression{
+        valueId, function.resultType, zc::mv(function.shape.get<ArrayIndexFoldReturn>().literal),
+        HirValueCategory::Value, function.valueSpan.clone()});
+  } else if (function.shape.is<ArrayLengthFoldReturn>()) {
+    ctx.addExpression(HirScalarLiteralExpression{
+        valueId, function.resultType, zc::mv(function.shape.get<ArrayLengthFoldReturn>().literal),
+        HirValueCategory::Value, function.valueSpan.clone()});
   } else {
-    const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-    const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-    const identity::SourceSpan placeSpan =
-        ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
-    lowerScalarLeaf(initializerId, localType, initializerSpan, function.literal,
-                    function.parameterReference, ctx);
+    const auto& shape = function.shape.get<LocalReturn>();
+    const identity::SemanticTypeId localType = shape.local.type;
+    const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
+    const identity::SourceSpan initializerSpan =
+        ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+    const identity::SemanticTypeId placeType = shape.localReference.type;
+    const HirValueCategory placeCategory = shape.localReference.category;
+    const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
+    ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId,
+                                 localSpan.clone(), initializerSpan.clone()});
+    if (shape.literal != zc::none) {
+      ctx.addExpression(HirScalarLiteralExpression{
+          initializerId, localType, ZC_ASSERT_NONNULL(shape.literal).clone(),
+          HirValueCategory::Value, initializerSpan.clone()});
+    } else {
+      const auto& ref = ZC_ASSERT_NONNULL(shape.parameterReference);
+      ctx.addParameterReference(HirParameterReferenceExpression{
+          initializerId, ref.parameter.clone(), ref.type, ref.category, ref.sourceSpan.clone()});
+    }
     ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
                                                       placeCategory, placeSpan.clone()});
   }
@@ -301,7 +297,7 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
 
 void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingSequentialLocalReturn sequential =
-      zc::mv(ZC_ASSERT_NONNULL(function.sequentialLocalReturn));
+      zc::mv(function.shape.get<SequentialLocalReturn>().sequentialLocalReturn);
   const size_t bindingCount = sequential.bindings.size();
 
   // Reserve node ids in source preorder before emitting any record, matching
@@ -687,7 +683,15 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
 }
 
 void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& projection = ZC_ASSERT_NONNULL(function.parameterFieldProjection);
+  // Both ReceiverFieldReturn and ByValueParameterFieldReturn carry the
+  // parameterFieldProjection field.
+  const HirParameterFieldProjectionExpression* projectionPtr;
+  if (function.shape.is<ReceiverFieldReturn>()) {
+    projectionPtr = &function.shape.get<ReceiverFieldReturn>().parameterFieldProjection;
+  } else {
+    projectionPtr = &function.shape.get<ByValueParameterFieldReturn>().parameterFieldProjection;
+  }
+  const auto& projection = *projectionPtr;
   const identity::SemanticTypeId receiverType = projection.receiverType;
   const identity::DefId field = projection.field;
   const identity::SemanticTypeId resultType = projection.type;
@@ -710,12 +714,13 @@ void lowerReceiverFieldReturnFunction(PendingFunctionDeclaration&& function, Hir
 }
 
 void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& projection = ZC_ASSERT_NONNULL(function.parameterFieldProjection);
-  const auto& write = ZC_ASSERT_NONNULL(function.parameterFieldWrite);
+  const auto& shape = function.shape.get<ReceiverFieldWriteReturn>();
+  const auto& projection = shape.parameterFieldProjection;
+  const auto& write = shape.parameterFieldWrite;
   const identity::SemanticTypeId receiverType = projection.receiverType;
   const identity::DefId field = projection.field;
   const identity::SemanticTypeId resultType = projection.type;
-  const auto& literal = ZC_ASSERT_NONNULL(function.parameterFieldWriteLiteral);
+  const auto& literal = shape.parameterFieldWriteLiteral;
 
   // Source preorder: function, body, write statement, write value literal,
   // return, returned parameter field projection. The block lists the write
@@ -745,9 +750,10 @@ void lowerReceiverFieldWriteReturnFunction(PendingFunctionDeclaration&& function
 }
 
 void lowerRawPointerWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& write = ZC_ASSERT_NONNULL(function.rawDereferenceWrite);
-  const auto& source = ZC_ASSERT_NONNULL(function.rawDereferenceSource);
-  const auto& literal = ZC_ASSERT_NONNULL(function.rawDereferenceWriteLiteral);
+  const auto& shape = function.shape.get<RawPointerWriteReturn>();
+  const auto& write = shape.rawDereferenceWrite;
+  const auto& source = shape.rawDereferenceSource;
+  const auto& literal = shape.rawDereferenceWriteLiteral;
   const identity::SemanticTypeId pointeeType = write.type;
 
   // Source preorder: function, body, write statement, write value literal,
@@ -789,9 +795,8 @@ void lowerRawPointerWriteReturnFunction(PendingFunctionDeclaration&& function, H
       valueId, source.parameter.clone(), source.type, source.category, source.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
-  ctx.addUnsafeBlock(
-      HirUnsafeBlockExpression{writeUnsafeId, writeId, pointeeType,
-                               ZC_ASSERT_NONNULL(function.writeUnsafeBlockSpan).clone()});
+  ctx.addUnsafeBlock(HirUnsafeBlockExpression{writeUnsafeId, writeId, pointeeType,
+                                              shape.writeUnsafeBlockSpan.clone()});
   ctx.addUnsafeBlock(HirUnsafeBlockExpression{returnUnsafeId, valueId, function.resultType,
                                               ZC_ASSERT_NONNULL(function.unsafeBlockSpan).clone()});
 }

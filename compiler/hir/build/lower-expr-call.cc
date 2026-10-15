@@ -11,7 +11,26 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
+  // Three variants route here: DirectCallReturn, ErrorPropagateCallReturn, and
+  // ErrorUnwrapCallReturn. All carry a call; only the unwrap variant carries
+  // the tag/bool types and the returnsErrorUnwrapCall flag.
+  HirDirectCallExpression call = [&]() {
+    if (function.shape.is<ErrorUnwrapCallReturn>()) {
+      return zc::mv(function.shape.get<ErrorUnwrapCallReturn>().call);
+    } else if (function.shape.is<DirectCallReturn>()) {
+      return zc::mv(function.shape.get<DirectCallReturn>().call);
+    }
+    return zc::mv(function.shape.get<ErrorPropagateCallReturn>().call);
+  }();
+  bool returnsErrorUnwrapCall = false;
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType;
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType;
+  if (function.shape.is<ErrorUnwrapCallReturn>()) {
+    auto& v = function.shape.get<ErrorUnwrapCallReturn>();
+    returnsErrorUnwrapCall = true;
+    errorUnwrapTagType = zc::mv(v.errorUnwrapTagType);
+    errorUnwrapBoolType = zc::mv(v.errorUnwrapBoolType);
+  }
 
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, return F+2, call F+3. The call node is the return
@@ -24,8 +43,7 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   ctx.addFunction(HirFunctionDeclaration{
       functionId, function.definition, function.resultType, zc::mv(function.parameters), zc::none,
       function.visibility.clone(), function.linkage, function.declarationSpan.clone(), bodyId,
-      zc::none, function.returnsErrorUnwrapCall, zc::mv(function.errorUnwrapTagType),
-      zc::mv(function.errorUnwrapBoolType)});
+      zc::none, returnsErrorUnwrapCall, zc::mv(errorUnwrapTagType), zc::mv(errorUnwrapBoolType)});
   zc::Vector<HirNodeId> statements;
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
@@ -36,15 +54,15 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 }
 
 void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<DirectCallInitializerReturn>();
+  HirDirectCallExpression call = zc::mv(shape.call);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId placeType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory placeCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan placeSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId placeType = shape.localReference.type;
+  const HirValueCategory placeCategory = shape.localReference.category;
+  const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, call initializer F+3, return F+4, local reference F+5.
@@ -75,13 +93,14 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
 }
 
 void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
-  HirNominalAggregateExpression aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<DirectAggregateCallReturn>();
+  HirDirectCallExpression call = zc::mv(shape.call);
+  HirNominalAggregateExpression aggregate = zc::mv(shape.aggregate);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  zc::Maybe<HirErasureRecord> localErasure = zc::mv(ZC_ASSERT_NONNULL(function.local).erasure);
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  zc::Maybe<HirErasureRecord> localErasure = zc::mv(shape.local.erasure);
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, aggregate initializer F+3, return F+4, direct call
@@ -114,12 +133,13 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
 }
 
 void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
-  HirDirectCallExpression initializerCall = zc::mv(ZC_ASSERT_NONNULL(function.initializerCall));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<DirectExistentialCallReturn>();
+  HirDirectCallExpression call = zc::mv(shape.call);
+  HirDirectCallExpression initializerCall = zc::mv(shape.initializerCall);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, direct-call initializer F+3, return F+4, direct call
@@ -153,12 +173,13 @@ void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, H
 }
 
 void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirDirectCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.call));
-  const auto& literal = ZC_ASSERT_NONNULL(function.literal);
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<DirectScalarLocalCallReturn>();
+  HirDirectCallExpression call = zc::mv(shape.call);
+  const auto& literal = shape.literal;
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, local F+2, scalar-literal initializer F+3, return F+4, direct
@@ -190,15 +211,15 @@ void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, H
 }
 
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<ReceiverCallReturn>();
+  HirReceiverCallExpression call = zc::mv(shape.receiverCall);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId receiverType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory receiverCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan receiverSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId receiverType = shape.localReference.type;
+  const HirValueCategory receiverCategory = shape.localReference.category;
+  const identity::SourceSpan receiverSpan = shape.localReference.sourceSpan.clone();
   // The receiver-call initializer is either a closed nominal aggregate (struct
   // literal) or a scalar literal (enum variant discriminant). The builder
   // populates exactly one.
@@ -224,13 +245,13 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  if (function.aggregate != zc::none) {
-    auto aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
+  if (shape.aggregate != zc::none) {
+    auto aggregate = zc::mv(ZC_ASSERT_NONNULL(shape.aggregate));
     ctx.addAggregate(HirNominalAggregateExpression{
         initializerId, aggregate.definition, aggregate.type, zc::mv(aggregate.elements),
         aggregate.category, aggregate.sourceSpan.clone()});
   } else {
-    auto literalValue = zc::mv(ZC_ASSERT_NONNULL(function.literal));
+    auto literalValue = zc::mv(ZC_ASSERT_NONNULL(shape.literal));
     ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, zc::mv(literalValue),
                                                  HirValueCategory::Value, initializerSpan.clone()});
   }
@@ -245,7 +266,8 @@ void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
 }
 
 void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverSelfCall));
+  HirReceiverCallExpression call =
+      zc::mv(function.shape.get<ReceiverSelfCallReturn>().receiverSelfCall);
 
   // Fixed source-preorder stride matching the generic materializer: function F,
   // body F+1, return F+2, self call F+3. The implicit receiver is a function
@@ -272,10 +294,10 @@ void lowerReceiverSelfCallFunction(PendingFunctionDeclaration&& function, HirFnC
 }
 
 void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirReceiverCallExpression call = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
-  identity::CallableParameterKey receiverKey =
-      zc::mv(ZC_ASSERT_NONNULL(function.receiverCallParameterKey));
-  identity::SourceSpan receiverSpan = zc::mv(ZC_ASSERT_NONNULL(function.receiverCallParameterSpan));
+  auto& shape = function.shape.get<ParameterReceiverCallReturn>();
+  HirReceiverCallExpression call = zc::mv(shape.receiverCall);
+  identity::CallableParameterKey receiverKey = zc::mv(shape.receiverCallParameterKey);
+  identity::SourceSpan receiverSpan = zc::mv(shape.receiverCallParameterSpan);
 
   // Fixed source-preorder stride: function F, body F+1, return F+2, receiver
   // parameter reference F+3, receiver call F+4. The receiver is an explicit
@@ -307,7 +329,7 @@ void lowerParameterReceiverCallFunction(PendingFunctionDeclaration&& function, H
 }
 
 void lowerDynFieldAccessReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  auto pending = zc::mv(ZC_ASSERT_NONNULL(function.dynFieldAccessReturn));
+  auto pending = zc::mv(function.shape.get<DynFieldAccessReturn>().dynFieldAccessReturn);
   const identity::SemanticTypeId aggregateType = pending.aggregateLocal.type;
   identity::SourceSpan aggregateLetSpan = pending.aggregateLocal.sourceSpan.clone();
   identity::SourceSpan aggregateInitSpan =

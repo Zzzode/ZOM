@@ -9,7 +9,8 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerReceiverFieldArithmeticFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& arithmetic = ZC_ASSERT_NONNULL(function.receiverFieldArithmetic);
+  const auto& arithmetic =
+      function.shape.get<ReceiverFieldArithmeticReturn>().receiverFieldArithmetic;
   const auto& field = arithmetic.field;
   const identity::SemanticTypeId operandType = arithmetic.operandType;
   const checker::PrimitiveOperation operation = arithmetic.operation;

@@ -26,7 +26,8 @@ zc::Maybe<HirNodeId> lowerTrailingUnsafeBlock(PendingFunctionDeclaration& functi
 }  // namespace
 
 void lowerParameterReborrowReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirParameterReborrowExpression reborrow = zc::mv(ZC_ASSERT_NONNULL(function.parameterReborrow));
+  HirParameterReborrowExpression reborrow =
+      zc::mv(function.shape.get<ParameterReborrowReturn>().parameterReborrow);
   // The pending record carries a default local id for an alias source; the
   // materializer maps it to the sole user local ordinal.
   zc::Maybe<HirLocalId> sourceAlias;
@@ -56,7 +57,8 @@ void lowerParameterReborrowReturnFunction(PendingFunctionDeclaration&& function,
 }
 
 void lowerUnsafeScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  checker::checked::CanonicalConstValue literal = zc::mv(ZC_ASSERT_NONNULL(function.literal));
+  checker::checked::CanonicalConstValue literal =
+      zc::mv(function.shape.get<UnsafeScalarReturn>().literal);
 
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, return F+2, scalar value F+3, trailing unsafe block
@@ -82,7 +84,8 @@ void lowerUnsafeScalarReturnFunction(PendingFunctionDeclaration&& function, HirF
 }
 
 void lowerRawDereferenceReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirParameterReferenceExpression source = zc::mv(ZC_ASSERT_NONNULL(function.rawDereferenceSource));
+  HirParameterReferenceExpression source =
+      zc::mv(function.shape.get<RawDereferenceReturn>().rawDereferenceSource);
 
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, return F+2, parameter-reference value F+3, trailing
@@ -107,13 +110,13 @@ void lowerRawDereferenceReturnFunction(PendingFunctionDeclaration&& function, Hi
 }
 
 void lowerLocalAliasReborrowReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<LocalAliasReborrowReturn>();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  HirParameterReferenceExpression initializer =
-      zc::mv(ZC_ASSERT_NONNULL(function.parameterReference));
-  HirParameterReborrowExpression reborrow = zc::mv(ZC_ASSERT_NONNULL(function.parameterReborrow));
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  HirParameterReferenceExpression initializer = zc::mv(shape.parameterReference);
+  HirParameterReborrowExpression reborrow = zc::mv(shape.parameterReborrow);
   // The local-alias reborrow always carries the sole user local; the pending
   // default id maps to local ordinal 1.
   zc::Maybe<HirLocalId> sourceAlias;
@@ -152,11 +155,12 @@ void lowerLocalAliasReborrowReturnFunction(PendingFunctionDeclaration&& function
 }
 
 void lowerLocalBorrowReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<LocalBorrowReturn>();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  HirLocalBorrowExpression borrow = zc::mv(ZC_ASSERT_NONNULL(function.localBorrow));
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  HirLocalBorrowExpression borrow = zc::mv(shape.localBorrow);
 
   // Fixed source-preorder stride matching the generic materializer:
   // function F, body F+1, local F+2, initializer F+3, return F+4, local-borrow
@@ -180,13 +184,13 @@ void lowerLocalBorrowReturnFunction(PendingFunctionDeclaration&& function, HirFn
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  if (function.literal != zc::none) {
+  if (shape.literal != zc::none) {
     ctx.addExpression(HirScalarLiteralExpression{initializerId, localType,
-                                                 zc::mv(ZC_ASSERT_NONNULL(function.literal)),
+                                                 zc::mv(ZC_ASSERT_NONNULL(shape.literal)),
                                                  HirValueCategory::Value, initializerSpan.clone()});
   } else {
     HirParameterReferenceExpression initializer =
-        zc::mv(ZC_ASSERT_NONNULL(function.parameterReference));
+        zc::mv(ZC_ASSERT_NONNULL(shape.parameterReference));
     ctx.addParameterReference(HirParameterReferenceExpression{
         initializerId, zc::mv(initializer.parameter), initializer.type, initializer.category,
         initializer.sourceSpan.clone()});

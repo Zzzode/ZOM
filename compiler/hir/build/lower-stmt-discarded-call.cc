@@ -11,8 +11,9 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerVoidReceiverFieldWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& write = ZC_ASSERT_NONNULL(function.parameterFieldWrite);
-  const auto& parameter = ZC_ASSERT_NONNULL(function.parameterFieldWriteParameter);
+  const auto& shape = function.shape.get<VoidMutatingMethod>();
+  const auto& write = shape.parameterFieldWrite;
+  const auto& parameter = shape.parameterFieldWriteParameter;
 
   // Fixed source-preorder stride: function F, body F+1, write statement F+2,
   // write value parameter reference F+3. The block lists only the write; no
@@ -52,7 +53,7 @@ void lowerEmptyBodyVoidFunction(PendingFunctionDeclaration&& function, HirFnCtx&
 }
 
 void lowerVoidLetBodyFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& bindings = function.voidLetBindings;
+  const auto& bindings = function.shape.get<VoidLetBody>().voidLetBindings;
   const size_t count = bindings.size();
 
   // Fixed source-preorder stride: function F, body F+1, then N x (local,
@@ -85,19 +86,18 @@ void lowerVoidLetBodyFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
 }
 
 void lowerDiscardedReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  HirReceiverCallExpression setCall = zc::mv(ZC_ASSERT_NONNULL(function.statementReceiverCall));
-  HirLocalReferenceExpression setReceiver =
-      zc::mv(ZC_ASSERT_NONNULL(function.statementReceiverReference));
-  HirReceiverCallExpression getCall = zc::mv(ZC_ASSERT_NONNULL(function.receiverCall));
-  HirNominalAggregateExpression aggregate = zc::mv(ZC_ASSERT_NONNULL(function.aggregate));
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  auto& shape = function.shape.get<DiscardedReceiverCall>();
+  HirReceiverCallExpression setCall = zc::mv(shape.statementReceiverCall);
+  HirLocalReferenceExpression setReceiver = zc::mv(shape.statementReceiverReference);
+  HirReceiverCallExpression getCall = zc::mv(shape.receiverCall);
+  HirNominalAggregateExpression aggregate = zc::mv(shape.aggregate);
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
-  const identity::SemanticTypeId receiverType = ZC_ASSERT_NONNULL(function.localReference).type;
-  const HirValueCategory receiverCategory = ZC_ASSERT_NONNULL(function.localReference).category;
-  const identity::SourceSpan receiverSpan =
-      ZC_ASSERT_NONNULL(function.localReference).sourceSpan.clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::SemanticTypeId receiverType = shape.localReference.type;
+  const HirValueCategory receiverCategory = shape.localReference.category;
+  const identity::SourceSpan receiverSpan = shape.localReference.sourceSpan.clone();
 
   // Fixed source-preorder stride over the three statements: function F, body
   // F+1, local F+2, aggregate initializer F+3, set receiver reference F+4, set

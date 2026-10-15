@@ -754,6 +754,324 @@ struct PendingDynFieldAccessReturn final {
   HirReceiverCallExpression receiverCall;
 };
 
+// ===== PendingFunctionDeclaration shape variants =====
+//
+// Each variant carries only the fields its shape needs. The variant itself
+// is the shape discriminant — no field-presence checks are needed to
+// determine which lowering helper to call. The X-macro list below is the
+// single source of truth for the variant set; the OneOf type alias and
+// any future visitor dispatch are generated from it.
+
+struct EmptyVoidBody {};
+
+struct VoidLetBody {
+  zc::Vector<PendingVoidLetBinding> voidLetBindings;
+};
+
+struct DestructorFieldWriteBody {};
+
+struct DestructorMethodCallBody {};
+
+struct VoidMutatingMethod {
+  HirParameterFieldWriteStatement parameterFieldWrite;
+  HirParameterReferenceExpression parameterFieldWriteParameter;
+};
+
+struct ScalarLiteralReturn {
+  checker::checked::CanonicalConstValue literal;
+};
+
+struct UnsafeScalarReturn {
+  checker::checked::CanonicalConstValue literal;
+};
+
+struct ArrayIndexFoldReturn {
+  checker::checked::CanonicalConstValue literal;
+};
+
+struct ArrayLengthFoldReturn {
+  checker::checked::CanonicalConstValue literal;
+};
+
+struct LocalReturn {
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  HirLocalReferenceExpression localReference;
+};
+
+struct LocalWriteReturn {
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  zc::Vector<HirLocalWriteStatement> localWrites;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
+  HirLocalReferenceExpression localReference;
+};
+
+struct LocalFieldProjectionReturn {
+  HirLocalBinding local;
+  zc::Maybe<HirNominalAggregateExpression> aggregate;
+  zc::Vector<HirLocalWriteStatement> localWrites;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
+  HirLocalFieldProjectionExpression localFieldProjection;
+};
+
+struct LocalBorrowReturn {
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  HirLocalBorrowExpression localBorrow;
+};
+
+struct ParameterReferenceReturn {
+  HirParameterReferenceExpression parameterReference;
+};
+
+struct ParameterIndexReturn {
+  HirParameterIndexExpression parameterIndex;
+};
+
+struct ParameterReborrowReturn {
+  HirParameterReborrowExpression parameterReborrow;
+};
+
+struct LocalAliasReborrowReturn {
+  HirLocalBinding local;
+  HirParameterReferenceExpression parameterReference;
+  HirParameterReborrowExpression parameterReborrow;
+};
+
+struct RawDereferenceReturn {
+  HirParameterReferenceExpression rawDereferenceSource;
+};
+
+struct RawPointerWriteReturn {
+  HirRawPointerWriteStatement rawDereferenceWrite;
+  identity::SourceSpan writeUnsafeBlockSpan;
+  checker::checked::CanonicalConstValue rawDereferenceWriteLiteral;
+  HirParameterReferenceExpression rawDereferenceSource;
+};
+
+struct AggregateReturn {
+  HirNominalAggregateExpression aggregate;
+};
+
+struct EnumConstructionReturn {
+  HirNominalAggregateExpression aggregate;
+};
+
+struct ExistentialReturn {
+  HirNominalAggregateExpression aggregate;
+  HirErasureRecord returnErasure;
+};
+
+struct AggregateFieldProjectionReturn {
+  HirNominalAggregateExpression aggregate;
+  HirLocalBinding local;
+  HirLocalFieldProjectionExpression localFieldProjection;
+  HirLocalReferenceExpression localReference;
+};
+
+struct DirectScalarLocalCallReturn {
+  HirDirectCallExpression call;
+  checker::checked::CanonicalConstValue literal;
+  HirLocalBinding local;
+};
+
+struct DirectAggregateCallReturn {
+  HirDirectCallExpression call;
+  HirNominalAggregateExpression aggregate;
+  HirLocalBinding local;
+};
+
+struct DirectExistentialCallReturn {
+  HirDirectCallExpression call;
+  HirDirectCallExpression initializerCall;
+  HirLocalBinding local;
+};
+
+struct DirectCallReturn {
+  HirDirectCallExpression call;
+};
+
+struct ErrorPropagateCallReturn {
+  HirDirectCallExpression call;
+};
+
+struct ErrorUnwrapCallReturn {
+  HirDirectCallExpression call;
+  /// Computed during dispatch (not construction) via internPrimitiveType.
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType;
+  zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType;
+};
+
+struct DirectCallInitializerReturn {
+  HirDirectCallExpression call;
+  HirLocalBinding local;
+  HirLocalReferenceExpression localReference;
+};
+
+struct ReceiverCallReturn {
+  HirReceiverCallExpression receiverCall;
+  HirLocalBinding local;
+  zc::Maybe<HirNominalAggregateExpression> aggregate;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  HirLocalReferenceExpression localReference;
+};
+
+struct ParameterReceiverCallReturn {
+  HirReceiverCallExpression receiverCall;
+  identity::CallableParameterKey receiverCallParameterKey;
+  identity::SourceSpan receiverCallParameterSpan;
+};
+
+struct ReceiverSelfCallReturn {
+  HirReceiverCallExpression receiverSelfCall;
+};
+
+struct DiscardedReceiverCall {
+  HirReceiverCallExpression statementReceiverCall;
+  HirLocalReferenceExpression statementReceiverReference;
+  HirReceiverCallExpression receiverCall;
+  HirLocalBinding local;
+  HirNominalAggregateExpression aggregate;
+  HirLocalReferenceExpression localReference;
+};
+
+struct DynFieldAccessReturn {
+  PendingDynFieldAccessReturn dynFieldAccessReturn;
+};
+
+struct ReceiverFieldReturn {
+  HirParameterFieldProjectionExpression parameterFieldProjection;
+};
+
+struct ByValueParameterFieldReturn {
+  HirParameterFieldProjectionExpression parameterFieldProjection;
+};
+
+struct ReceiverFieldWriteReturn {
+  HirParameterFieldProjectionExpression parameterFieldProjection;
+  HirParameterFieldWriteStatement parameterFieldWrite;
+  checker::checked::CanonicalConstValue parameterFieldWriteLiteral;
+};
+
+struct ReceiverFieldArithmeticReturn {
+  PendingReceiverFieldArithmetic receiverFieldArithmetic;
+};
+
+struct ConditionalReturn {
+  PendingConditionalReturn conditionalReturn;
+};
+
+struct ChainedConditionalReturn {
+  PendingChainedConditionalReturn chainedConditionalReturn;
+};
+
+struct LeadingLocalConditionalReturn {
+  PendingLeadingLocalConditionalReturn leadingLocalConditionalReturn;
+};
+
+struct LoopReturn {
+  PendingLoopReturn loopReturn;
+};
+
+struct LoopBodyReturn {
+  PendingLoopBodyReturn loopBodyReturn;
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  zc::Vector<HirLocalWriteStatement> localWrites;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
+  HirLocalReferenceExpression localReference;
+};
+
+struct ComparisonLoopBodyReturn {
+  PendingComparisonLoopBodyReturn comparisonLoopBodyReturn;
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  zc::Vector<HirLocalWriteStatement> localWrites;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
+  HirLocalReferenceExpression localReference;
+};
+
+struct ComparisonReturn {
+  PendingEqualityCondition comparisonReturn;
+};
+
+struct PrimitiveUnaryReturn {
+  PendingEqualityCondition comparisonReturn;
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+};
+
+struct ForLoopReturn {
+  PendingForLoopReturn forLoopReturn;
+  checker::checked::CanonicalConstValue literal;
+};
+
+struct ForLoopAccumulatorReturn {
+  PendingForLoopAccumulatorReturn forLoopAccumulatorReturn;
+};
+
+struct NestedForLoopAccumulatorReturn {
+  PendingNestedForLoopAccumulatorReturn nestedForLoopAccumulatorReturn;
+};
+
+struct ForInLoopAccumulatorReturn {
+  PendingForInLoopAccumulatorReturn forInLoopAccumulatorReturn;
+};
+
+struct SequentialLocalReturn {
+  PendingSequentialLocalReturn sequentialLocalReturn;
+};
+
+/// Catch-all shape for bodies that no specialized guard claims. The inline
+/// generic materializer reads these fields to emit HIR nodes directly. Every
+/// field combination that reaches the materializer lands here; new specialized
+/// variants should be extracted as their guards land.
+struct GenericShape {
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<HirLocalBinding> local;
+  zc::Maybe<HirNominalAggregateExpression> aggregate;
+  zc::Vector<HirLocalWriteStatement> localWrites;
+  zc::Vector<PendingLocalWriteValue> localWriteValues;
+  zc::Maybe<HirLocalReferenceExpression> localReference;
+  zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  zc::Maybe<HirParameterIndexExpression> parameterIndex;
+  zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
+  zc::Maybe<HirLocalBorrowExpression> localBorrow;
+  zc::Maybe<PendingEqualityCondition> comparisonReturn;
+  bool returnsErrorUnwrapCall = false;
+};
+
+/// The tagged union of all function body shapes.
+using PendingFunctionShape = zc::OneOf<
+    EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
+    VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
+    ArrayLengthFoldReturn, LocalReturn, LocalWriteReturn, LocalFieldProjectionReturn,
+    LocalBorrowReturn, ParameterReferenceReturn, ParameterIndexReturn, ParameterReborrowReturn,
+    LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn, AggregateReturn,
+    EnumConstructionReturn, ExistentialReturn, AggregateFieldProjectionReturn,
+    DirectScalarLocalCallReturn, DirectAggregateCallReturn, DirectExistentialCallReturn,
+    DirectCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
+    ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
+    DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
+    ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,
+    ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopReturn, LoopBodyReturn,
+    ComparisonLoopBodyReturn, ComparisonReturn, PrimitiveUnaryReturn, ForLoopReturn,
+    ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn, NestedForLoopAccumulatorReturn,
+    SequentialLocalReturn, GenericShape>;
+
+/// A pending function declaration ready for HIR materialization.
+///
+/// The common header fields are set for every function. The `shape` variant
+/// carries only the fields the specific body shape needs, replacing the
+/// former 60+ Maybe fields that required field-presence checks at every
+/// dispatch site.
 struct PendingFunctionDeclaration final {
   identity::DefId definition;
   /// The AST node of the function/method declaration this pending record
@@ -771,157 +1089,7 @@ struct PendingFunctionDeclaration final {
   identity::SourceSpan bodySpan;
   identity::SourceSpan returnSpan;
   identity::SourceSpan valueSpan;
-  zc::Maybe<checker::checked::CanonicalConstValue> literal;
-  zc::Maybe<HirDirectCallExpression> call;
-  zc::Maybe<HirReceiverCallExpression> receiverCall;
-  // Populated for the parameter receiver call shape: the CallableParameterKey
-  // of the dyn-trait parameter that is the receiver. The lowering function
-  // allocates the parameter reference node and sets the receiver call's
-  // receiver slot to it.
-  zc::Maybe<identity::CallableParameterKey> receiverCallParameterKey;
-  // The source span of the receiver parameter expression, threaded to the
-  // parameter reference node the lowering function allocates.
-  zc::Maybe<identity::SourceSpan> receiverCallParameterSpan;
-  zc::Maybe<HirLocalBinding> local;
-  zc::Maybe<HirNominalAggregateExpression> aggregate;
-  // Populated for the existential-call shape: the direct call that
-  // initializes the sole owner local (the initializer is a CallExpression
-  // rather than an aggregate or literal).
-  zc::Maybe<HirDirectCallExpression> initializerCall;
-  zc::Vector<HirLocalWriteStatement> localWrites;
-  zc::Vector<PendingLocalWriteValue> localWriteValues;
-  zc::Maybe<HirLocalReferenceExpression> localReference;
-  zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
-  zc::Maybe<HirParameterFieldProjectionExpression> parameterFieldProjection;
-  zc::Maybe<HirParameterReferenceExpression> parameterReference;
-  zc::Maybe<HirParameterIndexExpression> parameterIndex;
-  zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
-  // Populated for the raw-pointer dereference return shape: the parameter
-  // reference that is dereferenced (`return unsafe { *ptr };`). The lowering
-  // function allocates the parameter reference node wrapped in a trailing
-  // unsafe block; the MIR builder emits a [Dereference] projection on the
-  // parameter place.
-  zc::Maybe<HirParameterReferenceExpression> rawDereferenceSource;
-  zc::Maybe<HirLocalBorrowExpression> localBorrow;
-  zc::Maybe<PendingSequentialLocalReturn> sequentialLocalReturn;
-  zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
   zc::Array<uint8_t> orderingKey;
-  zc::Maybe<PendingConditionalReturn> conditionalReturn;
-  zc::Maybe<PendingChainedConditionalReturn> chainedConditionalReturn;
-  zc::Maybe<PendingLoopReturn> loopReturn;
-  // Populated when the body is `return <a CMP b>`: the comparison result flows
-  // straight into the Return terminator (no conditional). Reuses the equality
-  // operand/operator carrier since the operand shape is identical.
-  zc::Maybe<PendingEqualityCondition> comparisonReturn;
-  // Populated for the loop-body composite shape (a leading mut-local, a `while`
-  // whose body writes it, and a local return). The declaration, writes, and
-  // return reuse the flat mut-local fields; this holds only the loop condition
-  // parameter reference and the loop span.
-  zc::Maybe<PendingLoopBodyReturn> loopBodyReturn;
-  // Populated for the do-while loop-body composite shape (a leading mut-local,
-  // a `do { <body> } while (<cond>);` whose body writes it, and a local
-  // return). The declaration, writes, and return reuse the flat mut-local
-  // fields; this holds the resolved comparison condition and the loop span.
-  zc::Maybe<PendingComparisonLoopBodyReturn> comparisonLoopBodyReturn;
-  // Populated for the C-style for-loop shape: a `for (let id = <lit>;
-  // <ident> <cmp> <lit>; <ident> = <binary>) {}` followed by a scalar
-  // return. The init local, comparison condition, and update write are
-  // carried here; the return literal reuses `literal`.
-  zc::Maybe<PendingForLoopReturn> forLoopReturn;
-  // Populated for the C-style for-loop accumulator shape: a leading scalar
-  // `let` accumulator local, a `for` loop whose body writes that accumulator,
-  // and a trailing `return <accumulator-local>;`. The accumulator local, the
-  // for-loop init/cond/update, the body write, and the return reference are
-  // carried here; there is no return literal.
-  zc::Maybe<PendingForLoopAccumulatorReturn> forLoopAccumulatorReturn;
-  // Populated for the nested for-loop accumulator shape: N leading scalar
-  // `mut` accumulator locals, an outer `for` loop whose sole body statement
-  // is an inner `for` loop that writes each accumulator, and a trailing
-  // `return <accumulator-local>;`.
-  zc::Maybe<PendingNestedForLoopAccumulatorReturn> nestedForLoopAccumulatorReturn;
-  // Populated for the mutating-receiver write-read body: one Overwrite of a
-  // field reached through the mutable receiver, plus its scalar literal value.
-  zc::Maybe<HirParameterFieldWriteStatement> parameterFieldWrite;
-  zc::Maybe<checker::checked::CanonicalConstValue> parameterFieldWriteLiteral;
-  // Populated for the shared-receiver self-call body: `return this.method();`
-  // forwards the implicit receiver parameter to a zero-argument method of the
-  // same owner. Unlike `receiverCall` (an owner-local call with an aggregate
-  // binding), the receiver is a parameter reference and there is no local or
-  // aggregate carrier.
-  zc::Maybe<HirReceiverCallExpression> receiverSelfCall;
-  // Populated for the receiver field-arithmetic body:
-  // `return this.<field> OP <literal>;` projects one field off the implicit
-  // receiver and combines it with a scalar literal.
-  zc::Maybe<PendingReceiverFieldArithmetic> receiverFieldArithmetic;
-  // Populated for the discarded unit-resulting receiver-call statement
-  // (`cell.set(42);`). Its node id is placed directly in the body block
-  // statement list; there is no return or local reference tied to it.
-  zc::Maybe<HirReceiverCallExpression> statementReceiverCall;
-  // The discarded call's owner-local receiver reference. Its source node and
-  // span are distinct from the trailing call's receiver; both borrow the same
-  // HirLocalId.
-  zc::Maybe<HirLocalReferenceExpression> statementReceiverReference;
-  // Populated for the void method shape: the ordinary parameter referenced by
-  // the sole receiver-field write RHS (`this.value = x;`). The write value
-  // node names this pooled parameter reference; parameterFieldWriteLiteral is
-  // unset.
-  zc::Maybe<HirParameterReferenceExpression> parameterFieldWriteParameter;
-  // True for the void method body (no HirReturnStatement is materialized).
-  bool voidBody = false;
-  // True when parameterFieldProjection reads a field of an ordinary by-value
-  // struct parameter (no receiver dereference) rather than the implicit method
-  // receiver. Selects the by-value MIR return builder.
-  bool byValueParameterField = false;
-  // Populated for K leading scalar-local bindings followed by one comparison
-  // conditional with two literal arms.
-  zc::Maybe<PendingLeadingLocalConditionalReturn> leadingLocalConditionalReturn;
-  // True when the return value is a compile-time-folded string concatenation
-  // (`return "a" + "b"`). The body checker emits a string-literal fact for the
-  // binary node; the two operand StringLiteralExpr nodes each carry an extra
-  // node-type fact beyond the per-function baseline.
-  bool returnsFoldedStringConcat = false;
-  // True when the return value is a compile-time-folded float-to-integer cast
-  // (`return 1.5 as i32`). The body checker emits an integer-literal fact for
-  // the cast node; the inner FloatLiteralExpr node carries an extra node-type
-  // and literal fact beyond the per-function baseline.
-  bool returnsFoldedFloatCast = false;
-  // True when the return value is a compile-time-folded constant-index array
-  // access (`return a[0]` on an array-literal-initialized local). The body
-  // checker emits a literal fact for the IndexExpression node; the base
-  // IdentExpr and index IntLiteral nodes each carry their own facts.
-  bool returnsArrayIndexFold = false;
-  // True when the return value is a prefix increment/decrement on a mutable
-  // owner local (`return ++x;`). The desugared binary write pools into the
-  // increment-write digest; the return value is the UnaryExpression itself,
-  // so the per-function localReturnCount node-type credit has no
-  // corresponding AST node and must be subtracted.
-  bool returnsLocalIncrement = false;
-  // True when the return value is a postfix increment/decrement on a mutable
-  // owner local (`return x++;`). The increment write is dead (the local is
-  // destroyed after return) and elides to a local reference return; the
-  // PostfixExpression node carries the call fact, so the per-function
-  // localReturnCount node-type credit has no corresponding AST node and must
-  // be subtracted, and the call fact has no corresponding HIR call node.
-  bool returnsLocalPostfixIncrement = false;
-  /// True when the return value is a primitive unary operation on a local
-  /// (`return !x;`). The unary desugars to an equivalent binary with a
-  /// synthetic constant operand (e.g. `!x` -> `x == false`). The
-  /// UnaryExpression node carries the call fact, so the per-function
-  /// localReturnCount node-type credit has no corresponding AST node and must
-  /// be subtracted.
-  bool returnsPrimitiveUnary = false;
-  /// True when the return value is an error-propagate call (`return f()?!;`).
-  /// The PostfixExpression node carries a node-type fact beyond the direct-call
-  /// baseline, so the fact-count equations add one extra node-type credit.
-  bool returnsErrorPropagateCall = false;
-  /// True when the return value is a forced-unwrap call (`return f()!!;`).
-  /// The PostfixExpression node carries a node-type fact beyond the direct-call
-  /// baseline, so the fact-count equations add one extra node-type credit.
-  bool returnsErrorUnwrapCall = false;
-  /// The i32 tag type and bool comparison-result type for the forced-unwrap
-  /// CFG.  Set only when `returnsErrorUnwrapCall` is true.
-  zc::Maybe<identity::SemanticTypeId> errorUnwrapTagType = zc::none;
-  zc::Maybe<identity::SemanticTypeId> errorUnwrapBoolType = zc::none;
   /// The AST BlockStmt node of the function body, threaded to the HIR
   /// side-table so the per-node correspondence validator can anchor it.
   ast::NodeId bodyNode{};
@@ -929,60 +1097,13 @@ struct PendingFunctionDeclaration final {
   ast::NodeId returnNode{};
   /// The AST expression node of the return value. Empty for void bodies.
   ast::NodeId returnValueNode{};
-  /// True when the aggregate is an enum tuple-variant construction
-  /// (`Enum::Variant(args)`) rather than a struct literal. The discriminant
-  /// element reuses the call node as its source, so it contributes no new
-  /// node-type fact beyond the one the initializer node already carries.
-  bool aggregateIsEnumConstruction = false;
-  /// Set when the return value is a concrete aggregate construction erased to
-  /// an existential return type. The record carries the erasure details so
-  /// the function header can attach them to the HirFunctionDeclaration.
-  zc::Maybe<HirErasureRecord> returnErasure = zc::none;
-  /// Populated for the void-let-body destructor: N dead scalar-let bindings.
-  /// Each is folded away by the LIR builder. The single local/literal fields
-  /// are not used for this shape.
-  zc::Vector<PendingVoidLetBinding> voidLetBindings = {};
-  /// True for the destructor field-write body shape
-  /// (`deinit() { this.<field> = <scalar-literal>; }`). The store is
-  /// dead-folded: the HIR is the same single-block ReturnVoid as the empty-body
-  /// shape. The checker-produced facts (node-type, member, place, literal) are
-  /// not materialized as HIR nodes, so the fact-count equations subtract them.
-  bool isDestructorFieldWriteBody = false;
-  /// True for the destructor method-call body shape
-  /// (`deinit() { this.<method>(); }`). The call is dead-folded: the HIR is
-  /// the same single-block ReturnVoid as the empty-body shape. The
-  /// checker-produced facts (node-type, call, member) are not materialized as
-  /// HIR nodes, so the fact-count equations subtract them.
-  bool isDestructorMethodCallBody = false;
-  /// Populated for the dyn field-access shape: an aggregate-initialized local
-  /// with per-field erasure, a field-read local, and a trailing method-call
-  /// return. The lowering function materializes the two locals, the aggregate,
-  /// the field projection, the receiver reference, and the receiver call.
-  zc::Maybe<PendingDynFieldAccessReturn> dynFieldAccessReturn = zc::none;
-  // Populated for the raw-pointer write-read shape
-  // (`unsafe { *ptr = <lit>; }; return unsafe { *ptr };`): the write
-  // statement that overwrites the pointee through the mutable raw-pointer
-  // parameter, the span of the write's unsafe block, and the scalar literal
-  // value written through the pointer. The lowering function materializes
-  // the write before the trailing raw-deref return.
-  zc::Maybe<HirRawPointerWriteStatement> rawDereferenceWrite = zc::none;
-  zc::Maybe<identity::SourceSpan> writeUnsafeBlockSpan = zc::none;
-  zc::Maybe<checker::checked::CanonicalConstValue> rawDereferenceWriteLiteral = zc::none;
-  // Number of scalar elements in the array-literal initializer of an
-  // array-index-fold function. The body checker produces one node-type fact
-  // per element plus one for the ArrayLiteral node itself and one for the
-  // base IdentExpr; the count equation adds this count plus two.
-  uint32_t arrayLiteralElementCount = 0;
-  // True when the return value is a compile-time-folded array length access
-  // (`return a.length` on an array-literal-initialized local). The body
-  // checker emits a literal fact for the MemberExpression node; the base
-  // IdentExpr node carries its own node-type fact.
-  bool returnsArrayLengthFold = false;
-  // Populated for the for-in loop accumulator shape: N leading scalar `mut`
-  // accumulator locals, a `for (let x in [<lit>, ...]) { <accumulator> =
-  // <accumulator> <bin> x; ... }` loop, and a trailing
-  // `return <accumulator-local>;`. The loop is compile-time unrolled.
-  zc::Maybe<PendingForInLoopAccumulatorReturn> forInLoopAccumulatorReturn = zc::none;
+  /// Set when the return expression is wrapped in an admitted unsafe block.
+  /// A source-context property shared by every shape, not shape-specific.
+  zc::Maybe<identity::SourceSpan> unsafeBlockSpan;
+
+  /// The body shape variant — discriminates which lowering helper to call
+  /// and carries only the fields that shape needs.
+  PendingFunctionShape shape;
 };
 
 }  // namespace detail

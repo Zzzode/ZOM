@@ -11,7 +11,7 @@ namespace zomlang::compiler::hir {
 namespace detail {
 
 void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& comparison = ZC_ASSERT_NONNULL(function.comparisonReturn);
+  const auto& comparison = function.shape.get<ComparisonReturn>().comparisonReturn;
   const identity::SemanticTypeId operandType = comparison.operandType;
   const identity::SemanticTypeId resultType = comparison.type;
   const checker::PrimitiveOperation operation = comparison.operation;
@@ -45,15 +45,16 @@ void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 }
 
 void lowerPrimitiveUnaryReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  const auto& comparison = ZC_ASSERT_NONNULL(function.comparisonReturn);
+  auto& shape = function.shape.get<PrimitiveUnaryReturn>();
+  const auto& comparison = shape.comparisonReturn;
   const identity::SemanticTypeId operandType = comparison.operandType;
   const identity::SemanticTypeId resultType = comparison.type;
   const checker::PrimitiveOperation operation = comparison.operation;
   const identity::SourceSpan binarySpan = comparison.sourceSpan.clone();
-  const identity::SemanticTypeId localType = ZC_ASSERT_NONNULL(function.local).type;
-  const identity::SourceSpan localSpan = ZC_ASSERT_NONNULL(function.local).sourceSpan.clone();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
   const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(function.local).initializerSpan).clone();
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
 
   // Fixed source-preorder stride: function F, body F+1, local F+2,
   // initializer F+3, left F+4, right F+5, binary F+6, return F+7. The block
@@ -78,13 +79,8 @@ void lowerPrimitiveUnaryReturnFunction(PendingFunctionDeclaration&& function, Hi
 
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  PendingConditionalArm initializerArm{ZC_ASSERT_NONNULL(function.literal).clone(),
-                                       zc::none,
-                                       zc::none,
-                                       localType,
-                                       initializerSpan.clone(),
-                                       zc::none,
-                                       ast::NodeId()};
+  PendingConditionalArm initializerArm{zc::mv(shape.literal),   zc::none, zc::none,     localType,
+                                       initializerSpan.clone(), zc::none, ast::NodeId()};
   ctx.lowerArmLeaf(initializerId, initializerArm);
   ctx.lowerArmLeaf(leftId, comparison.left);
   ctx.lowerArmLeaf(rightId, comparison.right);

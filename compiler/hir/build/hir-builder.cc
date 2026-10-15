@@ -42,6 +42,19 @@ bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
   return left.size() < right.size();
 }
 
+/// Compiler-generated conjunction: every Maybe argument is zc::none.
+/// Replaces hand-written 10+ field `== zc::none` chains in shape guards.
+template <typename... Ts>
+constexpr bool allNone(const Ts&... maybes) {
+  return (... && (maybes == zc::none));
+}
+
+/// Compiler-generated conjunction: every Vector argument is empty.
+template <typename... Ts>
+constexpr bool allEmpty(const Ts&... vectors) {
+  return (... && (vectors.size() == 0));
+}
+
 void sortPendingDeclarations(zc::Vector<PendingValueDeclaration>& values) {
   for (size_t index = 1; index < values.size(); ++index) {
     auto current = zc::mv(values[index]);
@@ -614,6 +627,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               literalFact.literal.clone()});
         }
       }
+      PendingFunctionShape destructorShape;
+      if (shape.isDestructorFieldWriteBody) {
+        destructorShape = DestructorFieldWriteBody{};
+      } else if (shape.isDestructorMethodCallBody) {
+        destructorShape = DestructorMethodCallBody{};
+      } else if (voidLetBindings.size() != 0) {
+        destructorShape = VoidLetBody{zc::mv(voidLetBindings)};
+      } else {
+        destructorShape = EmptyVoidBody{};
+      }
       pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
                                                       definition.node,
                                                       callable.success,
@@ -625,64 +648,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       bodySpanValue.clone(),
                                                       definition.source.clone(),
                                                       definition.source.clone(),
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      {},
-                                                      {},
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
                                                       zc::mv(orderingKey),
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      true,
-                                                      false,
-                                                      zc::none,
-                                                      shape.returnsFoldedStringConcat,
-                                                      shape.returnsFoldedFloatCast,
-                                                      shape.returnsArrayIndexFold,
-                                                      shape.returnsLocalIncrement,
-                                                      shape.returnsLocalPostfixIncrement,
-                                                      shape.returnsPrimitiveUnary,
-                                                      shape.returnsErrorPropagateCall,
-                                                      shape.returnsErrorUnwrapCall,
-                                                      zc::none,
-                                                      zc::none,
                                                       shape.body,
                                                       ast::NodeId(),
                                                       ast::NodeId(),
-                                                      false,
                                                       zc::none,
-                                                      zc::mv(voidLetBindings),
-                                                      shape.isDestructorFieldWriteBody,
-                                                      shape.isDestructorMethodCallBody});
+                                                      zc::mv(destructorShape)});
       continue;
     }
     if (definition.record.kind() == identity::DefinitionKind::Function ||
@@ -1822,70 +1793,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               shape.conditionIsUnary || shape.conditionIsBoolReference,
               shape.conditionIsBoolReference,
               leadingShape.ifStatement};
-          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                          definition.node,
-                                                          callable.success,
-                                                          zc::mv(parameters),
-                                                          zc::none,
-                                                          zc::mv(visibilityValue),
-                                                          linkageValue,
-                                                          definition.source.clone(),
-                                                          bodySpanValue.clone(),
-                                                          returnSpanValue.clone(),
-                                                          valueSpanValue.clone(),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          {},
-                                                          {},
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::mv(orderingKey),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          false,
-                                                          false,
-                                                          zc::mv(leadingPending),
-                                                          shape.returnsFoldedStringConcat,
-                                                          shape.returnsFoldedFloatCast,
-                                                          shape.returnsArrayIndexFold,
-                                                          shape.returnsLocalIncrement,
-                                                          shape.returnsLocalPostfixIncrement,
-                                                          shape.returnsPrimitiveUnary,
-                                                          shape.returnsErrorPropagateCall,
-                                                          shape.returnsErrorUnwrapCall,
-                                                          zc::none,
-                                                          zc::none,
-                                                          shape.body,
-                                                          shape.returnStatement,
-                                                          shape.value});
+          pendingFunctions.add(PendingFunctionDeclaration{
+              definition.definition, definition.node, callable.success, zc::mv(parameters),
+              zc::none, zc::mv(visibilityValue), linkageValue, definition.source.clone(),
+              bodySpanValue.clone(), returnSpanValue.clone(), valueSpanValue.clone(),
+              zc::mv(orderingKey), shape.body, shape.returnStatement, shape.value, zc::none,
+              LeadingLocalConditionalReturn{zc::mv(leadingPending)}});
           continue;
         }
         if (shape.isMatchChainedEquality) {
@@ -2022,70 +1935,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                shape.matchChainedElseValue};
           auto chainedReturn = PendingChainedConditionalReturn{
               zc::mv(entries), zc::mv(elseArm), valueSpanValue.clone(), shape.matchStatement};
-          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                          definition.node,
-                                                          callable.success,
-                                                          zc::mv(parameters),
-                                                          zc::mv(conditionalReceiver),
-                                                          zc::mv(visibilityValue),
-                                                          linkageValue,
-                                                          definition.source.clone(),
-                                                          bodySpanValue.clone(),
-                                                          returnSpanValue.clone(),
-                                                          valueSpanValue.clone(),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          {},
-                                                          {},
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::mv(orderingKey),
-                                                          zc::none,
-                                                          zc::mv(chainedReturn),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          false,
-                                                          false,
-                                                          zc::none,
-                                                          shape.returnsFoldedStringConcat,
-                                                          shape.returnsFoldedFloatCast,
-                                                          shape.returnsArrayIndexFold,
-                                                          shape.returnsLocalIncrement,
-                                                          shape.returnsLocalPostfixIncrement,
-                                                          shape.returnsPrimitiveUnary,
-                                                          shape.returnsErrorPropagateCall,
-                                                          shape.returnsErrorUnwrapCall,
-                                                          zc::none,
-                                                          zc::none,
-                                                          shape.body,
-                                                          shape.returnStatement,
-                                                          shape.value});
+          pendingFunctions.add(PendingFunctionDeclaration{
+              definition.definition, definition.node, callable.success, zc::mv(parameters),
+              zc::mv(conditionalReceiver), zc::mv(visibilityValue), linkageValue,
+              definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+              valueSpanValue.clone(), zc::mv(orderingKey), shape.body, shape.returnStatement,
+              shape.value, zc::none, ChainedConditionalReturn{zc::mv(chainedReturn)}});
           continue;
         }
         PendingConditionalCondition pendingCondition;
@@ -3031,70 +2886,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               shape.isMatchEquality,
               shape.hasMatchGuard,
               shape.isMatchReturn ? shape.matchStatement : shape.condition};
-          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                          definition.node,
-                                                          callable.success,
-                                                          zc::mv(parameters),
-                                                          zc::mv(conditionalReceiver),
-                                                          zc::mv(visibilityValue),
-                                                          linkageValue,
-                                                          definition.source.clone(),
-                                                          bodySpanValue.clone(),
-                                                          returnSpanValue.clone(),
-                                                          valueSpanValue.clone(),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          {},
-                                                          {},
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::mv(orderingKey),
-                                                          zc::mv(conditionalReturn),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          false,
-                                                          false,
-                                                          zc::none,
-                                                          shape.returnsFoldedStringConcat,
-                                                          shape.returnsFoldedFloatCast,
-                                                          shape.returnsArrayIndexFold,
-                                                          shape.returnsLocalIncrement,
-                                                          shape.returnsLocalPostfixIncrement,
-                                                          shape.returnsPrimitiveUnary,
-                                                          shape.returnsErrorPropagateCall,
-                                                          shape.returnsErrorUnwrapCall,
-                                                          zc::none,
-                                                          zc::none,
-                                                          shape.body,
-                                                          shape.returnStatement,
-                                                          shape.value});
+          pendingFunctions.add(PendingFunctionDeclaration{
+              definition.definition, definition.node, callable.success, zc::mv(parameters),
+              zc::mv(conditionalReceiver), zc::mv(visibilityValue), linkageValue,
+              definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+              valueSpanValue.clone(), zc::mv(orderingKey), shape.body, shape.returnStatement,
+              shape.value, zc::none, ConditionalReturn{zc::mv(conditionalReturn)}});
         }
         continue;
       }
@@ -3234,70 +3031,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                               ZC_ASSERT_NONNULL(loopSpan).clone(),
                                               valueSpanValue.clone(),
                                               shape.loopStatement};
-          pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                          definition.node,
-                                                          callable.success,
-                                                          zc::mv(parameters),
-                                                          zc::none,
-                                                          zc::mv(visibilityValue),
-                                                          linkageValue,
-                                                          definition.source.clone(),
-                                                          bodySpanValue.clone(),
-                                                          returnSpanValue.clone(),
-                                                          valueSpanValue.clone(),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          {},
-                                                          {},
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::mv(orderingKey),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::mv(loopReturn),
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          zc::none,
-                                                          false,
-                                                          false,
-                                                          zc::none,
-                                                          shape.returnsFoldedStringConcat,
-                                                          shape.returnsFoldedFloatCast,
-                                                          shape.returnsArrayIndexFold,
-                                                          shape.returnsLocalIncrement,
-                                                          shape.returnsLocalPostfixIncrement,
-                                                          shape.returnsPrimitiveUnary,
-                                                          shape.returnsErrorPropagateCall,
-                                                          shape.returnsErrorUnwrapCall,
-                                                          zc::none,
-                                                          zc::none,
-                                                          shape.body,
-                                                          shape.returnStatement,
-                                                          shape.value});
+          pendingFunctions.add(PendingFunctionDeclaration{
+              definition.definition, definition.node, callable.success, zc::mv(parameters),
+              zc::none, zc::mv(visibilityValue), linkageValue, definition.source.clone(),
+              bodySpanValue.clone(), returnSpanValue.clone(), valueSpanValue.clone(),
+              zc::mv(orderingKey), shape.body, shape.returnStatement, shape.value, zc::none,
+              LoopReturn{zc::mv(loopReturn)}});
         }
         continue;
       }
@@ -3582,70 +3321,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      ZC_ASSERT_NONNULL(valueSpan).clone(),
                                      false,
                                      shape.condition};
-        pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                        definition.node,
-                                                        callable.success,
-                                                        zc::mv(parameters),
-                                                        zc::mv(comparisonReceiver),
-                                                        zc::mv(visibilityValue),
-                                                        linkageValue,
-                                                        definition.source.clone(),
-                                                        bodySpanValue.clone(),
-                                                        returnSpanValue.clone(),
-                                                        valueSpanValue.clone(),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        {},
-                                                        {},
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(orderingKey),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(comparisonReturn),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        false,
-                                                        false,
-                                                        zc::none,
-                                                        shape.returnsFoldedStringConcat,
-                                                        shape.returnsFoldedFloatCast,
-                                                        shape.returnsArrayIndexFold,
-                                                        shape.returnsLocalIncrement,
-                                                        shape.returnsLocalPostfixIncrement,
-                                                        shape.returnsPrimitiveUnary,
-                                                        shape.returnsErrorPropagateCall,
-                                                        shape.returnsErrorUnwrapCall,
-                                                        zc::none,
-                                                        zc::none,
-                                                        shape.body,
-                                                        shape.returnStatement,
-                                                        shape.value});
+        pendingFunctions.add(PendingFunctionDeclaration{
+            definition.definition, definition.node, callable.success, zc::mv(parameters),
+            zc::mv(comparisonReceiver), zc::mv(visibilityValue), linkageValue,
+            definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+            valueSpanValue.clone(), zc::mv(orderingKey), shape.body, shape.returnStatement,
+            shape.value, zc::none, ComparisonReturn{zc::mv(comparisonReturn)}});
         continue;
       }
       if (shape.returnsUnary) {
@@ -3992,70 +3673,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                        binaryOperation,
                                                        ZC_ASSERT_NONNULL(valueSpan).clone(),
                                                        true};
-        pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                        definition.node,
-                                                        callable.success,
-                                                        zc::mv(parameters),
-                                                        zc::mv(unaryReceiver),
-                                                        zc::mv(visibilityValue),
-                                                        linkageValue,
-                                                        definition.source.clone(),
-                                                        bodySpanValue.clone(),
-                                                        returnSpanValue.clone(),
-                                                        valueSpanValue.clone(),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        {},
-                                                        {},
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(orderingKey),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(comparisonReturn),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        false,
-                                                        false,
-                                                        zc::none,
-                                                        shape.returnsFoldedStringConcat,
-                                                        shape.returnsFoldedFloatCast,
-                                                        shape.returnsArrayIndexFold,
-                                                        shape.returnsLocalIncrement,
-                                                        shape.returnsLocalPostfixIncrement,
-                                                        shape.returnsPrimitiveUnary,
-                                                        shape.returnsErrorPropagateCall,
-                                                        shape.returnsErrorUnwrapCall,
-                                                        zc::none,
-                                                        zc::none,
-                                                        shape.body,
-                                                        shape.returnStatement,
-                                                        shape.value});
+        pendingFunctions.add(PendingFunctionDeclaration{
+            definition.definition, definition.node, callable.success, zc::mv(parameters),
+            zc::mv(unaryReceiver), zc::mv(visibilityValue), linkageValue, definition.source.clone(),
+            bodySpanValue.clone(), returnSpanValue.clone(), valueSpanValue.clone(),
+            zc::mv(orderingKey), shape.body, shape.returnStatement, shape.value, zc::none,
+            ComparisonReturn{zc::mv(comparisonReturn)}});
         continue;
       }
       auto nodeTypeIndex = factIndex(facts.nodeTypes(), shape.value);
@@ -4408,70 +4031,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                             HirNodeId(),
                                             ZC_ASSERT_NONNULL(writeStatementSpan).clone(),
                                             ZC_ASSERT_NONNULL(writeValueSpan).clone()};
-        pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                        definition.node,
-                                                        callable.success,
-                                                        zc::mv(parameters),
-                                                        zc::mv(methodReceiver),
-                                                        zc::mv(visibilityValue),
-                                                        linkageValue,
-                                                        definition.source.clone(),
-                                                        bodySpanValue.clone(),
-                                                        returnSpanValue.clone(),
-                                                        valueSpanValue.clone(),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        {},
-                                                        {},
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(orderingKey),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(parameterFieldWrite),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(parameterFieldWriteParameter),
-                                                        true,
-                                                        false,
-                                                        zc::none,
-                                                        shape.returnsFoldedStringConcat,
-                                                        shape.returnsFoldedFloatCast,
-                                                        shape.returnsArrayIndexFold,
-                                                        shape.returnsLocalIncrement,
-                                                        shape.returnsLocalPostfixIncrement,
-                                                        shape.returnsPrimitiveUnary,
-                                                        shape.returnsErrorPropagateCall,
-                                                        shape.returnsErrorUnwrapCall,
-                                                        zc::none,
-                                                        zc::none,
-                                                        shape.body,
-                                                        shape.returnStatement,
-                                                        shape.value});
+        pendingFunctions.add(PendingFunctionDeclaration{
+            definition.definition, definition.node, callable.success, zc::mv(parameters),
+            zc::mv(methodReceiver), zc::mv(visibilityValue), linkageValue,
+            definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+            valueSpanValue.clone(), zc::mv(orderingKey), shape.body, shape.returnStatement,
+            shape.value, zc::mv(unsafeBlockSpan),
+            VoidMutatingMethod{zc::mv(ZC_ASSERT_NONNULL(parameterFieldWrite)),
+                               zc::mv(ZC_ASSERT_NONNULL(parameterFieldWriteParameter))}});
         continue;
       }
       zc::Maybe<checker::checked::CanonicalConstValue> literal;
@@ -4498,8 +4065,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirReceiverCallExpression> statementReceiverCall;
       zc::Maybe<HirLocalReferenceExpression> statementReceiverReference;
       bool voidBody = false;
-      bool returnsFoldedStringConcat = false;
-      bool returnsFoldedFloatCast = false;
       bool returnsArrayIndexFold = false;
       bool returnsArrayLengthFold = false;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
@@ -5610,70 +5175,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 returnLocal,
                                                 ZC_ASSERT_NONNULL(returnValueSpan).clone(),
                                                 zc::mv(deadBindings)};
-        pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                        definition.node,
-                                                        callable.success,
-                                                        zc::mv(parameters),
-                                                        zc::none,
-                                                        zc::mv(visibilityValue),
-                                                        linkageValue,
-                                                        definition.source.clone(),
-                                                        bodySpanValue.clone(),
-                                                        returnSpanValue.clone(),
-                                                        valueSpanValue.clone(),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        {},
-                                                        {},
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(sequential),
-                                                        zc::mv(unsafeBlockSpan),
-                                                        zc::mv(orderingKey),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        false,
-                                                        false,
-                                                        zc::none,
-                                                        shape.returnsFoldedStringConcat,
-                                                        shape.returnsFoldedFloatCast,
-                                                        shape.returnsArrayIndexFold,
-                                                        shape.returnsLocalIncrement,
-                                                        shape.returnsLocalPostfixIncrement,
-                                                        shape.returnsPrimitiveUnary,
-                                                        shape.returnsErrorPropagateCall,
-                                                        shape.returnsErrorUnwrapCall,
-                                                        zc::none,
-                                                        zc::none,
-                                                        shape.body,
-                                                        shape.returnStatement,
-                                                        shape.value});
+        pendingFunctions.add(PendingFunctionDeclaration{
+            definition.definition, definition.node, callable.success, zc::mv(parameters), zc::none,
+            zc::mv(visibilityValue), linkageValue, definition.source.clone(), bodySpanValue.clone(),
+            returnSpanValue.clone(), valueSpanValue.clone(), zc::mv(orderingKey), shape.body,
+            shape.returnStatement, shape.value, zc::mv(unsafeBlockSpan),
+            SequentialLocalReturn{zc::mv(sequential)}});
         continue;
       }
       if (shape.dynFieldAccessReturn) {
@@ -6080,76 +5587,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
-        pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                        definition.node,
-                                                        callable.success,
-                                                        zc::mv(parameters),
-                                                        zc::mv(methodReceiver),
-                                                        zc::mv(visibilityValue),
-                                                        linkageValue,
-                                                        definition.source.clone(),
-                                                        bodySpanValue.clone(),
-                                                        returnSpanValue.clone(),
-                                                        valueSpanValue.clone(),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::Vector<HirLocalWriteStatement>{},
-                                                        zc::Vector<PendingLocalWriteValue>{},
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::mv(unsafeBlockSpan),
-                                                        zc::mv(orderingKey),
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        zc::none,
-                                                        false,
-                                                        false,
-                                                        zc::none,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        false,
-                                                        zc::none,
-                                                        zc::none,
-                                                        shape.body,
-                                                        shape.returnStatement,
-                                                        shape.value,
-                                                        false,
-                                                        zc::none,
-                                                        zc::Vector<PendingVoidLetBinding>{},
-                                                        false,
-                                                        false,
-                                                        zc::mv(dynFieldAccessReturn)});
+        pendingFunctions.add(PendingFunctionDeclaration{
+            definition.definition, definition.node, callable.success, zc::mv(parameters),
+            zc::mv(methodReceiver), zc::mv(visibilityValue), linkageValue,
+            definition.source.clone(), bodySpanValue.clone(), returnSpanValue.clone(),
+            valueSpanValue.clone(), zc::mv(orderingKey), shape.body, shape.returnStatement,
+            shape.value, zc::mv(unsafeBlockSpan),
+            DynFieldAccessReturn{zc::mv(ZC_ASSERT_NONNULL(dynFieldAccessReturn))}});
         continue;
       }
       if (shape.returnsLocal) {  // A scalar-local method body is admitted only through a shared
@@ -7901,8 +7345,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ordinal + 2);
         }
         literal = sourceLiteral.literal.clone();
-        returnsFoldedStringConcat = shape.returnsFoldedStringConcat;
-        returnsFoldedFloatCast = shape.returnsFoldedFloatCast;
         returnsArrayIndexFold = shape.returnsArrayIndexFold;
         returnsArrayLengthFold = shape.returnsArrayLengthFold;
       } else if (shape.returnsRawDereference) {
@@ -11700,92 +11142,482 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // enclosing function's result type matches the success type, not the
       // call's error-union result type.
       const identity::SemanticTypeId functionResultType = callable.success;
-      uint32_t arrayLiteralElementCount = 0;
-      if (shape.returnsArrayIndexFold || shape.returnsArrayLengthFold) {
-        auto aggregateIndex = factIndex(facts.aggregates(), shape.localInitializer);
-        if (aggregateIndex != zc::none) {
-          size_t aggregateSlot = 0;
-          ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
-          arrayLiteralElementCount = static_cast<uint32_t>(
-              facts.aggregates().entries()[aggregateSlot].value.elements.size());
+      // Classify the body shape into a tagged-union variant. The lambda
+      // mirrors the dispatch guard order below; each branch moves only the
+      // fields its variant carries. Fields always zc::none on this path
+      // (conditionalReturn, loopReturn, sequentialLocalReturn, etc.) are
+      // skipped — their variants are produced by specialized construction
+      // sites earlier in the builder. Negative field-clear conjunctions are
+      // compiler-generated via allNone/allEmpty, never hand-written.
+      auto selectShape = [&]() -> PendingFunctionShape {
+        // Shared carrier-clear predicates, mirroring the guard chain.
+        const bool callFieldsClear =
+            allEmpty(localWrites, localWriteValues) &&
+            allNone(localFieldProjection, parameterIndex, parameterReborrow, localBorrow,
+                    statementReceiverCall, statementReceiverReference, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan);
+        const bool borrowCarriersClear =
+            allNone(call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterIndex, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
+            allEmpty(localWrites, localWriteValues);
+        // By-value struct parameter field return.
+        if (byValueParameterField && parameterFieldProjection != zc::none &&
+            allNone(methodReceiver, parameterFieldWrite, statementReceiverCall,
+                    statementReceiverReference, literal, call, receiverCall, local, aggregate,
+                    localReference, localFieldProjection, parameterReference, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, receiverFieldArithmetic, receiverSelfCall,
+                    unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody) {
+          return ByValueParameterFieldReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection))};
         }
-      }
-      pendingFunctions.add(PendingFunctionDeclaration{definition.definition,
-                                                      definition.node,
-                                                      functionResultType,
-                                                      zc::mv(parameters),
-                                                      zc::mv(methodReceiver),
-                                                      zc::mv(visibilityValue),
-                                                      linkageValue,
-                                                      definition.source.clone(),
-                                                      bodySpanValue.clone(),
-                                                      returnSpanValue.clone(),
-                                                      valueSpanValue.clone(),
-                                                      zc::mv(literal),
-                                                      zc::mv(call),
-                                                      zc::mv(receiverCall),
-                                                      zc::mv(receiverCallParameterKey),
-                                                      zc::mv(receiverCallParameterSpan),
-                                                      zc::mv(local),
-                                                      zc::mv(aggregate),
-                                                      zc::mv(initializerCall),
-                                                      zc::mv(localWrites),
-                                                      zc::mv(localWriteValues),
-                                                      zc::mv(localReference),
-                                                      zc::mv(localFieldProjection),
-                                                      zc::mv(parameterFieldProjection),
-                                                      zc::mv(parameterReference),
-                                                      zc::mv(parameterIndex),
-                                                      zc::mv(parameterReborrow),
-                                                      zc::mv(rawDereferenceSource),
-                                                      zc::mv(localBorrow),
-                                                      zc::none,
-                                                      zc::mv(unsafeBlockSpan),
-                                                      zc::mv(orderingKey),
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::none,
-                                                      zc::mv(comparisonReturn),
-                                                      zc::mv(loopBodyReturn),
-                                                      zc::mv(comparisonLoopBodyReturn),
-                                                      zc::mv(forLoopReturn),
-                                                      zc::mv(forLoopAccumulatorReturn),
-                                                      zc::mv(nestedForLoopAccumulatorReturn),
-                                                      zc::mv(parameterFieldWrite),
-                                                      zc::mv(parameterFieldWriteLiteral),
-                                                      zc::mv(receiverSelfCall),
-                                                      zc::mv(receiverFieldArithmetic),
-                                                      zc::mv(statementReceiverCall),
-                                                      zc::mv(statementReceiverReference),
-                                                      zc::none,
-                                                      voidBody,
-                                                      byValueParameterField,
-                                                      zc::none,
-                                                      returnsFoldedStringConcat,
-                                                      returnsFoldedFloatCast,
-                                                      returnsArrayIndexFold,
-                                                      shape.returnsLocalIncrement,
-                                                      shape.returnsLocalPostfixIncrement,
-                                                      shape.returnsPrimitiveUnary,
-                                                      shape.returnsErrorPropagateCall,
-                                                      shape.returnsErrorUnwrapCall,
-                                                      zc::none,
-                                                      zc::none,
-                                                      shape.body,
-                                                      shape.returnStatement,
-                                                      shape.value,
-                                                      aggregateIsEnumConstruction,
-                                                      zc::mv(returnErasure),
-                                                      zc::Vector<PendingVoidLetBinding>{},
-                                                      false,
-                                                      false,
-                                                      zc::mv(dynFieldAccessReturn),
-                                                      zc::mv(rawDereferenceWrite),
-                                                      zc::mv(writeUnsafeBlockSpan),
-                                                      zc::mv(rawDereferenceWriteLiteral),
-                                                      arrayLiteralElementCount,
-                                                      returnsArrayLengthFold,
-                                                      zc::mv(forInLoopAccumulatorReturn)});
+        // Receiver field write return.
+        if (parameterFieldProjection != zc::none && methodReceiver != zc::none &&
+            parameterFieldWrite != zc::none && parameterFieldWriteLiteral != zc::none &&
+            allNone(literal, call, receiverCall, local, aggregate, localReference,
+                    localFieldProjection, parameterReference, statementReceiverCall,
+                    statementReceiverReference, parameterIndex, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody) {
+          return ReceiverFieldWriteReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection)),
+                                          zc::mv(ZC_ASSERT_NONNULL(parameterFieldWrite)),
+                                          zc::mv(ZC_ASSERT_NONNULL(parameterFieldWriteLiteral))};
+        }
+        // Receiver field return.
+        if (parameterFieldProjection != zc::none && methodReceiver != zc::none &&
+            parameterFieldWrite == zc::none &&
+            allNone(statementReceiverCall, statementReceiverReference, literal, call, receiverCall,
+                    local, aggregate, localReference, localFieldProjection, parameterReference,
+                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody) {
+          return ReceiverFieldReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection))};
+        }
+        // Empty-body void function.
+        if (voidBody &&
+            allNone(parameterFieldWrite, methodReceiver, parameterFieldProjection,
+                    parameterFieldWriteLiteral, literal, call, receiverCall, receiverSelfCall,
+                    local, aggregate, localReference, localFieldProjection, parameterReference,
+                    statementReceiverCall, statementReceiverReference, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, receiverFieldArithmetic, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return EmptyVoidBody{};
+        }
+        // Scalar leaf family: bare literal/parameter return, single
+        // initialized local return, or array index/length fold return.
+        const bool hasScalarLeaf = (literal != zc::none) != (parameterReference != zc::none);
+        const bool onlyScalarReturn =
+            allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues);
+        const bool singleInitializedLocal =
+            local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            localReference != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues);
+        const bool arrayIndexFoldLocal =
+            local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            (returnsArrayIndexFold || returnsArrayLengthFold) &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues);
+        if (hasScalarLeaf && onlyScalarReturn) {
+          if (literal != zc::none) {
+            return ScalarLiteralReturn{zc::mv(ZC_ASSERT_NONNULL(literal))};
+          }
+          return ParameterReferenceReturn{zc::mv(ZC_ASSERT_NONNULL(parameterReference))};
+        }
+        if (hasScalarLeaf && singleInitializedLocal) {
+          return LocalReturn{zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
+                             zc::mv(parameterReference), zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        if (hasScalarLeaf && arrayIndexFoldLocal) {
+          if (returnsArrayIndexFold) {
+            return ArrayIndexFoldReturn{zc::mv(ZC_ASSERT_NONNULL(literal))};
+          }
+          return ArrayLengthFoldReturn{zc::mv(ZC_ASSERT_NONNULL(literal))};
+        }
+        // Dyn field-access return.
+        if (dynFieldAccessReturn != zc::none) {
+          return DynFieldAccessReturn{zc::mv(ZC_ASSERT_NONNULL(dynFieldAccessReturn))};
+        }
+        // Comparison return (bare binary, no local).
+        if (comparisonReturn != zc::none &&
+            allNone(literal, call, receiverCall, aggregate, local, localReference,
+                    localFieldProjection, parameterReference, parameterIndex, parameterReborrow,
+                    localBorrow, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return ComparisonReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn))};
+        }
+        // Primitive unary return (comparison + local + literal).
+        if (comparisonReturn != zc::none && local != zc::none && localReference == zc::none &&
+            literal != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReference,
+                    parameterIndex, parameterReborrow, localBorrow, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return PrimitiveUnaryReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn)),
+                                      zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal)};
+        }
+        // Receiver field arithmetic return.
+        if (receiverFieldArithmetic != zc::none &&
+            allNone(literal, call, receiverCall, receiverSelfCall, local, aggregate, localReference,
+                    localFieldProjection, parameterFieldProjection, parameterReference,
+                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, parameterFieldWrite,
+                    parameterFieldWriteLiteral, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return ReceiverFieldArithmeticReturn{zc::mv(ZC_ASSERT_NONNULL(receiverFieldArithmetic))};
+        }
+        // Enum construction return.
+        if (aggregate != zc::none && aggregateIsEnumConstruction && local == zc::none &&
+            allNone(call, receiverCall, literal, parameterReference, localReference,
+                    localFieldProjection, parameterFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
+                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
+                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
+                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
+          return EnumConstructionReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate))};
+        }
+        // Direct aggregate construction return (non-existential, non-enum).
+        if (aggregate != zc::none && !aggregateIsEnumConstruction && returnErasure == zc::none &&
+            local == zc::none &&
+            allNone(call, receiverCall, literal, parameterReference, localReference,
+                    localFieldProjection, parameterFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
+                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
+                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
+                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
+          return AggregateReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate))};
+        }
+        // Existential aggregate construction return.
+        if (aggregate != zc::none && returnErasure != zc::none && !aggregateIsEnumConstruction &&
+            local == zc::none &&
+            allNone(call, receiverCall, literal, parameterReference, localReference,
+                    localFieldProjection, parameterFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
+                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
+                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
+                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
+          return ExistentialReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate)),
+                                   zc::mv(ZC_ASSERT_NONNULL(returnErasure))};
+        }
+        // Aggregate field projection return.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            aggregate != zc::none && localFieldProjection != zc::none &&
+            allNone(call, receiverCall, localReference, literal, parameterReference, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return AggregateFieldProjectionReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate)),
+                                                zc::mv(ZC_ASSERT_NONNULL(local)),
+                                                zc::mv(ZC_ASSERT_NONNULL(localFieldProjection)),
+                                                zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Local write return.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            localWrites.size() != 0 && localWrites.size() == localWriteValues.size() &&
+            localReference != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan)) {
+          bool writesArePlain = true;
+          for (const auto& write : localWrites) {
+            if (write.field != zc::none) writesArePlain = false;
+          }
+          const bool initializedByLeaf = (literal != zc::none) != (parameterReference != zc::none);
+          if (writesArePlain && initializedByLeaf) {
+            return LocalWriteReturn{
+                zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
+                zc::mv(parameterReference),       zc::mv(localWrites),
+                zc::mv(localWriteValues),         zc::mv(ZC_ASSERT_NONNULL(localReference))};
+          }
+        }
+        // Local field projection return (aggregate field-write family).
+        if (local != zc::none && localWrites.size() != 0 &&
+            localWrites.size() == localWriteValues.size() && localFieldProjection != zc::none &&
+            localReference == zc::none &&
+            allNone(call, receiverCall, parameterIndex, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan)) {
+          const bool initializedByAggregate = ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+                                              aggregate != zc::none && literal == zc::none &&
+                                              parameterReference == zc::none;
+          const bool uninitializedLocal = ZC_ASSERT_NONNULL(local).initializer == zc::none &&
+                                          aggregate == zc::none && literal == zc::none &&
+                                          parameterReference == zc::none;
+          bool writesAreLiteralFields = initializedByAggregate || uninitializedLocal;
+          if (writesAreLiteralFields) {
+            for (size_t index = 0; index < localWrites.size(); ++index) {
+              const auto& write = localWrites[index];
+              const auto& writeValue = localWriteValues[index];
+              if (write.field == zc::none || writeValue.literal == zc::none ||
+                  writeValue.parameter != zc::none || writeValue.binary != zc::none) {
+                writesAreLiteralFields = false;
+                break;
+              }
+            }
+          }
+          if (writesAreLiteralFields) {
+            return LocalFieldProjectionReturn{zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(aggregate),
+                                              zc::mv(localWrites), zc::mv(localWriteValues),
+                                              zc::mv(ZC_ASSERT_NONNULL(localFieldProjection))};
+          }
+        }
+        // Direct call family.
+        if (call != zc::none && literal != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference == zc::none &&
+            aggregate == zc::none && allNone(receiverCall, receiverSelfCall, parameterReference) &&
+            callFieldsClear) {
+          return DirectScalarLocalCallReturn{zc::mv(ZC_ASSERT_NONNULL(call)),
+                                             zc::mv(ZC_ASSERT_NONNULL(literal)),
+                                             zc::mv(ZC_ASSERT_NONNULL(local))};
+        }
+        if (call != zc::none && aggregate != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference == zc::none &&
+            receiverCall == zc::none && receiverSelfCall == zc::none && literal == zc::none &&
+            parameterReference == zc::none && callFieldsClear) {
+          return DirectAggregateCallReturn{zc::mv(ZC_ASSERT_NONNULL(call)),
+                                           zc::mv(ZC_ASSERT_NONNULL(aggregate)),
+                                           zc::mv(ZC_ASSERT_NONNULL(local))};
+        }
+        if (call != zc::none && initializerCall != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference == zc::none &&
+            aggregate == zc::none &&
+            allNone(receiverCall, receiverSelfCall, literal, parameterReference) &&
+            callFieldsClear) {
+          return DirectExistentialCallReturn{zc::mv(ZC_ASSERT_NONNULL(call)),
+                                             zc::mv(ZC_ASSERT_NONNULL(initializerCall)),
+                                             zc::mv(ZC_ASSERT_NONNULL(local))};
+        }
+        if (call != zc::none && local == zc::none &&
+            allNone(receiverCall, aggregate, localReference, literal, parameterReference) &&
+            callFieldsClear) {
+          if (shape.returnsErrorPropagateCall) {
+            return ErrorPropagateCallReturn{zc::mv(ZC_ASSERT_NONNULL(call))};
+          }
+          if (shape.returnsErrorUnwrapCall) {
+            return ErrorUnwrapCallReturn{zc::mv(ZC_ASSERT_NONNULL(call)), zc::none, zc::none};
+          }
+          return DirectCallReturn{zc::mv(ZC_ASSERT_NONNULL(call))};
+        }
+        if (call != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference != zc::none &&
+            allNone(receiverCall, aggregate, literal, parameterReference) && callFieldsClear) {
+          return DirectCallInitializerReturn{zc::mv(ZC_ASSERT_NONNULL(call)),
+                                             zc::mv(ZC_ASSERT_NONNULL(local)),
+                                             zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Discarded receiver call + trailing receiver call return.
+        if (statementReceiverCall != zc::none && statementReceiverReference != zc::none &&
+            receiverCall != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && aggregate != zc::none &&
+            localReference != zc::none &&
+            allNone(call, literal, parameterReference, parameterFieldWrite) &&
+            allEmpty(localWrites, localWriteValues) &&
+            allNone(localFieldProjection, parameterIndex, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            !voidBody) {
+          return DiscardedReceiverCall{zc::mv(ZC_ASSERT_NONNULL(statementReceiverCall)),
+                                       zc::mv(ZC_ASSERT_NONNULL(statementReceiverReference)),
+                                       zc::mv(ZC_ASSERT_NONNULL(receiverCall)),
+                                       zc::mv(ZC_ASSERT_NONNULL(local)),
+                                       zc::mv(ZC_ASSERT_NONNULL(aggregate)),
+                                       zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Receiver call return.
+        if (receiverCall != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference != zc::none &&
+            (aggregate != zc::none) != (literal != zc::none) &&
+            allNone(call, parameterReference, statementReceiverCall, statementReceiverReference) &&
+            callFieldsClear) {
+          return ReceiverCallReturn{zc::mv(ZC_ASSERT_NONNULL(receiverCall)),
+                                    zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(aggregate),
+                                    zc::mv(literal), zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Receiver self call return.
+        if (receiverSelfCall != zc::none && methodReceiver != zc::none &&
+            allNone(local, localReference, aggregate, call, receiverCall, literal,
+                    parameterReference, parameterFieldProjection, parameterFieldWrite,
+                    parameterFieldWriteLiteral) &&
+            callFieldsClear) {
+          return ReceiverSelfCallReturn{zc::mv(ZC_ASSERT_NONNULL(receiverSelfCall))};
+        }
+        // Parameter receiver call return.
+        if (receiverCall != zc::none && receiverCallParameterKey != zc::none &&
+            receiverCallParameterSpan != zc::none &&
+            ZC_ASSERT_NONNULL(receiverCall).interface != zc::none &&
+            allNone(local, localReference, aggregate, literal, call, methodReceiver,
+                    receiverSelfCall, parameterReference) &&
+            callFieldsClear) {
+          return ParameterReceiverCallReturn{zc::mv(ZC_ASSERT_NONNULL(receiverCall)),
+                                             zc::mv(ZC_ASSERT_NONNULL(receiverCallParameterKey)),
+                                             zc::mv(ZC_ASSERT_NONNULL(receiverCallParameterSpan))};
+        }
+        // Loop body return.
+        if (loopBodyReturn != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localWrites.size() != 0 &&
+            localWrites.size() == localWriteValues.size() && localReference != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan)) {
+          bool loopWritesArePlain = true;
+          for (const auto& write : localWrites) {
+            if (write.field != zc::none) loopWritesArePlain = false;
+          }
+          const bool loopInitializedByLeaf =
+              (literal != zc::none) != (parameterReference != zc::none);
+          if (loopWritesArePlain && loopInitializedByLeaf) {
+            return LoopBodyReturn{zc::mv(ZC_ASSERT_NONNULL(loopBodyReturn)),
+                                  zc::mv(ZC_ASSERT_NONNULL(local)),
+                                  zc::mv(literal),
+                                  zc::mv(parameterReference),
+                                  zc::mv(localWrites),
+                                  zc::mv(localWriteValues),
+                                  zc::mv(ZC_ASSERT_NONNULL(localReference))};
+          }
+        }
+        // Comparison loop body return.
+        if (comparisonLoopBodyReturn != zc::none && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localWrites.size() != 0 &&
+            localWrites.size() == localWriteValues.size() && localReference != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    unsafeBlockSpan)) {
+          bool loopWritesArePlain = true;
+          for (const auto& write : localWrites) {
+            if (write.field != zc::none) loopWritesArePlain = false;
+          }
+          const bool loopInitializedByLeaf =
+              (literal != zc::none) != (parameterReference != zc::none);
+          if (loopWritesArePlain && loopInitializedByLeaf) {
+            return ComparisonLoopBodyReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonLoopBodyReturn)),
+                                            zc::mv(ZC_ASSERT_NONNULL(local)),
+                                            zc::mv(literal),
+                                            zc::mv(parameterReference),
+                                            zc::mv(localWrites),
+                                            zc::mv(localWriteValues),
+                                            zc::mv(ZC_ASSERT_NONNULL(localReference))};
+          }
+        }
+        // For-loop return.
+        if (forLoopReturn != zc::none &&
+            allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return ForLoopReturn{zc::mv(ZC_ASSERT_NONNULL(forLoopReturn)),
+                               zc::mv(ZC_ASSERT_NONNULL(literal))};
+        }
+        // For-loop accumulator return.
+        if (forLoopAccumulatorReturn != zc::none &&
+            allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    forLoopReturn, forInLoopAccumulatorReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return ForLoopAccumulatorReturn{zc::mv(ZC_ASSERT_NONNULL(forLoopAccumulatorReturn))};
+        }
+        // Nested for-loop accumulator return.
+        if (nestedForLoopAccumulatorReturn != zc::none &&
+            allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    forLoopReturn, forLoopAccumulatorReturn, forInLoopAccumulatorReturn,
+                    unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return NestedForLoopAccumulatorReturn{
+              zc::mv(ZC_ASSERT_NONNULL(nestedForLoopAccumulatorReturn))};
+        }
+        // For-in loop accumulator return.
+        if (forInLoopAccumulatorReturn != zc::none &&
+            allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    forLoopReturn, forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn,
+                    unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return ForInLoopAccumulatorReturn{zc::mv(ZC_ASSERT_NONNULL(forInLoopAccumulatorReturn))};
+        }
+        // Bare parameter reborrow return.
+        if (parameterReborrow != zc::none &&
+            allNone(local, literal, parameterReference, localBorrow) && borrowCarriersClear) {
+          return ParameterReborrowReturn{zc::mv(ZC_ASSERT_NONNULL(parameterReborrow))};
+        }
+        // Unsafe-block-wrapped scalar literal return.
+        if (literal != zc::none && unsafeBlockSpan != zc::none &&
+            allNone(local, parameterReference, parameterReborrow, localBorrow) &&
+            borrowCarriersClear) {
+          return UnsafeScalarReturn{zc::mv(ZC_ASSERT_NONNULL(literal))};
+        }
+        // Raw-pointer write-read return.
+        if (rawDereferenceWrite != zc::none && rawDereferenceSource != zc::none &&
+            unsafeBlockSpan != zc::none && writeUnsafeBlockSpan != zc::none &&
+            rawDereferenceWriteLiteral != zc::none &&
+            allNone(literal, local, parameterReference, parameterReborrow, localBorrow) &&
+            borrowCarriersClear) {
+          return RawPointerWriteReturn{zc::mv(ZC_ASSERT_NONNULL(rawDereferenceWrite)),
+                                       zc::mv(ZC_ASSERT_NONNULL(writeUnsafeBlockSpan)),
+                                       zc::mv(ZC_ASSERT_NONNULL(rawDereferenceWriteLiteral)),
+                                       zc::mv(ZC_ASSERT_NONNULL(rawDereferenceSource))};
+        }
+        // Raw-pointer dereference return.
+        if (rawDereferenceSource != zc::none && unsafeBlockSpan != zc::none &&
+            allNone(literal, local, parameterReference, parameterReborrow, localBorrow) &&
+            borrowCarriersClear) {
+          return RawDereferenceReturn{zc::mv(ZC_ASSERT_NONNULL(rawDereferenceSource))};
+        }
+        // Local-alias reborrow return.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            parameterReference != zc::none && parameterReborrow != zc::none &&
+            literal == zc::none && localBorrow == zc::none && borrowCarriersClear) {
+          return LocalAliasReborrowReturn{zc::mv(ZC_ASSERT_NONNULL(local)),
+                                          zc::mv(ZC_ASSERT_NONNULL(parameterReference)),
+                                          zc::mv(ZC_ASSERT_NONNULL(parameterReborrow))};
+        }
+        // Local borrow return.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            localBorrow != zc::none && parameterReborrow == zc::none &&
+            allNone(call, receiverCall, aggregate, localReference, localFieldProjection,
+                    parameterIndex, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
+            allEmpty(localWrites, localWriteValues) &&
+            ((literal != zc::none) != (parameterReference != zc::none))) {
+          return LocalBorrowReturn{zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
+                                   zc::mv(parameterReference),
+                                   zc::mv(ZC_ASSERT_NONNULL(localBorrow))};
+        }
+        // Catch-all: generic materializer shape.
+        return GenericShape{zc::mv(literal),
+                            zc::mv(local),
+                            zc::mv(aggregate),
+                            zc::mv(localWrites),
+                            zc::mv(localWriteValues),
+                            zc::mv(localReference),
+                            zc::mv(localFieldProjection),
+                            zc::mv(parameterReference),
+                            zc::mv(parameterIndex),
+                            zc::mv(parameterReborrow),
+                            zc::mv(localBorrow),
+                            zc::mv(comparisonReturn),
+                            shape.returnsErrorUnwrapCall};
+      };
+      pendingFunctions.add(PendingFunctionDeclaration{
+          definition.definition, definition.node, functionResultType, zc::mv(parameters),
+          zc::mv(methodReceiver), zc::mv(visibilityValue), linkageValue, definition.source.clone(),
+          bodySpanValue.clone(), returnSpanValue.clone(), valueSpanValue.clone(),
+          zc::mv(orderingKey), shape.body, shape.returnStatement, shape.value,
+          zc::mv(unsafeBlockSpan), selectShape()});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
@@ -11993,1044 +11825,265 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                value.initializerSpan.clone()});
   }
   for (auto& value : pendingFunctions) {
-    // By-value struct parameter field return: `fn f(p: P) -> T { return p.f; }`
-    // with no receiver and no other body carriers. The HIR projection record is
-    // identical to a receiver field projection; MIR construction selects the
-    // by-value builder from the declaration parameters.
-    if (value.byValueParameterField && value.parameterFieldProjection != zc::none &&
-        value.receiver == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.literal == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.local == zc::none && value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
-        value.receiverSelfCall == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    // Specialized shape dispatch — each variant maps to exactly one lowering
+    // helper. The variant type is the discriminant; no field-presence checks.
+    auto makeFnCtx = [&]() {
+      return HirFnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
+                      localWrites, localReferences, primitiveBinaryOperations, aggregates,
+                      localFieldProjections, parameterFieldProjections, parameterFieldWrites,
+                      rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                      receiverCalls, conditionals, loops, sourceNodes);
+    };
+    if (value.shape.is<ByValueParameterFieldReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Receiver field method family. Either one shared-receiver method whose
-    // body is the single `return this.<field>;` (four node ids: function, body,
-    // return, projection), or one mutating-receiver method that first overwrites
-    // the field with a scalar literal (two extra ids: write and its value). The
-    // receiver moves into the function header and is the sole carrier.
-    if (value.parameterFieldProjection != zc::none && value.receiver != zc::none &&
-        value.parameterFieldWrite != zc::none && value.parameterFieldWriteLiteral != zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        value.literal == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.local == zc::none && value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ReceiverFieldWriteReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverFieldWriteReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.parameterFieldProjection != zc::none && value.receiver != zc::none &&
-        value.parameterFieldWrite == zc::none && value.parameterFieldWriteParameter == zc::none &&
-        !value.voidBody && value.statementReceiverCall == zc::none &&
-        value.statementReceiverReference == zc::none && value.literal == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.local == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ReceiverFieldReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverFieldReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Void-let-body destructor family: `deinit() { let x: T = <lit>; ... }`
-    // with one or more scalar-initialized locals, no receiver, no parameters,
-    // no return, Unit result. 2 + 2N node ids: function, body, then N x
-    // (local, literal). The dead locals are folded away by the LIR builder,
-    // which emits only ReturnVoid.
-    if (value.voidBody && value.voidLetBindings.size() != 0 &&
-        value.parameterFieldWrite == zc::none && value.parameterFieldWriteParameter == zc::none &&
-        value.receiver == zc::none && value.parameterFieldProjection == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.receiverSelfCall == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<VoidLetBody>()) {
+      auto fnCtx = makeFnCtx();
       lowerVoidLetBodyFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Empty-body void function family: `deinit() { }` with zero statements,
-    // no receiver, no parameters, no return, Unit result. Two node ids:
-    // function, body. The function exists in the binary for future drop
-    // elaboration but is not called until the discharge inventory gains a
-    // backend consumer.
-    if (value.voidBody && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && value.receiver == zc::none &&
-        value.parameterFieldProjection == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.literal == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none &&
-        value.receiverSelfCall == zc::none && value.local == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<EmptyVoidBody>() || value.shape.is<DestructorFieldWriteBody>() ||
+        value.shape.is<DestructorMethodCallBody>()) {
+      auto fnCtx = makeFnCtx();
       lowerEmptyBodyVoidFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Void mutating-method family: one receiver-field write whose value is the
-    // ordinary parameter (`mutating fn set(this, x) { this.f = x; }`), no
-    // return, Unit result. Four node ids: function, body, write, parameter
-    // reference. The receiver moves into the header and is the sole carrier
-    // besides the write and the parameter reference.
-    if (value.voidBody && value.parameterFieldWrite != zc::none &&
-        value.parameterFieldWriteParameter != zc::none && value.receiver != zc::none &&
-        value.parameterFieldProjection == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.literal == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none &&
-        value.receiverSelfCall == zc::none && value.local == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.receiverFieldArithmetic == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<VoidMutatingMethod>()) {
+      auto fnCtx = makeFnCtx();
       lowerVoidReceiverFieldWriteFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // RFC 0048 recursive arms, family 1 (literal/reference). A body lowers
-    // through the destination-driven per-function driver when it is either a
-    // bare `return <literal>` / `return <parameter>` (four node ids: function,
-    // body, return, value) or a single initialized
-    // `let x: T = <literal | parameter>; return x;` (six node ids: function,
-    // body, local, initializer, return, value). Each arm allocates in source
-    // preorder, matching the generic materializer's stride exactly; every other
-    // shape keeps the generic path until its family arm lands.
-    const bool hasScalarLeaf =
-        (value.literal != zc::none) != (value.parameterReference != zc::none);
-    const bool onlyScalarReturn =
-        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.forLoopReturn == zc::none && value.unsafeBlockSpan == zc::none;
-    const bool singleInitializedLocal =
-        value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference != zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none;
-    // Array index or length fold: `let a: [T; N] = [...]; return a[k];` or
-    // `return a.length;` where the read is folded to a scalar literal. The
-    // local binding exists but the return value is a literal, not a local
-    // reference.
-    const bool arrayIndexFoldLocal =
-        value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        (value.returnsArrayIndexFold || value.returnsArrayLengthFold) && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none;
-    if (hasScalarLeaf && (onlyScalarReturn || singleInitializedLocal || arrayIndexFoldLocal)) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
-      if (onlyScalarReturn) {
-        lowerScalarReturnFunction(zc::mv(value), fnCtx);
-      } else {
-        lowerLocalReturnFunction(zc::mv(value), fnCtx);
-      }
+    if (value.shape.is<ScalarLiteralReturn>() || value.shape.is<ParameterReferenceReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerScalarReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Family 2 sequential N-local body: N leading let bindings (literal,
-    // aggregate, parameter/local reference, or primitive binary, including a
-    // one-level nested binary operand) followed by a parameter/local return.
-    if (value.sequentialLocalReturn != zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<LocalReturn>() || value.shape.is<ArrayIndexFoldReturn>() ||
+        value.shape.is<ArrayLengthFoldReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerLocalReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.shape.is<SequentialLocalReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Dyn field-access return: `let zoo = Zoo { animal: Dog { .. } };
-    // let a: dyn I = zoo.animal; return a.m();`. The aggregate carries a
-    // per-field erasure, the field read copies the fat-pointer carrier, and
-    // the method call dispatches indirectly through the vtable.
-    if (value.dynFieldAccessReturn != zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DynFieldAccessReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDynFieldAccessReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Family 2: a bare `return <a OP b>` primitive binary (relational or
-    // arithmetic), where each operand is a literal or a parameter reference.
-    // Six node ids: function, body, left, right, binary, return.
-    if (value.comparisonReturn != zc::none && value.literal == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none && value.local == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterReference == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ComparisonReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Primitive unary return: `let x: T = <lit>; return !x;` (or `+x` / `-x` /
-    // `~x`). The unary desugars to an equivalent binary with a synthetic
-    // constant operand (e.g. `!x` -> `x == false`). Eight node ids: function,
-    // body, local, initializer, left, right, binary, return.
-    if (value.comparisonReturn != zc::none && value.local != zc::none &&
-        value.localReference == zc::none && value.literal != zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<PrimitiveUnaryReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerPrimitiveUnaryReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Receiver field arithmetic: `return this.<field> OP <literal>;`
-    // with an implicit receiver and no ordinary parameters. Six node ids:
-    // function, body, field projection, literal, binary, return.
-    if (value.receiverFieldArithmetic != zc::none && value.literal == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none &&
-        value.receiverSelfCall == zc::none && value.local == zc::none &&
-        value.aggregate == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
-        value.parameterReference == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.parameterFieldWrite == zc::none && value.parameterFieldWriteLiteral == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ReceiverFieldArithmeticReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverFieldArithmeticFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Family: direct enum construction return (`return Result::Ok(41);`).
-    // Four node ids: function, body, aggregate, return. The aggregate is the
-    // return value expression; there is no intermediate local.
-    if (value.aggregate != zc::none && value.aggregateIsEnumConstruction &&
-        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.chainedConditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
-        value.forLoopAccumulatorReturn == zc::none &&
-        value.nestedForLoopAccumulatorReturn == zc::none &&
-        value.forInLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
-        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
-        value.statementReceiverReference == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
-        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<EnumConstructionReturn>() || value.shape.is<AggregateReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerEnumConstructionReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Direct aggregate construction return (non-existential, non-enum):
-    // `fn f() -> T { return T { ..constants.. }; }`. The aggregate is the
-    // return value expression; there is no intermediate local and no
-    // return-site erasure. Per-field concrete-to-existential erasures ride on
-    // the aggregate elements themselves.
-    if (value.aggregate != zc::none && !value.aggregateIsEnumConstruction &&
-        value.returnErasure == zc::none && value.local == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
-        value.nestedForLoopAccumulatorReturn == zc::none &&
-        value.forInLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
-        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
-        value.statementReceiverReference == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
-        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
-      lowerEnumConstructionReturnFunction(zc::mv(value), fnCtx);
-      continue;
-    }
-    // Existential aggregate construction return:
-    // `fn f() -> dyn I { return P { ..constants.. }; }`. The aggregate is the
-    // return value and the function declaration carries a HirErasureRecord.
-    if (value.aggregate != zc::none && value.returnErasure != zc::none &&
-        !value.aggregateIsEnumConstruction && value.local == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.chainedConditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.forLoopReturn == zc::none && value.forLoopAccumulatorReturn == zc::none &&
-        value.nestedForLoopAccumulatorReturn == zc::none &&
-        value.forInLoopAccumulatorReturn == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && value.receiverSelfCall == zc::none &&
-        value.receiverFieldArithmetic == zc::none && value.statementReceiverCall == zc::none &&
-        value.statementReceiverReference == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        !value.byValueParameterField && value.leadingLocalConditionalReturn == zc::none &&
-        !value.returnsFoldedStringConcat && !value.returnsFoldedFloatCast &&
-        !value.returnsArrayIndexFold && !value.returnsArrayLengthFold &&
-        !value.returnsLocalIncrement && !value.returnsLocalPostfixIncrement &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ExistentialReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerExistentialReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Family 3: one aggregate-initialized local returned through a field
-    // projection (`let cell = T {...}; return cell.field;`), with no writes or
-    // borrow/receiver forms. Six node ids: function, body, local, aggregate,
-    // return, projection.
-    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.aggregate != zc::none && value.localFieldProjection != zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.localWrites.size() == 0 &&
-        value.localWriteValues.size() == 0 && value.localReference == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<AggregateFieldProjectionReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Mutable-local write family: one initialized mut local, one or more
-    // non-field writes (literal/parameter/binary value), and a local-reference
-    // return. No aggregate, call, receiver, borrow, projection, loop, or unsafe
-    // form. The initializer is a scalar literal or parameter reference.
-    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localWrites.size() != 0 &&
-        value.localWrites.size() == value.localWriteValues.size() &&
-        value.localReference != zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      bool writesArePlain = true;
-      for (const auto& write : value.localWrites) {
-        if (write.field != zc::none) writesArePlain = false;
-      }
-      // The initializer leaf is carried in top-level literal/parameterReference;
-      // exactly one must be present for an initialized non-aggregate local.
-      const bool initializedByLeaf =
-          (value.literal != zc::none) != (value.parameterReference != zc::none);
-      if (writesArePlain && initializedByLeaf) {
-        // The MIR local-write family builds the user local from a scalar
-        // literal constant; an initialized mut local whose initializer is a
-        // parameter copy followed by one or more overwrites is well-formed
-        // source the write carrier cannot emit yet. Drain the definition here,
-        // before the candidate is built, with the same expression-statement
-        // capability code the ownership surface projects for compound
-        // assignment and postfix update, so the construct never reaches the
-        // MIR missing-fact invariant.
-        if (value.literal == zc::none) {
-          return rejectHirCapability<HirModuleCandidate>(
-              value.definition, registries, ir::IrFailureKind::UnsupportedExpressionStatement,
-              value.localWrites[0].sourceSpan.clone());
-        }
-        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                       rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                       receiverCalls, conditionals, loops, sourceNodes);
-        lowerLocalWriteFunction(zc::mv(value), fnCtx);
-        continue;
-      }
+    if (value.shape.is<LocalWriteReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerLocalWriteFunction(zc::mv(value), fnCtx);
+      continue;
     }
-    // Family 8 aggregate field-write: one mut aggregate local (either
-    // aggregate-initialized or uninitialized), one or more field writes whose
-    // values are scalar literals, and a return of a projected field
-    // (`mut cell = T{..}; cell.f = <literal>; return cell.f;`). Checker
-    // admission makes parameter/binary field-write values and a return of the
-    // whole local unreachable; writes to distinct fields are admitted and each
-    // first write to a field is an Initialize on an uninitialized local and an
-    // Overwrite on an initialized one. Every shape this guard does not claim
-    // keeps the generic materializer and fails closed as before.
-    if (value.local != zc::none && value.localWrites.size() != 0 &&
-        value.localWrites.size() == value.localWriteValues.size() &&
-        value.localFieldProjection != zc::none && value.localReference == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      const bool initializedByAggregate =
-          ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.aggregate != zc::none &&
-          value.literal == zc::none && value.parameterReference == zc::none;
-      const bool uninitializedLocal = ZC_ASSERT_NONNULL(value.local).initializer == zc::none &&
-                                      value.aggregate == zc::none && value.literal == zc::none &&
-                                      value.parameterReference == zc::none;
-      bool writesAreLiteralFields = initializedByAggregate || uninitializedLocal;
-      if (writesAreLiteralFields) {
-        for (size_t index = 0; index < value.localWrites.size(); ++index) {
-          const auto& write = value.localWrites[index];
-          const auto& writeValue = value.localWriteValues[index];
-          if (write.field == zc::none || writeValue.literal == zc::none ||
-              writeValue.parameter != zc::none || writeValue.binary != zc::none) {
-            writesAreLiteralFields = false;
-            break;
-          }
-        }
-      }
-      if (writesAreLiteralFields) {
-        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                       rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                       receiverCalls, conditionals, loops, sourceNodes);
-        lowerLocalFieldWriteFunction(zc::mv(value), fnCtx);
-        continue;
-      }
+    if (value.shape.is<LocalFieldProjectionReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerLocalFieldWriteFunction(zc::mv(value), fnCtx);
+      continue;
     }
-    // Direct/receiver call family. Callee resolution, dispatch targets,
-    // receiver selection, argument kinds, and the generic/raises/arity gates are
-    // already published by the checker and dispatch facts in the pending call
-    // records; these arms only reproduce the node-id layout. A bare direct-call
-    // return has four nodes (function, body, return, call); a direct-call local
-    // initializer has six (plus local, initializer, local reference); a
-    // mutable-receiver call body has seven (plus an aggregate initializer and a
-    // receiver reference). Every unsupported call shape keeps the generic path.
-    const bool callFieldsClear =
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.statementReceiverCall == zc::none && value.statementReceiverReference == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none;
-    if (value.call != zc::none && value.literal != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference == zc::none && value.aggregate == zc::none &&
-        value.receiverCall == zc::none && value.receiverSelfCall == zc::none &&
-        value.parameterReference == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DirectScalarLocalCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDirectScalarLocalCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.call != zc::none && value.aggregate != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference == zc::none && value.receiverCall == zc::none &&
-        value.receiverSelfCall == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DirectAggregateCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDirectAggregateCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.call != zc::none && value.initializerCall != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference == zc::none && value.aggregate == zc::none &&
-        value.receiverCall == zc::none && value.receiverSelfCall == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DirectExistentialCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDirectExistentialCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.call != zc::none && value.local == zc::none && value.receiverCall == zc::none &&
-        value.aggregate == zc::none && value.localReference == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none && callFieldsClear) {
-      if (value.returnsErrorUnwrapCall) {
-        auto tagType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::I32);
-        if (tagType == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               9001);
-        }
-        auto boolType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::Bool);
-        if (boolType == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::InvalidFact, module, registries,
-                                               9002);
-        }
-        value.errorUnwrapTagType = zc::mv(tagType);
-        value.errorUnwrapBoolType = zc::mv(boolType);
-      }
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DirectCallReturn>() || value.shape.is<ErrorPropagateCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDirectCallReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.call != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference != zc::none && value.receiverCall == zc::none &&
-        value.aggregate == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ErrorUnwrapCallReturn>()) {
+      // Compute the error-unwrap tag and bool types on the variant before
+      // lowering, mirroring the old guard-side computation.
+      auto& unwrap = value.shape.get<ErrorUnwrapCallReturn>();
+      auto tagType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::I32);
+      if (tagType == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             9001);
+      }
+      auto boolType = internPrimitiveType(semanticTypes, type::semantic::PrimitiveKind::Bool);
+      if (boolType == zc::none) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             9002);
+      }
+      unwrap.errorUnwrapTagType = zc::mv(tagType);
+      unwrap.errorUnwrapBoolType = zc::mv(boolType);
+      auto fnCtx = makeFnCtx();
+      lowerDirectCallReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.shape.is<DirectCallInitializerReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerDirectCallInitializerFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Discarded receiver-call statement followed by a trailing receiver-call
-    // return (`mut cell = T { .. }; cell.set(42); return cell.get();`). Nine
-    // node ids: function, body, local, aggregate, set receiver reference, set
-    // call, get receiver reference, get call, return. The set call node is
-    // referenced only from the block statement list.
-    if (value.statementReceiverCall != zc::none && value.statementReceiverReference != zc::none &&
-        value.receiverCall != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.aggregate != zc::none &&
-        value.localReference != zc::none && value.call == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteParameter == zc::none && !value.voidBody &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<DiscardedReceiverCall>()) {
+      auto fnCtx = makeFnCtx();
       lowerDiscardedReceiverCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.receiverCall != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localReference != zc::none &&
-        (value.aggregate != zc::none) != (value.literal != zc::none) && value.call == zc::none &&
-        value.parameterReference == zc::none && value.statementReceiverCall == zc::none &&
-        value.statementReceiverReference == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ReceiverCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.receiverSelfCall != zc::none && value.receiver != zc::none &&
-        value.local == zc::none && value.localReference == zc::none &&
-        value.aggregate == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterFieldWrite == zc::none &&
-        value.parameterFieldWriteLiteral == zc::none && callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ReceiverSelfCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerReceiverSelfCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Parameter receiver call: `fn f(a: dyn I) -> T { return a.method(); }`.
-    // The receiver is an explicit dyn-trait parameter whose concrete type is
-    // not statically known, so the call dispatches indirectly through a vtable
-    // at runtime. Five node ids: function, body, return, receiver parameter
-    // reference, receiver call.
-    if (value.receiverCall != zc::none && value.receiverCallParameterKey != zc::none &&
-        value.receiverCallParameterSpan != zc::none &&
-        ZC_ASSERT_NONNULL(value.receiverCall).interface != zc::none && value.local == zc::none &&
-        value.localReference == zc::none && value.aggregate == zc::none &&
-        value.literal == zc::none && value.call == zc::none && value.receiver == zc::none &&
-        value.receiverSelfCall == zc::none && value.parameterReference == zc::none &&
-        callFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ParameterReceiverCallReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerParameterReceiverCallFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Control family (RFC 0048 family 6): if/else conditional return,
-    // empty-body `while` followed by a scalar return, and the loop-body
-    // composite (one mut local, an admitted loop whose body writes it, and a
-    // local return). Each arm reproduces the generic materializer's exact
-    // source-preorder id layout. The pending records already encode the
-    // admission-predicated shapes (parameter/comparison condition with literal
-    // or parameter arms; scalar loop condition; admitted body writes), so the
-    // arms consume published facts and make no operator or type decisions.
-    const bool controlFieldsClear =
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.local == zc::none && value.call == zc::none && value.receiverCall == zc::none &&
-        value.aggregate == zc::none && value.localReference == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none;
-    if (value.chainedConditionalReturn != zc::none) {
-      // Control fields must be clear before lowering a chained conditional.
-    }
-    if (value.conditionalReturn != zc::none && controlFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ConditionalReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerConditionalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.chainedConditionalReturn != zc::none && controlFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ChainedConditionalReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerChainedConditionalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.leadingLocalConditionalReturn != zc::none && controlFieldsClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<LeadingLocalConditionalReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerLeadingLocalConditionalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.loopReturn != zc::none && value.local == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localReference == zc::none && value.literal == zc::none &&
-        value.parameterReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.comparisonLoopBodyReturn == zc::none &&
-        value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<LoopReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerLoopReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    if (value.loopBodyReturn != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.localWrites.size() != 0 &&
-        value.localWrites.size() == value.localWriteValues.size() &&
-        value.localReference != zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      bool loopWritesArePlain = true;
-      for (const auto& write : value.localWrites) {
-        if (write.field != zc::none) loopWritesArePlain = false;
-      }
-      const bool loopInitializedByLeaf =
-          (value.literal != zc::none) != (value.parameterReference != zc::none);
-      if (loopWritesArePlain && loopInitializedByLeaf) {
-        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                       rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                       receiverCalls, conditionals, loops, sourceNodes);
-        lowerLoopBodyReturnFunction(zc::mv(value), fnCtx);
-        continue;
-      }
+    if (value.shape.is<LoopBodyReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerLoopBodyReturnFunction(zc::mv(value), fnCtx);
+      continue;
     }
-    // Do-while loop-body composite: `mut x = <lit>; do { <writes to x> } while
-    // (<ident> <cmp> <lit>); return x;`. The pending carrier encodes the
-    // resolved comparison condition and the loop span; the lowering arm
-    // allocates the node ids in a body-before-condition CFG layout.
-    if (value.comparisonLoopBodyReturn != zc::none && value.local != zc::none &&
-        ZC_ASSERT_NONNULL(value.local).initializer != zc::none && value.localWrites.size() != 0 &&
-        value.localWrites.size() == value.localWriteValues.size() &&
-        value.localReference != zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localFieldProjection == zc::none && value.parameterIndex == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        value.sequentialLocalReturn == zc::none && value.conditionalReturn == zc::none &&
-        value.loopReturn == zc::none && value.comparisonReturn == zc::none &&
-        value.loopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      bool loopWritesArePlain = true;
-      for (const auto& write : value.localWrites) {
-        if (write.field != zc::none) loopWritesArePlain = false;
-      }
-      const bool loopInitializedByLeaf =
-          (value.literal != zc::none) != (value.parameterReference != zc::none);
-      if (loopWritesArePlain && loopInitializedByLeaf) {
-        HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                       rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                       receiverCalls, conditionals, loops, sourceNodes);
-        lowerComparisonLoopBodyReturnFunction(zc::mv(value), fnCtx);
-        continue;
-      }
+    if (value.shape.is<ComparisonLoopBodyReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerComparisonLoopBodyReturnFunction(zc::mv(value), fnCtx);
+      continue;
     }
-    // C-style for-loop return: `for (let id = <lit>; <ident> <cmp> <lit>;
-    // <ident> = <binary>) {}` followed by a scalar return. The for-loop
-    // desugars to a leading local binding, a loop whose condition is the
-    // comparison and whose body is the update write, and the scalar return.
-    // The pending carrier already encodes the resolved init local, comparison
-    // condition, and update write; the lowering arm allocates the node ids.
-    if (value.forLoopReturn != zc::none && value.local == zc::none && value.call == zc::none &&
-        value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ForLoopReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerForLoopReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // C-style for-loop accumulator return: a leading scalar `let` accumulator
-    // local, a `for` loop whose body writes that accumulator, and a trailing
-    // `return <accumulator-local>;`. The pending carrier encodes the resolved
-    // accumulator, for-loop init/cond/update, body write, and return reference;
-    // the lowering arm allocates the node ids.
-    if (value.forLoopAccumulatorReturn != zc::none && value.local == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
-        value.forInLoopAccumulatorReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ForLoopAccumulatorReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerForLoopAccumulatorReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Nested for-loop accumulator return: N leading scalar `mut` accumulator
-    // locals, an outer `for` loop whose sole body statement is an inner `for`
-    // loop that writes each accumulator, and a trailing
-    // `return <accumulator-local>;`. The pending carrier encodes the resolved
-    // outer and inner loop init/cond/update, the accumulator body writes, and
-    // the return reference; the lowering arm allocates the node ids.
-    if (value.nestedForLoopAccumulatorReturn != zc::none && value.local == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
-        value.forLoopAccumulatorReturn == zc::none &&
-        value.forInLoopAccumulatorReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<NestedForLoopAccumulatorReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerNestedForLoopAccumulatorReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // For-in loop accumulator return: N leading scalar `mut` accumulator
-    // locals, a `for (let x in [<lit>, ...]) { <acc> = <acc> <bin> x; }`
-    // loop, and a trailing `return <accumulator-local>;`. The loop is
-    // compile-time unrolled into N*M sequential writes. The pending carrier
-    // encodes the resolved accumulator locals, body write template, element
-    // literals, and return reference; the lowering arm allocates the node ids.
-    if (value.forInLoopAccumulatorReturn != zc::none && value.local == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterFieldProjection == zc::none && value.parameterReference == zc::none &&
-        value.parameterIndex == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none && value.forLoopReturn == zc::none &&
-        value.forLoopAccumulatorReturn == zc::none &&
-        value.nestedForLoopAccumulatorReturn == zc::none && value.unsafeBlockSpan == zc::none) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ForInLoopAccumulatorReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerForInLoopAccumulatorReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // Unsafe/borrow family (RFC 0048 family 7). Four fixed-stride arms, each
-    // gated to exactly the surface-admitted shape:
-    //   A. bare parameter reborrow return `return &*p;` / `&mut *p;`,
-    //      optionally wrapped in one unsafe block;
-    //   B. one unsafe-block-wrapped scalar return `return unsafe { <literal> };`;
-    //   C. a local-alias reborrow `let y = p; return &*y;` (optionally unsafe);
-    //   D. a local borrow `let x: T = <literal | parameter>; return &x;`
-    //      (optionally unsafe).
-    // The pending borrow/reborrow records already carry the checker-verified
-    // parameter, types, and mutability; these arms reproduce only the exact
-    // source-preorder node layout. A borrow combined with writes, a field
-    // projection, a call, or any other carrier keeps the generic path and fails
-    // closed as before.
-    const bool borrowCarriersClear =
-        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none;
-    // A: bare parameter reborrow (no user local, no initializer reference).
-    if (value.parameterReborrow != zc::none && value.local == zc::none &&
-        value.literal == zc::none && value.parameterReference == zc::none &&
-        value.localBorrow == zc::none && borrowCarriersClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<ParameterReborrowReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerParameterReborrowReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // B: unsafe-block-wrapped scalar literal return.
-    if (value.literal != zc::none && value.unsafeBlockSpan != zc::none && value.local == zc::none &&
-        value.parameterReference == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && borrowCarriersClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<UnsafeScalarReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerUnsafeScalarReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // B1.5: raw-pointer write-read return. A write statement
-    // (`unsafe { *ptr = <lit>; };`) precedes a trailing raw-deref return
-    // (`return unsafe { *ptr };`). Both sides resolve to the same mutable
-    // raw-pointer parameter. The MIR builder emits an Assign through a
-    // [Dereference] projection before the trailing return.
-    if (value.rawDereferenceWrite != zc::none && value.rawDereferenceSource != zc::none &&
-        value.unsafeBlockSpan != zc::none && value.writeUnsafeBlockSpan != zc::none &&
-        value.rawDereferenceWriteLiteral != zc::none && value.literal == zc::none &&
-        value.local == zc::none && value.parameterReference == zc::none &&
-        value.parameterReborrow == zc::none && value.localBorrow == zc::none &&
-        borrowCarriersClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<RawPointerWriteReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerRawPointerWriteReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // B2: unsafe-block-wrapped raw-pointer dereference return. The value node
-    // is a parameter reference (the dereference source) wrapped in a trailing
-    // unsafe block; the MIR builder emits a [Dereference] projection on the
-    // parameter place.
-    if (value.rawDereferenceSource != zc::none && value.unsafeBlockSpan != zc::none &&
-        value.literal == zc::none && value.local == zc::none &&
-        value.parameterReference == zc::none && value.parameterReborrow == zc::none &&
-        value.localBorrow == zc::none && borrowCarriersClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<RawDereferenceReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerRawDereferenceReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // C: local-alias reborrow (one initialized local plus its parameter
-    // initializer and the alias-sourced reborrow).
-    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.parameterReference != zc::none && value.parameterReborrow != zc::none &&
-        value.literal == zc::none && value.localBorrow == zc::none && borrowCarriersClear) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<LocalAliasReborrowReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerLocalAliasReborrowReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // D: local borrow of one initialized scalar/parameter local. The
-    // initializer rides the top-level literal or parameterReference field, so
-    // exactly one of the two must be present.
-    if (value.local != zc::none && ZC_ASSERT_NONNULL(value.local).initializer != zc::none &&
-        value.localBorrow != zc::none && value.parameterReborrow == zc::none &&
-        value.call == zc::none && value.receiverCall == zc::none && value.aggregate == zc::none &&
-        value.localWrites.size() == 0 && value.localWriteValues.size() == 0 &&
-        value.localReference == zc::none && value.localFieldProjection == zc::none &&
-        value.parameterIndex == zc::none && value.sequentialLocalReturn == zc::none &&
-        value.conditionalReturn == zc::none && value.loopReturn == zc::none &&
-        value.comparisonReturn == zc::none && value.loopBodyReturn == zc::none &&
-        value.comparisonLoopBodyReturn == zc::none &&
-        ((value.literal != zc::none) != (value.parameterReference != zc::none))) {
-      HirFnCtx fnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
-                     localWrites, localReferences, primitiveBinaryOperations, aggregates,
-                     localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                     rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                     receiverCalls, conditionals, loops, sourceNodes);
+    if (value.shape.is<LocalBorrowReturn>()) {
+      auto fnCtx = makeFnCtx();
       lowerLocalBorrowReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
+    // Generic catch-all materializer. The GenericShape variant carries every
+    // field the inline materializer reads; shapes no specialized guard claims
+    // land here and fail closed as before.
+    auto& generic = value.shape.get<GenericShape>();
     const auto functionId = hirId(next++);
     const auto bodyId = hirId(next++);
     // The generic materializer allocates node ids directly; push side-table
     // entries to stay aligned with the shared ordinal counter.
     sourceNodes.add(value.sourceNode);
     sourceNodes.add(ast::NodeId());
-    ZC_IF_SOME(comparison, value.comparisonReturn) {
+    ZC_IF_SOME(comparison, generic.comparisonReturn) {
       // Comparison-return materialization fixed-id layout, relative to the
       // function id (6 nodes):
       //   +0 function, +1 body block, +2 left operand, +3 right operand,
@@ -13082,17 +12135,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
     HirNodeId localId;
     zc::Maybe<HirNodeId> initializerId;
-    if (value.local != zc::none) {
+    if (generic.local != zc::none) {
       localId = hirId(next++);
       sourceNodes.add(ast::NodeId());
-      ZC_IF_SOME(local, value.local) {
+      ZC_IF_SOME(local, generic.local) {
         if (local.initializer != zc::none) {
           initializerId = hirId(next++);
           sourceNodes.add(ast::NodeId());
         }
       }
     }
-    ZC_IF_SOME(aggregate, value.aggregate) {
+    ZC_IF_SOME(aggregate, generic.aggregate) {
       if (initializerId == zc::none) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
@@ -13106,7 +12159,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     }
     zc::Vector<HirNodeId> writeIds;
     zc::Vector<HirNodeId> writeValueIds;
-    for (size_t index = 0; index < value.localWrites.size(); ++index) {
+    for (size_t index = 0; index < generic.localWrites.size(); ++index) {
       writeIds.add(hirId(next++));
       writeValueIds.add(hirId(next++));
       sourceNodes.add(ast::NodeId());
@@ -13131,10 +12184,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     // reserves exactly two trailing ids, in write order.
     zc::Vector<zc::Maybe<HirNodeId>> writeBinaryLeftIds;
     zc::Vector<zc::Maybe<HirNodeId>> writeBinaryRightIds;
-    for (size_t index = 0; index < value.localWriteValues.size(); ++index) {
+    for (size_t index = 0; index < generic.localWriteValues.size(); ++index) {
       zc::Maybe<HirNodeId> leftId;
       zc::Maybe<HirNodeId> rightId;
-      if (value.localWriteValues[index].binary != zc::none) {
+      if (generic.localWriteValues[index].binary != zc::none) {
         leftId = hirId(next++);
         rightId = hirId(next++);
         sourceNodes.add(ast::NodeId());
@@ -13147,18 +12200,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                          zc::mv(value.parameters), zc::mv(value.receiver),
                                          value.visibility.clone(), value.linkage,
                                          value.declarationSpan.clone(), bodyId,
-                                         zc::mv(unsafeBlockId), value.returnsErrorUnwrapCall});
+                                         zc::mv(unsafeBlockId), generic.returnsErrorUnwrapCall});
     zc::Vector<HirNodeId> statements;
-    if (value.local != zc::none) { statements.add(localId); }
+    if (generic.local != zc::none) { statements.add(localId); }
     for (const auto writeId : writeIds) { statements.add(writeId); }
     statements.add(returnId);
     blocks.add(HirBlockStatement{bodyId, zc::mv(statements), value.bodySpan.clone()});
     returns.add(HirReturnStatement{returnId, value.resultType, valueId, value.returnSpan.clone()});
-    ZC_IF_SOME(literal, value.literal) {
+    ZC_IF_SOME(literal, generic.literal) {
       HirNodeId expressionId = valueId;
       identity::SemanticTypeId expressionType = value.resultType;
       identity::SourceSpan expressionSpan = value.valueSpan.clone();
-      ZC_IF_SOME(local, value.local) {
+      ZC_IF_SOME(local, generic.local) {
         if (initializerId == zc::none || local.initializerSpan == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::MissingRequiredFact, module,
@@ -13171,16 +12224,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       expressions.add(HirScalarLiteralExpression{expressionId, expressionType, literal.clone(),
                                                  HirValueCategory::Value, zc::mv(expressionSpan)});
     }
-    if (value.localWrites.size() != value.localWriteValues.size() ||
-        writeIds.size() != value.localWrites.size() ||
-        writeValueIds.size() != value.localWrites.size()) {
+    if (generic.localWrites.size() != generic.localWriteValues.size() ||
+        writeIds.size() != generic.localWrites.size() ||
+        writeValueIds.size() != generic.localWrites.size()) {
       return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                            ir::IrFailureKind::MissingRequiredFact, module,
                                            registries, 1);
     }
-    for (size_t index = 0; index < value.localWrites.size(); ++index) {
-      const auto& write = value.localWrites[index];
-      const auto& writeValue = value.localWriteValues[index];
+    for (size_t index = 0; index < generic.localWrites.size(); ++index) {
+      const auto& write = generic.localWrites[index];
+      const auto& writeValue = generic.localWriteValues[index];
       // A literal write materializes a scalar literal expression at the write's
       // value node; a parameter write materializes a parameter reference at the
       // same node id. The node id stride (two per write) is identical for both,
@@ -13225,7 +12278,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             HirValueCategory::Value, binary.operation, binary.sourceSpan.clone()});
       }
     }
-    ZC_IF_SOME(local, value.local) {
+    ZC_IF_SOME(local, generic.local) {
       zc::Maybe<HirNodeId> initializer;
       zc::Maybe<identity::SourceSpan> initializerSpan;
       ZC_IF_SOME(value, initializerId) { initializer = value; }
@@ -13234,43 +12287,43 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                  local.sourceSpan.clone(), zc::mv(initializerSpan),
                                  zc::mv(local.erasure)});
     }
-    for (size_t index = 0; index < value.localWrites.size(); ++index) {
-      const auto& write = value.localWrites[index];
+    for (size_t index = 0; index < generic.localWrites.size(); ++index) {
+      const auto& write = generic.localWrites[index];
       localWrites.add(HirLocalWriteStatement{writeIds[index], hirLocalId(1), write.field,
                                              write.type, writeValueIds[index], write.kind,
                                              write.sourceSpan.clone(), write.valueSpan.clone()});
     }
-    ZC_IF_SOME(reference, value.localReference) {
+    ZC_IF_SOME(reference, generic.localReference) {
       localReferences.add(HirLocalReferenceExpression{valueId, hirLocalId(1), reference.type,
                                                       reference.category,
                                                       reference.sourceSpan.clone()});
     }
-    ZC_IF_SOME(projection, value.localFieldProjection) {
+    ZC_IF_SOME(projection, generic.localFieldProjection) {
       localFieldProjections.add(HirLocalFieldProjectionExpression{
           valueId, hirLocalId(1), projection.field, projection.receiverType, projection.type,
           projection.category, projection.sourceSpan.clone()});
     }
-    ZC_IF_SOME(reference, value.parameterReference) {
+    ZC_IF_SOME(reference, generic.parameterReference) {
       HirNodeId referenceId = valueId;
       ZC_IF_SOME(initializer, initializerId) { referenceId = initializer; }
       parameterReferences.add(
           HirParameterReferenceExpression{referenceId, reference.parameter.clone(), reference.type,
                                           reference.category, reference.sourceSpan.clone()});
     }
-    ZC_IF_SOME(index, value.parameterIndex) {
+    ZC_IF_SOME(index, generic.parameterIndex) {
       parameterIndexes.add(HirParameterIndexExpression{
           valueId, index.parameter.clone(), index.receiverType, index.indexType,
           index.index.clone(), index.type, index.category, index.sourceSpan.clone(),
           index.indexSpan.clone()});
     }
-    ZC_IF_SOME(reborrow, value.parameterReborrow) {
+    ZC_IF_SOME(reborrow, generic.parameterReborrow) {
       zc::Maybe<HirLocalId> sourceAlias;
       if (reborrow.sourceAlias != zc::none) { sourceAlias = hirLocalId(1); }
       parameterReborrows.add(HirParameterReborrowExpression{
           valueId, reborrow.parameter.clone(), zc::mv(sourceAlias), reborrow.sourceType,
           reborrow.type, reborrow.mutability, reborrow.sourceSpan.clone()});
     }
-    ZC_IF_SOME(borrow, value.localBorrow) {
+    ZC_IF_SOME(borrow, generic.localBorrow) {
       localBorrows.add(HirLocalBorrowExpression{valueId, hirLocalId(1), borrow.sourceType,
                                                 borrow.type, borrow.mutability,
                                                 borrow.sourceSpan.clone()});
