@@ -250,6 +250,64 @@ zc::Maybe<MirOperand> binaryLeafOperand(
   return zc::none;
 }
 
+/// rief Shared context for recursive function lowering.
+///
+/// Groups the common parameters threaded through every shape-specific builder
+/// and caches the per-dispatch derivations so each strategy resolves them
+/// once instead of re-deriving them from the declaration and block.
+struct LoweringContext {
+  const hir::HirFunctionDeclaration& declaration;
+  const hir::HirBlockStatement& block;
+  const hir::VerifiedHirModule& hirModule;
+  const checker::CheckerIdentityAuthority& identities;
+  const type::SemanticTypeStore& semanticTypes;
+  checker::marker::MarkerProofEngine& proofs;
+  identity::DefId copyMarker;
+
+  // Cached per-dispatch derivations.
+  hir::HirNodeId returnNode;
+  hir::HirNodeId valueNode;
+  bool hasReceiver;
+  bool hasUnsafeBlock;
+  bool hasWriteUnsafeBlock;
+  bool hasTrailingReturn;
+  size_t statementCount;
+
+  LoweringContext(const hir::HirFunctionDeclaration& decl, const hir::HirBlockStatement& blk,
+                  const hir::VerifiedHirModule& module,
+                  const checker::CheckerIdentityAuthority& ids,
+                  const type::SemanticTypeStore& types, checker::marker::MarkerProofEngine& prfs,
+                  identity::DefId copy)
+      : declaration(decl),
+        block(blk),
+        hirModule(module),
+        identities(ids),
+        semanticTypes(types),
+        proofs(prfs),
+        copyMarker(copy),
+        returnNode(),
+        valueNode(),
+        hasReceiver(decl.receiver != zc::none),
+        hasUnsafeBlock(decl.unsafeBlock != zc::none),
+        hasWriteUnsafeBlock(decl.writeUnsafeBlock != zc::none),
+        hasTrailingReturn(false),
+        statementCount(blk.statements.size()) {
+    if (statementCount > 0) {
+      auto ret = returnFor(hirModule, block.statements[statementCount - 1]);
+      ZC_IF_SOME(r, ret) {
+        returnNode = r.node;
+        valueNode = r.value;
+        hasTrailingReturn = true;
+      }
+    }
+  }
+
+  /// rief Returns the trailing return statement, or none when absent.
+  zc::Maybe<const hir::HirReturnStatement&> sourceReturn() const {
+    return returnFor(hirModule, returnNode);
+  }
+};
+
 /// \brief Lowers a sequential N-local single-block body
 /// (`let a = <lit/param/local>; ... let z = ...; return <local-or-param>;`,
 /// N>=2): parameter locals occupy localId(1..P), user local i occupies
@@ -261,10 +319,14 @@ zc::Maybe<MirOperand> binaryLeafOperand(
 /// single-local rail. Aggregate, primitive-binary, nested-operand, and
 /// unsafe-tail initializers return none so the legacy sequential rail keeps
 /// them.
-zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.unsafeBlock != zc::none) return zc::none;
   if (block.statements.size() < 2) return zc::none;
 
@@ -732,9 +794,12 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(
 /// entry block carries Enter/Exit unsafe-scope boundary statements on a child
 /// source scope so the ownership overlay can acknowledge the unsafe region.
 zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirScalarLiteralExpression& literal, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities) {
+    const LoweringContext& lctx, const hir::HirScalarLiteralExpression& literal) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -783,10 +848,14 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarReturn(
 /// Return of a copy/move place-use rooted at the parameter local through a
 /// single [Dereference(*const T -> T)] projection.
 zc::Maybe<RecursiveFunctionProduct> buildRawDereferenceReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirParameterReferenceExpression& source, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirParameterReferenceExpression& source) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
   if (declaration.unsafeBlock == zc::none) return zc::none;
@@ -845,12 +914,16 @@ zc::Maybe<RecursiveFunctionProduct> buildRawDereferenceReturn(
 /// Overwrite assign to a [Dereference] projection on the parameter place, and
 /// a Return of a copy/move place-use through the same [Dereference] projection.
 zc::Maybe<RecursiveFunctionProduct> buildRawPointerWriteReturn(
-    const hir::HirFunctionDeclaration& declaration,
-    const hir::HirRawPointerWriteStatement& sourceWrite,
+    const LoweringContext& lctx, const hir::HirRawPointerWriteStatement& sourceWrite,
     const hir::HirScalarLiteralExpression& writeLiteral,
-    const hir::HirParameterReferenceExpression& source, const hir::HirReturnStatement& sourceReturn,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const hir::HirParameterReferenceExpression& source) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
   if (declaration.writeUnsafeBlock == zc::none) return zc::none;
@@ -934,10 +1007,13 @@ zc::Maybe<RecursiveFunctionProduct> buildRawPointerWriteReturn(
 /// the receiver reference, and a Return of a copy/move place-use rooted at that
 /// local through [Dereference(&Owner -> Owner), Field(Owner -> T)].
 zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirParameterFieldProjectionExpression& projection,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirParameterFieldProjectionExpression& projection) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
   if (projection.type != declaration.resultType ||
@@ -977,10 +1053,13 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldReturn(
 /// through a single [Field(Owner -> T)] projection (no dereference, unlike the
 /// receiver twin).
 zc::Maybe<RecursiveFunctionProduct> buildByValueParameterFieldReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirParameterFieldProjectionExpression& projection,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirParameterFieldProjectionExpression& projection) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (projection.type != declaration.resultType ||
       projection.category != hir::HirValueCategory::Place) {
@@ -1025,10 +1104,14 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueParameterFieldReturn(
 /// arithmetic/comparison rvalue, and the entry block stores it live, assigns
 /// the result, and returns a place-use of that local.
 zc::Maybe<RecursiveFunctionProduct> buildMethodBinaryReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirPrimitiveBinaryExpression& binary, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirPrimitiveBinaryExpression& binary) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   auto arithmetic = arithmeticOperatorFor(binary.operation);
   auto comparison = comparisonOperatorFor(binary.operation);
@@ -1116,10 +1199,14 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodBinaryReturn(
 /// entry block stores it live, assigns it, and returns a place-use of that
 /// local.
 zc::Maybe<RecursiveFunctionProduct> buildFreeFunctionBinaryReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirPrimitiveBinaryExpression& binary, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirPrimitiveBinaryExpression& binary) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   auto arithmetic = arithmeticOperatorFor(binary.operation);
   auto comparison = comparisonOperatorFor(binary.operation);
@@ -1206,12 +1293,16 @@ zc::Maybe<RecursiveFunctionProduct> buildFreeFunctionBinaryReturn(
 /// scalar constant, and the entry block stores the result live, assigns it, and
 /// returns a place-use of that local.
 zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldBinaryReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirPrimitiveBinaryExpression& binary,
+    const LoweringContext& lctx, const hir::HirPrimitiveBinaryExpression& binary,
     const hir::HirParameterFieldProjectionExpression& projection,
-    const checker::checked::CanonicalConstValue& literalValue, bool fieldIsLeft,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const checker::checked::CanonicalConstValue& literalValue, bool fieldIsLeft) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   (void)hirModule;
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   auto arithmetic = arithmeticOperatorFor(binary.operation);
@@ -1281,10 +1372,13 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldBinaryReturn(
 /// one empty entry block returning a copy/move place-use of the referenced
 /// parameter local. Byte-identical to the legacy parameter-return construction.
 zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirParameterReferenceExpression& reference,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirParameterReferenceExpression& reference) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   size_t referencedIndex = 0;
   bool referencedFound = false;
   for (size_t i = 0; i < declaration.parameters.size(); ++i) {
@@ -1337,10 +1431,14 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
 /// locals, allocates no function-result local, and emits no StorageDead, so
 /// this arm reproduces exactly that layout byte for byte.
 zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirScalarLiteralExpression& initializer, const hir::HirReturnStatement& sourceReturn,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -1379,11 +1477,16 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
 /// one FunctionResult local holds the arithmetic/comparison rvalue whose
 /// operands are a place-use of the user local and a scalar constant.
 zc::Maybe<RecursiveFunctionProduct> buildPrimitiveUnaryReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
     const hir::HirScalarLiteralExpression& initializer,
-    const hir::HirPrimitiveBinaryExpression& binary, const hir::HirReturnStatement& sourceReturn,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const hir::HirPrimitiveBinaryExpression& binary) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
   auto arithmetic = arithmeticOperatorFor(binary.operation);
   auto comparison = comparisonOperatorFor(binary.operation);
@@ -1469,9 +1572,12 @@ zc::Maybe<RecursiveFunctionProduct> buildPrimitiveUnaryReturn(
 /// and StorageLive'd but never initialized (the array literal is folded at
 /// the body-checker level and not lowered). The return is the folded constant.
 zc::Maybe<RecursiveFunctionProduct> buildArrayIndexFoldReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirReturnStatement& sourceReturn, const hir::HirScalarLiteralExpression& foldLiteral,
-    const checker::CheckerIdentityAuthority& identities) {
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& foldLiteral) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -1501,13 +1607,16 @@ zc::Maybe<RecursiveFunctionProduct> buildArrayIndexFoldReturn(
 /// literals, so the legacy rail declares no parameter locals; the statement and
 /// span order is reproduced byte for byte.
 zc::Maybe<RecursiveFunctionProduct> buildScalarLocalOverwriteReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
     const hir::HirScalarLiteralExpression& initializer,
     const hir::HirLocalWriteStatement& overwrite,
-    const hir::HirScalarLiteralExpression& overwriteValue,
-    const hir::HirReturnStatement& sourceReturn,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const hir::HirScalarLiteralExpression& overwriteValue) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -1551,10 +1660,14 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalOverwriteReturn(
 /// subsequent write is an Overwrite. A binary write value lowers to an
 /// arithmetic rvalue whose left operand is a place-use of the user local and
 /// whose right operand is a scalar literal, parameter, or earlier local.
-zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.unsafeBlock != zc::none) return zc::none;
   if (block.statements.size() < 3) return zc::none;
 
@@ -1777,10 +1890,14 @@ zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(
 ///   stay on the legacy rail.
 /// - Aggregate elements must all be scalar constants of their element type.
 /// - No unsafe-tail variant joins this arm.
-zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -1868,10 +1985,13 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(
 /// aggregate rvalue of constant elements, and the whole temporary is returned.
 /// No unsafe-tail variant joins this arm.
 zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirNominalAggregateExpression& aggregate,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirNominalAggregateExpression& aggregate) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
   if (declaration.unsafeBlock != zc::none) return zc::none;
@@ -1920,10 +2040,14 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(
 /// aggregate to a global constant so the fat pointer's data pointer outlives
 /// the function call.
 zc::Maybe<RecursiveFunctionProduct> buildExistentialReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirNominalAggregateExpression& aggregate, const hir::HirErasureRecord& erasure,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirNominalAggregateExpression& aggregate,
+    const hir::HirErasureRecord& erasure) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
   if (declaration.unsafeBlock != zc::none) return zc::none;
@@ -1987,10 +2111,13 @@ zc::Maybe<RecursiveFunctionProduct> buildExistentialReturn(
 /// Temporary is constructed with the existential as the field value. Non-erased
 /// fields remain constants. The outer aggregate is returned.
 zc::Maybe<RecursiveFunctionProduct> buildDynFieldAggregateReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirNominalAggregateExpression& aggregate,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirNominalAggregateExpression& aggregate) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) { return zc::none; }
   if (declaration.unsafeBlock != zc::none) { return zc::none; }
@@ -2097,13 +2224,17 @@ zc::Maybe<RecursiveFunctionProduct> buildDynFieldAggregateReturn(
 /// dispatches a dyn-trait method indirectly through the existential carrier's
 /// vtable.
 zc::Maybe<RecursiveFunctionProduct> buildDynFieldAccessReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& aggregateBinding,
+    const LoweringContext& lctx, const hir::HirLocalBinding& aggregateBinding,
     const hir::HirNominalAggregateExpression& aggregate, const hir::HirLocalBinding& fieldBinding,
     const hir::HirLocalFieldProjectionExpression& projection,
-    const hir::HirReturnStatement& sourceReturn,
     const hir::HirLocalReferenceExpression& receiverReference,
-    const hir::HirReceiverCallExpression& call, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const hir::HirReceiverCallExpression& call) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
   if (declaration.unsafeBlock != zc::none) return zc::none;
@@ -2227,10 +2358,14 @@ zc::Maybe<RecursiveFunctionProduct> buildDynFieldAccessReturn(
 /// direct call, and the whole user local is copied as the call's sole by-value
 /// argument. Block 1 calls and continues to block 2, which returns the result
 /// temporary.
-zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
   auto sourceReturn = returnFor(hirModule, block.statements[1]);
@@ -2322,10 +2457,14 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(
 /// copied as the call's sole by-value argument. Block 1 constructs the concrete
 /// aggregate, erases it into the existential local, and calls into block 2,
 /// which returns the result temporary.
-zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
   auto sourceReturn = returnFor(hirModule, block.statements[1]);
@@ -2433,10 +2572,14 @@ zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(
 /// of the call result type at localId(2) receives the direct call, and the
 /// scalar user local is copied as the call's sole by-value argument. Block 1
 /// calls and continues to block 2, which returns the result temporary.
-zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
   auto sourceReturn = returnFor(hirModule, block.statements[1]);
@@ -2521,10 +2664,14 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(
 /// the initializer into the user local and continues to block 2, which copies
 /// the existential as the call's sole by-value argument and calls into block 3,
 /// which returns the result temporary.
-zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
   auto sourceReturn = returnFor(hirModule, block.statements[1]);
@@ -2616,10 +2763,14 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(
 /// scalar constant, and a Return of the copy/move place-use of the user local.
 /// The receiver is unused by the body and folds away at LIR.
 zc::Maybe<RecursiveFunctionProduct> buildMethodScalarLocalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirScalarLiteralExpression& initializer, const hir::HirReturnStatement& sourceReturn,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none) return zc::none;
   const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
   auto definition = identities.definition(declaration.definition);
@@ -2661,13 +2812,15 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodScalarLocalReturn(
 /// with a constant-use rvalue, and a Return of a copy/move place-use of that same
 /// projected place.
 zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
-    const hir::HirFunctionDeclaration& declaration,
-    const hir::HirParameterFieldWriteStatement& sourceWrite,
+    const LoweringContext& lctx, const hir::HirParameterFieldWriteStatement& sourceWrite,
     const hir::HirScalarLiteralExpression& writeLiteral,
-    const hir::HirParameterFieldProjectionExpression& projection,
-    const hir::HirReturnStatement& sourceReturn,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const hir::HirParameterFieldProjectionExpression& projection) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
   if (projection.type != declaration.resultType || sourceWrite.type != declaration.resultType ||
@@ -2719,12 +2872,15 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteReturn(
 /// [Dereference, Field] place whose rvalue is a copy/move place-use of the
 /// parameter local, and a void Return carrying no value.
 zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteVoidReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::HirParameterFieldWriteStatement& sourceWrite,
-    const hir::HirParameterReferenceExpression& writeParameter,
-    const type::SemanticTypeStore& semanticTypes,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirParameterFieldWriteStatement& sourceWrite,
+    const hir::HirParameterReferenceExpression& writeParameter) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& semanticTypes = lctx.semanticTypes;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none ||
       declaration.parameters.size() != 1) {
     return zc::none;
@@ -2785,15 +2941,18 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverFieldWriteVoidReturn(
 /// creates a distinct shared borrow of the same owner and calls the getter; the
 /// third returns the getter result.
 zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirLocalBinding& binding,
+    const LoweringContext& lctx, const hir::HirLocalBinding& binding,
     const hir::HirNominalAggregateExpression& aggregate,
-    const hir::HirReturnStatement& sourceReturn,
     const hir::HirLocalReferenceExpression& setReceiver,
     const hir::HirReceiverCallExpression& discardedCall,
     const hir::HirLocalReferenceExpression& getReceiver,
-    const hir::HirReceiverCallExpression& trailingCall,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker, bool sharedDevirt) {
+    const hir::HirReceiverCallExpression& trailingCall, bool sharedDevirt) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
 
@@ -2911,12 +3070,15 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
 /// local dominates the four-block diamond (SwitchInt, two arm blocks with an
 /// Initialize Assign and Goto, and an empty join returning the result).
 zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
-    const hir::HirFunctionDeclaration& declaration,
-    const hir::HirConditionalExpression& conditional,
-    const hir::HirParameterReferenceExpression& condition,
-    const hir::HirReturnStatement& sourceReturn, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirConditionalExpression& conditional,
+    const hir::HirParameterReferenceExpression& condition) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) return zc::none;
   const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
   auto definition = identities.definition(declaration.definition);
@@ -3014,9 +3176,13 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
 /// argument (a shared reborrow, so no BorrowCreation temporary), one result
 /// temporary receives the call, and the continuation returns it.
 zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirReceiverCallExpression& call, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirReceiverCallExpression& call) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver == zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   const auto& receiver = ZC_ASSERT_NONNULL(declaration.receiver);
   if (call.receiver != hir::HirNodeId() ||
@@ -3078,10 +3244,14 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
 /// dyn-trait parameter whose concrete type is not statically known, so the
 /// call dispatches indirectly through the existential carrier's vtable.
 zc::Maybe<RecursiveFunctionProduct> buildParameterReceiverCallReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirReturnStatement& sourceReturn,
-    const hir::HirReceiverCallExpression& call, const hir::VerifiedHirModule& hirModule,
-    const checker::CheckerIdentityAuthority& identities, checker::marker::MarkerProofEngine& proofs,
-    identity::DefId copyMarker) {
+    const LoweringContext& lctx, const hir::HirReceiverCallExpression& call) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
   if (call.interface == zc::none) { return zc::none; }
   if (call.arguments.size() != 0 || call.resultType != declaration.resultType) { return zc::none; }
@@ -3169,9 +3339,14 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReceiverCallReturn(
 /// computes the comparison temporary, and switches on it; the two arm blocks
 /// initialize the result and the join returns it.
 zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+    const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.unsafeBlock != zc::none || declaration.receiver != zc::none) return zc::none;
   if (block.statements.empty()) return zc::none;
   const size_t bindingCount = block.statements.size() - 1;
@@ -3585,10 +3760,14 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
 /// literal (the final else) as its else-value. Lowers to a 2N+2 block CFG:
 /// N comparison/switch blocks, N then-arm blocks, one else-arm block, and one
 /// join block that returns the result.
-zc::Maybe<RecursiveFunctionProduct> buildChainedConditionalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildChainedConditionalReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.unsafeBlock != zc::none || declaration.receiver != zc::none) return zc::none;
   if (block.statements.size() != 1) return zc::none;
 
@@ -3773,10 +3952,14 @@ zc::Maybe<RecursiveFunctionProduct> buildChainedConditionalReturn(
 /// temporary, conjuncts it with the scrutinee into a second temporary, and
 /// switches on the conjunction; the two arm blocks assign the branch literals
 /// and the join block returns the result.
-zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
   if (block.statements.size() != 1) return zc::none;
 
@@ -3969,10 +4152,14 @@ zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(
 /// evaluates the call into a bool temporary, then SwitchInts on it. Five
 /// blocks: entry (StorageLive + Call), switch (SwitchInt), then arm
 /// (Assign + Goto), else arm (Assign + Goto), join (Return).
-zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(
-    const hir::HirFunctionDeclaration& declaration, const hir::HirBlockStatement& block,
-    const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
-    checker::marker::MarkerProofEngine& proofs, identity::DefId copyMarker) {
+zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
   if (block.statements.size() != 1) return zc::none;
 
@@ -4097,6 +4284,570 @@ zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// Strategy function type: each strategy self-gates on the LoweringContext
+/// and returns a product when it recognises the body shape.
+using StrategyFn = zc::Maybe<RecursiveFunctionProduct> (*)(const LoweringContext&);
+
+/// Void mutating-receiver method: a sole `this.<field> = <parameter>;`
+/// statement with a Unit result.  Runs before trailing-return resolution.
+zc::Maybe<RecursiveFunctionProduct> strategyVoidWrite(const LoweringContext& lctx) {
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto write = parameterFieldWriteFor(lctx.hirModule, lctx.block.statements[0]);
+  ZC_IF_SOME(sourceWrite, write) {
+    auto writeParameter = parameterReferenceFor(lctx.hirModule, sourceWrite.value);
+    ZC_IF_SOME(parameter, writeParameter) {
+      return buildReceiverFieldWriteVoidReturn(lctx, sourceWrite, parameter);
+    }
+  }
+  return zc::none;
+}
+
+/// K leading scalar user locals followed by one comparison conditional with
+/// literal arms.
+zc::Maybe<RecursiveFunctionProduct> strategyLeadingLocalConditional(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildLeadingLocalConditionalReturn(lctx);
+}
+
+/// Chained conditional return: nested equality conditionals with literal arms.
+zc::Maybe<RecursiveFunctionProduct> strategyChainedConditional(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildChainedConditionalReturn(lctx);
+}
+
+/// Match-guard conjunctive conditional return.
+zc::Maybe<RecursiveFunctionProduct> strategyConjunctiveConditional(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildConjunctiveConditionalReturn(lctx);
+}
+
+/// Call-in-condition conditional return.
+zc::Maybe<RecursiveFunctionProduct> strategyCallConditional(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildCallConditionalReturn(lctx);
+}
+
+/// Receiver method conditional return: one if/else whose branches return
+/// scalar literals over a bare bool ordinary-parameter condition.
+zc::Maybe<RecursiveFunctionProduct> strategyMethodConditional(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto methodConditional = conditionalFor(lctx.hirModule, lctx.valueNode);
+  if (methodConditional == zc::none) return zc::none;
+  const auto& conditional = ZC_ASSERT_NONNULL(methodConditional);
+  auto conditionReference = parameterReferenceFor(lctx.hirModule, conditional.condition);
+  if (conditionReference == zc::none) return zc::none;
+  if (expressionFor(lctx.hirModule, conditional.thenReturnValue) == zc::none) return zc::none;
+  if (expressionFor(lctx.hirModule, conditional.elseReturnValue) == zc::none) return zc::none;
+  return buildMethodConditionalReturn(lctx, conditional, ZC_ASSERT_NONNULL(conditionReference));
+}
+
+/// Dyn-field aggregate return: at least one element carries a per-field
+/// concrete-to-existential erasure.
+zc::Maybe<RecursiveFunctionProduct> strategyDynFieldAggregate(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasUnsafeBlock) return zc::none;
+  auto aggregate = aggregateFor(lctx.hirModule, lctx.valueNode);
+  if (aggregate == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(aggregate).type != lctx.declaration.resultType) return zc::none;
+  bool hasDynFieldErasure = false;
+  for (const auto& elem : ZC_ASSERT_NONNULL(aggregate).elements) {
+    if (elem.erasure != zc::none) {
+      hasDynFieldErasure = true;
+      break;
+    }
+  }
+  if (!hasDynFieldErasure) return zc::none;
+  return buildDynFieldAggregateReturn(lctx, ZC_ASSERT_NONNULL(aggregate));
+}
+
+/// Direct aggregate return: `return T { ..constants.. };`.
+zc::Maybe<RecursiveFunctionProduct> strategyAggregate(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasUnsafeBlock) return zc::none;
+  auto aggregate = aggregateFor(lctx.hirModule, lctx.valueNode);
+  if (aggregate == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(aggregate).type != lctx.declaration.resultType) return zc::none;
+  for (const auto& elem : ZC_ASSERT_NONNULL(aggregate).elements) {
+    if (elem.erasure != zc::none) return zc::none;
+  }
+  return buildAggregateReturn(lctx, ZC_ASSERT_NONNULL(aggregate));
+}
+
+/// Existential aggregate construction return:
+/// `fn f() -> dyn I { return P { ..constants.. }; }`.
+zc::Maybe<RecursiveFunctionProduct> strategyExistential(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasUnsafeBlock) return zc::none;
+  if (lctx.declaration.returnErasure == zc::none) return zc::none;
+  auto aggregate = aggregateFor(lctx.hirModule, lctx.valueNode);
+  if (aggregate == zc::none) return zc::none;
+  const auto& erasure = ZC_ASSERT_NONNULL(lctx.declaration.returnErasure);
+  if (ZC_ASSERT_NONNULL(aggregate).type != erasure.sourceType) return zc::none;
+  if (lctx.declaration.resultType != erasure.targetType) return zc::none;
+  return buildExistentialReturn(lctx, ZC_ASSERT_NONNULL(aggregate), erasure);
+}
+
+/// Scalar literal return: exactly one literal expression and no direct call.
+zc::Maybe<RecursiveFunctionProduct> strategyScalarLiteral(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1) return zc::none;
+  auto literal = expressionFor(lctx.hirModule, lctx.valueNode);
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (literal == zc::none || directCall != zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(literal).type != lctx.declaration.resultType) return zc::none;
+  return buildScalarReturn(lctx, ZC_ASSERT_NONNULL(literal));
+}
+
+/// Raw-pointer dereference return: `return unsafe { *ptr };`.
+zc::Maybe<RecursiveFunctionProduct> strategyRawDereference(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasUnsafeBlock || lctx.hasReceiver) return zc::none;
+  auto paramRef = parameterReferenceFor(lctx.hirModule, lctx.valueNode);
+  if (paramRef == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(paramRef).type == lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(paramRef).category != hir::HirValueCategory::Place) return zc::none;
+  return buildRawDereferenceReturn(lctx, ZC_ASSERT_NONNULL(paramRef));
+}
+
+/// Receiver field read: returning this.field.
+zc::Maybe<RecursiveFunctionProduct> strategyReceiverField(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto projection = parameterFieldProjectionFor(lctx.hirModule, lctx.valueNode);
+  if (projection == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(projection).type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(projection).category != hir::HirValueCategory::Place) return zc::none;
+  return buildReceiverFieldReturn(lctx, ZC_ASSERT_NONNULL(projection));
+}
+
+/// By-value struct parameter field return: `parameter.field`.
+zc::Maybe<RecursiveFunctionProduct> strategyByValueParameterField(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto projection = parameterFieldProjectionFor(lctx.hirModule, lctx.valueNode);
+  if (projection == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(projection).type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(projection).category != hir::HirValueCategory::Place) return zc::none;
+  return buildByValueParameterFieldReturn(lctx, ZC_ASSERT_NONNULL(projection));
+}
+
+/// Receiver self-call: `return this.method();`.
+zc::Maybe<RecursiveFunctionProduct> strategyReceiverSelfCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (directCall != zc::none) return zc::none;
+  auto receiverCall = receiverCallFor(lctx.hirModule, lctx.valueNode);
+  if (receiverCall == zc::none) return zc::none;
+  return buildReceiverSelfCallReturn(lctx, ZC_ASSERT_NONNULL(receiverCall));
+}
+
+/// Parameter receiver call: `fn f(a: dyn Trait) -> T { return a.method(); }`.
+zc::Maybe<RecursiveFunctionProduct> strategyParameterReceiverCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (directCall != zc::none) return zc::none;
+  auto receiverCall = receiverCallFor(lctx.hirModule, lctx.valueNode);
+  if (receiverCall == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(receiverCall).interface == zc::none) return zc::none;
+  return buildParameterReceiverCallReturn(lctx, ZC_ASSERT_NONNULL(receiverCall));
+}
+
+/// Receiver parameter-binary return with a field projection.
+zc::Maybe<RecursiveFunctionProduct> strategyReceiverFieldBinary(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (directCall != zc::none) return zc::none;
+  auto binary = primitiveBinaryFor(lctx.hirModule, lctx.valueNode);
+  if (binary == zc::none) return zc::none;
+  auto fieldProjection =
+      parameterFieldProjectionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binary).left);
+  hir::HirNodeId literalOperandNode = ZC_ASSERT_NONNULL(binary).right;
+  bool fieldIsLeft = true;
+  if (fieldProjection == zc::none) {
+    fieldProjection = parameterFieldProjectionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binary).right);
+    literalOperandNode = ZC_ASSERT_NONNULL(binary).left;
+    fieldIsLeft = false;
+  }
+  if (fieldProjection == zc::none) return zc::none;
+  auto literalExpression = expressionFor(lctx.hirModule, literalOperandNode);
+  if (literalExpression == zc::none) return zc::none;
+  return buildReceiverFieldBinaryReturn(lctx, ZC_ASSERT_NONNULL(binary),
+                                        ZC_ASSERT_NONNULL(fieldProjection),
+                                        ZC_ASSERT_NONNULL(literalExpression).value, fieldIsLeft);
+}
+
+/// Receiver method binary return (no field projection).
+zc::Maybe<RecursiveFunctionProduct> strategyMethodBinary(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (directCall != zc::none) return zc::none;
+  auto binary = primitiveBinaryFor(lctx.hirModule, lctx.valueNode);
+  if (binary == zc::none) return zc::none;
+  auto leftField = parameterFieldProjectionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binary).left);
+  auto rightField = parameterFieldProjectionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binary).right);
+  if (leftField != zc::none || rightField != zc::none) return zc::none;
+  return buildMethodBinaryReturn(lctx, ZC_ASSERT_NONNULL(binary));
+}
+
+/// Free-function parameter-binary return.
+zc::Maybe<RecursiveFunctionProduct> strategyFreeBinary(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto directCall = callFor(lctx.hirModule, lctx.valueNode);
+  if (directCall != zc::none) return zc::none;
+  auto binary = primitiveBinaryFor(lctx.hirModule, lctx.valueNode);
+  if (binary == zc::none) return zc::none;
+  return buildFreeFunctionBinaryReturn(lctx, ZC_ASSERT_NONNULL(binary));
+}
+
+/// Parameter return: a bare parameter reference.
+zc::Maybe<RecursiveFunctionProduct> strategyParameter(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1) return zc::none;
+  auto parameterReference = parameterReferenceFor(lctx.hirModule, lctx.valueNode);
+  auto parameterReborrow = parameterReborrowFor(lctx.hirModule, lctx.valueNode);
+  if (parameterReference == zc::none || parameterReborrow != zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(parameterReference).type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(parameterReference).category != hir::HirValueCategory::Place)
+    return zc::none;
+  return buildParameterReturn(lctx, ZC_ASSERT_NONNULL(parameterReference));
+}
+
+/// Raw-pointer write-read: `unsafe { *ptr = <lit>; }; return unsafe { *ptr };`.
+zc::Maybe<RecursiveFunctionProduct> strategyRawPointerWrite(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (!lctx.hasWriteUnsafeBlock || lctx.statementCount != 2 || lctx.hasReceiver) return zc::none;
+  auto write = rawPointerWriteFor(lctx.hirModule, lctx.block.statements[0]);
+  auto paramRef = parameterReferenceFor(lctx.hirModule, lctx.valueNode);
+  if (write == zc::none || paramRef == zc::none) return zc::none;
+  auto writeLiteral = expressionFor(lctx.hirModule, ZC_ASSERT_NONNULL(write).value);
+  if (writeLiteral == zc::none) return zc::none;
+  return buildRawPointerWriteReturn(lctx, ZC_ASSERT_NONNULL(write), ZC_ASSERT_NONNULL(writeLiteral),
+                                    ZC_ASSERT_NONNULL(paramRef));
+}
+
+/// Receiver field write-read: overwrite this.field with a literal, return it.
+zc::Maybe<RecursiveFunctionProduct> strategyReceiverFieldWrite(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || !lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto write = parameterFieldWriteFor(lctx.hirModule, lctx.block.statements[0]);
+  auto projection = parameterFieldProjectionFor(lctx.hirModule, lctx.valueNode);
+  if (write == zc::none || projection == zc::none) return zc::none;
+  auto writeLiteral = expressionFor(lctx.hirModule, ZC_ASSERT_NONNULL(write).value);
+  if (writeLiteral == zc::none) return zc::none;
+  return buildReceiverFieldWriteReturn(lctx, ZC_ASSERT_NONNULL(write),
+                                       ZC_ASSERT_NONNULL(writeLiteral),
+                                       ZC_ASSERT_NONNULL(projection));
+}
+
+/// Discarded receiver call followed by a shared trailing receiver call.
+zc::Maybe<RecursiveFunctionProduct> strategyVoidCallThenReceiverCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto bindingRecord = localFor(lctx.hirModule, lctx.block.statements[0]);
+  auto discardedRecord = receiverCallFor(lctx.hirModule, lctx.block.statements[1]);
+  if (bindingRecord == zc::none || discardedRecord == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(bindingRecord);
+  const auto& discardedCall = ZC_ASSERT_NONNULL(discardedRecord);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto aggregateRecord = aggregateFor(lctx.hirModule, initializerNode);
+  auto trailingCallRecord = receiverCallFor(lctx.hirModule, lctx.valueNode);
+  auto setReceiverRecord = localReferenceFor(lctx.hirModule, discardedCall.receiver);
+  if (aggregateRecord == zc::none || trailingCallRecord == zc::none ||
+      setReceiverRecord == zc::none)
+    return zc::none;
+  const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
+  const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
+  const auto& setReceiver = ZC_ASSERT_NONNULL(setReceiverRecord);
+  auto getReceiverRecord = localReferenceFor(lctx.hirModule, trailingCall.receiver);
+  if (getReceiverRecord == zc::none) return zc::none;
+  const auto& getReceiver = ZC_ASSERT_NONNULL(getReceiverRecord);
+  const bool discardedMutableUnit =
+      discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
+      discardedCall.receiverAdjustments.size() == 1 &&
+      discardedCall.receiverAdjustments[0] ==
+          checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
+      isUnitSemanticType(lctx.semanticTypes, discardedCall.resultType) &&
+      discardedCall.arguments.size() == 1 && discardedCall.arguments[0].value != zc::none;
+  const bool discardedSharedValue =
+      discardedCall.receiverMode == checker::checked::ReceiverMode::Shared &&
+      discardedCall.receiverAdjustments.size() == 1 &&
+      discardedCall.receiverAdjustments[0] ==
+          checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+      discardedCall.arguments.size() == 0;
+  if (binding.local.ordinal() == 1 && binding.initializer == aggregate.node &&
+      binding.type == aggregate.type && binding.type == discardedCall.receiverSourceType &&
+      binding.type == trailingCall.receiverSourceType &&
+      aggregate.category == hir::HirValueCategory::Value &&
+      discardedCall.receiver == setReceiver.node && trailingCall.receiver == getReceiver.node &&
+      setReceiver.local == binding.local && getReceiver.local == binding.local &&
+      setReceiver.category == hir::HirValueCategory::Place &&
+      getReceiver.category == hir::HirValueCategory::Place &&
+      (discardedMutableUnit || discardedSharedValue) &&
+      trailingCall.receiverMode == checker::checked::ReceiverMode::Shared &&
+      trailingCall.receiverAdjustments.size() == 1 &&
+      trailingCall.receiverAdjustments[0] ==
+          checker::checked::ReceiverAdjustmentStep::BorrowShared &&
+      trailingCall.arguments.size() == 0 &&
+      trailingCall.resultType == lctx.declaration.resultType) {
+    return buildVoidCallThenReceiverCallReturn(lctx, binding, aggregate, setReceiver, discardedCall,
+                                               getReceiver, trailingCall, discardedSharedValue);
+  }
+  return zc::none;
+}
+
+/// Dyn field-access consumer return.
+zc::Maybe<RecursiveFunctionProduct> strategyDynFieldAccess(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  auto aggregateBindingRecord = localFor(lctx.hirModule, lctx.block.statements[0]);
+  auto fieldBindingRecord = localFor(lctx.hirModule, lctx.block.statements[1]);
+  if (aggregateBindingRecord == zc::none || fieldBindingRecord == zc::none) return zc::none;
+  const auto& aggregateBinding = ZC_ASSERT_NONNULL(aggregateBindingRecord);
+  const auto& fieldBinding = ZC_ASSERT_NONNULL(fieldBindingRecord);
+  hir::HirNodeId aggregateInitNode;
+  ZC_IF_SOME(init, aggregateBinding.initializer) { aggregateInitNode = init; }
+  hir::HirNodeId fieldInitNode;
+  ZC_IF_SOME(init, fieldBinding.initializer) { fieldInitNode = init; }
+  auto aggregateRecord = aggregateFor(lctx.hirModule, aggregateInitNode);
+  auto projectionRecord = localFieldProjectionFor(lctx.hirModule, fieldInitNode);
+  auto trailingCallRecord = receiverCallFor(lctx.hirModule, lctx.valueNode);
+  if (aggregateRecord == zc::none || projectionRecord == zc::none || trailingCallRecord == zc::none)
+    return zc::none;
+  const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
+  const auto& projection = ZC_ASSERT_NONNULL(projectionRecord);
+  const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
+  auto receiverReferenceRecord = localReferenceFor(lctx.hirModule, trailingCall.receiver);
+  if (receiverReferenceRecord == zc::none) return zc::none;
+  const auto& receiverReference = ZC_ASSERT_NONNULL(receiverReferenceRecord);
+  if (aggregateBinding.local.ordinal() == 1 && fieldBinding.local.ordinal() == 2 &&
+      aggregateBinding.initializer == aggregate.node && aggregateBinding.type == aggregate.type &&
+      fieldBinding.initializer == projection.node && fieldBinding.type == projection.type &&
+      projection.local == aggregateBinding.local &&
+      projection.type == trailingCall.receiverSourceType &&
+      receiverReference.local == fieldBinding.local &&
+      trailingCall.receiver == receiverReference.node && trailingCall.interface != zc::none &&
+      trailingCall.resultType == lctx.declaration.resultType) {
+    return buildDynFieldAccessReturn(lctx, aggregateBinding, aggregate, fieldBinding, projection,
+                                     receiverReference, trailingCall);
+  }
+  return zc::none;
+}
+
+/// By-value aggregate caller: `let p: P = P{..}; return f(p);`.
+zc::Maybe<RecursiveFunctionProduct> strategyByValueAggregateCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildByValueAggregateCallReturn(lctx);
+}
+
+/// Erased-aggregate direct-call caller.
+zc::Maybe<RecursiveFunctionProduct> strategyErasedAggregateCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildErasedAggregateCallReturn(lctx);
+}
+
+/// Existential direct-call caller.
+zc::Maybe<RecursiveFunctionProduct> strategyDirectExistentialCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildDirectExistentialCallReturn(lctx);
+}
+
+/// Scalar-local direct-call caller.
+zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildScalarLocalCallReturn(lctx);
+}
+
+/// Array index fold: `let a: [T; N] = [...]; return a[k];`.
+zc::Maybe<RecursiveFunctionProduct> strategyArrayIndexFold(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasUnsafeBlock) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto initializerLiteral = expressionFor(lctx.hirModule, initializerNode);
+  auto foldLiteral = expressionFor(lctx.hirModule, lctx.valueNode);
+  if (initializerLiteral != zc::none || foldLiteral == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(foldLiteral).type != lctx.declaration.resultType) return zc::none;
+  return buildArrayIndexFoldReturn(lctx, binding, ZC_ASSERT_NONNULL(foldLiteral));
+}
+
+/// Single scalar-initialized user local: `let x = <literal>; return x;`.
+zc::Maybe<RecursiveFunctionProduct> strategyScalarLocal(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasUnsafeBlock) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto literal = expressionFor(lctx.hirModule, initializerNode);
+  auto reference = localReferenceFor(lctx.hirModule, lctx.valueNode);
+  auto fieldProjection = localFieldProjectionFor(lctx.hirModule, lctx.valueNode);
+  auto aggregate = aggregateFor(lctx.hirModule, initializerNode);
+  auto binary = primitiveBinaryFor(lctx.hirModule, initializerNode);
+  if (literal == zc::none || aggregate != zc::none || binary != zc::none) return zc::none;
+  if (reference == zc::none || fieldProjection != zc::none) return zc::none;
+  if (binding.initializer != ZC_ASSERT_NONNULL(literal).node) return zc::none;
+  if (binding.local != ZC_ASSERT_NONNULL(reference).local) return zc::none;
+  if (binding.type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).type != binding.type) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) return zc::none;
+  if (!lctx.hasReceiver) {
+    return buildScalarLocalReturn(lctx, binding, ZC_ASSERT_NONNULL(literal));
+  }
+  return buildMethodScalarLocalReturn(lctx, binding, ZC_ASSERT_NONNULL(literal));
+}
+
+/// Primitive-unary return: `let x: T = <lit>; return !x;`.
+zc::Maybe<RecursiveFunctionProduct> strategyPrimitiveUnary(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasUnsafeBlock || lctx.hasReceiver) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto literal = expressionFor(lctx.hirModule, initializerNode);
+  auto binary = primitiveBinaryFor(lctx.hirModule, lctx.valueNode);
+  if (literal == zc::none || binary == zc::none) return zc::none;
+  if (binding.initializer != ZC_ASSERT_NONNULL(literal).node) return zc::none;
+  if (binding.type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
+  const auto& bin = ZC_ASSERT_NONNULL(binary);
+  auto leftLocal = localReferenceFor(lctx.hirModule, bin.left);
+  auto rightLocal = localReferenceFor(lctx.hirModule, bin.right);
+  auto leftLiteral = expressionFor(lctx.hirModule, bin.left);
+  auto rightLiteral = expressionFor(lctx.hirModule, bin.right);
+  const bool localOnLeft = leftLocal != zc::none && rightLiteral != zc::none &&
+                           ZC_ASSERT_NONNULL(leftLocal).local == binding.local &&
+                           ZC_ASSERT_NONNULL(leftLocal).type == binding.type &&
+                           ZC_ASSERT_NONNULL(leftLocal).category == hir::HirValueCategory::Place;
+  const bool localOnRight = rightLocal != zc::none && leftLiteral != zc::none &&
+                            ZC_ASSERT_NONNULL(rightLocal).local == binding.local &&
+                            ZC_ASSERT_NONNULL(rightLocal).type == binding.type &&
+                            ZC_ASSERT_NONNULL(rightLocal).category == hir::HirValueCategory::Place;
+  if (!localOnLeft && !localOnRight) return zc::none;
+  return buildPrimitiveUnaryReturn(lctx, binding, ZC_ASSERT_NONNULL(literal), bin);
+}
+
+/// Single aggregate-initialized user local.
+zc::Maybe<RecursiveFunctionProduct> strategyAggregateLocal(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasUnsafeBlock) return zc::none;
+  return buildAggregateLocalReturn(lctx);
+}
+
+/// Single scalar local with one repeated literal write.
+zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalOverwrite(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasUnsafeBlock) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  auto sourceOverwrite = localWriteFor(lctx.hirModule, lctx.block.statements[1]);
+  if (sourceLocal == zc::none || sourceOverwrite == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  const auto& write = ZC_ASSERT_NONNULL(sourceOverwrite);
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto literal = expressionFor(lctx.hirModule, initializerNode);
+  auto overwriteLiteral = expressionFor(lctx.hirModule, write.value);
+  auto reference = localReferenceFor(lctx.hirModule, lctx.valueNode);
+  auto fieldProjection = localFieldProjectionFor(lctx.hirModule, lctx.valueNode);
+  auto overwriteBinary = primitiveBinaryFor(lctx.hirModule, write.value);
+  auto overwriteParameter = parameterReferenceFor(lctx.hirModule, write.value);
+  if (literal == zc::none || overwriteLiteral == zc::none || reference == zc::none) return zc::none;
+  if (fieldProjection != zc::none || overwriteBinary != zc::none || overwriteParameter != zc::none)
+    return zc::none;
+  if (binding.initializer != ZC_ASSERT_NONNULL(literal).node) return zc::none;
+  if (write.kind != hir::HirLocalWriteKind::Overwrite || write.field != zc::none) return zc::none;
+  if (write.local != binding.local) return zc::none;
+  if (write.local != ZC_ASSERT_NONNULL(reference).local) return zc::none;
+  if (write.type != binding.type) return zc::none;
+  if (binding.type != lctx.declaration.resultType) return zc::none;
+  if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
+  if (ZC_ASSERT_NONNULL(overwriteLiteral).type != binding.type) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).type != binding.type) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) return zc::none;
+  return buildScalarLocalOverwriteReturn(lctx, binding, ZC_ASSERT_NONNULL(literal), write,
+                                         ZC_ASSERT_NONNULL(overwriteLiteral));
+}
+
+/// Single user-local body with one or more overwrite writes.
+zc::Maybe<RecursiveFunctionProduct> strategyLocalWrite(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 3 || lctx.hasUnsafeBlock) return zc::none;
+  return buildLocalWriteReturn(lctx);
+}
+
+/// Sequential N-local body with N>=1 plain initializers.
+zc::Maybe<RecursiveFunctionProduct> strategySequentialLocal(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 2 || lctx.hasUnsafeBlock) return zc::none;
+  return buildSequentialLocalReturn(lctx);
+}
+
+/// Ordered strategy table.  The first strategy that returns a product wins.
+/// Ordering encodes the priority dependencies from the former dispatch
+/// cascade: more specific shapes precede the catch-all sequential arm.
+struct StrategyEntry {
+  const char* name;
+  StrategyFn fn;
+};
+
+static constexpr StrategyEntry kStrategyTable[] = {
+    {"VoidWrite", strategyVoidWrite},
+    {"LeadingLocalConditional", strategyLeadingLocalConditional},
+    {"ChainedConditional", strategyChainedConditional},
+    {"ConjunctiveConditional", strategyConjunctiveConditional},
+    {"CallConditional", strategyCallConditional},
+    {"MethodConditional", strategyMethodConditional},
+    {"DynFieldAggregate", strategyDynFieldAggregate},
+    {"Aggregate", strategyAggregate},
+    {"Existential", strategyExistential},
+    {"ScalarLiteral", strategyScalarLiteral},
+    {"RawDereference", strategyRawDereference},
+    {"ReceiverField", strategyReceiverField},
+    {"ByValueParameterField", strategyByValueParameterField},
+    {"ReceiverSelfCall", strategyReceiverSelfCall},
+    {"ParameterReceiverCall", strategyParameterReceiverCall},
+    {"ReceiverFieldBinary", strategyReceiverFieldBinary},
+    {"MethodBinary", strategyMethodBinary},
+    {"FreeBinary", strategyFreeBinary},
+    {"Parameter", strategyParameter},
+    {"RawPointerWrite", strategyRawPointerWrite},
+    {"ReceiverFieldWrite", strategyReceiverFieldWrite},
+    {"VoidCallThenReceiverCall", strategyVoidCallThenReceiverCall},
+    {"DynFieldAccess", strategyDynFieldAccess},
+    {"ByValueAggregateCall", strategyByValueAggregateCall},
+    {"ErasedAggregateCall", strategyErasedAggregateCall},
+    {"DirectExistentialCall", strategyDirectExistentialCall},
+    {"ScalarLocalCall", strategyScalarLocalCall},
+    {"ArrayIndexFold", strategyArrayIndexFold},
+    {"ScalarLocal", strategyScalarLocal},
+    {"PrimitiveUnary", strategyPrimitiveUnary},
+    {"AggregateLocal", strategyAggregateLocal},
+    {"ScalarLocalOverwrite", strategyScalarLocalOverwrite},
+    {"LocalWrite", strategyLocalWrite},
+    {"SequentialLocal", strategySequentialLocal},
+};
+
 }  // namespace
 
 zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
@@ -4105,646 +4856,12 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copyMarker) {
   if (block.statements.empty()) return zc::none;
-  // Void mutating-receiver method: a sole `this.<field> = <parameter>;`
-  // statement with a Unit result. It deliberately has no trailing return, so it
-  // must be claimed before the trailing-return resolution below bails.
-  if (block.statements.size() == 1 && declaration.receiver != zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto write = parameterFieldWriteFor(hirModule, block.statements[0]);
-    ZC_IF_SOME(sourceWrite, write) {
-      auto writeParameter = parameterReferenceFor(hirModule, sourceWrite.value);
-      ZC_IF_SOME(parameter, writeParameter) {
-        auto product =
-            buildReceiverFieldWriteVoidReturn(declaration, block, sourceWrite, parameter,
-                                              semanticTypes, identities, proofs, copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-  }
-  // Every owned shape ends in its trailing return; a missing return delegates.
-  auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
-  if (sourceReturn == zc::none) return zc::none;
-  const hir::HirNodeId valueNode = ZC_ASSERT_NONNULL(sourceReturn).value;
-
-  // K leading scalar user locals followed by one comparison conditional with
-  // literal arms. The arm self-gates on the local + conditional/equality
-  // structure and rejects every other K-local body, so it stays ahead of the
-  // fixed-size single-local and sequential arms.
-  if (block.statements.size() >= 1 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildLeadingLocalConditionalReturn(declaration, block, hirModule, identities,
-                                                      proofs, copyMarker);
+  const LoweringContext lctx(declaration, block, hirModule, identities, semanticTypes, proofs,
+                             copyMarker);
+  for (const auto& entry : kStrategyTable) {
+    auto product = entry.fn(lctx);
     if (product != zc::none) return product;
   }
-
-  // Chained conditional return: a single-statement body whose return value is
-  // a chain of nested equality conditionals with literal arms. The arm
-  // self-gates on the HIR shape and rejects every other body.
-  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildChainedConditionalReturn(declaration, block, hirModule, identities, proofs,
-                                                 copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Match-guard conjunctive conditional return: a single-statement body whose
-  // return value is a conditional with a conjunction (LogicalAnd) condition.
-  // The arm self-gates on the HIR shape and rejects every other body.
-  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildConjunctiveConditionalReturn(declaration, block, hirModule, identities,
-                                                     proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Call-in-condition conditional return: a single-statement body whose return
-  // value is a conditional with a direct call expression as its condition.
-  // The arm self-gates on the HIR shape and rejects every other body.
-  if (block.statements.size() == 1 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product =
-        buildCallConditionalReturn(declaration, block, hirModule, identities, proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // The bare literal and parameter returns are the one-statement shapes.
-  if (block.statements.size() == 1) {
-    // Receiver method conditional return: one if/else whose branches return
-    // scalar literals over a bare bool ordinary-parameter condition.
-    auto methodConditional = conditionalFor(hirModule, valueNode);
-    if (declaration.receiver != zc::none && declaration.unsafeBlock == zc::none &&
-        methodConditional != zc::none) {
-      const auto& conditional = ZC_ASSERT_NONNULL(methodConditional);
-      auto conditionReference = parameterReferenceFor(hirModule, conditional.condition);
-      if (conditionReference != zc::none &&
-          expressionFor(hirModule, conditional.thenReturnValue) != zc::none &&
-          expressionFor(hirModule, conditional.elseReturnValue) != zc::none) {
-        auto product = buildMethodConditionalReturn(
-            declaration, conditional, ZC_ASSERT_NONNULL(conditionReference),
-            ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities, proofs, copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-
-    // Direct aggregate return: `return T { ..constants.. };` (including enum
-    // construction `return Result::Ok(41);`). The return value is a nominal
-    // aggregate expression with constant elements; a temporary receives the
-    // aggregate and is returned.
-    if (declaration.unsafeBlock == zc::none) {
-      auto aggregate = aggregateFor(hirModule, valueNode);
-      if (aggregate != zc::none && ZC_ASSERT_NONNULL(aggregate).type == declaration.resultType) {
-        // Dyn-field aggregate return: at least one element carries a per-field
-        // concrete-to-existential erasure.
-        bool hasDynFieldErasure = false;
-        for (const auto& elem : ZC_ASSERT_NONNULL(aggregate).elements) {
-          if (elem.erasure != zc::none) {
-            hasDynFieldErasure = true;
-            break;
-          }
-        }
-        if (hasDynFieldErasure) {
-          auto product = buildDynFieldAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                      ZC_ASSERT_NONNULL(aggregate), identities,
-                                                      proofs, copyMarker);
-          if (product != zc::none) return product;
-        } else {
-          auto product =
-              buildAggregateReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                   ZC_ASSERT_NONNULL(aggregate), identities, proofs, copyMarker);
-          if (product != zc::none) return product;
-        }
-      }
-      // Existential aggregate construction return:
-      // `fn f() -> dyn I { return P { ..constants.. }; }`. The aggregate type
-      // is the concrete source type; the function result type is the
-      // existential target type. The declaration carries a HirErasureRecord.
-      if (aggregate != zc::none && declaration.returnErasure != zc::none) {
-        const auto& erasure = ZC_ASSERT_NONNULL(declaration.returnErasure);
-        if (ZC_ASSERT_NONNULL(aggregate).type == erasure.sourceType &&
-            declaration.resultType == erasure.targetType) {
-          auto product = buildExistentialReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                ZC_ASSERT_NONNULL(aggregate), erasure, identities,
-                                                proofs, copyMarker);
-          if (product != zc::none) return product;
-        }
-      }
-    }
-
-    // Scalar literal return: exactly one literal expression and no direct call on
-    // the return value.  Unsafe blocks are transparent for scalar returns.
-    auto literal = expressionFor(hirModule, valueNode);
-    auto directCall = callFor(hirModule, valueNode);
-    if (literal != zc::none && directCall == zc::none &&
-        ZC_ASSERT_NONNULL(literal).type == declaration.resultType) {
-      return buildScalarReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                               ZC_ASSERT_NONNULL(literal), hirModule, identities);
-    }
-
-    // Raw-pointer dereference return: `return unsafe { *ptr };` where `ptr` is
-    // a raw-pointer parameter. The value node is a parameter reference wrapped
-    // in an unsafe block; the parameter type (raw pointer) differs from the
-    // result type (pointee). The MIR builder emits a [Dereference] projection
-    // on the parameter place.
-    if (declaration.unsafeBlock != zc::none && declaration.receiver == zc::none) {
-      auto paramRef = parameterReferenceFor(hirModule, valueNode);
-      if (paramRef != zc::none && ZC_ASSERT_NONNULL(paramRef).type != declaration.resultType &&
-          ZC_ASSERT_NONNULL(paramRef).category == hir::HirValueCategory::Place) {
-        auto product = buildRawDereferenceReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                 ZC_ASSERT_NONNULL(paramRef), hirModule, identities,
-                                                 proofs, copyMarker);
-        if (product != zc::none) { return product; }
-      }
-    }
-
-    // Receiver field read: a shared- or mutating-receiver method returning
-    // this.field; the read is a copy through either kind of receiver reference.
-    auto receiverFieldProjection = parameterFieldProjectionFor(hirModule, valueNode);
-    if (declaration.receiver != zc::none && receiverFieldProjection != zc::none &&
-        ZC_ASSERT_NONNULL(receiverFieldProjection).type == declaration.resultType &&
-        ZC_ASSERT_NONNULL(receiverFieldProjection).category == hir::HirValueCategory::Place &&
-        declaration.unsafeBlock == zc::none) {
-      return buildReceiverFieldReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                      ZC_ASSERT_NONNULL(receiverFieldProjection), identities,
-                                      proofs, copyMarker);
-    }
-
-    // By-value struct parameter field return: a free function returning
-    // `parameter.field` where the parameter carries the nominal owner directly.
-    if (declaration.receiver == zc::none && receiverFieldProjection != zc::none &&
-        ZC_ASSERT_NONNULL(receiverFieldProjection).type == declaration.resultType &&
-        ZC_ASSERT_NONNULL(receiverFieldProjection).category == hir::HirValueCategory::Place &&
-        declaration.unsafeBlock == zc::none) {
-      return buildByValueParameterFieldReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                              ZC_ASSERT_NONNULL(receiverFieldProjection),
-                                              identities, proofs, copyMarker);
-    }
-
-    // Receiver self-call: a shared-receiver method forwarding `this` to a
-    // zero-argument method (`return this.method();`). The receiver header
-    // parameter is the direct call argument; no borrow temporary is created.
-    if (declaration.receiver != zc::none && directCall == zc::none &&
-        declaration.unsafeBlock == zc::none) {
-      auto receiverCall = receiverCallFor(hirModule, valueNode);
-      if (receiverCall != zc::none) {
-        auto product = buildReceiverSelfCallReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                   ZC_ASSERT_NONNULL(receiverCall), identities,
-                                                   proofs, copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-
-    // Parameter receiver call: a free function calling a method on a dyn-trait
-    // parameter (`fn f(a: dyn Trait) -> T { return a.method(); }`). The concrete
-    // type is not statically known, so the call dispatches indirectly through
-    // the existential carrier's vtable.
-    if (declaration.receiver == zc::none && directCall == zc::none &&
-        declaration.unsafeBlock == zc::none) {
-      auto receiverCall = receiverCallFor(hirModule, valueNode);
-      if (receiverCall != zc::none && ZC_ASSERT_NONNULL(receiverCall).interface != zc::none) {
-        auto product = buildParameterReceiverCallReturn(
-            declaration, ZC_ASSERT_NONNULL(sourceReturn), ZC_ASSERT_NONNULL(receiverCall),
-            hirModule, identities, proofs, copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-
-    // Receiver parameter-binary return: a shared-receiver method whose return
-    // value is a primitive arithmetic/comparison operation over ordinary
-    // parameter references and scalar literals. A field-arithmetic return
-    // instead combines a `this.<field>` projection with a scalar literal.
-    if (declaration.receiver != zc::none && directCall == zc::none &&
-        declaration.unsafeBlock == zc::none) {
-      auto binary = primitiveBinaryFor(hirModule, valueNode);
-      if (binary != zc::none) {
-        auto fieldProjection =
-            parameterFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(binary).left);
-        hir::HirNodeId literalOperandNode = ZC_ASSERT_NONNULL(binary).right;
-        bool fieldIsLeft = true;
-        if (fieldProjection == zc::none) {
-          fieldProjection = parameterFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(binary).right);
-          literalOperandNode = ZC_ASSERT_NONNULL(binary).left;
-          fieldIsLeft = false;
-        }
-        if (fieldProjection != zc::none) {
-          auto literalExpression = expressionFor(hirModule, literalOperandNode);
-          if (literalExpression != zc::none) {
-            auto product = buildReceiverFieldBinaryReturn(
-                declaration, ZC_ASSERT_NONNULL(sourceReturn), ZC_ASSERT_NONNULL(binary),
-                ZC_ASSERT_NONNULL(fieldProjection), ZC_ASSERT_NONNULL(literalExpression).value,
-                fieldIsLeft, hirModule, identities, proofs, copyMarker);
-            if (product != zc::none) return product;
-          }
-        } else {
-          auto product = buildMethodBinaryReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                 ZC_ASSERT_NONNULL(binary), hirModule, identities,
-                                                 proofs, copyMarker);
-          if (product != zc::none) return product;
-        }
-      }
-    }
-
-    // Free-function parameter-binary return: a free function whose return
-    // value is a primitive arithmetic/comparison operation over ordinary
-    // parameter references and scalar literals.
-    if (declaration.receiver == zc::none && directCall == zc::none &&
-        declaration.unsafeBlock == zc::none) {
-      auto binary = primitiveBinaryFor(hirModule, valueNode);
-      if (binary != zc::none) {
-        auto product = buildFreeFunctionBinaryReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                                     ZC_ASSERT_NONNULL(binary), hirModule,
-                                                     identities, proofs, copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-
-    // Parameter return: a bare parameter reference (never a parameter reborrow,
-    // which the legacy rail lowers with a borrow-creation temporary).
-    auto parameterReference = parameterReferenceFor(hirModule, valueNode);
-    auto parameterReborrow = parameterReborrowFor(hirModule, valueNode);
-    if (parameterReference != zc::none && parameterReborrow == zc::none &&
-        ZC_ASSERT_NONNULL(parameterReference).type == declaration.resultType &&
-        ZC_ASSERT_NONNULL(parameterReference).category == hir::HirValueCategory::Place) {
-      return buildParameterReturn(declaration, ZC_ASSERT_NONNULL(sourceReturn),
-                                  ZC_ASSERT_NONNULL(parameterReference), identities, proofs,
-                                  copyMarker);
-    }
-  }
-
-  // Raw-pointer write-read: `unsafe { *ptr = <lit>; }; return unsafe { *ptr };`
-  // where `ptr` is a `*mut T` parameter. The two-statement body overwrites the
-  // pointee and returns it; both unsafe blocks contribute scope boundaries.
-  if (declaration.writeUnsafeBlock != zc::none && block.statements.size() == 2 &&
-      declaration.receiver == zc::none) {
-    auto write = rawPointerWriteFor(hirModule, block.statements[0]);
-    auto paramRef = parameterReferenceFor(hirModule, valueNode);
-    if (write != zc::none && paramRef != zc::none) {
-      auto writeLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(write).value);
-      if (writeLiteral != zc::none) {
-        auto product = buildRawPointerWriteReturn(
-            declaration, ZC_ASSERT_NONNULL(write), ZC_ASSERT_NONNULL(writeLiteral),
-            ZC_ASSERT_NONNULL(paramRef), ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities,
-            proofs, copyMarker);
-        if (product != zc::none) { return product; }
-      }
-    }
-  }
-
-  // Receiver field write-read: a mutating-receiver method whose two-statement
-  // body overwrites this.field with a literal and returns the field.
-  if (block.statements.size() == 2 && declaration.receiver != zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto write = parameterFieldWriteFor(hirModule, block.statements[0]);
-    auto projection = parameterFieldProjectionFor(hirModule, valueNode);
-    if (write != zc::none && projection != zc::none) {
-      auto writeLiteral = expressionFor(hirModule, ZC_ASSERT_NONNULL(write).value);
-      if (writeLiteral != zc::none) {
-        auto product = buildReceiverFieldWriteReturn(
-            declaration, ZC_ASSERT_NONNULL(write), ZC_ASSERT_NONNULL(writeLiteral),
-            ZC_ASSERT_NONNULL(projection), ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
-            copyMarker);
-        if (product != zc::none) return product;
-      }
-    }
-  }
-
-  // Discarded receiver call followed by a shared trailing receiver call:
-  // `fn f() -> T { let o = S{..constants..}; o.set(c); return o.get(); }`. The
-  // statement-position call targets an unread temporary; the trailing getter
-  // returns the owner field. Two shapes are admitted: a mutable
-  // one-literal-argument Unit call, or a shared zero-argument value-returning
-  // devirtualized-erase call. This arm must precede the size-3 overwrite and
-  // sequential-local arms below.
-  if (block.statements.size() == 3 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto bindingRecord = localFor(hirModule, block.statements[0]);
-    auto discardedRecord = receiverCallFor(hirModule, block.statements[1]);
-    if (bindingRecord != zc::none && discardedRecord != zc::none) {
-      const auto& binding = ZC_ASSERT_NONNULL(bindingRecord);
-      const auto& discardedCall = ZC_ASSERT_NONNULL(discardedRecord);
-      hir::HirNodeId initializerNode;
-      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-      auto aggregateRecord = aggregateFor(hirModule, initializerNode);
-      auto trailingCallRecord = receiverCallFor(hirModule, valueNode);
-      auto setReceiverRecord = localReferenceFor(hirModule, discardedCall.receiver);
-      if (aggregateRecord != zc::none && trailingCallRecord != zc::none &&
-          setReceiverRecord != zc::none) {
-        const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
-        const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
-        const auto& setReceiver = ZC_ASSERT_NONNULL(setReceiverRecord);
-        auto getReceiverRecord = localReferenceFor(hirModule, trailingCall.receiver);
-        if (getReceiverRecord != zc::none) {
-          const auto& getReceiver = ZC_ASSERT_NONNULL(getReceiverRecord);
-          const bool discardedMutableUnit =
-              discardedCall.receiverMode == checker::checked::ReceiverMode::Mutable &&
-              discardedCall.receiverAdjustments.size() == 1 &&
-              discardedCall.receiverAdjustments[0] ==
-                  checker::checked::ReceiverAdjustmentStep::BorrowMutable &&
-              isUnitSemanticType(semanticTypes, discardedCall.resultType) &&
-              discardedCall.arguments.size() == 1 && discardedCall.arguments[0].value != zc::none;
-          const bool discardedSharedValue =
-              discardedCall.receiverMode == checker::checked::ReceiverMode::Shared &&
-              discardedCall.receiverAdjustments.size() == 1 &&
-              discardedCall.receiverAdjustments[0] ==
-                  checker::checked::ReceiverAdjustmentStep::BorrowShared &&
-              discardedCall.arguments.size() == 0;
-          if (binding.local.ordinal() == 1 && binding.initializer == aggregate.node &&
-              binding.type == aggregate.type && binding.type == discardedCall.receiverSourceType &&
-              binding.type == trailingCall.receiverSourceType &&
-              aggregate.category == hir::HirValueCategory::Value &&
-              discardedCall.receiver == setReceiver.node &&
-              trailingCall.receiver == getReceiver.node && setReceiver.local == binding.local &&
-              getReceiver.local == binding.local &&
-              setReceiver.category == hir::HirValueCategory::Place &&
-              getReceiver.category == hir::HirValueCategory::Place &&
-              (discardedMutableUnit || discardedSharedValue) &&
-              trailingCall.receiverMode == checker::checked::ReceiverMode::Shared &&
-              trailingCall.receiverAdjustments.size() == 1 &&
-              trailingCall.receiverAdjustments[0] ==
-                  checker::checked::ReceiverAdjustmentStep::BorrowShared &&
-              trailingCall.arguments.size() == 0 &&
-              trailingCall.resultType == declaration.resultType) {
-            auto product = buildVoidCallThenReceiverCallReturn(
-                declaration, binding, aggregate, ZC_ASSERT_NONNULL(sourceReturn), setReceiver,
-                discardedCall, getReceiver, trailingCall, identities, proofs, copyMarker,
-                discardedSharedValue);
-            if (product != zc::none) return product;
-          }
-        }
-      }
-    }
-  }
-
-  // Dyn field-access consumer return:
-  // `fn entry() -> T { let zoo = Zoo { animal: Dog { ..constants.. } };
-  // let a: dyn Animal = zoo.animal; return a.speak(); }`.
-  // Three statements: an aggregate-initialized user local with per-field
-  // erasure, a field-read user local initialized by a local field projection,
-  // and a trailing return whose value is a dyn-trait receiver call on the
-  // field-read local.
-  if (block.statements.size() == 3 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto aggregateBindingRecord = localFor(hirModule, block.statements[0]);
-    auto fieldBindingRecord = localFor(hirModule, block.statements[1]);
-    if (aggregateBindingRecord != zc::none && fieldBindingRecord != zc::none) {
-      const auto& aggregateBinding = ZC_ASSERT_NONNULL(aggregateBindingRecord);
-      const auto& fieldBinding = ZC_ASSERT_NONNULL(fieldBindingRecord);
-      hir::HirNodeId aggregateInitNode;
-      ZC_IF_SOME(init, aggregateBinding.initializer) { aggregateInitNode = init; }
-      hir::HirNodeId fieldInitNode;
-      ZC_IF_SOME(init, fieldBinding.initializer) { fieldInitNode = init; }
-      auto aggregateRecord = aggregateFor(hirModule, aggregateInitNode);
-      auto projectionRecord = localFieldProjectionFor(hirModule, fieldInitNode);
-      auto trailingCallRecord = receiverCallFor(hirModule, valueNode);
-      if (aggregateRecord != zc::none && projectionRecord != zc::none &&
-          trailingCallRecord != zc::none) {
-        const auto& aggregate = ZC_ASSERT_NONNULL(aggregateRecord);
-        const auto& projection = ZC_ASSERT_NONNULL(projectionRecord);
-        const auto& trailingCall = ZC_ASSERT_NONNULL(trailingCallRecord);
-        auto receiverReferenceRecord = localReferenceFor(hirModule, trailingCall.receiver);
-        if (receiverReferenceRecord != zc::none) {
-          const auto& receiverReference = ZC_ASSERT_NONNULL(receiverReferenceRecord);
-          if (aggregateBinding.local.ordinal() == 1 && fieldBinding.local.ordinal() == 2 &&
-              aggregateBinding.initializer == aggregate.node &&
-              aggregateBinding.type == aggregate.type &&
-              fieldBinding.initializer == projection.node && fieldBinding.type == projection.type &&
-              projection.local == aggregateBinding.local &&
-              projection.type == trailingCall.receiverSourceType &&
-              receiverReference.local == fieldBinding.local &&
-              trailingCall.receiver == receiverReference.node &&
-              trailingCall.interface != zc::none &&
-              trailingCall.resultType == declaration.resultType) {
-            auto product = buildDynFieldAccessReturn(
-                declaration, aggregateBinding, aggregate, fieldBinding, projection,
-                ZC_ASSERT_NONNULL(sourceReturn), receiverReference, trailingCall, identities,
-                proofs, copyMarker);
-            if (product != zc::none) return product;
-          }
-        }
-      }
-    }
-  }
-
-  // By-value aggregate caller:
-  // `fn entry() -> T { let p: P = P { ..constants.. }; return f(p); }`. The
-  // trailing return value is a direct call whose sole argument copies the
-  // aggregate-initialized owner local. It must precede the scalar-local arm,
-  // whose gate only admits a literal initializer and a place return.
-  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildByValueAggregateCallReturn(declaration, block, hirModule, identities,
-                                                   proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Erased-aggregate direct-call caller:
-  // `fn entry() -> T { let a: dyn I = P { ..constants.. }; return f(a); }`.
-  // The trailing return value is a direct call whose sole argument copies the
-  // existential-initialized owner local. The binding carries an erasure record
-  // so the builder emits an Erase rvalue to construct the existential carrier.
-  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildErasedAggregateCallReturn(declaration, block, hirModule, identities, proofs,
-                                                  copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Existential direct-call caller:
-  // `fn entry() -> T { let a: dyn I = makeExistential(); return f(a); }`.
-  // The trailing return value is a direct call whose sole argument copies the
-  // call-initialized existential owner local. The initializer call produces
-  // the fat-pointer carrier directly, so the binding carries no erasure.
-  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product = buildDirectExistentialCallReturn(declaration, block, hirModule, identities,
-                                                    proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Scalar-local direct-call caller:
-  // `fn entry() -> i32 { let a: i32 = <literal>; return f(a); }`. The trailing
-  // return value is a direct call whose sole argument copies the
-  // literal-initialized scalar owner local. It must precede the scalar-local
-  // arm, whose gate admits only a bare place return of the local.
-  if (block.statements.size() == 2 && declaration.receiver == zc::none &&
-      declaration.unsafeBlock == zc::none) {
-    auto product =
-        buildScalarLocalCallReturn(declaration, block, hirModule, identities, proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Array index fold: `let a: [T; N] = [...]; return a[k];` where the index
-  // read is folded to a scalar literal. The local binding's initializer node
-  // has no HIR expression record (the array literal is validated by the builder
-  // but not lowered), and the return value is a scalar literal. The MIR
-  // declares the array local and emits StorageLive but no Initialize; the
-  // return is the folded constant.
-  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
-    auto sourceLocal = localFor(hirModule, block.statements[0]);
-    if (sourceLocal != zc::none) {
-      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-      hir::HirNodeId initializerNode;
-      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-      auto initializerLiteral = expressionFor(hirModule, initializerNode);
-      auto foldLiteral = expressionFor(hirModule, valueNode);
-      if (initializerLiteral == zc::none && foldLiteral != zc::none &&
-          ZC_ASSERT_NONNULL(foldLiteral).type == declaration.resultType) {
-        return buildArrayIndexFoldReturn(declaration, binding, ZC_ASSERT_NONNULL(sourceReturn),
-                                         ZC_ASSERT_NONNULL(foldLiteral), identities);
-      }
-    }
-  }
-
-  // Single scalar-initialized user local: `let x = <literal>; return x;`. The
-  // strict gate mirrors validLocalReturnFunction and the dedicated two-statement
-  // construction: one binding whose initializer is a scalar literal and a bare
-  // place reference of that same local. The plain-function layout declares no
-  // parameter locals regardless of signature; a receiver method routes through
-  // buildMethodScalarLocalReturn, which keeps the receiver parameter local.
-  // Aggregate, binary, parameter, call, borrow, and uninitialized initializers
-  // keep their own legacy shapes.
-  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
-    auto sourceLocal = localFor(hirModule, block.statements[0]);
-    if (sourceLocal != zc::none) {
-      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-      hir::HirNodeId initializerNode;
-      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-      auto literal = expressionFor(hirModule, initializerNode);
-      auto reference = localReferenceFor(hirModule, valueNode);
-      auto fieldProjection = localFieldProjectionFor(hirModule, valueNode);
-      auto aggregate = aggregateFor(hirModule, initializerNode);
-      auto binary = primitiveBinaryFor(hirModule, initializerNode);
-      if (literal != zc::none && aggregate == zc::none && binary == zc::none &&
-          reference != zc::none && fieldProjection == zc::none &&
-          binding.initializer == ZC_ASSERT_NONNULL(literal).node &&
-          binding.local == ZC_ASSERT_NONNULL(reference).local &&
-          binding.type == declaration.resultType &&
-          ZC_ASSERT_NONNULL(literal).type == binding.type &&
-          ZC_ASSERT_NONNULL(reference).type == binding.type &&
-          ZC_ASSERT_NONNULL(reference).category == hir::HirValueCategory::Place) {
-        if (declaration.receiver == zc::none) {
-          return buildScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
-                                        ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
-                                        copyMarker);
-        }
-        return buildMethodScalarLocalReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
-                                            ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
-                                            copyMarker);
-      }
-    }
-  }
-
-  // Primitive-unary return: `let x: T = <lit>; return !x;` (or `+x` / `-x` /
-  // `~x`). The HIR builder desugars the unary operation to an equivalent
-  // binary with a synthetic constant operand. One binary operand is a local
-  // reference to the binding; the other is a synthetic literal.
-  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none &&
-      declaration.receiver == zc::none) {
-    auto sourceLocal = localFor(hirModule, block.statements[0]);
-    if (sourceLocal != zc::none) {
-      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-      hir::HirNodeId initializerNode;
-      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-      auto literal = expressionFor(hirModule, initializerNode);
-      auto binary = primitiveBinaryFor(hirModule, valueNode);
-      if (literal != zc::none && binary != zc::none &&
-          binding.initializer == ZC_ASSERT_NONNULL(literal).node &&
-          binding.type == declaration.resultType &&
-          ZC_ASSERT_NONNULL(literal).type == binding.type) {
-        const auto& bin = ZC_ASSERT_NONNULL(binary);
-        auto leftLocal = localReferenceFor(hirModule, bin.left);
-        auto rightLocal = localReferenceFor(hirModule, bin.right);
-        auto leftLiteral = expressionFor(hirModule, bin.left);
-        auto rightLiteral = expressionFor(hirModule, bin.right);
-        const bool localOnLeft =
-            leftLocal != zc::none && rightLiteral != zc::none &&
-            ZC_ASSERT_NONNULL(leftLocal).local == binding.local &&
-            ZC_ASSERT_NONNULL(leftLocal).type == binding.type &&
-            ZC_ASSERT_NONNULL(leftLocal).category == hir::HirValueCategory::Place;
-        const bool localOnRight =
-            rightLocal != zc::none && leftLiteral != zc::none &&
-            ZC_ASSERT_NONNULL(rightLocal).local == binding.local &&
-            ZC_ASSERT_NONNULL(rightLocal).type == binding.type &&
-            ZC_ASSERT_NONNULL(rightLocal).category == hir::HirValueCategory::Place;
-        if (localOnLeft || localOnRight) {
-          return buildPrimitiveUnaryReturn(declaration, binding, ZC_ASSERT_NONNULL(literal), bin,
-                                           ZC_ASSERT_NONNULL(sourceReturn), hirModule, identities,
-                                           proofs, copyMarker);
-        }
-      }
-    }
-  }
-
-  // Single aggregate-initialized user local:
-  // `let p = T{..constants..}; return p;` or `return p.f;`. One UserLocal at
-  // localId(1), no parameter locals, a nominal aggregate rvalue of constant
-  // elements, and a whole-local or one-field return. Aggregate composites and
-  // field writes keep the legacy rail.
-  if (block.statements.size() == 2 && declaration.unsafeBlock == zc::none) {
-    auto aggregateProduct =
-        buildAggregateLocalReturn(declaration, block, hirModule, identities, proofs, copyMarker);
-    if (aggregateProduct != zc::none) return aggregateProduct;
-  }
-
-  // Single scalar local with one repeated literal write:
-  // `mut x = <lit>; x = <lit>; return x;`. Mirrors
-  // validLocalOverwriteReturnFunction: the middle statement is an Overwrite
-  // local write to the binding with no field projection, and both values are
-  // scalar literals. Parameter or binary write values keep their own legacy
-  // shapes.
-  if (block.statements.size() == 3 && declaration.unsafeBlock == zc::none) {
-    auto sourceLocal = localFor(hirModule, block.statements[0]);
-    auto sourceOverwrite = localWriteFor(hirModule, block.statements[1]);
-    if (sourceLocal != zc::none && sourceOverwrite != zc::none) {
-      const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-      const auto& write = ZC_ASSERT_NONNULL(sourceOverwrite);
-      hir::HirNodeId initializerNode;
-      ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-      auto literal = expressionFor(hirModule, initializerNode);
-      auto overwriteLiteral = expressionFor(hirModule, write.value);
-      auto reference = localReferenceFor(hirModule, valueNode);
-      auto fieldProjection = localFieldProjectionFor(hirModule, valueNode);
-      auto overwriteBinary = primitiveBinaryFor(hirModule, write.value);
-      auto overwriteParameter = parameterReferenceFor(hirModule, write.value);
-      if (literal != zc::none && overwriteLiteral != zc::none && reference != zc::none &&
-          fieldProjection == zc::none && overwriteBinary == zc::none &&
-          overwriteParameter == zc::none &&
-          binding.initializer == ZC_ASSERT_NONNULL(literal).node &&
-          write.kind == hir::HirLocalWriteKind::Overwrite && write.field == zc::none &&
-          write.local == binding.local && write.local == ZC_ASSERT_NONNULL(reference).local &&
-          write.type == binding.type && binding.type == declaration.resultType &&
-          ZC_ASSERT_NONNULL(literal).type == binding.type &&
-          ZC_ASSERT_NONNULL(overwriteLiteral).type == binding.type &&
-          ZC_ASSERT_NONNULL(reference).type == binding.type &&
-          ZC_ASSERT_NONNULL(reference).category == hir::HirValueCategory::Place) {
-        return buildScalarLocalOverwriteReturn(declaration, binding, ZC_ASSERT_NONNULL(literal),
-                                               write, ZC_ASSERT_NONNULL(overwriteLiteral),
-                                               ZC_ASSERT_NONNULL(sourceReturn), identities, proofs,
-                                               copyMarker);
-      }
-    }
-  }
-
-  // Single user-local body with one or more overwrite writes:
-  // `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`. A binary
-  // write value lowers to an arithmetic rvalue whose left operand is a
-  // place-use of the user local (compound assignment desugar).
-  if (block.statements.size() >= 3 && declaration.unsafeBlock == zc::none) {
-    auto product =
-        buildLocalWriteReturn(declaration, block, hirModule, identities, proofs, copyMarker);
-    if (product != zc::none) return product;
-  }
-
-  // Sequential N-local body with N>=1 plain initializers:
-  // `let a = <lit/param/local/ternary>; ... return <local-or-param>;`. The arm
-  // performs its own strict gate; aggregate, nested-operand, unsafe-tail,
-  // field-projection, and forward-reference shapes return none and keep the
-  // legacy sequential rail.
-  if (block.statements.size() >= 2 && declaration.unsafeBlock == zc::none) {
-    auto sequential =
-        buildSequentialLocalReturn(declaration, block, hirModule, identities, proofs, copyMarker);
-    if (sequential != zc::none) return sequential;
-  }
-
   return zc::none;
 }
 
