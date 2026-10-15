@@ -2160,6 +2160,7 @@ struct StructLiteralRejection final {
     MissingField,
     DuplicateField,
     UnsupportedIntegerField,
+    UnsupportedFieldValue,
     TypeMismatch
   };
   Kind kind;
@@ -2265,7 +2266,16 @@ StructLiteralBuildResult buildStructLiteral(
       if (valueType != zc::none) return zc::none;
       valueType = entry;
     }
-    if (valueType == zc::none) return zc::none;
+    if (valueType == zc::none) {
+      // A field value whose NodeType fact is produced in a later main-loop
+      // stage (e.g. a `this.<field>` receiver read or a parameter reference)
+      // is legal source the body slice cannot lower in this pre-pass. Drain
+      // it as a capability rejection rather than falling through to the
+      // MissingRequiredFact invariant, which would surface as an ICE.
+      return StructLiteralBuildResult(
+          StructLiteralRejection{StructLiteralRejection::Kind::UnsupportedFieldValue, zc::none,
+                                 zc::none, zc::none, zc::none});
+    }
     ZC_IF_SOME(member, field) {
       ZC_IF_SOME(sourceType, valueType) {
         for (const auto initialized : initializedFields) {
@@ -7470,6 +7480,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       ZC_IF_SOME(result, built) {
         if (result.is<StructLiteralRejection>()) {
           const auto& rejection = result.get<StructLiteralRejection>();
+          // A field value whose NodeType fact is produced in a later main-loop
+          // stage (e.g. a `this.<field>` receiver read or a parameter
+          // reference) is legal source the body slice cannot lower in this
+          // pre-pass. Drain it as a capability rejection (ZOM4125 inside an
+          // inherent method, ZOM4099 otherwise) instead of falling through to
+          // the MissingRequiredFact invariant, which would surface as an ICE.
+          if (rejection.kind == StructLiteralRejection::Kind::UnsupportedFieldValue) {
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
+          }
           ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
             ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
               switch (rejection.kind) {
@@ -7507,6 +7528,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   return attachRecoveryLedger(
                       rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
                       factStoreBrands);
+                case StructLiteralRejection::Kind::UnsupportedFieldValue:
+                  // Already drained above via drainUnsupportedBodyConstruct;
+                  // if that returned none the fallthrough invariant stands.
+                  break;
                 case StructLiteralRejection::Kind::TypeMismatch:
                   ZC_IF_SOME(expected, rejection.expectedType) {
                     ZC_IF_SOME(actual, rejection.actualType) {
@@ -9490,6 +9515,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           ZC_IF_SOME(result, built) {
             if (result.is<StructLiteralRejection>()) {
               const auto& rejection = result.get<StructLiteralRejection>();
+              // Mirrors the pre-pass drain: a field value whose NodeType fact
+              // is produced in a later stage drains as a capability rejection
+              // rather than an invariant.
+              if (rejection.kind == StructLiteralRejection::Kind::UnsupportedFieldValue) {
+                ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+                  return zc::mv(drained);
+                }
+              }
               ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
                 ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
                   switch (rejection.kind) {
@@ -9527,6 +9560,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                       return attachRecoveryLedger(
                           rejectUnsupportedFunctionBodyConstruct(site, ownerOrdinal), input,
                           factStoreBrands);
+                    case StructLiteralRejection::Kind::UnsupportedFieldValue:
+                      // Already drained above via drainUnsupportedBodyConstruct;
+                      // if that returned none the fallthrough invariant stands.
+                      break;
                     case StructLiteralRejection::Kind::TypeMismatch:
                       ZC_IF_SOME(expected, rejection.expectedType) {
                         ZC_IF_SOME(actual, rejection.actualType) {
