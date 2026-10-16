@@ -1815,6 +1815,139 @@ bool sortCastResourcePlans(zc::Vector<VerifiedCastResourcePlanFact>& plans,
   return true;
 }
 
+/// \brief Returns true when the semantic type is a raw pointer.
+bool isRawPointerType(const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
+  auto lookup = semanticTypes.get(id);
+  if (!lookup.is<type::SemanticTypeLookup>()) return false;
+  return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::RawPointerTypeData>();
+}
+
+/// \brief Returns true when a place's projection chain dereferences a raw pointer.
+///
+/// A raw-pointer dereference is an unsafe operation: the MIR builder wraps it in
+/// Enter/Exit unsafe-scope boundary statements, and the overlay projects one
+/// MirUnsafeOccurrence per detected dereference so the init-fact source verifier
+/// can enforce that every raw-pointer boundary is acknowledged.
+bool placeHasRawPointerDereference(const mir::MirPlace& place,
+                                   const type::SemanticTypeStore& semanticTypes) {
+  for (const auto& projection : place.projections()) {
+    if (projection.kind() != mir::MirProjectionKind::Dereference) continue;
+    if (isRawPointerType(semanticTypes, projection.inputType())) return true;
+  }
+  return false;
+}
+
+bool operandHasRawPointerDereference(const mir::MirOperand& operand,
+                                     const type::SemanticTypeStore& semanticTypes) {
+  if (operand.kind() == mir::MirOperandKind::Constant) return false;
+  return placeHasRawPointerDereference(operand.place(), semanticTypes);
+}
+
+bool rvalueHasRawPointerDereference(const mir::MirRvalue& rvalue,
+                                    const type::SemanticTypeStore& semanticTypes) {
+  switch (rvalue.kind()) {
+    case mir::MirRvalueKind::Use:
+      return operandHasRawPointerDereference(rvalue.useValue().operand, semanticTypes);
+    case mir::MirRvalueKind::NominalAggregate:
+      for (const auto& element : rvalue.nominalAggregateValue().elements) {
+        if (operandHasRawPointerDereference(element.operand, semanticTypes)) return true;
+      }
+      return false;
+    case mir::MirRvalueKind::Comparison:
+      return operandHasRawPointerDereference(rvalue.comparisonValue().left, semanticTypes) ||
+             operandHasRawPointerDereference(rvalue.comparisonValue().right, semanticTypes);
+    case mir::MirRvalueKind::Arithmetic:
+      return operandHasRawPointerDereference(rvalue.arithmeticValue().left, semanticTypes) ||
+             operandHasRawPointerDereference(rvalue.arithmeticValue().right, semanticTypes);
+    case mir::MirRvalueKind::Erase:
+      return operandHasRawPointerDereference(rvalue.eraseValue().source, semanticTypes);
+    case mir::MirRvalueKind::ErrorUnion:
+      return operandHasRawPointerDereference(rvalue.errorUnionValue().payload, semanticTypes);
+    case mir::MirRvalueKind::ExtractField:
+      return operandHasRawPointerDereference(rvalue.extractFieldValue().source, semanticTypes);
+  }
+  return false;
+}
+
+bool statementHasRawPointerDereference(const mir::MirStatement& statement,
+                                       const type::SemanticTypeStore& semanticTypes) {
+  switch (statement.kind()) {
+    case mir::MirStatementKind::Assign: {
+      const auto& assign = statement.assignmentValue();
+      return placeHasRawPointerDereference(assign.destination, semanticTypes) ||
+             rvalueHasRawPointerDereference(assign.value, semanticTypes);
+    }
+    case mir::MirStatementKind::BorrowCreation: {
+      const auto& borrow = statement.borrowCreationValue();
+      return placeHasRawPointerDereference(borrow.destination, semanticTypes) ||
+             placeHasRawPointerDereference(borrow.source, semanticTypes);
+    }
+    case mir::MirStatementKind::SetDiscriminant:
+      return placeHasRawPointerDereference(statement.setDiscriminantValue().destination,
+                                           semanticTypes);
+    case mir::MirStatementKind::Deinitialize:
+      return placeHasRawPointerDereference(statement.deinitializeValue().destination,
+                                           semanticTypes);
+    case mir::MirStatementKind::StorageLive:
+    case mir::MirStatementKind::StorageDead:
+    case mir::MirStatementKind::UnsafeScopeBoundary:
+      return false;
+  }
+  return false;
+}
+
+bool terminatorHasRawPointerDereference(const mir::MirTerminator& terminator,
+                                        const type::SemanticTypeStore& semanticTypes) {
+  switch (terminator.kind()) {
+    case mir::MirTerminatorKind::Return: {
+      bool found = false;
+      ZC_IF_SOME(value, terminator.returnValue().value) {
+        found = operandHasRawPointerDereference(value, semanticTypes);
+      }
+      return found;
+    }
+    case mir::MirTerminatorKind::Call: {
+      const auto& call = terminator.callValue();
+      if (placeHasRawPointerDereference(call.destination, semanticTypes)) return true;
+      for (const auto& argument : call.arguments) {
+        if (operandHasRawPointerDereference(argument, semanticTypes)) return true;
+      }
+      return false;
+    }
+    case mir::MirTerminatorKind::IndirectCall: {
+      const auto& call = terminator.indirectCallValue();
+      if (placeHasRawPointerDereference(call.destination, semanticTypes)) return true;
+      if (operandHasRawPointerDereference(call.receiver, semanticTypes)) return true;
+      for (const auto& argument : call.arguments) {
+        if (operandHasRawPointerDereference(argument, semanticTypes)) return true;
+      }
+      return false;
+    }
+    case mir::MirTerminatorKind::SwitchInt:
+      return operandHasRawPointerDereference(terminator.switchIntValue().discriminant,
+                                             semanticTypes);
+    case mir::MirTerminatorKind::Goto:
+    case mir::MirTerminatorKind::Unreachable:
+      return false;
+  }
+  return false;
+}
+
+/// \brief Appends one unsafe occurrence for a raw-pointer dereference at the
+/// given event, with acknowledgement set to the dominating unsafe-enter event
+/// (or none when the dereference is outside every unsafe scope).
+void appendUnsafeOccurrence(zc::Vector<MirUnsafeOccurrence>& occurrences,
+                            const MirEventKey& event,
+                            const zc::Vector<MirEventKey>& unsafeEnterStack,
+                            const identity::SourceSpan& sourceSpan) {
+  zc::Maybe<MirEventKey> acknowledgement = zc::none;
+  if (!unsafeEnterStack.empty()) { acknowledgement = unsafeEnterStack.back(); }
+  occurrences.add(MirUnsafeOccurrence{
+      UnsafeBoundaryKey{event, 0}, checker::checked::UnsafeOperation::RawDereference,
+      checker::checked::UnsafeRequirement::RawPointerBoundary, zc::mv(acknowledgement),
+      sourceSpan.clone()});
+}
+
 zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
     const EventOverlayInput& input, const checker::CheckerIdentityAuthority& identities) {
   const auto& builtMir = input.built;
@@ -1832,6 +1965,8 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
     zc::Vector<LogicalDropPlan> logicalDropPlans;
     zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
     zc::Vector<mir::MirPlace> castDestinations;
+    zc::Vector<MirUnsafeOccurrence> unsafeOccurrences;
+    zc::Vector<MirEventKey> unsafeEnterStack;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
       zc::Vector<EventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
@@ -1979,10 +2114,24 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
             effectRoles.add(EventRole::Operation);
             if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
               effectRoles.add(EventRole::UnsafeAcknowledgement);
+              unsafeEnterStack.add(
+                  MirEventKey{MirLocation{function.owner,
+                                          MirPoint::beforeStatement(block.id, statementOrdinal)},
+                              0});
+            } else {
+              if (!unsafeEnterStack.empty()) unsafeEnterStack.removeLast();
             }
             emit(0, EventStage::Effect, zc::mv(effectRoles));
             break;
           }
+        }
+        if (statementHasRawPointerDereference(statement, input.body.semanticTypes)) {
+          appendUnsafeOccurrence(
+              unsafeOccurrences,
+              MirEventKey{MirLocation{function.owner,
+                                      MirPoint::beforeStatement(block.id, statementOrdinal)},
+                          0},
+              unsafeEnterStack, statement.sourceSpan());
         }
         ++statementOrdinal;
       }
@@ -2189,6 +2338,12 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
           MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                       terminatorOrdinal},
           EventStage::Effect, zc::mv(effectRoles)});
+      if (terminatorHasRawPointerDereference(block.terminator, input.body.semanticTypes)) {
+        appendUnsafeOccurrence(
+            unsafeOccurrences,
+            MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0},
+            unsafeEnterStack, block.terminator.sourceSpan());
+      }
     }
     sortSlots(slots);
     sortDeferredActivations(deferredActivations);
@@ -2200,7 +2355,7 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
     ZC_IF_SOME(value, sourceMap) {
       functions.add(FunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
-          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
+          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
           zc::mv(castResourcePlans)});
     }
   }
@@ -2225,6 +2380,8 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
     zc::Vector<LogicalDropPlan> logicalDropPlans;
     zc::Vector<VerifiedCastResourcePlanFact> castResourcePlans;
     zc::Vector<mir::MirPlace> castDestinations;
+    zc::Vector<MirUnsafeOccurrence> unsafeOccurrences;
+    zc::Vector<MirEventKey> unsafeEnterStack;
     for (uint32_t ordinal = 0; ordinal < function.locals.size(); ++ordinal) {
       zc::Vector<EventRole> roles;
       const MirEventKey event{MirLocation{function.owner, MirPoint::entry()}, ordinal};
@@ -2371,10 +2528,24 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
             roles.add(EventRole::Operation);
             if (boundary.kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
               roles.add(EventRole::UnsafeAcknowledgement);
+              unsafeEnterStack.add(
+                  MirEventKey{MirLocation{function.owner,
+                                          MirPoint::beforeStatement(block.id, statementOrdinal)},
+                              0});
+            } else {
+              if (!unsafeEnterStack.empty()) unsafeEnterStack.removeLast();
             }
             record(0, EventStage::Effect, zc::mv(roles));
             break;
           }
+        }
+        if (statementHasRawPointerDereference(statement, input.body.semanticTypes)) {
+          appendUnsafeOccurrence(
+              unsafeOccurrences,
+              MirEventKey{MirLocation{function.owner,
+                                      MirPoint::beforeStatement(block.id, statementOrdinal)},
+                          0},
+              unsafeEnterStack, statement.sourceSpan());
         }
         ++statementOrdinal;
       }
@@ -2581,6 +2752,12 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
           MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
                       terminatorOrdinal},
           EventStage::Effect, zc::mv(effect)});
+      if (terminatorHasRawPointerDereference(block.terminator, input.body.semanticTypes)) {
+        appendUnsafeOccurrence(
+            unsafeOccurrences,
+            MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0},
+            unsafeEnterStack, block.terminator.sourceSpan());
+      }
     }
     sortSlots(slots);
     sortDeferredActivations(deferredActivations);
@@ -2592,7 +2769,7 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
     ZC_IF_SOME(value, sourceMap) {
       functions.add(FunctionEventOverlay{
           function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
-          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::Vector<MirUnsafeOccurrence>{},
+          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
           zc::mv(castResourcePlans)});
     }
   }
@@ -2601,12 +2778,6 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
 }
 
 // --- Strict raw-to-reference rejection ---
-
-bool isRawPointerType(const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
-  auto lookup = semanticTypes.get(id);
-  if (!lookup.is<type::SemanticTypeLookup>()) return false;
-  return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::RawPointerTypeData>();
-}
 
 bool isReferenceType(const type::SemanticTypeStore& semanticTypes, identity::SemanticTypeId id) {
   auto lookup = semanticTypes.get(id);
