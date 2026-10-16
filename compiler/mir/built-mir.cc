@@ -819,6 +819,87 @@ MirBlockId blockId(uint32_t ordinal) {
   ZC_UNREACHABLE
 }
 
+/// \brief Finds a block by its id, following CFG edges instead of positional
+/// indices. Returns nullptr when the id is not present in the function.
+const MirBasicBlock* findBlockById(const MirFunction& function, MirBlockId id) {
+  for (const auto& block : function.blocks) {
+    if (block.id == id) return &block;
+  }
+  return nullptr;
+}
+
+/// \brief Resolves a conditional diamond CFG: entry (SwitchInt) -> then/else
+/// (Goto) -> join. The entry is always blocks[0] with id blockId(1). On
+/// success, sets thenBlock/elseBlock/joinBlock to the blocks found via
+/// terminator targets and returns true. Returns false on any structural
+/// mismatch (wrong block count, missing terminator, dangling target, aliasing).
+bool resolveDiamondCfg(const MirFunction& function, const MirBasicBlock*& thenBlock,
+                       const MirBasicBlock*& elseBlock, const MirBasicBlock*& joinBlock) {
+  if (function.blocks.size() != 4) return false;
+  const auto& entry = function.blocks[0];
+  if (entry.id != blockId(1) || entry.terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  const auto& switchInt = entry.terminator.switchIntValue();
+  if (switchInt.arms.size() != 2) return false;
+  thenBlock = findBlockById(function, switchInt.arms[0].target);
+  elseBlock = findBlockById(function, switchInt.arms[1].target);
+  if (thenBlock == nullptr || elseBlock == nullptr || thenBlock == elseBlock) return false;
+  if (thenBlock->terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  const auto joinId = thenBlock->terminator.gotoValue().target;
+  if (elseBlock->terminator.gotoValue().target != joinId) return false;
+  joinBlock = findBlockById(function, joinId);
+  if (joinBlock == nullptr || joinBlock == thenBlock || joinBlock == elseBlock) return false;
+  return true;
+}
+
+/// \brief Resolves a reducible loop CFG: entry (Goto) -> header (SwitchInt) ->
+/// body (Goto) / exit (default). The entry is always blocks[0] with id
+/// blockId(1). On success, sets header/body/exit to the blocks found via
+/// terminator targets and returns true. The body's Goto target is not checked
+/// here — the caller validates whether it is a back-edge to the header or a
+/// break to the exit. Returns false on any structural mismatch.
+bool resolveLoopCfg(const MirFunction& function, const MirBasicBlock*& header,
+                    const MirBasicBlock*& body, const MirBasicBlock*& exit) {
+  if (function.blocks.size() != 4) return false;
+  const auto& entry = function.blocks[0];
+  if (entry.id != blockId(1) || entry.terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  header = findBlockById(function, entry.terminator.gotoValue().target);
+  if (header == nullptr || header == &entry) return false;
+  if (header->terminator.kind() != MirTerminatorKind::SwitchInt) return false;
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.arms.size() != 1) return false;
+  body = findBlockById(function, switchInt.arms[0].target);
+  exit = findBlockById(function, switchInt.defaultTarget);
+  if (body == nullptr || exit == nullptr || body == exit || body == header || exit == header) {
+    return false;
+  }
+  if (body->terminator.kind() != MirTerminatorKind::Goto) return false;
+  return true;
+}
+
+/// Follows the normalTarget edge of a Call or IndirectCall terminator to find
+/// the continuation block. Returns nullptr if the entry terminator is not a
+/// call, the target does not exist, or the target is the entry itself.
+const MirBasicBlock* findCallContinuation(const MirFunction& function, const MirBasicBlock& entry) {
+  MirBlockId target;
+  if (entry.terminator.kind() == MirTerminatorKind::Call) {
+    target = entry.terminator.callValue().normalTarget;
+  } else if (entry.terminator.kind() == MirTerminatorKind::IndirectCall) {
+    target = entry.terminator.indirectCallValue().normalTarget;
+  } else {
+    return nullptr;
+  }
+  const auto* continuation = findBlockById(function, target);
+  if (continuation == nullptr || continuation == &entry) return nullptr;
+  return continuation;
+}
+
 bool encodeDefinition(identity::CanonicalEncoder& encoder, identity::DefId definition,
                       const checker::CheckerIdentityAuthority& identities) {
   auto key = identities.definition(definition);
@@ -2028,7 +2109,8 @@ bool validByValueAggregateCallReturnFunction(
   const auto& userLocal = function.locals[0];
   const auto& resultLocal = function.locals[1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  // Follow the Call normalTarget edge to find the continuation block.
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
       userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
@@ -2046,12 +2128,12 @@ bool validByValueAggregateCallReturnFunction(
       entry.statements[2].kind() != MirStatementKind::StorageLive ||
       entry.statements[2].storageLocal() != resultLocal.id ||
       !sameSpan(entry.statements[2].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& assignment = entry.statements[1].assignmentValue();
@@ -2084,7 +2166,7 @@ bool validByValueAggregateCallReturnFunction(
       terminator.destination.resultType() != resultLocal.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   const auto& actualArgument = terminator.arguments[0];
@@ -2095,7 +2177,7 @@ bool validByValueAggregateCallReturnFunction(
       actualArgument.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -2143,7 +2225,8 @@ bool validErasedAggregateCallReturnFunction(
   const auto& concreteLocal = function.locals[1];
   const auto& resultLocal = function.locals[2];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  // Follow the Call normalTarget edge to find the continuation block.
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
       userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
@@ -2170,12 +2253,12 @@ bool validErasedAggregateCallReturnFunction(
       entry.statements[4].kind() != MirStatementKind::StorageLive ||
       entry.statements[4].storageLocal() != resultLocal.id ||
       !sameSpan(entry.statements[4].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   // Statement 1: concrete aggregate construction into the temporary.
@@ -2228,7 +2311,7 @@ bool validErasedAggregateCallReturnFunction(
       terminator.destination.resultType() != resultLocal.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   const auto& actualArgument = terminator.arguments[0];
@@ -2239,7 +2322,7 @@ bool validErasedAggregateCallReturnFunction(
       actualArgument.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -2298,7 +2381,7 @@ bool validParameterReceiverCallReturnFunction(
   }
   const auto& resultLocal = function.locals[parameterCount];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) ||
       resultLocal.id != localId(parameterCount + 1) ||
@@ -2308,12 +2391,12 @@ bool validParameterReceiverCallReturnFunction(
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal.id ||
       !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& terminator = entry.terminator.indirectCallValue();
@@ -2324,7 +2407,7 @@ bool validParameterReceiverCallReturnFunction(
       terminator.destination.resultType() != resultLocal.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   const auto& receiverOperand = terminator.receiver;
@@ -2335,7 +2418,7 @@ bool validParameterReceiverCallReturnFunction(
       receiverOperand.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -2373,7 +2456,7 @@ bool validScalarLocalCallReturnFunction(
   const auto& userLocal = function.locals[0];
   const auto& resultLocal = function.locals[1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
       userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
@@ -2391,12 +2474,12 @@ bool validScalarLocalCallReturnFunction(
       entry.statements[2].kind() != MirStatementKind::StorageLive ||
       entry.statements[2].storageLocal() != resultLocal.id ||
       !sameSpan(entry.statements[2].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& assignment = entry.statements[1].assignmentValue();
@@ -2421,7 +2504,7 @@ bool validScalarLocalCallReturnFunction(
       terminator.destination.resultType() != resultLocal.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   const auto& actualArgument = terminator.arguments[0];
@@ -2432,7 +2515,7 @@ bool validScalarLocalCallReturnFunction(
       actualArgument.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -2470,8 +2553,10 @@ bool validDirectExistentialCallReturnFunction(
   const auto& userLocal = function.locals[0];
   const auto& resultLocal = function.locals[1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
-  const auto& finalBlock = function.blocks[2];
+  const auto* continuation = findCallContinuation(function, entry);
+  // Follow the continuation's Call normalTarget to find the final block.
+  const auto* finalBlock =
+      continuation != nullptr ? findCallContinuation(function, *continuation) : nullptr;
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || userLocal.id != localId(1) ||
       userLocal.kind != MirLocalKind::UserLocal || userLocal.type != sourceLocal.type ||
@@ -2485,18 +2570,17 @@ bool validDirectExistentialCallReturnFunction(
       !sameSpan(entry.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
       entry.terminator.kind() != MirTerminatorKind::Call ||
       !sameSpan(entry.terminator.sourceSpan(), initializerCall.sourceSpan) ||
-      continuation.id != blockId(2) || continuation.sourceScope != scope.id ||
-      continuation.statements.size() != 1 ||
-      continuation.statements[0].kind() != MirStatementKind::StorageLive ||
-      continuation.statements[0].storageLocal() != resultLocal.id ||
-      !sameSpan(continuation.statements[0].sourceSpan(), call.sourceSpan) ||
-      continuation.terminator.kind() != MirTerminatorKind::Call ||
-      !sameSpan(continuation.terminator.sourceSpan(), call.sourceSpan) ||
-      finalBlock.id != blockId(3) || finalBlock.sourceScope != scope.id ||
-      finalBlock.statements.size() != 0 ||
-      finalBlock.terminator.kind() != MirTerminatorKind::Return ||
-      finalBlock.terminator.returnValue().value == zc::none ||
-      !sameSpan(finalBlock.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      continuation == nullptr || continuation->sourceScope != scope.id ||
+      continuation->statements.size() != 1 ||
+      continuation->statements[0].kind() != MirStatementKind::StorageLive ||
+      continuation->statements[0].storageLocal() != resultLocal.id ||
+      !sameSpan(continuation->statements[0].sourceSpan(), call.sourceSpan) ||
+      continuation->terminator.kind() != MirTerminatorKind::Call ||
+      !sameSpan(continuation->terminator.sourceSpan(), call.sourceSpan) || finalBlock == nullptr ||
+      finalBlock->sourceScope != scope.id || finalBlock->statements.size() != 0 ||
+      finalBlock->terminator.kind() != MirTerminatorKind::Return ||
+      finalBlock->terminator.returnValue().value == zc::none ||
+      !sameSpan(finalBlock->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& initTerminator = entry.terminator.callValue();
@@ -2506,17 +2590,18 @@ bool validDirectExistentialCallReturnFunction(
       initTerminator.destination.resultType() != userLocal.type ||
       initTerminator.destination.projections().size() != 0 ||
       initTerminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      initTerminator.normalTarget != continuation.id || initTerminator.unwindTarget != zc::none) {
+      initTerminator.normalTarget != continuation->id || initTerminator.unwindTarget != zc::none) {
     return false;
   }
-  const auto& returnTerminator = continuation.terminator.callValue();
+  const auto& returnTerminator = continuation->terminator.callValue();
   if (returnTerminator.callee != call.callee || returnTerminator.arguments.size() != 1 ||
       returnTerminator.destination.local() != resultLocal.id ||
       returnTerminator.destination.rootType() != resultLocal.type ||
       returnTerminator.destination.resultType() != resultLocal.type ||
       returnTerminator.destination.projections().size() != 0 ||
       returnTerminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      returnTerminator.normalTarget != finalBlock.id || returnTerminator.unwindTarget != zc::none) {
+      returnTerminator.normalTarget != finalBlock->id ||
+      returnTerminator.unwindTarget != zc::none) {
     return false;
   }
   const auto& actualArgument = returnTerminator.arguments[0];
@@ -2527,7 +2612,7 @@ bool validDirectExistentialCallReturnFunction(
       actualArgument.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, finalBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, finalBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -2928,30 +3013,41 @@ bool validConditionalReturnFunction(
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 1 ||
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal ||
       !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::SwitchInt) {
     return false;
   }
+  // Follow SwitchInt arms to find then/else blocks structurally.
   const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
+  if (switchInt.arms.size() != 2) return false;
+  const auto* thenBlock = findBlockById(function, switchInt.arms[0].target);
+  const auto* elseBlock = findBlockById(function, switchInt.arms[1].target);
+  if (thenBlock == nullptr || elseBlock == nullptr || thenBlock == elseBlock) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      thenBlock->terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      elseBlock->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Both arms Goto the same join block.
+  const auto joinId = thenBlock->terminator.gotoValue().target;
+  if (elseBlock->terminator.gotoValue().target != joinId) return false;
+  const auto* joinBlock = findBlockById(function, joinId);
+  if (joinBlock == nullptr || joinBlock == thenBlock || joinBlock == elseBlock) return false;
+  if (joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // Default target is the else block.
+  if (switchInt.defaultTarget != elseBlock->id) return false;
+  // Arm values: true arm is true, false arm is false.
   const auto& trueArm = switchInt.arms[0];
   const auto& falseArm = switchInt.arms[1];
-  if (trueArm.target != blockId(2) || falseArm.target != blockId(3)) { return false; }
   auto trueValue = trueArm.value.booleanValue();
   auto falseValue = falseArm.value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -2970,13 +3066,13 @@ bool validConditionalReturnFunction(
   }
   // Each branch initializes the result local with the arm value, then jumps to
   // the join block. The single Return in the join reads that result local.
-  if (!branchArmInitializesResult(thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
+  if (!branchArmInitializesResult(*thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes) ||
-      !branchArmInitializesResult(elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
+      !branchArmInitializesResult(*elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -3043,30 +3139,27 @@ bool validMethodConditionalReturnFunction(const MirFunction& function,
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 1 ||
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal ||
-      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan)) {
+    return false;
+  }
+  // Resolve the diamond CFG structurally via SwitchInt and Goto edges.
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (!resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
   const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
-  if (switchInt.arms[0].target != blockId(2) || switchInt.arms[1].target != blockId(3)) {
-    return false;
-  }
+  if (switchInt.defaultTarget != elseBlock->id) return false;
   auto trueValue = switchInt.arms[0].value.booleanValue();
   auto falseValue = switchInt.arms[1].value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -3113,11 +3206,11 @@ bool validMethodConditionalReturnFunction(const MirFunction& function,
            sameConstant(operand.constantValue().value, literal.value, module, identities,
                         semanticTypes);
   };
-  if (!branchInitializesResult(thenBlock, thenLiteral) ||
-      !branchInitializesResult(elseBlock, elseLiteral)) {
+  if (!branchInitializesResult(*thenBlock, thenLiteral) ||
+      !branchInitializesResult(*elseBlock, elseLiteral)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -3224,10 +3317,8 @@ bool validEqualityConditionalReturnFunction(
   ZC_IF_SOME(value, leftLiteral) { refsOk &= value.type == operandType; }
   ZC_IF_SOME(value, rightLiteral) { refsOk &= value.type == operandType; }
   if (!refsOk) return false;
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   // Entry block layout: StorageLive(result), StorageLive(temp), Assign(temp =
   // Comparison{Eq, copy(left), copy(right)}), then SwitchInt(copy(temp)).
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 3 ||
@@ -3238,16 +3329,18 @@ bool validEqualityConditionalReturnFunction(
       entry.statements[1].storageLocal() != conditionTemp ||
       !sameSpan(entry.statements[1].sourceSpan(), equality.sourceSpan) ||
       entry.statements[2].kind() != MirStatementKind::Assign ||
-      !sameSpan(entry.statements[2].sourceSpan(), equality.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      !sameSpan(entry.statements[2].sourceSpan(), equality.sourceSpan)) {
+    return false;
+  }
+  // Resolve the diamond CFG structurally via SwitchInt and Goto edges.
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (!resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
   // The condition assignment initializes the bool temporary from a Comparison
@@ -3317,10 +3410,9 @@ bool validEqualityConditionalReturnFunction(
     return false;
   }
   const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
+  if (switchInt.defaultTarget != elseBlock->id) return false;
   const auto& trueArm = switchInt.arms[0];
   const auto& falseArm = switchInt.arms[1];
-  if (trueArm.target != blockId(2) || falseArm.target != blockId(3)) { return false; }
   auto trueValue = trueArm.value.booleanValue();
   auto falseValue = falseArm.value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -3335,13 +3427,13 @@ bool validEqualityConditionalReturnFunction(
       switchInt.discriminant.place().projections().size() != 0) {
     return false;
   }
-  if (!branchArmInitializesResult(thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
+  if (!branchArmInitializesResult(*thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes) ||
-      !branchArmInitializesResult(elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
+      !branchArmInitializesResult(*elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -3406,11 +3498,8 @@ bool validCallConditionalReturnFunction(
       callResult.sourceScope != scopeId(1) || !sameSpan(callResult.sourceSpan, call.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& switchBlock = function.blocks[1];
-  const auto& thenBlock = function.blocks[2];
-  const auto& elseBlock = function.blocks[3];
-  const auto& joinBlock = function.blocks[4];
   // Entry block: StorageLive(result), StorageLive(callResult), Call(callee,
   // args -> callResult, normalTarget=switchBlock).
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 2 ||
@@ -3423,12 +3512,39 @@ bool validCallConditionalReturnFunction(
       entry.terminator.kind() != MirTerminatorKind::Call) {
     return false;
   }
+  // Follow the Call normalTarget to find the switch block, then follow the
+  // SwitchInt arms to find then/else, and the Goto to find join.
+  const auto* switchBlock = findCallContinuation(function, entry);
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (switchBlock != nullptr && switchBlock->terminator.kind() == MirTerminatorKind::SwitchInt) {
+    const auto& sw = switchBlock->terminator.switchIntValue();
+    if (sw.arms.size() == 2) {
+      thenBlock = findBlockById(function, sw.arms[0].target);
+      elseBlock = findBlockById(function, sw.arms[1].target);
+      if (thenBlock != nullptr && thenBlock->terminator.kind() == MirTerminatorKind::Goto) {
+        joinBlock = findBlockById(function, thenBlock->terminator.gotoValue().target);
+      }
+    }
+  }
+  if (switchBlock == nullptr || switchBlock->sourceScope != scopeId(1) ||
+      switchBlock->statements.size() != 0 || thenBlock == nullptr || elseBlock == nullptr ||
+      thenBlock == elseBlock || joinBlock == nullptr || joinBlock == thenBlock ||
+      joinBlock == elseBlock || joinBlock == switchBlock ||
+      thenBlock->terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock->terminator.kind() != MirTerminatorKind::Goto ||
+      elseBlock->terminator.gotoValue().target != joinBlock->id ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
   const auto& entryCall = entry.terminator.callValue();
   if (entryCall.callee != call.callee || entryCall.destination.local() != callResultLocal ||
       entryCall.destination.rootType() != call.resultType ||
       entryCall.destination.resultType() != call.resultType ||
-      entryCall.destination.projections().size() != 0 || entryCall.normalTarget != blockId(2) ||
-      entryCall.unwindTarget != zc::none || entryCall.arguments.size() != call.arguments.size()) {
+      entryCall.destination.projections().size() != 0 ||
+      entryCall.normalTarget != switchBlock->id || entryCall.unwindTarget != zc::none ||
+      entryCall.arguments.size() != call.arguments.size()) {
     return false;
   }
   // Each call argument matches its HIR argument: a literal argument is a
@@ -3466,16 +3582,11 @@ bool validCallConditionalReturnFunction(
   }
   // Switch block: SwitchInt(callResult) { true -> then, false -> else },
   // default else.
-  if (switchBlock.id != blockId(2) || switchBlock.sourceScope != scopeId(1) ||
-      switchBlock.statements.size() != 0 ||
-      switchBlock.terminator.kind() != MirTerminatorKind::SwitchInt) {
-    return false;
-  }
-  const auto& switchInt = switchBlock.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(4)) { return false; }
+  const auto& switchInt = switchBlock->terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != elseBlock->id) { return false; }
   const auto& trueArm = switchInt.arms[0];
   const auto& falseArm = switchInt.arms[1];
-  if (trueArm.target != blockId(3) || falseArm.target != blockId(4)) { return false; }
+  if (trueArm.target != thenBlock->id || falseArm.target != elseBlock->id) { return false; }
   auto trueValue = trueArm.value.booleanValue();
   auto falseValue = falseArm.value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -3495,7 +3606,7 @@ bool validCallConditionalReturnFunction(
     if (armBlock.sourceScope != scopeId(1) || armBlock.statements.size() != 1 ||
         armBlock.statements[0].kind() != MirStatementKind::Assign ||
         armBlock.terminator.kind() != MirTerminatorKind::Goto ||
-        armBlock.terminator.gotoValue().target != blockId(5)) {
+        armBlock.terminator.gotoValue().target != joinBlock->id) {
       return false;
     }
     const auto& assign = armBlock.statements[0].assignmentValue();
@@ -3513,14 +3624,15 @@ bool validCallConditionalReturnFunction(
                         semanticTypes) &&
            sameSpan(armBlock.statements[0].sourceSpan(), literal.sourceSpan);
   };
-  if (!armMatches(thenBlock, thenLiteral) || !armMatches(elseBlock, elseLiteral)) { return false; }
-  // Join block: Return(result).
-  if (joinBlock.id != blockId(5) || joinBlock.sourceScope != scopeId(1) ||
-      joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+  if (!armMatches(*thenBlock, thenLiteral) || !armMatches(*elseBlock, elseLiteral)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  // Join block: Return(result).
+  if (joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -3647,39 +3759,47 @@ bool validChainedConditionalReturnFunction(const MirFunction& function,
   const auto scrutineeLocal = localId(static_cast<uint32_t>(scrutineeIndex + 1));
   const identity::SemanticTypeId operandType = scrutineeRef.type;
 
-  const uint32_t joinBlockOrdinal = static_cast<uint32_t>(2 * armCount + 2);
+  // Structural CFG resolution: follow the SwitchInt false-arm chain instead of
+  // hardcoding block positions. The chained conditional CFG is:
+  //   entry_0 SwitchInt [true -> then_0], false -> entry_1
+  //   then_0  Assign(result = lit_0), Goto join
+  //   entry_1 SwitchInt [true -> then_1], false -> entry_2
+  //   ...
+  //   else    Assign(result = else_lit), Goto join
+  //   join    Return(result)
+  const MirBasicBlock* joinBlock = nullptr;
+  const MirBasicBlock* currentBlock = &function.blocks[0];
 
   for (size_t k = 0; k < armCount; ++k) {
     const auto& entry = entries[k];
-    const auto& entryBlock = function.blocks[2 * k];
-    const auto& thenBlock = function.blocks[2 * k + 1];
 
     // Entry block: k=0 has StorageLive(result) + StorageLive for every
     // condition temp + Assign(temp_0, ...); k>0 has just Assign(temp_k, ...).
     const size_t expectedStmtCount = (k == 0) ? 2 + armCount : 1;
     const size_t assignOffset = (k == 0) ? 1 + armCount : 0;
-    if (entryBlock.id != blockId(static_cast<uint32_t>(2 * k + 1)) ||
-        entryBlock.sourceScope != scopeId(1) || entryBlock.statements.size() != expectedStmtCount ||
-        entryBlock.terminator.kind() != MirTerminatorKind::SwitchInt) {
+    if (currentBlock->sourceScope != scopeId(1) ||
+        currentBlock->statements.size() != expectedStmtCount ||
+        currentBlock->terminator.kind() != MirTerminatorKind::SwitchInt) {
       return false;
     }
     if (k == 0) {
-      if (entryBlock.statements[0].kind() != MirStatementKind::StorageLive ||
-          entryBlock.statements[0].storageLocal() != resultLocal ||
-          !sameSpan(entryBlock.statements[0].sourceSpan(), sourceReturn.sourceSpan)) {
+      if (currentBlock->statements[0].kind() != MirStatementKind::StorageLive ||
+          currentBlock->statements[0].storageLocal() != resultLocal ||
+          !sameSpan(currentBlock->statements[0].sourceSpan(), sourceReturn.sourceSpan)) {
         return false;
       }
       for (size_t t = 0; t < armCount; ++t) {
         const auto tempId = localId(static_cast<uint32_t>(declaration.parameters.size() + 2 + t));
-        if (entryBlock.statements[1 + t].kind() != MirStatementKind::StorageLive ||
-            entryBlock.statements[1 + t].storageLocal() != tempId ||
-            !sameSpan(entryBlock.statements[1 + t].sourceSpan(), entries[t].equality->sourceSpan)) {
+        if (currentBlock->statements[1 + t].kind() != MirStatementKind::StorageLive ||
+            currentBlock->statements[1 + t].storageLocal() != tempId ||
+            !sameSpan(currentBlock->statements[1 + t].sourceSpan(),
+                      entries[t].equality->sourceSpan)) {
           return false;
         }
       }
     }
     const auto tempId = localId(static_cast<uint32_t>(declaration.parameters.size() + 2 + k));
-    const auto& assign = entryBlock.statements[assignOffset];
+    const auto& assign = currentBlock->statements[assignOffset];
     if (assign.kind() != MirStatementKind::Assign ||
         !sameSpan(assign.sourceSpan(), entry.equality->sourceSpan)) {
       return false;
@@ -3718,21 +3838,18 @@ bool validChainedConditionalReturnFunction(const MirFunction& function,
     }
 
     // SwitchInt: true -> then block, false -> next entry or else.
-    const auto& switchInt = entryBlock.terminator.switchIntValue();
-    const uint32_t thenBlockOrdinal = static_cast<uint32_t>(2 * k + 2);
-    const uint32_t elseBlockOrdinal = (k + 1 < armCount) ? static_cast<uint32_t>(2 * (k + 1) + 1)
-                                                         : static_cast<uint32_t>(2 * armCount + 1);
-    if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(elseBlockOrdinal)) {
+    const auto& switchInt = currentBlock->terminator.switchIntValue();
+    if (switchInt.arms.size() != 2) return false;
+    const auto* thenBlock = findBlockById(function, switchInt.arms[0].target);
+    const auto* nextBlock = findBlockById(function, switchInt.arms[1].target);
+    if (thenBlock == nullptr || nextBlock == nullptr || thenBlock == nextBlock ||
+        thenBlock == currentBlock || nextBlock == currentBlock) {
       return false;
     }
-    const auto& trueArm = switchInt.arms[0];
-    const auto& falseArm = switchInt.arms[1];
-    if (trueArm.target != blockId(thenBlockOrdinal) ||
-        falseArm.target != blockId(elseBlockOrdinal)) {
-      return false;
-    }
-    auto trueValue = trueArm.value.booleanValue();
-    auto falseValue = falseArm.value.booleanValue();
+    // The false arm must also be the default target.
+    if (switchInt.defaultTarget != switchInt.arms[1].target) return false;
+    auto trueValue = switchInt.arms[0].value.booleanValue();
+    auto falseValue = switchInt.arms[1].value.booleanValue();
     if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
         ZC_ASSERT_NONNULL(falseValue)) {
       return false;
@@ -3746,13 +3863,20 @@ bool validChainedConditionalReturnFunction(const MirFunction& function,
     }
 
     // Then arm block: Assign(result = literal_k), Goto join.
-    if (thenBlock.id != blockId(thenBlockOrdinal) || thenBlock.sourceScope != scopeId(1) ||
-        thenBlock.statements.size() != 1 ||
-        thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-        thenBlock.terminator.gotoValue().target != blockId(joinBlockOrdinal)) {
+    if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+        thenBlock->terminator.kind() != MirTerminatorKind::Goto) {
       return false;
     }
-    const auto& thenAssign = thenBlock.statements[0];
+    // Resolve the join block from the first then block's Goto target; all
+    // subsequent then blocks and the else block must target the same join.
+    const auto thenJoinId = thenBlock->terminator.gotoValue().target;
+    if (joinBlock == nullptr) {
+      joinBlock = findBlockById(function, thenJoinId);
+      if (joinBlock == nullptr || joinBlock == thenBlock || joinBlock == currentBlock) return false;
+    } else if (thenJoinId != joinBlock->id) {
+      return false;
+    }
+    const auto& thenAssign = thenBlock->statements[0];
     if (thenAssign.kind() != MirStatementKind::Assign ||
         !sameSpan(thenAssign.sourceSpan(), entry.thenLiteral->sourceSpan)) {
       return false;
@@ -3773,17 +3897,21 @@ bool validChainedConditionalReturnFunction(const MirFunction& function,
                       identities, semanticTypes)) {
       return false;
     }
+    // Follow the false arm to the next entry block (or the else block after
+    // the last arm).
+    currentBlock = nextBlock;
   }
 
-  // Else arm block: Assign(result = else_literal), Goto join.
-  const auto& elseBlock = function.blocks[2 * armCount];
-  if (elseBlock.id != blockId(static_cast<uint32_t>(2 * armCount + 1)) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(joinBlockOrdinal)) {
+  // After the chain, currentBlock is the else block.
+  if (currentBlock->sourceScope != scopeId(1) || currentBlock->statements.size() != 1 ||
+      currentBlock->terminator.kind() != MirTerminatorKind::Goto) {
     return false;
   }
-  const auto& elseAssign = elseBlock.statements[0];
+  // Else block must Goto the same join block resolved from the then arms.
+  if (joinBlock == nullptr || currentBlock->terminator.gotoValue().target != joinBlock->id) {
+    return false;
+  }
+  const auto& elseAssign = currentBlock->statements[0];
   if (elseAssign.kind() != MirStatementKind::Assign ||
       !sameSpan(elseAssign.sourceSpan(), elseLiteral->sourceSpan)) {
     return false;
@@ -3806,13 +3934,11 @@ bool validChainedConditionalReturnFunction(const MirFunction& function,
   }
 
   // Join block: Return(result).
-  const auto& joinBlock = function.blocks[2 * armCount + 1];
-  if (joinBlock.id != blockId(joinBlockOrdinal) || joinBlock.sourceScope != scopeId(1) ||
-      joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+  if (joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     bool result = matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
                   value.place().local() == resultLocal &&
                   value.place().rootType() == declaration.resultType &&
@@ -3966,10 +4092,8 @@ bool validConjunctiveConditionalReturnFunction(
   if (guardParam.type != guardValue.operandType) return false;
   if (guardLiteral.type != guardValue.operandType) return false;
 
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   // Entry block layout: StorageLive(result), StorageLive(guardTemp),
   // Assign(guardTemp = Comparison{op, copy(param), const(lit)}),
   // StorageLive(conjTemp), Assign(conjTemp = BitAnd(copy(scrutinee),
@@ -3987,16 +4111,18 @@ bool validConjunctiveConditionalReturnFunction(
       entry.statements[3].storageLocal() != conjTemp ||
       !sameSpan(entry.statements[3].sourceSpan(), conjunction.sourceSpan) ||
       entry.statements[4].kind() != MirStatementKind::Assign ||
-      !sameSpan(entry.statements[4].sourceSpan(), conjunction.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      !sameSpan(entry.statements[4].sourceSpan(), conjunction.sourceSpan)) {
+    return false;
+  }
+  // Resolve the diamond CFG structurally via SwitchInt and Goto edges.
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (!resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
 
@@ -4078,10 +4204,9 @@ bool validConjunctiveConditionalReturnFunction(
 
   // SwitchInt on the conjunction temporary.
   const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) { return false; }
+  if (switchInt.defaultTarget != elseBlock->id) return false;
   const auto& trueArm = switchInt.arms[0];
   const auto& falseArm = switchInt.arms[1];
-  if (trueArm.target != blockId(2) || falseArm.target != blockId(3)) { return false; }
   auto trueValue = trueArm.value.booleanValue();
   auto falseValue = falseArm.value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -4097,13 +4222,13 @@ bool validConjunctiveConditionalReturnFunction(
   }
 
   // Branch blocks: each initializes the result local from the arm value.
-  if (!branchArmInitializesResult(thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
+  if (!branchArmInitializesResult(*thenBlock, thenArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes) ||
-      !branchArmInitializesResult(elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
+      !branchArmInitializesResult(*elseBlock, elseArm, hirModule, declaration, resultLocal, proofs,
                                   copy, module, identities, semanticTypes)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -4204,21 +4329,21 @@ bool validLeadingLocalConditionalReturnFunction(
       temp.sourceScope != scopeId(1) || !sameSpan(temp.sourceSpan, conditionSpan())) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) ||
-      entry.statements.size() != bindingCount * 2 + 3 ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      entry.statements.size() != bindingCount * 2 + 3) {
+    return false;
+  }
+  // Resolve the diamond CFG structurally via SwitchInt and Goto edges.
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (!resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
   // One leading-local preamble pair: StorageLive(userLocal) then an Initialize
@@ -4486,10 +4611,7 @@ bool validLeadingLocalConditionalReturnFunction(
     }
   }
   const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != blockId(3)) return false;
-  if (switchInt.arms[0].target != blockId(2) || switchInt.arms[1].target != blockId(3)) {
-    return false;
-  }
+  if (switchInt.defaultTarget != elseBlock->id) return false;
   auto trueValue = switchInt.arms[0].value.booleanValue();
   auto falseValue = switchInt.arms[1].value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
@@ -4541,11 +4663,11 @@ bool validLeadingLocalConditionalReturnFunction(
     }
     return false;
   };
-  if (!branchInitializesResult(thenBlock, thenArm) ||
-      !branchInitializesResult(elseBlock, elseArm)) {
+  if (!branchInitializesResult(*thenBlock, thenArm) ||
+      !branchInitializesResult(*elseBlock, elseArm)) {
     return false;
   }
-  ZC_IF_SOME(value, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(value, joinBlock->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -4890,34 +5012,35 @@ bool validLoopReturnFunction(
       !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
   // Reducible four-block loop CFG:
-  //   bb1 entry:  StorageLive(result) ; Goto(bb2)
-  //   bb2 header: SwitchInt(cond, [true -> bb3], default = bb4)
-  //   bb3 body:   Goto(bb2)   (reducible back-edge; bb2 dominates bb3)
-  //   bb4 exit:   Assign(result = literal, Initialize) ; Return(placeUse(result))
+  //   bb1 entry:  StorageLive(result) ; Goto(header)
+  //   header:     SwitchInt(cond, [true -> body], default = exit)
+  //   body:       Goto(header)   (reducible back-edge; header dominates body)
+  //   exit:       Assign(result = literal, Initialize) ; Return(placeUse(result))
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 1 ||
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal ||
-      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
-      header.sourceScope != scopeId(1) || header.statements.size() != 0 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
-      body.sourceScope != scopeId(1) || body.statements.size() != 0 ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != blockId(2) || exit.id != blockId(4) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      !sameSpan(entry.statements[0].sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
-  const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) { return false; }
+  // Resolve the loop CFG structurally via Goto and SwitchInt edges.
+  const MirBasicBlock* header = nullptr;
+  const MirBasicBlock* body = nullptr;
+  const MirBasicBlock* exit = nullptr;
+  if (!resolveLoopCfg(function, header, body, exit)) return false;
+  if (header->sourceScope != scopeId(1) || header->statements.size() != 0 ||
+      body->sourceScope != scopeId(1) || body->statements.size() != 0 ||
+      exit->sourceScope != scopeId(1) || exit->statements.size() != 1 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // Body must Goto back to the header (reducible back-edge).
+  if (body->terminator.gotoValue().target != header->id) return false;
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.defaultTarget != exit->id) return false;
   const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(3)) { return false; }
   auto trueValue = trueArm.value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) { return false; }
   size_t conditionIndex = 0;
@@ -4940,8 +5063,8 @@ bool validLoopReturnFunction(
   }
   // The exit block initializes the result local with the return literal, then
   // returns it.
-  if (exit.statements[0].kind() != MirStatementKind::Assign) { return false; }
-  const auto& assignment = exit.statements[0].assignmentValue();
+  if (exit->statements[0].kind() != MirStatementKind::Assign) { return false; }
+  const auto& assignment = exit->statements[0].assignmentValue();
   if (assignment.initialization != MirInitializationKind::Initialize ||
       assignment.destination.local() != resultLocal ||
       assignment.destination.rootType() != declaration.resultType ||
@@ -4954,7 +5077,7 @@ bool validLoopReturnFunction(
                     module, identities, semanticTypes)) {
     return false;
   }
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -5020,14 +5143,9 @@ bool validLoopBodyReturnFunction(
       !sameSpan(result.sourceSpan, local.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
-  // A trailing break exits the body to the loop exit (bb4); a trailing
-  // continue or a write-only body jumps back to the header (bb2).
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
-  // Entry: StorageLive(x) ; Assign(x = initializer, Initialize) ; Goto(bb2).
+  // Entry: StorageLive(x) ; Assign(x = initializer, Initialize) ; Goto(header).
   hir::HirNodeId initializerNode;
   ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
   auto initializer = expressionFor(hirModule, initializerNode);
@@ -5035,18 +5153,24 @@ bool validLoopBodyReturnFunction(
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal ||
       !sameSpan(entry.statements[0].sourceSpan(), local.sourceSpan) ||
-      entry.statements[1].kind() != MirStatementKind::Assign ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
-      header.sourceScope != scopeId(1) || header.statements.size() != 0 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
-      body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.statements[1].kind() != MirStatementKind::Assign) {
     return false;
   }
+  // Resolve the loop CFG structurally via Goto and SwitchInt edges.
+  const MirBasicBlock* header = nullptr;
+  const MirBasicBlock* body = nullptr;
+  const MirBasicBlock* exit = nullptr;
+  if (!resolveLoopCfg(function, header, body, exit)) return false;
+  if (header->sourceScope != scopeId(1) || header->statements.size() != 0 ||
+      body->sourceScope != scopeId(1) || body->statements.size() != loop.body.size() ||
+      exit->sourceScope != scopeId(1) || exit->statements.size() != 0 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // A trailing break exits the body to the loop exit; a trailing continue or
+  // a write-only body jumps back to the header (reducible back-edge).
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? exit->id : header->id;
+  if (body->terminator.gotoValue().target != expectedBodyTarget) return false;
   const auto& initAssign = entry.statements[1].assignmentValue();
   if (initializer == zc::none || initAssign.initialization != MirInitializationKind::Initialize ||
       initAssign.destination.local() != resultLocal ||
@@ -5061,11 +5185,10 @@ bool validLoopBodyReturnFunction(
                     ZC_ASSERT_NONNULL(initializer).value, module, identities, semanticTypes)) {
     return false;
   }
-  // Header SwitchInt on the condition parameter: [true -> bb3], default = bb4.
-  const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  // Header SwitchInt on the condition parameter: [true -> body], default = exit.
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.defaultTarget != exit->id) return false;
   const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(3)) return false;
   auto trueValue = trueArm.value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
   size_t conditionIndex = 0;
@@ -5094,7 +5217,7 @@ bool validLoopBodyReturnFunction(
         ZC_ASSERT_NONNULL(write).kind != hir::HirLocalWriteKind::Overwrite) {
       return false;
     }
-    const auto& statement = body.statements[writeIndex];
+    const auto& statement = body->statements[writeIndex];
     if (statement.kind() != MirStatementKind::Assign ||
         !sameSpan(statement.sourceSpan(), ZC_ASSERT_NONNULL(write).sourceSpan)) {
       return false;
@@ -5109,7 +5232,7 @@ bool validLoopBodyReturnFunction(
     }
   }
   // Exit: Return(placeUse(x)).
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -5181,15 +5304,10 @@ bool validDoWhileLoopBodyReturnFunction(
       !sameSpan(temp.sourceSpan, condition.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& body = function.blocks[1];
-  const auto& conditionBlock = function.blocks[2];
-  const auto& exit = function.blocks[3];
-  // A trailing break exits the body to the loop exit (bb4); a trailing
-  // continue or a write-only body jumps to the condition block (bb3).
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(3);
   // Entry: StorageLive(x) ; StorageLive(temp) ; Assign(x = initializer,
-  // Initialize) ; Goto(bb2).
+  // Initialize) ; Goto(body).
   hir::HirNodeId initializerNode;
   ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
   auto initializer = expressionFor(hirModule, initializerNode);
@@ -5201,15 +5319,51 @@ bool validDoWhileLoopBodyReturnFunction(
       entry.statements[1].storageLocal() != conditionTemp ||
       !sameSpan(entry.statements[1].sourceSpan(), condition.sourceSpan) ||
       entry.statements[2].kind() != MirStatementKind::Assign ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || body.id != blockId(2) ||
-      body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || conditionBlock.id != blockId(3) ||
-      conditionBlock.sourceScope != scopeId(1) || conditionBlock.statements.size() != 1 ||
-      conditionBlock.terminator.kind() != MirTerminatorKind::SwitchInt || exit.id != blockId(4) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Follow Goto to find the body block.
+  const auto* body = findBlockById(function, entry.terminator.gotoValue().target);
+  if (body == nullptr || body == &entry) return false;
+  if (body->sourceScope != scopeId(1) || body->statements.size() != loop.body.size() ||
+      body->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // The body Goto target is either the condition block (continue/write-only)
+  // or the exit (break). The condition block has SwitchInt; the exit has Return.
+  const auto bodyTarget = body->terminator.gotoValue().target;
+  const auto* bodyTargetBlock = findBlockById(function, bodyTarget);
+  if (bodyTargetBlock == nullptr || bodyTargetBlock == &entry || bodyTargetBlock == body) {
+    return false;
+  }
+  const MirBasicBlock* conditionBlock = nullptr;
+  const MirBasicBlock* exit = nullptr;
+  if (bodyTargetBlock->terminator.kind() == MirTerminatorKind::SwitchInt) {
+    conditionBlock = bodyTargetBlock;
+    exit = findBlockById(function, conditionBlock->terminator.switchIntValue().defaultTarget);
+  } else if (bodyTargetBlock->terminator.kind() == MirTerminatorKind::Return) {
+    exit = bodyTargetBlock;
+    // The condition block is the remaining block (4 blocks: entry, body, exit, condition).
+    for (const auto& candidate : function.blocks) {
+      if (&candidate != &entry && &candidate != body && &candidate != exit) {
+        conditionBlock = &candidate;
+        break;
+      }
+    }
+  }
+  if (conditionBlock == nullptr || exit == nullptr || conditionBlock == exit ||
+      conditionBlock->terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  if (conditionBlock->sourceScope != scopeId(1) || conditionBlock->statements.size() != 1 ||
+      exit->sourceScope != scopeId(1) || exit->statements.size() != 0 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // SwitchInt on the condition temp: [true -> body], default = exit.
+  const auto& switchInt = conditionBlock->terminator.switchIntValue();
+  if (switchInt.arms.size() != 1 || switchInt.arms[0].target != body->id ||
+      switchInt.defaultTarget != exit->id) {
     return false;
   }
   const auto& initAssign = entry.statements[2].assignmentValue();
@@ -5229,14 +5383,14 @@ bool validDoWhileLoopBodyReturnFunction(
   // Condition block: Assign(temp = Comparison(op, copy(x), <lit>), Overwrite).
   // The condition block is the loop header (the body jumps back to it), so the
   // assignment must be Overwrite to survive the ownership fixpoint iteration.
-  const auto& condAssign = conditionBlock.statements[0].assignmentValue();
+  const auto& condAssign = conditionBlock->statements[0].assignmentValue();
   if (condAssign.initialization != MirInitializationKind::Overwrite ||
       condAssign.destination.local() != conditionTemp ||
       condAssign.destination.rootType() != condition.type ||
       condAssign.destination.resultType() != condition.type ||
       condAssign.destination.projections().size() != 0 ||
       condAssign.value.kind() != MirRvalueKind::Comparison ||
-      !sameSpan(conditionBlock.statements[0].sourceSpan(), condition.sourceSpan)) {
+      !sameSpan(conditionBlock->statements[0].sourceSpan(), condition.sourceSpan)) {
     return false;
   }
   const auto& comparison = condAssign.value.comparisonValue();
@@ -5260,11 +5414,9 @@ bool validDoWhileLoopBodyReturnFunction(
                     module, identities, semanticTypes)) {
     return false;
   }
-  // SwitchInt on the condition temp: [true -> bb2], default = bb4.
-  const auto& switchInt = conditionBlock.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  // SwitchInt arm value must be true; discriminant must be a copy of the
+  // condition temp.
   const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(2)) return false;
   auto trueValue = trueArm.value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
@@ -5283,7 +5435,7 @@ bool validDoWhileLoopBodyReturnFunction(
         ZC_ASSERT_NONNULL(write).kind != hir::HirLocalWriteKind::Overwrite) {
       return false;
     }
-    const auto& statement = body.statements[writeIndex];
+    const auto& statement = body->statements[writeIndex];
     if (statement.kind() != MirStatementKind::Assign ||
         !sameSpan(statement.sourceSpan(), ZC_ASSERT_NONNULL(write).sourceSpan)) {
       return false;
@@ -5298,7 +5450,7 @@ bool validDoWhileLoopBodyReturnFunction(
     }
   }
   // Exit: Return(placeUse(x)).
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -5371,15 +5523,10 @@ bool validWhileLoopBodyComparisonReturnFunction(
       !sameSpan(temp.sourceSpan, condition.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
-  // A trailing break exits the body to the loop exit (bb4); a trailing
-  // continue or a write-only body jumps back to the header (bb2).
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
   // Entry: StorageLive(x) ; StorageLive(temp) ; Assign(x = initializer,
-  // Initialize) ; Goto(bb2).
+  // Initialize) ; Goto(header).
   hir::HirNodeId initializerNode;
   ZC_IF_SOME(value, local.initializer) { initializerNode = value; }
   auto initializer = expressionFor(hirModule, initializerNode);
@@ -5391,15 +5538,29 @@ bool validWhileLoopBodyComparisonReturnFunction(
       entry.statements[1].storageLocal() != conditionTemp ||
       !sameSpan(entry.statements[1].sourceSpan(), condition.sourceSpan) ||
       entry.statements[2].kind() != MirStatementKind::Assign ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
-      header.sourceScope != scopeId(1) || header.statements.size() != 1 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
-      body.sourceScope != scopeId(1) || body.statements.size() != loop.body.size() ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 0 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Resolve the reducible loop CFG: entry Goto -> header SwitchInt ->
+  // body / exit.
+  const MirBasicBlock* header = nullptr;
+  const MirBasicBlock* body = nullptr;
+  const MirBasicBlock* exit = nullptr;
+  if (!resolveLoopCfg(function, header, body, exit)) return false;
+  if (header->sourceScope != scopeId(1) || header->statements.size() != 1 ||
+      body->sourceScope != scopeId(1) || body->statements.size() != loop.body.size() ||
+      exit->sourceScope != scopeId(1) || exit->statements.size() != 0 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // A trailing break exits the body to the loop exit; a trailing
+  // continue or a write-only body jumps back to the header.
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? exit->id : header->id;
+  if (body->terminator.gotoValue().target != expectedBodyTarget) return false;
+  // SwitchInt on the condition temp: [true -> body], default = exit.
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.arms.size() != 1 || switchInt.arms[0].target != body->id ||
+      switchInt.defaultTarget != exit->id) {
     return false;
   }
   const auto& initAssign = entry.statements[2].assignmentValue();
@@ -5419,14 +5580,14 @@ bool validWhileLoopBodyComparisonReturnFunction(
   // Header: Assign(temp = Comparison(op, copy(x), <lit>), Overwrite).
   // The header is the loop header (the body jumps back to it), so the
   // assignment must be Overwrite to survive the ownership fixpoint iteration.
-  const auto& condAssign = header.statements[0].assignmentValue();
+  const auto& condAssign = header->statements[0].assignmentValue();
   if (condAssign.initialization != MirInitializationKind::Overwrite ||
       condAssign.destination.local() != conditionTemp ||
       condAssign.destination.rootType() != condition.type ||
       condAssign.destination.resultType() != condition.type ||
       condAssign.destination.projections().size() != 0 ||
       condAssign.value.kind() != MirRvalueKind::Comparison ||
-      !sameSpan(header.statements[0].sourceSpan(), condition.sourceSpan)) {
+      !sameSpan(header->statements[0].sourceSpan(), condition.sourceSpan)) {
     return false;
   }
   const auto& comparison = condAssign.value.comparisonValue();
@@ -5450,11 +5611,9 @@ bool validWhileLoopBodyComparisonReturnFunction(
                     module, identities, semanticTypes)) {
     return false;
   }
-  // SwitchInt on the condition temp: [true -> bb3], default = bb4.
-  const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  // SwitchInt arm value must be true; discriminant must be a copy of the
+  // condition temp.
   const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(3)) return false;
   auto trueValue = trueArm.value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
@@ -5473,7 +5632,7 @@ bool validWhileLoopBodyComparisonReturnFunction(
         ZC_ASSERT_NONNULL(write).kind != hir::HirLocalWriteKind::Overwrite) {
       return false;
     }
-    const auto& statement = body.statements[writeIndex];
+    const auto& statement = body->statements[writeIndex];
     if (statement.kind() != MirStatementKind::Assign ||
         !sameSpan(statement.sourceSpan(), ZC_ASSERT_NONNULL(write).sourceSpan)) {
       return false;
@@ -5488,7 +5647,7 @@ bool validWhileLoopBodyComparisonReturnFunction(
     }
   }
   // Exit: Return(placeUse(x)).
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -5590,31 +5749,40 @@ bool validForLoopReturnFunction(
       result.sourceScope != scopeId(1) || !sameSpan(result.sourceSpan, sourceReturn.sourceSpan)) {
     return false;
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
-  // A trailing break exits the body to the loop exit (bb4); a trailing
-  // continue or a write-only body jumps back to the header (bb2).
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? blockId(4) : blockId(2);
   // Reducible four-block loop CFG:
-  //   bb1 entry:  StorageLive(result) ; StorageLive(i) ; StorageLive(temp) ;
-  //               Assign(i = init, Initialize) ;
-  //               Assign(temp = Comparison(op, copy(i), <lit>), Initialize) ; Goto(bb2)
-  //   bb2 header: SwitchInt(copy(temp), [true -> bb3], default = bb4)
-  //   bb3 body:   Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite) ;
-  //               Assign(temp = Comparison(op, copy(i), <lit>), Overwrite) ; Goto(bb2)
-  //   bb4 exit:   Assign(result = <lit>, Initialize) ; Return(placeUse(result))
+  //   entry:  StorageLive(result) ; StorageLive(i) ; StorageLive(temp) ;
+  //           Assign(i = init, Initialize) ;
+  //           Assign(temp = Comparison(op, copy(i), <lit>), Initialize) ; Goto(header)
+  //   header: SwitchInt(copy(temp), [true -> body], default = exit)
+  //   body:   Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite) ;
+  //           Assign(temp = Comparison(op, copy(i), <lit>), Overwrite) ; Goto(header)
+  //   exit:   Assign(result = <lit>, Initialize) ; Return(placeUse(result))
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) || entry.statements.size() != 5 ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
-      header.sourceScope != scopeId(1) || header.statements.size() != 0 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != blockId(3) ||
-      body.sourceScope != scopeId(1) || body.statements.size() != 2 ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != blockId(4) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Resolve the reducible loop CFG: entry Goto -> header SwitchInt ->
+  // body / exit.
+  const MirBasicBlock* header = nullptr;
+  const MirBasicBlock* body = nullptr;
+  const MirBasicBlock* exit = nullptr;
+  if (!resolveLoopCfg(function, header, body, exit)) return false;
+  if (header->sourceScope != scopeId(1) || header->statements.size() != 0 ||
+      body->sourceScope != scopeId(1) || body->statements.size() != 2 ||
+      exit->sourceScope != scopeId(1) || exit->statements.size() != 1 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // A trailing break exits the body to the loop exit; a trailing
+  // continue or a write-only body jumps back to the header.
+  const auto expectedBodyTarget = loop.breakSpan != zc::none ? exit->id : header->id;
+  if (body->terminator.gotoValue().target != expectedBodyTarget) return false;
+  // SwitchInt on the condition temp: [true -> body], default = exit.
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.arms.size() != 1 || switchInt.arms[0].target != body->id ||
+      switchInt.defaultTarget != exit->id) {
     return false;
   }
   // Entry: StorageLive(result), StorageLive(i), StorageLive(temp),
@@ -5673,11 +5841,9 @@ bool validForLoopReturnFunction(
                     identities, semanticTypes)) {
     return false;
   }
-  // Header SwitchInt: [true -> bb3], default = bb4.
-  const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != blockId(4)) return false;
+  // SwitchInt arm value must be true; discriminant must be a copy of the
+  // condition temp.
   const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(3)) return false;
   auto trueValue = trueArm.value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
@@ -5689,7 +5855,7 @@ bool validForLoopReturnFunction(
   }
   // Body: Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite),
   // Assign(temp = Comparison(op, copy(i), <lit>), Overwrite).
-  const auto& bodyAssign = body.statements[0].assignmentValue();
+  const auto& bodyAssign = body->statements[0].assignmentValue();
   if (bodyAssign.initialization != MirInitializationKind::Overwrite ||
       bodyAssign.destination.local() != initLocal ||
       bodyAssign.destination.rootType() != local.type ||
@@ -5712,7 +5878,7 @@ bool validForLoopReturnFunction(
     return false;
   }
   // Body condition recompute: Assign(temp = Comparison(op, copy(i), <lit>), Overwrite).
-  const auto& bodyCondAssign = body.statements[1].assignmentValue();
+  const auto& bodyCondAssign = body->statements[1].assignmentValue();
   if (bodyCondAssign.initialization != MirInitializationKind::Overwrite ||
       bodyCondAssign.destination.local() != conditionTemp ||
       bodyCondAssign.destination.rootType() != condition.type ||
@@ -5736,7 +5902,7 @@ bool validForLoopReturnFunction(
     return false;
   }
   // Exit: Assign(result = <lit>, Initialize) ; Return(placeUse(result)).
-  const auto& exitAssign = exit.statements[0].assignmentValue();
+  const auto& exitAssign = exit->statements[0].assignmentValue();
   if (exitAssign.initialization != MirInitializationKind::Initialize ||
       exitAssign.destination.local() != resultLocal ||
       exitAssign.destination.rootType() != declaration.resultType ||
@@ -5749,7 +5915,7 @@ bool validForLoopReturnFunction(
                     module, identities, semanticTypes)) {
     return false;
   }
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -5934,51 +6100,79 @@ bool validNestedForLoopAccumulatorReturnFunction(
   // bb5 inner body: N accumulator writes, inner update write, re-compare, Goto(bb4).
   // bb6 inner exit=outer continuation: outer update write, re-compare, Goto(bb2).
   // bb7 outer exit: Assign(result = copy(acc_0), Initialize), Return(placeUse(result)).
+  // Structural CFG resolution: follow terminator edges instead of hardcoding
+  // block positions. The 7-block nested-loop CFG is:
+  //   entry Goto -> outerHeader
+  //   outerHeader SwitchInt [true -> innerEntry], default -> exit
+  //   innerEntry Goto -> innerHeader
+  //   innerHeader SwitchInt [true -> innerBody], default -> outerCont
+  //   innerBody Goto -> innerHeader | outerCont | exit (back-edge / continue / break)
+  //   outerCont Goto -> outerHeader (back-edge)
+  //   exit Return
   const auto& entry = function.blocks[0];
-  const auto& outerHeader = function.blocks[1];
-  const auto& innerEntry = function.blocks[2];
-  const auto& innerHeader = function.blocks[3];
-  const auto& innerBody = function.blocks[4];
-  const auto& outerCont = function.blocks[5];
-  const auto& exit = function.blocks[6];
-  // Entry block: StorageLive(result), StorageLive(acc_k)..., StorageLive(outer
-  // init), StorageLive(outer cond temp), StorageLive(inner init), StorageLive(inner
-  // cond temp), Assign(acc_k = accInit_k)..., Assign(outer init = init), Assign(outer
-  // cond temp = comparison).
   const size_t expectedEntrySize = 7 + 2 * accumulatorCount;
+  const size_t expectedInnerBodySize =
+      (innerLoop.breakTargetsEnclosing || innerLoop.continueTargetsEnclosing)
+          ? accumulatorCount
+          : 2 + accumulatorCount;
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) ||
       entry.statements.size() != expectedEntrySize ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || outerHeader.id != blockId(2) ||
-      outerHeader.sourceScope != scopeId(1) || outerHeader.statements.size() != 0 ||
-      outerHeader.terminator.kind() != MirTerminatorKind::SwitchInt ||
-      innerEntry.id != blockId(3) || innerEntry.sourceScope != scopeId(1) ||
-      innerEntry.statements.size() != 2 ||
-      innerEntry.terminator.kind() != MirTerminatorKind::Goto ||
-      innerEntry.terminator.gotoValue().target != blockId(4) || innerHeader.id != blockId(4) ||
-      innerHeader.sourceScope != scopeId(1) || innerHeader.statements.size() != 0 ||
-      innerHeader.terminator.kind() != MirTerminatorKind::SwitchInt || innerBody.id != blockId(5) ||
-      innerBody.sourceScope != scopeId(1) ||
-      innerBody.statements.size() !=
-          (innerLoop.breakTargetsEnclosing || innerLoop.continueTargetsEnclosing
-               ? accumulatorCount
-               : 2 + accumulatorCount) ||
-      innerBody.terminator.kind() != MirTerminatorKind::Goto ||
-      innerBody.terminator.gotoValue().target !=
-          (innerLoop.breakTargetsEnclosing
-               ? blockId(7)
-               : (innerLoop.continueTargetsEnclosing ? blockId(6) : blockId(4))) ||
-      outerCont.id != blockId(6) || outerCont.sourceScope != scopeId(1) ||
-      outerCont.statements.size() != 2 || outerCont.terminator.kind() != MirTerminatorKind::Goto ||
-      outerCont.terminator.gotoValue().target != blockId(2) || exit.id != blockId(7) ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::Goto) {
     return false;
   }
-  // Validate outer header SwitchInt.
-  const auto& outerSwitch = outerHeader.terminator.switchIntValue();
-  if (outerSwitch.arms.size() != 1 || outerSwitch.defaultTarget != blockId(7)) return false;
-  if (outerSwitch.arms[0].target != blockId(3)) return false;
+  const auto* outerHeader = findBlockById(function, entry.terminator.gotoValue().target);
+  if (outerHeader == nullptr || outerHeader == &entry || outerHeader->sourceScope != scopeId(1) ||
+      outerHeader->statements.size() != 0 ||
+      outerHeader->terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  const auto& outerSwitch = outerHeader->terminator.switchIntValue();
+  if (outerSwitch.arms.size() != 1) return false;
+  const auto* innerEntry = findBlockById(function, outerSwitch.arms[0].target);
+  const auto* exit = findBlockById(function, outerSwitch.defaultTarget);
+  if (innerEntry == nullptr || exit == nullptr || innerEntry == outerHeader || innerEntry == exit ||
+      innerEntry->sourceScope != scopeId(1) || innerEntry->statements.size() != 2 ||
+      innerEntry->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  const auto* innerHeader = findBlockById(function, innerEntry->terminator.gotoValue().target);
+  if (innerHeader == nullptr || innerHeader == innerEntry || innerHeader == outerHeader ||
+      innerHeader->sourceScope != scopeId(1) || innerHeader->statements.size() != 0 ||
+      innerHeader->terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  const auto& innerSwitch = innerHeader->terminator.switchIntValue();
+  if (innerSwitch.arms.size() != 1) return false;
+  const auto* innerBody = findBlockById(function, innerSwitch.arms[0].target);
+  const auto* outerCont = findBlockById(function, innerSwitch.defaultTarget);
+  if (innerBody == nullptr || outerCont == nullptr || innerBody == outerCont ||
+      innerBody == innerHeader || outerCont == innerHeader ||
+      innerBody->sourceScope != scopeId(1) ||
+      innerBody->statements.size() != expectedInnerBodySize ||
+      innerBody->terminator.kind() != MirTerminatorKind::Goto ||
+      outerCont->sourceScope != scopeId(1) || outerCont->statements.size() != 2 ||
+      outerCont->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Inner body Goto target depends on break/continue: break exits to the outer
+  // exit, continue jumps to the outer continuation, otherwise back-edge to the
+  // inner header.
+  const auto innerBodyTarget = innerBody->terminator.gotoValue().target;
+  if (innerLoop.breakTargetsEnclosing) {
+    if (innerBodyTarget != exit->id) return false;
+  } else if (innerLoop.continueTargetsEnclosing) {
+    if (innerBodyTarget != outerCont->id) return false;
+  } else {
+    if (innerBodyTarget != innerHeader->id) return false;
+  }
+  // Outer continuation back-edge to outer header.
+  if (outerCont->terminator.gotoValue().target != outerHeader->id) return false;
+  // Exit block.
+  if (exit->sourceScope != scopeId(1) || exit->statements.size() != 1 ||
+      exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  // Validate outer header SwitchInt arm value and discriminant.
   auto outerTrueValue = outerSwitch.arms[0].value.booleanValue();
   if (outerTrueValue == zc::none || !ZC_ASSERT_NONNULL(outerTrueValue)) return false;
   if (outerSwitch.discriminant.kind() != MirOperandKind::Copy ||
@@ -5988,10 +6182,7 @@ bool validNestedForLoopAccumulatorReturnFunction(
       outerSwitch.discriminant.place().projections().size() != 0) {
     return false;
   }
-  // Validate inner header SwitchInt.
-  const auto& innerSwitch = innerHeader.terminator.switchIntValue();
-  if (innerSwitch.arms.size() != 1 || innerSwitch.defaultTarget != blockId(6)) return false;
-  if (innerSwitch.arms[0].target != blockId(5)) return false;
+  // Validate inner header SwitchInt arm value and discriminant.
   auto innerTrueValue = innerSwitch.arms[0].value.booleanValue();
   if (innerTrueValue == zc::none || !ZC_ASSERT_NONNULL(innerTrueValue)) return false;
   if (innerSwitch.discriminant.kind() != MirOperandKind::Copy ||
@@ -6002,7 +6193,7 @@ bool validNestedForLoopAccumulatorReturnFunction(
     return false;
   }
   // Validate exit block: Assign(result = copy(acc_0), Initialize), Return.
-  const auto& exitAssign = exit.statements[0].assignmentValue();
+  const auto& exitAssign = exit->statements[0].assignmentValue();
   if (exitAssign.initialization != MirInitializationKind::Initialize ||
       exitAssign.destination.local() != resultLocal ||
       exitAssign.destination.rootType() != declaration.resultType ||
@@ -6016,8 +6207,8 @@ bool validNestedForLoopAccumulatorReturnFunction(
       exitAssign.value.useValue().operand.place().projections().size() != 0) {
     return false;
   }
-  if (exit.terminator.kind() != MirTerminatorKind::Return) return false;
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  if (exit->terminator.kind() != MirTerminatorKind::Return) return false;
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -6233,54 +6424,41 @@ bool validForLoopAccumulatorReturnFunction(
       return false;
     }
   }
+  // Structural CFG resolution: follow terminator edges instead of hardcoding
+  // block positions. Without a guarded break: entry Goto -> header SwitchInt
+  // [true -> body], default -> exit; body Goto -> header (back-edge).
+  // With a guarded break: entry Goto -> header SwitchInt [true -> guard],
+  // default -> exit; guard SwitchInt [true -> exit], default -> body; body
+  // Goto -> header (back-edge).
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[hasBreakCondition ? 3 : 2];
-  const auto& exit = function.blocks[hasBreakCondition ? 4 : 3];
-  // A trailing break exits the body to the loop exit; a trailing
-  // continue or a write-only body jumps back to the header (bb2).
-  const auto exitBlockId = hasBreakCondition ? blockId(5) : blockId(4);
-  const auto expectedBodyTarget = loop.breakSpan != zc::none ? exitBlockId : blockId(2);
-  // Reducible loop CFG. Without a guarded break: entry/header/body/exit.
-  // With a guarded break: entry/header/guard/continuation/exit, where the
-  // guard block evaluates the break condition and routes to the exit (break
-  // taken) or the continuation (break not taken).
-  //   bb1 entry:  StorageLive(result) ; StorageLive(acc_k)... ; StorageLive(i) ;
-  //               StorageLive(temp) ; [StorageLive(breakTemp) ;]
-  //               Assign(acc_k = accInit_k, Initialize)... ;
-  //               Assign(i = init, Initialize) ;
-  //               Assign(temp = Comparison(op, copy(i), <lit>), Initialize) ; Goto(bb2)
-  //   bb2 header: SwitchInt(copy(temp), [true -> bb3], default = exit)
-  //   [bb3 guard: Assign(breakTemp = Comparison(op, copy(i), <lit>), Overwrite) ;
-  //               SwitchInt(copy(breakTemp), [true -> exit], default = bb4)]
-  //   bbN body:   Assign(acc_k = Arithmetic(op, copy(acc_k), copy(i)|<lit>), Overwrite)... ;
-  //               Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite) ;
-  //               Assign(temp = Comparison(op, copy(i), <lit>), Overwrite) ; Goto(bb2)
-  //   bbX exit:   Assign(result = copy(acc_0), Initialize) ; Return(placeUse(result))
   const size_t expectedEntrySize = (hasBreakCondition ? 6 : 5) + 2 * accumulatorCount;
   const size_t expectedBodySize = 2 + accumulatorCount;
-  const auto bodyBlockId = hasBreakCondition ? blockId(4) : blockId(3);
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) ||
       entry.statements.size() != expectedEntrySize ||
-      entry.terminator.kind() != MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != blockId(2) || header.id != blockId(2) ||
-      header.sourceScope != scopeId(1) || header.statements.size() != 0 ||
-      header.terminator.kind() != MirTerminatorKind::SwitchInt || body.id != bodyBlockId ||
-      body.sourceScope != scopeId(1) || body.statements.size() != expectedBodySize ||
-      body.terminator.kind() != MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != expectedBodyTarget || exit.id != exitBlockId ||
-      exit.sourceScope != scopeId(1) || exit.statements.size() != 1 ||
-      exit.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::Goto) {
     return false;
   }
-  // Validate the guard block when present.
+  const auto* header = findBlockById(function, entry.terminator.gotoValue().target);
+  if (header == nullptr || header == &entry || header->sourceScope != scopeId(1) ||
+      header->statements.size() != 0 || header->terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  const auto& switchInt = header->terminator.switchIntValue();
+  if (switchInt.arms.size() != 1) return false;
+  const auto* exit = findBlockById(function, switchInt.defaultTarget);
+  if (exit == nullptr || exit == header || exit == &entry || exit->sourceScope != scopeId(1) ||
+      exit->statements.size() != 1 || exit->terminator.kind() != MirTerminatorKind::Return) {
+    return false;
+  }
+  const MirBasicBlock* body = nullptr;
   if (hasBreakCondition) {
-    const auto& guard = function.blocks[2];
-    if (guard.id != blockId(3) || guard.sourceScope != scopeId(1) || guard.statements.size() != 1 ||
-        guard.terminator.kind() != MirTerminatorKind::SwitchInt) {
+    const auto* guard = findBlockById(function, switchInt.arms[0].target);
+    if (guard == nullptr || guard == header || guard == exit || guard == &entry ||
+        guard->sourceScope != scopeId(1) || guard->statements.size() != 1 ||
+        guard->terminator.kind() != MirTerminatorKind::SwitchInt) {
       return false;
     }
-    const auto& guardAssign = guard.statements[0].assignmentValue();
+    const auto& guardAssign = guard->statements[0].assignmentValue();
     const auto& bb = ZC_ASSERT_NONNULL(breakBinary);
     const auto& br = ZC_ASSERT_NONNULL(breakRight);
     if (guardAssign.initialization != MirInitializationKind::Overwrite ||
@@ -6304,11 +6482,11 @@ bool validForLoopAccumulatorReturnFunction(
                       semanticTypes)) {
       return false;
     }
-    const auto& guardSwitch = guard.terminator.switchIntValue();
-    if (guardSwitch.arms.size() != 1 || guardSwitch.defaultTarget != bodyBlockId) return false;
-    const auto& guardTrueArm = guardSwitch.arms[0];
-    if (guardTrueArm.target != exitBlockId) return false;
-    auto guardTrueValue = guardTrueArm.value.booleanValue();
+    const auto& guardSwitch = guard->terminator.switchIntValue();
+    if (guardSwitch.arms.size() != 1) return false;
+    // Guard true arm must target the same exit as the header default.
+    if (guardSwitch.arms[0].target != exit->id) return false;
+    auto guardTrueValue = guardSwitch.arms[0].value.booleanValue();
     if (guardTrueValue == zc::none || !ZC_ASSERT_NONNULL(guardTrueValue)) return false;
     if (guardSwitch.discriminant.kind() != MirOperandKind::Copy ||
         guardSwitch.discriminant.place().local() != breakTemp ||
@@ -6317,6 +6495,21 @@ bool validForLoopAccumulatorReturnFunction(
         guardSwitch.discriminant.place().projections().size() != 0) {
       return false;
     }
+    body = findBlockById(function, guardSwitch.defaultTarget);
+  } else {
+    body = findBlockById(function, switchInt.arms[0].target);
+  }
+  if (body == nullptr || body == header || body == exit || body == &entry ||
+      body->sourceScope != scopeId(1) || body->statements.size() != expectedBodySize ||
+      body->terminator.kind() != MirTerminatorKind::Goto) {
+    return false;
+  }
+  // Body Goto target: break exits to the loop exit, otherwise back-edge to header.
+  const auto bodyTarget = body->terminator.gotoValue().target;
+  if (loop.breakSpan != zc::none) {
+    if (bodyTarget != exit->id) return false;
+  } else {
+    if (bodyTarget != header->id) return false;
   }
   // Entry: StorageLive(result), StorageLive(acc_k)..., StorageLive(i),
   // StorageLive(temp), [StorageLive(breakTemp)].
@@ -6425,12 +6618,8 @@ bool validForLoopAccumulatorReturnFunction(
                     identities, semanticTypes)) {
     return false;
   }
-  // Header SwitchInt: [true -> bb3], default = exit.
-  const auto& switchInt = header.terminator.switchIntValue();
-  if (switchInt.arms.size() != 1 || switchInt.defaultTarget != exitBlockId) return false;
-  const auto& trueArm = switchInt.arms[0];
-  if (trueArm.target != blockId(3)) return false;
-  auto trueValue = trueArm.value.booleanValue();
+  // Header SwitchInt arm value and discriminant.
+  auto trueValue = switchInt.arms[0].value.booleanValue();
   if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) return false;
   if (switchInt.discriminant.kind() != MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != conditionTemp ||
@@ -6442,8 +6631,8 @@ bool validForLoopAccumulatorReturnFunction(
   // Body: Assign(acc_k = Arithmetic(op, copy(acc_k), copy(i)|<lit>), Overwrite)...
   for (size_t k = 0; k < accumulatorCount; ++k) {
     const auto accMirLocal = localId(parameterCount + static_cast<uint32_t>(k) + 1);
-    if (body.statements[k].kind() != MirStatementKind::Assign) return false;
-    const auto& bodyAccAssign = body.statements[k].assignmentValue();
+    if (body->statements[k].kind() != MirStatementKind::Assign) return false;
+    const auto& bodyAccAssign = body->statements[k].assignmentValue();
     if (bodyAccAssign.initialization != MirInitializationKind::Overwrite ||
         bodyAccAssign.destination.local() != accMirLocal ||
         bodyAccAssign.destination.rootType() != accLocals[k]->type ||
@@ -6482,8 +6671,8 @@ bool validForLoopAccumulatorReturnFunction(
   }
   // Body[N]: Assign(i = Arithmetic(op, copy(i), <lit>), Overwrite).
   const size_t bodyUpdateIndex = accumulatorCount;
-  if (body.statements[bodyUpdateIndex].kind() != MirStatementKind::Assign) return false;
-  const auto& bodyUpdateAssign = body.statements[bodyUpdateIndex].assignmentValue();
+  if (body->statements[bodyUpdateIndex].kind() != MirStatementKind::Assign) return false;
+  const auto& bodyUpdateAssign = body->statements[bodyUpdateIndex].assignmentValue();
   if (bodyUpdateAssign.initialization != MirInitializationKind::Overwrite ||
       bodyUpdateAssign.destination.local() != initMirLocal ||
       bodyUpdateAssign.destination.rootType() != initLocal.type ||
@@ -6508,8 +6697,8 @@ bool validForLoopAccumulatorReturnFunction(
   }
   // Body[N+1]: Assign(temp = Comparison(op, copy(i), <lit>), Overwrite).
   const size_t bodyCondIndex = accumulatorCount + 1;
-  if (body.statements[bodyCondIndex].kind() != MirStatementKind::Assign) return false;
-  const auto& bodyCondAssign = body.statements[bodyCondIndex].assignmentValue();
+  if (body->statements[bodyCondIndex].kind() != MirStatementKind::Assign) return false;
+  const auto& bodyCondAssign = body->statements[bodyCondIndex].assignmentValue();
   if (bodyCondAssign.initialization != MirInitializationKind::Overwrite ||
       bodyCondAssign.destination.local() != conditionTemp ||
       bodyCondAssign.destination.rootType() != condition.type ||
@@ -6533,7 +6722,7 @@ bool validForLoopAccumulatorReturnFunction(
     return false;
   }
   // Exit: Assign(result = copy(acc_0), Initialize) ; Return(placeUse(result)).
-  const auto& exitAssign = exit.statements[0].assignmentValue();
+  const auto& exitAssign = exit->statements[0].assignmentValue();
   const auto firstAccMirLocal = localId(parameterCount + 1);
   if (exitAssign.initialization != MirInitializationKind::Initialize ||
       exitAssign.destination.local() != resultLocal ||
@@ -6548,7 +6737,7 @@ bool validForLoopAccumulatorReturnFunction(
       exitAssign.value.useValue().operand.place().projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, exit.terminator.returnValue().value) {
+  ZC_IF_SOME(value, exit->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, declaration.resultType) &&
            value.place().local() == resultLocal &&
            value.place().rootType() == declaration.resultType &&
@@ -8007,15 +8196,15 @@ bool validDynFieldAccessReturnFunction(
   const size_t expectedStatements = 4 * erasedCount + 5;
   const auto& scope = function.sourceScopes[0];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || entry.id != blockId(1) ||
       entry.sourceScope != scope.id || entry.statements.size() != expectedStatements ||
-      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      entry.terminator.kind() != MirTerminatorKind::IndirectCall || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
 
@@ -8228,7 +8417,7 @@ bool validDynFieldAccessReturnFunction(
       terminator.destination.resultType() != resultLocal.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   // Receiver operand: a place-use of the animal local.
@@ -8241,7 +8430,7 @@ bool validDynFieldAccessReturnFunction(
   }
 
   // Continuation terminator: return the result local.
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, resultLocal.type) &&
            value.place().local() == resultLocal.id &&
            value.place().rootType() == resultLocal.type &&
@@ -9830,24 +10019,25 @@ bool validTernaryLocalReturnFunction(
       return false;
     }
   }
+  // Entry is always the first block (construction invariant).
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
   // Entry: K*2 leading-local statements + StorageLive(ternary) + 2 temp
   // statements (StorageLive + Assign) when the condition is a bool literal.
   const size_t expectedEntryStatements = ternaryIndex * 2 + 1 + (conditionIsLiteral ? 2 : 0);
   if (entry.id != blockId(1) || entry.sourceScope != scopeId(1) ||
       entry.statements.size() != expectedEntryStatements ||
-      entry.terminator.kind() != MirTerminatorKind::SwitchInt || thenBlock.id != blockId(2) ||
-      thenBlock.sourceScope != scopeId(1) || thenBlock.statements.size() != 1 ||
-      thenBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      thenBlock.terminator.gotoValue().target != blockId(4) || elseBlock.id != blockId(3) ||
-      elseBlock.sourceScope != scopeId(1) || elseBlock.statements.size() != 1 ||
-      elseBlock.terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target != blockId(4) || joinBlock.id != blockId(4) ||
-      joinBlock.sourceScope != scopeId(1) || joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != MirTerminatorKind::Return) {
+      entry.terminator.kind() != MirTerminatorKind::SwitchInt) {
+    return false;
+  }
+  // Resolve the diamond CFG: entry SwitchInt -> then/else Goto -> join.
+  const MirBasicBlock* thenBlock = nullptr;
+  const MirBasicBlock* elseBlock = nullptr;
+  const MirBasicBlock* joinBlock = nullptr;
+  if (!resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) return false;
+  if (thenBlock->sourceScope != scopeId(1) || thenBlock->statements.size() != 1 ||
+      elseBlock->sourceScope != scopeId(1) || elseBlock->statements.size() != 1 ||
+      joinBlock->sourceScope != scopeId(1) || joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != MirTerminatorKind::Return) {
     return false;
   }
   // Leading local preamble: StorageLive + Initialize Assign per binding.
@@ -9956,14 +10146,14 @@ bool validTernaryLocalReturnFunction(
   }
   // SwitchInt terminator on the condition.
   const auto& switchTerminator = entry.terminator.switchIntValue();
-  if (switchTerminator.arms.size() != 2 || switchTerminator.defaultTarget != blockId(3)) {
+  if (switchTerminator.arms.size() != 2 || switchTerminator.defaultTarget != elseBlock->id) {
     return false;
   }
   auto trueValue = switchTerminator.arms[0].value.booleanValue();
   auto falseValue = switchTerminator.arms[1].value.booleanValue();
   if (trueValue == zc::none || falseValue == zc::none || !ZC_ASSERT_NONNULL(trueValue) ||
-      ZC_ASSERT_NONNULL(falseValue) || switchTerminator.arms[0].target != blockId(2) ||
-      switchTerminator.arms[1].target != blockId(3)) {
+      ZC_ASSERT_NONNULL(falseValue) || switchTerminator.arms[0].target != thenBlock->id ||
+      switchTerminator.arms[1].target != elseBlock->id) {
     return false;
   }
   // The discriminant is a place-use of the condition temporary, parameter, or
@@ -10032,19 +10222,19 @@ bool validTernaryLocalReturnFunction(
                         semanticTypes) &&
            sameSpan(assignStatement.sourceSpan(), literal.sourceSpan);
   };
-  if (!armBlock(thenBlock, ZC_ASSERT_NONNULL(thenLiteral)) ||
-      !armBlock(elseBlock, ZC_ASSERT_NONNULL(elseLiteral))) {
+  if (!armBlock(*thenBlock, ZC_ASSERT_NONNULL(thenLiteral)) ||
+      !armBlock(*elseBlock, ZC_ASSERT_NONNULL(elseLiteral))) {
     return false;
   }
   // Join block: return the ternary local.
-  ZC_IF_SOME(returnOperand, joinBlock.terminator.returnValue().value) {
+  ZC_IF_SOME(returnOperand, joinBlock->terminator.returnValue().value) {
     if (!matchesPlaceUse(returnOperand, proofs, copy, declaration.resultType) ||
         returnOperand.place().local() !=
             localId(static_cast<uint32_t>(parameterCount + ternaryIndex + 1)) ||
         returnOperand.place().rootType() != declaration.resultType ||
         returnOperand.place().resultType() != declaration.resultType ||
         returnOperand.place().projections().size() != 0 ||
-        !sameSpan(joinBlock.terminator.sourceSpan(), ZC_ASSERT_NONNULL(sourceReturn).sourceSpan)) {
+        !sameSpan(joinBlock->terminator.sourceSpan(), ZC_ASSERT_NONNULL(sourceReturn).sourceSpan)) {
       return false;
     }
     return true;
@@ -10160,7 +10350,7 @@ bool validLocalCallReturnFunction(
   const auto resultLocalId = localId(parameterCount + 1);
   const auto& local = function.locals[parameterCount];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != resultLocalId ||
       local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
@@ -10169,12 +10359,12 @@ bool validLocalCallReturnFunction(
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != local.id ||
       !sameSpan(entry.statements[0].sourceSpan(), sourceLocal.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& terminator = entry.terminator.callValue();
@@ -10184,7 +10374,7 @@ bool validLocalCallReturnFunction(
       terminator.destination.resultType() != local.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   for (size_t index = 0; index < call.arguments.size(); ++index) {
@@ -10212,7 +10402,7 @@ bool validLocalCallReturnFunction(
     }
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, local.type) && value.place().local() == local.id &&
            value.place().rootType() == local.type && value.place().resultType() == local.type &&
            value.place().projections().size() == 0;
@@ -10284,7 +10474,7 @@ bool validReceiverCallReturnFunction(
   const auto& receiverTemporary = function.locals[1];
   const auto& result = function.locals[expectedLocalCount - 1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || local.id != localId(1) ||
       local.kind != MirLocalKind::UserLocal || local.type != sourceLocal.type ||
@@ -10304,12 +10494,12 @@ bool validReceiverCallReturnFunction(
       entry.statements[2].storageLocal() != receiverTemporary.id ||
       !sameSpan(entry.statements[2].sourceSpan(), receiver.sourceSpan) ||
       entry.statements[3].kind() != MirStatementKind::BorrowCreation ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   // With a comparison argument, statements 4 and 5 are the comparison
@@ -10409,7 +10599,7 @@ bool validReceiverCallReturnFunction(
       (sharedCall ? activatedReceiver != zc::none
                   : activatedReceiver == zc::none ||
                         ZC_ASSERT_NONNULL(activatedReceiver) != receiverTemporary.id) ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none ||
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none ||
       !matchesPlaceUse(terminator.arguments[0], proofs, copy, receiverTemporary.type)) {
     return false;
   }
@@ -10458,7 +10648,7 @@ bool validReceiverCallReturnFunction(
       }
     }
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, result.type) &&
            value.place().local() == result.id && value.place().rootType() == result.type &&
            value.place().resultType() == result.type && value.place().projections().size() == 0;
@@ -10531,8 +10721,10 @@ bool validVoidCallThenReceiverCallReturnFunction(
   const auto& getterBorrow = function.locals[3];
   const auto& getterResult = function.locals[4];
   const auto& entry = function.blocks[0];
-  const auto& setterContinuation = function.blocks[1];
-  const auto& getterContinuation = function.blocks[2];
+  // Follow the Call normalTarget edges to find the setter and getter blocks.
+  const auto* setterContinuation = findCallContinuation(function, entry);
+  const auto* getterContinuation =
+      setterContinuation != nullptr ? findCallContinuation(function, *setterContinuation) : nullptr;
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || owner.id != localId(1) ||
       owner.kind != MirLocalKind::UserLocal || owner.type != sourceLocal.type ||
@@ -10565,23 +10757,23 @@ bool validVoidCallThenReceiverCallReturnFunction(
       !sameSpan(entry.statements[4].sourceSpan(), discardedCall.sourceSpan) ||
       entry.terminator.kind() != MirTerminatorKind::Call ||
       !sameSpan(entry.terminator.sourceSpan(), discardedCall.sourceSpan) ||
-      setterContinuation.id != blockId(2) || setterContinuation.sourceScope != scope.id ||
-      setterContinuation.statements.size() != 3 ||
-      setterContinuation.statements[0].kind() != MirStatementKind::StorageLive ||
-      setterContinuation.statements[0].storageLocal() != getterBorrow.id ||
-      !sameSpan(setterContinuation.statements[0].sourceSpan(), getReceiver.sourceSpan) ||
-      setterContinuation.statements[1].kind() != MirStatementKind::BorrowCreation ||
-      !sameSpan(setterContinuation.statements[1].sourceSpan(), getReceiver.sourceSpan) ||
-      setterContinuation.statements[2].kind() != MirStatementKind::StorageLive ||
-      setterContinuation.statements[2].storageLocal() != getterResult.id ||
-      !sameSpan(setterContinuation.statements[2].sourceSpan(), trailingCall.sourceSpan) ||
-      setterContinuation.terminator.kind() != MirTerminatorKind::Call ||
-      !sameSpan(setterContinuation.terminator.sourceSpan(), trailingCall.sourceSpan) ||
-      getterContinuation.id != blockId(3) || getterContinuation.sourceScope != scope.id ||
-      getterContinuation.statements.size() != 0 ||
-      getterContinuation.terminator.kind() != MirTerminatorKind::Return ||
-      getterContinuation.terminator.returnValue().value == zc::none ||
-      !sameSpan(getterContinuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      setterContinuation == nullptr || setterContinuation->sourceScope != scope.id ||
+      setterContinuation->statements.size() != 3 ||
+      setterContinuation->statements[0].kind() != MirStatementKind::StorageLive ||
+      setterContinuation->statements[0].storageLocal() != getterBorrow.id ||
+      !sameSpan(setterContinuation->statements[0].sourceSpan(), getReceiver.sourceSpan) ||
+      setterContinuation->statements[1].kind() != MirStatementKind::BorrowCreation ||
+      !sameSpan(setterContinuation->statements[1].sourceSpan(), getReceiver.sourceSpan) ||
+      setterContinuation->statements[2].kind() != MirStatementKind::StorageLive ||
+      setterContinuation->statements[2].storageLocal() != getterResult.id ||
+      !sameSpan(setterContinuation->statements[2].sourceSpan(), trailingCall.sourceSpan) ||
+      setterContinuation->terminator.kind() != MirTerminatorKind::Call ||
+      !sameSpan(setterContinuation->terminator.sourceSpan(), trailingCall.sourceSpan) ||
+      getterContinuation == nullptr || getterContinuation->sourceScope != scope.id ||
+      getterContinuation->statements.size() != 0 ||
+      getterContinuation->terminator.kind() != MirTerminatorKind::Return ||
+      getterContinuation->terminator.returnValue().value == zc::none ||
+      !sameSpan(getterContinuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& initialization = entry.statements[1].assignmentValue();
@@ -10632,7 +10824,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
        (setterCall.effect.kind() != MirCallEffectKind::ActivateMutableReceiver ||
         setterActivation == zc::none || ZC_ASSERT_NONNULL(setterActivation) != setterBorrow.id)) ||
       (sharedDevirt && setterCall.effect.kind() != MirCallEffectKind::NoActivation) ||
-      setterCall.normalTarget != setterContinuation.id || setterCall.unwindTarget != zc::none ||
+      setterCall.normalTarget != setterContinuation->id || setterCall.unwindTarget != zc::none ||
       !matchesPlaceUse(setterCall.arguments[0], proofs, copy, setterBorrow.type)) {
     return false;
   }
@@ -10654,7 +10846,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
       }
     }
   }
-  const auto& sharedBorrow = setterContinuation.statements[1].borrowCreationValue();
+  const auto& sharedBorrow = setterContinuation->statements[1].borrowCreationValue();
   if (sharedBorrow.kind != MirBorrowKind::Shared ||
       sharedBorrow.destination.local() != getterBorrow.id ||
       sharedBorrow.destination.rootType() != getterBorrow.type ||
@@ -10665,7 +10857,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
       sharedBorrow.source.projections().size() != 0) {
     return false;
   }
-  const auto& getterCall = setterContinuation.terminator.callValue();
+  const auto& getterCall = setterContinuation->terminator.callValue();
   if (getterCall.callee != trailingCall.callee || getterCall.arguments.size() != 1 ||
       getterCall.destination.local() != getterResult.id ||
       getterCall.destination.rootType() != getterResult.type ||
@@ -10673,7 +10865,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
       getterCall.destination.projections().size() != 0 ||
       getterCall.effect.kind() != MirCallEffectKind::NoActivation ||
       getterCall.effect.activatedMutableReceiver() != zc::none ||
-      getterCall.normalTarget != getterContinuation.id || getterCall.unwindTarget != zc::none ||
+      getterCall.normalTarget != getterContinuation->id || getterCall.unwindTarget != zc::none ||
       !matchesPlaceUse(getterCall.arguments[0], proofs, copy, getterBorrow.type)) {
     return false;
   }
@@ -10684,7 +10876,7 @@ bool validVoidCallThenReceiverCallReturnFunction(
       getterReceiverOperand.projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, getterContinuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, getterContinuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, getterResult.type) &&
            value.place().local() == getterResult.id &&
            value.place().rootType() == getterResult.type &&
@@ -10731,7 +10923,7 @@ bool validMethodReceiverSelfCallReturnFunction(const MirFunction& function,
   const auto& receiver = function.locals[0];
   const auto& result = function.locals[1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || receiver.id != localId(1) ||
       receiver.kind != MirLocalKind::Parameter || receiver.type != headerReceiver.type ||
@@ -10743,12 +10935,12 @@ bool validMethodReceiverSelfCallReturnFunction(const MirFunction& function,
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != result.id ||
       !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& terminator = entry.terminator.callValue();
@@ -10759,7 +10951,7 @@ bool validMethodReceiverSelfCallReturnFunction(const MirFunction& function,
       terminator.destination.resultType() != result.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      activatedReceiver != zc::none || terminator.normalTarget != continuation.id ||
+      activatedReceiver != zc::none || terminator.normalTarget != continuation->id ||
       terminator.unwindTarget != zc::none ||
       !matchesPlaceUse(terminator.arguments[0], proofs, copy, receiver.type)) {
     return false;
@@ -10769,7 +10961,7 @@ bool validMethodReceiverSelfCallReturnFunction(const MirFunction& function,
       receiverOperand.resultType() != receiver.type || receiverOperand.projections().size() != 0) {
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, result.type) &&
            value.place().local() == result.id && value.place().rootType() == result.type &&
            value.place().resultType() == result.type && value.place().projections().size() == 0;
@@ -10824,7 +11016,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
   const auto& temporary = function.locals[parameterCount];
   const auto& result = function.locals[parameterCount + 1];
   const auto& entry = function.blocks[0];
-  const auto& continuation = function.blocks[1];
+  const auto* continuation = findCallContinuation(function, entry);
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || temporary.id != temporaryLocalId ||
       temporary.kind != MirLocalKind::Temporary || temporary.type != declaration.resultType ||
@@ -10836,41 +11028,41 @@ bool validDirectCallReturnFunction(const MirFunction& function,
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != temporaryLocalId ||
       !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || continuation.id != blockId(2) ||
-      continuation.sourceScope != scope.id || continuation.statements.size() != 3 ||
-      continuation.statements[0].kind() != MirStatementKind::StorageLive ||
-      continuation.statements[0].storageLocal() != resultLocalId ||
-      !sameSpan(continuation.statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
-      continuation.statements[1].kind() != MirStatementKind::Assign ||
-      continuation.statements[1].assignmentValue().initialization !=
+      entry.terminator.kind() != MirTerminatorKind::Call || continuation == nullptr ||
+      continuation->sourceScope != scope.id || continuation->statements.size() != 3 ||
+      continuation->statements[0].kind() != MirStatementKind::StorageLive ||
+      continuation->statements[0].storageLocal() != resultLocalId ||
+      !sameSpan(continuation->statements[0].sourceSpan(), sourceReturn.sourceSpan) ||
+      continuation->statements[1].kind() != MirStatementKind::Assign ||
+      continuation->statements[1].assignmentValue().initialization !=
           MirInitializationKind::Initialize ||
-      continuation.statements[1].assignmentValue().destination.local() != resultLocalId ||
-      continuation.statements[1].assignmentValue().destination.rootType() != result.type ||
-      continuation.statements[1].assignmentValue().destination.resultType() != result.type ||
-      continuation.statements[1].assignmentValue().destination.projections().size() != 0 ||
-      continuation.statements[1].assignmentValue().value.kind() != MirRvalueKind::Use ||
-      continuation.statements[1].assignmentValue().value.useValue().operand.kind() !=
+      continuation->statements[1].assignmentValue().destination.local() != resultLocalId ||
+      continuation->statements[1].assignmentValue().destination.rootType() != result.type ||
+      continuation->statements[1].assignmentValue().destination.resultType() != result.type ||
+      continuation->statements[1].assignmentValue().destination.projections().size() != 0 ||
+      continuation->statements[1].assignmentValue().value.kind() != MirRvalueKind::Use ||
+      continuation->statements[1].assignmentValue().value.useValue().operand.kind() !=
           MirOperandKind::Move ||
-      continuation.statements[1].assignmentValue().value.useValue().operand.place().local() !=
+      continuation->statements[1].assignmentValue().value.useValue().operand.place().local() !=
           temporaryLocalId ||
-      continuation.statements[1].assignmentValue().value.useValue().operand.place().rootType() !=
+      continuation->statements[1].assignmentValue().value.useValue().operand.place().rootType() !=
           temporary.type ||
-      continuation.statements[1].assignmentValue().value.useValue().operand.place().resultType() !=
+      continuation->statements[1].assignmentValue().value.useValue().operand.place().resultType() !=
           temporary.type ||
-      continuation.statements[1]
+      continuation->statements[1]
               .assignmentValue()
               .value.useValue()
               .operand.place()
               .projections()
               .size() != 0 ||
-      !sameSpan(continuation.statements[1].sourceSpan(), sourceReturn.sourceSpan) ||
-      continuation.statements[2].kind() != MirStatementKind::StorageDead ||
-      continuation.statements[2].storageLocal() != temporaryLocalId ||
-      !sameSpan(continuation.statements[2].sourceSpan(), sourceReturn.sourceSpan) ||
-      continuation.terminator.kind() != MirTerminatorKind::Return ||
-      continuation.terminator.returnValue().value == zc::none ||
+      !sameSpan(continuation->statements[1].sourceSpan(), sourceReturn.sourceSpan) ||
+      continuation->statements[2].kind() != MirStatementKind::StorageDead ||
+      continuation->statements[2].storageLocal() != temporaryLocalId ||
+      !sameSpan(continuation->statements[2].sourceSpan(), sourceReturn.sourceSpan) ||
+      continuation->terminator.kind() != MirTerminatorKind::Return ||
+      continuation->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(continuation.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(continuation->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& terminator = entry.terminator.callValue();
@@ -10880,7 +11072,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
       terminator.destination.resultType() != temporary.type ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != continuation.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != continuation->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   for (size_t index = 0; index < call.arguments.size(); ++index) {
@@ -10908,7 +11100,7 @@ bool validDirectCallReturnFunction(const MirFunction& function,
     }
     return false;
   }
-  ZC_IF_SOME(value, continuation.terminator.returnValue().value) {
+  ZC_IF_SOME(value, continuation->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, result.type) &&
            value.place().local() == resultLocalId && value.place().rootType() == result.type &&
            value.place().resultType() == result.type && value.place().projections().size() == 0;
@@ -10974,9 +11166,18 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
   const auto& boolTemp = function.locals[parameterCount + 2];
   const auto& result = function.locals[parameterCount + 3];
   const auto& entry = function.blocks[0];
-  const auto& test = function.blocks[1];
-  const auto& trap = function.blocks[2];
-  const auto& success = function.blocks[3];
+  // Follow the Call normalTarget to find the test block, then follow the
+  // SwitchInt arms to find trap (falseArm) and success (trueArm).
+  const auto* test = findCallContinuation(function, entry);
+  const MirBasicBlock* trap = nullptr;
+  const MirBasicBlock* success = nullptr;
+  if (test != nullptr && test->terminator.kind() == MirTerminatorKind::SwitchInt) {
+    const auto& sw = test->terminator.switchIntValue();
+    if (sw.arms.size() == 2) {
+      success = findBlockById(function, sw.arms[0].target);
+      trap = findBlockById(function, sw.arms[1].target);
+    }
+  }
   if (scope.id != scopeId(1) || scope.parent != zc::none ||
       !sameSpan(scope.sourceSpan, declaration.sourceSpan) || temporary.id != temporaryLocalId ||
       temporary.kind != MirLocalKind::Temporary || temporary.type != call.resultType ||
@@ -10993,86 +11194,90 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
       entry.statements[0].kind() != MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != temporaryLocalId ||
       !sameSpan(entry.statements[0].sourceSpan(), call.sourceSpan) ||
-      entry.terminator.kind() != MirTerminatorKind::Call || test.id != blockId(2) ||
-      test.sourceScope != scope.id || test.statements.size() != 4 ||
-      test.statements[0].kind() != MirStatementKind::StorageLive ||
-      test.statements[0].storageLocal() != tagTempLocalId ||
-      test.statements[1].kind() != MirStatementKind::Assign ||
-      test.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
-      test.statements[1].assignmentValue().destination.local() != tagTempLocalId ||
-      test.statements[1].assignmentValue().destination.rootType() != tagType ||
-      test.statements[1].assignmentValue().destination.resultType() != tagType ||
-      test.statements[1].assignmentValue().destination.projections().size() != 0 ||
-      test.statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
-      test.statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 0 ||
-      test.statements[1].assignmentValue().value.extractFieldValue().resultType != tagType ||
-      test.statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
+      entry.terminator.kind() != MirTerminatorKind::Call || test == nullptr ||
+      test->sourceScope != scope.id || test->statements.size() != 4 ||
+      test->statements[0].kind() != MirStatementKind::StorageLive ||
+      test->statements[0].storageLocal() != tagTempLocalId ||
+      test->statements[1].kind() != MirStatementKind::Assign ||
+      test->statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      test->statements[1].assignmentValue().destination.local() != tagTempLocalId ||
+      test->statements[1].assignmentValue().destination.rootType() != tagType ||
+      test->statements[1].assignmentValue().destination.resultType() != tagType ||
+      test->statements[1].assignmentValue().destination.projections().size() != 0 ||
+      test->statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
+      test->statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 0 ||
+      test->statements[1].assignmentValue().value.extractFieldValue().resultType != tagType ||
+      test->statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
           MirOperandKind::Move ||
-      test.statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
+      test->statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
           temporaryLocalId ||
-      test.statements[1].assignmentValue().value.extractFieldValue().source.place().rootType() !=
+      test->statements[1].assignmentValue().value.extractFieldValue().source.place().rootType() !=
           call.resultType ||
-      test.statements[1].assignmentValue().value.extractFieldValue().source.place().resultType() !=
+      test->statements[1].assignmentValue().value.extractFieldValue().source.place().resultType() !=
           call.resultType ||
-      test.statements[1]
+      test->statements[1]
               .assignmentValue()
               .value.extractFieldValue()
               .source.place()
               .projections()
               .size() != 0 ||
-      test.statements[2].kind() != MirStatementKind::StorageLive ||
-      test.statements[2].storageLocal() != boolTempLocalId ||
-      test.statements[3].kind() != MirStatementKind::Assign ||
-      test.statements[3].assignmentValue().initialization != MirInitializationKind::Initialize ||
-      test.statements[3].assignmentValue().destination.local() != boolTempLocalId ||
-      test.statements[3].assignmentValue().destination.rootType() != boolType ||
-      test.statements[3].assignmentValue().destination.resultType() != boolType ||
-      test.statements[3].assignmentValue().destination.projections().size() != 0 ||
-      test.statements[3].assignmentValue().value.kind() != MirRvalueKind::Comparison ||
-      test.statements[3].assignmentValue().value.comparisonValue().op !=
+      test->statements[2].kind() != MirStatementKind::StorageLive ||
+      test->statements[2].storageLocal() != boolTempLocalId ||
+      test->statements[3].kind() != MirStatementKind::Assign ||
+      test->statements[3].assignmentValue().initialization != MirInitializationKind::Initialize ||
+      test->statements[3].assignmentValue().destination.local() != boolTempLocalId ||
+      test->statements[3].assignmentValue().destination.rootType() != boolType ||
+      test->statements[3].assignmentValue().destination.resultType() != boolType ||
+      test->statements[3].assignmentValue().destination.projections().size() != 0 ||
+      test->statements[3].assignmentValue().value.kind() != MirRvalueKind::Comparison ||
+      test->statements[3].assignmentValue().value.comparisonValue().op !=
           MirComparisonOperator::Eq ||
-      test.statements[3].assignmentValue().value.comparisonValue().resultType != boolType ||
-      test.terminator.kind() != MirTerminatorKind::SwitchInt || trap.id != blockId(3) ||
-      trap.sourceScope != scope.id || trap.statements.size() != 0 ||
-      trap.terminator.kind() != MirTerminatorKind::Unreachable || success.id != blockId(4) ||
-      success.sourceScope != scope.id || success.statements.size() != 3 ||
-      success.statements[0].kind() != MirStatementKind::StorageLive ||
-      success.statements[0].storageLocal() != resultLocalId ||
-      success.statements[1].kind() != MirStatementKind::Assign ||
-      success.statements[1].assignmentValue().initialization != MirInitializationKind::Initialize ||
-      success.statements[1].assignmentValue().destination.local() != resultLocalId ||
-      success.statements[1].assignmentValue().destination.rootType() != result.type ||
-      success.statements[1].assignmentValue().destination.resultType() != result.type ||
-      success.statements[1].assignmentValue().destination.projections().size() != 0 ||
-      success.statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
-      success.statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 1 ||
-      success.statements[1].assignmentValue().value.extractFieldValue().resultType !=
+      test->statements[3].assignmentValue().value.comparisonValue().resultType != boolType ||
+      test->terminator.kind() != MirTerminatorKind::SwitchInt || trap == nullptr ||
+      trap->sourceScope != scope.id || trap->statements.size() != 0 ||
+      trap->terminator.kind() != MirTerminatorKind::Unreachable || success == nullptr ||
+      success->sourceScope != scope.id || success->statements.size() != 3 ||
+      success->statements[0].kind() != MirStatementKind::StorageLive ||
+      success->statements[0].storageLocal() != resultLocalId ||
+      success->statements[1].kind() != MirStatementKind::Assign ||
+      success->statements[1].assignmentValue().initialization !=
+          MirInitializationKind::Initialize ||
+      success->statements[1].assignmentValue().destination.local() != resultLocalId ||
+      success->statements[1].assignmentValue().destination.rootType() != result.type ||
+      success->statements[1].assignmentValue().destination.resultType() != result.type ||
+      success->statements[1].assignmentValue().destination.projections().size() != 0 ||
+      success->statements[1].assignmentValue().value.kind() != MirRvalueKind::ExtractField ||
+      success->statements[1].assignmentValue().value.extractFieldValue().fieldIndex != 1 ||
+      success->statements[1].assignmentValue().value.extractFieldValue().resultType !=
           declaration.resultType ||
-      success.statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
+      success->statements[1].assignmentValue().value.extractFieldValue().source.kind() !=
           MirOperandKind::Move ||
-      success.statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
+      success->statements[1].assignmentValue().value.extractFieldValue().source.place().local() !=
           temporaryLocalId ||
-      success.statements[1].assignmentValue().value.extractFieldValue().source.place().rootType() !=
-          call.resultType ||
-      success.statements[1]
+      success->statements[1]
+              .assignmentValue()
+              .value.extractFieldValue()
+              .source.place()
+              .rootType() != call.resultType ||
+      success->statements[1]
               .assignmentValue()
               .value.extractFieldValue()
               .source.place()
               .resultType() != call.resultType ||
-      success.statements[1]
+      success->statements[1]
               .assignmentValue()
               .value.extractFieldValue()
               .source.place()
               .projections()
               .size() != 0 ||
-      success.statements[2].kind() != MirStatementKind::StorageDead ||
-      success.statements[2].storageLocal() != temporaryLocalId ||
-      success.terminator.kind() != MirTerminatorKind::Return ||
-      success.terminator.returnValue().value == zc::none ||
+      success->statements[2].kind() != MirStatementKind::StorageDead ||
+      success->statements[2].storageLocal() != temporaryLocalId ||
+      success->terminator.kind() != MirTerminatorKind::Return ||
+      success->terminator.returnValue().value == zc::none ||
       !sameSpan(entry.terminator.sourceSpan(), call.sourceSpan) ||
-      !sameSpan(test.terminator.sourceSpan(), sourceReturn.sourceSpan) ||
-      !sameSpan(trap.terminator.sourceSpan(), sourceReturn.sourceSpan) ||
-      !sameSpan(success.terminator.sourceSpan(), sourceReturn.sourceSpan)) {
+      !sameSpan(test->terminator.sourceSpan(), sourceReturn.sourceSpan) ||
+      !sameSpan(trap->terminator.sourceSpan(), sourceReturn.sourceSpan) ||
+      !sameSpan(success->terminator.sourceSpan(), sourceReturn.sourceSpan)) {
     return false;
   }
   const auto& terminator = entry.terminator.callValue();
@@ -11082,7 +11287,7 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
       terminator.destination.resultType() != call.resultType ||
       terminator.destination.projections().size() != 0 ||
       terminator.effect.kind() != MirCallEffectKind::NoActivation ||
-      terminator.normalTarget != test.id || terminator.unwindTarget != zc::none) {
+      terminator.normalTarget != test->id || terminator.unwindTarget != zc::none) {
     return false;
   }
   for (size_t index = 0; index < call.arguments.size(); ++index) {
@@ -11110,8 +11315,8 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
     }
     return false;
   }
-  const auto& switchInt = test.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != trap.id ||
+  const auto& switchInt = test->terminator.switchIntValue();
+  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != trap->id ||
       switchInt.discriminant.kind() != MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != boolTempLocalId ||
       switchInt.discriminant.place().rootType() != boolType ||
@@ -11121,7 +11326,7 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
   }
   const auto& trueArm = switchInt.arms[0];
   const auto& falseArm = switchInt.arms[1];
-  if (trueArm.target != success.id || falseArm.target != trap.id ||
+  if (trueArm.target != success->id || falseArm.target != trap->id ||
       trueArm.value.tag() != checker::signature::CanonicalConstValueTag::Bool ||
       falseArm.value.tag() != checker::signature::CanonicalConstValueTag::Bool) {
     return false;
@@ -11132,7 +11337,7 @@ bool validErrorUnwrapReturnFunction(const MirFunction& function,
       ZC_ASSERT_NONNULL(falseValue)) {
     return false;
   }
-  ZC_IF_SOME(value, success.terminator.returnValue().value) {
+  ZC_IF_SOME(value, success->terminator.returnValue().value) {
     return matchesPlaceUse(value, proofs, copy, result.type) &&
            value.place().local() == resultLocalId && value.place().rootType() == result.type &&
            value.place().resultType() == result.type && value.place().projections().size() == 0;
