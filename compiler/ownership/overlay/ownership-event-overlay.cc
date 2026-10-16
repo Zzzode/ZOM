@@ -1936,16 +1936,15 @@ bool terminatorHasRawPointerDereference(const mir::MirTerminator& terminator,
 /// \brief Appends one unsafe occurrence for a raw-pointer dereference at the
 /// given event, with acknowledgement set to the dominating unsafe-enter event
 /// (or none when the dereference is outside every unsafe scope).
-void appendUnsafeOccurrence(zc::Vector<MirUnsafeOccurrence>& occurrences,
-                            const MirEventKey& event,
+void appendUnsafeOccurrence(zc::Vector<MirUnsafeOccurrence>& occurrences, const MirEventKey& event,
                             const zc::Vector<MirEventKey>& unsafeEnterStack,
                             const identity::SourceSpan& sourceSpan) {
   zc::Maybe<MirEventKey> acknowledgement = zc::none;
   if (!unsafeEnterStack.empty()) { acknowledgement = unsafeEnterStack.back(); }
-  occurrences.add(MirUnsafeOccurrence{
-      UnsafeBoundaryKey{event, 0}, checker::checked::UnsafeOperation::RawDereference,
-      checker::checked::UnsafeRequirement::RawPointerBoundary, zc::mv(acknowledgement),
-      sourceSpan.clone()});
+  occurrences.add(MirUnsafeOccurrence{UnsafeBoundaryKey{event, 0},
+                                      checker::checked::UnsafeOperation::RawDereference,
+                                      checker::checked::UnsafeRequirement::RawPointerBoundary,
+                                      zc::mv(acknowledgement), sourceSpan.clone()});
 }
 
 zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
@@ -2353,10 +2352,10 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(FunctionEventOverlay{
-          function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
-          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
-          zc::mv(castResourcePlans)});
+      functions.add(FunctionEventOverlay{function.owner, zc::mv(slots), zc::mv(value),
+                                         zc::mv(deferredActivations), zc::mv(markerUses),
+                                         zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
+                                         zc::mv(castResourcePlans)});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
@@ -2767,10 +2766,10 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
     auto sourceMap = projectSourceMap(function, slots);
     if (sourceMap == zc::none) return zc::none;
     ZC_IF_SOME(value, sourceMap) {
-      functions.add(FunctionEventOverlay{
-          function.owner, zc::mv(slots), zc::mv(value), zc::mv(deferredActivations),
-          zc::mv(markerUses), zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
-          zc::mv(castResourcePlans)});
+      functions.add(FunctionEventOverlay{function.owner, zc::mv(slots), zc::mv(value),
+                                         zc::mv(deferredActivations), zc::mv(markerUses),
+                                         zc::mv(logicalDropPlans), zc::mv(unsafeOccurrences),
+                                         zc::mv(castResourcePlans)});
     }
   }
   if (!sortFunctions(functions, identities)) return zc::none;
