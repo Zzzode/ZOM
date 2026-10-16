@@ -9467,6 +9467,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         const ast::NodeId source(syntax.payload.words[ast::kUnaryExpressionOperandWord]);
         auto sourceType = referenceSourceType(input, source, nodeTypes.asPtr());
         if (sourceType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
