@@ -45,6 +45,12 @@ public:
   /// \brief Opens the next dense append-only basic block on the given scope.
   MirBlockId beginBlock(MirSourceScopeId scope);
 
+  /// \brief Returns the block id that beginBlock() will return after
+  /// `offset` more beginBlock() calls, without allocating anything.
+  /// Used to set terminator targets that point forward to blocks not yet
+  /// opened, replacing hardcoded blockId(N) literals.
+  MirBlockId peekBlockIdAt(uint32_t offset) const;
+
   /// \brief Appends one statement to the current open, unterminated block.
   void appendStatement(MirStatement statement);
 

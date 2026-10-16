@@ -52,6 +52,12 @@ MirBlockId MirFnCtx::beginBlock(MirSourceScopeId scope) {
   ZC_UNREACHABLE
 }
 
+MirBlockId MirFnCtx::peekBlockIdAt(uint32_t offset) const {
+  const auto id = MirBlockId::fromOrdinal(nextBlock + offset);
+  ZC_IF_SOME(value, id) { return value; }
+  ZC_UNREACHABLE
+}
+
 void MirFnCtx::appendStatement(MirStatement statement) {
   ZC_IREQUIRE(!blocks.empty(), "MIR statement requires an open block");
   ZC_IREQUIRE(blocks.back().terminator == zc::none, "MIR statement appended after terminator");

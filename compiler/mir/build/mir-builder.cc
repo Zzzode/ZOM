@@ -546,13 +546,16 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringCon
                                                zc::mv(projections), local.type));
             }
             if (discriminant == zc::none) return zc::none;
+            const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+            const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+            const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
             zc::Vector<MirSwitchIntArm> arms;
             arms.add(
-                MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
+                MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
             arms.add(
-                MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+                MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
             ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                        zc::mv(arms), blockId(3),
+                                                        zc::mv(arms), elseBlock,
                                                         cond.sourceSpan.clone()));
             // Arm blocks: assign the branch literal then goto the join.
             const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
@@ -563,7 +566,7 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringCon
                            declaration.resultType),
                   MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
                   MirInitializationKind::Initialize, literal.sourceSpan.clone()));
-              ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+              ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, literal.sourceSpan.clone()));
             };
             armBlock(ZC_ASSERT_NONNULL(thenLiteral));
             armBlock(ZC_ASSERT_NONNULL(elseLiteral));
@@ -2333,7 +2336,7 @@ zc::Maybe<RecursiveFunctionProduct> buildDynFieldAccessReturn(
       ZC_ASSERT_NONNULL(call.interface), call.callee, zc::mv(ZC_ASSERT_NONNULL(receiverOperand)),
       zc::mv(arguments), MirCallEffect::noActivation(),
       MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
-      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone()));
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone()));
 
   // Block 2: return the result temporary.
   (void)ctx.beginBlock(scope);
@@ -2429,7 +2432,7 @@ zc::Maybe<RecursiveFunctionProduct> buildByValueAggregateCallReturn(const Loweri
       MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
                           MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
                                    sourceCall.resultType),
-                          blockId(2), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+                          ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
 
   // Block 2: return the result temporary.
   (void)ctx.beginBlock(scope);
@@ -2546,7 +2549,7 @@ zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(const Lowerin
       MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
                           MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
                                    sourceCall.resultType),
-                          blockId(2), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+                          ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
 
   // Block 2: return the result temporary.
   (void)ctx.beginBlock(scope);
@@ -2636,7 +2639,7 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(const LoweringCon
       MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
                           MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
                                    sourceCall.resultType),
-                          blockId(2), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+                          ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
 
   // Block 2: return the result temporary.
   (void)ctx.beginBlock(scope);
@@ -2717,8 +2720,8 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(const Lower
   zc::Vector<MirProjection> initResultProjections;
   ctx.terminateBlock(MirTerminator::call(
       sourceInitCall.callee, zc::mv(initArguments), MirCallEffect::noActivation(),
-      MirPlace(userLocal, binding.type, zc::mv(initResultProjections), binding.type), blockId(2),
-      zc::mv(noUnwind), sourceInitCall.sourceSpan.clone()));
+      MirPlace(userLocal, binding.type, zc::mv(initResultProjections), binding.type),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceInitCall.sourceSpan.clone()));
 
   // Block 2: copy the existential as the call argument, call the return
   // function into the result temporary, and continue to block 3.
@@ -2733,11 +2736,11 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(const Lower
   arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
   zc::Maybe<MirBlockId> noUnwindReturn;
   zc::Vector<MirProjection> resultProjections;
-  ctx.terminateBlock(
-      MirTerminator::call(sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
-                          MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
-                                   sourceCall.resultType),
-                          blockId(3), zc::mv(noUnwindReturn), sourceCall.sourceSpan.clone()));
+  ctx.terminateBlock(MirTerminator::call(
+      sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(resultLocal, sourceCall.resultType, zc::mv(resultProjections),
+               sourceCall.resultType),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwindReturn), sourceCall.sourceSpan.clone()));
 
   // Block 3: return the result temporary.
   (void)ctx.beginBlock(scope);
@@ -3011,13 +3014,13 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   }
   zc::Maybe<MirBlockId> noUnwindSet;
   zc::Vector<MirProjection> unitDestProjections;
-  ctx.terminateBlock(
-      MirTerminator::call(discardedCall.callee, zc::mv(setArguments),
-                          sharedDevirt ? MirCallEffect::noActivation()
-                                       : MirCallEffect::activateMutableReceiver(borrowMutable),
-                          MirPlace(unitTemp, discardedCall.resultType, zc::mv(unitDestProjections),
-                                   discardedCall.resultType),
-                          blockId(2), zc::mv(noUnwindSet), discardedCall.sourceSpan.clone()));
+  ctx.terminateBlock(MirTerminator::call(
+      discardedCall.callee, zc::mv(setArguments),
+      sharedDevirt ? MirCallEffect::noActivation()
+                   : MirCallEffect::activateMutableReceiver(borrowMutable),
+      MirPlace(unitTemp, discardedCall.resultType, zc::mv(unitDestProjections),
+               discardedCall.resultType),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwindSet), discardedCall.sourceSpan.clone()));
 
   // Block 2: a distinct shared borrow of the same owner, then the getter call.
   (void)ctx.beginBlock(scope);
@@ -3041,11 +3044,11 @@ zc::Maybe<RecursiveFunctionProduct> buildVoidCallThenReceiverCallReturn(
   getArguments.add(zc::mv(ZC_ASSERT_NONNULL(getReceiverArgument)));
   zc::Maybe<MirBlockId> noUnwindGet;
   zc::Vector<MirProjection> getResultProjections;
-  ctx.terminateBlock(
-      MirTerminator::call(trailingCall.callee, zc::mv(getArguments), MirCallEffect::noActivation(),
-                          MirPlace(getResult, trailingCall.resultType, zc::mv(getResultProjections),
-                                   trailingCall.resultType),
-                          blockId(3), zc::mv(noUnwindGet), trailingCall.sourceSpan.clone()));
+  ctx.terminateBlock(MirTerminator::call(
+      trailingCall.callee, zc::mv(getArguments), MirCallEffect::noActivation(),
+      MirPlace(getResult, trailingCall.resultType, zc::mv(getResultProjections),
+               trailingCall.resultType),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwindGet), trailingCall.sourceSpan.clone()));
 
   // Block 3: return the getter result.
   (void)ctx.beginBlock(scope);
@@ -3142,11 +3145,14 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
   // default 3.
   (void)ctx.beginBlock(scope);
   ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+  const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+  const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
   zc::Vector<MirSwitchIntArm> arms;
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
   ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                              blockId(3), conditional.sourceSpan.clone()));
+                                              elseBlock, conditional.sourceSpan.clone()));
   // Blocks 2 and 3: Initialize Assign of the arm constant then Goto block 4.
   const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
     (void)ctx.beginBlock(scope);
@@ -3155,7 +3161,7 @@ zc::Maybe<RecursiveFunctionProduct> buildMethodConditionalReturn(
         MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
         MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
         MirInitializationKind::Initialize, literal.sourceSpan.clone()));
-    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, literal.sourceSpan.clone()));
   };
   armBlock(ZC_ASSERT_NONNULL(thenLiteral));
   armBlock(ZC_ASSERT_NONNULL(elseLiteral));
@@ -3219,7 +3225,7 @@ zc::Maybe<RecursiveFunctionProduct> buildReceiverSelfCallReturn(
   auto callTerminator = MirTerminator::call(
       call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
       MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
-      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone());
   ctx.terminateBlock(zc::mv(callTerminator));
 
   // Block 2: return the result temporary.
@@ -3310,7 +3316,7 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReceiverCallReturn(
       ZC_ASSERT_NONNULL(call.interface), call.callee, zc::mv(ZC_ASSERT_NONNULL(receiverOperand)),
       zc::mv(arguments), MirCallEffect::noActivation(),
       MirPlace(resultLocal, call.resultType, zc::mv(resultProjections), call.resultType),
-      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone());
   ctx.terminateBlock(zc::mv(callTerminator));
 
   // Block 2: return the result temporary.
@@ -3629,11 +3635,14 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
       proofs, copyMarker,
       MirPlace(conditionTemp, conditionType(), zc::mv(discriminantProjections), conditionType()));
   if (discriminant == zc::none) return zc::none;
+  const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+  const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+  const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
   zc::Vector<MirSwitchIntArm> arms;
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
   ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                              blockId(3), conditionalValue.sourceSpan.clone()));
+                                              elseBlock, conditionalValue.sourceSpan.clone()));
   // Resolve one arm to its MIR rvalue and source span. A literal arm lowers to
   // a constant use; a parameter arm lowers to a place-use of the parameter
   // local; a local arm lowers to a place-use of the leading user local; a
@@ -3732,7 +3741,7 @@ zc::Maybe<RecursiveFunctionProduct> buildLeadingLocalConditionalReturn(
     ctx.appendStatement(MirStatement::assign(
         MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
         zc::mv(rvalue), MirInitializationKind::Initialize, span.clone()));
-    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), span.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, span.clone()));
   };
   armBlock(zc::mv(ZC_ASSERT_NONNULL(thenRvalue)), armSpan(ZC_ASSERT_NONNULL(thenArm)));
   armBlock(zc::mv(ZC_ASSERT_NONNULL(elseRvalue)), armSpan(ZC_ASSERT_NONNULL(elseArm)));
@@ -4109,11 +4118,14 @@ zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(const Lowe
                                MirPlace(conjTemp, conjunctionValue.type,
                                         zc::mv(discriminantProjections), conjunctionValue.type));
   if (discriminant == zc::none) return zc::none;
+  const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+  const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+  const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
   zc::Vector<MirSwitchIntArm> arms;
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(2)});
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(3)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
   ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                              blockId(3), conditionalValue.sourceSpan.clone()));
+                                              elseBlock, conditionalValue.sourceSpan.clone()));
 
   // Blocks 2 and 3: Initialize Assign of the arm constant then Goto block 4.
   const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
@@ -4123,7 +4135,7 @@ zc::Maybe<RecursiveFunctionProduct> buildConjunctiveConditionalReturn(const Lowe
         MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
         MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
         MirInitializationKind::Initialize, literal.sourceSpan.clone()));
-    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(4), literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, literal.sourceSpan.clone()));
   };
   armBlock(ZC_ASSERT_NONNULL(thenLiteral));
   armBlock(ZC_ASSERT_NONNULL(elseLiteral));
@@ -4238,7 +4250,7 @@ zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(const LoweringCon
   ctx.terminateBlock(MirTerminator::call(
       call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
       MirPlace(callResultLocal, call.resultType, zc::mv(callResultProjections), call.resultType),
-      blockId(2), zc::mv(noUnwind), call.sourceSpan.clone()));
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone()));
 
   // Block 2: SwitchInt(callResult) { true -> 3, false -> 4 }, default 4.
   (void)ctx.beginBlock(scope);
@@ -4247,11 +4259,14 @@ zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(const LoweringCon
       proofs, copyMarker,
       MirPlace(callResultLocal, call.resultType, zc::mv(discriminantProjections), call.resultType));
   if (discriminant == zc::none) return zc::none;
+  const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+  const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+  const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
   zc::Vector<MirSwitchIntArm> arms;
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), blockId(3)});
-  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), blockId(4)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
   ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                              blockId(4), conditionalValue.sourceSpan.clone()));
+                                              elseBlock, conditionalValue.sourceSpan.clone()));
 
   // Blocks 3 and 4: Initialize Assign of the arm constant then Goto block 5.
   const auto armBlock = [&](const hir::HirScalarLiteralExpression& literal) {
@@ -4261,7 +4276,7 @@ zc::Maybe<RecursiveFunctionProduct> buildCallConditionalReturn(const LoweringCon
         MirPlace(resultLocal, declaration.resultType, zc::mv(projections), declaration.resultType),
         MirRvalue::use(MirOperand::constant(literal.type, literal.value.clone())),
         MirInitializationKind::Initialize, literal.sourceSpan.clone()));
-    ctx.terminateBlock(MirTerminator::gotoTarget(blockId(5), literal.sourceSpan.clone()));
+    ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, literal.sourceSpan.clone()));
   };
   armBlock(ZC_ASSERT_NONNULL(thenLiteral));
   armBlock(ZC_ASSERT_NONNULL(elseLiteral));
