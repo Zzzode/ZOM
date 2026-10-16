@@ -817,10 +817,6 @@ struct ParameterReferenceReturn {
   HirParameterReferenceExpression parameterReference;
 };
 
-struct ParameterIndexReturn {
-  HirParameterIndexExpression parameterIndex;
-};
-
 struct ParameterReborrowReturn {
   HirParameterReborrowExpression parameterReborrow;
 };
@@ -1038,9 +1034,9 @@ using PendingFunctionShape =
     zc::OneOf<EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
               VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
               ArrayLengthFoldReturn, LocalReturn, LocalWriteReturn, LocalFieldProjectionReturn,
-              LocalBorrowReturn, ParameterReferenceReturn, ParameterIndexReturn,
-              ParameterReborrowReturn, LocalAliasReborrowReturn, RawDereferenceReturn,
-              RawPointerWriteReturn, AggregateReturn, EnumConstructionReturn, ExistentialReturn,
+              LocalBorrowReturn, ParameterReferenceReturn, ParameterReborrowReturn,
+              LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn,
+              AggregateReturn, EnumConstructionReturn, ExistentialReturn,
               AggregateFieldProjectionReturn, DirectScalarLocalCallReturn,
               DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
               ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
