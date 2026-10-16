@@ -394,6 +394,38 @@ it is marked complete by this record. Adding any of these constructs later
 is a new staged vertical slice that publishes its facts first and then
 receives a recursive arm through this same family loop.
 
+### 2026-10-17 Phase 1 - SHAPE-category drain coverage (14 sites)
+
+Five commits on `develop` advance the Phase 1 SHAPE-category migration by
+replacing `rejectInvariant` (ICE) with `drainUnsupportedBodyConstruct`
+(ZOM4099/ZOM4125 capability rejection) at 14 sites across the body checker
+production loop and pre-pass literal loops:
+
+- `14638196` - DirectCall (generic callee, receiver placement, ABI
+  restriction, higher-order callee), IntegerCast (missing source/target
+  type), LocalWrite (non-owner-local target), OwnerLocalFieldWrite
+  (missing type/place facts), RawPointerWrite (non-parameter pointer
+  operand).
+- `ec1b495e` - Struct/Array/Tuple literal pre-pass loops
+  (`buildStructLiteral`/`buildArrayLiteral`/`buildTupleLiteral` returning
+  none for unsupported element shapes).
+- `7fc7efc9` - ReferenceDereference (unresolved source type).
+- `7c80ad03` - EnumVariantValue and EnumVariantConstruction (unsupported
+  variant form).
+- `0834e31b` - Struct/Array/Tuple literal main-loop production paths
+  (mirrors the pre-pass drain coverage).
+
+Each drain tries method capability (ZOM4125) first, then function body
+construct (ZOM4099), falling through to `rejectInvariant` only when the
+site is outside any method or function body. The conformance diagnostics
+lit suite passes unchanged; the full corpus IR parity check is the
+remaining verification gate.
+
+The Phase 1 TYPE-category migration (genuine user correctness errors
+currently routed as invariants) and the full fact-production move remain
+deferred per the coupling constraint: facts for a shape the recursive
+HIR builder cannot yet consume would create intermediate ICEs.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
