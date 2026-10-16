@@ -8735,6 +8735,13 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               }
             }
           }
+          // A well-typed binary whose shape the lowering slice cannot emit
+          // (e.g. an arithmetic operation in a condition position) is a
+          // capability gap, not an invariant. Drain it as ZOM4099/ZOM4125
+          // rather than a missing-fact invariant.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
