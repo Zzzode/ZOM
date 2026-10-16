@@ -10595,6 +10595,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                          .payload.words[ast::kExpressionStatementExpressionWord]);
     auto tailType = factEntry(nodeTypes.asPtr(), tailExpression);
     if (tailType == zc::none) {
+      // An unsafe block tail whose expression type is produced by a later
+      // production stage is legal source the body slice cannot lower yet.
+      // Drain it as ZOM4099/ZOM4125 rather than a missing-fact invariant.
+      ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+        return zc::mv(drained);
+      }
       return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                              site.key.schemaPreorder, zc::none, site.node,
                              site.key.sourceSpan.clone(), factPath(site.primaryGroup));
