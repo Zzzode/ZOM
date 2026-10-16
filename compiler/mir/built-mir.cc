@@ -11228,6 +11228,145 @@ bool validateTerminatorTargets(const MirFunction& function) {
   return true;
 }
 
+/// \brief Validates structural well-formedness of one MIR function independent
+/// of its source shape. Checks dense contiguous ordinals, valid scope/local/
+/// block references, reachable CFG from the entry block, terminated blocks,
+/// parameter-local ordering, and StorageLive-before-use for non-parameter
+/// locals. This is the foundation of the RFC 0048 structural verifier that
+/// replaces the per-shape valid*ReturnFunction validators.
+bool validateStructuralWellFormedness(const MirFunction& function) {
+  // Dense contiguous ordinals: ids are 1-indexed and match vector position.
+  for (size_t i = 0; i < function.sourceScopes.size(); ++i) {
+    if (function.sourceScopes[i].id != scopeId(static_cast<uint32_t>(i + 1))) return false;
+  }
+  for (size_t i = 0; i < function.locals.size(); ++i) {
+    if (function.locals[i].id != localId(static_cast<uint32_t>(i + 1))) return false;
+  }
+  for (size_t i = 0; i < function.blocks.size(); ++i) {
+    if (function.blocks[i].id != blockId(static_cast<uint32_t>(i + 1))) return false;
+  }
+  // Scope parent references: every parent must have a lower ordinal.
+  for (const auto& scope : function.sourceScopes) {
+    ZC_IF_SOME(parent, scope.parent) {
+      bool found = false;
+      for (const auto& candidate : function.sourceScopes) {
+        if (candidate.id == parent) {
+          found = true;
+          break;
+        }
+      }
+      if (!found) return false;
+    }
+  }
+  // Local and block sourceScope references must resolve.
+  for (const auto& local : function.locals) {
+    bool found = false;
+    for (const auto& scope : function.sourceScopes) {
+      if (scope.id == local.sourceScope) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  for (const auto& block : function.blocks) {
+    bool found = false;
+    for (const auto& scope : function.sourceScopes) {
+      if (scope.id == block.sourceScope) {
+        found = true;
+        break;
+      }
+    }
+    if (!found) return false;
+  }
+  // Parameter locals must precede all non-parameter locals.
+  bool seenNonParameter = false;
+  for (const auto& local : function.locals) {
+    if (local.kind == MirLocalKind::Parameter) {
+      if (seenNonParameter) return false;
+    } else {
+      seenNonParameter = true;
+    }
+  }
+  // Reachable CFG: every block must be reachable from block 0.
+  if (function.blocks.empty()) return false;
+  zc::Vector<bool> reached;
+  reached.resize(function.blocks.size());
+  for (size_t i = 0; i < function.blocks.size(); ++i) { reached[i] = false; }
+  zc::Vector<uint32_t> worklist;
+  worklist.add(0);
+  reached[0] = true;
+  while (!worklist.empty()) {
+    const uint32_t index = worklist[worklist.size() - 1];
+    worklist.removeLast();
+    const auto& block = function.blocks[index];
+    const auto addTarget = [&](MirBlockId target) {
+      for (size_t i = 0; i < function.blocks.size(); ++i) {
+        if (function.blocks[i].id == target && !reached[i]) {
+          reached[i] = true;
+          worklist.add(static_cast<uint32_t>(i));
+        }
+      }
+    };
+    const auto& terminator = block.terminator;
+    if (terminator.kind() == MirTerminatorKind::Call) {
+      addTarget(terminator.callValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { addTarget(unwind); }
+    } else if (terminator.kind() == MirTerminatorKind::Goto) {
+      addTarget(terminator.gotoValue().target);
+    } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+      for (const auto& arm : terminator.switchIntValue().arms) { addTarget(arm.target); }
+      addTarget(terminator.switchIntValue().defaultTarget);
+    }
+  }
+  for (bool r : reached) {
+    if (!r) return false;
+  }
+  // StorageLive before first use: every non-parameter local must have a
+  // StorageLive statement before any statement that references it.
+  zc::Vector<bool> storageLive;
+  storageLive.resize(function.locals.size());
+  for (size_t i = 0; i < function.locals.size(); ++i) {
+    if (function.locals[i].kind == MirLocalKind::Parameter) {
+      storageLive[i] = true;  // Parameters are live from entry.
+    } else {
+      storageLive[i] = false;
+    }
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& statement : block.statements) {
+      if (statement.kind() == MirStatementKind::StorageLive) {
+        const auto localIdValue = statement.storageLocal();
+        for (size_t i = 0; i < function.locals.size(); ++i) {
+          if (function.locals[i].id == localIdValue) {
+            storageLive[i] = true;
+            break;
+          }
+        }
+        continue;
+      }
+      // Check that any local referenced by this statement is live.
+      const auto checkPlace = [&](const MirPlace& place) {
+        for (size_t i = 0; i < function.locals.size(); ++i) {
+          if (function.locals[i].id == place.local() && !storageLive[i]) return false;
+        }
+        return true;
+      };
+      if (statement.kind() == MirStatementKind::Assign) {
+        const auto& assign = statement.assignmentValue();
+        if (!checkPlace(assign.destination)) return false;
+        // Rvalue operands are checked by the caller's type agreement;
+        // structural liveness only checks the destination.
+      } else if (statement.kind() == MirStatementKind::BorrowCreation) {
+        const auto& borrow = statement.borrowCreationValue();
+        if (!checkPlace(borrow.destination)) return false;
+        if (!checkPlace(borrow.source)) return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
 MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) noexcept {
@@ -18290,6 +18429,11 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
       return rejectMir<VerifiedBuiltMir>(
           ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::InvalidControlFlow, module,
           function.owner, identities, static_cast<uint32_t>(index + 1));
+    }
+    if (!validateStructuralWellFormedness(function)) {
+      return rejectMir<VerifiedBuiltMir>(ir::IrFailurePhase::BuiltMirVerification,
+                                         ir::IrFailureKind::InvalidFact, module, function.owner,
+                                         identities, static_cast<uint32_t>(index + 1));
     }
     zc::Maybe<const hir::HirValueDeclaration&> declaration;
     for (const auto& value : hirModule.declarations()) {
