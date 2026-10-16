@@ -276,6 +276,7 @@ struct LoweringContext {
   bool hasUnsafeBlock;
   bool hasWriteUnsafeBlock;
   bool hasTrailingReturn;
+  bool isDestructor;
   size_t statementCount;
 
   LoweringContext(const hir::HirFunctionDeclaration& decl, const hir::HirBlockStatement& blk,
@@ -296,7 +297,10 @@ struct LoweringContext {
         hasUnsafeBlock(decl.unsafeBlock != zc::none),
         hasWriteUnsafeBlock(decl.writeUnsafeBlock != zc::none),
         hasTrailingReturn(false),
+        isDestructor(false),
         statementCount(blk.statements.size()) {
+    auto def = identities.definition(decl.definition);
+    ZC_IF_SOME(d, def) { isDestructor = d.record().kind() == identity::DefinitionKind::Destructor; }
     if (statementCount > 0) {
       auto ret = returnFor(hirModule, block.statements[statementCount - 1]);
       ZC_IF_SOME(r, ret) {
@@ -6736,6 +6740,77 @@ zc::Maybe<RecursiveFunctionProduct> strategySequentialLocal(const LoweringContex
   return buildSequentialLocalReturn(lctx);
 }
 
+/// Empty-body destructor: `deinit() { }`. One block with no statements and a
+/// void Return terminator. The HIR verifier admits this shape only for the
+/// Unit destructor body.
+zc::Maybe<RecursiveFunctionProduct> strategyDestructorEmptyBody(const LoweringContext& lctx) {
+  if (lctx.statementCount != 0 || !lctx.isDestructor) return zc::none;
+  auto definition = lctx.identities.definition(lctx.declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(lctx.declaration.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.terminateBlock(MirTerminator::returnVoid(lctx.declaration.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(
+      lctx.declaration.definition, MirFunctionKind::Function, identity::DefinitionKind::Destructor,
+      lctx.declaration.resultType, lctx.declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// Void-let-body destructor: `deinit() { let x: T = <lit>; ... }`. One block
+/// with N user locals each StorageLive + Initialize from a scalar literal and
+/// a void Return terminator. The dead locals are folded away by the LIR
+/// builder.
+zc::Maybe<RecursiveFunctionProduct> strategyDestructorVoidLetBody(const LoweringContext& lctx) {
+  if (lctx.statementCount < 1 || !lctx.isDestructor || lctx.hasTrailingReturn) return zc::none;
+  auto definition = lctx.identities.definition(lctx.declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  // Validate: every statement is a local binding with a scalar literal
+  // initializer whose type matches the binding type.
+  for (size_t i = 0; i < lctx.statementCount; ++i) {
+    auto local = localFor(lctx.hirModule, lctx.block.statements[i]);
+    if (local == zc::none) return zc::none;
+    const auto& binding = ZC_ASSERT_NONNULL(local);
+    if (binding.initializer == zc::none) return zc::none;
+    auto literal = expressionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+    if (literal == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(lctx.declaration.sourceSpan.clone());
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  for (size_t i = 0; i < lctx.statementCount; ++i) {
+    auto local = localFor(lctx.hirModule, lctx.block.statements[i]);
+    const auto& binding = ZC_ASSERT_NONNULL(local);
+    auto literal = expressionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+    const auto& lit = ZC_ASSERT_NONNULL(literal);
+    const MirLocalId mirLocal =
+        ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::storageLive(mirLocal, binding.sourceSpan.clone()));
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(
+        MirStatement::assign(MirPlace(mirLocal, binding.type, zc::mv(projections), binding.type),
+                             MirRvalue::use(MirOperand::constant(lit.type, lit.value.clone())),
+                             MirInitializationKind::Initialize, lit.sourceSpan.clone()));
+  }
+
+  ctx.terminateBlock(MirTerminator::returnVoid(lctx.declaration.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(
+      lctx.declaration.definition, MirFunctionKind::Function, identity::DefinitionKind::Destructor,
+      lctx.declaration.resultType, lctx.declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// Ordered strategy table.  The first strategy that returns a product wins.
 /// Ordering encodes the priority dependencies from the former dispatch
 /// cascade: more specific shapes precede the catch-all sequential arm.
@@ -6745,6 +6820,8 @@ struct StrategyEntry {
 };
 
 static constexpr StrategyEntry kStrategyTable[] = {
+    {"DestructorEmptyBody", strategyDestructorEmptyBody},
+    {"DestructorVoidLetBody", strategyDestructorVoidLetBody},
     {"VoidWrite", strategyVoidWrite},
     {"LeadingLocalConditional", strategyLeadingLocalConditional},
     {"ChainedConditional", strategyChainedConditional},
@@ -6794,7 +6871,6 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copyMarker) {
-  if (block.statements.empty()) return zc::none;
   const LoweringContext lctx(declaration, block, hirModule, identities, semanticTypes, proofs,
                              copyMarker);
   for (const auto& entry : kStrategyTable) {
