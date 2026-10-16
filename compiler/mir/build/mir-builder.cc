@@ -5243,6 +5243,187 @@ zc::Maybe<RecursiveFunctionProduct> buildComparisonLoopBodyReturn(const Lowering
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a do-while loop-body-return body
+/// (`mut x = <lit>; do { <writes to x> } while (<ident> <cmp> <lit>); return
+/// x;`): four-block reducible CFG with body-before-condition layout. The
+/// entry initializes x then jumps to the body; the body carries the write
+/// assignments (Overwrite) then jumps to the condition block; the condition
+/// block evaluates the comparison into the temp and switches on it back to
+/// the body (true, the reducible back-edge) or the exit (default); the exit
+/// returns a place-use of x.
+zc::Maybe<RecursiveFunctionProduct> buildDoWhileLoopBodyReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 3) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1) return zc::none;
+  if (binding.type != declaration.resultType) return zc::none;
+  if (binding.initializer == zc::none) return zc::none;
+
+  auto loop = loopFor(hirModule, block.statements[1]);
+  if (loop == zc::none) return zc::none;
+  const auto& loopValue = ZC_ASSERT_NONNULL(loop);
+  if (!loopValue.isDoWhile) return zc::none;
+  if (loopValue.breakTargetsEnclosing || loopValue.continueTargetsEnclosing) return zc::none;
+
+  auto sourceReturn = returnFor(hirModule, block.statements[2]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto reference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (reference == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).local != binding.local ||
+      ZC_ASSERT_NONNULL(reference).type != binding.type ||
+      ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  // The condition must be a comparison binary whose left operand is a
+  // reference to the user local and whose right operand is a literal.
+  auto conditionBinary = primitiveBinaryFor(hirModule, loopValue.condition);
+  if (conditionBinary == zc::none) return zc::none;
+  const auto& condition = ZC_ASSERT_NONNULL(conditionBinary);
+  auto comparisonOperator = comparisonOperatorFor(condition.operation);
+  if (comparisonOperator == zc::none) return zc::none;
+  if (condition.operandType != binding.type) return zc::none;
+
+  auto conditionLeft = localReferenceFor(hirModule, condition.left);
+  if (conditionLeft == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(conditionLeft).local != binding.local ||
+      ZC_ASSERT_NONNULL(conditionLeft).type != binding.type) {
+    return zc::none;
+  }
+
+  auto conditionRight = expressionFor(hirModule, condition.right);
+  if (conditionRight == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(conditionRight).type != binding.type) return zc::none;
+
+  // The initializer must be a literal.
+  auto initializer = expressionFor(hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  if (initializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(initializer).type != binding.type) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (const auto& parameter : declaration.parameters) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
+                                         parameter.sourceSpan.clone()));
+  }
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, condition.type, scope,
+                                                    condition.sourceSpan.clone());
+
+  auto bodyStatements =
+      buildLoopBodyStatements(lctx, binding, loopValue, parameterLocals, userLocal);
+  if (bodyStatements == zc::none) return zc::none;
+
+  // Four-block reducible CFG (body-before-condition layout):
+  //   entry     (StorageLive x + StorageLive temp + Initialize x + Goto body)
+  //   body      (Overwrite writes + Goto condition)
+  //   condition (Overwrite temp = Comparison + SwitchInt on temp)
+  //   exit      (ReturnValue of the user local)
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  const MirBlockId body = ctx.peekBlockIdAt(0);
+  const MirBlockId conditionBlock = ctx.peekBlockIdAt(1);
+  const MirBlockId exit = ctx.peekBlockIdAt(2);
+
+  ctx.pushLoopContext(detail::LoopContext{zc::none, conditionBlock, body, exit, conditionBlock});
+
+  // Entry block.
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(conditionTemp, condition.sourceSpan.clone()));
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+        MirRvalue::use(
+            MirOperand::constant(binding.type, ZC_ASSERT_NONNULL(initializer).value.clone())),
+        MirInitializationKind::Initialize, ZC_ASSERT_NONNULL(initializer).sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(body, loopValue.sourceSpan.clone()));
+
+  // Body block: Overwrite writes + Goto(condition).
+  ctx.beginBlock(scope);
+  for (auto& statement : ZC_ASSERT_NONNULL(bodyStatements)) {
+    ctx.appendStatement(zc::mv(statement));
+  }
+  {
+    // A trailing break exits the body to the loop exit; a trailing continue
+    // or a write-only body jumps to the condition (the reducible back-edge).
+    const MirBlockId bodyTerminatorTarget = loopValue.breakSpan != zc::none ? exit : conditionBlock;
+    const identity::SourceSpan& bodyTerminatorSpan =
+        loopValue.breakSpan != zc::none
+            ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+            : (loopValue.continueSpan != zc::none ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                                  : loopValue.sourceSpan);
+    ctx.terminateBlock(MirTerminator::gotoTarget(bodyTerminatorTarget, bodyTerminatorSpan.clone()));
+  }
+
+  // Condition block: evaluate the comparison into the temp, then switch on it.
+  // Overwrite is required because the temp may already be initialized on the
+  // second and later passes through the back-edge.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> condLeftProjections;
+    auto condLeftOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(userLocal, condition.operandType,
+                                             zc::mv(condLeftProjections), condition.operandType));
+    if (condLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(conditionTemp, condition.type, zc::mv(tempProjections), condition.type),
+        MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                              zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(conditionRight).type,
+                                                   ZC_ASSERT_NONNULL(conditionRight).value.clone()),
+                              condition.type),
+        MirInitializationKind::Overwrite, condition.sourceSpan.clone()));
+    zc::Vector<MirProjection> discriminantProjections;
+    auto discriminant = placeUse(
+        proofs, copyMarker,
+        MirPlace(conditionTemp, condition.type, zc::mv(discriminantProjections), condition.type));
+    if (discriminant == zc::none) return zc::none;
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), body});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), exit, loopValue.sourceSpan.clone()));
+  }
+
+  // Exit block: ReturnValue of the user local.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> returnProjections;
+    auto returnOperand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+    if (returnOperand == zc::none) return zc::none;
+    ctx.terminateBlock(
+        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                   ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  }
+
+  ctx.popLoopContext();
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a for-loop-return body
 /// (`for (let i = <lit>; i < <lit>; i = i <bin> <lit>) {} return <lit>;`):
 /// four-block reducible CFG with entry (StorageLive + Initialize + Goto),
@@ -5873,6 +6054,13 @@ zc::Maybe<RecursiveFunctionProduct> strategyForLoopAccumulatorReturn(const Lower
   return buildForLoopAccumulatorReturn(lctx);
 }
 
+/// Do-while loop-body-return body with a comparison condition.
+zc::Maybe<RecursiveFunctionProduct> strategyDoWhileLoopBodyReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasUnsafeBlock) return zc::none;
+  return buildDoWhileLoopBodyReturn(lctx);
+}
+
 /// Mut-local loop-body-return body with a bare parameter condition.
 zc::Maybe<RecursiveFunctionProduct> strategyLoopBodyReturn(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
@@ -5946,6 +6134,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ForLoopAccumulatorReturn", strategyForLoopAccumulatorReturn},
     {"LoopBodyReturn", strategyLoopBodyReturn},
     {"ComparisonLoopBodyReturn", strategyComparisonLoopBodyReturn},
+    {"DoWhileLoopBodyReturn", strategyDoWhileLoopBodyReturn},
     {"LocalWrite", strategyLocalWrite},
     {"SequentialLocal", strategySequentialLocal},
 };
