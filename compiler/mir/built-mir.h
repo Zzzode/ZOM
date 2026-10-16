@@ -666,6 +666,16 @@ struct MirFunction final {
   zc::Vector<MirBasicBlock> blocks;
 };
 
+/// \brief Validates structural well-formedness of one MIR function independent
+/// of its source shape. Checks dense contiguous ordinals, valid scope/local/
+/// block references, reachable CFG from the entry block, parameter-local
+/// ordering, StorageLive-before-use for non-parameter locals, rvalue and
+/// terminator operand liveness, return type agreement, assignment type
+/// agreement, and comparison/arithmetic operand type symmetry. This is the
+/// RFC 0048 structural verifier that replaces the per-shape
+/// valid*ReturnFunction validators.
+ZC_NODISCARD bool validateStructuralWellFormedness(const MirFunction& function);
+
 /// \brief Domain-separated immutable revision of one complete MIR module.
 class MirRevisionId final {
 public:

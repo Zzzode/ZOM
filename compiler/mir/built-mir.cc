@@ -11228,6 +11228,8 @@ bool validateTerminatorTargets(const MirFunction& function) {
   return true;
 }
 
+}  // namespace
+
 /// \brief Extracts the result type from an operand.
 static identity::SemanticTypeId operandResultType(const MirOperand& operand) {
   if (operand.kind() == MirOperandKind::Constant) { return operand.constantValue().type; }
@@ -11255,13 +11257,6 @@ static identity::SemanticTypeId rvalueResultType(const MirRvalue& rvalue) {
   ZC_UNREACHABLE
 }
 
-/// \brief Validates structural well-formedness of one MIR function independent
-/// of its source shape. Checks dense contiguous ordinals, valid scope/local/
-/// block references, reachable CFG from the entry block, terminated blocks,
-/// parameter-local ordering, StorageLive-before-use for non-parameter locals,
-/// rvalue and terminator operand liveness, return type agreement, and
-/// assignment type agreement. This is the RFC 0048 structural verifier that
-/// replaces the per-shape valid*ReturnFunction validators.
 bool validateStructuralWellFormedness(const MirFunction& function) {
   // Dense contiguous ordinals: ids are 1-indexed and match vector position.
   for (size_t i = 0; i < function.sourceScopes.size(); ++i) {
@@ -11464,8 +11459,6 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
   }
   return true;
 }
-
-}  // namespace
 
 MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) noexcept {
   return MirRevisionId(digest);

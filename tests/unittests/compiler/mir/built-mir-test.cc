@@ -1650,4 +1650,126 @@ ZC_TEST("Built MIR builder and verifier publish a verified module for a scalar i
 }
 
 }  // namespace
+
+// Structural verifier mutation tests (RFC 0048 Phase 4).
+
+namespace {
+
+MirBlockId blockId(uint32_t ordinal) {
+  auto result = MirBlockId::fromOrdinal(ordinal);
+  ZC_REQUIRE(result != zc::none);
+  return ZC_REQUIRE_NONNULL(result);
+}
+
+/// \brief Builds a minimal structurally valid MIR function for mutation tests.
+MirFunction makeMinimalValidFunction(identity::SemanticTypeId resultType) {
+  MirFunction function{
+      tests::testDefinition(0),
+      MirFunctionKind::Function,
+      identity::DefinitionKind::Function,
+      resultType,
+      sourceSpan(),
+      zc::Vector<MirSourceScope>{},
+      zc::Vector<MirLocalDeclaration>{},
+      zc::Vector<MirBasicBlock>{},
+  };
+  function.sourceScopes.add(MirSourceScope{sourceScope(1), zc::none, sourceSpan()});
+  zc::Vector<MirStatement> statements;
+  function.blocks.add(MirBasicBlock{blockId(1), sourceScope(1), zc::mv(statements),
+                                    MirTerminator::returnVoid(sourceSpan())});
+  return function;
+}
+
+}  // namespace
+
+ZC_TEST("Built MIR structural verifier accepts a minimal valid function") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  ZC_EXPECT(validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects non-dense block ordinals") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  // Mutate: give the sole block ordinal 3, leaving a gap at 2.
+  function.blocks[0].id = blockId(3);
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects an unreachable block") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  // Add a second block that no terminator targets.
+  zc::Vector<MirStatement> statements;
+  function.blocks.add(MirBasicBlock{blockId(2), sourceScope(1), zc::mv(statements),
+                                    MirTerminator::returnVoid(sourceSpan())});
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects an invalid scope reference") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  // Mutate: the block references scope 2, but only scope 1 exists.
+  function.blocks[0].sourceScope = sourceScope(2);
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects a return type mismatch") {
+  tests::TestSemanticTypeContext context;
+  const auto returnType = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto wrongType = context.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  auto function = makeMinimalValidFunction(returnType);
+  // Replace the void return with a boolean-typed value return.
+  function.blocks[0].terminator = MirTerminator::returnValue(
+      MirOperand::constant(wrongType, checker::checked::CanonicalConstValue::boolean(true)),
+      sourceSpan());
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects an assignment type mismatch") {
+  tests::TestSemanticTypeContext context;
+  const auto localType = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto wrongType = context.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  auto function = makeMinimalValidFunction(localType);
+  // Add a local of localType.
+  function.locals.add(MirLocalDeclaration{local(1), MirLocalKind::UserLocal, localType,
+                                          sourceScope(1), sourceSpan()});
+  // StorageLive for the local.
+  function.blocks[0].statements.add(MirStatement::storageLive(local(1), sourceSpan()));
+  // Assign a boolean-typed rvalue to the i32 local.
+  zc::Vector<MirProjection> projections;
+  function.blocks[0].statements.add(
+      MirStatement::assign(MirPlace(local(1), localType, zc::mv(projections), localType),
+                           MirRvalue::use(MirOperand::constant(
+                               wrongType, checker::checked::CanonicalConstValue::boolean(true))),
+                           MirInitializationKind::Initialize, sourceSpan()));
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects a use without StorageLive") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  // Add a local but NO StorageLive.
+  function.locals.add(
+      MirLocalDeclaration{local(1), MirLocalKind::UserLocal, type, sourceScope(1), sourceSpan()});
+  // Assign to the local without StorageLive.
+  zc::Vector<MirProjection> projections;
+  function.blocks[0].statements.add(MirStatement::assign(
+      MirPlace(local(1), type, zc::mv(projections), type),
+      MirRvalue::use(MirOperand::constant(type, checker::checked::CanonicalConstValue::unit())),
+      MirInitializationKind::Initialize, sourceSpan()));
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects a parameter after a non-parameter") {
+  const auto type = tests::testSemanticType();
+  auto function = makeMinimalValidFunction(type);
+  // Add a non-parameter local first, then a parameter local.
+  function.locals.add(
+      MirLocalDeclaration{local(1), MirLocalKind::UserLocal, type, sourceScope(1), sourceSpan()});
+  function.locals.add(
+      MirLocalDeclaration{local(2), MirLocalKind::Parameter, type, sourceScope(1), sourceSpan()});
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
 }  // namespace zomlang::compiler::mir
