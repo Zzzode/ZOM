@@ -8296,8 +8296,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto shape = directCallShape(input, site.node);
         if (shape == zc::none) {
           // A resolved callee supplied with the wrong number of arguments is a
-          // user error (ZOM4036); every other unresolved direct call keeps its
-          // invariant rail.
+          // user error (ZOM4036); every other unresolved direct call is legal
+          // source the body slice cannot lower yet (generic callee, receiver
+          // placement, ABI restriction, higher-order callee). Drain it as a
+          // capability rejection rather than a missing-fact invariant.
           const auto& tree = input.boundModule.tree();
           if (tree.contains(site.node) &&
               tree.node(site.node).kind == ast::SyntaxKind::CallExpression) {
@@ -8326,6 +8328,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 }
               }
             }
+          }
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
           }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
@@ -8932,6 +8937,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                                              input.semanticTypes, castTy);
         auto sourceType = factEntry(nodeTypes.asPtr(), castExpr);
         if (targetType == zc::none || sourceType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -9091,6 +9099,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         const ast::NodeId target(assignment.payload.words[ast::kAssignmentExprLhsWord]);
         producedType = ownerLocalReferenceType(input, target, nodeTypes.asPtr());
         if (producedType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -9101,6 +9112,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         auto targetType = factEntry(nodeTypes.asPtr(), target);
         auto targetPlace = factEntry(places.asPtr(), target);
         if (targetType == zc::none || targetPlace == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -9165,6 +9179,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             input.boundModule.tree().node(target).payload.words[ast::kUnaryExpressionOperandWord]);
         auto pointerType = callableParameterReferenceType(input, operand);
         if (pointerType == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
