@@ -6040,6 +6040,567 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// Nested for-loop accumulator return: N leading `mut` accumulator locals, an
+/// outer `for (let i = <lit>; i < <lit>; i = i <bin> <lit>)` whose sole body
+/// statements are an inner `let j = <lit>` binding, an inner
+/// `for (let j = <lit>; j < <lit>; j = j <bin> <lit>) { acc_k = acc_k <bin>
+/// j|<lit>; ... }` loop, and the outer update write, followed by a trailing
+/// `return acc_0;`. Lowers to a reducible seven-block CFG.
+zc::Maybe<RecursiveFunctionProduct> buildNestedForLoopAccumulatorReturn(
+    const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  // N+3 statements: N accumulator locals, the outer init local, the outer
+  // loop, the return.
+  if (block.statements.size() < 4) return zc::none;
+  const size_t accCount = block.statements.size() - 3;
+
+  // Resolve the N accumulator locals.
+  zc::Vector<const hir::HirLocalBinding*> accLocals;
+  for (size_t k = 0; k < accCount; ++k) {
+    auto accLocal = localFor(hirModule, block.statements[k]);
+    if (accLocal == zc::none) return zc::none;
+    const auto& acc = ZC_ASSERT_NONNULL(accLocal);
+    if (acc.initializer == zc::none || acc.local.ordinal() != static_cast<uint32_t>(k + 1) ||
+        acc.type != declaration.resultType) {
+      return zc::none;
+    }
+    accLocals.add(&acc);
+  }
+
+  // Resolve the outer init local, outer loop, and return.
+  auto sourceOuterInit = localFor(hirModule, block.statements[accCount]);
+  if (sourceOuterInit == zc::none) return zc::none;
+  const auto& outerInitBinding = ZC_ASSERT_NONNULL(sourceOuterInit);
+  if (outerInitBinding.initializer == zc::none ||
+      outerInitBinding.local.ordinal() != static_cast<uint32_t>(accCount + 1)) {
+    return zc::none;
+  }
+
+  auto outerLoop = loopFor(hirModule, block.statements[accCount + 1]);
+  if (outerLoop == zc::none) return zc::none;
+  const auto& outerLoopValue = ZC_ASSERT_NONNULL(outerLoop);
+  if (outerLoopValue.isDoWhile) return zc::none;
+  if (outerLoopValue.breakCondition.isValid()) return zc::none;
+  if (outerLoopValue.breakTargetsEnclosing || outerLoopValue.continueTargetsEnclosing)
+    return zc::none;
+  // The outer loop body must have exactly three statements: inner-init local,
+  // inner loop, outer update write.
+  if (outerLoopValue.body.size() != 3) return zc::none;
+
+  // The return must be a local reference to the first accumulator.
+  auto sourceReturn = returnFor(hirModule, block.statements[accCount + 2]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto returnRef = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (returnRef == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(returnRef).local != accLocals[0]->local ||
+      ZC_ASSERT_NONNULL(returnRef).type != accLocals[0]->type) {
+    return zc::none;
+  }
+
+  // Resolve the inner init local, inner loop, and outer update write.
+  auto sourceInnerInit = localFor(hirModule, outerLoopValue.body[0]);
+  if (sourceInnerInit == zc::none) return zc::none;
+  const auto& innerInitBinding = ZC_ASSERT_NONNULL(sourceInnerInit);
+  if (innerInitBinding.initializer == zc::none ||
+      innerInitBinding.local.ordinal() != static_cast<uint32_t>(accCount + 2)) {
+    return zc::none;
+  }
+
+  auto innerLoop = loopFor(hirModule, outerLoopValue.body[1]);
+  if (innerLoop == zc::none) return zc::none;
+  const auto& innerLoopValue = ZC_ASSERT_NONNULL(innerLoop);
+  if (innerLoopValue.isDoWhile) return zc::none;
+  if (innerLoopValue.breakCondition.isValid()) return zc::none;
+  // The inner loop body must have N+1 statements: N accumulator writes and
+  // the inner update write.
+  if (innerLoopValue.body.size() != accCount + 1) return zc::none;
+
+  auto sourceOuterUpdate = localWriteFor(hirModule, outerLoopValue.body[2]);
+  if (sourceOuterUpdate == zc::none) return zc::none;
+  const auto& outerUpdate = ZC_ASSERT_NONNULL(sourceOuterUpdate);
+  if (outerUpdate.local != outerInitBinding.local || outerUpdate.field != zc::none ||
+      outerUpdate.type != outerInitBinding.type ||
+      outerUpdate.kind != hir::HirLocalWriteKind::Overwrite) {
+    return zc::none;
+  }
+
+  // Resolve and validate the outer init initializer (must be a literal).
+  auto outerInitInitializer =
+      expressionFor(hirModule, ZC_ASSERT_NONNULL(outerInitBinding.initializer));
+  if (outerInitInitializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(outerInitInitializer).type != outerInitBinding.type) return zc::none;
+
+  // Resolve and validate the outer condition (comparison binary).
+  auto outerCondBinary = primitiveBinaryFor(hirModule, outerLoopValue.condition);
+  if (outerCondBinary == zc::none) return zc::none;
+  const auto& outerCond = ZC_ASSERT_NONNULL(outerCondBinary);
+  auto outerCmpOp = comparisonOperatorFor(outerCond.operation);
+  if (outerCmpOp == zc::none) return zc::none;
+  if (outerCond.operandType != outerInitBinding.type) return zc::none;
+
+  auto outerCondLeft = localReferenceFor(hirModule, outerCond.left);
+  if (outerCondLeft == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(outerCondLeft).local != outerInitBinding.local ||
+      ZC_ASSERT_NONNULL(outerCondLeft).type != outerInitBinding.type) {
+    return zc::none;
+  }
+
+  auto outerCondRight = expressionFor(hirModule, outerCond.right);
+  if (outerCondRight == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(outerCondRight).type != outerInitBinding.type) return zc::none;
+
+  // Resolve and validate the inner init initializer (must be a literal).
+  auto innerInitInitializer =
+      expressionFor(hirModule, ZC_ASSERT_NONNULL(innerInitBinding.initializer));
+  if (innerInitInitializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(innerInitInitializer).type != innerInitBinding.type) return zc::none;
+
+  // Resolve and validate the inner condition (comparison binary).
+  auto innerCondBinary = primitiveBinaryFor(hirModule, innerLoopValue.condition);
+  if (innerCondBinary == zc::none) return zc::none;
+  const auto& innerCond = ZC_ASSERT_NONNULL(innerCondBinary);
+  auto innerCmpOp = comparisonOperatorFor(innerCond.operation);
+  if (innerCmpOp == zc::none) return zc::none;
+  if (innerCond.operandType != innerInitBinding.type) return zc::none;
+
+  auto innerCondLeft = localReferenceFor(hirModule, innerCond.left);
+  if (innerCondLeft == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(innerCondLeft).local != innerInitBinding.local ||
+      ZC_ASSERT_NONNULL(innerCondLeft).type != innerInitBinding.type) {
+    return zc::none;
+  }
+
+  auto innerCondRight = expressionFor(hirModule, innerCond.right);
+  if (innerCondRight == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(innerCondRight).type != innerInitBinding.type) return zc::none;
+
+  // Resolve accumulator initializers (must all be literals).
+  zc::Vector<const hir::HirScalarLiteralExpression*> accInitializers;
+  for (size_t k = 0; k < accCount; ++k) {
+    auto accInit = expressionFor(hirModule, ZC_ASSERT_NONNULL(accLocals[k]->initializer));
+    if (accInit == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(accInit).type != accLocals[k]->type) return zc::none;
+    accInitializers.add(&ZC_ASSERT_NONNULL(accInit));
+  }
+
+  // Resolve the N accumulator body writes (in the inner loop body).
+  struct AccWrite {
+    const hir::HirLocalWriteStatement* write;
+    const hir::HirPrimitiveBinaryExpression* binary;
+    const hir::HirLocalReferenceExpression* lhs;
+    zc::Maybe<const hir::HirLocalReferenceExpression&> rhsRef;
+    zc::Maybe<const hir::HirScalarLiteralExpression&> rhsLit;
+    MirArithmeticOperator op;
+    bool rhsIsLiteral;
+  };
+  zc::Vector<AccWrite> accWrites;
+  for (size_t k = 0; k < accCount; ++k) {
+    auto bw = localWriteFor(hirModule, innerLoopValue.body[k]);
+    if (bw == zc::none) return zc::none;
+    const auto& write = ZC_ASSERT_NONNULL(bw);
+    if (write.local != accLocals[k]->local || write.field != zc::none ||
+        write.type != accLocals[k]->type || write.kind != hir::HirLocalWriteKind::Overwrite) {
+      return zc::none;
+    }
+    auto bwBin = primitiveBinaryFor(hirModule, write.value);
+    if (bwBin == zc::none) return zc::none;
+    const auto& binary = ZC_ASSERT_NONNULL(bwBin);
+    auto bwOp = arithmeticOperatorFor(binary.operation);
+    if (bwOp == zc::none) return zc::none;
+    if (binary.operandType != accLocals[k]->type || binary.type != accLocals[k]->type)
+      return zc::none;
+    auto bwLhs = localReferenceFor(hirModule, binary.left);
+    if (bwLhs == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(bwLhs).local != accLocals[k]->local ||
+        ZC_ASSERT_NONNULL(bwLhs).type != accLocals[k]->type) {
+      return zc::none;
+    }
+    // The right operand is either a local reference to the inner init local
+    // or a scalar literal.
+    auto bwRhsRef = localReferenceFor(hirModule, binary.right);
+    auto bwRhsLit = expressionFor(hirModule, binary.right);
+    const bool rhsIsLit = bwRhsRef == zc::none && bwRhsLit != zc::none;
+    if (bwRhsRef == zc::none && bwRhsLit == zc::none) return zc::none;
+    if (!rhsIsLit) {
+      if (ZC_ASSERT_NONNULL(bwRhsRef).local != innerInitBinding.local ||
+          ZC_ASSERT_NONNULL(bwRhsRef).type != innerInitBinding.type) {
+        return zc::none;
+      }
+    } else {
+      if (ZC_ASSERT_NONNULL(bwRhsLit).type != accLocals[k]->type) return zc::none;
+    }
+    accWrites.add(AccWrite{&write, &binary, &ZC_ASSERT_NONNULL(bwLhs), zc::mv(bwRhsRef),
+                           zc::mv(bwRhsLit), ZC_ASSERT_NONNULL(bwOp), rhsIsLit});
+  }
+
+  // Resolve the inner update write (j = j <bin> <lit>).
+  auto innerUpdateWrite = localWriteFor(hirModule, innerLoopValue.body[accCount]);
+  if (innerUpdateWrite == zc::none) return zc::none;
+  const auto& innerUpdate = ZC_ASSERT_NONNULL(innerUpdateWrite);
+  if (innerUpdate.local != innerInitBinding.local || innerUpdate.field != zc::none ||
+      innerUpdate.type != innerInitBinding.type ||
+      innerUpdate.kind != hir::HirLocalWriteKind::Overwrite) {
+    return zc::none;
+  }
+  auto innerUpdateBin = primitiveBinaryFor(hirModule, innerUpdate.value);
+  if (innerUpdateBin == zc::none) return zc::none;
+  const auto& innerUpdateBinary = ZC_ASSERT_NONNULL(innerUpdateBin);
+  auto innerUpdateOp = arithmeticOperatorFor(innerUpdateBinary.operation);
+  if (innerUpdateOp == zc::none) return zc::none;
+  if (innerUpdateBinary.operandType != innerInitBinding.type ||
+      innerUpdateBinary.type != innerInitBinding.type)
+    return zc::none;
+  auto innerUpdateLhs = localReferenceFor(hirModule, innerUpdateBinary.left);
+  if (innerUpdateLhs == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(innerUpdateLhs).local != innerInitBinding.local ||
+      ZC_ASSERT_NONNULL(innerUpdateLhs).type != innerInitBinding.type) {
+    return zc::none;
+  }
+  auto innerUpdateRhs = expressionFor(hirModule, innerUpdateBinary.right);
+  if (innerUpdateRhs == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(innerUpdateRhs).type != innerInitBinding.type) return zc::none;
+
+  // Resolve the outer update write (i = i <bin> <lit>).
+  auto outerUpdateBin = primitiveBinaryFor(hirModule, outerUpdate.value);
+  if (outerUpdateBin == zc::none) return zc::none;
+  const auto& outerUpdateBinary = ZC_ASSERT_NONNULL(outerUpdateBin);
+  auto outerUpdateOp = arithmeticOperatorFor(outerUpdateBinary.operation);
+  if (outerUpdateOp == zc::none) return zc::none;
+  if (outerUpdateBinary.operandType != outerInitBinding.type ||
+      outerUpdateBinary.type != outerInitBinding.type)
+    return zc::none;
+  auto outerUpdateLhs = localReferenceFor(hirModule, outerUpdateBinary.left);
+  if (outerUpdateLhs == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(outerUpdateLhs).local != outerInitBinding.local ||
+      ZC_ASSERT_NONNULL(outerUpdateLhs).type != outerInitBinding.type) {
+    return zc::none;
+  }
+  auto outerUpdateRhs = expressionFor(hirModule, outerUpdateBinary.right);
+  if (outerUpdateRhs == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(outerUpdateRhs).type != outerInitBinding.type) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  // Build the reducible seven-block CFG.
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  for (const auto& parameter : declaration.parameters) {
+    ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope, parameter.sourceSpan.clone());
+  }
+  zc::Vector<MirLocalId> accMirLocals;
+  for (size_t k = 0; k < accCount; ++k) {
+    accMirLocals.add(ctx.declareLocal(MirLocalKind::UserLocal, accLocals[k]->type, scope,
+                                      accLocals[k]->sourceSpan.clone()));
+  }
+  const MirLocalId outerInitLocal = ctx.declareLocal(MirLocalKind::UserLocal, outerInitBinding.type,
+                                                     scope, outerInitBinding.sourceSpan.clone());
+  const MirLocalId outerCondTemp = ctx.declareLocal(MirLocalKind::Temporary, outerCond.type, scope,
+                                                    outerCond.sourceSpan.clone());
+  const MirLocalId innerInitLocal = ctx.declareLocal(MirLocalKind::UserLocal, innerInitBinding.type,
+                                                     scope, innerInitBinding.sourceSpan.clone());
+  const MirLocalId innerCondTemp = ctx.declareLocal(MirLocalKind::Temporary, innerCond.type, scope,
+                                                    innerCond.sourceSpan.clone());
+  const MirLocalId resultLocal =
+      ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
+                       ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
+
+  // Seven-block reducible CFG:
+  //   bb1 entry        (StorageLive + Initialize + Goto bb2)
+  //   bb2 outer header (SwitchInt on outer temp -> bb3 or bb7)
+  //   bb3 inner entry  (Overwrite inner init + Overwrite inner temp + Goto bb4)
+  //   bb4 inner header (SwitchInt on inner temp -> bb5 or bb6)
+  //   bb5 inner body   (N acc Overwrites + inner update + inner temp recompute
+  //                     + Goto bb4/bb6/bb7)
+  //   bb6 outer cont   (outer update + outer temp recompute + Goto bb2)
+  //   bb7 exit         (Initialize result from acc_0 copy + ReturnValue)
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  const MirBlockId outerHeader = ctx.peekBlockIdAt(0);
+  const MirBlockId innerEntry = ctx.peekBlockIdAt(1);
+  const MirBlockId innerHeader = ctx.peekBlockIdAt(2);
+  const MirBlockId innerBody = ctx.peekBlockIdAt(3);
+  const MirBlockId outerCont = ctx.peekBlockIdAt(4);
+  const MirBlockId exit = ctx.peekBlockIdAt(5);
+
+  // Outer loop: header=bb2, body=bb3, exit=bb7, continue=bb6.
+  ctx.pushLoopContext(detail::LoopContext{zc::none, outerHeader, innerEntry, exit, outerCont});
+  // Inner loop: header=bb4, body=bb5, exit=bb6, continue=bb4.
+  ctx.pushLoopContext(
+      detail::LoopContext{zc::none, innerHeader, innerBody, outerCont, innerHeader});
+
+  // --- bb1: entry ---
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocal, ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  for (size_t k = 0; k < accCount; ++k) {
+    ctx.appendStatement(
+        MirStatement::storageLive(accMirLocals[k], accLocals[k]->sourceSpan.clone()));
+  }
+  ctx.appendStatement(
+      MirStatement::storageLive(outerInitLocal, outerInitBinding.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(outerCondTemp, outerCond.sourceSpan.clone()));
+  ctx.appendStatement(
+      MirStatement::storageLive(innerInitLocal, innerInitBinding.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(innerCondTemp, innerCond.sourceSpan.clone()));
+  // Initialize accumulators.
+  for (size_t k = 0; k < accCount; ++k) {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(accMirLocals[k], accLocals[k]->type, zc::mv(projections), accLocals[k]->type),
+        MirRvalue::use(MirOperand::constant(accLocals[k]->type, accInitializers[k]->value.clone())),
+        MirInitializationKind::Initialize, accInitializers[k]->sourceSpan.clone()));
+  }
+  // Initialize outer init local.
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(outerInitLocal, outerInitBinding.type, zc::mv(projections), outerInitBinding.type),
+        MirRvalue::use(MirOperand::constant(outerInitBinding.type,
+                                            ZC_ASSERT_NONNULL(outerInitInitializer).value.clone())),
+        MirInitializationKind::Initialize,
+        ZC_ASSERT_NONNULL(outerInitInitializer).sourceSpan.clone()));
+  }
+  // Outer condition comparison in the entry block (Initialize).
+  {
+    zc::Vector<MirProjection> condLeftProjections;
+    auto condLeftOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(outerInitLocal, outerCond.operandType,
+                                             zc::mv(condLeftProjections), outerCond.operandType));
+    if (condLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(outerCondTemp, outerCond.type, zc::mv(tempProjections), outerCond.type),
+        MirRvalue::comparison(ZC_ASSERT_NONNULL(outerCmpOp),
+                              zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(outerCondRight).type,
+                                                   ZC_ASSERT_NONNULL(outerCondRight).value.clone()),
+                              outerCond.type),
+        MirInitializationKind::Initialize, outerCond.sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(outerHeader, outerLoopValue.sourceSpan.clone()));
+
+  // --- bb2: outer header (SwitchInt) ---
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> discriminantProjections;
+    auto discriminant = placeUse(
+        proofs, copyMarker,
+        MirPlace(outerCondTemp, outerCond.type, zc::mv(discriminantProjections), outerCond.type));
+    if (discriminant == zc::none) return zc::none;
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), innerEntry});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), exit,
+                                                outerLoopValue.sourceSpan.clone()));
+  }
+
+  // --- bb3: inner entry (Overwrite inner init + Overwrite inner temp + Goto bb4) ---
+  // Overwrite (not Initialize) because the inner entry is inside the outer
+  // loop and re-executed on subsequent outer iterations.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(innerInitLocal, innerInitBinding.type, zc::mv(projections), innerInitBinding.type),
+        MirRvalue::use(MirOperand::constant(innerInitBinding.type,
+                                            ZC_ASSERT_NONNULL(innerInitInitializer).value.clone())),
+        MirInitializationKind::Overwrite,
+        ZC_ASSERT_NONNULL(innerInitInitializer).sourceSpan.clone()));
+  }
+  {
+    zc::Vector<MirProjection> condLeftProjections;
+    auto condLeftOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(innerInitLocal, innerCond.operandType,
+                                             zc::mv(condLeftProjections), innerCond.operandType));
+    if (condLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(innerCondTemp, innerCond.type, zc::mv(tempProjections), innerCond.type),
+        MirRvalue::comparison(ZC_ASSERT_NONNULL(innerCmpOp),
+                              zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(innerCondRight).type,
+                                                   ZC_ASSERT_NONNULL(innerCondRight).value.clone()),
+                              innerCond.type),
+        MirInitializationKind::Overwrite, innerCond.sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(innerHeader, innerLoopValue.sourceSpan.clone()));
+
+  // --- bb4: inner header (SwitchInt) ---
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> discriminantProjections;
+    auto discriminant = placeUse(
+        proofs, copyMarker,
+        MirPlace(innerCondTemp, innerCond.type, zc::mv(discriminantProjections), innerCond.type));
+    if (discriminant == zc::none) return zc::none;
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), innerBody});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), outerCont,
+                                                innerLoopValue.sourceSpan.clone()));
+  }
+
+  // --- bb5: inner body (N acc Overwrites + inner update + inner temp recompute + Goto) ---
+  ctx.beginBlock(scope);
+  for (size_t k = 0; k < accCount; ++k) {
+    const auto& aw = accWrites[k];
+    zc::Vector<MirProjection> bwLeftProjections;
+    auto bwLeftOperand = placeUse(proofs, copyMarker,
+                                  MirPlace(accMirLocals[k], accLocals[k]->type,
+                                           zc::mv(bwLeftProjections), accLocals[k]->type));
+    if (bwLeftOperand == zc::none) return zc::none;
+    zc::Maybe<MirOperand> bwRightOperand;
+    if (aw.rhsIsLiteral) {
+      bwRightOperand = MirOperand::constant(ZC_ASSERT_NONNULL(aw.rhsLit).type,
+                                            ZC_ASSERT_NONNULL(aw.rhsLit).value.clone());
+    } else {
+      zc::Vector<MirProjection> bwRightProjections;
+      auto bwRightPlace = placeUse(proofs, copyMarker,
+                                   MirPlace(innerInitLocal, innerInitBinding.type,
+                                            zc::mv(bwRightProjections), innerInitBinding.type));
+      if (bwRightPlace == zc::none) return zc::none;
+      bwRightOperand = zc::mv(ZC_ASSERT_NONNULL(bwRightPlace));
+    }
+    zc::Vector<MirProjection> bwOverwriteProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(accMirLocals[k], accLocals[k]->type, zc::mv(bwOverwriteProjections),
+                 accLocals[k]->type),
+        MirRvalue::arithmetic(aw.op, zc::mv(ZC_ASSERT_NONNULL(bwLeftOperand)),
+                              zc::mv(ZC_ASSERT_NONNULL(bwRightOperand)), aw.binary->type),
+        MirInitializationKind::Overwrite, aw.write->sourceSpan.clone()));
+  }
+  // A labeled break/continue targeting the outer loop skips the inner update
+  // write and re-compare entirely.
+  const bool innerBreakTargetsOuter = innerLoopValue.breakTargetsEnclosing;
+  const bool innerContinueTargetsOuter = innerLoopValue.continueTargetsEnclosing;
+  if (!innerBreakTargetsOuter && !innerContinueTargetsOuter) {
+    // Inner update write: j = j + 1 (Overwrite).
+    {
+      zc::Vector<MirProjection> uwLeftProjections;
+      auto uwLeftOperand =
+          placeUse(proofs, copyMarker,
+                   MirPlace(innerInitLocal, innerUpdateBinary.operandType,
+                            zc::mv(uwLeftProjections), innerUpdateBinary.operandType));
+      if (uwLeftOperand == zc::none) return zc::none;
+      zc::Vector<MirProjection> uwOverwriteProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(innerInitLocal, innerInitBinding.type, zc::mv(uwOverwriteProjections),
+                   innerInitBinding.type),
+          MirRvalue::arithmetic(
+              ZC_ASSERT_NONNULL(innerUpdateOp), zc::mv(ZC_ASSERT_NONNULL(uwLeftOperand)),
+              MirOperand::constant(ZC_ASSERT_NONNULL(innerUpdateRhs).type,
+                                   ZC_ASSERT_NONNULL(innerUpdateRhs).value.clone()),
+              innerUpdateBinary.type),
+          MirInitializationKind::Overwrite, innerUpdate.sourceSpan.clone()));
+    }
+    // Recompute inner condition: temp = j < 3 (Overwrite).
+    {
+      zc::Vector<MirProjection> condLeftProjections;
+      auto condLeftOperand = placeUse(proofs, copyMarker,
+                                      MirPlace(innerInitLocal, innerCond.operandType,
+                                               zc::mv(condLeftProjections), innerCond.operandType));
+      if (condLeftOperand == zc::none) return zc::none;
+      zc::Vector<MirProjection> tempProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(innerCondTemp, innerCond.type, zc::mv(tempProjections), innerCond.type),
+          MirRvalue::comparison(
+              ZC_ASSERT_NONNULL(innerCmpOp), zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+              MirOperand::constant(ZC_ASSERT_NONNULL(innerCondRight).type,
+                                   ZC_ASSERT_NONNULL(innerCondRight).value.clone()),
+              innerCond.type),
+          MirInitializationKind::Overwrite, innerCond.sourceSpan.clone()));
+    }
+  }
+  {
+    const MirBlockId innerBodyTerminatorTarget =
+        innerBreakTargetsOuter ? exit : (innerContinueTargetsOuter ? outerCont : innerHeader);
+    ctx.terminateBlock(
+        MirTerminator::gotoTarget(innerBodyTerminatorTarget, innerLoopValue.sourceSpan.clone()));
+  }
+
+  // --- bb6: outer continuation (outer update + outer temp recompute + Goto bb2) ---
+  ctx.beginBlock(scope);
+  {
+    // Outer update write: i = i + 1 (Overwrite).
+    zc::Vector<MirProjection> uwLeftProjections;
+    auto uwLeftOperand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(outerInitLocal, outerUpdateBinary.operandType, zc::mv(uwLeftProjections),
+                          outerUpdateBinary.operandType));
+    if (uwLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> uwOverwriteProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(outerInitLocal, outerInitBinding.type, zc::mv(uwOverwriteProjections),
+                 outerInitBinding.type),
+        MirRvalue::arithmetic(ZC_ASSERT_NONNULL(outerUpdateOp),
+                              zc::mv(ZC_ASSERT_NONNULL(uwLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(outerUpdateRhs).type,
+                                                   ZC_ASSERT_NONNULL(outerUpdateRhs).value.clone()),
+                              outerUpdateBinary.type),
+        MirInitializationKind::Overwrite, outerUpdate.sourceSpan.clone()));
+  }
+  {
+    // Recompute outer condition: temp = i < 3 (Overwrite).
+    zc::Vector<MirProjection> condLeftProjections;
+    auto condLeftOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(outerInitLocal, outerCond.operandType,
+                                             zc::mv(condLeftProjections), outerCond.operandType));
+    if (condLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(outerCondTemp, outerCond.type, zc::mv(tempProjections), outerCond.type),
+        MirRvalue::comparison(ZC_ASSERT_NONNULL(outerCmpOp),
+                              zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(outerCondRight).type,
+                                                   ZC_ASSERT_NONNULL(outerCondRight).value.clone()),
+                              outerCond.type),
+        MirInitializationKind::Overwrite, outerCond.sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(outerHeader, outerLoopValue.sourceSpan.clone()));
+
+  // --- bb7: exit (Initialize result from acc_0 copy + ReturnValue) ---
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> exitCopyProjections;
+    auto exitCopyOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(accMirLocals[0], accLocals[0]->type,
+                                             zc::mv(exitCopyProjections), accLocals[0]->type));
+    if (exitCopyOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> resultProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(resultLocal, declaration.resultType, zc::mv(resultProjections),
+                 declaration.resultType),
+        MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(exitCopyOperand))),
+        MirInitializationKind::Initialize, ZC_ASSERT_NONNULL(returnRef).sourceSpan.clone()));
+  }
+  {
+    zc::Vector<MirProjection> returnProjections;
+    auto returnOperand = placeUse(proofs, copyMarker,
+                                  MirPlace(resultLocal, declaration.resultType,
+                                           zc::mv(returnProjections), declaration.resultType));
+    if (returnOperand == zc::none) return zc::none;
+    ctx.terminateBlock(
+        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                   ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  }
+
+  ctx.popLoopContext();  // inner
+  ctx.popLoopContext();  // outer
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// For-loop with a literal return (`for (let i = ...) {} return <lit>;`).
 zc::Maybe<RecursiveFunctionProduct> strategyForLoopReturn(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
@@ -6052,6 +6613,14 @@ zc::Maybe<RecursiveFunctionProduct> strategyForLoopAccumulatorReturn(const Lower
   if (!lctx.hasTrailingReturn) return zc::none;
   if (lctx.statementCount < 4 || lctx.hasUnsafeBlock) return zc::none;
   return buildForLoopAccumulatorReturn(lctx);
+}
+
+/// Nested for-loop accumulator return with N accumulator locals.
+zc::Maybe<RecursiveFunctionProduct> strategyNestedForLoopAccumulatorReturn(
+    const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 4 || lctx.hasUnsafeBlock) return zc::none;
+  return buildNestedForLoopAccumulatorReturn(lctx);
 }
 
 /// Do-while loop-body-return body with a comparison condition.
@@ -6131,6 +6700,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"AggregateLocal", strategyAggregateLocal},
     {"ScalarLocalOverwrite", strategyScalarLocalOverwrite},
     {"ForLoopReturn", strategyForLoopReturn},
+    {"NestedForLoopAccumulatorReturn", strategyNestedForLoopAccumulatorReturn},
     {"ForLoopAccumulatorReturn", strategyForLoopAccumulatorReturn},
     {"LoopBodyReturn", strategyLoopBodyReturn},
     {"ComparisonLoopBodyReturn", strategyComparisonLoopBodyReturn},
