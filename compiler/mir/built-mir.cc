@@ -11228,11 +11228,39 @@ bool validateTerminatorTargets(const MirFunction& function) {
   return true;
 }
 
+/// \brief Extracts the result type from an operand.
+static identity::SemanticTypeId operandResultType(const MirOperand& operand) {
+  if (operand.kind() == MirOperandKind::Constant) { return operand.constantValue().type; }
+  return operand.place().resultType();
+}
+
+/// \brief Extracts the result type from an rvalue.
+static identity::SemanticTypeId rvalueResultType(const MirRvalue& rvalue) {
+  switch (rvalue.kind()) {
+    case MirRvalueKind::Use:
+      return operandResultType(rvalue.useValue().operand);
+    case MirRvalueKind::NominalAggregate:
+      return rvalue.nominalAggregateValue().type;
+    case MirRvalueKind::Comparison:
+      return rvalue.comparisonValue().resultType;
+    case MirRvalueKind::Arithmetic:
+      return rvalue.arithmeticValue().resultType;
+    case MirRvalueKind::Erase:
+      return rvalue.eraseValue().targetType;
+    case MirRvalueKind::ErrorUnion:
+      return rvalue.errorUnionValue().unionType;
+    case MirRvalueKind::ExtractField:
+      return rvalue.extractFieldValue().resultType;
+  }
+  ZC_UNREACHABLE
+}
+
 /// \brief Validates structural well-formedness of one MIR function independent
 /// of its source shape. Checks dense contiguous ordinals, valid scope/local/
 /// block references, reachable CFG from the entry block, terminated blocks,
-/// parameter-local ordering, and StorageLive-before-use for non-parameter
-/// locals. This is the foundation of the RFC 0048 structural verifier that
+/// parameter-local ordering, StorageLive-before-use for non-parameter locals,
+/// rvalue and terminator operand liveness, return type agreement, and
+/// assignment type agreement. This is the RFC 0048 structural verifier that
 /// replaces the per-shape valid*ReturnFunction validators.
 bool validateStructuralWellFormedness(const MirFunction& function) {
   // Dense contiguous ordinals: ids are 1-indexed and match vector position.
@@ -11323,7 +11351,10 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
     if (!r) return false;
   }
   // StorageLive before first use: every non-parameter local must have a
-  // StorageLive statement before any statement that references it.
+  // StorageLive statement before any statement or terminator that references
+  // it. This is a linear scan over block order; it is a conservative
+  // approximation that catches missing StorageLive without a full dataflow
+  // analysis (the ownership overlay in RFC 0007 owns precise liveness).
   zc::Vector<bool> storageLive;
   storageLive.resize(function.locals.size());
   for (size_t i = 0; i < function.locals.size(); ++i) {
@@ -11333,35 +11364,102 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
       storageLive[i] = false;
     }
   }
+  const auto checkPlace = [&](const MirPlace& place) -> bool {
+    for (size_t i = 0; i < function.locals.size(); ++i) {
+      if (function.locals[i].id == place.local() && !storageLive[i]) return false;
+    }
+    return true;
+  };
+  const auto checkOperand = [&](const MirOperand& operand) -> bool {
+    if (operand.kind() == MirOperandKind::Constant) return true;
+    return checkPlace(operand.place());
+  };
+  const auto checkRvalue = [&](const MirRvalue& rvalue) -> bool {
+    switch (rvalue.kind()) {
+      case MirRvalueKind::Use:
+        return checkOperand(rvalue.useValue().operand);
+      case MirRvalueKind::NominalAggregate: {
+        for (const auto& element : rvalue.nominalAggregateValue().elements) {
+          if (!checkOperand(element.operand)) return false;
+        }
+        return true;
+      }
+      case MirRvalueKind::Comparison:
+        return checkOperand(rvalue.comparisonValue().left) &&
+               checkOperand(rvalue.comparisonValue().right);
+      case MirRvalueKind::Arithmetic:
+        return checkOperand(rvalue.arithmeticValue().left) &&
+               checkOperand(rvalue.arithmeticValue().right);
+      case MirRvalueKind::Erase:
+        return checkOperand(rvalue.eraseValue().source);
+      case MirRvalueKind::ErrorUnion:
+        return checkOperand(rvalue.errorUnionValue().payload);
+      case MirRvalueKind::ExtractField:
+        return checkOperand(rvalue.extractFieldValue().source);
+    }
+    ZC_UNREACHABLE
+  };
   for (const auto& block : function.blocks) {
     for (const auto& statement : block.statements) {
       if (statement.kind() == MirStatementKind::StorageLive) {
-        const auto localIdValue = statement.storageLocal();
+        const auto liveLocal = statement.storageLocal();
         for (size_t i = 0; i < function.locals.size(); ++i) {
-          if (function.locals[i].id == localIdValue) {
+          if (function.locals[i].id == liveLocal) {
             storageLive[i] = true;
             break;
           }
         }
         continue;
       }
-      // Check that any local referenced by this statement is live.
-      const auto checkPlace = [&](const MirPlace& place) {
-        for (size_t i = 0; i < function.locals.size(); ++i) {
-          if (function.locals[i].id == place.local() && !storageLive[i]) return false;
-        }
-        return true;
-      };
       if (statement.kind() == MirStatementKind::Assign) {
         const auto& assign = statement.assignmentValue();
         if (!checkPlace(assign.destination)) return false;
-        // Rvalue operands are checked by the caller's type agreement;
-        // structural liveness only checks the destination.
+        if (!checkRvalue(assign.value)) return false;
+        // Type agreement: the rvalue result type must match the destination.
+        if (rvalueResultType(assign.value) != assign.destination.resultType()) return false;
+        // Internal operand type agreement for binary rvalues: comparison and
+        // arithmetic require same-typed operands, and arithmetic preserves the
+        // operand type as its result.
+        if (assign.value.kind() == MirRvalueKind::Comparison) {
+          const auto& comp = assign.value.comparisonValue();
+          if (operandResultType(comp.left) != operandResultType(comp.right)) return false;
+        } else if (assign.value.kind() == MirRvalueKind::Arithmetic) {
+          const auto& arith = assign.value.arithmeticValue();
+          if (operandResultType(arith.left) != operandResultType(arith.right)) return false;
+          if (arith.resultType != operandResultType(arith.left)) return false;
+        }
       } else if (statement.kind() == MirStatementKind::BorrowCreation) {
         const auto& borrow = statement.borrowCreationValue();
         if (!checkPlace(borrow.destination)) return false;
         if (!checkPlace(borrow.source)) return false;
+      } else if (statement.kind() == MirStatementKind::SetDiscriminant) {
+        if (!checkPlace(statement.setDiscriminantValue().destination)) return false;
+      } else if (statement.kind() == MirStatementKind::Deinitialize) {
+        if (!checkPlace(statement.deinitializeValue().destination)) return false;
       }
+    }
+    // Terminator operand liveness and return type agreement.
+    const auto& terminator = block.terminator;
+    if (terminator.kind() == MirTerminatorKind::Return) {
+      ZC_IF_SOME(value, terminator.returnValue().value) {
+        if (!checkOperand(value)) return false;
+        if (operandResultType(value) != function.resultType) return false;
+      }
+    } else if (terminator.kind() == MirTerminatorKind::Call) {
+      const auto& call = terminator.callValue();
+      for (const auto& argument : call.arguments) {
+        if (!checkOperand(argument)) return false;
+      }
+      if (!checkPlace(call.destination)) return false;
+    } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+      if (!checkOperand(terminator.switchIntValue().discriminant)) return false;
+    } else if (terminator.kind() == MirTerminatorKind::IndirectCall) {
+      const auto& call = terminator.indirectCallValue();
+      if (!checkOperand(call.receiver)) return false;
+      for (const auto& argument : call.arguments) {
+        if (!checkOperand(argument)) return false;
+      }
+      if (!checkPlace(call.destination)) return false;
     }
   }
   return true;
