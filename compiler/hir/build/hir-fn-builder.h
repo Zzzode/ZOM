@@ -42,6 +42,7 @@ public:
            zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
            zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
            zc::Vector<HirLocalBorrowExpression>& localBorrows,
+           zc::Vector<HirParameterIndexExpression>& parameterIndexes,
            zc::Vector<HirDirectCallExpression>& calls,
            zc::Vector<HirReceiverCallExpression>& receiverCalls,
            zc::Vector<HirConditionalExpression>& conditionals, zc::Vector<HirLoopStatement>& loops,
@@ -69,6 +70,7 @@ public:
   void addUnsafeBlock(HirUnsafeBlockExpression block);
   void addParameterReborrow(HirParameterReborrowExpression reborrow);
   void addLocalBorrow(HirLocalBorrowExpression borrow);
+  void addParameterIndex(HirParameterIndexExpression index);
   void addDirectCall(HirDirectCallExpression call);
   void addReceiverCall(HirReceiverCallExpression call);
   void addConditional(HirConditionalExpression conditional);
@@ -118,6 +120,7 @@ private:
   zc::Vector<HirUnsafeBlockExpression>* unsafeBlocks;
   zc::Vector<HirParameterReborrowExpression>* parameterReborrows;
   zc::Vector<HirLocalBorrowExpression>* localBorrows;
+  zc::Vector<HirParameterIndexExpression>* parameterIndexes;
   zc::Vector<HirDirectCallExpression>* calls;
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
   zc::Vector<HirConditionalExpression>* conditionals;
