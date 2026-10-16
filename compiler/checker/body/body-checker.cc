@@ -7473,6 +7473,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       const auto& site = *structLiteralSites[idx - 1];
       auto built = buildStructLiteral(input, site.node, nodeTypes.asPtr());
       if (built == zc::none) {
+        ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+          return zc::mv(drained);
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
@@ -7621,6 +7624,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       if (factEntry(nodeTypes.asPtr(), site.node) != zc::none) continue;
       auto built = buildArrayLiteral(input, site.node, nodeTypes.asPtr());
       if (built == zc::none) {
+        ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+          return zc::mv(drained);
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
@@ -7643,6 +7649,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       if (factEntry(nodeTypes.asPtr(), site.node) != zc::none) continue;
       auto built = buildTupleLiteral(input, site.node, nodeTypes.asPtr());
       if (built == zc::none) {
+        ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+          return zc::mv(drained);
+        }
         return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                site.key.schemaPreorder, zc::none, site.node,
                                site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Aggregate));
