@@ -5717,7 +5717,6 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
   const auto& loopValue = ZC_ASSERT_NONNULL(loop);
   if (loopValue.isDoWhile) return zc::none;
   if (loopValue.breakTargetsEnclosing || loopValue.continueTargetsEnclosing) return zc::none;
-  if (loopValue.breakCondition.isValid()) return zc::none;
   if (loopValue.body.size() != accCount + 1) return zc::none;
 
   // The return must be a local reference to the first accumulator.
@@ -5754,6 +5753,31 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
   auto conditionRight = expressionFor(hirModule, condition.right);
   if (conditionRight == zc::none) return zc::none;
   if (ZC_ASSERT_NONNULL(conditionRight).type != initBinding.type) return zc::none;
+
+  // Resolve the if-guarded break condition when present. The guard block
+  // evaluates this comparison and routes to the exit (break taken) or the
+  // body (break not taken).
+  const bool hasBreakCondition = loopValue.breakCondition.isValid();
+  zc::Maybe<const hir::HirPrimitiveBinaryExpression&> breakCondBinary;
+  zc::Maybe<MirComparisonOperator> breakCmpOp;
+  zc::Maybe<const hir::HirLocalReferenceExpression&> breakCondLeft;
+  zc::Maybe<const hir::HirScalarLiteralExpression&> breakCondRight;
+  if (hasBreakCondition) {
+    breakCondBinary = primitiveBinaryFor(hirModule, loopValue.breakCondition);
+    if (breakCondBinary == zc::none) return zc::none;
+    breakCmpOp = comparisonOperatorFor(ZC_ASSERT_NONNULL(breakCondBinary).operation);
+    if (breakCmpOp == zc::none) return zc::none;
+    breakCondLeft = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(breakCondBinary).left);
+    if (breakCondLeft == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(breakCondLeft).local != initBinding.local ||
+        ZC_ASSERT_NONNULL(breakCondLeft).type != initBinding.type) {
+      return zc::none;
+    }
+    breakCondRight = expressionFor(hirModule, ZC_ASSERT_NONNULL(breakCondBinary).right);
+    if (breakCondRight == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(breakCondRight).type != initBinding.type) return zc::none;
+    if (ZC_ASSERT_NONNULL(breakCondBinary).operandType != initBinding.type) return zc::none;
+  }
 
   // Resolve accumulator initializers (must all be literals).
   zc::Vector<const hir::HirScalarLiteralExpression*> accInitializers;
@@ -5855,21 +5879,30 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
                                                 initBinding.sourceSpan.clone());
   const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, condition.type, scope,
                                                     condition.sourceSpan.clone());
+  zc::Maybe<MirLocalId> breakTemp;
+  if (hasBreakCondition) {
+    breakTemp = ctx.declareLocal(MirLocalKind::Temporary, ZC_ASSERT_NONNULL(breakCondBinary).type,
+                                 scope, ZC_ASSERT_NONNULL(breakCondBinary).sourceSpan.clone());
+  }
   const MirLocalId resultLocal =
       ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType, scope,
                        ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone());
 
-  // Four-block reducible CFG:
-  //   entry  (StorageLive + Initialize + Goto header)
-  //   header (SwitchInt on temp)
-  //   body   (N accumulator Overwrites + update Overwrite + condition
-  //           recompute + Goto header/exit)
-  //   exit   (Initialize result from accumulator copy + ReturnValue)
+  // Reducible CFG: entry / header / [guard] / body / exit.
+  // Without a guarded break: four blocks (entry/header/body/exit).
+  // With a guarded break: five blocks (entry/header/guard/body/exit), where
+  // the guard evaluates the break condition and routes to exit (taken) or
+  // body (not taken).
   const MirBlockId entry = ctx.beginBlock(scope);
   (void)entry;
   const MirBlockId header = ctx.peekBlockIdAt(0);
-  const MirBlockId body = ctx.peekBlockIdAt(1);
-  const MirBlockId exit = ctx.peekBlockIdAt(2);
+  // Block IDs must be peeked before any further beginBlock() call: each
+  // beginBlock() advances the allocator cursor, so a peek taken afterwards
+  // would name the wrong block.
+  zc::Maybe<MirBlockId> guard;
+  if (hasBreakCondition) { guard = ctx.peekBlockIdAt(1); }
+  const MirBlockId body = hasBreakCondition ? ctx.peekBlockIdAt(2) : ctx.peekBlockIdAt(1);
+  const MirBlockId exit = hasBreakCondition ? ctx.peekBlockIdAt(3) : ctx.peekBlockIdAt(2);
 
   ctx.pushLoopContext(detail::LoopContext{zc::none, header, body, exit, header});
 
@@ -5882,6 +5915,10 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
   }
   ctx.appendStatement(MirStatement::storageLive(initLocal, initBinding.sourceSpan.clone()));
   ctx.appendStatement(MirStatement::storageLive(conditionTemp, condition.sourceSpan.clone()));
+  if (hasBreakCondition) {
+    ctx.appendStatement(MirStatement::storageLive(
+        ZC_ASSERT_NONNULL(breakTemp), ZC_ASSERT_NONNULL(breakCondBinary).sourceSpan.clone()));
+  }
   for (size_t k = 0; k < accCount; ++k) {
     zc::Vector<MirProjection> projections;
     ctx.appendStatement(MirStatement::assign(
@@ -5924,10 +5961,51 @@ zc::Maybe<RecursiveFunctionProduct> buildForLoopAccumulatorReturn(const Lowering
         proofs, copyMarker,
         MirPlace(conditionTemp, condition.type, zc::mv(discriminantProjections), condition.type));
     if (discriminant == zc::none) return zc::none;
+    // With a guarded break, the header routes to the guard block (true) or
+    // the exit (default); without, to the body (true) or the exit (default).
+    const MirBlockId headerTrueTarget = hasBreakCondition ? ZC_ASSERT_NONNULL(guard) : body;
     zc::Vector<MirSwitchIntArm> arms;
-    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), body});
+    arms.add(
+        MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), headerTrueTarget});
     ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
                                                 zc::mv(arms), exit, loopValue.sourceSpan.clone()));
+  }
+
+  // Guard block (if-guarded break only): evaluate the break condition and
+  // route to the exit (break taken) or the body (break not taken).
+  if (hasBreakCondition) {
+    ctx.beginBlock(scope);
+    {
+      zc::Vector<MirProjection> guardLeftProjections;
+      auto guardLeftOperand = placeUse(
+          proofs, copyMarker,
+          MirPlace(initLocal, ZC_ASSERT_NONNULL(breakCondBinary).operandType,
+                   zc::mv(guardLeftProjections), ZC_ASSERT_NONNULL(breakCondBinary).operandType));
+      if (guardLeftOperand == zc::none) return zc::none;
+      zc::Vector<MirProjection> guardTempProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(ZC_ASSERT_NONNULL(breakTemp), ZC_ASSERT_NONNULL(breakCondBinary).type,
+                   zc::mv(guardTempProjections), ZC_ASSERT_NONNULL(breakCondBinary).type),
+          MirRvalue::comparison(
+              ZC_ASSERT_NONNULL(breakCmpOp), zc::mv(ZC_ASSERT_NONNULL(guardLeftOperand)),
+              MirOperand::constant(ZC_ASSERT_NONNULL(breakCondRight).type,
+                                   ZC_ASSERT_NONNULL(breakCondRight).value.clone()),
+              ZC_ASSERT_NONNULL(breakCondBinary).type),
+          MirInitializationKind::Overwrite, ZC_ASSERT_NONNULL(breakCondBinary).sourceSpan.clone()));
+    }
+    {
+      zc::Vector<MirProjection> guardDiscProjections;
+      auto guardDiscriminant =
+          placeUse(proofs, copyMarker,
+                   MirPlace(ZC_ASSERT_NONNULL(breakTemp), ZC_ASSERT_NONNULL(breakCondBinary).type,
+                            zc::mv(guardDiscProjections), ZC_ASSERT_NONNULL(breakCondBinary).type));
+      if (guardDiscriminant == zc::none) return zc::none;
+      zc::Vector<MirSwitchIntArm> guardArms;
+      guardArms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), exit});
+      ctx.terminateBlock(
+          MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(guardDiscriminant)), zc::mv(guardArms),
+                                   body, ZC_ASSERT_NONNULL(breakCondBinary).sourceSpan.clone()));
+    }
   }
 
   // Body block: N accumulator Overwrites + update Overwrite + condition
