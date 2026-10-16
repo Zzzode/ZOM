@@ -87,6 +87,11 @@ zc::Maybe<const hir::HirLocalFieldProjectionExpression&> localFieldProjectionFor
   return uniqueRecordFor(module.localFieldProjections(), node);
 }
 
+zc::Maybe<const hir::HirLocalBorrowExpression&> localBorrowFor(const hir::VerifiedHirModule& module,
+                                                               hir::HirNodeId node) {
+  return uniqueRecordFor(module.localBorrows(), node);
+}
+
 zc::Maybe<const hir::HirParameterFieldProjectionExpression&> parameterFieldProjectionFor(
     const hir::VerifiedHirModule& module, hir::HirNodeId node) {
   return uniqueRecordFor(module.parameterFieldProjections(), node);
@@ -1436,6 +1441,175 @@ zc::Maybe<RecursiveFunctionProduct> buildParameterReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers `fn f(p: &T) -> &T { return unsafe { &*p }; }` (the unsafe
+/// wrapper is optional at the HIR shape level): one root scope, one Parameter
+/// local carrying the reference, one Temporary local holding the reborrow, a
+/// StorageLive for the temporary, a BorrowCreation whose destination is the
+/// temporary and whose source is the parameter place through a [Dereference]
+/// projection, and a Return of the copy/move place-use of the temporary. A
+/// trailing unsafe block adds a child scope and Enter/Exit boundary statements
+/// after the borrow, matching the legacy dedicated rail byte for byte.
+zc::Maybe<RecursiveFunctionProduct> buildParameterReborrowReturn(
+    const LoweringContext& lctx, const hir::HirParameterReborrowExpression& reborrow) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const auto& param = declaration.parameters[0];
+  const MirLocalId parameterLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, param.type, scope, param.sourceSpan.clone());
+  const MirLocalId temporaryLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, reborrow.type, scope, reborrow.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+
+  ctx.appendStatement(MirStatement::storageLive(temporaryLocal, reborrow.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> destinationProjections;
+  zc::Vector<MirProjection> sourceProjections;
+  sourceProjections.add(MirProjection::dereference(reborrow.sourceType, reborrow.type));
+  const MirBorrowKind borrowKind = reborrow.mutability == type::semantic::Mutability::Const
+                                       ? MirBorrowKind::Shared
+                                       : MirBorrowKind::Mutable;
+  ctx.appendStatement(MirStatement::borrowCreation(
+      MirPlace(temporaryLocal, reborrow.type, zc::mv(destinationProjections), reborrow.type),
+      borrowKind,
+      MirPlace(parameterLocal, reborrow.sourceType, zc::mv(sourceProjections), reborrow.type),
+      reborrow.sourceSpan.clone()));
+
+  // A trailing unsafe block wraps the reborrow in a child scope with
+  // Enter/Exit boundary statements, matching the legacy rail layout.
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+    for (const auto& candidate : hirModule.unsafeBlocks()) {
+      if (candidate.node != unsafeNode) continue;
+      if (unsafeBlock != zc::none) return zc::none;
+      unsafeBlock = candidate;
+    }
+    if (unsafeBlock == zc::none) return zc::none;
+    const auto& unsafe = ZC_ASSERT_NONNULL(unsafeBlock);
+    const MirSourceScopeId unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+  }
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(temporaryLocal, reborrow.type, zc::mv(returnProjections), reborrow.type));
+  if (returnOperand == zc::none) return zc::none;
+
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers a local-alias reborrow return:
+/// `fn f(p: &T) -> &T { let y = p; return &*y; }` (optionally wrapped in a
+/// trailing unsafe block). One root scope, one Parameter local holding the
+/// reference argument, one UserLocal copying the parameter, one Temporary
+/// receiving the reborrow, and a Return of the copy/move place-use of the
+/// temporary. The BorrowCreation source place carries a single Dereference
+/// projection from the alias type to the reborrow type. A trailing unsafe
+/// block adds a child source scope and Enter/Exit boundary statements.
+zc::Maybe<RecursiveFunctionProduct> buildLocalAliasReborrowReturn(
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirParameterReferenceExpression& initializer,
+    const hir::HirParameterReborrowExpression& reborrow) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId parameterLocal =
+      ctx.declareLocal(MirLocalKind::Parameter, initializer.type, scope,
+                       declaration.parameters[0].sourceSpan.clone());
+  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
+                                                sourceLocal.sourceSpan.clone());
+  const MirLocalId temporary =
+      ctx.declareLocal(MirLocalKind::Temporary, reborrow.type, scope, reborrow.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
+  zc::Vector<MirProjection> parameterProjections;
+  auto initializerOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(parameterLocal, initializer.type, zc::mv(parameterProjections), initializer.type));
+  if (initializerOperand == zc::none) return zc::none;
+  zc::Vector<MirProjection> localProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, sourceLocal.type, zc::mv(localProjections), sourceLocal.type),
+      MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(initializerOperand))),
+      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(temporary, reborrow.sourceSpan.clone()));
+  const auto borrowKind = reborrow.mutability == type::semantic::Mutability::Const
+                              ? MirBorrowKind::Shared
+                              : MirBorrowKind::Mutable;
+  zc::Vector<MirProjection> destinationProjections;
+  zc::Vector<MirProjection> sourceProjections;
+  sourceProjections.add(MirProjection::dereference(reborrow.sourceType, reborrow.type));
+  ctx.appendStatement(MirStatement::borrowCreation(
+      MirPlace(temporary, reborrow.type, zc::mv(destinationProjections), reborrow.type), borrowKind,
+      MirPlace(userLocal, reborrow.sourceType, zc::mv(sourceProjections), reborrow.type),
+      reborrow.sourceSpan.clone()));
+
+  // Trailing unsafe block: a child source scope plus Enter/Exit boundary
+  // statements delimiting the reborrow region.
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+    for (const auto& candidate : hirModule.unsafeBlocks()) {
+      if (candidate.node != unsafeNode) continue;
+      if (unsafeBlock != zc::none) return zc::none;
+      unsafeBlock = candidate;
+    }
+    if (unsafeBlock == zc::none) return zc::none;
+    const auto& unsafe = ZC_ASSERT_NONNULL(unsafeBlock);
+    const auto unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+  }
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(temporary, reborrow.type, zc::mv(returnProjections), reborrow.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn f(...) -> T { let x = <literal>; return x; }`: one root
 /// scope, one UserLocal at localId(1), StorageLive followed by an Initialize
 /// Assign of the scalar constant, and a Return of the copy/move place-use of
@@ -1471,6 +1645,89 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalReturn(
   auto returnOperand =
       placeUse(proofs, copyMarker,
                MirPlace(userLocal, sourceLocal.type, zc::mv(returnProjections), sourceLocal.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers the local-borrow return shape
+/// `fn f() -> &T { let x: T = <lit>; return &x; }`, optionally wrapped in a
+/// trailing unsafe block (`return unsafe { &x };`). One UserLocal holds the
+/// initializer literal; one Temporary holds the borrow created by
+/// BorrowCreation. The block holds StorageLive/Initialize/StorageLive/
+/// BorrowCreation followed by a Return of a place-use of the borrow temporary.
+/// A trailing unsafe block adds a child source scope and Enter/Exit scope
+/// boundary statements between the BorrowCreation and the Return.
+zc::Maybe<RecursiveFunctionProduct> buildLocalBorrowReturn(
+    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
+    const hir::HirScalarLiteralExpression& initializer,
+    const hir::HirLocalBorrowExpression& borrow) {
+  const auto& declaration = lctx.declaration;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+  if (declaration.receiver != zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
+                                                sourceLocal.sourceSpan.clone());
+  const MirLocalId borrowTemp =
+      ctx.declareLocal(MirLocalKind::Temporary, borrow.type, scope, borrow.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, sourceLocal.type, zc::mv(destinationProjections), sourceLocal.type),
+      MirRvalue::use(MirOperand::constant(sourceLocal.type, initializer.value.clone())),
+      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(borrowTemp, borrow.sourceSpan.clone()));
+  zc::Vector<MirProjection> borrowDestProjections;
+  zc::Vector<MirProjection> borrowSourceProjections;
+  const MirBorrowKind borrowKind = borrow.mutability == type::semantic::Mutability::Const
+                                       ? MirBorrowKind::Shared
+                                       : MirBorrowKind::Mutable;
+  ctx.appendStatement(MirStatement::borrowCreation(
+      MirPlace(borrowTemp, borrow.type, zc::mv(borrowDestProjections), borrow.type), borrowKind,
+      MirPlace(userLocal, borrow.sourceType, zc::mv(borrowSourceProjections), borrow.sourceType),
+      borrow.sourceSpan.clone()));
+
+  // A trailing unsafe block wraps the borrow in a child source scope with
+  // Enter/Exit boundary statements so the MIR verifier and ownership overlay
+  // can acknowledge the unsafe region.
+  ZC_IF_SOME(unsafeNode, declaration.unsafeBlock) {
+    zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafeBlock;
+    for (const auto& candidate : hirModule.unsafeBlocks()) {
+      if (candidate.node != unsafeNode) continue;
+      if (unsafeBlock != zc::none) return zc::none;
+      unsafeBlock = candidate;
+    }
+    if (unsafeBlock == zc::none) return zc::none;
+    const auto& unsafe = ZC_ASSERT_NONNULL(unsafeBlock);
+    const auto unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+    ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
+                                                          unsafeScope, unsafe.sourceSpan.clone()));
+  }
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(borrowTemp, borrow.type, zc::mv(returnProjections), borrow.type));
   if (returnOperand == zc::none) return zc::none;
   ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                                 sourceReturn.sourceSpan.clone()));
@@ -1874,6 +2131,140 @@ zc::Maybe<RecursiveFunctionProduct> buildLocalWriteReturn(const LoweringContext&
   auto returnOperand =
       placeUse(proofs, copyMarker,
                MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers a local field-projection return body: one user local (either
+/// aggregate-initialized or uninitialized) followed by one or more literal
+/// field writes, returning a single field projection of that local.
+///
+/// Byte-identical to the legacy dedicated field-write rails: one root scope,
+/// one UserLocal at localId(1) (no parameter locals, even when the signature
+/// has parameters), StorageLive plus an optional nominal-aggregate Initialize,
+/// one field Assign per write (Initialize for the first write to a field of an
+/// uninitialized local, Overwrite otherwise), and a Return selecting one field
+/// projection of the local.
+///
+/// - N>=3 statements: one leading binding, N-2 field writes, and a trailing
+///   return.
+/// - The binding is either uninitialized or aggregate-initialized with
+///   constant elements; a literal/parameter/local/binary initializer keeps the
+///   legacy rail.
+/// - Every write targets a named field of the binding with a scalar literal
+///   value; parameter and binary field-write values keep the legacy rail.
+/// - The return is a single field projection of the binding whose type matches
+///   the function result type.
+/// - No unsafe-tail variant joins this arm.
+zc::Maybe<RecursiveFunctionProduct> buildLocalFieldProjectionReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() < 3) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1) return zc::none;
+
+  auto sourceReturn = returnFor(hirModule, block.statements[block.statements.size() - 1]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto returnProjection = localFieldProjectionFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (returnProjection == zc::none) return zc::none;
+  const auto& projection = ZC_ASSERT_NONNULL(returnProjection);
+  if (projection.local != binding.local || projection.receiverType != binding.type ||
+      projection.type != declaration.resultType ||
+      projection.category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  // The binding is either uninitialized or aggregate-initialized with constant
+  // elements.
+  zc::Maybe<const hir::HirNominalAggregateExpression&> initializerAggregate;
+  ZC_IF_SOME(initializerNode, binding.initializer) {
+    auto aggregate = aggregateFor(hirModule, initializerNode);
+    if (aggregate == zc::none) return zc::none;
+    if (ZC_ASSERT_NONNULL(aggregate).type != binding.type ||
+        ZC_ASSERT_NONNULL(aggregate).category != hir::HirValueCategory::Value) {
+      return zc::none;
+    }
+    initializerAggregate = aggregate;
+  }
+
+  // Every intermediate statement is a field write with a scalar literal value.
+  const size_t writeCount = block.statements.size() - 2;
+  zc::Vector<const hir::HirLocalWriteStatement*> writes;
+  for (size_t i = 0; i < writeCount; ++i) {
+    auto write = localWriteFor(hirModule, block.statements[1 + i]);
+    if (write == zc::none) return zc::none;
+    const auto& w = ZC_ASSERT_NONNULL(write);
+    if (w.local != binding.local || w.field == zc::none) return zc::none;
+    auto value = expressionFor(hirModule, w.value);
+    if (value == zc::none || ZC_ASSERT_NONNULL(value).type != w.type) return zc::none;
+    writes.add(&w);
+  }
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+
+  // Aggregate initializer (when the binding is aggregate-initialized).
+  ZC_IF_SOME(aggregate, initializerAggregate) {
+    zc::Vector<MirNominalAggregateElement> elements;
+    for (const auto& element : aggregate.elements) {
+      elements.add(MirNominalAggregateElement{
+          element.field, MirOperand::constant(element.type, element.value.clone())});
+    }
+    zc::Vector<MirProjection> initializeProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(initializeProjections), binding.type),
+        MirRvalue::nominalAggregate(aggregate.definition, aggregate.type, zc::mv(elements)),
+        MirInitializationKind::Initialize, aggregate.sourceSpan.clone()));
+  }
+
+  // Field writes.
+  for (const auto* write : writes) {
+    auto value = expressionFor(hirModule, write->value);
+    const auto& literal = ZC_ASSERT_NONNULL(value);
+    zc::Vector<MirProjection> writeProjections;
+    writeProjections.add(
+        MirProjection::field(ZC_ASSERT_NONNULL(write->field), binding.type, write->type));
+    const auto initKind = write->kind == hir::HirLocalWriteKind::Initialize
+                              ? MirInitializationKind::Initialize
+                              : MirInitializationKind::Overwrite;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(writeProjections), write->type),
+        MirRvalue::use(MirOperand::constant(write->type, literal.value.clone())), initKind,
+        write->sourceSpan.clone()));
+  }
+
+  // Return the projected field.
+  zc::Vector<MirProjection> returnProjections;
+  returnProjections.add(MirProjection::field(projection.field, binding.type, projection.type));
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, binding.type, zc::mv(returnProjections), projection.type));
   if (returnOperand == zc::none) return zc::none;
   ctx.terminateBlock(
       MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
@@ -2578,6 +2969,241 @@ zc::Maybe<RecursiveFunctionProduct> buildErasedAggregateCallReturn(const Lowerin
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a single-statement direct-call return:
+/// `fn f(...) -> T { return g(args); }` and the codegen-identical
+/// error-propagate form `return g(args)?!;`. Parameter locals occupy
+/// localId(1..P), the call-result Temporary occupies localId(P+1), and the
+/// FunctionResult occupies localId(P+2). Block 1 storage-lives the temporary
+/// and calls into block 2, which storage-lives the result, moves the
+/// temporary into it, storage-dies the temporary, and returns the result.
+zc::Maybe<RecursiveFunctionProduct> buildDirectCallReturn(
+    const LoweringContext& lctx, const hir::HirDirectCallExpression& call,
+    const hir::HirReturnStatement& sourceReturn) {
+  const auto& declaration = lctx.declaration;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const MirLocalId temporaryLocal = ctx.declareLocal(
+      MirLocalKind::Temporary, declaration.resultType, scope, call.sourceSpan.clone());
+  if (temporaryLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 1)) {
+    return zc::none;
+  }
+  const MirLocalId resultLocal = ctx.declareLocal(
+      MirLocalKind::FunctionResult, declaration.resultType, scope, sourceReturn.sourceSpan.clone());
+  if (resultLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 2)) {
+    return zc::none;
+  }
+
+  // Block 1: storage-live the call-result temporary, then call into block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(temporaryLocal, call.sourceSpan.clone()));
+  zc::Vector<MirOperand> arguments;
+  for (const auto& argument : call.arguments) {
+    if (argument.value != zc::none) {
+      arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+    } else if (argument.parameter != zc::none) {
+      auto paramIndex = parameterIndexFor(declaration, ZC_ASSERT_NONNULL(argument.parameter));
+      if (paramIndex == zc::none) return zc::none;
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(paramIndex)],
+                                       argument.type, zc::mv(projections), argument.type));
+      if (operand == zc::none) return zc::none;
+      arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else {
+      return zc::none;
+    }
+  }
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> temporaryProjections;
+  ctx.terminateBlock(
+      MirTerminator::call(call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+                          MirPlace(temporaryLocal, declaration.resultType,
+                                   zc::mv(temporaryProjections), declaration.resultType),
+                          ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone()));
+
+  // Block 2: move the temporary into the function result, storage-die the
+  // temporary, and return the result.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> resultProjections;
+  zc::Vector<MirProjection> temporaryMoveProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocal, declaration.resultType, zc::mv(resultProjections),
+               declaration.resultType),
+      MirRvalue::use(
+          MirOperand::move(MirPlace(temporaryLocal, declaration.resultType,
+                                    zc::mv(temporaryMoveProjections), declaration.resultType))),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageDead(temporaryLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers a forced-unwrap call return: `fn f(...) -> T { return g(args)!!; }`.
+///
+/// The call produces an error union whose success payload is the function
+/// result type. A 4-block CFG extracts the tag, compares it with zero
+/// (success), and either traps (Unreachable) or extracts the payload and
+/// returns it. Mirrors the legacy `returnsErrorUnwrapCall` rail in
+/// built-mir.cc exactly: parameters occupy localId(1..P), the error-union
+/// temporary localId(P+1), the tag temporary localId(P+2), the bool
+/// temporary localId(P+3), and the function result localId(P+4).
+zc::Maybe<RecursiveFunctionProduct> buildErrorUnwrapCallReturn(
+    const LoweringContext& lctx, const hir::HirDirectCallExpression& call,
+    const hir::HirReturnStatement& sourceReturn) {
+  const auto& declaration = lctx.declaration;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  const auto tagType = ZC_ASSERT_NONNULL(declaration.errorUnwrapTagType);
+  const auto boolType = ZC_ASSERT_NONNULL(declaration.errorUnwrapBoolType);
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const uint32_t parameterCount = static_cast<uint32_t>(declaration.parameters.size());
+  const MirLocalId temporaryLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, call.resultType, scope, call.sourceSpan.clone());
+  if (temporaryLocal.ordinal() != parameterCount + 1) return zc::none;
+  const MirLocalId tagTempLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, tagType, scope, call.sourceSpan.clone());
+  if (tagTempLocal.ordinal() != parameterCount + 2) return zc::none;
+  const MirLocalId boolTempLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, boolType, scope, call.sourceSpan.clone());
+  if (boolTempLocal.ordinal() != parameterCount + 3) return zc::none;
+  const MirLocalId resultLocal = ctx.declareLocal(
+      MirLocalKind::FunctionResult, declaration.resultType, scope, sourceReturn.sourceSpan.clone());
+  if (resultLocal.ordinal() != parameterCount + 4) return zc::none;
+
+  // Block 1 (entry): StorageLive(T) + Call(dest=T, continuation=block 2).
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(temporaryLocal, call.sourceSpan.clone()));
+  zc::Vector<MirOperand> arguments;
+  for (const auto& argument : call.arguments) {
+    if (argument.value != zc::none) {
+      arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+    } else if (argument.parameter != zc::none) {
+      auto paramIndex = parameterIndexFor(declaration, ZC_ASSERT_NONNULL(argument.parameter));
+      if (paramIndex == zc::none) return zc::none;
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(paramIndex)],
+                                       argument.type, zc::mv(projections), argument.type));
+      if (operand == zc::none) return zc::none;
+      arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else {
+      return zc::none;
+    }
+  }
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> temporaryProjections;
+  ctx.terminateBlock(MirTerminator::call(
+      call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(temporaryLocal, call.resultType, zc::mv(temporaryProjections), call.resultType),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), call.sourceSpan.clone()));
+
+  // Block 2 (test): ExtractField(tag from T, field 0) + Comparison(Eq, tag, 0)
+  // + SwitchInt(bool, [true->block 4, false->block 3]).
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(tagTempLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> tagSourceProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(tagTempLocal, tagType, zc::Vector<MirProjection>{}, tagType),
+      MirRvalue::extractField(
+          MirOperand::move(MirPlace(temporaryLocal, call.resultType, zc::mv(tagSourceProjections),
+                                    call.resultType)),
+          0, tagType),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(boolTempLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> tagUseProjections;
+  auto tagOperand = placeUse(proofs, copyMarker,
+                             MirPlace(tagTempLocal, tagType, zc::mv(tagUseProjections), tagType));
+  if (tagOperand == zc::none) return zc::none;
+  auto zeroConstant =
+      checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+          checker::signature::IntegerSign::NonNegative, zc::Array<uint8_t>{}});
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(boolTempLocal, boolType, zc::Vector<MirProjection>{}, boolType),
+      MirRvalue::comparison(MirComparisonOperator::Eq, zc::mv(ZC_ASSERT_NONNULL(tagOperand)),
+                            MirOperand::constant(tagType, zc::mv(zeroConstant)), boolType),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> discriminantProjections;
+  auto discriminant =
+      placeUse(proofs, copyMarker,
+               MirPlace(boolTempLocal, boolType, zc::mv(discriminantProjections), boolType));
+  if (discriminant == zc::none) return zc::none;
+  const MirBlockId trapBlock = ctx.peekBlockIdAt(0);
+  const MirBlockId successBlock = ctx.peekBlockIdAt(1);
+  zc::Vector<MirSwitchIntArm> arms;
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), successBlock});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), trapBlock});
+  ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
+                                              trapBlock, sourceReturn.sourceSpan.clone()));
+
+  // Block 3 (trap): Unreachable.
+  (void)ctx.beginBlock(scope);
+  ctx.terminateBlock(MirTerminator::unreachable(sourceReturn.sourceSpan.clone()));
+
+  // Block 4 (success): StorageLive(R) + Assign(R=ExtractField(T, field 1)) +
+  // StorageDead(T) + Return(R).
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> payloadSourceProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocal, declaration.resultType, zc::Vector<MirProjection>{},
+               declaration.resultType),
+      MirRvalue::extractField(
+          MirOperand::move(MirPlace(temporaryLocal, call.resultType,
+                                    zc::mv(payloadSourceProjections), call.resultType)),
+          1, declaration.resultType),
+      MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageDead(temporaryLocal, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocal, declaration.resultType,
+                                         zc::mv(returnProjections), declaration.resultType));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                sourceReturn.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a scalar-local direct-call caller:
 /// `fn entry() -> i32 { let a: i32 = <literal>; return f(a); }`. One UserLocal
 /// of scalar type at localId(1) is initialized from a constant, one Temporary
@@ -2758,6 +3384,105 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectExistentialCallReturn(const Lower
                                 MirPlace(resultLocal, sourceCall.resultType,
                                          zc::mv(returnProjections), sourceCall.resultType));
   if (returnOperand == zc::none) { return zc::none; }
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers a direct-call-initializer caller:
+/// `fn f(...) -> T { let x = g(args...); return x; }`. The caller's
+/// parameters lower to leading parameter locals; one UserLocal at
+/// localId(N+1) is initialized by a direct call whose destination is the
+/// user local itself. Block 1 storage-lives the user local, calls the
+/// initializer into it, and continues to block 2, which returns the user
+/// local. Each call argument is a scalar constant or a parameter place-use.
+zc::Maybe<RecursiveFunctionProduct> buildDirectCallInitializerReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 2) return zc::none;
+  auto sourceReturn = returnFor(hirModule, block.statements[1]);
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceReturn == zc::none || sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1 || binding.initializer == zc::none ||
+      binding.erasure != zc::none) {
+    return zc::none;
+  }
+  hir::HirNodeId initializerNode;
+  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+  auto initCall = callFor(hirModule, initializerNode);
+  auto reference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (initCall == zc::none || reference == zc::none) return zc::none;
+  const auto& sourceCall = ZC_ASSERT_NONNULL(initCall);
+  const auto& sourceReference = ZC_ASSERT_NONNULL(reference);
+  if (sourceCall.resultType != binding.type || binding.type != declaration.resultType ||
+      sourceReference.local != binding.local || sourceReference.type != binding.type ||
+      sourceReference.category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t p = 0; p < declaration.parameters.size(); ++p) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, declaration.parameters[p].type,
+                                         scope, declaration.parameters[p].sourceSpan.clone()));
+  }
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  if (userLocal.ordinal() != static_cast<uint32_t>(declaration.parameters.size() + 1)) {
+    return zc::none;
+  }
+
+  // Block 1: storage-live the user local, then call the initializer into it
+  // and continue to block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  zc::Vector<MirOperand> arguments;
+  for (const auto& argument : sourceCall.arguments) {
+    if (argument.value != zc::none) {
+      arguments.add(MirOperand::constant(argument.type, ZC_ASSERT_NONNULL(argument.value).clone()));
+    } else if (argument.parameter != zc::none) {
+      auto paramIndex = parameterIndexFor(declaration, ZC_ASSERT_NONNULL(argument.parameter));
+      if (paramIndex == zc::none) return zc::none;
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(paramIndex)],
+                                       argument.type, zc::mv(projections), argument.type));
+      if (operand == zc::none) return zc::none;
+      arguments.add(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else {
+      return zc::none;
+    }
+  }
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.terminateBlock(MirTerminator::call(
+      sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(userLocal, binding.type, zc::mv(destinationProjections), binding.type),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+
+  // Block 2: return the user local.
+  (void)ctx.beginBlock(scope);
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+  if (returnOperand == zc::none) return zc::none;
   ctx.terminateBlock(
       MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                  ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
@@ -4533,6 +5258,24 @@ zc::Maybe<RecursiveFunctionProduct> strategyFreeBinary(const LoweringContext& lc
   return buildFreeFunctionBinaryReturn(lctx, ZC_ASSERT_NONNULL(binary));
 }
 
+/// Parameter reborrow return: `fn f(p: &T) -> &T { return unsafe { &*p }; }`.
+/// One-statement body whose trailing return value is a parameter reborrow
+/// record. The legacy dedicated rail admits only a single-parameter signature
+/// whose key and source type match the reborrow; the unsafe wrapper is
+/// optional.
+zc::Maybe<RecursiveFunctionProduct> strategyParameterReborrow(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1) return zc::none;
+  auto reborrow = parameterReborrowFor(lctx.hirModule, lctx.valueNode);
+  if (reborrow == zc::none) return zc::none;
+  if (lctx.declaration.parameters.size() != 1) return zc::none;
+  const auto& param = lctx.declaration.parameters[0];
+  if (param.key != ZC_ASSERT_NONNULL(reborrow).parameter) return zc::none;
+  if (param.type != ZC_ASSERT_NONNULL(reborrow).sourceType) return zc::none;
+  if (ZC_ASSERT_NONNULL(reborrow).type != lctx.declaration.resultType) return zc::none;
+  return buildParameterReborrowReturn(lctx, ZC_ASSERT_NONNULL(reborrow));
+}
+
 /// Parameter return: a bare parameter reference.
 zc::Maybe<RecursiveFunctionProduct> strategyParameter(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
@@ -4696,6 +5439,32 @@ zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalCall(const LoweringContex
   return buildScalarLocalCallReturn(lctx);
 }
 
+/// Direct-call-initializer caller: `fn f(...) -> T { let x = g(args...); return x; }`.
+zc::Maybe<RecursiveFunctionProduct> strategyDirectCallInitializerReturn(
+    const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildDirectCallInitializerReturn(lctx);
+}
+
+/// Single direct-call return: `fn f(...) -> T { return g(args); }` and the
+/// codegen-identical error-propagate form `return g(args)?!;`.
+zc::Maybe<RecursiveFunctionProduct> strategyDirectCall(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  // The forced-unwrap (`!!`) variant shares the HIR call carrier but lowers
+  // through a dedicated 4-block trap CFG; keep it on the legacy rail.
+  if (lctx.declaration.returnsErrorUnwrapCall) return zc::none;
+  if (lctx.declaration.returnErasure != zc::none) return zc::none;
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  if (sourceReturn.resultType != lctx.declaration.resultType) return zc::none;
+  auto call = callFor(lctx.hirModule, sourceReturn.value);
+  if (call == zc::none) return zc::none;
+  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
+  if (sourceCall.resultType != lctx.declaration.resultType) return zc::none;
+  return buildDirectCallReturn(lctx, sourceCall, sourceReturn);
+}
+
 /// Array index fold: `let a: [T; N] = [...]; return a[k];`.
 zc::Maybe<RecursiveFunctionProduct> strategyArrayIndexFold(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
@@ -4811,6 +5580,83 @@ zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalOverwrite(const LoweringC
   if (ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) return zc::none;
   return buildScalarLocalOverwriteReturn(lctx, binding, ZC_ASSERT_NONNULL(literal), write,
                                          ZC_ASSERT_NONNULL(overwriteLiteral));
+}
+
+/// Local-alias reborrow return: `let y = p; return &*y;` (optionally wrapped
+/// in a trailing unsafe block). The sole user local copies the sole reference
+/// parameter and the return reborrows through the local alias.
+zc::Maybe<RecursiveFunctionProduct> strategyLocalAliasReborrowReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.initializer == zc::none) return zc::none;
+  auto initializer = parameterReferenceFor(lctx.hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  if (initializer == zc::none) return zc::none;
+  const auto& init = ZC_ASSERT_NONNULL(initializer);
+  auto reborrow = parameterReborrowFor(lctx.hirModule, lctx.valueNode);
+  if (reborrow == zc::none) return zc::none;
+  const auto& borrow = ZC_ASSERT_NONNULL(reborrow);
+  if (borrow.sourceAlias == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(borrow.sourceAlias) != binding.local) return zc::none;
+  if (lctx.declaration.parameters.size() != 1) return zc::none;
+  if (lctx.declaration.parameters[0].key != init.parameter) return zc::none;
+  if (lctx.declaration.parameters[0].type != init.type) return zc::none;
+  if (borrow.parameter != init.parameter) return zc::none;
+  if (binding.type != init.type) return zc::none;
+  if (borrow.sourceType != binding.type) return zc::none;
+  if (borrow.type != lctx.declaration.resultType) return zc::none;
+  return buildLocalAliasReborrowReturn(lctx, binding, init, borrow);
+}
+
+/// Local-borrow return: `fn f() -> &T { let x: T = <lit>; return &x; }`.
+zc::Maybe<RecursiveFunctionProduct> strategyLocalBorrowReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasReceiver) return zc::none;
+  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.initializer == zc::none) return zc::none;
+  auto borrow = localBorrowFor(lctx.hirModule, lctx.valueNode);
+  if (borrow == zc::none) return zc::none;
+  const auto& localBorrow = ZC_ASSERT_NONNULL(borrow);
+  if (binding.local != localBorrow.local) return zc::none;
+  if (binding.type != localBorrow.sourceType) return zc::none;
+  if (localBorrow.type != lctx.declaration.resultType) return zc::none;
+  auto initializer = expressionFor(lctx.hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  if (initializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(initializer).type != binding.type) return zc::none;
+  return buildLocalBorrowReturn(lctx, binding, ZC_ASSERT_NONNULL(initializer), localBorrow);
+}
+
+/// Local field-projection return: one user local with literal field writes
+/// returning a field projection.
+zc::Maybe<RecursiveFunctionProduct> strategyLocalFieldProjection(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount < 3 || lctx.hasUnsafeBlock) return zc::none;
+  return buildLocalFieldProjectionReturn(lctx);
+}
+
+/// Forced-unwrap call return: `fn f(...) -> T { return g(args)!!; }`.
+///
+/// The call produces an error union; the dedicated 4-block trap CFG tests the
+/// tag and either traps or extracts the payload. Distinct from the plain
+/// DirectCall rail, which requires the call result type to equal the function
+/// result type (here the call result is the error union and the function
+/// result is its success payload).
+zc::Maybe<RecursiveFunctionProduct> strategyErrorUnwrapCallReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 1 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  if (!lctx.declaration.returnsErrorUnwrapCall) return zc::none;
+  if (lctx.declaration.errorUnwrapTagType == zc::none ||
+      lctx.declaration.errorUnwrapBoolType == zc::none) {
+    return zc::none;
+  }
+  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
+  auto call = callFor(lctx.hirModule, sourceReturn.value);
+  if (call == zc::none) return zc::none;
+  return buildErrorUnwrapCallReturn(lctx, ZC_ASSERT_NONNULL(call), sourceReturn);
 }
 
 /// \brief Builds the loop-body write assignments shared by the parameter-condition
@@ -6840,6 +7686,8 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ReceiverFieldBinary", strategyReceiverFieldBinary},
     {"MethodBinary", strategyMethodBinary},
     {"FreeBinary", strategyFreeBinary},
+    {"ParameterReborrow", strategyParameterReborrow},
+    {"LocalAliasReborrowReturn", strategyLocalAliasReborrowReturn},
     {"Parameter", strategyParameter},
     {"RawPointerWrite", strategyRawPointerWrite},
     {"ReceiverFieldWrite", strategyReceiverFieldWrite},
@@ -6849,10 +7697,14 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ErasedAggregateCall", strategyErasedAggregateCall},
     {"DirectExistentialCall", strategyDirectExistentialCall},
     {"ScalarLocalCall", strategyScalarLocalCall},
+    {"ErrorUnwrapCallReturn", strategyErrorUnwrapCallReturn},
+    {"DirectCallInitializerReturn", strategyDirectCallInitializerReturn},
+    {"DirectCall", strategyDirectCall},
     {"ArrayIndexFold", strategyArrayIndexFold},
     {"ScalarLocal", strategyScalarLocal},
     {"PrimitiveUnary", strategyPrimitiveUnary},
     {"AggregateLocal", strategyAggregateLocal},
+    {"LocalBorrowReturn", strategyLocalBorrowReturn},
     {"ScalarLocalOverwrite", strategyScalarLocalOverwrite},
     {"ForLoopReturn", strategyForLoopReturn},
     {"NestedForLoopAccumulatorReturn", strategyNestedForLoopAccumulatorReturn},
@@ -6860,6 +7712,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"LoopBodyReturn", strategyLoopBodyReturn},
     {"ComparisonLoopBodyReturn", strategyComparisonLoopBodyReturn},
     {"DoWhileLoopBodyReturn", strategyDoWhileLoopBodyReturn},
+    {"LocalFieldProjection", strategyLocalFieldProjection},
     {"LocalWrite", strategyLocalWrite},
     {"SequentialLocal", strategySequentialLocal},
 };
