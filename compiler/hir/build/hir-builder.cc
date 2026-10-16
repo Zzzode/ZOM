@@ -11316,7 +11316,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // Aggregate field projection return.
         if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             aggregate != zc::none && localFieldProjection != zc::none &&
-            allNone(call, receiverCall, localReference, literal, parameterReference, parameterIndex,
+            localReference != zc::none &&
+            allNone(call, receiverCall, literal, parameterReference, parameterIndex,
                     parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
                     comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
@@ -11612,12 +11613,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                             zc::mv(comparisonReturn),
                             shape.returnsErrorUnwrapCall};
       };
+      // selectShape() reads methodReceiver, so it must run before the
+      // PendingFunctionDeclaration constructor moves it. C++ argument
+      // evaluation order is unspecified, so calling selectShape() inside the
+      // constructor argument list would race with zc::mv(methodReceiver).
+      auto selectedShape = selectShape();
       pendingFunctions.add(PendingFunctionDeclaration{
           definition.definition, definition.node, functionResultType, zc::mv(parameters),
           zc::mv(methodReceiver), zc::mv(visibilityValue), linkageValue, definition.source.clone(),
           bodySpanValue.clone(), returnSpanValue.clone(), valueSpanValue.clone(),
           zc::mv(orderingKey), shape.body, shape.returnStatement, shape.value,
-          zc::mv(unsafeBlockSpan), selectShape()});
+          zc::mv(unsafeBlockSpan), zc::mv(selectedShape)});
       continue;
     }
     if (definition.record.kind() != identity::DefinitionKind::Static &&
