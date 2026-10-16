@@ -11338,12 +11338,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           for (const auto& write : localWrites) {
             if (write.field != zc::none) writesArePlain = false;
           }
-          const bool initializedByLeaf = (literal != zc::none) != (parameterReference != zc::none);
-          if (writesArePlain && initializedByLeaf) {
-            return LocalWriteReturn{
-                zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
-                zc::mv(parameterReference),       zc::mv(localWrites),
-                zc::mv(localWriteValues),         zc::mv(ZC_ASSERT_NONNULL(localReference))};
+          // The local-write lowering carrier only builds literal-initialized
+          // storage; a parameter-initialized local with writes is rejected as
+          // ZOM4098 by the GenericShape catch-all below.
+          const bool initializedByLiteral = literal != zc::none && parameterReference == zc::none;
+          if (writesArePlain && initializedByLiteral) {
+            return LocalWriteReturn{zc::mv(ZC_ASSERT_NONNULL(local)),
+                                    zc::mv(ZC_ASSERT_NONNULL(literal)), zc::mv(localWrites),
+                                    zc::mv(localWriteValues),
+                                    zc::mv(ZC_ASSERT_NONNULL(localReference))};
           }
         }
         // Local field projection return (aggregate field-write family).
@@ -12079,6 +12082,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       auto fnCtx = makeFnCtx();
       lowerLocalBorrowReturnFunction(zc::mv(value), fnCtx);
       continue;
+    }
+    // A parameter-initialized mut local with writes and a local-reference
+    // return is admitted by ownership surface admission and the checker, but
+    // the local-write lowering carrier only builds literal-initialized
+    // storage. Reject the definition as the expression-statement capability
+    // code ZOM4098 (the same code compound assignment and postfix update use)
+    // rather than falling through to the generic materializer and failing
+    // downstream as an internal compiler error.
+    if (value.shape.is<GenericShape>()) {
+      const auto& generic = value.shape.get<GenericShape>();
+      if (generic.local != zc::none && ZC_ASSERT_NONNULL(generic.local).initializer != zc::none &&
+          generic.parameterReference != zc::none && generic.localWrites.size() != 0 &&
+          generic.localReference != zc::none) {
+        return rejectHirCapability<HirModuleCandidate>(
+            value.definition, registries, ir::IrFailureKind::UnsupportedExpressionStatement,
+            generic.localWrites[0].sourceSpan.clone());
+      }
     }
     // Generic catch-all: shapes no specialized guard claims land here.
     {

@@ -53,20 +53,9 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 
-  // Initializer leaf (literal or parameter) at the initializer node.
-  if (shape.literal != zc::none) {
-    ZC_IF_SOME(literal, shape.literal) {
-      ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, literal.clone(),
-                                                   HirValueCategory::Value,
-                                                   initializerSpan.clone()});
-    }
-  } else {
-    ZC_IF_SOME(reference, shape.parameterReference) {
-      ctx.addParameterReference(HirParameterReferenceExpression{
-          initializerId, reference.parameter.clone(), reference.type, reference.category,
-          reference.sourceSpan.clone()});
-    }
-  }
+  // Initializer literal at the initializer node.
+  ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, shape.literal.clone(),
+                                               HirValueCategory::Value, initializerSpan.clone()});
 
   for (size_t index = 0; index < writeCount; ++index) {
     const HirLocalWriteStatement& write = shape.localWrites[index];

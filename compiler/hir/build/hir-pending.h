@@ -802,8 +802,7 @@ struct LocalReturn {
 
 struct LocalWriteReturn {
   HirLocalBinding local;
-  zc::Maybe<checker::checked::CanonicalConstValue> literal;
-  zc::Maybe<HirParameterReferenceExpression> parameterReference;
+  checker::checked::CanonicalConstValue literal;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<PendingLocalWriteValue> localWriteValues;
   HirLocalReferenceExpression localReference;
