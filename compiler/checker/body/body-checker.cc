@@ -9838,6 +9838,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // HIR builder can lower it to a scalar constant.
         auto shape = enumVariantValueShape(input, site.node);
         if (shape == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -10319,6 +10322,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         // Call fact is produced because no callable is invoked.
         auto shape = enumVariantConstructionShape(input, site.node);
         if (shape == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
           return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
