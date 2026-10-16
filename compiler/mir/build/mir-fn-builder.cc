@@ -70,6 +70,15 @@ void MirFnCtx::terminateBlock(MirTerminator terminator) {
   blocks.back().terminator = zc::mv(terminator);
 }
 
+void MirFnCtx::pushLoopContext(LoopContext context) { loopContexts.push(zc::mv(context)); }
+
+void MirFnCtx::popLoopContext() noexcept { loopContexts.pop(); }
+
+zc::Maybe<const LoopContext&> MirFnCtx::resolveLoopTarget(
+    zc::Maybe<ast::IdentId> label) const noexcept {
+  return loopContexts.resolveTarget(label);
+}
+
 MirFunction MirFnCtx::finish(identity::DefId owner, MirFunctionKind kind,
                              identity::DefinitionKind sourceDefinitionKind,
                              identity::SemanticTypeId resultType, identity::SourceSpan sourceSpan) {

@@ -11,7 +11,9 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/key/definition-key.h"
+#include "compiler/mir/build/loop-context.h"
 #include "compiler/mir/build/mir-builder.h"
+#include "compiler/mir/cfg-utils.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/type/semantic-type-store.h"
 
@@ -817,87 +819,6 @@ MirBlockId blockId(uint32_t ordinal) {
   auto value = MirBlockId::fromOrdinal(ordinal);
   ZC_IF_SOME(id, value) { return id; }
   ZC_UNREACHABLE
-}
-
-/// \brief Finds a block by its id, following CFG edges instead of positional
-/// indices. Returns nullptr when the id is not present in the function.
-const MirBasicBlock* findBlockById(const MirFunction& function, MirBlockId id) {
-  for (const auto& block : function.blocks) {
-    if (block.id == id) return &block;
-  }
-  return nullptr;
-}
-
-/// \brief Resolves a conditional diamond CFG: entry (SwitchInt) -> then/else
-/// (Goto) -> join. The entry is always blocks[0] with id blockId(1). On
-/// success, sets thenBlock/elseBlock/joinBlock to the blocks found via
-/// terminator targets and returns true. Returns false on any structural
-/// mismatch (wrong block count, missing terminator, dangling target, aliasing).
-bool resolveDiamondCfg(const MirFunction& function, const MirBasicBlock*& thenBlock,
-                       const MirBasicBlock*& elseBlock, const MirBasicBlock*& joinBlock) {
-  if (function.blocks.size() != 4) return false;
-  const auto& entry = function.blocks[0];
-  if (entry.id != blockId(1) || entry.terminator.kind() != MirTerminatorKind::SwitchInt) {
-    return false;
-  }
-  const auto& switchInt = entry.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2) return false;
-  thenBlock = findBlockById(function, switchInt.arms[0].target);
-  elseBlock = findBlockById(function, switchInt.arms[1].target);
-  if (thenBlock == nullptr || elseBlock == nullptr || thenBlock == elseBlock) return false;
-  if (thenBlock->terminator.kind() != MirTerminatorKind::Goto ||
-      elseBlock->terminator.kind() != MirTerminatorKind::Goto) {
-    return false;
-  }
-  const auto joinId = thenBlock->terminator.gotoValue().target;
-  if (elseBlock->terminator.gotoValue().target != joinId) return false;
-  joinBlock = findBlockById(function, joinId);
-  if (joinBlock == nullptr || joinBlock == thenBlock || joinBlock == elseBlock) return false;
-  return true;
-}
-
-/// \brief Resolves a reducible loop CFG: entry (Goto) -> header (SwitchInt) ->
-/// body (Goto) / exit (default). The entry is always blocks[0] with id
-/// blockId(1). On success, sets header/body/exit to the blocks found via
-/// terminator targets and returns true. The body's Goto target is not checked
-/// here — the caller validates whether it is a back-edge to the header or a
-/// break to the exit. Returns false on any structural mismatch.
-bool resolveLoopCfg(const MirFunction& function, const MirBasicBlock*& header,
-                    const MirBasicBlock*& body, const MirBasicBlock*& exit) {
-  if (function.blocks.size() != 4) return false;
-  const auto& entry = function.blocks[0];
-  if (entry.id != blockId(1) || entry.terminator.kind() != MirTerminatorKind::Goto) {
-    return false;
-  }
-  header = findBlockById(function, entry.terminator.gotoValue().target);
-  if (header == nullptr || header == &entry) return false;
-  if (header->terminator.kind() != MirTerminatorKind::SwitchInt) return false;
-  const auto& switchInt = header->terminator.switchIntValue();
-  if (switchInt.arms.size() != 1) return false;
-  body = findBlockById(function, switchInt.arms[0].target);
-  exit = findBlockById(function, switchInt.defaultTarget);
-  if (body == nullptr || exit == nullptr || body == exit || body == header || exit == header) {
-    return false;
-  }
-  if (body->terminator.kind() != MirTerminatorKind::Goto) return false;
-  return true;
-}
-
-/// Follows the normalTarget edge of a Call or IndirectCall terminator to find
-/// the continuation block. Returns nullptr if the entry terminator is not a
-/// call, the target does not exist, or the target is the entry itself.
-const MirBasicBlock* findCallContinuation(const MirFunction& function, const MirBasicBlock& entry) {
-  MirBlockId target;
-  if (entry.terminator.kind() == MirTerminatorKind::Call) {
-    target = entry.terminator.callValue().normalTarget;
-  } else if (entry.terminator.kind() == MirTerminatorKind::IndirectCall) {
-    target = entry.terminator.indirectCallValue().normalTarget;
-  } else {
-    return nullptr;
-  }
-  const auto* continuation = findBlockById(function, target);
-  if (continuation == nullptr || continuation == &entry) return nullptr;
-  return continuation;
 }
 
 bool encodeDefinition(identity::CanonicalEncoder& encoder, identity::DefId definition,
@@ -12249,12 +12170,17 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 // block branches into the empty body on a true discriminant and
                 // to the exit otherwise; the body jumps back to the header,
                 // forming a reducible back-edge.
+                const detail::LoopContext loopCtx{zc::none,     // label
+                                                  blockId(2),   // header
+                                                  blockId(3),   // body
+                                                  blockId(4),   // exit
+                                                  blockId(2)};  // continueTarget (header)
                 zc::Vector<MirStatement> entryStatements;
                 entryStatements.add(
                     MirStatement::storageLive(resultLocal, returnStatement.sourceSpan.clone()));
                 zc::Vector<MirSwitchIntArm> arms;
                 arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
-                                         blockId(3)});
+                                         loopCtx.body});
                 zc::Vector<MirProjection> exitProjections;
                 zc::Vector<MirStatement> exitStatements;
                 exitStatements.add(MirStatement::assign(
@@ -12266,16 +12192,16 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 zc::Vector<MirBasicBlock> blocks;
                 blocks.add(MirBasicBlock{
                     blockId(1), scopeId(1), zc::mv(entryStatements),
-                    MirTerminator::gotoTarget(blockId(2), loopValue.sourceSpan.clone())});
+                    MirTerminator::gotoTarget(loopCtx.header, loopValue.sourceSpan.clone())});
                 blocks.add(MirBasicBlock{
-                    blockId(2), scopeId(1), zc::Vector<MirStatement>{},
+                    loopCtx.header, scopeId(1), zc::Vector<MirStatement>{},
                     MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                             blockId(4), loopValue.sourceSpan.clone())});
+                                             loopCtx.exit, loopValue.sourceSpan.clone())});
                 blocks.add(MirBasicBlock{
-                    blockId(3), scopeId(1), zc::Vector<MirStatement>{},
-                    MirTerminator::gotoTarget(blockId(2), loopValue.sourceSpan.clone())});
+                    loopCtx.body, scopeId(1), zc::Vector<MirStatement>{},
+                    MirTerminator::gotoTarget(loopCtx.header, loopValue.sourceSpan.clone())});
                 blocks.add(MirBasicBlock{
-                    blockId(4), scopeId(1), zc::mv(exitStatements),
+                    loopCtx.exit, scopeId(1), zc::mv(exitStatements),
                     MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                                returnStatement.sourceSpan.clone())});
                 MirFunction function{declaration.definition,
@@ -12797,14 +12723,19 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                               MirOperand::constant(local.type, initialValue.value.clone())),
                           MirInitializationKind::Initialize, initialValue.sourceSpan.clone()));
                       zc::Vector<MirSwitchIntArm> arms;
+                      const detail::LoopContext loopCtx{zc::none,     // label
+                                                        blockId(2),   // header
+                                                        blockId(3),   // body
+                                                        blockId(4),   // exit
+                                                        blockId(2)};  // continueTarget (header)
                       arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
-                                               blockId(3)});
+                                               loopCtx.body});
                       zc::Vector<MirStatement> exitStatements;
-                      // A trailing break exits the body to the loop exit (bb4); a
-                      // trailing continue or a write-only body jumps back to the
-                      // header (bb2, the reducible back-edge).
+                      // A trailing break exits the body to the loop exit; a
+                      // trailing continue or a write-only body jumps back to
+                      // the header (the reducible back-edge).
                       const auto bodyTerminatorTarget =
-                          loopValue.breakSpan != zc::none ? blockId(4) : blockId(2);
+                          loopValue.breakSpan != zc::none ? loopCtx.exit : loopCtx.continueTarget;
                       const auto& bodyTerminatorSpan =
                           loopValue.breakSpan != zc::none
                               ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
@@ -12814,18 +12745,18 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                       zc::Vector<MirBasicBlock> blocks;
                       blocks.add(MirBasicBlock{
                           blockId(1), scopeId(1), zc::mv(entryStatements),
-                          MirTerminator::gotoTarget(blockId(2), loopValue.sourceSpan.clone())});
+                          MirTerminator::gotoTarget(loopCtx.header, loopValue.sourceSpan.clone())});
                       blocks.add(MirBasicBlock{
-                          blockId(2), scopeId(1), zc::Vector<MirStatement>{},
+                          loopCtx.header, scopeId(1), zc::Vector<MirStatement>{},
                           MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                   zc::mv(arms), blockId(4),
+                                                   zc::mv(arms), loopCtx.exit,
                                                    loopValue.sourceSpan.clone())});
                       blocks.add(
-                          MirBasicBlock{blockId(3), scopeId(1), zc::mv(bodyStatements),
+                          MirBasicBlock{loopCtx.body, scopeId(1), zc::mv(bodyStatements),
                                         MirTerminator::gotoTarget(bodyTerminatorTarget,
                                                                   bodyTerminatorSpan.clone())});
                       blocks.add(MirBasicBlock{
-                          blockId(4), scopeId(1), zc::mv(exitStatements),
+                          loopCtx.exit, scopeId(1), zc::mv(exitStatements),
                           MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
                                                      returnStatement.sourceSpan.clone())});
                       MirFunction function{declaration.definition,
@@ -13127,22 +13058,22 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                   ir::IrFailureKind::InvalidFact, module, declaration.definition,
                                   identities, static_cast<uint32_t>(pending.size() + 1));
                             }
+                            // Resolve loop block layout: do-while has body at
+                            // bb2 and condition at bb3; while swaps them.
+                            const detail::LoopContext loopCtx{
+                                zc::none, loopValue.isDoWhile ? blockId(3) : blockId(2),
+                                loopValue.isDoWhile ? blockId(2) : blockId(3), blockId(4),
+                                loopValue.isDoWhile ? blockId(3) : blockId(2)};
                             zc::Vector<MirSwitchIntArm> arms;
-                            // For do-while, the true arm targets the body (bb2);
-                            // for while, the true arm targets the body (bb3).
-                            const auto conditionTrueTarget =
-                                loopValue.isDoWhile ? blockId(2) : blockId(3);
                             arms.add(MirSwitchIntArm{
                                 checker::checked::CanonicalConstValue::boolean(true),
-                                conditionTrueTarget});
-                            // A trailing break exits the body to the loop exit
-                            // (bb4); a trailing continue or a write-only body
-                            // jumps to the condition block (bb3 for do-while,
-                            // bb2 for while).
-                            const auto bodyTerminatorTarget =
-                                loopValue.breakSpan != zc::none
-                                    ? blockId(4)
-                                    : (loopValue.isDoWhile ? blockId(3) : blockId(2));
+                                loopCtx.body});
+                            // A trailing break exits to the loop exit; a
+                            // trailing continue or a write-only body jumps to
+                            // the continue target.
+                            const auto bodyTerminatorTarget = loopValue.breakSpan != zc::none
+                                                                  ? loopCtx.exit
+                                                                  : loopCtx.continueTarget;
                             const auto& bodyTerminatorSpan =
                                 loopValue.breakSpan != zc::none
                                     ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
@@ -13175,14 +13106,14 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                               blocks.add(MirBasicBlock{
                                   blockId(3), scopeId(1), zc::mv(conditionStatements),
                                   MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                           zc::mv(arms), blockId(4),
+                                                           zc::mv(arms), loopCtx.exit,
                                                            loopValue.sourceSpan.clone())});
                             } else {
                               // While: bb2=condition, bb3=body.
                               blocks.add(MirBasicBlock{
                                   blockId(2), scopeId(1), zc::mv(conditionStatements),
                                   MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
-                                                           zc::mv(arms), blockId(4),
+                                                           zc::mv(arms), loopCtx.exit,
                                                            loopValue.sourceSpan.clone())});
                               blocks.add(MirBasicBlock{
                                   blockId(3), scopeId(1), zc::mv(bodyStatements),
@@ -13366,10 +13297,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                             declaration.definition, identities,
                                             static_cast<uint32_t>(pending.size() + 1));
                                       }
+                                      const detail::LoopContext loopCtx{
+                                          zc::none, blockId(2), blockId(3), blockId(4), blockId(2)};
                                       zc::Vector<MirSwitchIntArm> arms;
                                       arms.add(MirSwitchIntArm{
                                           checker::checked::CanonicalConstValue::boolean(true),
-                                          blockId(3)});
+                                          loopCtx.body});
                                       // Body: Assign(i = Arithmetic(op, copy(i),
                                       // <lit>), Overwrite), Assign(temp =
                                       // Comparison(op, copy(i), <lit>), Overwrite),
@@ -13449,12 +13382,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                               declaration.resultType, returnValue.value.clone())),
                                           MirInitializationKind::Initialize,
                                           returnValue.sourceSpan.clone()));
-                                      // A trailing break exits the body to the
-                                      // loop exit (bb4); a trailing continue or
-                                      // a write-only body jumps back to the
-                                      // header (bb2, the reducible back-edge).
+                                      // A trailing break exits to the loop exit;
+                                      // a trailing continue or a write-only body
+                                      // jumps back to the header (the reducible
+                                      // back-edge).
                                       const auto bodyTerminatorTarget =
-                                          loopValue.breakSpan != zc::none ? blockId(4) : blockId(2);
+                                          loopValue.breakSpan != zc::none ? loopCtx.exit
+                                                                          : loopCtx.continueTarget;
                                       const auto& bodyTerminatorSpan =
                                           loopValue.breakSpan != zc::none
                                               ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
@@ -13470,7 +13404,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                           blockId(2), scopeId(1), zc::Vector<MirStatement>{},
                                           MirTerminator::switchInt(
                                               zc::mv(ZC_ASSERT_NONNULL(discriminant)), zc::mv(arms),
-                                              blockId(4), loopValue.sourceSpan.clone())});
+                                              loopCtx.exit, loopValue.sourceSpan.clone())});
                                       blocks.add(MirBasicBlock{
                                           blockId(3), scopeId(1), zc::mv(bodyStatements),
                                           MirTerminator::gotoTarget(bodyTerminatorTarget,
@@ -14134,13 +14068,35 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                                 pending.size() +
                                                                                 1));
                                                                       }
+                                                                      // Outer loop:
+                                                                      // header=bb2,
+                                                                      // body=bb3,
+                                                                      // exit=bb7,
+                                                                      // continue=bb6.
+                                                                      const detail::LoopContext
+                                                                          outerCtx{zc::none,
+                                                                                   blockId(2),
+                                                                                   blockId(3),
+                                                                                   blockId(7),
+                                                                                   blockId(6)};
+                                                                      // Inner loop:
+                                                                      // header=bb4,
+                                                                      // body=bb5,
+                                                                      // exit=bb6,
+                                                                      // continue=bb4.
+                                                                      const detail::LoopContext
+                                                                          innerCtx{zc::none,
+                                                                                   blockId(4),
+                                                                                   blockId(5),
+                                                                                   blockId(6),
+                                                                                   blockId(4)};
                                                                       zc::Vector<MirSwitchIntArm>
                                                                           outerArms;
                                                                       outerArms.add(MirSwitchIntArm{
                                                                           checker::checked::
                                                                               CanonicalConstValue::
                                                                                   boolean(true),
-                                                                          blockId(3)});
+                                                                          outerCtx.body});
                                                                       // bb3
                                                                       // (inner
                                                                       // entry):
@@ -14288,7 +14244,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                           checker::checked::
                                                                               CanonicalConstValue::
                                                                                   boolean(true),
-                                                                          blockId(5)});
+                                                                          innerCtx.body});
                                                                       // bb5
                                                                       // (inner
                                                                       // body):
@@ -14749,7 +14705,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                               zc::mv(ZC_ASSERT_NONNULL(
                                                                                   outerDiscriminant)),
                                                                               zc::mv(outerArms),
-                                                                              blockId(7),
+                                                                              outerCtx.exit,
                                                                               loopValue.sourceSpan
                                                                                   .clone())});
                                                                       blocks.add(MirBasicBlock{
@@ -14769,7 +14725,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                               zc::mv(ZC_ASSERT_NONNULL(
                                                                                   innerDiscriminant)),
                                                                               zc::mv(innerArms),
-                                                                              blockId(6),
+                                                                              innerCtx.exit,
                                                                               innerLoopValue
                                                                                   .sourceSpan
                                                                                   .clone())});
@@ -14779,12 +14735,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                               innerBodyStatements),
                                                                           MirTerminator::gotoTarget(
                                                                               innerBreakTargetsOuter
-                                                                                  ? blockId(7)
+                                                                                  ? outerCtx.exit
                                                                                   : (innerContinueTargetsOuter
-                                                                                         ? blockId(
-                                                                                               6)
-                                                                                         : blockId(
-                                                                                               4)),
+                                                                                         ? outerCtx
+                                                                                               .continueTarget
+                                                                                         : innerCtx
+                                                                                               .continueTarget),
                                                                               innerLoopValue
                                                                                   .sourceSpan
                                                                                   .clone())});
@@ -14793,7 +14749,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                                           zc::mv(
                                                                               outerContStatements),
                                                                           MirTerminator::gotoTarget(
-                                                                              blockId(2),
+                                                                              outerCtx.header,
                                                                               loopValue.sourceSpan
                                                                                   .clone())});
                                                                       blocks.add(MirBasicBlock{
@@ -15407,15 +15363,19 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                                 hasBreakCondition ? blockId(5) : blockId(4);
                                             const auto bodyBlockId =
                                                 hasBreakCondition ? blockId(4) : blockId(3);
+                                            const detail::LoopContext loopCtx{
+                                                zc::none, blockId(2), bodyBlockId, exitBlockId,
+                                                blockId(2)};
                                             // A trailing break exits the
                                             // body to the loop exit; a
                                             // trailing continue or a
                                             // write-only body jumps back
-                                            // to the header (bb2, the
-                                            // reducible back-edge).
+                                            // to the header (the reducible
+                                            // back-edge).
                                             const auto bodyTerminatorTarget =
-                                                loopValue.breakSpan != zc::none ? exitBlockId
-                                                                                : blockId(2);
+                                                loopValue.breakSpan != zc::none
+                                                    ? loopCtx.exit
+                                                    : loopCtx.continueTarget;
                                             const auto& bodyTerminatorSpan =
                                                 loopValue.breakSpan != zc::none
                                                     ? ZC_ASSERT_NONNULL(loopValue.breakSpan)

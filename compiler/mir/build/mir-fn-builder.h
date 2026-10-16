@@ -7,6 +7,7 @@
 
 #include <cstdint>
 
+#include "compiler/mir/build/loop-context.h"
 #include "compiler/mir/built-mir.h"
 #include "zc/core/common.h"
 #include "zc/core/vector.h"
@@ -57,6 +58,15 @@ public:
   /// \brief Sets the current block terminator exactly once and closes the block.
   void terminateBlock(MirTerminator terminator);
 
+  /// \brief Pushes a loop context onto the loop context stack.
+  void pushLoopContext(LoopContext context);
+
+  /// \brief Pops the innermost loop context.
+  void popLoopContext() noexcept;
+
+  /// \brief Resolves the target loop for a break/continue statement.
+  zc::Maybe<const LoopContext&> resolveLoopTarget(zc::Maybe<ast::IdentId> label) const noexcept;
+
   /// \brief Assembles the finalized MirFunction, consuming every allocation.
   MirFunction finish(identity::DefId owner, MirFunctionKind kind,
                      identity::DefinitionKind sourceDefinitionKind,
@@ -76,6 +86,7 @@ private:
   zc::Vector<MirSourceScope> scopes;
   zc::Vector<MirLocalDeclaration> locals;
   zc::Vector<PendingBlock> blocks;
+  LoopContextStack loopContexts;
 };
 
 }  // namespace detail

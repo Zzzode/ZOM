@@ -16,6 +16,7 @@
 
 #include "compiler/checker/facts/signature-facts.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/mir/cfg-utils.h"
 #include "compiler/type/semantic-type-data.h"
 #include "compiler/type/semantic-type-store.h"
 
@@ -1110,9 +1111,10 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
   const uint32_t resultOrdinal = result.id.ordinal();
 
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
+  const mir::MirBasicBlock* thenBlock = nullptr;
+  const mir::MirBasicBlock* elseBlock = nullptr;
+  const mir::MirBasicBlock* joinBlock = nullptr;
+  if (!mir::resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) { return zc::none; }
 
   // Entry: StorageLive(result); SwitchInt(bool cond param) -> then/else.
   if (entry.statements.size() != 1 ||
@@ -1140,8 +1142,8 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
   // else block, matching the verified diamond.
   const auto trueTargetOrdinal = switchInt.arms[0].target.ordinal();
   const auto falseTargetOrdinal = switchInt.arms[1].target.ordinal();
-  if (trueTargetOrdinal != thenBlock.id.ordinal() || falseTargetOrdinal != elseBlock.id.ordinal() ||
-      switchInt.defaultTarget != elseBlock.id) {
+  if (trueTargetOrdinal != thenBlock->id.ordinal() ||
+      falseTargetOrdinal != elseBlock->id.ordinal() || switchInt.defaultTarget != elseBlock->id) {
     return zc::none;
   }
 
@@ -1165,7 +1167,7 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != joinBlock.id) {
+        branch.terminator.gotoValue().target != joinBlock->id) {
       return false;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -1232,16 +1234,16 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
 
   zc::Vector<Statement> thenStatements;
   zc::Vector<Statement> elseStatements;
-  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+  if (!lowerArm(*thenBlock, thenStatements) || !lowerArm(*elseBlock, elseStatements)) {
     return zc::none;
   }
 
   // Join: no statements; Return(place-use result).
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  const auto& returnValue = joinBlock->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -1326,44 +1328,45 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopReturn(const mir::MirFunction& func
   const uint32_t resultOrdinal = result.id.ordinal();
 
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  const mir::MirBasicBlock* header = nullptr;
+  const mir::MirBasicBlock* body = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (!mir::resolveLoopCfg(function, header, body, exit)) { return zc::none; }
 
   // Entry: StorageLive(result); Goto(header).
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != result.id ||
       entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != header.id) {
+      entry.terminator.gotoValue().target != header->id) {
     return zc::none;
   }
 
   // Header: no statements; SwitchInt(bool param) [true -> body], default = exit.
-  if (header.statements.size() != 0 ||
-      header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (header->statements.size() != 0 ||
+      header->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& switchInt = header.terminator.switchIntValue();
+  const auto& switchInt = header->terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != parameter.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != body->id || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
 
   // Body: no statements; Goto(header) reducible back-edge.
-  if (body.statements.size() != 0 || body.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      body.terminator.gotoValue().target != header.id) {
+  if (body->statements.size() != 0 || body->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      body->terminator.gotoValue().target != header->id) {
     return zc::none;
   }
 
   // Exit: Assign(result = integer literal); Return(place-use result).
-  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
-      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 1 || exit->statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& assignment = exit.statements[0].assignmentValue();
+  const auto& assignment = exit->statements[0].assignmentValue();
   if (assignment.destination.local() != result.id ||
       assignment.destination.projections().size() != 0 ||
       assignment.value.kind() != mir::MirRvalueKind::Use) {
@@ -1381,7 +1384,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopReturn(const mir::MirFunction& func
   auto exitConstant = IntegerConstant::from(resultCarrierValue, ZC_REQUIRE_NONNULL(bits));
   if (exitConstant == zc::none) { return zc::none; }
 
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -1463,9 +1466,10 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
   if (resultCarrierValue.kind() != ValueTypeKind::Integer) { return zc::none; }
 
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  const mir::MirBasicBlock* header = nullptr;
+  const mir::MirBasicBlock* body = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (!mir::resolveLoopCfg(function, header, body, exit)) { return zc::none; }
 
   // Entry: StorageLive(local); Assign(local = constant, Initialize); Goto(header).
   if (entry.statements.size() != 2 ||
@@ -1473,7 +1477,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
       entry.statements[0].storageLocal() != localDecl.id ||
       entry.statements[1].kind() != mir::MirStatementKind::Assign ||
       entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != header.id) {
+      entry.terminator.gotoValue().target != header->id) {
     return zc::none;
   }
   const auto& initAssign = entry.statements[1].assignmentValue();
@@ -1492,14 +1496,14 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
   if (initLowered == zc::none) { return zc::none; }
 
   // Header: no statements; SwitchInt(bool param) [true -> body], default = exit.
-  if (header.statements.size() != 0 ||
-      header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (header->statements.size() != 0 ||
+      header->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& switchInt = header.terminator.switchIntValue();
+  const auto& switchInt = header->terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != body->id || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
   const auto conditionLocalId = switchInt.discriminant.place().local();
@@ -1532,11 +1536,11 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
 
   // Body: one or more Overwrite assigns of the local, then Goto(exit) for a
   // trailing break or Goto(header) back-edge for continue/fallthrough.
-  if (body.statements.size() < 1 || body.terminator.kind() != mir::MirTerminatorKind::Goto) {
+  if (body->statements.size() < 1 || body->terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
-  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
-  if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
+  const bool breaksToExit = body->terminator.gotoValue().target == exit->id;
+  if (!breaksToExit && body->terminator.gotoValue().target != header->id) { return zc::none; }
 
   auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
@@ -1557,7 +1561,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
 
   const uint32_t destinationOrdinal = localDecl.id.ordinal();
   zc::Vector<Statement> bodyStatements;
-  for (const auto& statement : body.statements) {
+  for (const auto& statement : body->statements) {
     if (statement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
     const auto& assignment = statement.assignmentValue();
     if (assignment.destination.local() != localDecl.id ||
@@ -1597,10 +1601,10 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
   }
 
   // Exit: no statements; Return(place-use local).
-  if (exit.statements.size() != 0 || exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 0 || exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsLocal = false;
   ZC_IF_SOME(value, returnValue) {
@@ -1716,9 +1720,37 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& body = function.blocks[1];
-  const auto& condition = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  if (entry.terminator.kind() != mir::MirTerminatorKind::Goto) { return zc::none; }
+  // Resolve the do-while CFG structurally via Goto and SwitchInt edges. The
+  // body Goto target is either the condition block (continue/fallthrough) or
+  // the exit (trailing break); the condition block holds SwitchInt and the
+  // exit holds Return.
+  const auto* body = mir::findBlockById(function, entry.terminator.gotoValue().target);
+  if (body == nullptr || body == &entry) { return zc::none; }
+  if (body->terminator.kind() != mir::MirTerminatorKind::Goto) { return zc::none; }
+  const auto* bodyTargetBlock = mir::findBlockById(function, body->terminator.gotoValue().target);
+  if (bodyTargetBlock == nullptr || bodyTargetBlock == &entry || bodyTargetBlock == body) {
+    return zc::none;
+  }
+  const mir::MirBasicBlock* condition = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (bodyTargetBlock->terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
+    condition = bodyTargetBlock;
+    exit = mir::findBlockById(function, condition->terminator.switchIntValue().defaultTarget);
+  } else if (bodyTargetBlock->terminator.kind() == mir::MirTerminatorKind::Return) {
+    exit = bodyTargetBlock;
+    // The condition block is the remaining block (entry, body, exit, condition).
+    for (const auto& candidate : function.blocks) {
+      if (&candidate != &entry && &candidate != body && &candidate != exit) {
+        condition = &candidate;
+        break;
+      }
+    }
+  }
+  if (condition == nullptr || exit == nullptr || condition == exit ||
+      condition->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
 
   // Entry: StorageLive(local); StorageLive(temp); Assign(local = constant,
   // Initialize); Goto(body).
@@ -1729,7 +1761,7 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
       entry.statements[1].storageLocal() != tempDecl.id ||
       entry.statements[2].kind() != mir::MirStatementKind::Assign ||
       entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != body.id) {
+      entry.terminator.gotoValue().target != body->id) {
     return zc::none;
   }
   const auto& initAssign = entry.statements[2].assignmentValue();
@@ -1749,11 +1781,11 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
 
   // Body: one or more Overwrite assigns of the local, then Goto(condition)
   // for continue/fallthrough or Goto(exit) for a trailing break.
-  if (body.statements.size() < 1 || body.terminator.kind() != mir::MirTerminatorKind::Goto) {
+  if (body->statements.size() < 1 || body->terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
-  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
-  if (!breaksToExit && body.terminator.gotoValue().target != condition.id) { return zc::none; }
+  const bool breaksToExit = body->terminator.gotoValue().target == exit->id;
+  if (!breaksToExit && body->terminator.gotoValue().target != condition->id) { return zc::none; }
 
   auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
@@ -1774,7 +1806,7 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
 
   const uint32_t destinationOrdinal = localDecl.id.ordinal();
   zc::Vector<Statement> bodyStatements;
-  for (const auto& statement : body.statements) {
+  for (const auto& statement : body->statements) {
     if (statement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
     const auto& assignment = statement.assignmentValue();
     if (assignment.destination.local() != localDecl.id ||
@@ -1815,12 +1847,12 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
 
   // Condition: Assign(temp = Comparison(op, copy(local), constant),
   // Initialize); SwitchInt(copy(temp)) [true -> body], default = exit.
-  if (condition.statements.size() != 1 ||
-      condition.statements[0].kind() != mir::MirStatementKind::Assign ||
-      condition.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (condition->statements.size() != 1 ||
+      condition->statements[0].kind() != mir::MirStatementKind::Assign ||
+      condition->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& condAssign = condition.statements[0].assignmentValue();
+  const auto& condAssign = condition->statements[0].assignmentValue();
   if (condAssign.destination.local() != tempDecl.id ||
       condAssign.destination.projections().size() != 0 ||
       condAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -1841,19 +1873,19 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
   }
   auto condRightLowered = lirOperandFor(comparison.right, resultCarrierValue);
   if (condRightLowered == zc::none) { return zc::none; }
-  const auto& switchInt = condition.terminator.switchIntValue();
+  const auto& switchInt = condition->terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != body->id || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
 
   // Exit: no statements; Return(place-use local).
-  if (exit.statements.size() != 0 || exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 0 || exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsLocal = false;
   ZC_IF_SOME(value, returnValue) {
@@ -1970,9 +2002,10 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& condition = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  const mir::MirBasicBlock* condition = nullptr;
+  const mir::MirBasicBlock* body = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (!mir::resolveLoopCfg(function, condition, body, exit)) { return zc::none; }
 
   // Entry: StorageLive(local); StorageLive(temp); Assign(local = constant,
   // Initialize); Goto(condition).
@@ -1983,7 +2016,7 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
       entry.statements[1].storageLocal() != tempDecl.id ||
       entry.statements[2].kind() != mir::MirStatementKind::Assign ||
       entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != condition.id) {
+      entry.terminator.gotoValue().target != condition->id) {
     return zc::none;
   }
   const auto& initAssign = entry.statements[2].assignmentValue();
@@ -2003,12 +2036,12 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
 
   // Condition: Assign(temp = Comparison(op, copy(local), constant),
   // Overwrite); SwitchInt(copy(temp)) [true -> body], default = exit.
-  if (condition.statements.size() != 1 ||
-      condition.statements[0].kind() != mir::MirStatementKind::Assign ||
-      condition.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (condition->statements.size() != 1 ||
+      condition->statements[0].kind() != mir::MirStatementKind::Assign ||
+      condition->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& condAssign = condition.statements[0].assignmentValue();
+  const auto& condAssign = condition->statements[0].assignmentValue();
   if (condAssign.destination.local() != tempDecl.id ||
       condAssign.destination.projections().size() != 0 ||
       condAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2029,21 +2062,21 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
   }
   auto condRightLowered = lirOperandFor(comparison.right, resultCarrierValue);
   if (condRightLowered == zc::none) { return zc::none; }
-  const auto& switchInt = condition.terminator.switchIntValue();
+  const auto& switchInt = condition->terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != body->id || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
 
   // Body: one or more Overwrite assigns of the local, then Goto(condition)
   // for continue/fallthrough or Goto(exit) for a trailing break.
-  if (body.statements.size() < 1 || body.terminator.kind() != mir::MirTerminatorKind::Goto) {
+  if (body->statements.size() < 1 || body->terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
-  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
-  if (!breaksToExit && body.terminator.gotoValue().target != condition.id) { return zc::none; }
+  const bool breaksToExit = body->terminator.gotoValue().target == exit->id;
+  if (!breaksToExit && body->terminator.gotoValue().target != condition->id) { return zc::none; }
 
   auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
@@ -2064,7 +2097,7 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
 
   const uint32_t destinationOrdinal = localDecl.id.ordinal();
   zc::Vector<Statement> bodyStatements;
-  for (const auto& statement : body.statements) {
+  for (const auto& statement : body->statements) {
     if (statement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
     const auto& assignment = statement.assignmentValue();
     if (assignment.destination.local() != localDecl.id ||
@@ -2104,10 +2137,10 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
   }
 
   // Exit: no statements; Return(place-use local).
-  if (exit.statements.size() != 0 || exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 0 || exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsLocal = false;
   ZC_IF_SOME(value, returnValue) {
@@ -2225,9 +2258,10 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[2];
-  const auto& exit = function.blocks[3];
+  const mir::MirBasicBlock* header = nullptr;
+  const mir::MirBasicBlock* body = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (!mir::resolveLoopCfg(function, header, body, exit)) { return zc::none; }
 
   // Entry: StorageLive(result); StorageLive(local); StorageLive(temp);
   // Assign(local = constant, Initialize);
@@ -2243,7 +2277,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
       entry.statements[3].kind() != mir::MirStatementKind::Assign ||
       entry.statements[4].kind() != mir::MirStatementKind::Assign ||
       entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != header.id) {
+      entry.terminator.gotoValue().target != header->id) {
     return zc::none;
   }
   const auto& initAssign = entry.statements[3].assignmentValue();
@@ -2284,15 +2318,15 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   if (condRightLowered == zc::none) { return zc::none; }
 
   // Header: SwitchInt(copy(temp)) [true -> body], default = exit.
-  if (header.statements.size() != 0 ||
-      header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (header->statements.size() != 0 ||
+      header->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& switchInt = header.terminator.switchIntValue();
+  const auto& switchInt = header->terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != body.id || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != body->id || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
 
@@ -2300,14 +2334,14 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   // Assign(temp = Comparison(op, copy(local), constant), Overwrite);
   // Goto(exit) for a trailing break or Goto(header) back-edge for
   // continue/fallthrough.
-  if (body.statements.size() != 2 || body.statements[0].kind() != mir::MirStatementKind::Assign ||
-      body.statements[1].kind() != mir::MirStatementKind::Assign ||
-      body.terminator.kind() != mir::MirTerminatorKind::Goto) {
+  if (body->statements.size() != 2 || body->statements[0].kind() != mir::MirStatementKind::Assign ||
+      body->statements[1].kind() != mir::MirStatementKind::Assign ||
+      body->terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
-  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
-  if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
-  const auto& updateAssign = body.statements[0].assignmentValue();
+  const bool breaksToExit = body->terminator.gotoValue().target == exit->id;
+  if (!breaksToExit && body->terminator.gotoValue().target != header->id) { return zc::none; }
+  const auto& updateAssign = body->statements[0].assignmentValue();
   if (updateAssign.destination.local() != localDecl.id ||
       updateAssign.destination.projections().size() != 0 ||
       updateAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2330,7 +2364,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   auto arithRightLowered = lirOperandFor(arithmetic.right, resultCarrierValue);
   if (arithRightLowered == zc::none) { return zc::none; }
   // Body condition recompute.
-  const auto& bodyCondAssign = body.statements[1].assignmentValue();
+  const auto& bodyCondAssign = body->statements[1].assignmentValue();
   if (bodyCondAssign.destination.local() != tempDecl.id ||
       bodyCondAssign.destination.projections().size() != 0 ||
       bodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2352,11 +2386,11 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   }
 
   // Exit: Assign(result = constant, Initialize); Return(place-use result).
-  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
-      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 1 || exit->statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& resultAssign = exit.statements[0].assignmentValue();
+  const auto& resultAssign = exit->statements[0].assignmentValue();
   if (resultAssign.destination.local() != resultDecl.id ||
       resultAssign.destination.projections().size() != 0 ||
       resultAssign.initialization != mir::MirInitializationKind::Initialize ||
@@ -2370,7 +2404,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
   }
   auto resultLowered = lirOperandFor(resultOperand, resultCarrierValue);
   if (resultLowered == zc::none) { return zc::none; }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -2521,9 +2555,35 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& header = function.blocks[1];
-  const auto& body = function.blocks[hasGuard ? 3 : 2];
-  const auto& exit = function.blocks[hasGuard ? 4 : 3];
+  if (entry.terminator.kind() != mir::MirTerminatorKind::Goto) { return zc::none; }
+  // Resolve the loop CFG structurally via Goto and SwitchInt edges. Without a
+  // guarded break: entry (Goto) -> header (SwitchInt) [true -> body], default
+  // -> exit; with a guarded break: entry (Goto) -> header (SwitchInt) [true ->
+  // guard], default -> exit; guard (SwitchInt) [true -> exit], default -> body.
+  const mir::MirBasicBlock* header =
+      mir::findBlockById(function, entry.terminator.gotoValue().target);
+  if (header == nullptr || header == &entry) { return zc::none; }
+  if (header->terminator.kind() != mir::MirTerminatorKind::SwitchInt) { return zc::none; }
+  const auto& headerSwitch = header->terminator.switchIntValue();
+  if (headerSwitch.arms.size() != 1) { return zc::none; }
+  const auto* exit = mir::findBlockById(function, headerSwitch.defaultTarget);
+  if (exit == nullptr || exit == header || exit == &entry) { return zc::none; }
+  const mir::MirBasicBlock* guard = nullptr;
+  const mir::MirBasicBlock* body = nullptr;
+  if (hasGuard) {
+    guard = mir::findBlockById(function, headerSwitch.arms[0].target);
+    if (guard == nullptr || guard == header || guard == exit || guard == &entry) {
+      return zc::none;
+    }
+    if (guard->terminator.kind() != mir::MirTerminatorKind::SwitchInt) { return zc::none; }
+    const auto& guardSwitch = guard->terminator.switchIntValue();
+    if (guardSwitch.arms.size() != 1) { return zc::none; }
+    body = mir::findBlockById(function, guardSwitch.defaultTarget);
+  } else {
+    body = mir::findBlockById(function, headerSwitch.arms[0].target);
+  }
+  if (body == nullptr || body == header || body == exit || body == &entry) { return zc::none; }
+  if (body->terminator.kind() != mir::MirTerminatorKind::Goto) { return zc::none; }
 
   // Entry: StorageLive(result); StorageLive(acc_k)...; StorageLive(local);
   // StorageLive(temp); [StorageLive(breakTemp);]
@@ -2626,21 +2686,21 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto condRightLowered = lirOperandFor(entryComparison.right, resultCarrierValue);
   if (condRightLowered == zc::none) { return zc::none; }
   if (entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != header.id) {
+      entry.terminator.gotoValue().target != header->id) {
     return zc::none;
   }
 
   // Header: SwitchInt(copy(temp)) [true -> guard-or-body], default = exit.
-  if (header.statements.size() != 0 ||
-      header.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (header->statements.size() != 0 ||
+      header->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& switchInt = header.terminator.switchIntValue();
-  const auto headerTrueTarget = hasGuard ? function.blocks[2].id : body.id;
+  const auto& switchInt = header->terminator.switchIntValue();
+  const auto headerTrueTarget = hasGuard ? guard->id : body->id;
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 1 ||
-      switchInt.arms[0].target != headerTrueTarget || switchInt.defaultTarget != exit.id) {
+      switchInt.arms[0].target != headerTrueTarget || switchInt.defaultTarget != exit->id) {
     return zc::none;
   }
 
@@ -2650,14 +2710,13 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   zc::Maybe<Operand> breakCondRightLowered;
   uint32_t breakTempOrdinal = 0;
   if (hasGuard) {
-    const auto& guard = function.blocks[2];
-    if (guard.statements.size() != 1 ||
-        guard.statements[0].kind() != mir::MirStatementKind::Assign ||
-        guard.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    if (guard->statements.size() != 1 ||
+        guard->statements[0].kind() != mir::MirStatementKind::Assign ||
+        guard->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
       return zc::none;
     }
     const auto& breakTempDecl = function.locals[parameterCount + accCount + 2];
-    const auto& guardAssign = guard.statements[0].assignmentValue();
+    const auto& guardAssign = guard->statements[0].assignmentValue();
     if (guardAssign.destination.local() != breakTempDecl.id ||
         guardAssign.destination.projections().size() != 0 ||
         guardAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2678,12 +2737,12 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     }
     auto guardRightLowered = lirOperandFor(guardComparison.right, resultCarrierValue);
     if (guardRightLowered == zc::none) { return zc::none; }
-    const auto& guardSwitch = guard.terminator.switchIntValue();
+    const auto& guardSwitch = guard->terminator.switchIntValue();
     if (guardSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
         guardSwitch.discriminant.place().local() != breakTempDecl.id ||
         guardSwitch.discriminant.place().projections().size() != 0 ||
-        guardSwitch.arms.size() != 1 || guardSwitch.arms[0].target != exit.id ||
-        guardSwitch.defaultTarget != body.id) {
+        guardSwitch.arms.size() != 1 || guardSwitch.arms[0].target != exit->id ||
+        guardSwitch.defaultTarget != body->id) {
       return zc::none;
     }
     breakCondRightLowered = zc::mv(guardRightLowered);
@@ -2696,23 +2755,23 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   // Overwrite); Goto(exit) for a trailing break or Goto(header) back-edge for
   // continue/fallthrough.
   const size_t expectedBodySize = 2 + accCount;
-  if (body.statements.size() != expectedBodySize) { return zc::none; }
+  if (body->statements.size() != expectedBodySize) { return zc::none; }
   for (size_t k = 0; k < accCount; ++k) {
-    if (body.statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    if (body->statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
   }
-  if (body.statements[accCount].kind() != mir::MirStatementKind::Assign ||
-      body.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
-      body.terminator.kind() != mir::MirTerminatorKind::Goto) {
+  if (body->statements[accCount].kind() != mir::MirStatementKind::Assign ||
+      body->statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
+      body->terminator.kind() != mir::MirTerminatorKind::Goto) {
     return zc::none;
   }
-  const bool breaksToExit = body.terminator.gotoValue().target == exit.id;
-  if (!breaksToExit && body.terminator.gotoValue().target != header.id) { return zc::none; }
+  const bool breaksToExit = body->terminator.gotoValue().target == exit->id;
+  if (!breaksToExit && body->terminator.gotoValue().target != header->id) { return zc::none; }
   // Body accumulator arithmetic.
   zc::Vector<zc::Maybe<ArithmeticOp>> accArithOps;
   zc::Vector<bool> accArithRhsIsLiteral;
   zc::Vector<zc::Maybe<Operand>> accArithRhsLowered;
   for (size_t k = 0; k < accCount; ++k) {
-    const auto& accArithAssign = body.statements[k].assignmentValue();
+    const auto& accArithAssign = body->statements[k].assignmentValue();
     if (accArithAssign.destination.local() != function.locals[parameterCount + k].id ||
         accArithAssign.destination.projections().size() != 0 ||
         accArithAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2748,7 +2807,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     accArithRhsIsLiteral.add(rhsIsLiteral);
   }
   // Body update arithmetic.
-  const auto& updateAssign = body.statements[accCount].assignmentValue();
+  const auto& updateAssign = body->statements[accCount].assignmentValue();
   if (updateAssign.destination.local() != localDecl.id ||
       updateAssign.destination.projections().size() != 0 ||
       updateAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2771,7 +2830,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   auto arithRightLowered = lirOperandFor(arithmetic.right, resultCarrierValue);
   if (arithRightLowered == zc::none) { return zc::none; }
   // Body condition recompute.
-  const auto& bodyCondAssign = body.statements[accCount + 1].assignmentValue();
+  const auto& bodyCondAssign = body->statements[accCount + 1].assignmentValue();
   if (bodyCondAssign.destination.local() != tempDecl.id ||
       bodyCondAssign.destination.projections().size() != 0 ||
       bodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -2793,11 +2852,11 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
   }
 
   // Exit: Assign(result = copy(acc_0), Initialize); Return(place-use result).
-  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
-      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 1 || exit->statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& resultAssign = exit.statements[0].assignmentValue();
+  const auto& resultAssign = exit->statements[0].assignmentValue();
   if (resultAssign.destination.local() != resultDecl.id ||
       resultAssign.destination.projections().size() != 0 ||
       resultAssign.initialization != mir::MirInitializationKind::Initialize ||
@@ -2810,7 +2869,7 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
       resultOperand.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -3001,12 +3060,16 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   }
 
   const auto& entry = function.blocks[0];
-  const auto& outerHeader = function.blocks[1];
-  const auto& innerEntry = function.blocks[2];
-  const auto& innerHeader = function.blocks[3];
-  const auto& innerBody = function.blocks[4];
-  const auto& outerCont = function.blocks[5];
-  const auto& exit = function.blocks[6];
+  const mir::MirBasicBlock* outerHeader = nullptr;
+  const mir::MirBasicBlock* innerEntry = nullptr;
+  const mir::MirBasicBlock* innerHeader = nullptr;
+  const mir::MirBasicBlock* innerBody = nullptr;
+  const mir::MirBasicBlock* outerCont = nullptr;
+  const mir::MirBasicBlock* exit = nullptr;
+  if (!mir::resolveNestedLoopCfg(function, outerHeader, innerEntry, innerHeader, innerBody,
+                                 outerCont, exit)) {
+    return zc::none;
+  }
 
   // Entry: StorageLive(result); StorageLive(acc_k)...; StorageLive(outerInit);
   // StorageLive(outerTemp); StorageLive(innerInit); StorageLive(innerTemp);
@@ -3105,20 +3168,20 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   auto outerCondRightLowered = lirOperandFor(outerComparison.right, resultCarrierValue);
   if (outerCondRightLowered == zc::none) { return zc::none; }
   if (entry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      entry.terminator.gotoValue().target != outerHeader.id) {
+      entry.terminator.gotoValue().target != outerHeader->id) {
     return zc::none;
   }
 
   // Outer header: SwitchInt(copy(outerTemp)) [true -> innerEntry], default = exit.
-  if (outerHeader.statements.size() != 0 ||
-      outerHeader.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (outerHeader->statements.size() != 0 ||
+      outerHeader->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& outerSwitch = outerHeader.terminator.switchIntValue();
+  const auto& outerSwitch = outerHeader->terminator.switchIntValue();
   if (outerSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
       outerSwitch.discriminant.place().local() != outerTempDecl.id ||
       outerSwitch.discriminant.place().projections().size() != 0 || outerSwitch.arms.size() != 1 ||
-      outerSwitch.arms[0].target != innerEntry.id || outerSwitch.defaultTarget != exit.id) {
+      outerSwitch.arms[0].target != innerEntry->id || outerSwitch.defaultTarget != exit->id) {
     return zc::none;
   }
 
@@ -3126,14 +3189,14 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   // Assign(innerTemp = Comparison(op, copy(innerInit), constant), Overwrite);
   // Goto(innerHeader). Overwrite because the inner entry is inside the outer
   // loop and re-executed on subsequent outer iterations.
-  if (innerEntry.statements.size() != 2 ||
-      innerEntry.statements[0].kind() != mir::MirStatementKind::Assign ||
-      innerEntry.statements[1].kind() != mir::MirStatementKind::Assign ||
-      innerEntry.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      innerEntry.terminator.gotoValue().target != innerHeader.id) {
+  if (innerEntry->statements.size() != 2 ||
+      innerEntry->statements[0].kind() != mir::MirStatementKind::Assign ||
+      innerEntry->statements[1].kind() != mir::MirStatementKind::Assign ||
+      innerEntry->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      innerEntry->terminator.gotoValue().target != innerHeader->id) {
     return zc::none;
   }
-  const auto& innerInitAssign = innerEntry.statements[0].assignmentValue();
+  const auto& innerInitAssign = innerEntry->statements[0].assignmentValue();
   if (innerInitAssign.destination.local() != innerInitDecl.id ||
       innerInitAssign.destination.projections().size() != 0 ||
       innerInitAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3147,7 +3210,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   }
   auto innerInitLowered = lirOperandFor(innerInitOperand, resultCarrierValue);
   if (innerInitLowered == zc::none) { return zc::none; }
-  const auto& innerCondAssign = innerEntry.statements[1].assignmentValue();
+  const auto& innerCondAssign = innerEntry->statements[1].assignmentValue();
   if (innerCondAssign.destination.local() != innerTempDecl.id ||
       innerCondAssign.destination.projections().size() != 0 ||
       innerCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3169,16 +3232,16 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   auto innerCondRightLowered = lirOperandFor(innerComparison.right, resultCarrierValue);
   if (innerCondRightLowered == zc::none) { return zc::none; }
 
-  // Inner header: SwitchInt(copy(innerTemp)) [true -> innerBody], default = outerCont.
-  if (innerHeader.statements.size() != 0 ||
-      innerHeader.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  // Inner header: SwitchInt(copy(innerTemp)) [true -> innerBody], default = outerCont->
+  if (innerHeader->statements.size() != 0 ||
+      innerHeader->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& innerSwitch = innerHeader.terminator.switchIntValue();
+  const auto& innerSwitch = innerHeader->terminator.switchIntValue();
   if (innerSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
       innerSwitch.discriminant.place().local() != innerTempDecl.id ||
       innerSwitch.discriminant.place().projections().size() != 0 || innerSwitch.arms.size() != 1 ||
-      innerSwitch.arms[0].target != innerBody.id || innerSwitch.defaultTarget != outerCont.id) {
+      innerSwitch.arms[0].target != innerBody->id || innerSwitch.defaultTarget != outerCont->id) {
     return zc::none;
   }
 
@@ -3189,24 +3252,25 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   // A labeled break/continue targeting the outer loop skips the inner update
   // write and re-compare entirely, leaving only the accumulator writes. The
   // terminator target distinguishes break (exit) from continue (outerCont).
-  const bool innerBreakTargetsOuter = innerBody.statements.size() == accCount &&
-                                      innerBody.terminator.kind() == mir::MirTerminatorKind::Goto &&
-                                      innerBody.terminator.gotoValue().target == exit.id;
+  const bool innerBreakTargetsOuter =
+      innerBody->statements.size() == accCount &&
+      innerBody->terminator.kind() == mir::MirTerminatorKind::Goto &&
+      innerBody->terminator.gotoValue().target == exit->id;
   const bool innerContinueTargetsOuter =
-      innerBody.statements.size() == accCount &&
-      innerBody.terminator.kind() == mir::MirTerminatorKind::Goto &&
-      innerBody.terminator.gotoValue().target == outerCont.id;
+      innerBody->statements.size() == accCount &&
+      innerBody->terminator.kind() == mir::MirTerminatorKind::Goto &&
+      innerBody->terminator.gotoValue().target == outerCont->id;
   const bool innerTargetsEnclosing = innerBreakTargetsOuter || innerContinueTargetsOuter;
   const size_t expectedInnerBodySize = innerTargetsEnclosing ? accCount : 2 + accCount;
-  if (innerBody.statements.size() != expectedInnerBodySize) { return zc::none; }
+  if (innerBody->statements.size() != expectedInnerBodySize) { return zc::none; }
   for (size_t k = 0; k < accCount; ++k) {
-    if (innerBody.statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    if (innerBody->statements[k].kind() != mir::MirStatementKind::Assign) { return zc::none; }
   }
   if (!innerTargetsEnclosing) {
-    if (innerBody.statements[accCount].kind() != mir::MirStatementKind::Assign ||
-        innerBody.statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
-        innerBody.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        innerBody.terminator.gotoValue().target != innerHeader.id) {
+    if (innerBody->statements[accCount].kind() != mir::MirStatementKind::Assign ||
+        innerBody->statements[accCount + 1].kind() != mir::MirStatementKind::Assign ||
+        innerBody->terminator.kind() != mir::MirTerminatorKind::Goto ||
+        innerBody->terminator.gotoValue().target != innerHeader->id) {
       return zc::none;
     }
   }
@@ -3215,7 +3279,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   zc::Vector<bool> accArithRhsIsLiteral;
   zc::Vector<zc::Maybe<Operand>> accArithRhsLowered;
   for (size_t k = 0; k < accCount; ++k) {
-    const auto& accArithAssign = innerBody.statements[k].assignmentValue();
+    const auto& accArithAssign = innerBody->statements[k].assignmentValue();
     if (accArithAssign.destination.local() != function.locals[parameterCount + k].id ||
         accArithAssign.destination.projections().size() != 0 ||
         accArithAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3253,7 +3317,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   zc::Maybe<ArithmeticOp> innerArithOp;
   zc::Maybe<Operand> innerArithRightLowered;
   if (!innerTargetsEnclosing) {
-    const auto& innerUpdateAssign = innerBody.statements[accCount].assignmentValue();
+    const auto& innerUpdateAssign = innerBody->statements[accCount].assignmentValue();
     if (innerUpdateAssign.destination.local() != innerInitDecl.id ||
         innerUpdateAssign.destination.projections().size() != 0 ||
         innerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3276,7 +3340,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
     innerArithRightLowered = lirOperandFor(innerArithmetic.right, resultCarrierValue);
     if (innerArithRightLowered == zc::none) { return zc::none; }
     // Inner body condition recompute.
-    const auto& innerBodyCondAssign = innerBody.statements[accCount + 1].assignmentValue();
+    const auto& innerBodyCondAssign = innerBody->statements[accCount + 1].assignmentValue();
     if (innerBodyCondAssign.destination.local() != innerTempDecl.id ||
         innerBodyCondAssign.destination.projections().size() != 0 ||
         innerBodyCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3302,14 +3366,14 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   // Outer continuation: Assign(outerInit = Arithmetic(op, copy(outerInit), constant),
   // Overwrite); Assign(outerTemp = Comparison(op, copy(outerInit), constant),
   // Overwrite); Goto(outerHeader).
-  if (outerCont.statements.size() != 2 ||
-      outerCont.statements[0].kind() != mir::MirStatementKind::Assign ||
-      outerCont.statements[1].kind() != mir::MirStatementKind::Assign ||
-      outerCont.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      outerCont.terminator.gotoValue().target != outerHeader.id) {
+  if (outerCont->statements.size() != 2 ||
+      outerCont->statements[0].kind() != mir::MirStatementKind::Assign ||
+      outerCont->statements[1].kind() != mir::MirStatementKind::Assign ||
+      outerCont->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      outerCont->terminator.gotoValue().target != outerHeader->id) {
     return zc::none;
   }
-  const auto& outerUpdateAssign = outerCont.statements[0].assignmentValue();
+  const auto& outerUpdateAssign = outerCont->statements[0].assignmentValue();
   if (outerUpdateAssign.destination.local() != outerInitDecl.id ||
       outerUpdateAssign.destination.projections().size() != 0 ||
       outerUpdateAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3331,7 +3395,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   }
   auto outerArithRightLowered = lirOperandFor(outerArithmetic.right, resultCarrierValue);
   if (outerArithRightLowered == zc::none) { return zc::none; }
-  const auto& outerContCondAssign = outerCont.statements[1].assignmentValue();
+  const auto& outerContCondAssign = outerCont->statements[1].assignmentValue();
   if (outerContCondAssign.destination.local() != outerTempDecl.id ||
       outerContCondAssign.destination.projections().size() != 0 ||
       outerContCondAssign.initialization != mir::MirInitializationKind::Overwrite ||
@@ -3354,11 +3418,11 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
   }
 
   // Exit: Assign(result = copy(acc_0), Initialize); Return(place-use result).
-  if (exit.statements.size() != 1 || exit.statements[0].kind() != mir::MirStatementKind::Assign ||
-      exit.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (exit->statements.size() != 1 || exit->statements[0].kind() != mir::MirStatementKind::Assign ||
+      exit->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& resultAssign = exit.statements[0].assignmentValue();
+  const auto& resultAssign = exit->statements[0].assignmentValue();
   if (resultAssign.destination.local() != resultDecl.id ||
       resultAssign.destination.projections().size() != 0 ||
       resultAssign.initialization != mir::MirInitializationKind::Initialize ||
@@ -3371,7 +3435,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
       resultOperand.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& returnValue = exit.terminator.returnValue().value;
+  const auto& returnValue = exit->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -3469,7 +3533,7 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(innerBodyId), zc::mv(innerBodyStatements),
                           Terminator::gotoBlock(innerBodyTarget)));
   }
-  // bb6 outer continuation.
+  // bb6 outer continuation->
   {
     zc::Vector<Statement> outerContStatements;
     outerContStatements.add(Statement::arithmetic(
@@ -3544,9 +3608,10 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   const uint32_t tempOrdinal = tempLocalDecl.id.ordinal();
 
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
+  const mir::MirBasicBlock* thenBlock = nullptr;
+  const mir::MirBasicBlock* elseBlock = nullptr;
+  const mir::MirBasicBlock* joinBlock = nullptr;
+  if (!mir::resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) { return zc::none; }
 
   // Entry: StorageLive(result), StorageLive(temp), Assign(temp = Comparison),
   // SwitchInt(copy temp) [true -> then], default = else.
@@ -3638,8 +3703,8 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempLocalDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
-      switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
-      switchInt.defaultTarget != elseBlock.id) {
+      switchInt.arms[0].target != thenBlock->id || switchInt.arms[1].target != elseBlock->id ||
+      switchInt.defaultTarget != elseBlock->id) {
     return zc::none;
   }
 
@@ -3663,7 +3728,7 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != joinBlock.id) {
+        branch.terminator.gotoValue().target != joinBlock->id) {
       return false;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -3727,16 +3792,16 @@ zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
   };
   zc::Vector<Statement> thenStatements;
   zc::Vector<Statement> elseStatements;
-  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+  if (!lowerArm(*thenBlock, thenStatements) || !lowerArm(*elseBlock, elseStatements)) {
     return zc::none;
   }
 
   // Join: no statements; Return(place-use result).
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  const auto& returnValue = joinBlock->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -3891,9 +3956,10 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   const uint32_t tempOrdinal = tempLocalDecl.id.ordinal();
 
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
+  const mir::MirBasicBlock* thenBlock = nullptr;
+  const mir::MirBasicBlock* elseBlock = nullptr;
+  const mir::MirBasicBlock* joinBlock = nullptr;
+  if (!mir::resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) { return zc::none; }
 
   // Entry: per leading local StorageLive plus initializing Assign (2K
   // statements), then StorageLive(result), StorageLive(temp),
@@ -3991,8 +4057,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != tempLocalDecl.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
-      switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
-      switchInt.defaultTarget != elseBlock.id) {
+      switchInt.arms[0].target != thenBlock->id || switchInt.arms[1].target != elseBlock->id ||
+      switchInt.defaultTarget != elseBlock->id) {
     return zc::none;
   }
 
@@ -4000,7 +4066,7 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != joinBlock.id) {
+        branch.terminator.gotoValue().target != joinBlock->id) {
       return false;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -4037,15 +4103,15 @@ zc::Maybe<Module> MirToLirLowering::lowerLeadingLocalConditionalReturn(
   };
   zc::Vector<Statement> thenStatements;
   zc::Vector<Statement> elseStatements;
-  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+  if (!lowerArm(*thenBlock, thenStatements) || !lowerArm(*elseBlock, elseStatements)) {
     return zc::none;
   }
 
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  const auto& returnValue = joinBlock->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, returnValue) {
@@ -4172,9 +4238,10 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
   const uint32_t ternaryOrdinal = ternaryLocalDecl.id.ordinal();
 
   const auto& entry = function.blocks[0];
-  const auto& thenBlock = function.blocks[1];
-  const auto& elseBlock = function.blocks[2];
-  const auto& joinBlock = function.blocks[3];
+  const mir::MirBasicBlock* thenBlock = nullptr;
+  const mir::MirBasicBlock* elseBlock = nullptr;
+  const mir::MirBasicBlock* joinBlock = nullptr;
+  if (!mir::resolveDiamondCfg(function, thenBlock, elseBlock, joinBlock)) { return zc::none; }
 
   // Entry: per leading local StorageLive plus initializing Assign (2K
   // statements), then StorageLive(ternary), then optionally
@@ -4238,8 +4305,8 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
-      switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
-      switchInt.defaultTarget != elseBlock.id) {
+      switchInt.arms[0].target != thenBlock->id || switchInt.arms[1].target != elseBlock->id ||
+      switchInt.defaultTarget != elseBlock->id) {
     return zc::none;
   }
   // The discriminant is a bool temporary, parameter, or earlier leading local.
@@ -4260,7 +4327,7 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != joinBlock.id) {
+        branch.terminator.gotoValue().target != joinBlock->id) {
       return false;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -4281,15 +4348,15 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
   };
   zc::Vector<Statement> thenStatements;
   zc::Vector<Statement> elseStatements;
-  if (!lowerArm(thenBlock, thenStatements) || !lowerArm(elseBlock, elseStatements)) {
+  if (!lowerArm(*thenBlock, thenStatements) || !lowerArm(*elseBlock, elseStatements)) {
     return zc::none;
   }
 
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& returnValue = joinBlock.terminator.returnValue().value;
+  const auto& returnValue = joinBlock->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   bool returnsTernary = false;
   ZC_IF_SOME(value, returnValue) {
@@ -5031,19 +5098,20 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
-      call.normalTarget != continuation.id || call.unwindTarget != zc::none ||
+      call.normalTarget != continuation->id || call.unwindTarget != zc::none ||
       !(call.callee == callee.owner)) {
     return zc::none;
   }
 
-  const auto& callReturn = continuation.terminator.returnValue().value;
+  const auto& callReturn = continuation->terminator.returnValue().value;
   if (callReturn == zc::none) { return zc::none; }
   bool returnsPlace = false;
   ZC_IF_SOME(value, callReturn) {
@@ -5069,7 +5137,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
     if (resultLocal.type != caller.resultType || entry.statements.size() != 1 ||
         entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         entry.statements[0].storageLocal() != resultLocal.id ||
-        call.destination.local() != resultLocal.id || continuation.statements.size() != 0 ||
+        call.destination.local() != resultLocal.id || continuation->statements.size() != 0 ||
         returnOperand.place().local() != resultLocal.id ||
         returnOperand.place().projections().size() != 0) {
       return zc::none;
@@ -5096,15 +5164,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
         returnOperand.place().projections().size() != 0) {
       return zc::none;
     }
-    if (continuation.statements.size() != 3 ||
-        continuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-        continuation.statements[0].storageLocal() != resultLocal.id ||
-        continuation.statements[1].kind() != mir::MirStatementKind::Assign ||
-        continuation.statements[2].kind() != mir::MirStatementKind::StorageDead ||
-        continuation.statements[2].storageLocal() != temporaryLocal.id) {
+    if (continuation->statements.size() != 3 ||
+        continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        continuation->statements[0].storageLocal() != resultLocal.id ||
+        continuation->statements[1].kind() != mir::MirStatementKind::Assign ||
+        continuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+        continuation->statements[2].storageLocal() != temporaryLocal.id) {
       return zc::none;
     }
-    const auto& moveAssign = continuation.statements[1].assignmentValue();
+    const auto& moveAssign = continuation->statements[1].assignmentValue();
     if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
         moveAssign.destination.local() != resultLocal.id ||
         moveAssign.destination.projections().size() != 0 ||
@@ -5230,14 +5298,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   const size_t trailingCount = caller.locals.size() - callerParameterCount;
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
-      call.normalTarget != continuation.id || call.unwindTarget != zc::none ||
+      call.normalTarget != continuation->id || call.unwindTarget != zc::none ||
       !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -5274,7 +5343,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   };
   zc::Maybe<CallerShape> shape;
 
-  const auto& callReturn = continuation.terminator.returnValue().value;
+  const auto& callReturn = continuation->terminator.returnValue().value;
   if (callReturn == zc::none) { return zc::none; }
   bool returnsPlace = false;
   ZC_IF_SOME(value, callReturn) {
@@ -5291,7 +5360,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
         entry.statements.size() != 1 ||
         entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         entry.statements[0].storageLocal() != resultLocal.id ||
-        call.destination.local() != resultLocal.id || continuation.statements.size() != 0 ||
+        call.destination.local() != resultLocal.id || continuation->statements.size() != 0 ||
         returnOperand.place().local() != resultLocal.id ||
         returnOperand.place().projections().size() != 0) {
       return zc::none;
@@ -5316,15 +5385,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
         returnOperand.place().projections().size() != 0) {
       return zc::none;
     }
-    if (continuation.statements.size() != 3 ||
-        continuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-        continuation.statements[0].storageLocal() != resultLocal.id ||
-        continuation.statements[1].kind() != mir::MirStatementKind::Assign ||
-        continuation.statements[2].kind() != mir::MirStatementKind::StorageDead ||
-        continuation.statements[2].storageLocal() != temporaryLocal.id) {
+    if (continuation->statements.size() != 3 ||
+        continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        continuation->statements[0].storageLocal() != resultLocal.id ||
+        continuation->statements[1].kind() != mir::MirStatementKind::Assign ||
+        continuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+        continuation->statements[2].storageLocal() != temporaryLocal.id) {
       return zc::none;
     }
-    const auto& moveAssign = continuation.statements[1].assignmentValue();
+    const auto& moveAssign = continuation->statements[1].assignmentValue();
     if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
         moveAssign.destination.local() != resultLocal.id ||
         moveAssign.destination.projections().size() != 0 ||
@@ -5456,9 +5525,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   const uint32_t calleeResultOrdinal = calleeResult.id.ordinal();
 
   const auto& calleeEntry = callee.blocks[0];
-  const auto& calleeThen = callee.blocks[1];
-  const auto& calleeElse = callee.blocks[2];
-  const auto& calleeJoin = callee.blocks[3];
+  const mir::MirBasicBlock* calleeThen = nullptr;
+  const mir::MirBasicBlock* calleeElse = nullptr;
+  const mir::MirBasicBlock* calleeJoin = nullptr;
+  if (!mir::resolveDiamondCfg(callee, calleeThen, calleeElse, calleeJoin)) { return zc::none; }
 
   if (isConjunctiveStride) {
     // Conjunctive stride: StorageLive(result), StorageLive(guardTemp),
@@ -5543,8 +5613,9 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   const uint32_t calleeConditionOrdinal = calleeSwitch.discriminant.place().local().ordinal();
   const auto calleeTrueTarget = calleeSwitch.arms[0].target.ordinal();
   const auto calleeFalseTarget = calleeSwitch.arms[1].target.ordinal();
-  if (calleeTrueTarget != calleeThen.id.ordinal() || calleeFalseTarget != calleeElse.id.ordinal() ||
-      calleeSwitch.defaultTarget != calleeElse.id) {
+  if (calleeTrueTarget != calleeThen->id.ordinal() ||
+      calleeFalseTarget != calleeElse->id.ordinal() ||
+      calleeSwitch.defaultTarget != calleeElse->id) {
     return zc::none;
   }
 
@@ -5552,7 +5623,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != calleeJoin.id) {
+        branch.terminator.gotoValue().target != calleeJoin->id) {
       return false;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -5579,16 +5650,16 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
 
   zc::Vector<Statement> calleeThenStatements;
   zc::Vector<Statement> calleeElseStatements;
-  if (!lowerCalleeArm(calleeThen, calleeThenStatements) ||
-      !lowerCalleeArm(calleeElse, calleeElseStatements)) {
+  if (!lowerCalleeArm(*calleeThen, calleeThenStatements) ||
+      !lowerCalleeArm(*calleeElse, calleeElseStatements)) {
     return zc::none;
   }
 
-  if (calleeJoin.statements.size() != 0 ||
-      calleeJoin.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (calleeJoin->statements.size() != 0 ||
+      calleeJoin->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& calleeReturnValue = calleeJoin.terminator.returnValue().value;
+  const auto& calleeReturnValue = calleeJoin->terminator.returnValue().value;
   if (calleeReturnValue == zc::none) { return zc::none; }
   bool calleeReturnsResult = false;
   ZC_IF_SOME(value, calleeReturnValue) {
@@ -5694,15 +5765,16 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   const size_t callerTrailingCount = caller.locals.size() - callerParameterCount;
 
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerContinuation = caller.blocks[1];
+  const auto* callerContinuation = mir::findCallContinuation(caller, callerEntry);
+  if (callerContinuation == nullptr) { return zc::none; }
   if (callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerContinuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerContinuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& call = callerEntry.terminator.callValue();
   const size_t expectedArgumentCount = isConjunctiveStride ? 2 : 1;
   if (call.arguments.size() != expectedArgumentCount ||
-      call.destination.projections().size() != 0 || call.normalTarget != callerContinuation.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != callerContinuation->id ||
       call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -5725,7 +5797,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
     argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(lowered)));
   }
 
-  const auto& callReturn = callerContinuation.terminator.returnValue().value;
+  const auto& callReturn = callerContinuation->terminator.returnValue().value;
   if (callReturn == zc::none) { return zc::none; }
   bool callerReturnsPlace = false;
   ZC_IF_SOME(value, callReturn) {
@@ -5750,7 +5822,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
         resultLocal.type != caller.resultType || callerEntry.statements.size() != 1 ||
         callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         callerEntry.statements[0].storageLocal() != resultLocal.id ||
-        call.destination.local() != resultLocal.id || callerContinuation.statements.size() != 0 ||
+        call.destination.local() != resultLocal.id || callerContinuation->statements.size() != 0 ||
         returnOperand.place().local() != resultLocal.id ||
         returnOperand.place().projections().size() != 0) {
       return zc::none;
@@ -5774,15 +5846,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
         returnOperand.place().projections().size() != 0) {
       return zc::none;
     }
-    if (callerContinuation.statements.size() != 3 ||
-        callerContinuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-        callerContinuation.statements[0].storageLocal() != resultLocal.id ||
-        callerContinuation.statements[1].kind() != mir::MirStatementKind::Assign ||
-        callerContinuation.statements[2].kind() != mir::MirStatementKind::StorageDead ||
-        callerContinuation.statements[2].storageLocal() != temporaryLocal.id) {
+    if (callerContinuation->statements.size() != 3 ||
+        callerContinuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        callerContinuation->statements[0].storageLocal() != resultLocal.id ||
+        callerContinuation->statements[1].kind() != mir::MirStatementKind::Assign ||
+        callerContinuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+        callerContinuation->statements[2].storageLocal() != temporaryLocal.id) {
       return zc::none;
     }
-    const auto& moveAssign = callerContinuation.statements[1].assignmentValue();
+    const auto& moveAssign = callerContinuation->statements[1].assignmentValue();
     if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
         moveAssign.destination.local() != resultLocal.id ||
         moveAssign.destination.projections().size() != 0 ||
@@ -5967,49 +6039,55 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   };
   zc::Vector<ArmData> arms;
 
+  // Resolve the chained-conditional CFG structurally: each entry block is a
+  // SwitchInt whose true arm targets its then block and whose false arm chains
+  // to the next entry (or the else block). The first entry is blocks[0].
+  const mir::MirBasicBlock* chainEntry = &callee.blocks[0];
   for (size_t k = 0; k < armCount; ++k) {
-    const auto& entryBlock = callee.blocks[2 * k];
-    const auto& thenBlock = callee.blocks[2 * k + 1];
+    const auto* entryBlock = chainEntry;
+    if (entryBlock == nullptr) { return zc::none; }
     const auto& tempLocal = callee.locals[calleeParameterCount + 1 + k];
-    const uint32_t thenOrdinal = static_cast<uint32_t>(2 * k + 2);
-    const uint32_t elseOrdinal = (k + 1 < armCount) ? static_cast<uint32_t>(2 * (k + 1) + 1)
-                                                    : static_cast<uint32_t>(2 * armCount + 1);
 
     // Entry block: k=0 has StorageLive(result) + StorageLive for every
     // condition temp + Assign(temp_0, ...); k>0 has just Assign(temp_k, ...).
     const size_t expectedStatements = (k == 0) ? 2 + armCount : 1;
-    if (entryBlock.statements.size() != expectedStatements) { return zc::none; }
+    if (entryBlock->statements.size() != expectedStatements) { return zc::none; }
     size_t stmtIndex = 0;
     if (k == 0) {
-      if (entryBlock.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-          entryBlock.statements[0].storageLocal() != calleeResult.id) {
+      if (entryBlock->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+          entryBlock->statements[0].storageLocal() != calleeResult.id) {
         return zc::none;
       }
       for (size_t t = 0; t < armCount; ++t) {
-        if (entryBlock.statements[1 + t].kind() != mir::MirStatementKind::StorageLive ||
-            entryBlock.statements[1 + t].storageLocal() !=
+        if (entryBlock->statements[1 + t].kind() != mir::MirStatementKind::StorageLive ||
+            entryBlock->statements[1 + t].storageLocal() !=
                 callee.locals[calleeParameterCount + 1 + t].id) {
           return zc::none;
         }
       }
       stmtIndex = 1 + armCount;
     }
-    const auto& tempAssign = entryBlock.statements[stmtIndex].assignmentValue();
+    const auto& tempAssign = entryBlock->statements[stmtIndex].assignmentValue();
     if (tempAssign.destination.local() != tempLocal.id ||
         tempAssign.destination.projections().size() != 0 ||
         tempAssign.value.kind() != mir::MirRvalueKind::Comparison) {
       return zc::none;
     }
-    if (entryBlock.terminator.kind() != mir::MirTerminatorKind::SwitchInt) { return zc::none; }
-    const auto& switchInt = entryBlock.terminator.switchIntValue();
+    if (entryBlock->terminator.kind() != mir::MirTerminatorKind::SwitchInt) { return zc::none; }
+    const auto& switchInt = entryBlock->terminator.switchIntValue();
     if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
         switchInt.discriminant.place().local() != tempLocal.id ||
-        switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
-        switchInt.arms[0].target.ordinal() != thenOrdinal ||
-        switchInt.arms[1].target.ordinal() != elseOrdinal ||
-        switchInt.defaultTarget.ordinal() != elseOrdinal) {
+        switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2) {
       return zc::none;
     }
+    const uint32_t thenOrdinal = switchInt.arms[0].target.ordinal();
+    const uint32_t elseOrdinal = switchInt.arms[1].target.ordinal();
+    if (switchInt.defaultTarget.ordinal() != elseOrdinal) { return zc::none; }
+    const auto* thenBlock = mir::findBlockById(callee, switchInt.arms[0].target);
+    if (thenBlock == nullptr) { return zc::none; }
+    // Follow the false-arm chain to the next entry (or the else block).
+    chainEntry = mir::findBlockById(callee, switchInt.arms[1].target);
+    if (chainEntry == nullptr) { return zc::none; }
 
     // Lower the comparison operands.
     const auto& comparison = tempAssign.value.comparisonValue();
@@ -6035,13 +6113,13 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
     if (lirLeft == zc::none || lirRight == zc::none) { return zc::none; }
 
     // Then block: Assign(result = Use(constant)), Goto(join).
-    if (thenBlock.statements.size() != 1 ||
-        thenBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
-        thenBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        thenBlock.terminator.gotoValue().target.ordinal() != joinBlockOrdinal) {
+    if (thenBlock->statements.size() != 1 ||
+        thenBlock->statements[0].kind() != mir::MirStatementKind::Assign ||
+        thenBlock->terminator.kind() != mir::MirTerminatorKind::Goto ||
+        thenBlock->terminator.gotoValue().target.ordinal() != joinBlockOrdinal) {
       return zc::none;
     }
-    const auto& thenAssign = thenBlock.statements[0].assignmentValue();
+    const auto& thenAssign = thenBlock->statements[0].assignmentValue();
     if (thenAssign.destination.local() != calleeResult.id ||
         thenAssign.destination.projections().size() != 0 ||
         thenAssign.value.kind() != mir::MirRvalueKind::Use ||
@@ -6057,14 +6135,14 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   }
 
   // Else block: Assign(result = Use(constant)), Goto(join).
-  const auto& elseBlock = callee.blocks[2 * armCount];
-  if (elseBlock.statements.size() != 1 ||
-      elseBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
-      elseBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      elseBlock.terminator.gotoValue().target.ordinal() != joinBlockOrdinal) {
+  const auto* elseBlock = chainEntry;
+  if (elseBlock->statements.size() != 1 ||
+      elseBlock->statements[0].kind() != mir::MirStatementKind::Assign ||
+      elseBlock->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      elseBlock->terminator.gotoValue().target.ordinal() != joinBlockOrdinal) {
     return zc::none;
   }
-  const auto& elseAssign = elseBlock.statements[0].assignmentValue();
+  const auto& elseAssign = elseBlock->statements[0].assignmentValue();
   if (elseAssign.destination.local() != calleeResult.id ||
       elseAssign.destination.projections().size() != 0 ||
       elseAssign.value.kind() != mir::MirRvalueKind::Use ||
@@ -6075,12 +6153,13 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   if (elseLiteral == zc::none) { return zc::none; }
 
   // Join block: Return(result).
-  const auto& joinBlock = callee.blocks[2 * armCount + 1];
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  const auto* joinBlock = mir::findBlockById(callee, elseBlock->terminator.gotoValue().target);
+  if (joinBlock == nullptr) { return zc::none; }
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& joinReturnValue = joinBlock.terminator.returnValue().value;
+  const auto& joinReturnValue = joinBlock->terminator.returnValue().value;
   if (joinReturnValue == zc::none) { return zc::none; }
   bool joinReturnsResult = false;
   ZC_IF_SOME(value, joinReturnValue) {
@@ -6104,14 +6183,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   const size_t callerTrailingCount = caller.locals.size() - callerParameterCount;
 
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerContinuation = caller.blocks[1];
+  const auto* callerContinuation = mir::findCallContinuation(caller, callerEntry);
+  if (callerContinuation == nullptr) { return zc::none; }
   if (callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerContinuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerContinuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& call = callerEntry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
-      call.normalTarget != callerContinuation.id || call.unwindTarget != zc::none ||
+      call.normalTarget != callerContinuation->id || call.unwindTarget != zc::none ||
       !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -6129,7 +6209,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   zc::Vector<Operand> argumentOperands;
   argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(loweredArgument)));
 
-  const auto& callReturn = callerContinuation.terminator.returnValue().value;
+  const auto& callReturn = callerContinuation->terminator.returnValue().value;
   if (callReturn == zc::none) { return zc::none; }
   bool callerReturnsPlace = false;
   ZC_IF_SOME(value, callReturn) {
@@ -6154,7 +6234,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
         resultLocal.type != caller.resultType || callerEntry.statements.size() != 1 ||
         callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
         callerEntry.statements[0].storageLocal() != resultLocal.id ||
-        call.destination.local() != resultLocal.id || callerContinuation.statements.size() != 0 ||
+        call.destination.local() != resultLocal.id || callerContinuation->statements.size() != 0 ||
         returnOperand.place().local() != resultLocal.id ||
         returnOperand.place().projections().size() != 0) {
       return zc::none;
@@ -6178,15 +6258,15 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
         returnOperand.place().projections().size() != 0) {
       return zc::none;
     }
-    if (callerContinuation.statements.size() != 3 ||
-        callerContinuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-        callerContinuation.statements[0].storageLocal() != resultLocal.id ||
-        callerContinuation.statements[1].kind() != mir::MirStatementKind::Assign ||
-        callerContinuation.statements[2].kind() != mir::MirStatementKind::StorageDead ||
-        callerContinuation.statements[2].storageLocal() != temporaryLocal.id) {
+    if (callerContinuation->statements.size() != 3 ||
+        callerContinuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        callerContinuation->statements[0].storageLocal() != resultLocal.id ||
+        callerContinuation->statements[1].kind() != mir::MirStatementKind::Assign ||
+        callerContinuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+        callerContinuation->statements[2].storageLocal() != temporaryLocal.id) {
       return zc::none;
     }
-    const auto& moveAssign = callerContinuation.statements[1].assignmentValue();
+    const auto& moveAssign = callerContinuation->statements[1].assignmentValue();
     if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
         moveAssign.destination.local() != resultLocal.id ||
         moveAssign.destination.projections().size() != 0 ||
@@ -6362,7 +6442,8 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
     return zc::none;
   }
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 3 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != aggregateLocal.id ||
@@ -6370,8 +6451,8 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
       entry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[2].storageLocal() != resultLocal.id ||
       entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& aggregateAssign = entry.statements[1].assignmentValue();
@@ -6392,7 +6473,7 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
   }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
-      call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
       call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -6404,7 +6485,7 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
       callArgument.place().resultType() != aggregateLocal.type) {
     return zc::none;
   }
-  const auto& continuationReturn = continuation.terminator.returnValue().value;
+  const auto& continuationReturn = continuation->terminator.returnValue().value;
   if (continuationReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, continuationReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
@@ -6516,7 +6597,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
     if (scalarCarrier != callerCarrier) { return zc::none; }
   }
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 3 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != scalarLocal.id ||
@@ -6524,8 +6606,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
       entry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[2].storageLocal() != resultLocal.id ||
       entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& initialization = entry.statements[1].assignmentValue();
@@ -6544,7 +6626,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
   if (loweredConstant == zc::none) { return zc::none; }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
-      call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
       call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -6556,7 +6638,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
       callArgument.place().resultType() != scalarLocal.type) {
     return zc::none;
   }
-  const auto& continuationReturn = continuation.terminator.returnValue().value;
+  const auto& continuationReturn = continuation->terminator.returnValue().value;
   if (continuationReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, continuationReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
@@ -6799,7 +6881,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   const uint32_t resultOrdinal = resultLocal.id.ordinal();
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal.id ||
@@ -6809,7 +6892,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   const auto& call = entry.terminator.callValue();
   // Exactly two arguments; the call must target the identified callee.
   if (call.arguments.size() != 2 || call.destination.local() != resultLocal.id ||
-      call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
       call.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -6845,11 +6928,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
     argumentOperands.add(zc::mv(ZC_REQUIRE_NONNULL(lowered)));
   }
 
-  if (continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& continuationReturn = continuation.terminator.returnValue().value;
+  const auto& continuationReturn = continuation->terminator.returnValue().value;
   if (continuationReturn == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, continuationReturn) {
@@ -6995,7 +7078,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
   const uint32_t resultOrdinal = resultLocal.id.ordinal();
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal.id ||
@@ -7004,18 +7088,18 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
   }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 0 || call.destination.local() != resultLocal.id ||
-      call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
+      call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
       call.unwindTarget != zc::none) {
     return zc::none;
   }
   // The call's target definition must be the identified callee; the leaf is never
   // a call target, so a caller pointing at the leaf's owner is rejected here.
   if (!(call.callee == callee.owner)) { return zc::none; }
-  if (continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& continuationReturn = continuation.terminator.returnValue().value;
+  const auto& continuationReturn = continuation->terminator.returnValue().value;
   if (continuationReturn == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, continuationReturn) {
@@ -7439,10 +7523,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 5 || entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -7505,7 +7590,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 + ordinaryParameterCount ||
       mirCall.effect.kind() != expectedEffectKind ||
       mirCall.destination.local() != resultTemporary.id ||
-      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation->id ||
       mirCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -7535,7 +7620,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
     if (argumentOperand == zc::none) { return zc::none; }
     extraArguments.add(zc::mv(ZC_REQUIRE_NONNULL(argumentOperand)));
   }
-  const auto& returnValue = continuation.terminator.returnValue().value;
+  const auto& returnValue = continuation->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   ZC_IF_SOME(value, returnValue) {
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -7771,10 +7856,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModuleWithLeaf(
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
   if (entry.statements.size() != 5 || entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 0 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -7821,7 +7907,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModuleWithLeaf(
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != expectedEffectKind ||
       mirCall.destination.local() != resultTemporary.id ||
-      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation->id ||
       mirCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -7837,7 +7923,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModuleWithLeaf(
       receiverArgument.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& returnValue = continuation.terminator.returnValue().value;
+  const auto& returnValue = continuation->terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
   ZC_IF_SOME(value, returnValue) {
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -7946,39 +8032,40 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
 
   const auto& entry = callee.blocks[0];
-  const auto& thenBlock = callee.blocks[1];
-  const auto& elseBlock = callee.blocks[2];
-  const auto& joinBlock = callee.blocks[3];
+  const mir::MirBasicBlock* thenBlock = nullptr;
+  const mir::MirBasicBlock* elseBlock = nullptr;
+  const mir::MirBasicBlock* joinBlock = nullptr;
+  if (!mir::resolveDiamondCfg(callee, thenBlock, elseBlock, joinBlock)) { return zc::none; }
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != resultLocal.id ||
       entry.terminator.kind() != mir::MirTerminatorKind::SwitchInt ||
-      thenBlock.statements.size() != 1 ||
-      thenBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
-      thenBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      elseBlock.statements.size() != 1 ||
-      elseBlock.statements[0].kind() != mir::MirStatementKind::Assign ||
-      elseBlock.terminator.kind() != mir::MirTerminatorKind::Goto ||
-      joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+      thenBlock->statements.size() != 1 ||
+      thenBlock->statements[0].kind() != mir::MirStatementKind::Assign ||
+      thenBlock->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      elseBlock->statements.size() != 1 ||
+      elseBlock->statements[0].kind() != mir::MirStatementKind::Assign ||
+      elseBlock->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& switchInt = entry.terminator.switchIntValue();
   if (switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
       switchInt.discriminant.place().local() != conditionLocal.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2 ||
-      switchInt.defaultTarget != elseBlock.id) {
+      switchInt.defaultTarget != elseBlock->id) {
     return zc::none;
   }
   auto trueLiteral = switchInt.arms[0].value.booleanValue();
   auto falseLiteral = switchInt.arms[1].value.booleanValue();
   if (trueLiteral == zc::none || falseLiteral == zc::none || !ZC_ASSERT_NONNULL(trueLiteral) ||
-      ZC_ASSERT_NONNULL(falseLiteral) || switchInt.arms[0].target != thenBlock.id ||
-      switchInt.arms[1].target != elseBlock.id) {
+      ZC_ASSERT_NONNULL(falseLiteral) || switchInt.arms[0].target != thenBlock->id ||
+      switchInt.arms[1].target != elseBlock->id) {
     return zc::none;
   }
-  if (thenBlock.terminator.gotoValue().target != joinBlock.id ||
-      elseBlock.terminator.gotoValue().target != joinBlock.id) {
+  if (thenBlock->terminator.gotoValue().target != joinBlock->id ||
+      elseBlock->terminator.gotoValue().target != joinBlock->id) {
     return zc::none;
   }
   auto armConstant = [&](const mir::MirBasicBlock& branch) -> zc::Maybe<IntegerConstant> {
@@ -7997,9 +8084,9 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     if (bits == zc::none) { return zc::none; }
     return IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
   };
-  auto thenConstant = armConstant(thenBlock);
-  auto elseConstant = armConstant(elseBlock);
-  const auto& joinReturn = joinBlock.terminator.returnValue().value;
+  auto thenConstant = armConstant(*thenBlock);
+  auto elseConstant = armConstant(*elseBlock);
+  const auto& joinReturn = joinBlock->terminator.returnValue().value;
   if (thenConstant == zc::none || elseConstant == zc::none || joinReturn == zc::none) {
     return zc::none;
   }
@@ -8042,12 +8129,13 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerContinuation = caller.blocks[1];
+  const auto* callerContinuation = mir::findCallContinuation(caller, callerEntry);
+  if (callerContinuation == nullptr) { return zc::none; }
   const size_t expectedStatements = hasComparisonArgument ? 7 : 5;
   if (callerEntry.statements.size() != expectedStatements ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerContinuation.statements.size() != 0 ||
-      callerContinuation.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerContinuation->statements.size() != 0 ||
+      callerContinuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -8130,7 +8218,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 ||
-      mirCall.normalTarget != callerContinuation.id || mirCall.unwindTarget != zc::none) {
+      mirCall.normalTarget != callerContinuation->id || mirCall.unwindTarget != zc::none) {
     return zc::none;
   }
   const auto& receiverArgument = mirCall.arguments[0];
@@ -8162,7 +8250,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
     if (boolIntegerConstant == zc::none) { return zc::none; }
     boolArgumentOperand = Operand::constant(ZC_ASSERT_NONNULL(boolIntegerConstant));
   }
-  const auto& callerReturn = callerContinuation.terminator.returnValue().value;
+  const auto& callerReturn = callerContinuation->terminator.returnValue().value;
   ZC_IF_SOME(value, callerReturn) {
     if (value.kind() == mir::MirOperandKind::Constant ||
         value.place().local() != resultTemporary.id || value.place().projections().size() != 0) {
@@ -8281,7 +8369,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
   const uint32_t forwarderReceiverOrdinal = forwarderReceiver.id.ordinal();
 
   const auto& forwarderEntry = forwarder.blocks[0];
-  const auto& forwarderCont = forwarder.blocks[1];
+  const auto* forwarderCont = mir::findCallContinuation(forwarder, forwarderEntry);
+  if (forwarderCont == nullptr) { return zc::none; }
   if (forwarderEntry.statements.size() != 1 ||
       forwarderEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       forwarderEntry.statements[0].storageLocal() != forwarderResult.id ||
@@ -8293,7 +8382,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
       forwarderCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       forwarderCall.destination.local() != forwarderResult.id ||
       forwarderCall.destination.projections().size() != 0 ||
-      forwarderCall.normalTarget != forwarderCont.id || forwarderCall.unwindTarget != zc::none) {
+      forwarderCall.normalTarget != forwarderCont->id || forwarderCall.unwindTarget != zc::none) {
     return zc::none;
   }
   const auto& forwardedReceiver = forwarderCall.arguments[0];
@@ -8302,11 +8391,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
       forwardedReceiver.place().projections().size() != 0) {
     return zc::none;
   }
-  if (forwarderCont.statements.size() != 0 ||
-      forwarderCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (forwarderCont->statements.size() != 0 ||
+      forwarderCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& forwarderReturn = forwarderCont.terminator.returnValue().value;
+  const auto& forwarderReturn = forwarderCont->terminator.returnValue().value;
   if (forwarderReturn == zc::none) { return zc::none; }
   bool returnsResult = false;
   ZC_IF_SOME(value, forwarderReturn) {
@@ -8381,11 +8470,12 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerCont = caller.blocks[1];
+  const auto* callerCont = mir::findCallContinuation(caller, callerEntry);
+  if (callerCont == nullptr) { return zc::none; }
   if (callerEntry.statements.size() != 5 ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerCont.statements.size() != 0 ||
-      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerCont->statements.size() != 0 ||
+      callerCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -8426,7 +8516,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
       callerCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       callerCall.destination.local() != resultTemporary.id ||
       callerCall.destination.projections().size() != 0 ||
-      callerCall.normalTarget != callerCont.id || callerCall.unwindTarget != zc::none) {
+      callerCall.normalTarget != callerCont->id || callerCall.unwindTarget != zc::none) {
     return zc::none;
   }
   const auto& callerReceiverArgument = callerCall.arguments[0];
@@ -8435,7 +8525,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
       callerReceiverArgument.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& callerReturnValue = callerCont.terminator.returnValue().value;
+  const auto& callerReturnValue = callerCont->terminator.returnValue().value;
   if (callerReturnValue == zc::none) { return zc::none; }
   ZC_IF_SOME(value, callerReturnValue) {
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -8669,12 +8759,14 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
-  const auto& tail = caller.blocks[2];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
+  const auto* tail = mir::findCallContinuation(caller, *continuation);
+  if (tail == nullptr) { return zc::none; }
   if (entry.statements.size() != 5 || entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 3 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Call ||
-      tail.statements.size() != 0 || tail.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 3 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Call ||
+      tail->statements.size() != 0 || tail->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -8687,11 +8779,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
       entry.statements[4].storageLocal() != unitTemporary.id) {
     return zc::none;
   }
-  if (continuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      continuation.statements[0].storageLocal() != borrowShTemporary.id ||
-      continuation.statements[1].kind() != mir::MirStatementKind::BorrowCreation ||
-      continuation.statements[2].kind() != mir::MirStatementKind::StorageLive ||
-      continuation.statements[2].storageLocal() != resultTemporary.id) {
+  if (continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      continuation->statements[0].storageLocal() != borrowShTemporary.id ||
+      continuation->statements[1].kind() != mir::MirStatementKind::BorrowCreation ||
+      continuation->statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      continuation->statements[2].storageLocal() != resultTemporary.id) {
     return zc::none;
   }
   // The owner folds from a one-element nominal aggregate of a scalar constant.
@@ -8713,7 +8805,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   if (ownerConstant == zc::none) { return zc::none; }
   // The two receiver borrows are distinct, each sourced from the owner slot.
   const auto& mutableBorrow = entry.statements[3].borrowCreationValue();
-  const auto& sharedBorrow = continuation.statements[1].borrowCreationValue();
+  const auto& sharedBorrow = continuation->statements[1].borrowCreationValue();
   if (mutableBorrow.kind != mir::MirBorrowKind::Mutable ||
       mutableBorrow.destination.local() != borrowMutTemporary.id ||
       mutableBorrow.destination.projections().size() != 0 ||
@@ -8732,7 +8824,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   if (voidCall.callee != voidCallee.owner || voidCall.arguments.size() != 2 ||
       voidCall.effect.kind() != mir::MirCallEffectKind::ActivateMutableReceiver ||
       voidCall.destination.local() != unitTemporary.id ||
-      voidCall.destination.projections().size() != 0 || voidCall.normalTarget != continuation.id ||
+      voidCall.destination.projections().size() != 0 || voidCall.normalTarget != continuation->id ||
       voidCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -8753,11 +8845,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   if (setterArgument == zc::none) { return zc::none; }
   // The shared call targets the getter with the shared borrow as its sole
   // argument and stores the field value into the result temporary.
-  const auto& valueCall = continuation.terminator.callValue();
+  const auto& valueCall = continuation->terminator.callValue();
   if (valueCall.callee != valueCallee.owner || valueCall.arguments.size() != 1 ||
       valueCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       valueCall.destination.local() != resultTemporary.id ||
-      valueCall.destination.projections().size() != 0 || valueCall.normalTarget != tail.id ||
+      valueCall.destination.projections().size() != 0 || valueCall.normalTarget != tail->id ||
       valueCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -8767,7 +8859,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
     return zc::none;
   }
   {
-    const auto& returned = tail.terminator.returnValue().value;
+    const auto& returned = tail->terminator.returnValue().value;
     if (returned == zc::none) { return zc::none; }
     const auto& value = ZC_ASSERT_NONNULL(returned);
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -8961,12 +9053,14 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& continuation = caller.blocks[1];
-  const auto& tail = caller.blocks[2];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
+  const auto* tail = mir::findCallContinuation(caller, *continuation);
+  if (tail == nullptr) { return zc::none; }
   if (entry.statements.size() != 5 || entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      continuation.statements.size() != 3 ||
-      continuation.terminator.kind() != mir::MirTerminatorKind::Call ||
-      tail.statements.size() != 0 || tail.terminator.kind() != mir::MirTerminatorKind::Return) {
+      continuation->statements.size() != 3 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Call ||
+      tail->statements.size() != 0 || tail->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   if (entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -8979,11 +9073,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
       entry.statements[4].storageLocal() != deadResultTemporary.id) {
     return zc::none;
   }
-  if (continuation.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      continuation.statements[0].storageLocal() != borrowTwoTemporary.id ||
-      continuation.statements[1].kind() != mir::MirStatementKind::BorrowCreation ||
-      continuation.statements[2].kind() != mir::MirStatementKind::StorageLive ||
-      continuation.statements[2].storageLocal() != resultTemporary.id) {
+  if (continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      continuation->statements[0].storageLocal() != borrowTwoTemporary.id ||
+      continuation->statements[1].kind() != mir::MirStatementKind::BorrowCreation ||
+      continuation->statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      continuation->statements[2].storageLocal() != resultTemporary.id) {
     return zc::none;
   }
   // The owner folds from a one-element nominal aggregate of a scalar constant.
@@ -9005,7 +9099,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   if (ownerConstant == zc::none) { return zc::none; }
   // Both receiver borrows are shared, each sourced from the owner slot.
   const auto& borrowOne = entry.statements[3].borrowCreationValue();
-  const auto& borrowTwo = continuation.statements[1].borrowCreationValue();
+  const auto& borrowTwo = continuation->statements[1].borrowCreationValue();
   if (borrowOne.kind != mir::MirBorrowKind::Shared ||
       borrowOne.destination.local() != borrowOneTemporary.id ||
       borrowOne.destination.projections().size() != 0 ||
@@ -9018,13 +9112,13 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   }
   // The first call targets the leaf with the first shared borrow as its sole
   // argument, stores its (dead) result into the dead-result temporary, and
-  // falls through to the continuation.
+  // falls through to the continuation->
   const auto& firstCall = entry.terminator.callValue();
   if (firstCall.callee != callee.owner || firstCall.arguments.size() != 1 ||
       firstCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       firstCall.destination.local() != deadResultTemporary.id ||
       firstCall.destination.projections().size() != 0 ||
-      firstCall.normalTarget != continuation.id || firstCall.unwindTarget != zc::none) {
+      firstCall.normalTarget != continuation->id || firstCall.unwindTarget != zc::none) {
     return zc::none;
   }
   if (firstCall.arguments[0].kind() == mir::MirOperandKind::Constant ||
@@ -9034,11 +9128,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   }
   // The second call targets the same leaf with the second shared borrow and
   // stores the live result into the result temporary.
-  const auto& secondCall = continuation.terminator.callValue();
+  const auto& secondCall = continuation->terminator.callValue();
   if (secondCall.callee != callee.owner || secondCall.arguments.size() != 1 ||
       secondCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       secondCall.destination.local() != resultTemporary.id ||
-      secondCall.destination.projections().size() != 0 || secondCall.normalTarget != tail.id ||
+      secondCall.destination.projections().size() != 0 || secondCall.normalTarget != tail->id ||
       secondCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -9048,7 +9142,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
     return zc::none;
   }
   {
-    const auto& returned = tail.terminator.returnValue().value;
+    const auto& returned = tail->terminator.returnValue().value;
     if (returned == zc::none) { return zc::none; }
     const auto& value = ZC_ASSERT_NONNULL(returned);
     if (value.kind() == mir::MirOperandKind::Constant ||
@@ -9202,18 +9296,23 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
   const auto boolCarrierValue = ZC_REQUIRE_NONNULL(boolCarrier);
 
   const auto& entry = caller.blocks[0];
-  const auto& test = caller.blocks[1];
-  const auto& trap = caller.blocks[2];
-  const auto& success = caller.blocks[3];
-  if (entry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      test.terminator.kind() != mir::MirTerminatorKind::SwitchInt ||
-      trap.terminator.kind() != mir::MirTerminatorKind::Unreachable ||
-      success.terminator.kind() != mir::MirTerminatorKind::Return) {
+  const auto* test = mir::findCallContinuation(caller, entry);
+  if (test == nullptr || test->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+    return zc::none;
+  }
+  const auto& testSwitch = test->terminator.switchIntValue();
+  if (testSwitch.arms.size() != 2) { return zc::none; }
+  const auto* success = mir::findBlockById(caller, testSwitch.arms[0].target);
+  const auto* trap = mir::findBlockById(caller, testSwitch.defaultTarget);
+  if (success == nullptr || trap == nullptr ||
+      entry.terminator.kind() != mir::MirTerminatorKind::Call ||
+      trap->terminator.kind() != mir::MirTerminatorKind::Unreachable ||
+      success->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
-      call.normalTarget != test.id || call.unwindTarget != zc::none ||
+      call.normalTarget != test->id || call.unwindTarget != zc::none ||
       !(call.callee == callee.owner)) {
     return zc::none;
   }
@@ -9227,16 +9326,16 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
   // Test block: StorageLive(tagTemp), Assign(tagTemp = ExtractField(T, 0)),
   // StorageLive(boolTemp), Assign(boolTemp = Comparison(Eq, tagTemp, 0)),
   // SwitchInt(copy boolTemp) [true -> success], default = trap.
-  if (test.statements.size() != 4 ||
-      test.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      test.statements[0].storageLocal() != tagTempLocal.id ||
-      test.statements[1].kind() != mir::MirStatementKind::Assign ||
-      test.statements[2].kind() != mir::MirStatementKind::StorageLive ||
-      test.statements[2].storageLocal() != boolTempLocal.id ||
-      test.statements[3].kind() != mir::MirStatementKind::Assign) {
+  if (test->statements.size() != 4 ||
+      test->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      test->statements[0].storageLocal() != tagTempLocal.id ||
+      test->statements[1].kind() != mir::MirStatementKind::Assign ||
+      test->statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      test->statements[2].storageLocal() != boolTempLocal.id ||
+      test->statements[3].kind() != mir::MirStatementKind::Assign) {
     return zc::none;
   }
-  const auto& tagAssign = test.statements[1].assignmentValue();
+  const auto& tagAssign = test->statements[1].assignmentValue();
   if (tagAssign.initialization != mir::MirInitializationKind::Initialize ||
       tagAssign.destination.local() != tagTempLocal.id ||
       tagAssign.destination.projections().size() != 0 ||
@@ -9247,7 +9346,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
       tagAssign.value.extractFieldValue().source.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& cmpAssign = test.statements[3].assignmentValue();
+  const auto& cmpAssign = test->statements[3].assignmentValue();
   if (cmpAssign.initialization != mir::MirInitializationKind::Initialize ||
       cmpAssign.destination.local() != boolTempLocal.id ||
       cmpAssign.destination.projections().size() != 0 ||
@@ -9258,26 +9357,24 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
       cmpAssign.value.comparisonValue().right.kind() != mir::MirOperandKind::Constant) {
     return zc::none;
   }
-  const auto& switchInt = test.terminator.switchIntValue();
-  if (switchInt.arms.size() != 2 || switchInt.defaultTarget != trap.id ||
-      switchInt.discriminant.kind() != mir::MirOperandKind::Copy ||
-      switchInt.discriminant.place().local() != boolTempLocal.id) {
+  if (testSwitch.discriminant.kind() != mir::MirOperandKind::Copy ||
+      testSwitch.discriminant.place().local() != boolTempLocal.id) {
     return zc::none;
   }
 
   // Success block: StorageLive(R), Assign(R = ExtractField(T, 1)),
   // StorageDead(T), Return(R).
-  const auto& successReturn = success.terminator.returnValue().value;
+  const auto& successReturn = success->terminator.returnValue().value;
   if (successReturn == zc::none) { return zc::none; }
-  if (success.statements.size() != 3 ||
-      success.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      success.statements[0].storageLocal() != resultLocal.id ||
-      success.statements[1].kind() != mir::MirStatementKind::Assign ||
-      success.statements[2].kind() != mir::MirStatementKind::StorageDead ||
-      success.statements[2].storageLocal() != temporaryLocal.id) {
+  if (success->statements.size() != 3 ||
+      success->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      success->statements[0].storageLocal() != resultLocal.id ||
+      success->statements[1].kind() != mir::MirStatementKind::Assign ||
+      success->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+      success->statements[2].storageLocal() != temporaryLocal.id) {
     return zc::none;
   }
-  const auto& payloadAssign = success.statements[1].assignmentValue();
+  const auto& payloadAssign = success->statements[1].assignmentValue();
   if (payloadAssign.initialization != mir::MirInitializationKind::Initialize ||
       payloadAssign.destination.local() != resultLocal.id ||
       payloadAssign.destination.projections().size() != 0 ||
@@ -9433,13 +9530,14 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const auto& calleeEntry = callee.blocks[0];
-  const auto& calleeCont = callee.blocks[1];
+  const auto* calleeCont = mir::findCallContinuation(callee, calleeEntry);
+  if (calleeCont == nullptr) { return zc::none; }
   if (calleeEntry.statements.size() != 1 ||
       calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       calleeEntry.statements[0].storageLocal() != calleeResult.id ||
       calleeEntry.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
-      calleeCont.statements.size() != 0 ||
-      calleeCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      calleeCont->statements.size() != 0 ||
+      calleeCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& indirectCall = calleeEntry.terminator.indirectCallValue();
@@ -9447,7 +9545,7 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
       indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       indirectCall.destination.local() != calleeResult.id ||
       indirectCall.destination.projections().size() != 0 ||
-      indirectCall.normalTarget != calleeCont.id || indirectCall.unwindTarget != zc::none) {
+      indirectCall.normalTarget != calleeCont->id || indirectCall.unwindTarget != zc::none) {
     return zc::none;
   }
   if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
@@ -9455,7 +9553,7 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
       indirectCall.receiver.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& calleeContReturn = calleeCont.terminator.returnValue().value;
+  const auto& calleeContReturn = calleeCont->terminator.returnValue().value;
   if (calleeContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, calleeContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != calleeResult.id ||
@@ -9484,7 +9582,8 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerCont = caller.blocks[1];
+  const auto* callerCont = mir::findCallContinuation(caller, callerEntry);
+  if (callerCont == nullptr) { return zc::none; }
   if (callerEntry.statements.size() != 3 ||
       callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[0].storageLocal() != callerAggregate.id ||
@@ -9492,8 +9591,8 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
       callerEntry.statements[2].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[2].storageLocal() != callerResult.id ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerCont.statements.size() != 0 ||
-      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerCont->statements.size() != 0 ||
+      callerCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& aggregateAssign = callerEntry.statements[1].assignmentValue();
@@ -9517,7 +9616,7 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
-      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont->id ||
       mirCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -9527,7 +9626,7 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
       callArgument.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& callerContReturn = callerCont.terminator.returnValue().value;
+  const auto& callerContReturn = callerCont->terminator.returnValue().value;
   if (callerContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, callerContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != callerResult.id ||
@@ -9715,13 +9814,14 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const auto& calleeEntry = callee.blocks[0];
-  const auto& calleeCont = callee.blocks[1];
+  const auto* calleeCont = mir::findCallContinuation(callee, calleeEntry);
+  if (calleeCont == nullptr) { return zc::none; }
   if (calleeEntry.statements.size() != 1 ||
       calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       calleeEntry.statements[0].storageLocal() != calleeResult.id ||
       calleeEntry.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
-      calleeCont.statements.size() != 0 ||
-      calleeCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      calleeCont->statements.size() != 0 ||
+      calleeCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& indirectCall = calleeEntry.terminator.indirectCallValue();
@@ -9729,7 +9829,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
       indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       indirectCall.destination.local() != calleeResult.id ||
       indirectCall.destination.projections().size() != 0 ||
-      indirectCall.normalTarget != calleeCont.id || indirectCall.unwindTarget != zc::none) {
+      indirectCall.normalTarget != calleeCont->id || indirectCall.unwindTarget != zc::none) {
     return zc::none;
   }
   if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
@@ -9737,7 +9837,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
       indirectCall.receiver.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& calleeContReturn = calleeCont.terminator.returnValue().value;
+  const auto& calleeContReturn = calleeCont->terminator.returnValue().value;
   if (calleeContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, calleeContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != calleeResult.id ||
@@ -9769,7 +9869,8 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerCont = caller.blocks[1];
+  const auto* callerCont = mir::findCallContinuation(caller, callerEntry);
+  if (callerCont == nullptr) { return zc::none; }
   if (callerEntry.statements.size() != 5 ||
       callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[0].storageLocal() != callerConcrete.id ||
@@ -9780,8 +9881,8 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
       callerEntry.statements[4].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[4].storageLocal() != callerResult.id ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerCont.statements.size() != 0 ||
-      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerCont->statements.size() != 0 ||
+      callerCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& concreteAssign = callerEntry.statements[1].assignmentValue();
@@ -9819,7 +9920,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
   if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
-      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
+      mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont->id ||
       mirCall.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -9829,7 +9930,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
       callArgument.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& callerContReturn = callerCont.terminator.returnValue().value;
+  const auto& callerContReturn = callerCont->terminator.returnValue().value;
   if (callerContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, callerContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != callerResult.id ||
@@ -10042,13 +10143,14 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const auto& calleeEntry = indirectCallee.blocks[0];
-  const auto& calleeCont = indirectCallee.blocks[1];
+  const auto* calleeCont = mir::findCallContinuation(indirectCallee, calleeEntry);
+  if (calleeCont == nullptr) { return zc::none; }
   if (calleeEntry.statements.size() != 1 ||
       calleeEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       calleeEntry.statements[0].storageLocal() != calleeResult.id ||
       calleeEntry.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
-      calleeCont.statements.size() != 0 ||
-      calleeCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      calleeCont->statements.size() != 0 ||
+      calleeCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& indirectCall = calleeEntry.terminator.indirectCallValue();
@@ -10056,7 +10158,7 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
       indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       indirectCall.destination.local() != calleeResult.id ||
       indirectCall.destination.projections().size() != 0 ||
-      indirectCall.normalTarget != calleeCont.id || indirectCall.unwindTarget != zc::none) {
+      indirectCall.normalTarget != calleeCont->id || indirectCall.unwindTarget != zc::none) {
     return zc::none;
   }
   if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
@@ -10064,7 +10166,7 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
       indirectCall.receiver.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& calleeContReturn = calleeCont.terminator.returnValue().value;
+  const auto& calleeContReturn = calleeCont->terminator.returnValue().value;
   if (calleeContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, calleeContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != calleeResult.id ||
@@ -10161,34 +10263,36 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
   const auto& callerEntry = caller.blocks[0];
-  const auto& callerMid = caller.blocks[1];
-  const auto& callerCont = caller.blocks[2];
+  const auto* callerMid = mir::findCallContinuation(caller, callerEntry);
+  if (callerMid == nullptr) { return zc::none; }
+  const auto* callerCont = mir::findCallContinuation(caller, *callerMid);
+  if (callerCont == nullptr) { return zc::none; }
   if (callerEntry.statements.size() != 1 ||
       callerEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       callerEntry.statements[0].storageLocal() != callerExistential.id ||
       callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerMid.statements.size() != 1 ||
-      callerMid.statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      callerMid.statements[0].storageLocal() != callerResult.id ||
-      callerMid.terminator.kind() != mir::MirTerminatorKind::Call ||
-      callerCont.statements.size() != 0 ||
-      callerCont.terminator.kind() != mir::MirTerminatorKind::Return) {
+      callerMid->statements.size() != 1 ||
+      callerMid->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      callerMid->statements[0].storageLocal() != callerResult.id ||
+      callerMid->terminator.kind() != mir::MirTerminatorKind::Call ||
+      callerCont->statements.size() != 0 ||
+      callerCont->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
   const auto& initCall = callerEntry.terminator.callValue();
   if (initCall.callee != existentialCallee.owner || initCall.arguments.size() != 0 ||
       initCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       initCall.destination.local() != callerExistential.id ||
-      initCall.destination.projections().size() != 0 || initCall.normalTarget != callerMid.id ||
+      initCall.destination.projections().size() != 0 || initCall.normalTarget != callerMid->id ||
       initCall.unwindTarget != zc::none) {
     return zc::none;
   }
-  const auto& returnCall = callerMid.terminator.callValue();
+  const auto& returnCall = callerMid->terminator.callValue();
   if (returnCall.callee != indirectCallee.owner || returnCall.arguments.size() != 1 ||
       returnCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       returnCall.destination.local() != callerResult.id ||
       returnCall.destination.projections().size() != 0 ||
-      returnCall.normalTarget != callerCont.id || returnCall.unwindTarget != zc::none) {
+      returnCall.normalTarget != callerCont->id || returnCall.unwindTarget != zc::none) {
     return zc::none;
   }
   const auto& callArgument = returnCall.arguments[0];
@@ -10197,7 +10301,7 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
       callArgument.place().projections().size() != 0) {
     return zc::none;
   }
-  const auto& callerContReturn = callerCont.terminator.returnValue().value;
+  const auto& callerContReturn = callerCont->terminator.returnValue().value;
   if (callerContReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, callerContReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != callerResult.id ||
@@ -10822,11 +10926,12 @@ zc::Maybe<Module> MirToLirLowering::lowerDynFieldAccessReturnModule(
   if (entry.locals.size() < 5 || (entry.locals.size() - 3) % 2 != 0) { return zc::none; }
   const size_t erasedCount = (entry.locals.size() - 3) / 2;
   const auto& entryBlock = entry.blocks[0];
-  const auto& contBlock = entry.blocks[1];
+  const auto* contBlock = mir::findCallContinuation(entry, entryBlock);
+  if (contBlock == nullptr) { return zc::none; }
   if (entryBlock.statements.size() != 4 * erasedCount + 5 ||
       entryBlock.terminator.kind() != mir::MirTerminatorKind::IndirectCall ||
-      contBlock.statements.size() != 0 ||
-      contBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+      contBlock->statements.size() != 0 ||
+      contBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
 
@@ -10970,7 +11075,7 @@ zc::Maybe<Module> MirToLirLowering::lowerDynFieldAccessReturnModule(
       indirectCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       indirectCall.destination.local() != resultLocal.id ||
       indirectCall.destination.projections().size() != 0 ||
-      indirectCall.normalTarget != contBlock.id || indirectCall.unwindTarget != zc::none) {
+      indirectCall.normalTarget != contBlock->id || indirectCall.unwindTarget != zc::none) {
     return zc::none;
   }
   if (indirectCall.receiver.kind() == mir::MirOperandKind::Constant ||
@@ -10979,7 +11084,7 @@ zc::Maybe<Module> MirToLirLowering::lowerDynFieldAccessReturnModule(
     return zc::none;
   }
   // Continuation: return the result local.
-  const auto& contReturn = contBlock.terminator.returnValue().value;
+  const auto& contReturn = contBlock->terminator.returnValue().value;
   if (contReturn == zc::none) { return zc::none; }
   ZC_IF_SOME(value, contReturn) {
     if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
@@ -11257,10 +11362,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
   if (callerResult.type != caller.resultType) { return zc::none; }
 
   const auto& entry = caller.blocks[0];
-  const auto& switchBlock = caller.blocks[1];
-  const auto& thenBlock = caller.blocks[2];
-  const auto& elseBlock = caller.blocks[3];
-  const auto& joinBlock = caller.blocks[4];
+  const auto* switchBlock = mir::findCallContinuation(caller, entry);
+  if (switchBlock == nullptr) { return zc::none; }
 
   // Entry: StorageLive(result); StorageLive(callResult); Call(callee, args
   // -> callResult, normalTarget=switchBlock).
@@ -11274,24 +11377,31 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
   }
   const auto& call = entry.terminator.callValue();
   if (call.callee != callee.owner || call.destination.local() != callerCallResult.id ||
-      call.destination.projections().size() != 0 || call.normalTarget != switchBlock.id ||
-      call.unwindTarget != zc::none) {
+      call.destination.projections().size() != 0 || call.unwindTarget != zc::none) {
     return zc::none;
   }
 
   // Switch: SwitchInt(callResult) { true -> then, false -> else }, default else.
-  if (switchBlock.statements.size() != 0 ||
-      switchBlock.terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
+  if (switchBlock->statements.size() != 0 ||
+      switchBlock->terminator.kind() != mir::MirTerminatorKind::SwitchInt) {
     return zc::none;
   }
-  const auto& switchInt = switchBlock.terminator.switchIntValue();
+  const auto& switchInt = switchBlock->terminator.switchIntValue();
   if (switchInt.discriminant.kind() == mir::MirOperandKind::Constant ||
       switchInt.discriminant.place().local() != callerCallResult.id ||
       switchInt.discriminant.place().projections().size() != 0 || switchInt.arms.size() != 2) {
     return zc::none;
   }
-  if (switchInt.arms[0].target != thenBlock.id || switchInt.arms[1].target != elseBlock.id ||
-      switchInt.defaultTarget != elseBlock.id) {
+  const auto* thenBlock = mir::findBlockById(caller, switchInt.arms[0].target);
+  const auto* elseBlock = mir::findBlockById(caller, switchInt.arms[1].target);
+  if (thenBlock == nullptr || elseBlock == nullptr || switchInt.defaultTarget != elseBlock->id) {
+    return zc::none;
+  }
+  // Both arms Goto the same join block.
+  if (thenBlock->terminator.kind() != mir::MirTerminatorKind::Goto) { return zc::none; }
+  const auto* joinBlock = mir::findBlockById(caller, thenBlock->terminator.gotoValue().target);
+  if (joinBlock == nullptr || elseBlock->terminator.kind() != mir::MirTerminatorKind::Goto ||
+      elseBlock->terminator.gotoValue().target != joinBlock->id) {
     return zc::none;
   }
 
@@ -11301,7 +11411,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
     if (branch.statements.size() != 1 ||
         branch.statements[0].kind() != mir::MirStatementKind::Assign ||
         branch.terminator.kind() != mir::MirTerminatorKind::Goto ||
-        branch.terminator.gotoValue().target != joinBlock.id) {
+        branch.terminator.gotoValue().target != joinBlock->id) {
       return zc::none;
     }
     const auto& assignment = branch.statements[0].assignmentValue();
@@ -11323,16 +11433,16 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
         Statement::assign(callerResult.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(lowered))));
     return zc::mv(statements);
   };
-  auto thenStatements = lowerArm(thenBlock);
-  auto elseStatements = lowerArm(elseBlock);
+  auto thenStatements = lowerArm(*thenBlock);
+  auto elseStatements = lowerArm(*elseBlock);
   if (thenStatements == zc::none || elseStatements == zc::none) { return zc::none; }
 
   // Join: no statements; Return(result).
-  if (joinBlock.statements.size() != 0 ||
-      joinBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+  if (joinBlock->statements.size() != 0 ||
+      joinBlock->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& joinReturn = joinBlock.terminator.returnValue().value;
+  const auto& joinReturn = joinBlock->terminator.returnValue().value;
   if (joinReturn == zc::none) { return zc::none; }
   bool joinReturnsResult = false;
   ZC_IF_SOME(value, joinReturn) {
