@@ -376,39 +376,6 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
                                               leading.returnSpan.clone()});
 }
 
-void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
-  PendingLoopReturn loop = zc::mv(function.shape.get<LoopReturn>().loopReturn);
-
-  // Empty-body loop stride (6 nodes): function, body, condition parameter
-  // reference, return literal, loop statement, return. The body block lists the
-  // loop statement followed by the return.
-  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
-  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
-  const HirNodeId conditionId = ctx.allocNode(ast::NodeId());
-  const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
-  const HirNodeId loopId = ctx.allocNode(loop.loopNode);
-  const HirNodeId returnId = ctx.allocNode(function.returnNode);
-
-  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
-                                         zc::mv(function.parameters), zc::none,
-                                         function.visibility.clone(), function.linkage,
-                                         function.declarationSpan.clone(), bodyId, zc::none});
-  zc::Vector<HirNodeId> statements;
-  statements.add(loopId);
-  statements.add(returnId);
-  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
-  ctx.addReturn(HirReturnStatement{returnId, function.resultType, returnValueId,
-                                   function.returnSpan.clone()});
-  ctx.addParameterReference(HirParameterReferenceExpression{
-      conditionId, loop.condition.parameter.clone(), loop.condition.type, loop.condition.category,
-      loop.condition.sourceSpan.clone()});
-  ctx.addExpression(HirScalarLiteralExpression{returnValueId, loop.returnType,
-                                               zc::mv(loop.returnLiteral), HirValueCategory::Value,
-                                               loop.returnValueSpan.clone()});
-  ctx.addLoop(HirLoopStatement{loopId, conditionId, zc::Vector<HirNodeId>{}, loop.condition.type,
-                               HirValueCategory::Place, loop.loopSpan.clone(), zc::none, zc::none});
-}
-
 void lowerLoopBodyReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   auto& shape = function.shape.get<LoopBodyReturn>();
   PendingLoopBodyReturn loopBody = zc::mv(shape.loopBodyReturn);

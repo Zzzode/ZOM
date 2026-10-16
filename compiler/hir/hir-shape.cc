@@ -2181,36 +2181,6 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   ast::NodeId value(tree.node(returnNode).payload.words[ast::kReturnStmtValueWord]);
   if (!tree.contains(value)) return zc::none;
   if (statements.size == 2) {
-    // Admitted loop shape: a leading `while` loop with a bare identifier
-    // condition and an empty body, followed by a scalar return.
-    auto leadingItem = statementItem(tree, tree.list(statements)[0]);
-    if (leadingItem != zc::none) {
-      ast::NodeId leadingStmt;
-      ZC_IF_SOME(item, leadingItem) { leadingStmt = item; }
-      if (tree.node(leadingStmt).kind == ast::SyntaxKind::WhileStmt) {
-        const auto& loop = tree.node(leadingStmt);
-        const ast::NodeId loopCondition(loop.payload.words[ast::kWhileStmtCondWord]);
-        const ast::NodeId loopBody(loop.payload.words[ast::kWhileStmtBodyWord]);
-        if (!tree.contains(loopCondition) ||
-            tree.node(loopCondition).kind != ast::SyntaxKind::IdentExpr ||
-            !tree.contains(loopBody) || tree.node(loopBody).kind != ast::SyntaxKind::BlockStmt ||
-            !isScalarLiteral(tree.node(value).kind)) {
-          return zc::none;
-        }
-        const auto& loopBlock = tree.node(loopBody);
-        const ast::NodeList loopStatements{loopBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
-                                           loopBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
-        if (!tree.contains(loopStatements) || !loopStatements.empty()) return zc::none;
-        FunctionReturnShape shape{};
-        shape.body = body;
-        shape.returnStatement = returnNode;
-        shape.value = value;
-        shape.isLoop = true;
-        shape.loopCondition = loopCondition;
-        shape.loopStatement = leadingStmt;
-        return shape;
-      }
-    }
     // For-loop shape: a C-style `for (let id = <lit>; <ident> <cmp> <lit>;
     // <ident> = <binary>) {}` followed by a scalar return. The for-loop
     // desugars to a leading local binding plus a loop whose condition is the

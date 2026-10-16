@@ -3204,7 +3204,7 @@ ZC_TEST("HIR pipeline lowers an admitted while loop") {
   }
 
   // The admitted loop lowers to a reducible four-block Built MIR CFG that the
-  // ownership pipeline accepts end-to-end (validLoopReturnFunction).
+  // ownership pipeline accepts end-to-end (validLoopBodyReturnFunction).
   const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
   ZC_REQUIRE(builtMir.size() == 1);
   zc::Maybe<const mir::MirFunction&> spin;

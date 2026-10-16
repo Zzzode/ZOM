@@ -1466,7 +1466,6 @@ private:
         }
         if (fn.kind != mir::MirFunctionKind::Function) { return zc::none; }
         zc::Maybe<lir::Module> lowered = lir::MirToLirLowering::lowerConditionalReturn(fn, types);
-        if (lowered == zc::none) { lowered = lir::MirToLirLowering::lowerLoopReturn(fn, types); }
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerLoopBodyReturn(fn, types);
         }

@@ -410,16 +410,6 @@ struct PendingLeadingLocalConditionalReturn final {
   ast::NodeId conditionalNode{};
 };
 
-struct PendingLoopReturn final {
-  HirParameterReferenceExpression condition;
-  checker::checked::CanonicalConstValue returnLiteral;
-  identity::SemanticTypeId returnType;
-  identity::SourceSpan loopSpan;
-  identity::SourceSpan returnValueSpan;
-  /// The AST WhileStmt node this loop was lowered from.
-  ast::NodeId loopNode{};
-};
-
 // One admitted `while` loop whose non-empty body writes a mutable local, fused
 // with the leading mut-local declaration and the trailing local return. The
 // declaration, writes, and return reuse the flat mut-local pending fields
@@ -972,10 +962,6 @@ struct LeadingLocalConditionalReturn {
   PendingLeadingLocalConditionalReturn leadingLocalConditionalReturn;
 };
 
-struct LoopReturn {
-  PendingLoopReturn loopReturn;
-};
-
 struct LoopBodyReturn {
   PendingLoopBodyReturn loopBodyReturn;
   HirLocalBinding local;
@@ -1048,22 +1034,23 @@ struct GenericShape {
 };
 
 /// The tagged union of all function body shapes.
-using PendingFunctionShape = zc::OneOf<
-    EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
-    VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
-    ArrayLengthFoldReturn, LocalReturn, LocalWriteReturn, LocalFieldProjectionReturn,
-    LocalBorrowReturn, ParameterReferenceReturn, ParameterIndexReturn, ParameterReborrowReturn,
-    LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn, AggregateReturn,
-    EnumConstructionReturn, ExistentialReturn, AggregateFieldProjectionReturn,
-    DirectScalarLocalCallReturn, DirectAggregateCallReturn, DirectExistentialCallReturn,
-    DirectCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
-    ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
-    DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
-    ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,
-    ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopReturn, LoopBodyReturn,
-    ComparisonLoopBodyReturn, ComparisonReturn, PrimitiveUnaryReturn, ForLoopReturn,
-    ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn, NestedForLoopAccumulatorReturn,
-    SequentialLocalReturn, GenericShape>;
+using PendingFunctionShape =
+    zc::OneOf<EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
+              VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
+              ArrayLengthFoldReturn, LocalReturn, LocalWriteReturn, LocalFieldProjectionReturn,
+              LocalBorrowReturn, ParameterReferenceReturn, ParameterIndexReturn,
+              ParameterReborrowReturn, LocalAliasReborrowReturn, RawDereferenceReturn,
+              RawPointerWriteReturn, AggregateReturn, EnumConstructionReturn, ExistentialReturn,
+              AggregateFieldProjectionReturn, DirectScalarLocalCallReturn,
+              DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
+              ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
+              ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn,
+              DiscardedReceiverCall, DynFieldAccessReturn, ReceiverFieldReturn,
+              ByValueParameterFieldReturn, ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn,
+              ConditionalReturn, ChainedConditionalReturn, LeadingLocalConditionalReturn,
+              LoopBodyReturn, ComparisonLoopBodyReturn, ComparisonReturn, PrimitiveUnaryReturn,
+              ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
+              NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;
 
 /// A pending function declaration ready for HIR materialization.
 ///

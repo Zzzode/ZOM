@@ -362,7 +362,6 @@ struct FunctionReturnShape final {
   // There are no ordinary parameters. The non-field operand must be a scalar
   // literal; parameter and nested operands keep their own shapes.
   bool returnsReceiverFieldArithmetic = false;
-  bool isLoop = false;
   ast::NodeId loopCondition{};
   ast::NodeId loopStatement{};
   // Loop-body composite shape: a leading `mut` local declaration, an admitted

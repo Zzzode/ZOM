@@ -194,11 +194,6 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
 /// Node stride is 4 + 5N.
 void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
-/// \brief Lowers one empty-body `while` loop followed by a scalar return
-/// through the recursive driver. Node stride: function, body, condition
-/// parameter reference, return literal, loop, return (six ids).
-void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
-
 /// \brief Lowers one loop-body composite through the recursive driver: one
 /// initialized mut local, an admitted `while` whose body writes that local
 /// (literal/parameter/binary write values), and a local-reference return. The

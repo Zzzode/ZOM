@@ -37,12 +37,6 @@ void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function
 void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& function,
                                                 HirFnCtx& ctx);
 
-/// \brief Lowers one empty-body `while` loop followed by a scalar return
-/// through the recursive driver. Six node ids: function, body, condition
-/// parameter reference, return literal, loop, return. The body block lists the
-/// loop statement then the return.
-void lowerLoopReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
-
 /// \brief Lowers one loop-body composite through the recursive driver: one
 /// initialized mut local, an admitted `while` whose body writes that local
 /// (literal, parameter, or primitive-binary write values), and a
