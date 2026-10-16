@@ -117,6 +117,11 @@ zc::Maybe<const hir::HirReturnStatement&> returnFor(const hir::VerifiedHirModule
   return uniqueRecordFor(module.returns(), node);
 }
 
+zc::Maybe<const hir::HirLoopStatement&> loopFor(const hir::VerifiedHirModule& module,
+                                                hir::HirNodeId node) {
+  return uniqueRecordFor(module.loops(), node);
+}
+
 /// \brief Resolves whether a semantic type id names the canonical Unit primitive.
 bool isUnitSemanticType(const type::SemanticTypeStore& semanticTypes,
                         identity::SemanticTypeId type) {
@@ -4804,6 +4809,454 @@ zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalOverwrite(const LoweringC
                                          ZC_ASSERT_NONNULL(overwriteLiteral));
 }
 
+/// \brief Builds the loop-body write assignments shared by the parameter-condition
+/// and comparison-condition loop-body-return shapes. Each write is an Overwrite
+/// of the user local whose value is a literal constant, a copy place-use of a
+/// parameter, or an Arithmetic/Comparison rvalue with literal/parameter/local
+/// operands.
+zc::Maybe<zc::Vector<MirStatement>> buildLoopBodyStatements(
+    const LoweringContext& lctx, const hir::HirLocalBinding& binding,
+    const hir::HirLoopStatement& loopValue, zc::ArrayPtr<MirLocalId> parameterLocals,
+    MirLocalId userLocal) {
+  const auto& declaration = lctx.declaration;
+  const auto& hirModule = lctx.hirModule;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  auto buildOperand = [&](hir::HirNodeId operandNode,
+                          identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
+    if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
+      if (ZC_ASSERT_NONNULL(literal).type != operandType) return zc::none;
+      return MirOperand::constant(operandType, ZC_ASSERT_NONNULL(literal).value.clone());
+    }
+    if (auto parameter = parameterReferenceFor(hirModule, operandNode); parameter != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(parameter);
+      auto index = parameterIndexFor(declaration, value.parameter);
+      if (index == zc::none || value.type != operandType ||
+          value.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], operandType,
+                               zc::mv(projections), operandType));
+    }
+    if (auto localRef = localReferenceFor(hirModule, operandNode); localRef != zc::none) {
+      const auto& value = ZC_ASSERT_NONNULL(localRef);
+      if (value.local != binding.local || value.type != operandType) return zc::none;
+      zc::Vector<MirProjection> projections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(userLocal, operandType, zc::mv(projections), operandType));
+    }
+    return zc::none;
+  };
+
+  zc::Vector<MirStatement> bodyStatements;
+  for (size_t writeIndex = 0; writeIndex < loopValue.body.size(); ++writeIndex) {
+    auto write = localWriteFor(hirModule, loopValue.body[writeIndex]);
+    if (write == zc::none) return zc::none;
+    const auto& w = ZC_ASSERT_NONNULL(write);
+    if (w.local != binding.local || w.field != zc::none || w.type != binding.type ||
+        w.kind != hir::HirLocalWriteKind::Overwrite) {
+      return zc::none;
+    }
+
+    auto writeLiteral = expressionFor(hirModule, w.value);
+    auto writeParameter = parameterReferenceFor(hirModule, w.value);
+    auto writeBinary = primitiveBinaryFor(hirModule, w.value);
+
+    zc::Maybe<MirRvalue> rvalue;
+    if (writeLiteral != zc::none) {
+      if (ZC_ASSERT_NONNULL(writeLiteral).type != binding.type) return zc::none;
+      rvalue = MirRvalue::use(
+          MirOperand::constant(binding.type, ZC_ASSERT_NONNULL(writeLiteral).value.clone()));
+    } else if (writeParameter != zc::none) {
+      const auto& parameter = ZC_ASSERT_NONNULL(writeParameter);
+      auto index = parameterIndexFor(declaration, parameter.parameter);
+      if (index == zc::none || parameter.type != binding.type ||
+          parameter.category != hir::HirValueCategory::Place) {
+        return zc::none;
+      }
+      zc::Vector<MirProjection> projections;
+      auto operand = placeUse(proofs, copyMarker,
+                              MirPlace(parameterLocals[ZC_ASSERT_NONNULL(index)], binding.type,
+                                       zc::mv(projections), binding.type));
+      if (operand == zc::none) return zc::none;
+      rvalue = MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+    } else if (writeBinary != zc::none) {
+      const auto& binary = ZC_ASSERT_NONNULL(writeBinary);
+      auto comparisonOperator = comparisonOperatorFor(binary.operation);
+      auto arithmeticOperator = arithmeticOperatorFor(binary.operation);
+      const bool isArithmeticBinary =
+          comparisonOperator == zc::none && arithmeticOperator != zc::none;
+      if (binary.type != binding.type || binary.category != hir::HirValueCategory::Value ||
+          (comparisonOperator == zc::none && arithmeticOperator == zc::none) ||
+          (isArithmeticBinary && binary.operandType != binding.type)) {
+        return zc::none;
+      }
+      auto leftOperand = buildOperand(binary.left, binary.operandType);
+      auto rightOperand = buildOperand(binary.right, binary.operandType);
+      if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+      rvalue = isArithmeticBinary
+                   ? MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmeticOperator),
+                                           zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                           zc::mv(ZC_ASSERT_NONNULL(rightOperand)), binary.type)
+                   : MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                                           zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                           zc::mv(ZC_ASSERT_NONNULL(rightOperand)), binary.type);
+    } else {
+      return zc::none;
+    }
+
+    zc::Vector<MirProjection> projections;
+    bodyStatements.add(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+        zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Overwrite, w.sourceSpan.clone()));
+  }
+  return bodyStatements;
+}
+
+/// \brief Lowers a mut-local loop-body-return body
+/// (`mut x = <lit>; while (<param>) { <writes to x> } return x;`):
+/// four-block reducible CFG with entry (StorageLive + Initialize + Goto),
+/// header (SwitchInt on the condition parameter), body (Overwrite writes +
+/// Goto), and exit (ReturnValue).
+zc::Maybe<RecursiveFunctionProduct> buildLoopBodyReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 3) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1) return zc::none;
+  if (binding.type != declaration.resultType) return zc::none;
+  if (binding.initializer == zc::none) return zc::none;
+
+  auto loop = loopFor(hirModule, block.statements[1]);
+  if (loop == zc::none) return zc::none;
+  const auto& loopValue = ZC_ASSERT_NONNULL(loop);
+  if (loopValue.isDoWhile) return zc::none;
+  if (loopValue.breakTargetsEnclosing || loopValue.continueTargetsEnclosing) return zc::none;
+
+  auto sourceReturn = returnFor(hirModule, block.statements[2]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto reference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (reference == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).local != binding.local ||
+      ZC_ASSERT_NONNULL(reference).type != binding.type ||
+      ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  // The condition must be a bare parameter reference (comparison conditions
+  // are the ComparisonLoopBodyReturn shape).
+  auto conditionRef = parameterReferenceFor(hirModule, loopValue.condition);
+  if (conditionRef == zc::none) return zc::none;
+  const auto& condition = ZC_ASSERT_NONNULL(conditionRef);
+  auto conditionIndex = parameterIndexFor(declaration, condition.parameter);
+  if (conditionIndex == zc::none) return zc::none;
+  if (condition.type != declaration.parameters[ZC_ASSERT_NONNULL(conditionIndex)].type) {
+    return zc::none;
+  }
+
+  // The initializer must be a literal.
+  auto initializer = expressionFor(hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  if (initializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(initializer).type != binding.type) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (const auto& parameter : declaration.parameters) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
+                                         parameter.sourceSpan.clone()));
+  }
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+
+  auto bodyStatements =
+      buildLoopBodyStatements(lctx, binding, loopValue, parameterLocals, userLocal);
+  if (bodyStatements == zc::none) return zc::none;
+
+  // Four-block reducible CFG:
+  //   entry  (StorageLive + Initialize + Goto header)
+  //   header (SwitchInt on the condition parameter)
+  //   body   (Overwrite writes + Goto header/exit)
+  //   exit   (ReturnValue of the user local)
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  const MirBlockId header = ctx.peekBlockIdAt(0);
+  const MirBlockId body = ctx.peekBlockIdAt(1);
+  const MirBlockId exit = ctx.peekBlockIdAt(2);
+
+  ctx.pushLoopContext(detail::LoopContext{zc::none, header, body, exit, header});
+
+  // Entry block.
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+        MirRvalue::use(
+            MirOperand::constant(binding.type, ZC_ASSERT_NONNULL(initializer).value.clone())),
+        MirInitializationKind::Initialize, ZC_ASSERT_NONNULL(initializer).sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(header, loopValue.sourceSpan.clone()));
+
+  // Header block: SwitchInt on the condition parameter.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> conditionProjections;
+    auto discriminant =
+        placeUse(proofs, copyMarker,
+                 MirPlace(parameterLocals[ZC_ASSERT_NONNULL(conditionIndex)], condition.type,
+                          zc::mv(conditionProjections), condition.type));
+    if (discriminant == zc::none) return zc::none;
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), body});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), exit, loopValue.sourceSpan.clone()));
+  }
+
+  // Body block: Overwrite writes + Goto(header or exit).
+  ctx.beginBlock(scope);
+  for (auto& statement : ZC_ASSERT_NONNULL(bodyStatements)) {
+    ctx.appendStatement(zc::mv(statement));
+  }
+  {
+    // A trailing break exits the body to the loop exit; a trailing continue
+    // or a write-only body jumps back to the header (the reducible back-edge).
+    const MirBlockId bodyTerminatorTarget = loopValue.breakSpan != zc::none ? exit : header;
+    const identity::SourceSpan& bodyTerminatorSpan =
+        loopValue.breakSpan != zc::none
+            ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+            : (loopValue.continueSpan != zc::none ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                                  : loopValue.sourceSpan);
+    ctx.terminateBlock(MirTerminator::gotoTarget(bodyTerminatorTarget, bodyTerminatorSpan.clone()));
+  }
+
+  // Exit block: ReturnValue of the user local.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> returnProjections;
+    auto returnOperand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+    if (returnOperand == zc::none) return zc::none;
+    ctx.terminateBlock(
+        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                   ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  }
+
+  ctx.popLoopContext();
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// \brief Lowers a mut-local loop-body-return body with a comparison condition
+/// (`mut x = <lit>; while (x <cmp> <lit>) { <writes to x> } return x;`):
+/// four-block reducible CFG with entry (StorageLive + Initialize + Goto),
+/// header (Comparison into temp + SwitchInt on the temp), body (Overwrite
+/// writes + Goto), and exit (ReturnValue).
+zc::Maybe<RecursiveFunctionProduct> buildComparisonLoopBodyReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 3) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  if (sourceLocal == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.local.ordinal() != 1) return zc::none;
+  if (binding.type != declaration.resultType) return zc::none;
+  if (binding.initializer == zc::none) return zc::none;
+
+  auto loop = loopFor(hirModule, block.statements[1]);
+  if (loop == zc::none) return zc::none;
+  const auto& loopValue = ZC_ASSERT_NONNULL(loop);
+  if (loopValue.isDoWhile) return zc::none;
+  if (loopValue.breakTargetsEnclosing || loopValue.continueTargetsEnclosing) return zc::none;
+
+  auto sourceReturn = returnFor(hirModule, block.statements[2]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto reference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (reference == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(reference).local != binding.local ||
+      ZC_ASSERT_NONNULL(reference).type != binding.type ||
+      ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  // The condition must be a comparison binary whose left operand is a
+  // reference to the user local and whose right operand is a literal.
+  auto conditionBinary = primitiveBinaryFor(hirModule, loopValue.condition);
+  if (conditionBinary == zc::none) return zc::none;
+  const auto& condition = ZC_ASSERT_NONNULL(conditionBinary);
+  auto comparisonOperator = comparisonOperatorFor(condition.operation);
+  if (comparisonOperator == zc::none) return zc::none;
+  if (condition.operandType != binding.type) return zc::none;
+
+  auto conditionLeft = localReferenceFor(hirModule, condition.left);
+  if (conditionLeft == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(conditionLeft).local != binding.local ||
+      ZC_ASSERT_NONNULL(conditionLeft).type != binding.type) {
+    return zc::none;
+  }
+
+  auto conditionRight = expressionFor(hirModule, condition.right);
+  if (conditionRight == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(conditionRight).type != binding.type) return zc::none;
+
+  // The initializer must be a literal.
+  auto initializer = expressionFor(hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  if (initializer == zc::none) return zc::none;
+  if (ZC_ASSERT_NONNULL(initializer).type != binding.type) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  zc::Vector<MirLocalId> parameterLocals;
+  for (const auto& parameter : declaration.parameters) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter, parameter.type, scope,
+                                         parameter.sourceSpan.clone()));
+  }
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, condition.type, scope,
+                                                    condition.sourceSpan.clone());
+
+  auto bodyStatements =
+      buildLoopBodyStatements(lctx, binding, loopValue, parameterLocals, userLocal);
+  if (bodyStatements == zc::none) return zc::none;
+
+  // Four-block reducible CFG:
+  //   entry  (StorageLive x + StorageLive temp + Initialize x + Goto header)
+  //   header (Overwrite temp = Comparison + SwitchInt on temp)
+  //   body   (Overwrite writes + Goto header/exit)
+  //   exit   (ReturnValue of the user local)
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  const MirBlockId header = ctx.peekBlockIdAt(0);
+  const MirBlockId body = ctx.peekBlockIdAt(1);
+  const MirBlockId exit = ctx.peekBlockIdAt(2);
+
+  ctx.pushLoopContext(detail::LoopContext{zc::none, header, body, exit, header});
+
+  // Entry block.
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  ctx.appendStatement(MirStatement::storageLive(conditionTemp, condition.sourceSpan.clone()));
+  {
+    zc::Vector<MirProjection> projections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocal, binding.type, zc::mv(projections), binding.type),
+        MirRvalue::use(
+            MirOperand::constant(binding.type, ZC_ASSERT_NONNULL(initializer).value.clone())),
+        MirInitializationKind::Initialize, ZC_ASSERT_NONNULL(initializer).sourceSpan.clone()));
+  }
+  ctx.terminateBlock(MirTerminator::gotoTarget(header, loopValue.sourceSpan.clone()));
+
+  // Header block: evaluate the comparison into the temp, then switch on it.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> condLeftProjections;
+    auto condLeftOperand = placeUse(proofs, copyMarker,
+                                    MirPlace(userLocal, condition.operandType,
+                                             zc::mv(condLeftProjections), condition.operandType));
+    if (condLeftOperand == zc::none) return zc::none;
+    zc::Vector<MirProjection> tempProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(conditionTemp, condition.type, zc::mv(tempProjections), condition.type),
+        MirRvalue::comparison(ZC_ASSERT_NONNULL(comparisonOperator),
+                              zc::mv(ZC_ASSERT_NONNULL(condLeftOperand)),
+                              MirOperand::constant(ZC_ASSERT_NONNULL(conditionRight).type,
+                                                   ZC_ASSERT_NONNULL(conditionRight).value.clone()),
+                              condition.type),
+        MirInitializationKind::Overwrite, condition.sourceSpan.clone()));
+    zc::Vector<MirProjection> discriminantProjections;
+    auto discriminant = placeUse(
+        proofs, copyMarker,
+        MirPlace(conditionTemp, condition.type, zc::mv(discriminantProjections), condition.type));
+    if (discriminant == zc::none) return zc::none;
+    zc::Vector<MirSwitchIntArm> arms;
+    arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), body});
+    ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                zc::mv(arms), exit, loopValue.sourceSpan.clone()));
+  }
+
+  // Body block: Overwrite writes + Goto(header or exit).
+  ctx.beginBlock(scope);
+  for (auto& statement : ZC_ASSERT_NONNULL(bodyStatements)) {
+    ctx.appendStatement(zc::mv(statement));
+  }
+  {
+    // A trailing break exits the body to the loop exit; a trailing continue
+    // or a write-only body jumps back to the header (the reducible back-edge).
+    const MirBlockId bodyTerminatorTarget = loopValue.breakSpan != zc::none ? exit : header;
+    const identity::SourceSpan& bodyTerminatorSpan =
+        loopValue.breakSpan != zc::none
+            ? ZC_ASSERT_NONNULL(loopValue.breakSpan)
+            : (loopValue.continueSpan != zc::none ? ZC_ASSERT_NONNULL(loopValue.continueSpan)
+                                                  : loopValue.sourceSpan);
+    ctx.terminateBlock(MirTerminator::gotoTarget(bodyTerminatorTarget, bodyTerminatorSpan.clone()));
+  }
+
+  // Exit block: ReturnValue of the user local.
+  ctx.beginBlock(scope);
+  {
+    zc::Vector<MirProjection> returnProjections;
+    auto returnOperand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(userLocal, binding.type, zc::mv(returnProjections), binding.type));
+    if (returnOperand == zc::none) return zc::none;
+    ctx.terminateBlock(
+        MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                   ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+  }
+
+  ctx.popLoopContext();
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
+/// Mut-local loop-body-return body with a bare parameter condition.
+zc::Maybe<RecursiveFunctionProduct> strategyLoopBodyReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasUnsafeBlock) return zc::none;
+  return buildLoopBodyReturn(lctx);
+}
+
+/// Mut-local loop-body-return body with a comparison condition.
+zc::Maybe<RecursiveFunctionProduct> strategyComparisonLoopBodyReturn(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 3 || lctx.hasUnsafeBlock) return zc::none;
+  return buildComparisonLoopBodyReturn(lctx);
+}
+
 /// Single user-local body with one or more overwrite writes.
 zc::Maybe<RecursiveFunctionProduct> strategyLocalWrite(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
@@ -4859,6 +5312,8 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"PrimitiveUnary", strategyPrimitiveUnary},
     {"AggregateLocal", strategyAggregateLocal},
     {"ScalarLocalOverwrite", strategyScalarLocalOverwrite},
+    {"LoopBodyReturn", strategyLoopBodyReturn},
+    {"ComparisonLoopBodyReturn", strategyComparisonLoopBodyReturn},
     {"LocalWrite", strategyLocalWrite},
     {"SequentialLocal", strategySequentialLocal},
 };
