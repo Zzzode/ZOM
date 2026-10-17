@@ -346,7 +346,8 @@ behavior until a later vertical slice extends the lattice and lowering.
 | Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, structural verifier | `ir-backend` |
 | Conformance | `tests/conformance/corpus/05-statements/**`, grammar + AST + diagnostics expectations | `verification` |
 | Unit tests | body checker / HIR / MIR builder ztests | `verification` |
-| Design note | `docs/design/language/definite-assignment.md` (mark implemented when landed) | `rfc` |
+| Design note | `docs/design/language/definite-assignment.md` (mark implemented when landed) | `spec-audit` |
+| RFC process | `docs/rfc/0055-definite-assignment-local-bindings.md`, `docs/rfc/tracking/0055-definite-assignment-review.md` | `rfc` |
 
 ## Security And Safety Impact
 
@@ -393,7 +394,7 @@ sandbox boundary changes.
   keyword distinction.
 - **Full general typestate / partial aggregate initialization now.** More
   expressive, but it requires field-level lattices, initialized-prefix
-  drops, and loop-header joins across the whole CFG — a much larger surface
+  drops, and loop-header joins across the whole CFG: a much larger surface
   that touches Chapter 14 deeply. Rejected for this RFC and listed as a
   non-goal to be pursued separately with its own owner review.
 - **Introduce a new diagnostic for double-init.** Unnecessary; ZOM4024

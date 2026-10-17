@@ -30,13 +30,13 @@ initialization are explicit non-goals.
 
 ## Decision Record
 
-TBD — pending all required owner approvals.
+TBD - pending all required owner approvals.
 
 ## Owner Review Matrix
 
 | Owner | Surface | Round 1 |
 |---|---|---|
-| `rfc` | Process, template conformance, required-owner completeness, RFC granularity | Pending |
+| `rfc` | Process, template conformance, required-owner completeness, RFC granularity | APPROVE (Round 1, 2026-10-17; two non-blocking editorial nits) |
 | `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | Pending |
 | `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | Pending |
 | `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
@@ -47,6 +47,53 @@ TBD — pending all required owner approvals.
 
 Review dispatched to all six required owners. Findings and resolutions are
 recorded below as the owner agents report.
+
+#### rfc owner, Round 1: APPROVE (2026-10-17)
+
+- `python3 scripts/check-rfc.py` has no findings for RFC 0055. The only
+  script failures are pre-existing and out of scope: RFC 0048 frontmatter
+  date ordering and RFC 0054 required-owners mismatch.
+- Frontmatter: `required-owners` exactly equals the unique owner set in the
+  Repository Impact table; all six ids exist in `.codex/subagents/
+  manifest.yaml`; `discussion` and `tracking-issue` point to anchors that
+  exist in this file; `type`/`area = language` are valid for a
+  user-visible semantic and diagnostic change; the same-day DRAFT -> REVIEW
+  transition is legal and recorded; the RFC index row is synced.
+- All nineteen required template sections are present in template order;
+  goals and non-goals are concrete and scope-controlling.
+- Granularity decision (separate RFC, not drift repair under RFC 0048) is
+  correct. Independently verified `docs/spec/chapters/06-declarations.md`:
+  lines 97-100 are solely an EBNF admission-intent comment, lines 136-143
+  a `mut` example, line 1228 a one-line mention. None define the
+  path-join/meet lattice, the second-`let`-write ZOM4024 channel, or the
+  `Initialize`/`Overwrite` HIR/Built MIR contract; Chapter 14 lines 70-72
+  cover only uninitialized reads and move reinitialization. The
+  "intended contract already written elsewhere" drift-repair exemption
+  therefore does not apply, and RFC 0052's language-semantics,
+  diagnostic-meaning, and cross-two-owner matrix rows independently
+  require the full path. The RFC 0048 dependency is correctly modeled via
+  `requires: [7, 48]` rather than folded scope.
+- Prior art cites four mature families (Rust, Java/Kotlin/C#, Swift, plus
+  Chapter 14) with explicit copy-vs-avoid rationale; the hard-error
+  posture on a second `let` write is justified against Rust.
+- Referenced contracts verified in tree: `HirLocalWriteKind`
+  (`compiler/hir/hir-module.h:215`, `Initialize = 0x01`,
+  `Overwrite = 0x02`), `MirInitializationKind`
+  (`compiler/mir/built-mir.h:402`), `isSimpleLocalWrite` /
+  `isMutableOwnerLocal` (`compiler/checker/body/body-checker.cc`), and
+  ZOM4024/ZOM4087/ZOM4093/ZOM4094/ZOM4099 in
+  `compiler/diagnostics/defs/diagnostics-checker.def`.
+- No forward-compatibility shim, dual code path, or internal revision
+  suffix; the proposal reuses existing IR kinds and the existing RFC 0048
+  fallback, and non-admitted shapes keep the existing fail-closed ZOM4099
+  behavior. `check-english-only.py --check` passes.
+- Non-blocking editorial nits: (1) the Repository Impact design-note row
+  names `rfc` for `docs/design/language/definite-assignment.md`, while
+  `manifest.yaml` assigns `docs/design/**` to `spec-audit`, which is
+  already a required owner, so coverage is complete; relabel the row to
+  `spec-audit` (or joint) at the author's discretion. (2) Two em dashes
+  appear in the RFC and this tracker; ASCII hyphens match repository
+  typographic discipline, though the English-only gate itself passes.
 
 ## Implementation Tracker
 
