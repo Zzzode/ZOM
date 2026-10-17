@@ -29,13 +29,12 @@ namespace zomlang::compiler::lir {
 
 /// \brief Minimal fail-closed MIR -> LIR lowering for one scalar module initializer.
 ///
-/// This is the first vertical slice of RFC 0021 lowering. It admits exactly the
-/// already-verified Built MIR shape that `mir::validScalarFunction` accepts: a
-/// `ModuleInitializer` function with one source scope, one result local, one
-/// block of `StorageLive` + `Assign(integer constant)` and a `Return` of that
-/// local. It resolves the integer carrier width from the function result type's
-/// primitive kind through the semantic type store, and materializes the constant
-/// bit pattern from the canonical integer magnitude.
+/// This is the first vertical slice of RFC 0021 lowering. It admits a
+/// verified Built MIR `ModuleInitializer` function with one source scope, one
+/// result local, one block of `StorageLive` + `Assign(integer constant)` and a
+/// `Return` of that local. It resolves the integer carrier width from the
+/// function result type's primitive kind through the semantic type store, and
+/// materializes the constant bit pattern from the canonical integer magnitude.
 ///
 /// Every shape outside this slice (non-initializer functions, non-integer
 /// results, multi-block bodies, non-constant returns, out-of-width constants)
@@ -51,10 +50,9 @@ public:
 
   /// \brief Lowers one scalar string-return function to a single-function LIR module.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validScalarReturnFunction` accepts for a standalone function: a
-  /// `Function` with no locals, one block with no statements, and a `Return` of
-  /// a constant. The constant is either a string (string literal return) or an
+  /// Admits a verified Built MIR standalone function with no locals, one block
+  /// with no statements, and a `Return` of a constant. The constant is either a
+  /// string (string literal return) or an
   /// integer (scalar literal return, including compile-time-folded
   /// float-to-int casts). For strings, it resolves the opaque-pointer carrier
   /// from the `Str` result type through the semantic type store, copies the
@@ -73,9 +71,8 @@ public:
   /// \brief Lowers one unsafe-block raw-pointer dereference return to a
   /// single-function LIR module.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validRawDereferenceReturnFunction` accepts: a `Function` with one
-  /// raw-pointer `Parameter` local, two source scopes (root plus one unsafe
+  /// Admits a verified Built MIR `Function` with one raw-pointer `Parameter`
+  /// local, two source scopes (root plus one unsafe
   /// child), and a single block whose two statements are the Enter/Exit
   /// unsafe-scope boundary markers and whose terminator returns a place-use of
   /// the parameter through a single `[Dereference]` projection. The raw-pointer
@@ -92,9 +89,8 @@ public:
 
   /// \brief Lowers one raw-pointer write-read function to a single-function LIR module.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validRawPointerWriteReturnFunction` accepts: a `Function` with one
-  /// raw-pointer `Parameter` local, three source scopes (root plus two unsafe
+  /// Admits a verified Built MIR `Function` with one raw-pointer `Parameter`
+  /// local, three source scopes (root plus two unsafe
   /// children), and a single block whose five statements are the Enter/Exit
   /// unsafe-scope boundary pairs for the write and return regions and an
   /// `Assign(Overwrite, [Dereference], constant)` between them, and whose
@@ -147,9 +143,8 @@ public:
   /// \brief Lowers one array-literal constant-index fold function to a scalar
   /// LIR module.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validArrayIndexFoldReturnFunction` accepts: a `Function` with one
-  /// `UserLocal` of an array type and a single block whose sole statement is
+  /// Admits a verified Built MIR `Function` with one `UserLocal` of an array
+  /// type and a single block whose sole statement is
   /// `StorageLive(local)` and whose terminator returns a constant. The array
   /// index was folded to a scalar literal at body-checker level, so the array
   /// local is never read and the LIR emits only the folded constant return.
@@ -164,9 +159,8 @@ public:
 
   /// \brief Lowers one struct-local field-return function to a scalar LIR module.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validLocalAggregateFieldReturnFunction` accepts: a `Function` with one
-  /// `UserLocal` of a struct type and a single block
+  /// Admits a verified Built MIR `Function` with one `UserLocal` of a struct
+  /// type and a single block
   /// (`StorageLive(local); local = NominalAggregate{constant fields};
   /// return copy local.field`) whose result is one field's integer value. Because
   /// every aggregate element is a constant, the returned field is resolved at
@@ -182,9 +176,8 @@ public:
 
   /// \brief Lowers one whole-struct constant return function to LIR.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validLocalAggregateReturnFunction` accepts: a `Function` with one
-  /// `UserLocal` of a struct type and a single block
+  /// Admits a verified Built MIR `Function` with one `UserLocal` of a struct
+  /// type and a single block
   /// (`StorageLive(local); local = NominalAggregate{constant fields};
   /// return copy local`) whose result is the whole struct (the return place has
   /// zero projections). Each aggregate element must be a constant of an integer
@@ -209,9 +202,8 @@ public:
 
   /// \brief Lowers one four-block boolean-conditional return function to LIR.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validConditionalReturnFunction` accepts: a `Function` with one boolean
-  /// parameter and an integer result, a four-block diamond
+  /// Admits a verified Built MIR `Function` with one boolean parameter and an
+  /// integer result, a four-block diamond
   /// (`entry: StorageLive(result); SwitchInt(bool param) -> then/else`;
   /// `then/else: Assign(result = arm); Goto(join)`; `join: Return(result)`)
   /// whose arms assign either an integer constant or a place-use of a parameter
@@ -227,9 +219,8 @@ public:
 
   /// \brief Lowers one reducible four-block while-loop body return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validLoopBodyReturnFunction` accepts: a `Function` with a boolean
-  /// condition parameter and an integer user local, a reducible four-block loop
+  /// Admits a verified Built MIR `Function` with a boolean condition parameter
+  /// and an integer user local, a reducible four-block loop
   /// (`entry: StorageLive(local); Assign(local = constant, Initialize);
   /// Goto(header)`; `header: SwitchInt(bool param) -> body (true), exit
   /// (default)`; `body: N Overwrite assigns of the local; Goto(exit)` when a
@@ -248,9 +239,8 @@ public:
 
   /// \brief Lowers one reducible four-block do-while loop-body return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validDoWhileLoopBodyReturnFunction` accepts: a `Function` with zero
-  /// or more integer parameters, an integer user local (the accumulator), and
+  /// Admits a verified Built MIR `Function` with zero or more integer
+  /// parameters, an integer user local (the accumulator), and
   /// a boolean temporary (the comparison result); a reducible four-block
   /// body-before-condition loop (`entry: StorageLive(local); Assign(local =
   /// constant, Initialize); Goto(body)`; `body: Assign(local = rvalue,
@@ -272,9 +262,8 @@ public:
   /// \brief Lowers one reducible four-block while-loop comparison-condition
   /// body return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validWhileLoopBodyComparisonReturnFunction` accepts: a `Function`
-  /// with zero or more integer parameters, an integer user local (the
+  /// Admits a verified Built MIR `Function` with zero or more integer
+  /// parameters, an integer user local (the
   /// accumulator), and a boolean temporary (the comparison result); a
   /// reducible four-block condition-before-body loop (`entry:
   /// StorageLive(local); StorageLive(temp); Assign(local = constant,
@@ -296,9 +285,9 @@ public:
 
   /// \brief Lowers one reducible four-block for-loop return to LIR.
   ///
-  /// Admits the verified Built MIR shape that `mir::validForLoopReturnFunction`
-  /// accepts: a `Function` with zero or more integer parameters, an integer
-  /// user local (the loop variable), a boolean temporary (the comparison
+  /// Admits a verified Built MIR `Function` with zero or more integer
+  /// parameters, an integer user local (the loop variable), a boolean
+  /// temporary (the comparison
   /// result), and an integer function-result local; a reducible four-block
   /// loop (`entry: StorageLive(result); StorageLive(local); Assign(local =
   /// constant, Initialize); Goto(header)`; `header: Assign(temp = Comparison(op,
@@ -320,9 +309,8 @@ public:
 
   /// \brief Lowers one reducible four-block for-loop accumulator return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validForLoopAccumulatorReturnFunction` accepts: a `Function` with
-  /// zero or more integer parameters, an integer accumulator user local, an
+  /// Admits a verified Built MIR `Function` with zero or more integer
+  /// parameters, an integer accumulator user local, an
   /// integer loop-variable user local, a boolean temporary (the comparison
   /// result), and an integer function-result local; a reducible four-block loop
   /// (`entry: StorageLive(result); StorageLive(acc); StorageLive(i);
@@ -348,9 +336,8 @@ public:
 
   /// \brief Lowers one reducible seven-block nested for-loop accumulator return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validNestedForLoopAccumulatorReturnFunction` accepts: a `Function`
-  /// with zero or more integer parameters, N integer accumulator user locals,
+  /// Admits a verified Built MIR `Function` with zero or more integer
+  /// parameters, N integer accumulator user locals,
   /// an integer outer loop-variable user local, a boolean outer comparison
   /// temporary, an integer inner loop-variable user local, a boolean inner
   /// comparison temporary, and an integer function-result local; a reducible
@@ -373,9 +360,8 @@ public:
 
   /// \brief Lowers one four-block comparison-driven conditional return to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validEqualityConditionalReturnFunction` accepts: a `Function` with N
-  /// integer parameters, an integer result local, and a boolean temporary; a
+  /// Admits a verified Built MIR `Function` with N integer parameters, an
+  /// integer result local, and a boolean temporary; a
   /// four-block diamond whose entry computes `temp = (a CMP b)` with a
   /// `Comparison` rvalue over parameter/constant operands and switches on the
   /// temp, whose arms assign integer constants, and whose join returns the
@@ -457,9 +443,8 @@ public:
 
   /// \brief Lowers one scalar-local binary-overwrite-return function to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validLocalBinaryOverwriteReturnFunction` accepts: one block with one
-  /// user local brought to life by StorageLive plus an initializing Assign of a
+  /// Admits a verified Built MIR shape: one block with one user local brought
+  /// to life by StorageLive plus an initializing Assign of a
   /// constant, then overwritten by one or more Arithmetic, Comparison, or Use
   /// rvalues whose operands are constants or place-uses of the parameter locals
   /// or the user local itself (`x = x + 1`), and a place-copy return of that
@@ -474,9 +459,8 @@ public:
 
   /// \brief Lowers one sequential-local-return function to LIR.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validSequentialLocalReturnFunction` accepts when every binding is
-  /// initialized by a constant literal: one block with N >= 2 user locals,
+  /// Admits a verified Built MIR shape where every binding is initialized by a
+  /// constant literal: one block with N >= 2 user locals,
   /// each brought to life by StorageLive plus an initializing Assign of a
   /// constant, and a place-copy return of one of the user locals. Every
   /// carrier is one equal integer width. The function folds to the reserved
@@ -493,12 +477,10 @@ public:
   /// \brief Lowers one same-module zero-argument direct call to a two-function
   /// LIR module (caller plus its defined callee).
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validLocalCallReturnFunction` accepts for the caller (a `Function`
-  /// with one integer result local and a two-block `Call` + `Return` body whose
-  /// call takes zero arguments) together with a scalar constant-return callee
-  /// (`mir::validScalarReturnFunction` shape: no locals, one block returning an
-  /// integer constant). Both functions are *defined* in the emitted module, so
+  /// Admits a caller `Function` with one integer result local and a two-block
+  /// `Call` + `Return` body whose call takes zero arguments, together with a
+  /// scalar constant-return callee (no locals, one block returning an integer
+  /// constant). Both functions are *defined* in the emitted module, so
   /// the caller's call targets a real module-local function (a module-local
   /// index-derived symbol, the same documented boundary as the reserved
   /// module-initializer symbol); no external/synthetic callee symbol is invented.
@@ -517,9 +499,9 @@ public:
   ///
   /// Admits a caller that is the two-block Call+Return shape whose call carries
   /// exactly one integer-constant argument (destination is the caller's result
-  /// local), together with a callee of the `mir::validParameterReturnFunction`
-  /// single-parameter shape (one Parameter local, one block returning a place-use
-  /// of that parameter). Both functions are defined in the emitted module; the
+  /// local), together with a callee that is a single-parameter function (one
+  /// Parameter local, one block returning a place-use of that parameter). Both
+  /// functions are defined in the emitted module; the
   /// caller's `Call` targets the module-local callee and threads the argument.
   /// Every shape outside this slice returns `none`. This is the first
   /// argument-carrying call lowering (RFC 0021 KR5.2); wider argument vectors and
@@ -835,10 +817,9 @@ public:
   /// \brief Lowers one existential-call-result module to a four-function LIR
   /// module with one vtable and one global data constant.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validDirectExistentialCallReturnFunction` accepts for the caller,
-  /// combined with an existential-return callee, an indirect-call callee, and a
-  /// leaf method. The caller has three blocks: the first calls the existential
+  /// Admits a verified Built MIR caller with three blocks, combined with an
+  /// existential-return callee, an indirect-call callee, and a leaf method. The
+  /// caller has three blocks: the first calls the existential
   /// callee into an existential user local, the second passes that local by
   /// value to the indirect callee and stores the result in a temporary, and the
   /// third returns the temporary. The existential callee constructs a concrete
@@ -859,9 +840,8 @@ public:
   /// \brief Lowers one existential-return function to a single-function LIR
   /// module with one vtable and one global data constant.
   ///
-  /// Admits the verified Built MIR shape that
-  /// `mir::validExistentialReturnFunction` accepts: a `Function` with two
-  /// `Temporary` locals (a concrete aggregate and an existential result) and a
+  /// Admits a verified Built MIR `Function` with two `Temporary` locals (a
+  /// concrete aggregate and an existential result) and a
   /// single block (`StorageLive(concrete); concrete = NominalAggregate{constant
   /// fields}; StorageLive(result); result = Erase(move concrete)`) whose
   /// terminator returns the existential result. The concrete aggregate is
@@ -882,9 +862,8 @@ public:
 
   /// \brief Lowers one dyn-field aggregate construction return function to LIR.
   ///
-  /// Admits exactly the verified Built MIR shape that
-  /// `mir::validDynFieldAggregateReturnFunction` accepts: a `Function` with one
-  /// block and 2N+1 locals (N concrete/existential pairs plus the result),
+  /// Admits a verified Built MIR `Function` with one block and 2N+1 locals (N
+  /// concrete/existential pairs plus the result),
   /// where at least one field of the returned aggregate is erased from a
   /// concrete type to an existential field type. For each erased field, the
   /// concrete aggregate is promoted to a module-level private global constant

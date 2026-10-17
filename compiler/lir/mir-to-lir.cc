@@ -348,10 +348,9 @@ zc::Maybe<Operand> lirOperandFor(const mir::MirOperand& operand, ValueType carri
 
 zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified scalar module-initializer shape. This mirrors the
-  // structural facts that mir::validScalarFunction already checked; we re-check
-  // them here so lowering is total over its declared input and fail-closed on
-  // anything else.
+  // Admit only the verified scalar module-initializer shape. We re-check the
+  // structural facts here so lowering is total over its declared input and
+  // fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::ModuleInitializer ||
       function.sourceScopes.size() != 1 || function.locals.size() != 1 ||
       function.blocks.size() != 1) {
@@ -422,9 +421,8 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
   // boundary statements when the body is wrapped in an unsafe block), and a
   // Return of a constant. The constant is either a string (string literal
   // return) or an integer (scalar literal return, including compile-time-folded
-  // float-to-int casts). This mirrors the structural facts that
-  // mir::validScalarReturnFunction checked; we re-check them here so lowering
-  // is total over its declared input and fail-closed on anything else.
+  // float-to-int casts). We re-check the structural facts here so lowering is
+  // total over its declared input and fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function ||
       (function.sourceScopes.size() != 1 && function.sourceScopes.size() != 2) ||
       function.locals.size() != 0 || function.blocks.size() != 1) {
@@ -515,9 +513,8 @@ zc::Maybe<Module> MirToLirLowering::lowerRawDereferenceReturn(
   // plus one unsafe child), and a single block whose two statements are the
   // Enter/Exit unsafe-scope boundary markers and whose terminator returns a
   // place-use of the parameter through a single [Dereference] projection.
-  // This mirrors the structural facts that
-  // mir::validRawDereferenceReturnFunction checked; we re-check them here so
-  // lowering is total over its declared input and fail-closed on anything else.
+  // We re-check the structural facts here so lowering is total over its
+  // declared input and fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 2 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
     return zc::none;
@@ -601,8 +598,7 @@ zc::Maybe<Module> MirToLirLowering::lowerRawPointerWriteReturn(
   // Enter/Exit unsafe-scope boundary pairs for the write and return regions
   // and an Assign(Overwrite, [Dereference], constant) between them, and whose
   // terminator returns a place-use of the parameter through a single
-  // [Dereference] projection. This mirrors the structural facts that
-  // mir::validRawPointerWriteReturnFunction checked; we re-check them here so
+  // [Dereference] projection. We re-check the structural facts here so
   // lowering is total over its declared input and fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 3 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
@@ -850,9 +846,8 @@ zc::Maybe<Module> MirToLirLowering::lowerArrayIndexFoldReturn(
   // function with one user local of an array type, one source scope, one block
   // whose sole statement is StorageLive, and a Return of a constant. The array
   // index was folded at body-checker level, so the local is never read and the
-  // LIR emits only the folded constant return. This mirrors the structural
-  // facts that mir::validArrayIndexFoldReturnFunction checked; we re-check them
-  // here so lowering is total over its declared input and fail-closed on
+  // LIR emits only the folded constant return. We re-check the structural
+  // facts here so lowering is total over its declared input and fail-closed on
   // anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
@@ -904,10 +899,9 @@ zc::Maybe<Module> MirToLirLowering::lowerArrayIndexFoldReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified struct-local field-return shape. This mirrors the
-  // structural facts that mir::validLocalAggregateFieldReturnFunction already
-  // checked; we re-check them here so lowering is total over its declared input
-  // and fail-closed on anything else.
+  // Admit only the verified struct-local field-return shape. We re-check the
+  // structural facts here so lowering is total over its declared input and
+  // fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
     return zc::none;
@@ -994,10 +988,9 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateFieldInitializer(
 
 zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified whole-struct constant-return shape. This mirrors the
-  // structural facts mir::validLocalAggregateReturnFunction and
-  // mir::validDirectAggregateReturnFunction checked; we re-check them here so
-  // lowering is total over its declared input and fail-closed otherwise.
+  // Admit only the verified whole-struct constant-return shape. We re-check
+  // the structural facts here so lowering is total over its declared input and
+  // fail-closed otherwise.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() != 1 || function.blocks.size() != 1) {
     return zc::none;
@@ -1085,10 +1078,10 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified four-block boolean-conditional return shape. This
-  // re-checks the structure that mir::validConditionalReturnFunction validated
-  // so lowering is total over its declared input and fail-closed on anything
-  // else. The function has N parameters (a boolean discriminant plus optional
+  // Admit only the verified four-block boolean-conditional return shape. We
+  // re-check the structure here so lowering is total over its declared input
+  // and fail-closed on anything else. The function has N parameters (a
+  // boolean discriminant plus optional
   // integer value parameters an arm may return) and one result local.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.locals.size() < 2 || function.blocks.size() != 4) {
@@ -1304,8 +1297,8 @@ zc::Maybe<Module> MirToLirLowering::lowerConditionalReturn(
 zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible four-block while-loop body return shape,
-  // re-checking the structure that mir::validLoopBodyReturnFunction validated:
-  // a parameter-local prefix, one integer user local brought to life by
+  // re-checking the structure here: a parameter-local prefix, one integer user
+  // local brought to life by
   // StorageLive plus an initializing Assign of a constant, then a four-block
   // loop whose body overwrites the local and whose exit returns it. A trailing
   // break sends the body to the exit; a trailing continue or a write-only body
@@ -1536,9 +1529,8 @@ zc::Maybe<Module> MirToLirLowering::lowerLoopBodyReturn(
 zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible four-block do-while loop-body return
-  // shape, re-checking the structure that
-  // mir::validDoWhileLoopBodyReturnFunction validated: a parameter-local
-  // prefix, one integer user local (the accumulator) brought to life by
+  // shape, re-checking the structure here: a parameter-local prefix, one
+  // integer user local (the accumulator) brought to life by
   // StorageLive plus an initializing Assign of a constant, and a boolean
   // temporary (the comparison result); a four-block body-before-condition
   // loop whose body overwrites the local, whose condition block evaluates
@@ -1817,9 +1809,8 @@ zc::Maybe<Module> MirToLirLowering::lowerDoWhileLoopBodyReturn(
 zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible four-block while-loop comparison-condition
-  // body return shape, re-checking the structure that
-  // mir::validWhileLoopBodyComparisonReturnFunction validated: a
-  // parameter-local prefix, one integer user local (the accumulator) brought
+  // body return shape, re-checking the structure here: a parameter-local
+  // prefix, one integer user local (the accumulator) brought
   // to life by StorageLive plus an initializing Assign of a constant, and a
   // boolean temporary (the comparison result); a four-block
   // condition-before-body loop whose condition block evaluates the comparison
@@ -2072,8 +2063,8 @@ zc::Maybe<Module> MirToLirLowering::lowerWhileLoopBodyComparisonReturn(
 zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible four-block for-loop return shape,
-  // re-checking the structure that mir::validForLoopReturnFunction validated:
-  // a parameter-local prefix, one integer user local (the loop variable)
+  // re-checking the structure here: a parameter-local prefix, one integer user
+  // local (the loop variable)
   // brought to life by StorageLive plus an initializing Assign of a constant,
   // a boolean temporary (the comparison result), and an integer
   // function-result local; a four-block loop whose header computes the
@@ -2344,8 +2335,8 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopReturn(
 zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible for-loop accumulator return shape,
-  // re-checking the structure that mir::validForLoopAccumulatorReturnFunction
-  // validated: a parameter-local prefix, N integer user locals (the
+  // re-checking the structure here: a parameter-local prefix, N integer user
+  // locals (the
   // accumulators), one integer user local (the loop variable), a boolean
   // temporary (the comparison result), and an integer function-result local;
   // a four-block loop (or five-block when an if-guarded break is present)
@@ -2840,8 +2831,8 @@ zc::Maybe<Module> MirToLirLowering::lowerForLoopAccumulatorReturn(
 zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit only the verified reducible nested for-loop accumulator return shape,
-  // re-checking the structure that mir::validNestedForLoopAccumulatorReturnFunction
-  // validated: a parameter-local prefix, N integer user locals (the
+  // re-checking the structure here: a parameter-local prefix, N integer user
+  // locals (the
   // accumulators), an integer outer loop-variable user local, a boolean outer
   // comparison temporary, an integer inner loop-variable user local, a boolean
   // inner comparison temporary, and an integer function-result local; a
@@ -3441,9 +3432,9 @@ zc::Maybe<Module> MirToLirLowering::lowerNestedForLoopAccumulatorReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerEqualityConditionalReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified comparison-driven conditional shape, re-checking the
-  // structure that mir::validEqualityConditionalReturnFunction validated: N
-  // integer parameters, a result local, and a bool temporary; a four-block
+  // Admit only the verified comparison-driven conditional shape, re-checking
+  // the structure here: N integer parameters, a result local, and a bool
+  // temporary; a four-block
   // diamond that computes the temp from a Comparison and switches on it.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 4 || function.locals.size() < 3) {
@@ -4726,9 +4717,8 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
   // initializing Assign of a constant or a comparison over constant/place-use
   // leaves, and a place-copy return of one of the user locals. This is the
   // tuple-destructure, multi-let literal, and comparison-inference slice of
-  // the broader sequential-local-return family that
-  // mir::validSequentialLocalReturnFunction accepts; aggregate initializers
-  // are outside this slice.
+  // the broader sequential-local-return family; aggregate initializers are
+  // outside this slice.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1 || function.locals.size() < 2) {
     return zc::none;
@@ -10347,10 +10337,9 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
 
 zc::Maybe<Module> MirToLirLowering::lowerExistentialReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified existential-return shape. This mirrors the
-  // structural facts mir::validExistentialReturnFunction checked; we re-check
-  // them here so lowering is total over its declared input and fail-closed
-  // otherwise.
+  // Admit only the verified existential-return shape. We re-check the
+  // structural facts here so lowering is total over its declared input and
+  // fail-closed otherwise.
   if (function.kind != mir::MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
       function.sourceScopes.size() != 1 || function.locals.size() != 2 ||
@@ -10495,9 +10484,8 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerDynFieldAggregateReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified dyn-field aggregate return shape. This mirrors the
-  // structural facts mir::validDynFieldAggregateReturnFunction checked; we
-  // re-check them here so lowering is total over its declared input and
+  // Admit only the verified dyn-field aggregate return shape. We re-check the
+  // structural facts here so lowering is total over its declared input and
   // fail-closed otherwise.
   if (function.kind != mir::MirFunctionKind::Function ||
       function.sourceDefinitionKind != identity::DefinitionKind::Function ||
