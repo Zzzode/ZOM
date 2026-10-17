@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/deref_integer_in_body_neg_60.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dereference of a non-reference, non-pointer value is a type error
+// (ZOM4030), not a compiler invariant. The body checker resolves the
+// source type, finds neither a reference nor a raw pointer, and rejects
+// with the canonical diagnostic.
+
+// CHECK-LITERAL: Error [ZOM4030]: Cannot dereference value of type i32
+// CHECK-LITERAL:   --> conformance/04-expressions/deref_integer_in_body_neg_60.zom:2:12

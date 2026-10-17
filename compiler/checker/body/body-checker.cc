@@ -5314,6 +5314,32 @@ checked::CheckedFactsSourceRejected rejectConditionMustBeBool(const BodyProducti
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4030: a dereference operation's source is neither a reference nor a raw
+// pointer. The single display argument is the actual source type, matching the
+// checked-facts projector contract (Type, Body, Dereference, InvalidOperation).
+checked::CheckedFactsSourceRejected rejectDereferenceNonReference(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId sourceType) {
+  zc::Maybe<identity::SemanticIdentifier> noSourceAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{sourceType, zc::mv(noSourceAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CannotDereferenceType(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Dereference,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 // ZOM4133: a match scrutinee type does not match the pattern type. Both
 // display arguments are types, matching the checked-facts projector contract
 // (Type, Type).
@@ -9499,6 +9525,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 zc::Array<uint8_t>()});
             producedType = rawPointer.pointee;
           } else {
+            // A dereference whose source is neither a reference nor a raw
+            // pointer is an ordinary user type error (ZOM4030), not a
+            // compiler invariant.
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(rejectDereferenceNonReference(site, ownerOrdinal, type),
+                                            input, factStoreBrands);
+              }
+            }
             return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                    site.key.schemaPreorder, zc::none, site.node,
                                    site.key.sourceSpan.clone(), factPath(site.primaryGroup));
