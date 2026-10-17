@@ -112,6 +112,7 @@ used to bypass that process.
 | Note | Coverage | Purpose |
 |---|---|---|
 | [Values, Places, And Evaluation](values-places-and-evaluation.md) | Partial | Separates the source semantic model from the admitted construct inventory across HIR, Built MIR, the bounded ownership rail, and the Linux x86-64 backend slice |
+| [Definite Assignment](definite-assignment.md) | Specified, not fully implemented | Initializer-less `let`/`mut` bindings and path-sensitive single (`let`) versus repeated (`mut`) assignment; spec/implementation gap in admission and HIR/MIR lowering |
 | [Algebraic Data Types](algebraic-data-types.md) | Parser plus one aggregate slice | Current struct/class/enum surface: admitted struct aggregates lower, enums are syntax-only; the complete model is DRAFT RFC 0049 |
 
 ## Process Influences
