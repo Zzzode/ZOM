@@ -476,6 +476,24 @@ the source type rendered in the diagnostic message. The
 is unaffected: module-scope evaluation produces ZOM4104 before the
 body checker runs.
 
+### 2026-10-17 Phase 1 TYPE-category - Non-integer source cast
+
+Commit `7f7c196b` on `develop` migrates the `IntegerCast` production's
+non-integer-source branch from a compiler invariant
+(`rejectInvariant` InvalidFact) to the ZOM4013 `CheckerInvalidCast`
+source diagnostic. The diagnostic contract (Body, Cast,
+InvalidOperation, two Type display arguments) was already defined in
+the checked-facts argument validator and stage/producer mapper, but no
+reject function produced it on the body-checker path. The new
+`rejectInvalidCast` function follows the `rejectDereferenceNonReference`
+pattern, with the invariant retained as a fallback when the enclosing
+body owner or its preorder cannot be resolved, and for the
+targetKind==none branch which the admission gate should never reach.
+
+The conformance diagnostics test `bool_as_integer_neg_67` covers
+`fn bool_as_integer() -> i32 { return true as i32; }` producing ZOM4013
+with the source and target types rendered in the diagnostic message.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
