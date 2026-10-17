@@ -5992,17 +5992,16 @@ zc::Maybe<BodyCheckingResult> drainUnsupportedBodyConstruct(
   return zc::none;
 }
 
+// ZOM4024: a write targets an immutable definition. The display argument is the
+// offending definition's source identifier (a local name or a struct field
+// name), matching the checked-facts projector contract (Identifier, Body,
+// Mutation, InvalidOperation).
 checked::CheckedFactsSourceRejected rejectCannotMutateImmutableVariable(
-    const BodyProductionSite& site, uint32_t ownerPreorder, const ast::Tree& tree,
-    ast::NodeId receiverNode) {
-  // Owner locals carry no DefId; the ZOM4024 argument is the receiver's source
-  // identifier, validated by the same Identifier display-argument schema.
-  auto receiverName = identity::SemanticIdentifier::fromSource(
-      tree.ident(ast::IdentId(tree.node(receiverNode).payload.words[ast::kIdentExprNameWord])));
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    zc::Maybe<identity::SemanticIdentifier> immutableName) {
   zc::Vector<checked::CheckerDisplayArgument> arguments;
-  if (receiverName != zc::none) {
-    arguments.add(checked::CheckerDisplayArgument(
-        checked::IdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(receiverName))}));
+  ZC_IF_SOME(name, immutableName) {
+    arguments.add(checked::CheckerDisplayArgument(checked::IdentifierDisplayArg{zc::mv(name)}));
   }
   zc::Vector<checked::CheckerNoteRef> notes;
   zc::Maybe<checked::TypeErrorId> noRecovery;
@@ -8140,10 +8139,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                return attachRecoveryLedger(rejectCannotMutateImmutableVariable(
-                                                site, ownerOrdinal, input.boundModule.tree(),
-                                                ZC_ASSERT_NONNULL(immutableReceiver)),
-                                            input, factStoreBrands);
+                auto receiverName =
+                    identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(
+                        ast::IdentId(input.boundModule.tree()
+                                         .node(ZC_ASSERT_NONNULL(immutableReceiver))
+                                         .payload.words[ast::kIdentExprNameWord])));
+                return attachRecoveryLedger(
+                    rejectCannotMutateImmutableVariable(site, ownerOrdinal, zc::mv(receiverName)),
+                    input, factStoreBrands);
               }
             }
           }
@@ -9204,7 +9207,25 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         ZC_IF_SOME(type, targetType) {
           ZC_IF_SOME(place, targetPlace) {
-            if (place.value.type != type.value || !place.value.mutablePlace) {
+            if (place.value.type != type.value) {
+              return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                     site.key.schemaPreorder, zc::none, site.node,
+                                     site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+            }
+            if (!place.value.mutablePlace) {
+              // ZOM4024: a write to a non-mut field through a mut owner local
+              auto fieldName =
+                  identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(
+                      ast::IdentId(input.boundModule.tree()
+                                       .node(target)
+                                       .payload.words[ast::kMemberExpressionPropertyWord])));
+              ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+                ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                  return attachRecoveryLedger(
+                      rejectCannotMutateImmutableVariable(site, ownerOrdinal, zc::mv(fieldName)),
+                      input, factStoreBrands);
+                }
+              }
               return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
@@ -9293,9 +9314,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                      site.key.schemaPreorder, zc::none, site.node,
                                      site.key.sourceSpan.clone(), factPath(site.primaryGroup));
             }
+            auto operandName =
+                identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(
+                    ast::IdentId(input.boundModule.tree()
+                                     .node(operand)
+                                     .payload.words[ast::kIdentExprNameWord])));
             return attachRecoveryLedger(
                 rejectCannotMutateImmutableVariable(site, ZC_ASSERT_NONNULL(ownerOrdinal),
-                                                    input.boundModule.tree(), operand),
+                                                    zc::mv(operandName)),
                 input, factStoreBrands);
           }
           // The unsafe-operation fact is produced by the ReferenceDereference
@@ -9493,10 +9519,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
-                return attachRecoveryLedger(rejectCannotMutateImmutableVariable(
-                                                site, ownerOrdinal, input.boundModule.tree(),
-                                                ZC_ASSERT_NONNULL(immutableReceiver)),
-                                            input, factStoreBrands);
+                auto receiverName =
+                    identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(
+                        ast::IdentId(input.boundModule.tree()
+                                         .node(ZC_ASSERT_NONNULL(immutableReceiver))
+                                         .payload.words[ast::kIdentExprNameWord])));
+                return attachRecoveryLedger(
+                    rejectCannotMutateImmutableVariable(site, ownerOrdinal, zc::mv(receiverName)),
+                    input, factStoreBrands);
               }
             }
           }
@@ -10675,6 +10705,21 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       }
       ZC_IF_SOME(place, targetPlace) {
         if (!place.value.mutablePlace) {
+          if (site.production == BodyProductionKind::OwnerLocalFieldWrite) {
+            // ZOM4024: a write to a non-mut field through a mut owner local
+            auto fieldName =
+                identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(
+                    ast::IdentId(input.boundModule.tree()
+                                     .node(target)
+                                     .payload.words[ast::kMemberExpressionPropertyWord])));
+            ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+              ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+                return attachRecoveryLedger(
+                    rejectCannotMutateImmutableVariable(site, ownerOrdinal, zc::mv(fieldName)),
+                    input, factStoreBrands);
+              }
+            }
+          }
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::Place));

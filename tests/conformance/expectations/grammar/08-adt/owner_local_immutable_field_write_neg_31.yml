@@ -1,0 +1,5 @@
+section: "08-adt field-write diagnostics"
+covers_rule: "assignmentExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax-valid fixture; checker diagnostics reject a write to a non-mut field through a mut owner local (ZOM4024)."

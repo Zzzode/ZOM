@@ -421,10 +421,16 @@ site is outside any method or function body. The conformance diagnostics
 lit suite passes unchanged; the full corpus IR parity check is the
 remaining verification gate.
 
-The Phase 1 TYPE-category migration (genuine user correctness errors
-currently routed as invariants) and the full fact-production move remain
-deferred per the coupling constraint: facts for a shape the recursive
-HIR builder cannot yet consume would create intermediate ICEs.
+The Phase 1 TYPE-category migration is complete: all genuine user type
+errors identified in the 2026-09-11 audit that were routed as compiler
+invariants now drain to source diagnostics. The ZOM4030 (non-reference
+dereference), ZOM4013 (non-integer source cast), and ZOM4024 (immutable
+field write) drains cover the audit's TYPE sites; the remaining
+`rejectInvariant` InvalidFact calls are WIRING (fact plumbing, fallbacks
+after already-wired drains, fold-shape precondition violations). The full
+fact-production move remains deferred per the coupling constraint: facts
+for a shape the recursive HIR builder cannot yet consume would create
+intermediate ICEs.
 
 ### 2026-10-17 Phase 5 - Surface body-shape classifier removal
 
@@ -493,6 +499,31 @@ targetKind==none branch which the admission gate should never reach.
 The conformance diagnostics test `bool_as_integer_neg_67` covers
 `fn bool_as_integer() -> i32 { return true as i32; }` producing ZOM4013
 with the source and target types rendered in the diagnostic message.
+
+### 2026-10-17 Phase 1 TYPE-category - Immutable field write
+
+The `rejectCannotMutateImmutableVariable` function is refactored to accept
+a pre-extracted `zc::Maybe<identity::SemanticIdentifier>` instead of
+`(const ast::Tree&, ast::NodeId)`, making it reusable for both
+`IdentExpr`-based immutable locals and `MemberExpression`-based immutable
+fields. The three existing call sites (immutable-receiver method call,
+raw-pointer write through a non-mut pointer, and receiver method call
+shape rejection) now extract the identifier at the call site.
+
+The `OwnerLocalFieldWrite` production's combined check
+(`place.value.type != type.value || !place.value.mutablePlace`) is split:
+the type-mismatch half stays a WIRING invariant (fact consistency between
+Place and NodeType facts), while the `!mutablePlace` half drains to
+ZOM4024 `CannotMutateImmutableVariable` with the field name (from the
+`MemberExpression` target's `kMemberExpressionPropertyWord`) as the
+Identifier display argument. The post-write validation loop's
+`!mutablePlace` check is similarly drained for `OwnerLocalFieldWrite`,
+with the `ReceiverFieldWrite` case retained as a WIRING invariant
+backstop (unreachable after the ZOM4126 drain at the production site).
+
+The conformance diagnostics test `owner_local_immutable_field_write_neg_31`
+covers `mut cell = Cell { value: 0 }; cell.value = 42;` producing ZOM4024
+naming the field `value`.
 
 ## Verification Evidence
 

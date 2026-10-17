@@ -1,0 +1,8 @@
+struct Cell {
+  value: i32,
+}
+fn entry() -> i32 {
+  mut cell = Cell { value: 0 };
+  cell.value = 42;
+  return cell.value;
+}

@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 08-adt/owner_local_immutable_field_write_neg_31.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A write to a non-mut field through a mut owner local is a genuine
+// mutability error (ZOM4024), not a compiler invariant. The checker resolves
+// the field's mutability from the struct definition and rejects the write
+// with the canonical diagnostic naming the field.
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `value`
+// CHECK-LITERAL:   --> conformance/08-adt/owner_local_immutable_field_write_neg_31.zom:6:3
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 6 |   cell.value = 42;
+// CHECK-LITERAL:   |   ^~~~~~~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.
