@@ -38,10 +38,10 @@ TBD - pending all required owner approvals.
 |---|---|---|
 | `rfc` | Process, template conformance, required-owner completeness, RFC granularity | APPROVE (Round 1, 2026-10-17; two non-blocking editorial nits) |
 | `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | APPROVED (Round 1, 2026-10-17; six non-blocking spec-edit precision notes) |
-| `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | Pending |
+| `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | REQUEST-CHANGES (Round 1, 2026-10-17; six code-verified findings: lattice location, 4093 producer seam, read-before-init soundness, stale motivation, path-scoped classification, stage ordering) |
 | `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
-| `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | REQUEST-CHANGES (Round 1, 2026-10-17; two blocking contract-precision corrections + three nits) |
-| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | Pending |
+| `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | APPROVED (Round 2, 2026-10-17; both Round 1 blockers resolved, nits applied) |
+| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | REQUEST-CHANGES (Round 1, 2026-10-17; three blocking test-plan/observability gaps + four nits) |
 
 ### 2026-10-17 Six-Owner Review Round 1 - Opened
 
@@ -144,6 +144,50 @@ sharpening for initializer-present immutable reassignment (no pinned
 fixture breaks); the test plan adds the both-errors diamond and the
 initialized-`let` reassignment case and requires CHECK-LITERAL/backtick
 expectations. Awaiting Round 2 review.
+
+#### error-system owner, Round 2: APPROVE (2026-10-17)
+
+Both Round 1 blocking findings verified resolved against the tree: the
+sole-producer ZOM4093 contract, error-preserving HIR/MIR construction, and
+the rejected checker-side alternative are now explicit; the acceptance
+boundary lists only semantically-valid shapes and routes invalid reads and
+double-`let` writes to ZOM4093/ZOM4024 before the capability gate. All
+nits applied (Compatibility sharpening note, both-errors diamond test,
+CHECK-LITERAL/backtick style). One ungrammatical table row was fixed. No
+new diagnostic code or producer is required.
+
+#### binder-checker owner, Round 1: REQUEST-CHANGES (2026-10-17); revised
+
+Six code-verified findings, all addressed in the revision:
+
+1. Lattice location: rewrote Reference-Level as two layers - a NEW
+   AST-structural body-checker write-registry pre-pass and the unchanged
+   post-MIR ownership lattice (sole ZOM4093 producer). The body checker has
+   no init state and emits no ZOM4093.
+2. ZOM4093 producer seam: chose alternative (b) - keep ZOM4093 ownership-
+   only, require error-preserving HIR/MIR construction for the
+   one-branch-missing diamond and uninitialized-mut; rejected the checker
+   typed-issue/projector/note-channel option explicitly.
+3. Read-before-init soundness: bounded the first-write exception to plain
+   Assign with a RHS that does not read the target (excludes `v = v`,
+   `v = v+1`, `v += 1`); the read rule applies to all RHS operands and the
+   condition; ++/-- stay mut+initialized; diamond arms structurally bounded.
+4. Stale motivation: corrected - straight-line mut late init and overwrite
+   already build end to end via GenericShape (must be parity-protected, not
+   new); added the parameter-RHS/overwrite ir-phase ICEs as baselines to
+   clear; corrected the arm name to LocalWriteReturn.
+5. Path-scoped classification: specified a dedicated checker write-registry
+   pre-pass consulted at admission and in the post-write loop, lockstep
+   HIR builder+verifier updates (both diamond arms Initialize), kind stays
+   HIR-derived (no new fact/codec), LocalWrite emits no CheckedPlaceFact.
+6. Stage ordering: rollout is now per-shape vertical transactions
+   (checker admission + HIR arm + proven MIR in one slice), not per stage;
+   the structural verifier claim is scoped to structural cfg-utils checks
+   (the current linear StorageLive scan cannot prove cross-edge dominance;
+   ownership keeps the path-sensitive guarantee).
+
+Added runtime-memory as a required owner for the unchanged ownership rail.
+Awaiting Round 2 review and the initial runtime-memory review.
 
 ## Implementation Tracker
 

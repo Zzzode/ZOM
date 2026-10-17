@@ -5,7 +5,7 @@ type: language
 status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
-required-owners: [rfc, spec-audit, binder-checker, ir-backend, error-system, verification]
+required-owners: [rfc, spec-audit, binder-checker, ir-backend, runtime-memory, error-system, verification]
 approvers: []
 created: 2026-10-17
 updated: 2026-10-17
@@ -42,16 +42,23 @@ family.
 Chapter 6 already specifies the direction and shows the branch
 initialization example, and Chapter 14 already specifies that reading an
 uninitialized place is an error and that assignment to a complete place
-reinitializes it. The production compiler does not implement the
-`let`-without-initializer half:
+reinitializes it. Current production behavior (verified against the
+sanitizer build) is uneven:
 
-- `mut v: i32; v = 1; return v;` passes `--check` (the ownership rail
-  accepts it) but has no HIR/MIR lowering strategy, so it never reaches
-  codegen.
+- `mut v: i32; v = 1; return v;` works end to end today. It passes
+  `--check`, lowers through the HIR `GenericShape` catch-all plus the MIR
+  generic materializer, and `zomc run` exits with the assigned value.
+  `mut f: i32; f = 1; f = 41; return f;` also passes `--check` and exits
+  41. These shapes must be protected by corpus parity, not treated as new.
 - `let v: i32; v = 1; return v;` is rejected at the write as ZOM4099
   (capability rejection) rather than accepted as a one-shot initialization.
 - `let v: i32; if (c) { v = 1; } else { v = 2; } return v;` is rejected as
   ZOM4099 inside the branch.
+- Two related ICEs are current baselines the implementation must clear: a
+  parameter-RHS late init (`mut v: i32; v = p; return v;`) and some
+  initialize-then-overwrite paths hit an `ir`-phase internal compiler error
+  on admitted shapes. They must become working end-to-end paths or a clean
+  diagnostic, with lit tests asserting no incident.
 
 The one-sentence grammar comment is not enough to implement against: it
 does not define the path-join model, what "exactly one write" means over
@@ -190,10 +197,30 @@ read a place that has no value yet.
 
 ## Reference-Level Design
 
-### Lattice and transfer
+### Two analyses, two layers
 
-Definite assignment is computed over the function's reducible CFG for each
-body-local binding. The per-binding state is a two-level lattice:
+Definite assignment is enforced at two independent layers. They must not
+be conflated.
+
+1. **Body-checker admission analysis (new).** A new, AST-structural,
+   function-local pre-pass over the body checker's production sites
+   decides, for each scalar owner-local write, whether it is the binding's
+   first write (`Initialize`) or a later one (`Overwrite`), and whether the
+   binding is mutable. This is structural over the admitted reducible
+   shapes (straight line plus the four-block diamond), not a general
+   dataflow engine. It does not exist today: `CheckedPlaceFact` carries
+   only `node/root/projections/type/mutablePlace/movable` and `LocalWrite`
+   emits no place fact. The body checker has no init-state tracking and no
+   ZOM4093 emitter, and this RFC adds neither to it.
+2. **Ownership MIR rail (existing, unchanged producer).** After HIR and
+   Built MIR exist, `compiler/ownership/facts/init.cc` runs the real
+   path-sensitive lattice keyed on `MirPoint`/`MovePathKey`
+   (`InitializationState { storageLive, mayBeInitialized, mustBeInitialized }`
+   with intersection joins) and is the sole producer of ZOM4093/ ZOM4094.
+   It is the defense-in-depth verifier that a read the structural admission
+   analysis lets through is actually initialized on every reaching path.
+
+The ownership lattice is two-level per binding:
 
 ```
         Uninitialized (bottom)
@@ -201,40 +228,27 @@ body-local binding. The per-binding state is a two-level lattice:
         Initialized (top)
 ```
 
-- Entry state: `Uninitialized` for an initializer-less binding; bindings
-  with a declared initializer enter as `Initialized` after their
-  `Initialize` statement.
-- Statement transfer:
-  - `Initialize` write to the place: out-state `Initialized`.
-  - `Overwrite` write: requires in-state `Initialized`; out-state
-    `Initialized`. An `Overwrite` targeting an `Uninitialized` place is a
-    compiler-contract failure (the write should have been classified
-    `Initialize`), not a user diagnostic.
-  - read / move / borrow / drop: requires in-state `Initialized` on every
-    reaching path.
-- Branch: the discriminant read follows the read rule; successor edges
-  inherit the current state.
-- Join block: state is the meet (intersection) of predecessor states.
-  `Initialized` at the join only if every predecessor reaches it
-  `Initialized`.
+- Entry state: `Uninitialized` for an initializer-less binding; a binding
+  with a declared initializer is `Initialized` after its `Initialize`.
+- An `Initialize` moves out-state to `Initialized`; an `Overwrite` requires
+  in-state `Initialized`.
+- A read/move/borrow/drop requires `Initialized` on every reaching path;
+  at a join the state is the intersection of predecessors.
 
-ZOM4093/ZOM4094 are emitted by the ownership rail only. The uninitialized
-read diagnostic has a single producer:
-`compiler/ownership/facts/init.cc` (`InitializationLossKind::NeverInitialized`
-/ `Moved`), projected by the ownership projector; the body checker contains
-no ZOM4093 emitter and this RFC adds none. The body checker's use of the
-lattice is confined to **write classification and admission** (Initialize
-vs Overwrite, and whether the binding is mutable); it does not emit
-ZOM4093/ZOM4094. Consequently the HIR/MIR builders must construct the
-error-preserving shape for every rejected read so the ownership rail still
-runs and produces ZOM4093 plus the ZOM4094 note at the binding - the same
-pattern the existing `UninitializedLocalReturn` HIR arm already uses for the
-straight-line case. This RFC extends that error-preserving construction to
-the one-branch-missing diamond and the uninitialized-`mut` shapes. A
-checker-side ZOM4093 is explicitly rejected: it would require new
-`validArgumentSchema` (zero arguments) and `validDiagnosticProduction`
-(stage/producer/recovery) contracts plus a checker-side ZOM4094
-related-note channel that do not exist.
+ZOM4093/ZOM4094 therefore remain ownership-rail-only. The single producer
+is `compiler/ownership/facts/init.cc` (`InitializationLossKind::
+NeverInitialized`/`Moved`), projected by the ownership projector
+(`CheckerErrorId` has no `UninitializedPlaceUse` and there is no checker
+projector/stage entry for it). Because the rail runs only on shapes that
+build HIR and MIR, the HIR/MIR builders must construct the
+error-preserving shape for a rejected read - the existing
+`UninitializedLocalReturn` arm does this for the straight-line case, and
+this RFC extends that construction to the one-branch-missing diamond and
+the uninitialized-`mut` shapes. A checker-side ZOM4093 is explicitly
+rejected: it would require a new typed issue, a zero-argument
+`validArgumentSchema` entry, a new `validDiagnosticProduction`
+(stage/producer/recovery) mapping, and a checker-side ZOM4094 note channel,
+plus dedup against the rail's own ZOM4093. None exists.
 
 ```mermaid
 flowchart TD
@@ -246,53 +260,83 @@ flowchart TD
     Join["meet = Initialized"] --> Read["return v: read OK"]
 ```
 
-A read is legal exactly when its in-state is `Initialized`. This subsumes
-straight-line and four-block-diamond shapes on the admitted CFG slice.
-
 ### Single-assignment rule for `let`
 
-The frontend records a per-path write count for `let` bindings in addition
-to the init lattice:
+The body-checker admission analysis records, per binding and per admitted
+path, whether the binding has already been written:
 
-- The first dominating assignment to an initializer-less `let` place is an
-  `Initialize` and is permitted.
-- Any later assignment to that `let` place on a path where it is already
+- The first dominating plain assignment to an initializer-less `let` place
+  is an `Initialize` and is permitted.
+- A later assignment to that `let` place on a path where it is already
   initialized is an immutable-mutation error. It drains through the existing
   ZOM4024 channel (`CannotMutateImmutableVariable`,
   Body/Mutation/InvalidOperation, Identifier display argument) naming the
   binding. No new diagnostic is introduced.
 - An assignment to a `let` place on a path where it is still uninitialized
-  is the single `Initialize`, not an error, even inside one arm of a branch,
-  provided the join-before-read and one-write-per-path constraints hold.
-- For the admitted slice this is enforced by linear and diamond structural
-  checks; a general path-count dataflow is explicitly out of scope and the
-  more complex shapes stay rejected by the admission gate.
+  is the single `Initialize`, including one assignment in each arm of a
+  diamond, provided the join-before-read and one-write-per-path constraints
+  hold.
+- For the admitted slice this is enforced by the structural pre-pass (a
+  straight-line seen-set plus a bounded diamond check). General path-count
+  dataflow is out of scope and other shapes stay fail-closed.
 
-`mut` bindings have no write-count restriction; every post-initialization
-write is an `Overwrite`, the first write is an `Initialize`.
+`mut` bindings have no write-count restriction; the first write is an
+`Initialize` and every later write is an `Overwrite`.
 
-### Write classification in the body checker
+### Admission bounds: no read of the target before its Initialize
 
-The body checker decides `Initialize` vs `Overwrite` for a scalar local
-write (`BodyProductionKind::LocalWrite`) using the init lattice above. Its
-role is write classification and admission only; rejecting a read of an
-uninitialized place remains the ownership rail's job (ZOM4093), so the HIR
-builder must emit the error-preserving shape rather than have the body
-checker short-circuit:
+Widening admission is sound only if the initializing write cannot itself
+read the uninitialized target. `isSimpleLocalWrite`
+(`compiler/checker/body/body-checker.cc`) already admits compound
+assignments and reference/binary RHS forms, so an unconditional
+"first write is allowed for `let`" predicate would wrongly classify
+`let v: i32; v = v;`, `let v: i32; v = v + 1;`, and `let v: i32; v += 1;`
+as initializations even though evaluating the write reads the uninitialized
+slot (the post-MIR rail never sees a shape that fails to build MIR, so
+there is no downstream safety net). The first-write exception is therefore
+restricted to:
 
-- target binding is initializer-less and the write is the first to reach it
-  on the in-state: admit and mark `Initialize`.
-- target is already initialized: an `Overwrite`, admitted only for `mut`
-  (and for a `let` this is the ZOM4024 drain above).
+- a plain assignment only: `writeOp == ast::AssignmentOperatorKind::Assign`;
+  compound writes are excluded (they read the target and stay
+  mut-plus-already-initialized-only),
+- a RHS in the admitted value set - scalar literal, a parameter, or an
+  earlier already-initialized local - that does **not** reference the target
+  binding in any operand,
+- the lattice read rule applied to every RHS operand and to the `if`
+  discriminant, not only the trailing return read.
 
-`isSimpleLocalWrite`
-(`compiler/checker/body/body-checker.cc`) is extended so a write to an
-initializer-less owner local is admitted when the lattice says it is the
-first write; the unconditional `isMutableOwnerLocal` gate is replaced by
-the (first write allowed for `let`) or (already initialized and owner is
-`mut`) predicate. The emitted `CheckedPlaceFact` / write production carries
-enough information for HIR to choose `HirLocalWriteKind::Initialize` versus
-`Overwrite`. Existing initialized-binding behavior is unchanged.
+Prefix/postfix `++`/`--` stay mut-plus-initialized-only via their existing
+gate (`body-checker.cc`); they read and write the target and are not an
+initialization. The diamond arms are bounded structurally: each arm is
+exactly one plain assignment to the binding with no early return/break or
+nested branch, and the condition does not reference the binding.
+
+### Write-classification state seam
+
+Today the checker does not communicate write kind; HIR derives it
+(`hir-builder.cc`, from `shape.localInitializer == none` plus a flat
+function-wide `writeIndex`), and the HIR verifier re-derives it at several
+enumeration sites. That flat enumeration labels the second textual write
+`Overwrite`, which is wrong for a diamond whose two arms are each a
+per-path first write. This RFC:
+
+- adds a dedicated checker pre-pass that builds, for each binding, a write
+  registry over `productionSiteValues`: a straight-line seen-set plus the
+  bounded diamond classification. It is consulted both at admission and in
+  the post-write validation loop in `body-checker.cc`, instead of embedding
+  state in the pure `isSimpleLocalWrite` predicate (called from the literal
+  type-hint and site-classification sites);
+- keeps the write kind HIR-derived (the current architecture): the builder
+  and every HIR verifier enumeration site are updated in lockstep to use
+  path-scoped classification, so both diamond arm writes are `Initialize`.
+  No new checked-fact record or codec field is introduced; the kind is a
+  property of the binding's path position, which HIR already knows. A named
+  checked-fact record is an alternative that is rejected for this RFC.
+- existing MIR strategy checks that hard-require `Overwrite` for update
+  writes are writes to already-initialized places and are unaffected; the
+  new branch `Initialize` is confined to the new arm.
+- `isSimpleOwnerLocalFieldWrite` is left untouched so partial aggregate
+  initialization (`let p: Point; p.x = 1;`) keeps failing (non-goal).
 
 ### HIR contract
 
@@ -303,13 +347,17 @@ new IR node is required.
 - The HIR shape classifier gains an initializer-less binding plus one later
   `Initialize` write shape: a `HirLocalBinding` whose `initializer` is
   `none`, followed by a `HirLocalWriteStatement` of kind `Initialize` to
-  that `local`, followed by a trailing local reference (and the analogous
-  diamond for branch initialization).
-- The current `ScalarLocalOverwrite` arm keeps requiring an initializer and
-  stays the shape for `mut x = <init>; x = ...;`. The late-init shape is a
-  distinct arm (no initializer node; the write supplies initialization).
-- The GenericShape catch-all must not be extended to paper over this; a
-  dedicated arm is added under the RFC 0048 family decomposition.
+  that `local`, followed by a trailing local reference. The MIR-side write
+  arm is `LocalWriteReturn` (the RFC must use that name; there is no arm
+  called `ScalarLocalOverwrite`, and `LocalWriteReturn` currently requires
+  an initializer - that guard is relaxed for the new initializer-less arm).
+- A distinct path-scoped diamond arm carries one `Initialize` write per
+  arm; the builder and verifier classify both arm writes as `Initialize`.
+- The `GenericShape` catch-all currently builds the working straight-line
+  `mut` shapes end to end. It must not be extended to paper over the new
+  `let`/diamond shapes; those get dedicated arms under the RFC 0048 family
+  decomposition. The currently-working `mut` shapes are migrated, not
+  broken, with corpus parity gating each move.
 
 ### Built MIR contract
 
@@ -326,9 +374,22 @@ Phase 3 write family) emits, in order:
 
 For the four-block diamond, each arm ends by assigning its target before
 the join block reads it; no block parameters or PHIs are introduced (MIR
-stays place-based). The structural verifier confirms an `Overwrite` never
-targets a place that lacks a dominating `StorageLive`+`Initialize`, and the
-ownership rail confirms the join read is initialized on both edges.
+stays place-based).
+
+The structural MIR verifier
+(`compiler/mir/built-mir.cc` `validateStructuralWellFormedness`) today
+performs only a linear, block-order `StorageLive`-before-use scan; it does
+not compute dominance across branches, so it cannot by itself prove that an
+`Overwrite` has a dominating `Initialize` on every edge. This RFC adds
+that check as new code, scoped honestly: for the admitted straight-line and
+four-block-diamond shapes it verifies structurally (straight-line order,
+and via the cfg-utils diamond/loop resolvers already in
+`compiler/mir/cfg-utils.h`) that an `Overwrite` target has a preceding
+`StorageLive` and a dominating `Initialize`. It is not a general dominator
+dataflow. The path-sensitive guarantee that the join read is initialized on
+both edges stays with the ownership rail (`mustBeInitialized`
+intersection); the structural check is an earlier tripwire and does not
+replace the rail.
 
 No change to the `MirStatement`/`MirRvalue` vocabulary or the canonical MIR
 codec is required; only construction and verification of the already
@@ -340,17 +401,25 @@ existing `Initialize`/`Overwrite` kinds is extended.
 |---|---|
 | Read of a place uninitialized on some reaching path (`let` or `mut`) | ZOM4093 `UninitializedPlaceUse` + ZOM4094 note at the binding |
 | Second assignment to an initialized `let` place | ZOM4024 `CannotMutateImmutableVariable` naming the binding |
-| Construct the slice cannot lower yet (non-admitted shape) | unchanged ZOM4099 capability rejection, fail-closed |
+| Construct the slice cannot lower yet (a non-admitted but semantically valid shape) | unchanged ZOM4099 capability rejection, fail-closed |
 | Module-scope initializer-less binding | unchanged ZOM4087 |
 
 ### Acceptance boundary
 
 Initially the admitted end-to-end shapes are:
 
-- straight-line `mut v: T; v = <literal/param>; return v;`,
-- straight-line `let v: T; v = <literal/param>; return v;`,
+- straight-line `mut v: T; v = <literal/param>; return v;` (one late
+  `Initialize`),
+- straight-line `let v: T; v = <literal/param>; return v;` (one late
+  `Initialize`),
+- straight-line `mut v: T; v = <literal/param>; v = <literal/param>;
+  return v;` (a late `Initialize` followed by one scalar `Overwrite`),
 - four-block diamond `let v: T; if (c) { v = a; } else { v = b; } return v;`
   with scalar leaves.
+
+Each accepted shape has both a grammar/AST positive conformance file and
+(where it reaches codegen) an integration consumer; the diamond and
+late-init shapes must be observable end to end, not only at `--check`.
 
 Anything semantically valid that is outside this lowering boundary
 (loops, aggregate partial init) keeps the current fail-closed ZOM4099
@@ -372,10 +441,11 @@ never reach ZOM4099:
 | Area | Paths | Owner |
 |---|---|---|
 | Specification | `docs/spec/chapters/06-declarations.md` (expand the definite-assignment comment into normative prose), `docs/spec/chapters/14-memory-management.md` (cross-reference the path rule) | `spec-audit` |
-| Body checker | `compiler/checker/body/body-checker.cc` (LocalWrite admission, Initialize/Overwrite classification, ZOM4024 drain for second `let` write) | `binder-checker` |
-| Diagnostics contracts | `compiler/diagnostics/defs/diagnostics-checker.def`, `compiler/checker/inference/checked-facts.cc` projector/stage mapping (reuse ZOM4024/ZOM4093) | `error-system` |
-| HIR builder | `compiler/hir/build/hir-pending.h`, `hir-shape.cc`, `hir-builder.cc`, new late-init arm under `build/` | `ir-backend` |
-| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, structural verifier | `ir-backend` |
+| Body checker | `compiler/checker/body/body-checker.cc` (new AST-structural write-registry pre-pass, `LocalWrite` admission bounds, plain-Assign first-write exception, ZOM4024 drain for second `let` write) | `binder-checker` |
+| Diagnostics contracts | `compiler/diagnostics/defs/diagnostics-checker.def`, `compiler/checker/inference/checked-facts.cc` projector/stage mapping (reuse ZOM4024; no checker-side ZOM4093) | `error-system` |
+| Initialization rail (ownership) | `compiler/ownership/facts/init.{h,cc}` and the ownership diagnostic projector: unchanged sole ZOM4093/ZOM4094 producer; new error-preserving HIR/MIR shapes must reach it | `runtime-memory` |
+| HIR builder | `compiler/hir/build/hir-pending.h`, `hir-shape.cc`, `hir-builder.cc`, `hir-module.cc` verifier enumeration sites, new late-init and diamond arms under `build/` | `ir-backend` |
+| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, `cfg-utils.h`, structural verifier dominating-Initialize check | `ir-backend` |
 | Conformance | `tests/conformance/corpus/05-statements/**`, grammar + AST + diagnostics expectations | `verification` |
 | Unit tests | body checker / HIR / MIR builder ztests | `verification` |
 | Design note | `docs/design/language/definite-assignment.md` (mark implemented when landed) | `spec-audit` |
@@ -435,31 +505,44 @@ sandbox boundary changes.
 
 ## Compatibility And Rollout
 
-There is no working production behavior to preserve for the accepted
-shapes: they currently fail with ZOM4099 (the `let` forms) or lack lowering
-(the `mut` form). Rollout is therefore additive and behavior-sharpening:
+The rollout is **per shape in one transaction**, not per compiler stage.
+Checker admission for a shape flips only in the commit that also adds its
+HIR arm and proves MIR consumption. Flipping the checker first (the current
+ordered plan) would leave the diamond and double-write outcome determined by
+the `GenericShape` catch-all, whose flat write enumeration mislabels a
+per-path first write. Vertical slices:
 
-1. Checker: extend `LocalWrite` admission and classify
-   `Initialize`/`Overwrite`; add the second-`let`-write ZOM4024 drain.
-2. HIR: add the dedicated late-init arm; leave GenericShape unchanged.
-3. MIR: implement the write family in the recursive builder behind the
-   Phase 3 fallback; the strategy table stays for shapes not yet migrated.
-4. Spec: expand the Chapter 6 comment into normative prose and link
-   Chapter 14.
-5. Tests + parity: regenerate conformance snapshots for the newly accepted
-   files; existing rejected files keep ZOM4093/ZOM4024.
+1. **Straight-line `mut` late init and initialize-then-overwrite.** These
+   already build end to end today; this slice adds the dedicated arms,
+   clears the parameter-RHS `ir`-phase ICE (add a parameter-RHS positive
+   case), migrates the shape off `GenericShape`, and locks it with corpus
+   parity. Behavior is preserved (a working shape, not new).
+2. **Straight-line `let` single late init, plus the second-`let`-write
+   ZOM4024 drain.** Checker admission, the HIR arm, and proven MIR
+   consumption land together; `isSimpleLocalWrite` gains the bounded
+   first-write exception (plain `Assign`, RHS not reading the target).
+3. **Four-block `let` diamond.** Lands only with the path-scoped builder and
+   verifier classification (both arms `Initialize`) and the error-preserving
+   one-branch-missing shape that reaches the ownership rail as ZOM4093.
+4. **Spec.** Expand the Chapter 6 comment into normative prose and link
+   Chapter 14; run spec-alignment.
+5. **Tests + parity.** Re-record with the reviewed delta set below.
 
-One diagnostic-code sharpening is recorded honestly. Reassignment to an
-initializer-present immutable binding (`let v = 1; v = 2;`) currently drains
-as ZOM4099; once the second-`let`-write drain lands it reports ZOM4024, the
-correct semantic error. No conformance fixture pins the old ZOM4099 code
-for a bare immutable reassignment, so this does not break a pinned
-expectation, but the parity re-record and the new initialized-`let`
-reassignment fixture explicitly cover the change.
+Two diagnostic/behavior sharpenings are recorded honestly, both new
+semantic errors replacing capability placeholders or ICEs:
 
-Rollback is a single revert per stage; no serialized artifact or codec
-format changes, so no data migration is possible. The corpus parity tool
-(`scripts/check-ir-parity.py`) gates each stage.
+- Reassignment to an initializer-present immutable binding
+  (`let v = 1; v = 2;`) currently drains as ZOM4099; it becomes ZOM4024. No
+  fixture pins the old code for a bare local immutable reassignment
+  (`immutable_assignment_neg_02` is module-scope ZOM4105 with no diagnostics
+  layer), and the new fixture pins ZOM4024.
+- The parameter-RHS late-init `mut` shape and some overwrite paths currently
+  ICE in the `ir` phase; they become working paths (or a clean diagnostic),
+  asserted with no-incident lit tests.
+
+Rollback is a single revert per vertical slice; no serialized artifact or
+codec format changes, so no data migration is possible. The corpus parity
+tool (`scripts/check-ir-parity.py`) gates each slice.
 
 ## Documentation And Teaching Plan
 
@@ -510,66 +593,125 @@ compile-time cost is linear in statements.
 - Chapter 6 states the definite-assignment dataflow and one-write-per-path
   rule normatively (not only as a grammar comment), with `check-rfc.py` and
   the spec-alignment gate passing.
-- `let v: i32; v = 1; return v;` and the `if/else` branch form compile
-  end to end on the admitted shapes; the `mut` straight-line form lowers
-  end to end.
-- `mut v: i32; return v;` and the one-branch-missing `let` form produce
-  ZOM4093 + ZOM4094; a second write to `let` produces ZOM4024.
+- Every admitted shape in the acceptance boundary has a named grammar/AST
+  positive conformance file; the straight-line `let`/`mut` late-init and
+  initialize-then-overwrite shapes and the foldable-condition branch diamond
+  are observable end to end: the named integration consumer is registered
+  in `tests/CMakeLists.txt`, `check-native-run.py` reports the expected
+  exit value, and `check-object-emission.py` is green.
+- `mut v: i32; return v;`, the uninit-`let` read
+  (`uninitialized_local_return_neg_01`), and the one-branch-missing `let`
+  form produce ZOM4093 + ZOM4094; a second write to `let` (late or
+  initializer-present) produces ZOM4024; the both-errors diamond produces
+  both at distinct sites.
 - The first late write is HIR `Initialize` and MIR
   `MirInitializationKind::Initialize`; a later `mut` write is `Overwrite`;
   the structural MIR verifier rejects a dominating-init-less `Overwrite`
-  in a mutation test.
-- Corpus process and IR parity pass; new conformance grammar/AST/
-  diagnostics expectations are present and green.
+  in both the straight-line and one-arm-diamond mutation tests.
+- `ctest --preset default` (including the `conformance-grammar` and
+  `coverage` labels) and `check-diagnostic-coverage.py --check/--self-test`
+  pass; every new corpus source has grammar, AST, and diagnostics layers as
+  applicable.
+- Corpus parity is re-recorded with the named `--record --ir` command and
+  verified with `--check --ir`; the reviewed existing-source deltas
+  (initialized-`let` double-write ZOM4099 to ZOM4024; the raw-pointer
+  assignment file's pinned post-RFC code) are enumerated in the tracker and
+  the raw-pointer file gains a diagnostics CHECK-LITERAL expectation before
+  re-recording.
 - All required owners approve and the tracker records the decision and
   implementation.
 
 ## Implementation Plan
 
-1. Spec: expand Chapter 6 definite-assignment text; add Chapter 14
+Each numbered slice is one transaction that flips checker admission, adds
+the HIR arm, and proves MIR consumption for its shapes, gated by corpus
+parity.
+
+1. Straight-line `mut` late init, parameter RHS, and one scalar
+   initialize-then-overwrite: dedicated arms replacing the `GenericShape`
+   path for these shapes; clear the parameter-RHS/overwrite `ir`-phase ICEs;
+   positive conformance plus no-incident tests.
+2. Straight-line `let` single late init: add the checker write-registry
+   pre-pass and bounded first-write admission (plain `Assign`, RHS not
+   reading the target), the HIR arm, MIR consumption, and the second-`let`
+   ZOM4024 drain; body-checker ztests.
+3. Four-block `let` diamond: path-scoped Initialize/Overwrite classification
+   in the builder and all HIR verifier enumeration sites (both arms
+   `Initialize`), the MIR diamond arm, the structural dominating-Initialize
+   check via cfg-utils, and the error-preserving one-branch-missing shape so
+   ownership emits ZOM4093.
+4. Spec: expand Chapter 6 definite-assignment text; add Chapter 14
    cross-reference; run spec-alignment.
-2. Body checker: add the init lattice to `LocalWrite` admission; classify
-   `Initialize` vs `Overwrite`; drain the second `let` write to ZOM4024;
-   add body-checker ztests.
-3. HIR: add the late-init shape and a dedicated recursive arm; assert the
-   write kind in the HIR verifier; extend the error-preserving construction
-   (today's `UninitializedLocalReturn`) to the one-branch-missing diamond
-   and uninitialized-`mut` shapes so ownership remains the sole ZOM4093
-   producer.
-4. MIR: implement the write family in the RFC 0048 recursive builder
-   (`StorageLive` + `Assign(Initialize)`, then `Overwrite`), including the
-   four-block diamond, behind the existing fallback; extend the structural
-   verifier.
-5. Conformance: add positive/negative corpus files with grammar, AST, and
-   diagnostics expectations.
-6. Verify: sanitizer build, ztests, lit suite, native-run spot checks,
-   corpus process + IR parity; then update the design note and tracker.
+5. Verify: ztests, full conformance incl. grammar/coverage labels,
+   diagnostic-coverage gate, native consumers, corpus process + IR parity
+   re-record; then update the design note and tracker.
 
 ## Test Plan
 
 - Build: `cmake --preset sanitizer && cmake --build --preset sanitizer`.
 - Unit tests: body-checker ztests for the init lattice
   (straight-line accept, join accept, missing-branch ZOM4093, second-`let`
-  ZOM4024, `mut` overwrite); HIR arm test asserting `Initialize`/
-  `Overwrite`; MIR builder/verifier mutation test rejecting an `Overwrite`
-  with no dominating initialization.
-- Lit tests: new `05-statements` conformance cases for
-  `let_*_definite_assignment_pos_*` (straight-line, branch) and
-  `*_neg_*` (uninit read for `let` and `mut`, missing branch, double let
-  write), with grammar YAML, AST, and CHECK-LITERAL diagnostics. Two extra
-  negative cases are required: (1) initialized-`let` reassignment
-  (`let v = 1; v = 2;`) pinning the ZOM4099 to ZOM4024 sharpening, and
-  (2) a both-errors diamond (one arm double-writes the `let`, the other arm
-  omits the write) locking ZOM4024 at the write site and ZOM4093 at the
-  read site co-firing at distinct locations. Diagnostics expectations use
-  CHECK-LITERAL with the backticked binding name, matching the existing
-  ZOM4024 fixture style.
-- Conformance: `ctest --preset default -L lit`; the ZOM4024 and ZOM4093
-  suites remain green.
-- Native: a positive branch-init program compiled and run to its expected
-  exit value through `zomc run`.
-- Generated files: regenerate affected AST snapshots via `regen-lit.py`;
-  record a fresh corpus parity snapshot that includes the new sources.
+  ZOM4024, `mut` initialize-then-overwrite); HIR arm test asserting
+  `Initialize`/`Overwrite`; a MIR structural-verifier mutation test
+  following `tests/unittests/compiler/driver/session/
+  compiler-session-package-test.cc` (full session build,
+  `BuiltMirBuilder::build`, `takeVerified()`, mutate in place,
+  `BuiltMirVerifier::verify`, assert `isIrInvariantRejected()` with
+  `IrFailureKind::InvalidFact`). Two mutations are required: a straight-line
+  `Overwrite` with `StorageLive` retained but no dominating `Initialize`
+  (built via `MirStatement::assign(dest.clone(), value.clone(),
+  MirInitializationKind::Overwrite, span.clone())`), and a diamond variant
+  flipping only one arm's `Initialize` to `Overwrite`, exercising the
+  cross-arm domination property this RFC adds.
+- Conformance sources and expectations under
+  `tests/conformance/corpus/05-statements/` (grammar YAML hand-authored;
+  AST snapshot via `regen-lit.py`; diagnostics CHECK-LITERAL files
+  regenerated then given a mandatory human diff review). Positives:
+  straight-line late-init `let`, straight-line late-init `mut`,
+  straight-line late-init `mut` with one `Overwrite`, and a branch-init
+  `let`. Negatives: reuse the existing
+  `uninitialized_local_return_neg_01` for the uninit-`let` read (do not
+  duplicate); add uninit-`mut` read, missing-branch `let`, second-`let`
+  write to a late-initialized binding, initialized-`let` reassignment
+  (`let v = 1; v = 2; return v;`) pinning the ZOM4099 to ZOM4024
+  sharpening, and a both-errors diamond (one arm double-writes the `let`,
+  the other omits the write) locking ZOM4024 at the write site and ZOM4093
+  at the read site. Diagnostics expectations use CHECK-LITERAL with the
+  backticked binding name and `CHECK: --> {{...}}` only for path lines,
+  matching `owner_local_immutable_field_write_neg_31.check` and
+  `uninitialized_local_return_neg_01.check`.
+- Coverage gates: the grammar YAMLs and 1:1 corpus/AST/grammar coverage run
+  under the `conformance-grammar` and `coverage` labels, which `-L lit`
+  does not include. Run the full suite with `ctest --preset default`
+  (the build-ci exit criteria) rather than `-L lit` alone, plus
+  `python3 scripts/check-diagnostic-coverage.py --check` and
+  `--self-test` to prove the new ZOM4024/ZOM4093 emission sites stay pinned.
+- Native: native execution is package-driven, not bare `zomc compile`. The
+  parameterized `port_for(secure: bool)` guide example is `--check`/object
+  only; the runnable witness uses a no-arg `entry()` with a foldable
+  condition (precedent:
+  `tests/integration/core-library/literal-comparison-conditional-consumer`,
+  `if (1 < 2)`). Add a new
+  `tests/integration/core-library/definite-assignment-conditional-consumer/`
+  package (`Zom.toml` + `src/main.zom`) whose `entry()` late-initializes an
+  immutable `i32` in a `if (1 < 2) { ... } else { ... }` diamond and returns
+  it, with the matching `--run-case
+  tests/integration/core-library/definite-assignment-conditional-consumer/
+  Zom.toml::definite-assignment-conditional-consumer::entry::<expected-exit>`
+  line registered in `tests/CMakeLists.txt` (the run-case section), and
+  register the straight-line late-init cases for object emission.
+- Parity: before re-recording, enumerate the reviewed existing-source
+  deltas: the initialized-`let` double-write class flips ZOM4099 to
+  ZOM4024, and
+  `04-expressions/raw_pointer_deref_assignment_requires_unsafe_neg_42.zom`
+  (`mut target: i32; target = *ptr;`, currently ZOM4098) changes
+  classification; first add a diagnostics CHECK-LITERAL expectation that
+  pins that file's post-RFC code so the delta is observed, not silently
+  absorbed. After the sanitizer rebuild, record with
+  `python3 scripts/check-ir-parity.py --record --ir --zomc
+  build-sanitizer/bin/zomc`, then verify with the same command using
+  `--check --ir`, and run the tool's `--self-test` against
+  `tests/coverage/corpus-process-parity.json`.
 - Format: `python3 scripts/check-format.py`.
 
 ## Open Questions
