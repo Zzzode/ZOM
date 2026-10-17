@@ -210,13 +210,31 @@ body-local binding. The per-binding state is a two-level lattice:
     `Initialized`. An `Overwrite` targeting an `Uninitialized` place is a
     compiler-contract failure (the write should have been classified
     `Initialize`), not a user diagnostic.
-  - read / move / borrow / drop: requires in-state `Initialized`, otherwise
-    ZOM4093 with a ZOM4094 note at the binding.
+  - read / move / borrow / drop: requires in-state `Initialized` on every
+    reaching path.
 - Branch: the discriminant read follows the read rule; successor edges
   inherit the current state.
 - Join block: state is the meet (intersection) of predecessor states.
   `Initialized` at the join only if every predecessor reaches it
   `Initialized`.
+
+ZOM4093/ZOM4094 are emitted by the ownership rail only. The uninitialized
+read diagnostic has a single producer:
+`compiler/ownership/facts/init.cc` (`InitializationLossKind::NeverInitialized`
+/ `Moved`), projected by the ownership projector; the body checker contains
+no ZOM4093 emitter and this RFC adds none. The body checker's use of the
+lattice is confined to **write classification and admission** (Initialize
+vs Overwrite, and whether the binding is mutable); it does not emit
+ZOM4093/ZOM4094. Consequently the HIR/MIR builders must construct the
+error-preserving shape for every rejected read so the ownership rail still
+runs and produces ZOM4093 plus the ZOM4094 note at the binding - the same
+pattern the existing `UninitializedLocalReturn` HIR arm already uses for the
+straight-line case. This RFC extends that error-preserving construction to
+the one-branch-missing diamond and the uninitialized-`mut` shapes. A
+checker-side ZOM4093 is explicitly rejected: it would require new
+`validArgumentSchema` (zero arguments) and `validDiagnosticProduction`
+(stage/producer/recovery) contracts plus a checker-side ZOM4094
+related-note channel that do not exist.
 
 ```mermaid
 flowchart TD
@@ -256,8 +274,11 @@ write is an `Overwrite`, the first write is an `Initialize`.
 ### Write classification in the body checker
 
 The body checker decides `Initialize` vs `Overwrite` for a scalar local
-write (`BodyProductionKind::LocalWrite`) using the same init lattice it
-uses to reject uninitialized reads:
+write (`BodyProductionKind::LocalWrite`) using the init lattice above. Its
+role is write classification and admission only; rejecting a read of an
+uninitialized place remains the ownership rail's job (ZOM4093), so the HIR
+builder must emit the error-preserving shape rather than have the body
+checker short-circuit:
 
 - target binding is initializer-less and the write is the first to reach it
   on the in-state: admit and mark `Initialize`.
@@ -331,9 +352,20 @@ Initially the admitted end-to-end shapes are:
 - four-block diamond `let v: T; if (c) { v = a; } else { v = b; } return v;`
   with scalar leaves.
 
-Anything outside this boundary (loops, aggregate partial init, multiple
-writes before the read on the `let` path) keeps the current fail-closed
+Anything semantically valid that is outside this lowering boundary
+(loops, aggregate partial init) keeps the current fail-closed ZOM4099
 behavior until a later vertical slice extends the lattice and lowering.
+
+The boundary list contains only semantically-valid-but-unlowerable shapes.
+Semantically invalid programs are rejected before the capability gate and
+never reach ZOM4099:
+
+- a read not initialized on every reaching path (including the
+  one-branch-missing diamond) is rejected by the ownership rail as
+  ZOM4093, not fail-closed;
+- a second write to an already-initialized `let` place is rejected by the
+  body checker as ZOM4024, regardless of whether the first write was a
+  declared initializer or a late initialization.
 
 ## Repository Impact
 
@@ -417,6 +449,14 @@ shapes: they currently fail with ZOM4099 (the `let` forms) or lack lowering
 5. Tests + parity: regenerate conformance snapshots for the newly accepted
    files; existing rejected files keep ZOM4093/ZOM4024.
 
+One diagnostic-code sharpening is recorded honestly. Reassignment to an
+initializer-present immutable binding (`let v = 1; v = 2;`) currently drains
+as ZOM4099; once the second-`let`-write drain lands it reports ZOM4024, the
+correct semantic error. No conformance fixture pins the old ZOM4099 code
+for a bare immutable reassignment, so this does not break a pinned
+expectation, but the parity re-record and the new initialized-`let`
+reassignment fixture explicitly cover the change.
+
 Rollback is a single revert per stage; no serialized artifact or codec
 format changes, so no data migration is possible. The corpus parity tool
 (`scripts/check-ir-parity.py`) gates each stage.
@@ -492,7 +532,10 @@ compile-time cost is linear in statements.
    `Initialize` vs `Overwrite`; drain the second `let` write to ZOM4024;
    add body-checker ztests.
 3. HIR: add the late-init shape and a dedicated recursive arm; assert the
-   write kind in the HIR verifier.
+   write kind in the HIR verifier; extend the error-preserving construction
+   (today's `UninitializedLocalReturn`) to the one-branch-missing diamond
+   and uninitialized-`mut` shapes so ownership remains the sole ZOM4093
+   producer.
 4. MIR: implement the write family in the RFC 0048 recursive builder
    (`StorageLive` + `Assign(Initialize)`, then `Overwrite`), including the
    four-block diamond, behind the existing fallback; extend the structural
@@ -513,7 +556,14 @@ compile-time cost is linear in statements.
 - Lit tests: new `05-statements` conformance cases for
   `let_*_definite_assignment_pos_*` (straight-line, branch) and
   `*_neg_*` (uninit read for `let` and `mut`, missing branch, double let
-  write), with grammar YAML, AST, and CHECK-LITERAL diagnostics.
+  write), with grammar YAML, AST, and CHECK-LITERAL diagnostics. Two extra
+  negative cases are required: (1) initialized-`let` reassignment
+  (`let v = 1; v = 2;`) pinning the ZOM4099 to ZOM4024 sharpening, and
+  (2) a both-errors diamond (one arm double-writes the `let`, the other arm
+  omits the write) locking ZOM4024 at the write site and ZOM4093 at the
+  read site co-firing at distinct locations. Diagnostics expectations use
+  CHECK-LITERAL with the backticked binding name, matching the existing
+  ZOM4024 fixture style.
 - Conformance: `ctest --preset default -L lit`; the ZOM4024 and ZOM4093
   suites remain green.
 - Native: a positive branch-init program compiled and run to its expected

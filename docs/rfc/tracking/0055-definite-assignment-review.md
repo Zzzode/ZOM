@@ -40,7 +40,7 @@ TBD - pending all required owner approvals.
 | `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | APPROVED (Round 1, 2026-10-17; six non-blocking spec-edit precision notes) |
 | `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | Pending |
 | `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
-| `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | Pending |
+| `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | REQUEST-CHANGES (Round 1, 2026-10-17; two blocking contract-precision corrections + three nits) |
 | `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | Pending |
 
 ### 2026-10-17 Six-Owner Review Round 1 - Opened
@@ -117,6 +117,33 @@ recorded below as the owner agents report.
   Initialize/Overwrite transfer to body-local scalar bindings; add
   ZOM4093/ZOM4094 to the Chapter 14 diagnostic-family list; write the
   rule normatively.
+
+#### error-system owner, Round 1: REQUEST-CHANGES (2026-10-17); revised
+
+Verified: ZOM4024 reuse is a same-concept extension (Identifier arg,
+Body/Mutation/InvalidOperation, factory proven for locals and fields);
+ZOM4093/ZOM4094 are ownership-rail-only with no checker-side producer;
+ZOM4087/ZOM4099 stay correctly scoped. Two blocking corrections applied:
+
+1. Pinned ZOM4093/ZOM4094 as ownership-rail-only and required
+   error-preserving HIR/MIR construction for the one-branch-missing diamond
+   and uninitialized-`mut` shapes (extending the existing
+   UninitializedLocalReturn pattern), explicitly rejecting a duplicate
+   checker-side ZOM4093 producer and its undeclared contracts. The
+   Reference-Level lattice and body-checker sections and implementation
+   plan step 3 were rewritten to state the body checker classifies writes
+   only.
+2. Removed "multiple writes on the `let` path" from the fail-closed
+   acceptance boundary; that shape is semantically invalid and must reach
+   ZOM4024 (write) / ZOM4093 (read) before the capability gate, not ZOM4099.
+   The boundary now lists only semantically-valid-but-unlowerable shapes
+   with an explicit invalid-program rejection list.
+
+Nits applied: the Compatibility section now records the ZOM4099 to ZOM4024
+sharpening for initializer-present immutable reassignment (no pinned
+fixture breaks); the test plan adds the both-errors diamond and the
+initialized-`let` reassignment case and requires CHECK-LITERAL/backtick
+expectations. Awaiting Round 2 review.
 
 ## Implementation Tracker
 
