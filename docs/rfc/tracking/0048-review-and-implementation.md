@@ -426,6 +426,36 @@ currently routed as invariants) and the full fact-production move remain
 deferred per the coupling constraint: facts for a shape the recursive
 HIR builder cannot yet consume would create intermediate ICEs.
 
+### 2026-10-17 Phase 5 - Surface body-shape classifier removal
+
+Commit `4d8b7cdb` on `develop` completes the Phase 5 surface removal by
+deleting the surface whole-function `FunctionBody` arm from surface
+admission, the `SurfaceSyntaxKind::FunctionBody` enum value, and the
+diagnostic projector case. The HIR builder `functionReturnShape` now
+owns capability rejection for unrecognized body shapes, producing
+ZOM4099 at the specific unsupported construct rather than at the
+function definition.
+
+The same commit removes the dead `HirParameterIndexExpression`
+infrastructure: the HIR builder IndexExpression branch, the
+`GenericShape::parameterIndex` field, the HIR module storage and
+accessor, the `HirFnCtx::addParameterIndex` method, and the
+lower-generic materializer block. The `functionReturnShape`
+fallthrough previously returned a default shape for single-statement
+`return a[0];` on a callable parameter, causing the builder to emit an
+unverifiable `HirParameterIndexExpression` node; the new
+IndexExpression check returns `zc::none` so the builder rejects it as
+ZOM4099.
+
+Three conformance diagnostics expectations update with the more
+precise source locations the HIR builder now produces. The
+`class_literal_body_shape_neg_03` negative test is deleted: the
+construct it covered (local aggregate construction plus field
+projection return) is now an admitted shape. The corpus process-parity
+baseline is re-recorded without the IR channel in a follow-up commit to
+reflect the source-location precision change and the newly admitted
+construct.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
