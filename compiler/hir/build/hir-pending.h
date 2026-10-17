@@ -808,7 +808,11 @@ struct UninitializedFieldProjectionReturn {
 
 struct LocalWriteReturn {
   HirLocalBinding local;
-  checker::checked::CanonicalConstValue literal;
+  // Present only when the binding itself has a literal initializer; an
+  // initializer-less binding is initialized by the first local write.
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  // Present only when the binding itself is parameter-initialized.
+  zc::Maybe<HirParameterReferenceExpression> parameterReference;
   zc::Vector<HirLocalWriteStatement> localWrites;
   zc::Vector<PendingLocalWriteValue> localWriteValues;
   HirLocalReferenceExpression localReference;

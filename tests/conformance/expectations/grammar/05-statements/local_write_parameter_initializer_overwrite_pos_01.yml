@@ -1,0 +1,7 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, functionParameter, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "A mut binding parameter-initialized at declaration is overwritten by a"
+  - "plain scalar write; the initializer is an Initialize (parameter copy) and"
+  - "the later write is an Overwrite. Parameterized entry, object emission only."

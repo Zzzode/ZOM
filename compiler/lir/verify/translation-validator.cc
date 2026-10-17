@@ -414,13 +414,23 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                     operand.place().projections()[0].kind() == mir::MirProjectionKind::Field)) {
           const mir::MirLocalId root = operand.place().local();
           const mir::MirAssignmentStatement* source = nullptr;
+          // A return fold elides the slot of a local whose single dominating
+          // assignment is a constant initialization. An initialize-then-
+          // overwrite sequence materializes the slot (the overwrite lowerer
+          // emits both effects), so counting more than one assignment, or any
+          // Overwrite, disables the fold.
+          uint32_t assignCount = 0;
           for (const auto& statement : block.statements) {
             if (statement.kind() == mir::MirStatementKind::Assign &&
                 statement.assignmentValue().destination.local() == root) {
               source = &statement.assignmentValue();
+              ++assignCount;
             }
           }
           if (source != nullptr) {
+            const bool singleInitialization =
+                assignCount == 1 &&
+                source->initialization == mir::MirInitializationKind::Initialize;
             fold.sourceLocal = root;
             fold.assignment = source;
             if (operand.place().projections().size() == 1) {
@@ -433,7 +443,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             }
             switch (source->value.kind()) {
               case mir::MirRvalueKind::Use:
-                if (!fold.hasFieldProjection &&
+                if (!fold.hasFieldProjection && singleInitialization &&
                     source->value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
                   // Only fold when the source local is the sole non-parameter
                   // local. Functions with multiple locals lower through the
@@ -450,10 +460,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 }
                 break;
               case mir::MirRvalueKind::NominalAggregate: {
-                // Only fold when every element is a constant. A dyn-field
-                // aggregate return with Move (erased) elements has a bespoke
-                // lowering that materializes existential slots, so the fold's
-                // no-locals contract does not apply.
+                // Only fold when every element is a constant and the local has
+                // a single initialization (see singleInitialization above).
+                if (!singleInitialization) break;
                 bool allConstant = true;
                 const auto& aggregate = source->value.nominalAggregateValue();
                 for (const auto& element : aggregate.elements) {

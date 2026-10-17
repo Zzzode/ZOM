@@ -4500,13 +4500,15 @@ zc::Maybe<Module> MirToLirLowering::lowerArithmeticReturn(
 
 zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
-  // Admit only the verified one-block overwrite shape: a leading run of integer
-  // parameter locals followed by exactly one user local, brought to life by
-  // StorageLive plus an initializing Assign of a constant, then overwritten by
-  // one or more Arithmetic or Comparison rvalues whose operands are constants
-  // or place-uses of the parameter locals or the user local itself, and a
-  // place-copy return of that local. Every carrier is one equal integer
-  // width (Bit1 admitted for bool carriers).
+  // Admit only the verified one-block local-write shape: a leading run of
+  // integer parameter locals followed by exactly one user local, brought to
+  // life by StorageLive plus an initializing Assign of either a constant or a
+  // projection-free copy/move of a parameter local (the late-init
+  // `mut v: T; v = p;` family), then overwritten by zero or more plain Use,
+  // Arithmetic, or Comparison rvalues whose operands are constants or
+  // place-uses of the parameter locals or the user local itself, and a
+  // place-copy return of that local. Every carrier is one equal integer width
+  // (Bit1 admitted for bool carriers).
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
       function.blocks.size() != 1 || function.locals.size() < 1) {
     return zc::none;
@@ -4559,9 +4561,28 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalOverwriteReturn(
     return zc::none;
   }
   const auto& initOperand = initializeAssign.value.useValue().operand;
-  if (initOperand.kind() != mir::MirOperandKind::Constant ||
-      initOperand.constantValue().type != localDecl.type) {
-    return zc::none;
+  if (initOperand.kind() == mir::MirOperandKind::Constant) {
+    if (initOperand.constantValue().type != localDecl.type) { return zc::none; }
+  } else {
+    // The late initialization copies a parameter (`mut v: T; v = p;`).
+    // Admit a projection-free copy/move place-use of one of the leading
+    // parameter locals with the local's type.
+    if (initOperand.kind() != mir::MirOperandKind::Copy &&
+        initOperand.kind() != mir::MirOperandKind::Move) {
+      return zc::none;
+    }
+    const auto& initPlace = initOperand.place();
+    if (initPlace.projections().size() != 0 || initPlace.resultType() != localDecl.type) {
+      return zc::none;
+    }
+    bool initIsParameter = false;
+    for (size_t i = 0; i < parameterCount; ++i) {
+      if (function.locals[i].id == initPlace.local()) {
+        initIsParameter = true;
+        break;
+      }
+    }
+    if (!initIsParameter) { return zc::none; }
   }
 
   auto leafOperand = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {

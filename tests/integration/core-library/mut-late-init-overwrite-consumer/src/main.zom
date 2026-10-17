@@ -1,0 +1,5 @@
+fn entry() -> i32 {
+  mut v: i32 = 40;
+  v = 41;
+  return v;
+}

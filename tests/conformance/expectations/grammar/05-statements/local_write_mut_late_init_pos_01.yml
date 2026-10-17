@@ -1,0 +1,7 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "An initializer-less mut binding is assigned once before its first read."
+  - "The late write is the binding's initialization; the trailing return reads"
+  - "the initialized place."

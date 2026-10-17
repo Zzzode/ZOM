@@ -1,0 +1,6 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "A mut binding with an initializer is overwritten once before its read;"
+  - "the initializer is an Initialize and the later write an Overwrite."

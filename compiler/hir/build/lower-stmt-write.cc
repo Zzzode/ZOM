@@ -14,22 +14,25 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   const auto& shape = function.shape.get<LocalWriteReturn>();
   const identity::SemanticTypeId localType = shape.local.type;
   const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
-  const identity::SourceSpan initializerSpan =
-      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const bool initialized = shape.local.initializer != zc::none;
+  zc::Maybe<identity::SourceSpan> initializerSpan;
+  ZC_IF_SOME(span, shape.local.initializerSpan) { initializerSpan = span.clone(); }
   const identity::SemanticTypeId placeType = shape.localReference.type;
   const HirValueCategory placeCategory = shape.localReference.category;
   const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
   const size_t writeCount = shape.localWrites.size();
 
-  // Source-preorder stride: function, body, local, initializer leaf, then per
-  // write (write node, write value node), then return and returned value. A
-  // binary write allocates its operand node ids lazily during lowering (a
-  // nested binary operand allocates additional child ids). No
-  // receiver/unsafe/loop ids in this family.
+  // Source-preorder stride: function, body, local, then the initializer leaf
+  // only when the binding has an initializer, then per write (write node,
+  // write value node), then return and returned value. A binary write
+  // allocates its operand node ids lazily during lowering (a nested binary
+  // operand allocates additional child ids). No receiver/unsafe/loop ids in
+  // this family.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
-  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  zc::Maybe<HirNodeId> initializerId;
+  if (initialized) { initializerId = ctx.allocNode(ast::NodeId()); }
   zc::Vector<HirNodeId> writeIds;
   zc::Vector<HirNodeId> writeValueIds;
   for (size_t index = 0; index < writeCount; ++index) {
@@ -53,9 +56,21 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 
-  // Initializer literal at the initializer node.
-  ctx.addExpression(HirScalarLiteralExpression{initializerId, localType, shape.literal.clone(),
-                                               HirValueCategory::Value, initializerSpan.clone()});
+  // Initializer leaf: a literal for a literal-initialized binding, a parameter
+  // reference for a parameter-initialized binding. An initializer-less binding
+  // is initialized by its first write below and has no initializer node.
+  ZC_IF_SOME(id, initializerId) {
+    ZC_IF_SOME(literal, shape.literal) {
+      ctx.addExpression(HirScalarLiteralExpression{id, localType, literal.clone(),
+                                                   HirValueCategory::Value,
+                                                   ZC_ASSERT_NONNULL(initializerSpan).clone()});
+    }
+    ZC_IF_SOME(parameter, shape.parameterReference) {
+      ctx.addParameterReference(HirParameterReferenceExpression{id, parameter.parameter.clone(),
+                                                                localType, parameter.category,
+                                                                parameter.sourceSpan.clone()});
+    }
+  }
 
   for (size_t index = 0; index < writeCount; ++index) {
     const HirLocalWriteStatement& write = shape.localWrites[index];
@@ -85,8 +100,10 @@ void lowerLocalWriteFunction(PendingFunctionDeclaration&& function, HirFnCtx& ct
                                              write.sourceSpan.clone(), write.valueSpan.clone()});
   }
 
-  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
-                               initializerSpan.clone()});
+  zc::Maybe<HirNodeId> boundInitializer;
+  ZC_IF_SOME(id, initializerId) { boundInitializer = id; }
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, zc::mv(boundInitializer),
+                               localSpan.clone(), zc::mv(initializerSpan)});
   ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
                                                     placeCategory, placeSpan.clone()});
 }

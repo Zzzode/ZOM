@@ -1870,59 +1870,6 @@ zc::Maybe<RecursiveFunctionProduct> buildArrayIndexFoldReturn(
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
-/// \brief Lowers `fn f() -> T { mut x = <lit>; x = <lit>; return x; }`: one
-/// root scope, one UserLocal at localId(1), StorageLive, the Initialize Assign
-/// of the initializer constant, one Overwrite Assign of the write constant, and
-/// a Return of the copy/move place-use of the local. Both values are scalar
-/// literals, so the legacy rail declares no parameter locals; the statement and
-/// span order is reproduced byte for byte.
-zc::Maybe<RecursiveFunctionProduct> buildScalarLocalOverwriteReturn(
-    const LoweringContext& lctx, const hir::HirLocalBinding& sourceLocal,
-    const hir::HirScalarLiteralExpression& initializer,
-    const hir::HirLocalWriteStatement& overwrite,
-    const hir::HirScalarLiteralExpression& overwriteValue) {
-  const auto& declaration = lctx.declaration;
-  const auto& sourceReturn = ZC_ASSERT_NONNULL(lctx.sourceReturn());
-  const auto& identities = lctx.identities;
-  auto& proofs = lctx.proofs;
-  auto copyMarker = lctx.copyMarker;
-
-  auto definition = identities.definition(declaration.definition);
-  if (definition == zc::none) return zc::none;
-
-  detail::MirFnCtx ctx;
-  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
-  const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
-                                                sourceLocal.sourceSpan.clone());
-
-  const MirBlockId entry = ctx.beginBlock(scope);
-  (void)entry;
-  ctx.appendStatement(MirStatement::storageLive(userLocal, sourceLocal.sourceSpan.clone()));
-  zc::Vector<MirProjection> initializeProjections;
-  ctx.appendStatement(MirStatement::assign(
-      MirPlace(userLocal, sourceLocal.type, zc::mv(initializeProjections), sourceLocal.type),
-      MirRvalue::use(MirOperand::constant(sourceLocal.type, initializer.value.clone())),
-      MirInitializationKind::Initialize, initializer.sourceSpan.clone()));
-  zc::Vector<MirProjection> overwriteProjections;
-  ctx.appendStatement(MirStatement::assign(
-      MirPlace(userLocal, sourceLocal.type, zc::mv(overwriteProjections), sourceLocal.type),
-      MirRvalue::use(MirOperand::constant(sourceLocal.type, overwriteValue.value.clone())),
-      MirInitializationKind::Overwrite, overwrite.sourceSpan.clone()));
-  zc::Vector<MirProjection> returnProjections;
-  auto returnOperand =
-      placeUse(proofs, copyMarker,
-               MirPlace(userLocal, sourceLocal.type, zc::mv(returnProjections), sourceLocal.type));
-  if (returnOperand == zc::none) return zc::none;
-  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
-                                                sourceReturn.sourceSpan.clone()));
-
-  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
-                                    identity::DefinitionKind::Function, declaration.resultType,
-                                    declaration.sourceSpan.clone());
-  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
-  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
-}
-
 /// \brief Lowers a single user-local body with one or more overwrite writes.
 ///
 /// `mut x = <lit/param>; x = <lit/param/binary>; ...; return x;`. The first
@@ -5549,40 +5496,6 @@ zc::Maybe<RecursiveFunctionProduct> strategyAggregateLocal(const LoweringContext
   return buildAggregateLocalReturn(lctx);
 }
 
-/// Single scalar local with one repeated literal write.
-zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalOverwrite(const LoweringContext& lctx) {
-  if (!lctx.hasTrailingReturn) return zc::none;
-  if (lctx.statementCount != 3 || lctx.hasUnsafeBlock) return zc::none;
-  auto sourceLocal = localFor(lctx.hirModule, lctx.block.statements[0]);
-  auto sourceOverwrite = localWriteFor(lctx.hirModule, lctx.block.statements[1]);
-  if (sourceLocal == zc::none || sourceOverwrite == zc::none) return zc::none;
-  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-  const auto& write = ZC_ASSERT_NONNULL(sourceOverwrite);
-  hir::HirNodeId initializerNode;
-  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-  auto literal = expressionFor(lctx.hirModule, initializerNode);
-  auto overwriteLiteral = expressionFor(lctx.hirModule, write.value);
-  auto reference = localReferenceFor(lctx.hirModule, lctx.valueNode);
-  auto fieldProjection = localFieldProjectionFor(lctx.hirModule, lctx.valueNode);
-  auto overwriteBinary = primitiveBinaryFor(lctx.hirModule, write.value);
-  auto overwriteParameter = parameterReferenceFor(lctx.hirModule, write.value);
-  if (literal == zc::none || overwriteLiteral == zc::none || reference == zc::none) return zc::none;
-  if (fieldProjection != zc::none || overwriteBinary != zc::none || overwriteParameter != zc::none)
-    return zc::none;
-  if (binding.initializer != ZC_ASSERT_NONNULL(literal).node) return zc::none;
-  if (write.kind != hir::HirLocalWriteKind::Overwrite || write.field != zc::none) return zc::none;
-  if (write.local != binding.local) return zc::none;
-  if (write.local != ZC_ASSERT_NONNULL(reference).local) return zc::none;
-  if (write.type != binding.type) return zc::none;
-  if (binding.type != lctx.declaration.resultType) return zc::none;
-  if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
-  if (ZC_ASSERT_NONNULL(overwriteLiteral).type != binding.type) return zc::none;
-  if (ZC_ASSERT_NONNULL(reference).type != binding.type) return zc::none;
-  if (ZC_ASSERT_NONNULL(reference).category != hir::HirValueCategory::Place) return zc::none;
-  return buildScalarLocalOverwriteReturn(lctx, binding, ZC_ASSERT_NONNULL(literal), write,
-                                         ZC_ASSERT_NONNULL(overwriteLiteral));
-}
-
 /// Local-alias reborrow return: `let y = p; return &*y;` (optionally wrapped
 /// in a trailing unsafe block). The sole user local copies the sole reference
 /// parameter and the return reborrows through the local alias.
@@ -7706,7 +7619,6 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"PrimitiveUnary", strategyPrimitiveUnary},
     {"AggregateLocal", strategyAggregateLocal},
     {"LocalBorrowReturn", strategyLocalBorrowReturn},
-    {"ScalarLocalOverwrite", strategyScalarLocalOverwrite},
     {"ForLoopReturn", strategyForLoopReturn},
     {"NestedForLoopAccumulatorReturn", strategyNestedForLoopAccumulatorReturn},
     {"ForLoopAccumulatorReturn", strategyForLoopAccumulatorReturn},
@@ -7728,7 +7640,7 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
   // Try the RFC 0048 Phase 3 recursive builder first. It walks the HIR tree
   // structurally and returns none for constructs it cannot yet lower.
   auto recursive = buildRecursiveFunction(hirModule, declaration, identities, proofs,
-                                           zc::Maybe<identity::DefId>(copyMarker));
+                                          zc::Maybe<identity::DefId>(copyMarker));
   if (recursive != zc::none) {
     auto definition = identities.definition(declaration.definition);
     if (definition != zc::none) {

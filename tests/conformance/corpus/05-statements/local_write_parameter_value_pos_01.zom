@@ -1,0 +1,5 @@
+fn f(p: i32) -> i32 {
+    mut v: i32;
+    v = p;
+    return v;
+}

@@ -1,0 +1,6 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, functionParameter, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "An initializer-less mut binding is initialized from a parameter copy and"
+  - "read on the return; the parameterized entry is object-emission only."

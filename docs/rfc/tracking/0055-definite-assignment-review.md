@@ -377,4 +377,91 @@ slice. Three non-blocking nits, all applied:
 
 ## Implementation Tracker
 
-Not started. Implementation begins only after the RFC moves to ACCEPTED.
+Implementation opened 2026-10-18 after ACCEPTED. Per-shape vertical
+transactions, one commit each.
+
+### Slice 1 - straight-line `mut` late init, parameter RHS, one overwrite
+
+Code landed (pending final commit); verified 2026-10-18 against
+`build-sanitizer`. Baseline incidents, root causes, and post-slice results:
+
+| Shape | Program | Baseline | After slice 1 |
+|---|---|---|---|
+| A literal late init | `mut v: i32; v = 1; return v;` | end to end via HIR `GenericShape`; LIR `lowerScalarConstantReturn` | dedicated `LocalWriteReturn`; native exit 41 |
+| B parameter RHS | `fn f(p: i32) -> i32 { mut v: i32; v = p; return v; }` | ir-phase incident c5811f00 (`MirConstruction/MissingRequiredFact`, legacy terminal guard) even at `--check` | accepted; object emission only (`zom.arithmetic`, parameter forwarded) |
+| C initialize then overwrite | `mut v: i32 = 1; v = 2; return v;` | `--check` ok; incident db178b9c (`LirVerification/InvalidFact`, `SlotSetMismatch`) at `--emit=binary`; the translation validator folded the final overwrite as `ScalarConstant` and demanded zero slots | accepted; native exit 41 via `zom.overwrite` |
+
+Implementation, one vertical slice:
+
+- HIR classification (`hir-builder.cc`): the `LocalWriteReturn` arm admits
+  three families - literal-initialized, parameter-initialized, and
+  initializer-less bindings whose plain writes all have scalar
+  literal/parameter values. A binary write to an uninitialized target
+  (`v = v + 1`) is excluded; the residual GenericShape ZOM4098 net stays for
+  other unclaimed parameter-write shapes. `LocalWriteReturn` gained an
+  optional `parameterReference` and an optional initializer `literal`.
+- HIR materializer (`lower-stmt-write.cc`): the initializer node and its
+  literal/parameter leaf are emitted only when the binding has an
+  initializer, matching the verifier's existing `(hasInit ? 6 : 5) + 2N`
+  stride.
+- Recursive MIR builder (`recursive-mir-builder.cc`): arms for an
+  initializer-less `LocalBinding` (StorageLive only) and for a `LocalWrite`
+  statement (literal/parameter value; Initialize/Overwrite transferred
+  verbatim from HIR).
+- Removed the dead `buildScalarLocalOverwriteReturn`, its
+  `strategyScalarLocalOverwrite`, and the `ScalarLocalOverwrite` strategy
+  table entry; the recursive builder produces byte-identical MIR.
+- LIR (`mir-to-lir.cc`): the initializing assign admits a projection-free
+  copy/move of a leading parameter local in addition to a constant.
+- Translation validator: a return fold is `ScalarConstant` only for a unique
+  `Initialize` assign to the returned root; initialize-then-overwrite is not
+  folded, so the one-slot lowerer validates (fix for C).
+- Fail-closed drain (`built-mir.cc`): a checker-admitted initializer-less
+  plain-write body the rail cannot lower (e.g. a binary write value) rejects
+  as `UnsupportedSourceConstruct` (ZOM4099), never an incident.
+
+Fixtures (registered in `tests/CMakeLists.txt`):
+
+- Native run-cases (exit 41):
+  `tests/integration/core-library/mut-late-init-consumer/` and
+  `mut-late-init-overwrite-consumer/`.
+- Object-emission cases: the two above plus
+  `mut-late-init-param-consumer/` (parameterized, object only).
+- Conformance positives under `tests/conformance/corpus/05-statements/`:
+  `local_write_mut_late_init_pos_01.zom`,
+  `local_write_mut_overwrite_pos_01.zom`,
+  `local_write_parameter_value_pos_01.zom`, and the renamed
+  `local_write_parameter_initializer_overwrite_pos_01.zom` (formerly
+  `..._neg_55.zom`, which pinned ZOM4098 for `mut a: i32 = p; a = 2;` - now
+  a valid accepted shape; the ZOM4098 diagnostics pin was deleted and
+  ZOM4098 retains two other corpus emitters). Grammar YAMLs hand-authored;
+  AST expectations regenerated and human-diff reviewed.
+- Conformance negative `local_write_late_init_binary_neg_01.zom`:
+  `mut v: i32; v = v + 1; return v;` pins ZOM4099 (no incident).
+
+Verification: sanitizer build clean; conformance quartet (grammar, AST,
+AST-coverage, diagnostics) passes; `lir-translation-validator`, `built-mir`,
+`lir-verifier`, `lir-module`, `llvm-translation` ztests pass; the HIR module
+ztest (which asserts the parameter-write and all-literal-write node layouts
+and 3-statement MIR directly) passes in isolation; native/object witness
+tools green; object bytes byte-identical across the HIR migration for A and
+C. One pre-existing, out-of-scope gate gap exists on clean HEAD independent
+of this slice: `check-diagnostic-coverage.py` reports ZOM4106
+`TypeAliasTargetUnsupported` emitted but never asserted (type-alias work,
+commit e4e7af50). Parity re-record is tracked under slice 5.
+
+### Slice 2 - straight-line `let` single late init
+
+Not started.
+
+### Slice 3 - four-block `let` diamond
+
+Not started.
+
+### Slice 4 - spec normative text
+
+Not started.
+
+### Slice 5 - verification + parity re-record
+
+Not started.

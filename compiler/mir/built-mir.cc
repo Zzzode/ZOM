@@ -1338,6 +1338,51 @@ zc::Maybe<const hir::HirPrimitiveBinaryExpression&> primitiveBinaryFor(
   return result;
 }
 
+// Recognizes the initializer-less late-init plain-write family the dedicated
+// recursive arm cannot lower yet: one initializer-less scalar binding, one or
+// more plain (field-free) writes to that binding, and a trailing return of a
+// reference to the same binding. The recursive/strategy rail lowers the
+// literal/parameter write values; a binary or otherwise non-scalar write value
+// leaves the body unlowerable. Such a body is checker-admitted source, not a
+// malformed IR, so it must drain as a capability rejection (ZOM4099) rather
+// than reach the legacy cascade's MissingRequiredFact incident. Returns the
+// span of an unsupported write when the body is this family but unlowerable.
+zc::Maybe<identity::SourceSpan> unloweredLateInitWriteSpan(const hir::VerifiedHirModule& module,
+                                                           const hir::HirBlockStatement& block) {
+  if (block.statements.size() < 3) return zc::none;
+  auto sourceBinding = localFor(module, block.statements[0]);
+  if (sourceBinding == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceBinding);
+  if (binding.initializer != zc::none) return zc::none;
+
+  for (size_t i = 1; i + 1 < block.statements.size(); ++i) {
+    auto write = localWriteFor(module, block.statements[i]);
+    if (write == zc::none) return zc::none;
+    const auto& w = ZC_ASSERT_NONNULL(write);
+    if (w.field != zc::none || w.local != binding.local) return zc::none;
+  }
+
+  auto sourceReturn = returnFor(module, block.statements[block.statements.size() - 1]);
+  if (sourceReturn == zc::none) return zc::none;
+  auto reference = localReferenceFor(module, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (reference == zc::none || ZC_ASSERT_NONNULL(reference).local != binding.local) {
+    return zc::none;
+  }
+
+  // The body is the late-init plain-write family. The recursive rail lowers
+  // every write whose value is a scalar literal or parameter copy; reaching
+  // here means at least one write uses an unsupported value form. Report its
+  // span for the capability rejection.
+  for (size_t i = 1; i + 1 < block.statements.size(); ++i) {
+    const auto& w = ZC_ASSERT_NONNULL(localWriteFor(module, block.statements[i]));
+    if (expressionFor(module, w.value) == zc::none &&
+        parameterReferenceFor(module, w.value) == zc::none) {
+      return w.sourceSpan.clone();
+    }
+  }
+  return zc::none;
+}
+
 // True when a HIR block is a leading-`let`-then-`return` body lowered by the
 // sequential N-local rail: N leading local bindings followed by a single return.
 // N>=2 bodies always qualify. An N==1 (two-statement) body qualifies only when
@@ -2462,6 +2507,18 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       ZC_IF_SOME(product, recursive) {
         pending.add(PendingMirFunction{zc::mv(product.function), zc::mv(product.ownerKey)});
         continue;
+      }
+      // Fail-closed drain for the checker-admitted initializer-less late-init
+      // plain-write family when a write value is outside the scalar
+      // literal/parameter slice. It is valid source the dedicated rail simply
+      // cannot lower yet, so drain as a capability rejection (ZOM4099) rather
+      // than dropping into the legacy cascade's MissingRequiredFact incident.
+      if (declaration.unsafeBlock == zc::none) {
+        ZC_IF_SOME(unsupportedWrite, unloweredLateInitWriteSpan(hirModule, block)) {
+          return rejectMirCapability<BuiltMirCandidate>(
+              ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition, identities,
+              zc::mv(unsupportedWrite));
+        }
       }
       if (block.statements.size() == 2) {
         auto sourceLocal = localFor(hirModule, block.statements[0]);

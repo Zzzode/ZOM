@@ -11061,9 +11061,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 zc::mv(ZC_ASSERT_NONNULL(localReference))};
         }
         // Local write return.
-        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
-            localWrites.size() != 0 && localWrites.size() == localWriteValues.size() &&
-            localReference != zc::none &&
+        if (local != zc::none && localWrites.size() != 0 &&
+            localWrites.size() == localWriteValues.size() && localReference != zc::none &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
                     localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
                     unsafeBlockSpan)) {
@@ -11071,15 +11070,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           for (const auto& write : localWrites) {
             if (write.field != zc::none) writesArePlain = false;
           }
-          // The local-write lowering carrier only builds literal-initialized
-          // storage; a parameter-initialized local with writes is rejected as
-          // ZOM4098 by the GenericShape catch-all below.
-          const bool initializedByLiteral = literal != zc::none && parameterReference == zc::none;
-          if (writesArePlain && initializedByLiteral) {
-            return LocalWriteReturn{zc::mv(ZC_ASSERT_NONNULL(local)),
-                                    zc::mv(ZC_ASSERT_NONNULL(literal)), zc::mv(localWrites),
-                                    zc::mv(localWriteValues),
-                                    zc::mv(ZC_ASSERT_NONNULL(localReference))};
+          const bool bindingInitialized = ZC_ASSERT_NONNULL(local).initializer != zc::none;
+          const bool initializerIsLiteral = literal != zc::none && parameterReference == zc::none;
+          const bool initializerIsParameter = literal == zc::none && parameterReference != zc::none;
+          // An initializer-less binding is initialized by its first write.
+          // Slice 1 admits only scalar (literal/parameter) write values on that
+          // path; a binary write would read the uninitialized target and stays
+          // on the fail-closed GenericShape drain.
+          bool lateWritesAreScalar = false;
+          if (!bindingInitialized) {
+            lateWritesAreScalar = true;
+            for (const auto& writeValue : localWriteValues) {
+              if (writeValue.literal == zc::none && writeValue.parameter == zc::none) {
+                lateWritesAreScalar = false;
+                break;
+              }
+            }
+          }
+          const bool literalInitializerFamily = bindingInitialized && initializerIsLiteral;
+          const bool parameterInitializerFamily = bindingInitialized && initializerIsParameter;
+          const bool lateInitializerFamily = !bindingInitialized && lateWritesAreScalar;
+          if (writesArePlain &&
+              (literalInitializerFamily || parameterInitializerFamily || lateInitializerFamily)) {
+            return LocalWriteReturn{
+                zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
+                zc::mv(parameterReference),       zc::mv(localWrites),
+                zc::mv(localWriteValues),         zc::mv(ZC_ASSERT_NONNULL(localReference))};
           }
         }
         // Local field projection return (aggregate field-write family).
@@ -11837,13 +11853,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerLocalBorrowReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
-    // A parameter-initialized mut local with writes and a local-reference
-    // return is admitted by ownership surface admission and the checker, but
-    // the local-write lowering carrier only builds literal-initialized
-    // storage. Reject the definition as the expression-statement capability
-    // code ZOM4098 (the same code compound assignment and postfix update use)
-    // rather than falling through to the generic materializer and failing
-    // downstream as an internal compiler error.
+    // Fail-closed net for residual parameter-initialized write shapes the
+    // dedicated LocalWriteReturn arm does not claim (an unsafe block, a call
+    // or aggregate in the body, a field projection, or a non-plain write).
+    // The plain literal/parameter scalar families are intercepted above and
+    // never reach GenericShape; only the unclaimed residuals drain as the
+    // expression-statement capability code ZOM4098 rather than reaching the
+    // generic materializer and failing downstream as an internal error.
     if (value.shape.is<GenericShape>()) {
       const auto& generic = value.shape.get<GenericShape>();
       if (generic.local != zc::none && ZC_ASSERT_NONNULL(generic.local).initializer != zc::none &&

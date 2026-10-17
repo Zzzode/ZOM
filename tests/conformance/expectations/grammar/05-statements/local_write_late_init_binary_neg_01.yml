@@ -1,0 +1,7 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, assignmentExpression, binaryExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a binary write to an initializer-less mut binding; the"
+  - "late-init lowering slice admits only literal/parameter write values, so"
+  - "the body drains as ZOM4099, never as an internal compiler error."
