@@ -695,11 +695,14 @@ parity.
   `tests/integration/core-library/definite-assignment-conditional-consumer/`
   package (`Zom.toml` + `src/main.zom`) whose `entry()` late-initializes an
   immutable `i32` in a `if (1 < 2) { ... } else { ... }` diamond and returns
-  it, with the matching `--run-case
-  tests/integration/core-library/definite-assignment-conditional-consumer/
-  Zom.toml::definite-assignment-conditional-consumer::entry::<expected-exit>`
-  line registered in `tests/CMakeLists.txt` (the run-case section), and
-  register the straight-line late-init cases for object emission.
+  it, and register it in `tests/CMakeLists.txt` with the same shape as the
+  existing run-case line -
+  `${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/
+  definite-assignment-conditional-consumer/Zom.toml::
+  definite_assignment_conditional_consumer::
+  definite_assignment_conditional_consumer::<expected-exit>` (hyphens in the
+  path, underscores in the package/binary identifiers). Also register the
+  straight-line late-init cases for object emission.
 - Parity: before re-recording, enumerate the reviewed existing-source
   deltas: the initialized-`let` double-write class flips ZOM4099 to
   ZOM4024, and
