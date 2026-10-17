@@ -2,20 +2,20 @@
 rfc: 55
 title: Definite Assignment For Initializer-less Local Bindings
 type: language
-status: REVIEW
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, spec-audit, binder-checker, ir-backend, runtime-memory, error-system, verification]
-approvers: []
+approvers: [rfc, spec-audit, binder-checker, ir-backend, runtime-memory, error-system, verification]
 created: 2026-10-17
-updated: 2026-10-17
+updated: 2026-10-18
 area: language
 requires: [7, 48]
 supersedes: []
 superseded-by: []
 discussion: docs/rfc/tracking/0055-definite-assignment-review.md#discussion-record
-decision: TBD
-implementation: TBD
+decision: docs/rfc/tracking/0055-definite-assignment-review.md#decision-record
+implementation: docs/rfc/tracking/0055-definite-assignment-review.md#implementation-tracker
 tracking-issue: docs/rfc/tracking/0055-definite-assignment-review.md#implementation-tracker
 ---
 
@@ -356,11 +356,16 @@ constructible HIR representation today.
   initializer-less binding plus one later `Initialize` write: a
   `HirLocalBinding` whose `initializer` is `none`, followed by a
   `HirLocalWriteStatement` of kind `Initialize` to that `local`, followed by
-  a trailing local reference. The MIR-side write arm is `LocalWriteReturn`
-  (the correct HIR/MIR build-arm name; no HIR shape or MIR build arm is
-  called `ScalarLocalOverwrite` - that spelling exists only as the LIR
-  helper `lowerScalarLocalOverwriteReturn` in `compiler/lir/mir-to-lir.h`),
-  whose current initializer-required guard is relaxed for this arm.
+  a trailing local reference. The HIR shape is `LocalWriteReturn`
+  (`hir-pending.h:809`, `buildLocalWriteReturn` in `mir-builder.cc`), whose
+  initializer-required guard (`mir-builder.cc:1973-1977`, which rejects
+  initializer-less bindings today) is relaxed for this arm. Do not confuse
+  it with the separately existing MIR arm `buildScalarLocalOverwriteReturn`
+  (`mir-builder.cc:1879`, strategy entry `"ScalarLocalOverwrite"` at
+  `mir-builder.cc:7709`) or the LIR helper
+  `lowerScalarLocalOverwriteReturn` (`compiler/lir/mir-to-lir.h:457`); the
+  overwrite arms serve already-initialized places and are not the
+  late-init admission point.
 - **Diamond (one new HIR node).** Add a dedicated block-level record,
   `HirConditionalLocalWriteStatement { condition, thenWrite, elseWrite }`,
   block-listed like `HirLoopStatement`, with its own pool accessor, a new
@@ -421,6 +426,17 @@ check computes, per block, an entry and exit initialized set:
 - a block entry is the meet (AND) over its predecessors' exit sets, using
   the existing terminator traversal and `resolveDiamondCfg`.
 
+The lattice is a worklist fixpoint seeded top and iterated to the greatest
+fixpoint, following the proven ownership-rail implementation
+(`init.cc:890-950`), not a single block-order pass: the verifier also runs
+over existing loop MIR where the AND meet across a back edge (an
+`Initialize` before the header, an `Overwrite` on the back edge) cannot be
+computed in one pass. It is layered on top of the existing structural
+checks, which are retained unchanged: the StorageLive-before-use
+liveness scan, place/operand type agreement, and block reachability
+(`built-mir.cc:1643-1797`). `Initialize`-requires-in=false alone does not
+substitute for StorageLive-before-write.
+
 The lattice deliberately does **not** make a read/move/borrow/`Return`
 operand at a false entry a structural rejection. Reading a
 storage-live-but-uninitialized place is the error-preserving carrier the
@@ -434,7 +450,14 @@ already-initialized path, is malformed MIR); the ownership rail owns
 source-level uninitialized reads. Concretely, a one-arm
 `Initialize` diamond is structurally valid and reaches ownership as
 ZOM4093; mutating that arm's `Initialize` to `Overwrite` makes its entry
-state false and is an IR-invariant rejection.
+state false and is an IR-invariant rejection. The same discipline fixes the
+both-errors diamond's write kinds: the second per-path write to a `let` in
+the arm that writes twice must be classified `Overwrite` (entry in=true
+after that arm's first `Initialize`), so the function passes structural
+verification, ownership emits ZOM4093 for the arm that omits the write,
+and the checker independently emits ZOM4024 at the second-write site.
+Classifying that second write as `Initialize` would wrongly convert the
+case into an `IrInvariantRejected`.
 
 This is a bounded structural lattice over the admitted reducible CFG, not a
 general dominator pass. The RFC 0007 ownership overlay is fail-closed and
@@ -535,7 +558,7 @@ never reach ZOM4099:
 | Diagnostics contracts | `compiler/diagnostics/defs/diagnostics-checker.def`, `compiler/checker/inference/checked-facts.cc` projector/stage mapping (reuse ZOM4024; no checker-side ZOM4093) | `error-system` |
 | Initialization rail (ownership) | `compiler/ownership/facts/init.{h,cc}` and the ownership diagnostic projector: unchanged sole ZOM4093/ZOM4094 producer; new error-preserving HIR/MIR shapes must reach it | `runtime-memory` |
 | HIR builder | `compiler/hir/build/hir-pending.h`, `hir-shape.cc`, `hir-builder.cc`, `hir-module.cc` verifier enumeration sites, new late-init and diamond arms under `build/` | `ir-backend` |
-| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, `cfg-utils.h`, forward per-block initialized lattice in the structural verifier | `ir-backend` |
+| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `hir-node-resolver.{h,cc}` (new `HirNodeKind` pool scan entry, else the recursive builder bails the diamond to the legacy rail), `mir-builder.cc`, `cfg-utils.h`, forward per-block initialized lattice in the structural verifier | `ir-backend` |
 | LIR lowering | `compiler/lir/mir-to-lir.{h,cc}` (user-local late-init scalar path and generalized conditional-local-write diamond matcher; every unlowerable admitted shape stays a clean ZOM4099, never an incident) | `ir-backend` |
 | Conformance | `tests/conformance/corpus/05-statements/**`, grammar + AST + diagnostics expectations | `verification` |
 | Unit tests | body checker / HIR / MIR builder ztests | `verification` |
@@ -832,9 +855,7 @@ parity.
 
 ## Open Questions
 
-None. The non-goals explicitly defer loop-carried and partial-aggregate
-initialization; if those are pursued they get a separate RFC with expanded
-Chapter 14 coverage.
+None
 
 ## Status History
 
@@ -842,3 +863,4 @@ Chapter 14 coverage.
 |---|---|---|
 | 2026-10-17 | DRAFT | Initial draft specifying definite assignment for initializer-less local bindings. |
 | 2026-10-17 | REVIEW | Opened for owner review: rfc, spec-audit, binder-checker, ir-backend, error-system, verification. |
+| 2026-10-18 | ACCEPTED | All seven required owners approved (runtime-memory added during review): rfc and spec-audit Round 1; binder-checker, error-system, verification Round 2; ir-backend and runtime-memory completed 2026-10-18. Decision and review evidence recorded in the tracker. |

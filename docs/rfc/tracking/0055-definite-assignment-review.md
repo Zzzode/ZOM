@@ -30,7 +30,20 @@ initialization are explicit non-goals.
 
 ## Decision Record
 
-TBD - pending all required owner approvals.
+Accepted on 2026-10-18 after all seven required owners approved:
+`rfc` (Round 1), `spec-audit` (Round 1), `binder-checker` (Round 2),
+`ir-backend` (Round 2), `error-system` (Round 2), `runtime-memory`
+(Round 1), `verification` (Round 2). The accepted contract is the
+two-layer model: a new AST-structural body-checker write-registry pre-pass
+classifies Initialize/Overwrite (the body checker emits no ZOM4093), the
+existing post-MIR ownership init rail stays the sole ZOM4093/ZOM4094
+producer, the HIR gains one statement node
+(`HirConditionalLocalWriteStatement`), the MIR structural verifier gains a
+greatest-fixpoint initialized lattice for write-kind discipline only
+(uninitialized reads remain the ownership rail's source diagnostic, never
+an incident), and LIR gains the user-local scalar path plus a generalized
+conditional-local-write diamond matcher. Rollout is five per-shape
+vertical transactions as listed in the RFC's Implementation Plan.
 
 ## Owner Review Matrix
 
@@ -39,7 +52,7 @@ TBD - pending all required owner approvals.
 | `rfc` | Process, template conformance, required-owner completeness, RFC granularity | APPROVE (Round 1, 2026-10-17; two non-blocking editorial nits) |
 | `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | APPROVED (Round 1, 2026-10-17; six non-blocking spec-edit precision notes) |
 | `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | APPROVE (Round 2, 2026-10-17; Round 1 six findings revised and code-verified resolved; two non-blocking nits applied) |
-| `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, LIR admission, codec stability | REQUEST-CHANGES (Round 1, 2026-10-17; HIR diamond node missing, LIR layer absent/fail-open, verifier needs CFG lattice + nits); revised 2026-10-18, awaiting Round 2 |
+| `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, LIR admission, codec stability | APPROVE (Round 2, 2026-10-18; B1/B2/B3 resolved, read-gating layering adjudicated correct; five non-blocking nits applied) |
 | `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | APPROVED (Round 2, 2026-10-17; both Round 1 blockers resolved, nits applied) |
 | `runtime-memory` | Ownership init rail seam, ZOM4093 sole-producer boundary, zc/runtime/FFI scope | APPROVE (Round 1, 2026-10-18; five evaluation points code-verified; three non-blocking nits, all applied) |
 | `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | APPROVE (Round 2, 2026-10-18; Round 1 three blockers resolved, nits applied) |
@@ -267,6 +280,37 @@ uses the same arm as let; condition operand forms and `write.field ==
 none` guards stated; existing field-level arms
 (`buildLocalFieldProjectionReturn`) named as untouched; LIR helper
 `lowerScalarLocalOverwriteReturn` naming clarified.
+
+#### ir-backend owner, Round 2: APPROVE (2026-10-18)
+
+All three blockers verified resolved against the tree. B1: the
+block-listed node follows the exact `HirLoopStatement` precedent
+(pool/accessor, candidate plumbing, constructor, debug dump, fixed-id
+verifier arm, node resolver at `hir-node-resolver.h:44`). B2: the matcher
+constraints and fail-closed mapping were confirmed (MIR miss ->
+`rejectMirCapability(UnsupportedSourceConstruct)` -> ZOM4099; LIR miss ->
+descriptive `NativeObjectResult` rejection, no incident); the reviewer
+found `lowerScalarLocalOverwriteReturn` already admits the N-parameter +
+one UserLocal + Initialize/Overwrite shape but hard-requires a constant
+initializer (`mir-to-lir.cc:4562`), so the parameter-RHS extension is
+genuine. B3: the lattice rules were checked against every existing
+production shape class (diamonds, loop accumulators with back-edge
+overwrites, error-preserving StorageLive+read shapes), and both mutation
+cases yield in=false -> `IrFailureKind::InvalidFact`. The read-gating
+layering split was adjudicated correct: structural verification
+(`compiler-session.cc:3667-3677`) strictly precedes the ownership rail
+(`3756-3789`); gating reads structurally would duplicate the dataflow and
+turn ZOM4093 into an `IrInvariantRejected`. Five non-blocking nits, all
+applied: name `hir-node-resolver.{h,cc}` in the impact row; state that
+StorageLive/type/reachability checks are retained with the lattice layered
+on top; specify a greatest-fixpoint worklist (back-edge AND meet, precedent
+`init.cc:890-950`) rather than one pass; correct the
+`ScalarLocalOverwrite` naming sentence (`buildScalarLocalOverwriteReturn`
+at `mir-builder.cc:1879` and strategy at `:7709` do exist; the real
+instruction is relaxing the `buildLocalWriteReturn` guard at
+`:1973-1977`); pin the both-errors diamond's second per-path write as
+`Overwrite` so it reaches ZOM4024/ZOM4093 instead of an invariant
+rejection.
 
 #### binder-checker owner, Round 2: APPROVE (2026-10-17)
 
