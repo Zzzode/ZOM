@@ -525,6 +525,24 @@ The conformance diagnostics test `owner_local_immutable_field_write_neg_31`
 covers `mut cell = Cell { value: 0 }; cell.value = 42;` producing ZOM4024
 naming the field `value`.
 
+### 2026-10-17 Phase 2 - Uninitialized local return arms
+
+Two new specialized recursive arms replace the GenericShape catch-all for
+uninitialized local return shapes:
+
+- `UninitializedLocalReturn` — `let x: T; return x;` (uninitialized local
+  reference return). The binding has no initializer node; the ownership
+  checker rejects the read (ZOM4093) but HIR must still construct the
+  binding for the checker to validate.
+- `UninitializedFieldProjectionReturn` — `let x: T; return x.field;`
+  (uninitialized field projection return). Mirrors the local reference
+  arm for field projections.
+
+Both arms use a shorter node stride (function, body, local, return, value)
+with no initializer node. The GenericShape catch-all remains for
+aggregate-initialized local returns (e.g. `let r: Result = Result::Ok(41);
+return r;`).
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
