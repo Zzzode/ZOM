@@ -41,7 +41,7 @@ TBD - pending all required owner approvals.
 | `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | REQUEST-CHANGES (Round 1, 2026-10-17; six code-verified findings: lattice location, 4093 producer seam, read-before-init soundness, stale motivation, path-scoped classification, stage ordering) |
 | `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
 | `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | APPROVED (Round 2, 2026-10-17; both Round 1 blockers resolved, nits applied) |
-| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | REQUEST-CHANGES (Round 1, 2026-10-17; three blocking test-plan/observability gaps + four nits) |
+| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | REQUEST-CHANGES (Round 1); revised, awaiting Round 2 |
 
 ### 2026-10-17 Six-Owner Review Round 1 - Opened
 
@@ -188,6 +188,28 @@ Six code-verified findings, all addressed in the revision:
 
 Added runtime-memory as a required owner for the unchanged ownership rail.
 Awaiting Round 2 review and the initial runtime-memory review.
+
+#### verification owner, Round 1: REQUEST-CHANGES (2026-10-17); revised
+
+Three blocking observability gaps addressed:
+
+- B1 gate labels: replaced `-L lit` with full `ctest --preset default` plus
+  the `conformance-grammar`/`coverage` labels and
+  `check-diagnostic-coverage.py --check/--self-test`.
+- B2 end-to-end witnesses: added a straight-line mut positive and a mut
+  initialize-then-overwrite positive to the acceptance boundary; specified
+  the package-driven native witness (no-arg foldable condition) with the
+  exact CMake run-case identifier shape; stated parameterized guide example
+  is check/object only.
+- B3 parity: named the `--record --ir` then `--check --ir` command against
+  tests/coverage/corpus-process-parity.json plus `--self-test`; enumerated
+  the reviewed existing-source deltas (initialized-let double-write 4099 to
+  4024; raw_pointer_deref_assignment_requires_unsafe_neg_42 pinned first).
+
+Nits applied: mutation-test seam reuse (compiler-session-package-test),
+straight-line + one-arm-diamond domination mutations, reuse of
+uninitialized_local_return_neg_01, grammar YAML hand-authored with human
+diff review of regenerated diagnostics, CHECK-LITERAL/backtick style. Awaiting Round 2 review.
 
 ## Implementation Tracker
 
