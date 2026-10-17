@@ -10,6 +10,7 @@
 #include "compiler/checker/body/marker-proof.h"
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/mir/build/mir-fn-builder.h"
+#include "compiler/mir/build/recursive-mir-builder.h"
 #include "compiler/type/semantic-type-store.h"
 
 namespace zomlang::compiler::mir {
@@ -7724,6 +7725,18 @@ zc::Maybe<RecursiveFunctionProduct> tryBuildRecursiveFunction(
     const hir::VerifiedHirModule& hirModule, const checker::CheckerIdentityAuthority& identities,
     const type::SemanticTypeStore& semanticTypes, checker::marker::MarkerProofEngine& proofs,
     identity::DefId copyMarker) {
+  // Try the RFC 0048 Phase 3 recursive builder first. It walks the HIR tree
+  // structurally and returns none for constructs it cannot yet lower.
+  auto recursive = buildRecursiveFunction(hirModule, declaration, identities, proofs,
+                                           zc::Maybe<identity::DefId>(copyMarker));
+  if (recursive != zc::none) {
+    auto definition = identities.definition(declaration.definition);
+    if (definition != zc::none) {
+      zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+      return RecursiveFunctionProduct{zc::mv(ZC_ASSERT_NONNULL(recursive)), zc::mv(ownerKey)};
+    }
+  }
+  // Fall back to the shape strategy table.
   const LoweringContext lctx(declaration, block, hirModule, identities, semanticTypes, proofs,
                              copyMarker);
   for (const auto& entry : kStrategyTable) {
