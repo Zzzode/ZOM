@@ -423,10 +423,33 @@ format changes, so no data migration is possible. The corpus parity tool
 
 ## Documentation And Teaching Plan
 
-- Replace the Chapter 6 EBNF inline comment with a "Definite Assignment"
-  subsection stating the lattice informatively, the `let` one-write-per-path
-  rule, and the branch example; cross-reference Chapter 14's uninitialized
-  read and reinitialization rules.
+The Chapter 6 change is normative prose (the acceptance criteria require
+the path rule stated normatively, not merely as an EBNF comment). The
+follow-on spec edit must:
+
+- Replace the Chapter 6 EBNF inline comment with a normative "Definite
+  Assignment" subsection stating the lattice, the `let`
+  one-write-per-path rule, and the branch example; cross-reference
+  Chapter 14's uninitialized-read and reinitialization rules.
+- Amend Chapter 6 line ~113's blanket "`let` bindings ... may not be
+  reassigned" with an explicit carve-out: a single write that initializes
+  a previously uninitialized place is an initialization, not a
+  reassignment; only writes to a place already initialized on the path are
+  reassignments.
+- Pin the type-annotation rule for both keywords: a binding without an
+  Initializer, whether `mut` or `let`, requires a TypeAnnotation (both
+  forms fail closed today, so this closes a latent spec gap without
+  changing behavior).
+- Add a cross-reference to the new Chapter 6 subsection from the
+  Chapter 17 grammar-reference definite-assignment note so the canonical
+  grammar chapter does not lag.
+- State in the Chapter 6 prose that the Initialize/Overwrite transfer
+  governs the never-yet-initialized admission state on body-local scalar
+  bindings, and that move-then-reinitialize continues to follow Chapter 14
+  and is outside this contract.
+- Add to the Chapter 14 diagnostic-family list a bullet for use of an
+  uninitialized or deinitialized place (ZOM4093) with the declaration or
+  loss point noted (ZOM4094).
 - Update `docs/design/language/definite-assignment.md` from
   "specified, not fully implemented" to implemented with the landed commit
   range.

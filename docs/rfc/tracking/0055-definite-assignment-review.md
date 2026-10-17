@@ -37,7 +37,7 @@ TBD - pending all required owner approvals.
 | Owner | Surface | Round 1 |
 |---|---|---|
 | `rfc` | Process, template conformance, required-owner completeness, RFC granularity | APPROVE (Round 1, 2026-10-17; two non-blocking editorial nits) |
-| `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | Pending |
+| `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | APPROVED (Round 1, 2026-10-17; six non-blocking spec-edit precision notes) |
 | `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | Pending |
 | `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
 | `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | Pending |
@@ -94,6 +94,29 @@ recorded below as the owner agents report.
   `spec-audit` (or joint) at the author's discretion. (2) Two em dashes
   appear in the RFC and this tracker; ASCII hyphens match repository
   typographic discipline, though the English-only gate itself passes.
+
+#### spec-audit owner, Round 1: APPROVE (2026-10-17)
+
+- Verified every checkable claim against Chapters 5/6/14/17, both ANTLR
+  grammars, the diagnostic catalog, and the ownership init rail, and ran
+  the five motivating shapes through the sanitizer build.
+- Chapter 6 lines 97-100 are confirmed to be only an intent comment with no
+  path-join model, diagnostic, or IR contract; the separate-RFC call holds.
+- The proposed two-level lattice matches Chapter 14 lines 70-72 and the
+  ownership intersection implementation (`ownership/facts/init.h:70`,
+  `init.cc:1267`); no contradiction.
+- No grammar change: `ZomParser.g4:982` already makes the initializer
+  optional for both keywords; five-way alignment passes as written.
+- Non-goals (partial field init, loop-carried init, module scope, const)
+  are correctly bounded.
+- Six non-blocking precision notes for the follow-on normative spec edit
+  were folded into the RFC's Documentation And Teaching Plan: carve out
+  the single-initializing write from the Chapter 6 line-113 reassignment
+  prohibition; require a type annotation for initializer-less `let` and
+  `mut`; cross-reference the subsection from Chapter 17; scope the
+  Initialize/Overwrite transfer to body-local scalar bindings; add
+  ZOM4093/ZOM4094 to the Chapter 14 diagnostic-family list; write the
+  rule normatively.
 
 ## Implementation Tracker
 
