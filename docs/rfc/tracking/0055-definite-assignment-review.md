@@ -38,10 +38,11 @@ TBD - pending all required owner approvals.
 |---|---|---|
 | `rfc` | Process, template conformance, required-owner completeness, RFC granularity | APPROVE (Round 1, 2026-10-17; two non-blocking editorial nits) |
 | `spec-audit` | Chapter 6/14 normative prose, five-way spec alignment, drift posture | APPROVED (Round 1, 2026-10-17; six non-blocking spec-edit precision notes) |
-| `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | REQUEST-CHANGES (Round 1, 2026-10-17; six code-verified findings: lattice location, 4093 producer seam, read-before-init soundness, stale motivation, path-scoped classification, stage ordering) |
-| `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, codec stability | Pending |
+| `binder-checker` | LocalWrite admission, init lattice, Initialize/Overwrite classification, ZOM4024 drain | APPROVE (Round 2, 2026-10-17; Round 1 six findings revised and code-verified resolved; two non-blocking nits applied) |
+| `ir-backend` | HIR late-init arm, recursive MIR write family, structural verifier, LIR admission, codec stability | REQUEST-CHANGES (Round 1, 2026-10-17; HIR diamond node missing, LIR layer absent/fail-open, verifier needs CFG lattice + nits); revised 2026-10-18, awaiting Round 2 |
 | `error-system` | ZOM4024/ZOM4093/ZOM4094 diagnostic contracts, projector/stage mapping, no parallel code | APPROVED (Round 2, 2026-10-17; both Round 1 blockers resolved, nits applied) |
-| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | REQUEST-CHANGES (Round 1); revised, awaiting Round 2 |
+| `runtime-memory` | Ownership init rail seam, ZOM4093 sole-producer boundary, zc/runtime/FFI scope | APPROVE (Round 1, 2026-10-18; five evaluation points code-verified; three non-blocking nits, all applied) |
+| `verification` | Conformance grammar/AST/diagnostics coverage, parity gate, mutation tests | APPROVE (Round 2, 2026-10-18; Round 1 three blockers resolved, nits applied) |
 
 ### 2026-10-17 Six-Owner Review Round 1 - Opened
 
@@ -187,7 +188,8 @@ Six code-verified findings, all addressed in the revision:
    ownership keeps the path-sensitive guarantee).
 
 Added runtime-memory as a required owner for the unchanged ownership rail.
-Awaiting Round 2 review and the initial runtime-memory review.
+Round 2 returned APPROVE (entry below); runtime-memory Round 1 also
+APPROVE.
 
 #### verification owner, Round 1: REQUEST-CHANGES (2026-10-17); revised
 
@@ -209,7 +211,125 @@ Three blocking observability gaps addressed:
 Nits applied: mutation-test seam reuse (compiler-session-package-test),
 straight-line + one-arm-diamond domination mutations, reuse of
 uninitialized_local_return_neg_01, grammar YAML hand-authored with human
-diff review of regenerated diagnostics, CHECK-LITERAL/backtick style. Awaiting Round 2 review.
+diff review of regenerated diagnostics, CHECK-LITERAL/backtick style.
+
+#### ir-backend owner, Round 1: REQUEST-CHANGES (2026-10-17); revised 2026-10-18
+
+Three blocking findings, all code-verified by the owner:
+
+- B1 missing HIR diamond node: `HirConditionalExpression`
+  (`compiler/hir/hir-module.h:428`) is an expression whose arms yield
+  values; the statement `if (c) { v = a; } else { v = b; }` has no
+  constructible HIR representation. Resolved by adding a dedicated
+  block-listed `HirConditionalLocalWriteStatement { condition, thenWrite,
+  elseWrite }` node with its own pool, `HirNodeKind::ConditionalLocalWrite`,
+  fixed-id digest coverage, and a per-node verifier arm. The same arm
+  serves `let` and `mut` diamonds (a per-path first write is
+  `Initialize`); scalar guards require `write.field == none` and the
+  admitted condition operand forms. The value-yield record reuse is the
+  rejected alternative.
+- B2 LIR layer absent: the only four-block diamond matcher
+  (`compiler/lir/mir-to-lir.cc:1085` onward) requires exactly one
+  FunctionResult local, a single entry `StorageLive(result)`, and a bare
+  boolean-parameter discriminant; a UserLocal late-init diamond matches
+  none of these. Resolved with a new "LIR contract" RFC section, a
+  `compiler/lir/mir-to-lir.{h,cc}` Repository Impact row (ir-backend),
+  LIR work folded into vertical slices 1-3 (scalar user-local path;
+  generalized/sibling UserLocal matcher with the foldable comparison
+  discriminant first), and the hard requirement that every pre-LIR miss
+  during rollout be a clean ZOM4099, never an incident; the known
+  parameter-RHS/overwrite ICE baselines must clear in slice 1.
+- B3 verifier must be a CFG lattice: the current
+  `validateStructuralWellFormedness` linear StorageLive scan
+  (`built-mir.cc:1686`) never inspects `MirInitializationKind` and cannot
+  see cross-arm dominance. Resolved with a forward per-block entry/exit
+  initialized lattice: parameters initialized at entry; `Initialize`
+  requires in=false and sets true; `Overwrite` requires in=true; block
+  entry is the AND meet over predecessors via the existing terminator
+  traversal and `resolveDiamondCfg`.
+
+Layer reconciliation while resolving B3 with the error-system and
+runtime-memory seams: the lattice does NOT reject a read/move/borrow/
+Return operand at a false entry. Reading a storage-live-but-uninitialized
+place is the error-preserving carrier the ownership rail consumes to emit
+ZOM4093; making it structurally invalid would convert the existing
+`UninitializedLocalReturn` path and the one-branch-missing diamond into
+`IrInvariantRejected` incidents. Structural verification owns IR kind
+discipline only; ownership owns source-level uninitialized reads. The
+one-arm `Initialize` diamond is structurally valid and reaches ZOM4093;
+the verifier mutation flips that arm to `Overwrite` (in=false), which is
+the invariant rejection.
+
+Nits applied: legacy-arm retirement gated on observed byte-parity with
+parallel rails named as a blocker; within-transaction ordering (new arm
+proven, then the ZOM4099 drain removed, then legacy deleted); mut diamond
+uses the same arm as let; condition operand forms and `write.field ==
+none` guards stated; existing field-level arms
+(`buildLocalFieldProjectionReturn`) named as untouched; LIR helper
+`lowerScalarLocalOverwriteReturn` naming clarified.
+
+#### binder-checker owner, Round 2: APPROVE (2026-10-17)
+
+All six Round 1 findings verified resolved against the tree rather than
+the prose: two-layer location (body checker emits no ZOM4093;
+`LocalWrite` sets only `producedType` and no `places.add` site is a plain
+local write); sole-producer seam at `init.cc:1306` plus projector
+`ownership-source-diagnostic-projector.cc:206-212`; read-before-init
+bounds (plain Assign, RHS not referencing the target; `++/--` gates
+verified); corrected motivation (working mut shapes build via
+`GenericShape`, arm correctly named `LocalWriteReturn`, parameter-RHS
+ICEs listed as baselines); path-scoped lockstep classification at all six
+HIR verifier re-derivation sites; per-shape vertical transactions. Both
+non-blocking nits applied: the missing-branch ZOM4093 assertion moved out
+of the body-checker ztest list (the checker has no 4093 emitter), and the
+`ScalarLocalOverwrite` sentence now notes the LIR helper
+`lowerScalarLocalOverwriteReturn`.
+
+#### verification owner, Round 2: APPROVE (2026-10-18)
+
+B1 gates resolved (full `ctest --preset default`, `conformance-grammar`
+and `coverage` labels confirmed in
+`tests/conformance/runners/grammar/CMakeLists.txt:27`,
+`check-diagnostic-coverage.py --check/--self-test`). B2 witnesses
+resolved (four positives enumerated; package-driven no-arg foldable
+native witness `definite-assignment-conditional-consumer`; run-case
+shape matches `tests/CMakeLists.txt:422`). B3 parity resolved
+(record/check/self-test commands; reviewed deltas enumerated including
+`raw_pointer_deref_assignment_requires_unsafe_neg_42.zom`, confirmed to
+have no diagnostics layer today). Nits all verified: mutation seam
+`compiler-session-package-test.cc:2359-2396`, `MirStatement::assign`
+signature, no duplicate of `uninitialized_local_return_neg_01`,
+hand-authored grammar YAML, CHECK-LITERAL/backtick style. Harmless
+imprecision corrected: `--self-test` uses embedded fixtures and takes no
+snapshot argument.
+
+#### runtime-memory owner, Round 1: APPROVE (2026-10-18)
+
+All five evaluation points code-verified. The init rail already gives the
+required lattice (`init.h:66-71`: intersection on `mustBeInitialized`),
+admits the reducible SwitchInt/Goto topology with monotone fixpoint plus
+the all-predecessor emission pass (`init.cc:890-969`), transfers
+`Initialize`/`Overwrite` correctly (`init.cc:449-462`), and emits
+ZOM4093/ZOM4094 with the note anchored at the `StorageLive` declaration
+span (`init.cc:1138-1148`). The owner hand-traced the one-arm-missing
+diamond: derivation succeeds and it surfaces as source ZOM4093. No
+zc/runtime/FFI/StorageDead/drop surface is touched in the Copy-scalar
+slice. Three non-blocking nits, all applied:
+
+1. The one-branch-missing diamond must surface as `SourceRejected`
+   ZOM4093, never `IrInvariantRejected`; a dedicated full-session negative
+   assertion now pins this (and drove the B3 lattice layering described
+   in the ir-backend entry above).
+2. The admitted RHS value set is stated explicitly as Copy scalars
+   (integer/boolean primitives; no aggregates, references, pointers, or
+   other non-Copy values), so a non-Copy parameter RHS cannot enter the
+   `Initialize` arm.
+3. Follow-up prerequisite recorded: when a later RFC lifts
+   compound/arithmetic writes or partial aggregate initialization, the
+   `init.cc` source-failure traversal must be extended to inspect
+   `Comparison`/`Arithmetic`/`NominalAggregate` rvalue operands, not only
+   `Use` rvalues (`init.cc:1367-1368` today). This is a Chapter 14
+   follow-up gate, out of scope for RFC 0055.
 
 ## Implementation Tracker
 

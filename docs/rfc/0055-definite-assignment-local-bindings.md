@@ -299,9 +299,12 @@ restricted to:
 - a plain assignment only: `writeOp == ast::AssignmentOperatorKind::Assign`;
   compound writes are excluded (they read the target and stay
   mut-plus-already-initialized-only),
-- a RHS in the admitted value set - scalar literal, a parameter, or an
-  earlier already-initialized local - that does **not** reference the target
-  binding in any operand,
+- a RHS in the admitted value set - a Copy scalar (the admitted integer and
+  boolean primitive types the existing scalar lowering path handles; no
+  aggregates, references, pointers, or other non-Copy values, so a non-Copy
+  parameter RHS cannot enter the `Initialize` arm), a scalar literal, a
+  parameter, or an earlier already-initialized local - that does **not**
+  reference the target binding in any operand,
 - the lattice read rule applied to every RHS operand and to the `if`
   discriminant, not only the trailing return read.
 
@@ -341,23 +344,51 @@ per-path first write. This RFC:
 ### HIR contract
 
 `HirLocalWriteKind` already exists
-(`compiler/hir/hir-module.h`): `Initialize = 0x01`, `Overwrite = 0x02`. No
-new IR node is required.
+(`compiler/hir/hir-module.h`): `Initialize = 0x01`, `Overwrite = 0x02`. The
+straight-line late-init shape needs no new node. The diamond does: HIR has
+no statement-level conditional - `HirConditionalExpression` is an
+expression whose arms name yielded values and is only consumed by returns
+and ternary initializers, so `if (c) { v = a; } else { v = b; }` (arms are
+statements writing a place, not expressions yielding a value) has no
+constructible HIR representation today.
 
-- The HIR shape classifier gains an initializer-less binding plus one later
-  `Initialize` write shape: a `HirLocalBinding` whose `initializer` is
-  `none`, followed by a `HirLocalWriteStatement` of kind `Initialize` to
-  that `local`, followed by a trailing local reference. The MIR-side write
-  arm is `LocalWriteReturn` (the RFC must use that name; there is no arm
-  called `ScalarLocalOverwrite`, and `LocalWriteReturn` currently requires
-  an initializer - that guard is relaxed for the new initializer-less arm).
-- A distinct path-scoped diamond arm carries one `Initialize` write per
-  arm; the builder and verifier classify both arm writes as `Initialize`.
+- **Straight line (no new node).** The shape classifier gains an
+  initializer-less binding plus one later `Initialize` write: a
+  `HirLocalBinding` whose `initializer` is `none`, followed by a
+  `HirLocalWriteStatement` of kind `Initialize` to that `local`, followed by
+  a trailing local reference. The MIR-side write arm is `LocalWriteReturn`
+  (the correct HIR/MIR build-arm name; no HIR shape or MIR build arm is
+  called `ScalarLocalOverwrite` - that spelling exists only as the LIR
+  helper `lowerScalarLocalOverwriteReturn` in `compiler/lir/mir-to-lir.h`),
+  whose current initializer-required guard is relaxed for this arm.
+- **Diamond (one new HIR node).** Add a dedicated block-level record,
+  `HirConditionalLocalWriteStatement { condition, thenWrite, elseWrite }`,
+  block-listed like `HirLoopStatement`, with its own pool accessor, a new
+  `HirNodeKind::ConditionalLocalWrite`, fixed-id digest coverage, and a
+  per-node verifier arm. `thenWrite`/`elseWrite` name the per-arm
+  `HirLocalWriteStatement` nodes, each classified `Initialize` for an
+  initializer-less target (the same arm serves `let` and `mut` diamonds: a
+  per-path first write is `Initialize`). Scalar-leaf guards require
+  `write.field == zc::none` and the admitted condition operand forms (the
+  current LIR diamond matcher admits a bare bool parameter; other
+  discriminant forms stay fail-closed). Reusing `HirConditionalExpression`
+  as a statement is the rejected alternative: its arm-id/pool/node-id/block
+  layout is value-yield oriented and would overload one record with two
+  semantics.
 - The `GenericShape` catch-all currently builds the working straight-line
   `mut` shapes end to end. It must not be extended to paper over the new
   `let`/diamond shapes; those get dedicated arms under the RFC 0048 family
-  decomposition. The currently-working `mut` shapes are migrated, not
-  broken, with corpus parity gating each move.
+  decomposition. The currently-working `mut` shapes are migrated off the
+  legacy rail once the new arms prove byte-parity, then the legacy arms are
+  deleted (parallel MIR rails are themselves a blocker); corpus parity
+  gates each move. Existing field-level late-init MIR arms
+  (`buildLocalFieldProjectionReturn` and the inline field arms) are
+  unaffected - the new scalar arms must not duplicate or perturb them.
+
+So the precise vocabulary delta is: **MIR vocabulary and codec unchanged;
+HIR gains one statement node, its pool, digest/verifier arm, and
+`HirNodeKind`.**
+
 
 ### Built MIR contract
 
@@ -376,24 +407,83 @@ For the four-block diamond, each arm ends by assigning its target before
 the join block reads it; no block parameters or PHIs are introduced (MIR
 stays place-based).
 
-The structural MIR verifier
-(`compiler/mir/built-mir.cc` `validateStructuralWellFormedness`) today
-performs only a linear, block-order `StorageLive`-before-use scan; it does
-not compute dominance across branches, so it cannot by itself prove that an
-`Overwrite` has a dominating `Initialize` on every edge. This RFC adds
-that check as new code, scoped honestly: for the admitted straight-line and
-four-block-diamond shapes it verifies structurally (straight-line order,
-and via the cfg-utils diamond/loop resolvers already in
-`compiler/mir/cfg-utils.h`) that an `Overwrite` target has a preceding
-`StorageLive` and a dominating `Initialize`. It is not a general dominator
-dataflow. The path-sensitive guarantee that the join read is initialized on
-both edges stays with the ownership rail (`mustBeInitialized`
-intersection); the structural check is an earlier tripwire and does not
-replace the rail.
+The structural MIR verifier must grow from its current linear scan into a
+forward per-block initialized lattice. `validateStructuralWellFormedness`
+(`compiler/mir/built-mir.cc`) today keeps one bool per local in linear
+block order and never inspects `MirInitializationKind`; that scan cannot
+validate a diamond because an `Initialize` in a single arm flips the global
+bit before the join and would accept a missing-arm `Overwrite`. The new
+check computes, per block, an entry and exit initialized set:
+
+- parameters are initialized at the entry block;
+- `Initialize` requires the target uninitialized on entry and sets it;
+- `Overwrite` requires the target initialized on entry;
+- a block entry is the meet (AND) over its predecessors' exit sets, using
+  the existing terminator traversal and `resolveDiamondCfg`.
+
+The lattice deliberately does **not** make a read/move/borrow/`Return`
+operand at a false entry a structural rejection. Reading a
+storage-live-but-uninitialized place is the error-preserving carrier the
+ownership rail consumes to emit ZOM4093: the existing
+`UninitializedLocalReturn` path and the new one-branch-missing diamond
+both build MIR containing exactly such a read, pass structural
+verification, and must surface as `SourceRejected` ZOM4093/ZOM4094, never
+`IrInvariantRejected`. Structural verification owns IR kind discipline
+(an `Overwrite` with no dominating `Initialize`, or an `Initialize` on an
+already-initialized path, is malformed MIR); the ownership rail owns
+source-level uninitialized reads. Concretely, a one-arm
+`Initialize` diamond is structurally valid and reaches ownership as
+ZOM4093; mutating that arm's `Initialize` to `Overwrite` makes its entry
+state false and is an IR-invariant rejection.
+
+This is a bounded structural lattice over the admitted reducible CFG, not a
+general dominator pass. The RFC 0007 ownership overlay is fail-closed and
+publishes no `VerifiedOwnershipFacts`, so it cannot be assumed to gate
+codegen; the MIR verifier is the structural gate for IR kind discipline,
+with the existing `init.cc` rail the sole producer of the uninitialized-
+read diagnostic.
 
 No change to the `MirStatement`/`MirRvalue` vocabulary or the canonical MIR
 codec is required; only construction and verification of the already
 existing `Initialize`/`Overwrite` kinds is extended.
+
+### LIR contract
+
+The LIR layer is part of the end-to-end boundary and is owned explicitly.
+Today `compiler/lir/mir-to-lir.cc` admits four-block diamonds through one
+matcher (`mir-to-lir.cc:1085` and following) that requires, in addition to
+the verified diamond shape:
+
+- exactly one result local: `locals` are N parameters plus one
+  `MirLocalKind::FunctionResult`;
+- an entry block whose only statement is `StorageLive(result)`;
+- a `SwitchInt` discriminant that is a `Copy` of a bare boolean parameter
+  (no projections, no other operand form).
+
+A late-init UserLocal diamond matches none of these: it adds a
+`MirLocalKind::UserLocal` target, an extra entry `StorageLive`, and (for
+the foldable native witness) a comparison/constant discriminant rather
+than a bool parameter. The straight-line late-init shapes likewise add a
+user local with `StorageLive` + `Assign(Initialize)` before the result
+write. This RFC therefore requires, in the same per-shape transactions:
+
+- straight-line slices: extend the scalar lowering path (the sibling of
+  `lowerScalarLocalOverwriteReturn`, `compiler/lir/mir-to-lir.h:457`) to
+  admit the user-local `StorageLive` + `Initialize`/`Overwrite` sequence,
+  re-checking structure so lowering stays total over its declared input;
+- the diamond slice: a generalized matcher (or a dedicated, explicitly
+  bounded sibling matcher) for the UserLocal conditional-local-write
+  shape: N parameters, the late-init user local, one result local; the
+  per-arm `Assign(Initialize)` to the user local at the join; the admitted
+  discriminant forms added one at a time (the foldable scalar comparison
+  first, matching the native witness), each proven by an object-emission
+  or native case.
+
+The backend fail-closed rule is part of the contract: throughout every
+slice, any shape admitted upstream that LIR cannot yet lower must produce a
+clean ZOM4099 capability rejection, never an `ir`-phase incident/ICE. The
+known parameter-RHS and overwrite ICE baselines are cleared in slice 1, and
+a no-incident lit test pins each admitted shape at the LIR boundary.
 
 ### Diagnostics
 
@@ -445,7 +535,8 @@ never reach ZOM4099:
 | Diagnostics contracts | `compiler/diagnostics/defs/diagnostics-checker.def`, `compiler/checker/inference/checked-facts.cc` projector/stage mapping (reuse ZOM4024; no checker-side ZOM4093) | `error-system` |
 | Initialization rail (ownership) | `compiler/ownership/facts/init.{h,cc}` and the ownership diagnostic projector: unchanged sole ZOM4093/ZOM4094 producer; new error-preserving HIR/MIR shapes must reach it | `runtime-memory` |
 | HIR builder | `compiler/hir/build/hir-pending.h`, `hir-shape.cc`, `hir-builder.cc`, `hir-module.cc` verifier enumeration sites, new late-init and diamond arms under `build/` | `ir-backend` |
-| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, `cfg-utils.h`, structural verifier dominating-Initialize check | `ir-backend` |
+| Built MIR | `compiler/mir/build/recursive-mir-builder.*`, `mir-builder.cc`, `cfg-utils.h`, forward per-block initialized lattice in the structural verifier | `ir-backend` |
+| LIR lowering | `compiler/lir/mir-to-lir.{h,cc}` (user-local late-init scalar path and generalized conditional-local-write diamond matcher; every unlowerable admitted shape stays a clean ZOM4099, never an incident) | `ir-backend` |
 | Conformance | `tests/conformance/corpus/05-statements/**`, grammar + AST + diagnostics expectations | `verification` |
 | Unit tests | body checker / HIR / MIR builder ztests | `verification` |
 | Design note | `docs/design/language/definite-assignment.md` (mark implemented when landed) | `spec-audit` |
@@ -507,10 +598,14 @@ sandbox boundary changes.
 
 The rollout is **per shape in one transaction**, not per compiler stage.
 Checker admission for a shape flips only in the commit that also adds its
-HIR arm and proves MIR consumption. Flipping the checker first (the current
-ordered plan) would leave the diamond and double-write outcome determined by
-the `GenericShape` catch-all, whose flat write enumeration mislabels a
-per-path first write. Vertical slices:
+HIR arm and proves MIR and LIR consumption; until that commit the existing
+ZOM4099 drain stays in place, so no window exists where admission accepts a
+shape that downstream stages ICE on. Flipping the checker first would leave
+the diamond and double-write outcome determined by the `GenericShape`
+catch-all, whose flat write enumeration mislabels a per-path first write.
+Within the transaction the order is: new arm proven by tests, then the
+ZOM4099 drain removed, then the legacy arm deleted once byte-parity is
+observed. Vertical slices:
 
 1. **Straight-line `mut` late init and initialize-then-overwrite.** These
    already build end to end today; this slice adds the dedicated arms,
@@ -601,9 +696,10 @@ compile-time cost is linear in statements.
   exit value, and `check-object-emission.py` is green.
 - `mut v: i32; return v;`, the uninit-`let` read
   (`uninitialized_local_return_neg_01`), and the one-branch-missing `let`
-  form produce ZOM4093 + ZOM4094; a second write to `let` (late or
-  initializer-present) produces ZOM4024; the both-errors diamond produces
-  both at distinct sites.
+  form produce ZOM4093 + ZOM4094 as source rejections, never an
+  `IrInvariantRejected` incident (the error-preserving MIR passes structural
+  verification); a second write to `let` (late or initializer-present)
+  produces ZOM4024; the both-errors diamond produces both at distinct sites.
 - The first late write is HIR `Initialize` and MIR
   `MirInitializationKind::Initialize`; a later `mut` write is `Overwrite`;
   the structural MIR verifier rejects a dominating-init-less `Overwrite`
@@ -630,16 +726,24 @@ parity.
 1. Straight-line `mut` late init, parameter RHS, and one scalar
    initialize-then-overwrite: dedicated arms replacing the `GenericShape`
    path for these shapes; clear the parameter-RHS/overwrite `ir`-phase ICEs;
-   positive conformance plus no-incident tests.
+   extend the scalar LIR path to admit the user-local `StorageLive` +
+   `Initialize`/`Overwrite` sequence; positive conformance, object-emission
+   cases, and a no-incident LIR-boundary test (an unlowerable miss is
+   ZOM4099, never an incident).
 2. Straight-line `let` single late init: add the checker write-registry
    pre-pass and bounded first-write admission (plain `Assign`, RHS not
-   reading the target), the HIR arm, MIR consumption, and the second-`let`
-   ZOM4024 drain; body-checker ztests.
+   reading the target), the HIR arm, MIR consumption, LIR admission, and
+   the second-`let` ZOM4024 drain; body-checker ztests.
 3. Four-block `let` diamond: path-scoped Initialize/Overwrite classification
    in the builder and all HIR verifier enumeration sites (both arms
-   `Initialize`), the MIR diamond arm, the structural dominating-Initialize
-   check via cfg-utils, and the error-preserving one-branch-missing shape so
-   ownership emits ZOM4093.
+   `Initialize`), the `HirConditionalLocalWriteStatement` HIR node, the MIR
+   diamond arm, the forward per-block initialized-lattice verifier
+   (rejecting a one-arm `Initialize`), the generalized UserLocal LIR
+   diamond matcher (foldable scalar-comparison discriminant first) with the
+   native witness, and the error-preserving one-branch-missing shape so
+   ownership emits ZOM4093. Checker admission flips only once the HIR arm,
+   proven MIR + verifier, and LIR matcher are all in place; until then the
+   shape keeps its existing ZOM4099 drain.
 4. Spec: expand Chapter 6 definite-assignment text; add Chapter 14
    cross-reference; run spec-alignment.
 5. Verify: ztests, full conformance incl. grammar/coverage labels,
@@ -649,10 +753,14 @@ parity.
 ## Test Plan
 
 - Build: `cmake --preset sanitizer && cmake --build --preset sanitizer`.
-- Unit tests: body-checker ztests for the init lattice
-  (straight-line accept, join accept, missing-branch ZOM4093, second-`let`
-  ZOM4024, `mut` initialize-then-overwrite); HIR arm test asserting
-  `Initialize`/`Overwrite`; a MIR structural-verifier mutation test
+- Unit tests: body-checker ztests for the write-registry pre-pass
+  (straight-line accept, diamond join accept with both arms writing,
+  second-`let` ZOM4024, read-before-init exclusions `v = v` / `v = v+1` /
+  `v += 1`, `mut` initialize-then-overwrite). The missing-branch ZOM4093
+  assertion is not a body-checker test (the body checker emits no ZOM4093);
+  it lives at the ownership-rail/full-session level via the conformance
+  negatives and the MIR structural-verifier mutation below. An HIR arm test
+  asserts `Initialize`/`Overwrite`; a MIR structural-verifier mutation test
   following `tests/unittests/compiler/driver/session/
   compiler-session-package-test.cc` (full session build,
   `BuiltMirBuilder::build`, `takeVerified()`, mutate in place,
@@ -662,7 +770,11 @@ parity.
   (built via `MirStatement::assign(dest.clone(), value.clone(),
   MirInitializationKind::Overwrite, span.clone())`), and a diamond variant
   flipping only one arm's `Initialize` to `Overwrite`, exercising the
-  cross-arm domination property this RFC adds.
+  cross-arm domination property this RFC adds. In addition, a full-session
+  negative assertion builds the one-branch-missing diamond without mutation
+  and requires it to surface as a source rejection (ZOM4093 + ZOM4094),
+  not `IrInvariantRejected`/incident - the structural lattice must not
+  classify an uninitialized join read as malformed MIR.
 - Conformance sources and expectations under
   `tests/conformance/corpus/05-statements/` (grammar YAML hand-authored;
   AST snapshot via `regen-lit.py`; diagnostics CHECK-LITERAL files
@@ -713,8 +825,9 @@ parity.
   absorbed. After the sanitizer rebuild, record with
   `python3 scripts/check-ir-parity.py --record --ir --zomc
   build-sanitizer/bin/zomc`, then verify with the same command using
-  `--check --ir`, and run the tool's `--self-test` against
-  `tests/coverage/corpus-process-parity.json`.
+  `--check --ir` (both against
+  `tests/coverage/corpus-process-parity.json`), and run the tool's
+  `--self-test` (embedded fixtures, no snapshot argument).
 - Format: `python3 scripts/check-format.py`.
 
 ## Open Questions
