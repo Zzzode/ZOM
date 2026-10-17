@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_let_initializer_overwrite_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A write to a let declared with an initializer is a reassignment, rejected as
+// ZOM4024 (a sharpening from the pre-RFC ZOM4099 capability drain).
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `v`
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_let_initializer_overwrite_neg_01.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     v = 2;
+// CHECK-LITERAL:   |     ^~~~~
+// CHECK-LITERAL: 1 error generated.

@@ -1335,6 +1335,72 @@ ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
   }
 }
 
+ZC_TEST("HIR let late init arm lowers one Initialize at exact node strides") {
+  HirPipelineFixture fixture("fn entry() -> i32 { let v: i32; v = 41; return v; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 0);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& write = module.localWrites()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnReference = module.localReferences()[0];
+  // Fixed-id layout (no initializer leaf): F+0 function, F+1 block, F+2 local,
+  // F+3 write, F+4 write value, F+5 return, F+6 return value.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(local.initializer == zc::none);
+  ZC_EXPECT(write.node.ordinal() == 4);
+  ZC_EXPECT(write.value.ordinal() == 5);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 6);
+  ZC_EXPECT(returnReference.node.ordinal() == 7);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == write.node);
+  ZC_EXPECT(block.statements[2] == module.returns()[0].node);
+  ZC_EXPECT(write.kind == HirLocalWriteKind::Initialize);
+  ZC_EXPECT(write.field == zc::none);
+  ZC_EXPECT(write.local == local.local);
+  ZC_EXPECT(write.value == literal.node);
+  ZC_EXPECT(returnReference.local == local.local);
+
+  // Built MIR: one user local, one block of StorageLive and one Initialize
+  // Assign of the constant, then a Return copy of the user local.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.locals.size() == 1);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::UserLocal);
+    const auto userLocal = mirFunction.locals[0].id;
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& mirBlock = mirFunction.blocks[0];
+    ZC_REQUIRE(mirBlock.statements.size() == 2);
+    ZC_EXPECT(mirBlock.statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirBlock.statements[0].storageLocal() == userLocal);
+    const auto& initAssign = mirBlock.statements[1].assignmentValue();
+    ZC_EXPECT(initAssign.initialization == mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(initAssign.destination.local() == userLocal);
+    ZC_EXPECT(initAssign.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+    ZC_IF_SOME(returnValue, mirBlock.terminator.returnValue().value) {
+      ZC_EXPECT(returnValue.place().local() == userLocal);
+    }
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a binary mutable local write") {
   HirPipelineFixture fixture(
       "fn f(a: i32, b: i32) -> i32 { mut x: i32 = 0; x = a + b; return x; }"_zc);

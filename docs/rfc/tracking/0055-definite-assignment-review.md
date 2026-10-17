@@ -452,7 +452,50 @@ commit e4e7af50). Parity re-record is tracked under slice 5.
 
 ### Slice 2 - straight-line `let` single late init
 
-Not started.
+Code landed; verified 2026-10-18 against `build-sanitizer`.
+
+- A pure AST-structural `LocalWriteRegistry` pre-pass in `body-checker.cc`
+  classifies direct body-block writes to immutable (let) owner locals as
+  `FirstInitialization` (first plain Assign to an initializer-less let with an
+  integer/bool literal or parameter RHS), `ImmutableReinit` (a write to an
+  initialized let, or a later write on the straight-line path), or
+  `NotClassified` (compound/self-read/binary first write). It is rebuilt
+  independently in the requirements inventory and in `BodyChecker::check`,
+  owns no checker state, and emits no diagnostics.
+- `isSimpleLocalWrite` was split into a mutability-free
+  `isSimpleLocalWriteShape` plus the existing mutability wrapper. The registry
+  is consulted at the AssignmentExpr production classification, the literal
+  type-hint site, and the post-write validation loop. `ImmutableReinit` drains
+  through the existing `rejectCannotMutateImmutableVariable` factory (ZOM4024
+  with the LHS ident name), after the ZOM4009 type-equality block.
+- `hir-shape.cc` admits an initializer-less let with exactly one prefix plain
+  write (`letLateInit`); downstream HIR/MIR/LIR from slice 1 is shared.
+
+Observed behavior:
+
+| Program | Result |
+|---|---|
+| `let v: i32; v = 1; return v;` | accepted; native exit 41 |
+| `let v: i32; v = p; return v;` | accepted; object emission only |
+| `let v: i32; v = 1; v = 2; return v;` | ZOM4024 at the second write |
+| `let v: i32 = 1; v = 2; return v;` | ZOM4024 (sharpened from pre-RFC ZOM4099) |
+| `let v: i32; v = v; / v = v + 1; / v += 1; return v;` | ZOM4099, never an incident |
+
+Witnesses: integration `let-late-init-consumer/` (native exit 41, plus object
+and run-case registration), two conformance positives, two ZOM4024 negatives,
+and three read-before-init exclusion negatives (self/binary/compound), each
+with grammar YAML (ACCEPT layer) and diagnostics/ast expectations. A new
+hir-module ztest asserts the let late-init seven-node fixed-id stride and the
+two-statement StorageLive/Initialize/Return MIR.
+
+Verification: sanitizer build and format clean; conformance AST, AST-coverage,
+and diagnostics pass; built-mir, lir-translation-validator, lir-verifier,
+llvm-translation, body-checker, and primitive-binary ztests show no new
+failures (one untracked pre-existing primitive-binary failure -
+`RejectsTypeMismatchedNestedOperandInitializer`, an invariant-vs-capability
+ordering expectation for a nested-binary initializer - fails identically at
+the committed slice-1 tree and is unrelated to definite assignment). Corpus
+parity re-record remains slice 5.
 
 ### Slice 3 - four-block `let` diamond
 

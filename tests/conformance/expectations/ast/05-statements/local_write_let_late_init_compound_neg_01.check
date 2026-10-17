@@ -1,0 +1,50 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/local_write_let_late_init_compound_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #20 @1:1..6:1 file_name="local_write_let_late_init_compound_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #19 @1:1..5:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #18 @1:1..5:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:5..1:7 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:11..1:14 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #17 @1:15..5:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #8 @2:5..2:16
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #7 @2:5..2:16 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #6 @2:9..2:15 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #5 @2:9..2:15
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:10 name="v"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #4 @2:12..2:15 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #13 @3:5..3:12
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ExpressionStatement #12 @3:5..3:12
+// CHECK-NEXT:                       expression:
+// CHECK-NEXT:                         AssignmentExpr #11 @3:5..3:11 op=AddAssign
+// CHECK-NEXT:                           lhs:
+// CHECK-NEXT:                             IdentExpr #9 @3:5..3:6 name="v"
+// CHECK-NEXT:                           rhs:
+// CHECK-NEXT:                             IntLiteral #10 @3:10..3:11 base=10 value="1"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #16 @4:5..4:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #15 @4:5..4:14
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #14 @4:12..4:13 name="v"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "An initializer-less let binding is initialized once by a parameter copy before its read."

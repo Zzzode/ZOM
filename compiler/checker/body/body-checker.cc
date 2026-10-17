@@ -1119,8 +1119,13 @@ bool isAdmittedCompoundAssignment(ast::AssignmentOperatorKind op) noexcept {
   }
 }
 
-bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
-                        ast::NodeId assignment) {
+// Structural predicate for a plain local write without the mutability conjunct:
+// the operator, identifier LHS, and scalar/reference/binary RHS shape. An
+// initializer-less immutable (let) binding shares this shape; whether such a
+// write is a first initialization or a rejected re-write is decided by the
+// LocalWriteRegistry, not by this predicate.
+bool isSimpleLocalWriteShape(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                             ast::NodeId assignment) {
   const auto& tree = boundModule.tree();
   if (!tree.contains(assignment)) return false;
   const auto& syntax = tree.node(assignment);
@@ -1196,7 +1201,157 @@ bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView
       }
     }
   }
-  return (scalar || reference || binary) && isMutableOwnerLocal(boundModule, target);
+  return scalar || reference || binary;
+}
+
+// A plain local write to a mutable owner local: the structural shape plus the
+// existing mutability requirement. All current scalar-write call sites keep
+// this behavior; an initializer-less let write is recognized separately by the
+// LocalWriteRegistry.
+bool isSimpleLocalWrite(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                        ast::NodeId assignment) {
+  if (!isSimpleLocalWriteShape(boundModule, assignment)) return false;
+  const auto& tree = boundModule.tree();
+  const auto& syntax = tree.node(assignment);
+  const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
+  return isMutableOwnerLocal(boundModule, target);
+}
+
+// RFC 0055 slice 2: straight-line classification of writes to immutable
+// (let) owner locals. The body checker emits no initialization state and no
+// ZOM4093; this registry is a pure AST-structural pre-pass that distinguishes:
+//   - FirstInitialization: the first plain Assign to an initializer-less let
+//     whose RHS is a Copy integer/bool literal or a parameter (a value that
+//     cannot name the target, so the uninitialized slot is never read);
+//   - ImmutableReinit: a write to an already-initialized let, or any later
+//     write on the same straight-line path (the second write is ZOM4024);
+//   - NotClassified: a compound/self-read/binary first write to an
+//     initializer-less let, which stays Unsupported and drains ZOM4099.
+// Only direct statements of a function/method/destructor body block are
+// scanned; a write nested in an if/loop/match/inner block is slice 3 and stays
+// fail-closed.
+enum class LocalWriteClass : uint8_t { NotClassified, FirstInitialization, ImmutableReinit };
+
+struct LocalWriteEntry {
+  ast::NodeId assignment;
+  LocalWriteClass classification;
+};
+
+struct LocalWriteRegistry {
+  zc::Vector<LocalWriteEntry> entries;
+
+  LocalWriteClass classify(ast::NodeId assignment) const noexcept {
+    for (const auto& entry : entries) {
+      if (entry.assignment == assignment) return entry.classification;
+    }
+    return LocalWriteClass::NotClassified;
+  }
+
+  bool recognizes(ast::NodeId assignment) const noexcept {
+    return classify(assignment) != LocalWriteClass::NotClassified;
+  }
+};
+
+// True when a first write value is a Copy scalar literal (integer or bool) or
+// a reference to a callable parameter. A self reference resolves to an owner
+// local, never a parameter, so `v = v` is excluded; a binary or compound RHS
+// is not a literal/parameter, so `v = v + 1` and `v += 1` are excluded.
+bool eligibleLateInitValue(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                           const ast::Node& assignment) {
+  const auto& tree = boundModule.tree();
+  const auto writeOp = static_cast<ast::AssignmentOperatorKind>(
+      assignment.payload.words[ast::kAssignmentExprOpWord]);
+  if (writeOp != ast::AssignmentOperatorKind::Assign) return false;
+  const ast::NodeId value(assignment.payload.words[ast::kAssignmentExprRhsWord]);
+  if (!tree.contains(value)) return false;
+  const auto valueKind = tree.node(value).kind;
+  if (valueKind == ast::SyntaxKind::IntLiteral || valueKind == ast::SyntaxKind::BoolLiteral) {
+    return true;
+  }
+  if (valueKind == ast::SyntaxKind::IdentExpr) {
+    // A parameter copy is a sound first initialization. A self reference
+    // (`v = v`) resolves to an owner local rather than a parameter, so it is
+    // excluded here and drains as an unsupported uninitialized read.
+    return resolvedCallableParameter(boundModule.bindings(), value) != zc::none;
+  }
+  return false;
+}
+
+LocalWriteRegistry buildLocalWriteRegistry(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule) {
+  LocalWriteRegistry registry;
+  const auto& tree = boundModule.tree();
+  for (const auto& definition : boundModule.definitions().definitions()) {
+    const bool isFunction = definition.record.kind() == identity::DefinitionKind::Function &&
+                            tree.contains(definition.node) &&
+                            tree.node(definition.node).kind == ast::SyntaxKind::FunctionDecl;
+    const bool isMethod = definition.record.kind() == identity::DefinitionKind::Method &&
+                          tree.contains(definition.node) &&
+                          tree.node(definition.node).kind == ast::SyntaxKind::MethodDecl;
+    const bool isDestructor = definition.record.kind() == identity::DefinitionKind::Destructor &&
+                              tree.contains(definition.node) &&
+                              tree.node(definition.node).kind == ast::SyntaxKind::DestructorDecl;
+    if (!isFunction && !isMethod && !isDestructor) continue;
+    const auto bodyWord = isFunction ? ast::kFunctionDeclBodyWord
+                          : isMethod ? ast::kMethodDeclBodyWord
+                                     : ast::kDestructorDeclBodyWord;
+    const ast::NodeId bodyNode(tree.node(definition.node).payload.words[bodyWord]);
+    if (!tree.contains(bodyNode) || tree.node(bodyNode).kind != ast::SyntaxKind::BlockStmt) {
+      continue;
+    }
+    const ast::NodeList statements{tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                   tree.node(bodyNode).payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (!tree.contains(statements)) continue;
+
+    // Straight-line seen set of initializer-less immutable bindings already
+    // initialized by an earlier direct statement on this path.
+    zc::Vector<binder::OwnerLocalBindingId> initializedLets;
+    for (ast::NodeId itemNode : tree.list(statements)) {
+      if (!tree.contains(itemNode) ||
+          tree.node(itemNode).kind != ast::SyntaxKind::StatementListItem) {
+        continue;
+      }
+      const ast::NodeId statement(
+          tree.node(itemNode).payload.words[ast::kStatementListItemItemWord]);
+      if (!tree.contains(statement) ||
+          tree.node(statement).kind != ast::SyntaxKind::ExpressionStatement) {
+        continue;
+      }
+      const ast::NodeId writeNode(
+          tree.node(statement).payload.words[ast::kExpressionStatementExpressionWord]);
+      if (!tree.contains(writeNode) ||
+          tree.node(writeNode).kind != ast::SyntaxKind::AssignmentExpr) {
+        continue;
+      }
+      const auto& write = tree.node(writeNode);
+      const ast::NodeId target(write.payload.words[ast::kAssignmentExprLhsWord]);
+      if (!tree.contains(target) || tree.node(target).kind != ast::SyntaxKind::IdentExpr) continue;
+      const auto binding = resolvedOwnerLocal(boundModule.bindings(), target);
+      if (binding == zc::none) continue;
+      // Mutable locals are owned by the existing isSimpleLocalWrite path.
+      if (isMutableOwnerLocal(boundModule, target)) continue;
+
+      const bool alreadyInitialized = [&] {
+        for (const auto& seen : initializedLets) {
+          if (seen == ZC_ASSERT_NONNULL(binding)) return true;
+        }
+        return false;
+      }();
+      const bool declaredWithInitializer =
+          ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding)) != zc::none;
+
+      if (alreadyInitialized || declaredWithInitializer) {
+        if (isSimpleLocalWriteShape(boundModule, writeNode)) {
+          registry.entries.add(LocalWriteEntry{writeNode, LocalWriteClass::ImmutableReinit});
+        }
+      } else if (eligibleLateInitValue(boundModule, write)) {
+        registry.entries.add(LocalWriteEntry{writeNode, LocalWriteClass::FirstInitialization});
+        initializedLets.add(ZC_ASSERT_NONNULL(binding));
+      }
+      // Otherwise NotClassified: the write stays Unsupported and drains ZOM4099.
+    }
+  }
+  return registry;
 }
 
 bool isSimpleOwnerLocalFieldWrite(
@@ -4817,7 +4972,8 @@ zc::Maybe<ConcreteMethodCallShape> dynMethodCallShape(
 /// non-literal value, so the ZOM4009 rails are unchanged.
 zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
     const BodyCheckingInput& input, ast::NodeId literal,
-    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    const LocalWriteRegistry& writeRegistry) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(literal)) return zc::none;
 
@@ -4944,7 +5100,7 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
           isAdmittedCompoundAssignment(assignmentOp)) {
         const ast::NodeId target(syntax.payload.words[ast::kAssignmentExprLhsWord]);
         if (tree.contains(target)) {
-          if (isSimpleLocalWrite(input.boundModule, node)) {
+          if (isSimpleLocalWrite(input.boundModule, node) || writeRegistry.recognizes(node)) {
             assignmentHint = ownerLocalReferenceType(input, target, nodeTypes);
           } else if (isSimpleOwnerLocalFieldWrite(input.boundModule, node)) {
             auto shape = ownerLocalFieldShape(input, target, nodeTypes);
@@ -6401,6 +6557,10 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                            boundModule.module(), 0);
   }
 
+  // RFC 0055: pure straight-line classification of immutable-local writes;
+  // rebuilt here and in BodyChecker::check from the same bound module.
+  const LocalWriteRegistry writeRegistry = buildLocalWriteRegistry(boundModule);
+
   zc::Vector<BodyFactFamilyCoverage> coverage;
   coverage.add(
       BodyFactFamilyCoverage{CheckedFactGroup::NodeType, BodyFactRequirementOrigin::Syntax});
@@ -6941,6 +7101,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         case ast::SyntaxKind::AssignmentExpr:
           if (isSimpleLocalWrite(boundModule, node)) {
             production = BodyProductionKind::LocalWrite;
+          } else if (writeRegistry.recognizes(node)) {
+            // RFC 0055: a write to an immutable (let) owner local. A first
+            // initialization is admitted; a re-initialization is classified as
+            // a LocalWrite so the post-write loop can reject it as ZOM4024.
+            production = BodyProductionKind::LocalWrite;
           } else if (isSimpleOwnerLocalFieldWrite(boundModule, node)) {
             production = BodyProductionKind::OwnerLocalFieldWrite;
           } else if (isSimpleReceiverFieldWrite(boundModule, node)) {
@@ -7375,6 +7540,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     return rejectInvariant(signature::CheckerInvariantKind::InputReceiptMismatch, module, 0);
   }
 
+  // RFC 0055: pure straight-line classification of immutable-local writes,
+  // rebuilt from the same bound module as the requirements inventory.
+  const LocalWriteRegistry writeRegistry = buildLocalWriteRegistry(input.boundModule);
+
   if (input.requirements.captureRequirements().size() != 0) {
     zc::Maybe<identity::DefId> closureOwner;
     ZC_IF_SOME(ownerKey,
@@ -7509,7 +7678,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
           context, module, input.boundModule.tree(), site.node, site.key,
           input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
-          expectedLiteralType(input, site.node, nodeTypes.asPtr())});
+          expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry)});
       if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
         return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
       }
@@ -10564,7 +10733,7 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
               context, module, input.boundModule.tree(), site.node, site.key,
               input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
-              expectedLiteralType(input, site.node, nodeTypes.asPtr())});
+              expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry)});
           if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
             return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
           }
@@ -10694,6 +10863,27 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
         }
       }
+    }
+    // RFC 0055: a write to an immutable (let) owner local that is already
+    // initialized on the straight-line path is ZOM4024. This runs after the
+    // ZOM4009 type-equality block so a type mismatch outranks the mutability
+    // error, matching the field-write path. A first initialization of an
+    // initializer-less let (FirstInitialization) is not rejected here.
+    if (site.production == BodyProductionKind::LocalWrite &&
+        writeRegistry.classify(site.node) == LocalWriteClass::ImmutableReinit) {
+      auto fieldName =
+          identity::SemanticIdentifier::fromSource(input.boundModule.tree().ident(ast::IdentId(
+              input.boundModule.tree().node(target).payload.words[ast::kIdentExprNameWord])));
+      ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+        ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+          return attachRecoveryLedger(
+              rejectCannotMutateImmutableVariable(site, ownerOrdinal, zc::mv(fieldName)), input,
+              factStoreBrands);
+        }
+      }
+      return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                             site.key.schemaPreorder, zc::none, site.node,
+                             site.key.sourceSpan.clone(), factPath(CheckedFactGroup::NodeType));
     }
     if (site.production == BodyProductionKind::OwnerLocalFieldWrite ||
         site.production == BodyProductionKind::ReceiverFieldWrite) {

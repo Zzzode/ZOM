@@ -150,6 +150,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-late-init-param-consumer/Zom.toml::mut_late_init_param_consumer::mut_late_init_param_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/match-bool-consumer/Zom.toml::match_bool_consumer::match_bool_consumer"
@@ -628,6 +630,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-late-init-consumer/Zom.toml::mut_late_init_consumer::mut_late_init_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-late-init-overwrite-consumer/Zom.toml::mut_late_init_overwrite_consumer::mut_late_init_overwrite_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

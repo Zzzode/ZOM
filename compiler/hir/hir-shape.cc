@@ -3697,11 +3697,16 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
   }
-  if (static_cast<ast::BindingDeclarationKind>(
-          tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
-      ast::BindingDeclarationKind::Mut) {
-    return zc::none;
-  }
+  const auto bindingKind = static_cast<ast::BindingDeclarationKind>(
+      tree.node(letNode).payload.words[ast::kLetStmtKindWord]);
+  // RFC 0055 slice 2: an initializer-less immutable (let) binding with exactly
+  // one prefix plain write (binding + write + return = three statements) is a
+  // late initialization and rides the dedicated write arm. A larger prefix or
+  // a binary/compound write is rejected downstream; any other immutable shape
+  // stays fail-closed.
+  const bool letLateInit = bindingKind == ast::BindingDeclarationKind::Let &&
+                           !tree.contains(initializer) && statements.size == 3;
+  if (bindingKind != ast::BindingDeclarationKind::Mut && !letLateInit) { return zc::none; }
   for (size_t index = 1; index + 1 < statements.size; ++index) {
     auto writeStatement = statementItem(tree, tree.list(statements)[index]);
     if (writeStatement == zc::none) return zc::none;

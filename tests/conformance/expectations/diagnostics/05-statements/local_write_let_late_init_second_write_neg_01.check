@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_let_late_init_second_write_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A second write to an initializer-less let after its first initialization is
+// a genuine immutable-binding mutation (ZOM4024), not a capability rejection.
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `v`
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_let_late_init_second_write_neg_01.zom:4:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 |     v = 2;
+// CHECK-LITERAL:   |     ^~~~~
+// CHECK-LITERAL: 1 error generated.

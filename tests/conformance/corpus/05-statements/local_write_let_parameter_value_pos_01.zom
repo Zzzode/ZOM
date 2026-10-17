@@ -1,0 +1,5 @@
+fn f(p: i32) -> i32 {
+    let v: i32;
+    v = p;
+    return v;
+}

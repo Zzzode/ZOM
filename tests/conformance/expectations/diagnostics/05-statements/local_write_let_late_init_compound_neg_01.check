@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_let_late_init_compound_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A first write to an initializer-less let that reads the still-uninitialized
+// target is outside the definite-assignment scalar slice and fails closed as
+// ZOM4099, never as an internal compiler error.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_let_late_init_compound_neg_01.zom:3:5
