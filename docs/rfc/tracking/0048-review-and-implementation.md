@@ -456,6 +456,26 @@ baseline is re-recorded without the IR channel in a follow-up commit to
 reflect the source-location precision change and the newly admitted
 construct.
 
+### 2026-10-17 Phase 1 TYPE-category - Non-reference dereference
+
+Commit `10af78a3` on `develop` migrates the `ReferenceDereference`
+production's else branch from a compiler invariant
+(`rejectInvariant` InvalidFact) to the ZOM4030 `CannotDereferenceType`
+source diagnostic. The diagnostic contract (Body, Dereference,
+InvalidOperation, one Type display argument) was already defined in the
+checked-facts argument validator and stage/producer mapper, but no
+reject function produced it. The new `rejectDereferenceNonReference`
+function follows the `rejectConditionMustBeBool` pattern, with the
+invariant retained as a fallback when the enclosing body owner or its
+preorder cannot be resolved.
+
+The conformance diagnostics test `deref_integer_in_body_neg_60` covers
+`fn deref_integer(x: i32) -> i32 { return *x; }` producing ZOM4030 with
+the source type rendered in the diagnostic message. The
+`deref_non_pointer_neg_26` grammar test (module-scope `let x = *1;`)
+is unaffected: module-scope evaluation produces ZOM4104 before the
+body checker runs.
+
 ## Verification Evidence
 
 - `python3 scripts/check-rfc.py` passes for the revised REVIEW snapshot.
