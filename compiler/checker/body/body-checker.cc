@@ -5340,6 +5340,37 @@ checked::CheckedFactsSourceRejected rejectDereferenceNonReference(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+// ZOM4013: an integer `as` cast whose source type is not an integer primitive
+// (e.g. `true as i32`). Both display arguments are types, matching the
+// checked-facts projector contract (Type, Type, Body, Cast, InvalidOperation).
+checked::CheckedFactsSourceRejected rejectInvalidCast(const BodyProductionSite& site,
+                                                      uint32_t ownerPreorder,
+                                                      identity::SemanticTypeId sourceType,
+                                                      identity::SemanticTypeId targetType) {
+  zc::Maybe<identity::SemanticIdentifier> noSourceAlias;
+  zc::Maybe<identity::SemanticIdentifier> noTargetAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{sourceType, zc::mv(noSourceAlias)}));
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{targetType, zc::mv(noTargetAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CheckerInvalidCast(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Cast,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
 // ZOM4133: a match scrutinee type does not match the pattern type. Both
 // display arguments are types, matching the checked-facts projector contract
 // (Type, Type).
@@ -8983,7 +9014,24 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         const auto target = ZC_ASSERT_NONNULL(targetType);
         auto sourceKind = integerPrimitiveKind(input.semanticTypes, source);
         auto targetKind = integerPrimitiveKind(input.semanticTypes, target);
-        if (sourceKind == zc::none || targetKind == zc::none) {
+        if (sourceKind == zc::none) {
+          // A non-integer scalar source (bool, string, char) cast to an integer
+          // primitive is a genuine type error (ZOM4013), not a compiler
+          // invariant. The admission gate already validated the target type.
+          ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+              return attachRecoveryLedger(rejectInvalidCast(site, ownerOrdinal, source, target),
+                                          input, factStoreBrands);
+            }
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        if (targetKind == zc::none) {
+          // The admission gate (line ~7141) already validated that the target
+          // resolves to an integer primitive. Reaching here with a non-integer
+          // target is a compiler bug, not a user error.
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));

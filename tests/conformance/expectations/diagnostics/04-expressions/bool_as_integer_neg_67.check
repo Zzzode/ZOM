@@ -1,0 +1,15 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/bool_as_integer_neg_67.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A non-integer scalar source (bool) cast to an integer primitive is a
+// type error (ZOM4013), not a compiler invariant. The body checker
+// resolves the source type, finds it is not an integer primitive, and
+// rejects with the canonical diagnostic.
+
+
+// CHECK-LITERAL: Error [ZOM4013]: Invalid cast from bool to i32
+// CHECK-LITERAL:   --> conformance/04-expressions/bool_as_integer_neg_67.zom:2:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     return true as i32;
+// CHECK-LITERAL:   |            ^~~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

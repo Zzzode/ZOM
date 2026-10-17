@@ -1,0 +1,3 @@
+fn bool_as_integer() -> i32 {
+    return true as i32;
+}
