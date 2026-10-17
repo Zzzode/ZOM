@@ -2,7 +2,7 @@
 rfc: 55
 title: Definite Assignment For Initializer-less Local Bindings
 type: language
-status: DRAFT
+status: REVIEW
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [rfc, spec-audit, binder-checker, ir-backend, error-system, verification]
@@ -13,10 +13,10 @@ area: language
 requires: [7, 48]
 supersedes: []
 superseded-by: []
-discussion: TBD
+discussion: docs/rfc/tracking/0055-definite-assignment-review.md#discussion-record
 decision: TBD
 implementation: TBD
-tracking-issue: TBD
+tracking-issue: docs/rfc/tracking/0055-definite-assignment-review.md#implementation-tracker
 ---
 
 # RFC 0055: Definite Assignment For Initializer-less Local Bindings
@@ -509,3 +509,4 @@ Chapter 14 coverage.
 | Date | Status | Notes |
 |---|---|---|
 | 2026-10-17 | DRAFT | Initial draft specifying definite assignment for initializer-less local bindings. |
+| 2026-10-17 | REVIEW | Opened for owner review: rfc, spec-audit, binder-checker, ir-backend, error-system, verification. |
