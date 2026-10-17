@@ -790,6 +790,22 @@ struct LocalReturn {
   HirLocalReferenceExpression localReference;
 };
 
+/// An uninitialized local binding (`let x: T;`) whose value is read by the
+/// return statement. The ownership checker rejects the read (ZOM4093), but the
+/// HIR builder must still construct the binding so the checker has a graph to
+/// validate.
+struct UninitializedLocalReturn {
+  HirLocalBinding local;
+  HirLocalReferenceExpression localReference;
+};
+
+/// An uninitialized local binding (`let x: T;`) whose field is read by the
+/// return statement. Mirrors UninitializedLocalReturn for field projections.
+struct UninitializedFieldProjectionReturn {
+  HirLocalBinding local;
+  HirLocalFieldProjectionExpression localFieldProjection;
+};
+
 struct LocalWriteReturn {
   HirLocalBinding local;
   checker::checked::CanonicalConstValue literal;
@@ -1032,7 +1048,8 @@ struct GenericShape {
 using PendingFunctionShape =
     zc::OneOf<EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
               VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
-              ArrayLengthFoldReturn, LocalReturn, LocalWriteReturn, LocalFieldProjectionReturn,
+              ArrayLengthFoldReturn, LocalReturn, UninitializedLocalReturn,
+              UninitializedFieldProjectionReturn, LocalWriteReturn, LocalFieldProjectionReturn,
               LocalBorrowReturn, ParameterReferenceReturn, ParameterReborrowReturn,
               LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn,
               AggregateReturn, EnumConstructionReturn, ExistentialReturn,

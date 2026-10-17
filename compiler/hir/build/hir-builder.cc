@@ -11330,6 +11330,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                    zc::mv(parameterReference),
                                    zc::mv(ZC_ASSERT_NONNULL(localBorrow))};
         }
+        // Uninitialized local reference return. The binding has no initializer;
+        // the ownership checker rejects the read (ZOM4093), but HIR must still
+        // construct the binding for the checker to validate.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer == zc::none &&
+            localReference != zc::none &&
+            allNone(literal, call, receiverCall, aggregate, localFieldProjection,
+                    parameterReference, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return UninitializedLocalReturn{zc::mv(ZC_ASSERT_NONNULL(local)),
+                                          zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Uninitialized local field projection return. Mirrors the
+        // uninitialized local reference return for field projections.
+        if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer == zc::none &&
+            localFieldProjection != zc::none &&
+            allNone(literal, call, receiverCall, aggregate, localReference, parameterReference,
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return UninitializedFieldProjectionReturn{
+              zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(ZC_ASSERT_NONNULL(localFieldProjection))};
+        }
         // Catch-all: generic materializer shape.
         return GenericShape{zc::mv(literal),
                             zc::mv(local),
@@ -11612,6 +11635,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerLocalReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
+    if (value.shape.is<UninitializedLocalReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerUninitializedLocalReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     if (value.shape.is<SequentialLocalReturn>()) {
       auto fnCtx = makeFnCtx();
       lowerSequentialLocalReturnFunction(zc::mv(value), fnCtx);
@@ -11650,6 +11678,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (value.shape.is<AggregateFieldProjectionReturn>()) {
       auto fnCtx = makeFnCtx();
       lowerAggregateFieldProjectionFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.shape.is<UninitializedFieldProjectionReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerUninitializedFieldProjectionReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     if (value.shape.is<LocalWriteReturn>()) {

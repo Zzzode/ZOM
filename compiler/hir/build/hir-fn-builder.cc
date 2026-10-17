@@ -295,6 +295,31 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
+void lowerUninitializedLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  const auto& shape = function.shape.get<UninitializedLocalReturn>();
+  // Source-preorder stride: function, body, local, return, value. No
+  // initializer node — the binding is uninitialized.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(lowerFunctionHeader(functionId, bodyId, function));
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), shape.local.type, zc::none,
+                               shape.local.sourceSpan.clone(), zc::none});
+  ctx.addLocalReference(HirLocalReferenceExpression{
+      valueId, hirLocalId(1), shape.localReference.type, shape.localReference.category,
+      shape.localReference.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+}
+
 void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingSequentialLocalReturn sequential =
       zc::mv(function.shape.get<SequentialLocalReturn>().sequentialLocalReturn);

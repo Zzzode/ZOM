@@ -143,6 +143,12 @@ void lowerScalarReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& 
 /// return destination.
 void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one uninitialized local reference return (`let x: T; return
+/// x;`) through the recursive driver. The binding has no initializer node;
+/// the ownership checker rejects the read (ZOM4093) but HIR must still
+/// construct the binding for the checker to validate.
+void lowerUninitializedLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one sequential N-local body (`N >= 2` leading let bindings
 /// followed by a parameter/local return) through the recursive driver. Covers
 /// literal, aggregate, parameter/local-reference, and primitive-binary

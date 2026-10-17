@@ -20,6 +20,15 @@ namespace detail {
 /// projection lowers into the return value destination.
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one uninitialized local field-projection return:
+/// `let cell: T; return cell.field;`.
+///
+/// Node stride function, body, local, return, value. The binding has no
+/// initializer node; the ownership checker rejects the read (ZOM4093) but HIR
+/// must still construct the binding for the checker to validate.
+void lowerUninitializedFieldProjectionReturnFunction(PendingFunctionDeclaration&& function,
+                                                     HirFnCtx& ctx);
+
 /// \brief Lowers one direct enum construction return:
 /// `return Result::Ok(41);`.
 ///

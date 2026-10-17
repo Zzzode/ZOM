@@ -58,6 +58,36 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
+void lowerUninitializedFieldProjectionReturnFunction(PendingFunctionDeclaration&& function,
+                                                     HirFnCtx& ctx) {
+  const auto& shape = function.shape.get<UninitializedFieldProjectionReturn>();
+  // Source-preorder stride: function, body, local, return, value. No
+  // initializer node — the binding is uninitialized.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), shape.local.type, zc::none,
+                               shape.local.sourceSpan.clone(), zc::none});
+  ctx.addLocalFieldProjection(HirLocalFieldProjectionExpression{
+      valueId, hirLocalId(1), shape.localFieldProjection.field,
+      shape.localFieldProjection.receiverType, shape.localFieldProjection.type,
+      shape.localFieldProjection.category, shape.localFieldProjection.sourceSpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+}
+
 void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   // Both EnumConstructionReturn and AggregateReturn carry the aggregate field.
   HirNominalAggregateExpression aggregate = [&]() {
