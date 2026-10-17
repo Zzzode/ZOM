@@ -3924,7 +3924,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       bool returnsArrayIndexFold = false;
       bool returnsArrayLengthFold = false;
       zc::Maybe<HirParameterReferenceExpression> parameterReference;
-      zc::Maybe<HirParameterIndexExpression> parameterIndex;
       zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
       zc::Maybe<HirParameterReferenceExpression> rawDereferenceSource;
       zc::Maybe<HirRawPointerWriteStatement> rawDereferenceWrite;
@@ -7836,125 +7835,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            fieldNode,
                                            literalNode,
                                            shape.value};
-      } else if (tree.node(shape.value).kind == ast::SyntaxKind::IndexExpression) {
-        const auto& sourceIndex = tree.node(shape.value);
-        const ast::NodeId base(sourceIndex.payload.words[ast::kIndexExpressionObjectWord]);
-        const ast::NodeId index(sourceIndex.payload.words[ast::kIndexExpressionIndexWord]);
-        auto parameter = resolvedCallableParameter(bound.bindings(), base);
-        auto baseType = factIndex(facts.nodeTypes(), base);
-        auto indexType = factIndex(facts.nodeTypes(), index);
-        auto indexLiteral = factIndex(facts.literals(), index);
-        auto callIndex = factIndex(facts.calls(), shape.value);
-        auto placeIndex = factIndex(facts.places(), shape.value);
-        auto checkedIndex = factIndex(facts.indexes(), shape.value);
-        auto marker = factIndex(facts.markerObligations(), shape.value);
-        auto indexSpan = bound.parsedModule().spanFor(tree.node(index).range);
-        if (!tree.contains(base) || !tree.contains(index) ||
-            tree.node(base).kind != ast::SyntaxKind::IdentExpr ||
-            tree.node(index).kind != ast::SyntaxKind::IntLiteral || parameter == zc::none ||
-            baseType == zc::none || indexType == zc::none || indexLiteral == zc::none ||
-            callIndex == zc::none || placeIndex == zc::none || checkedIndex == zc::none ||
-            marker == zc::none || indexSpan == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, ordinal + 2);
-        }
-        size_t baseTypeSlot = 0;
-        size_t indexTypeSlot = 0;
-        size_t literalSlot = 0;
-        size_t callSlot = 0;
-        size_t placeSlot = 0;
-        size_t indexSlot = 0;
-        size_t markerSlot = 0;
-        ZC_IF_SOME(value, baseType) { baseTypeSlot = value; }
-        ZC_IF_SOME(value, indexType) { indexTypeSlot = value; }
-        ZC_IF_SOME(value, indexLiteral) { literalSlot = value; }
-        ZC_IF_SOME(value, callIndex) { callSlot = value; }
-        ZC_IF_SOME(value, placeIndex) { placeSlot = value; }
-        ZC_IF_SOME(value, checkedIndex) { indexSlot = value; }
-        ZC_IF_SOME(value, marker) { markerSlot = value; }
-        auto authority = registries.callableParameter(ZC_ASSERT_NONNULL(parameter));
-        if (authority == zc::none) {
-          return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                               ir::IrFailureKind::MissingRequiredFact, module,
-                                               registries, ordinal + 2);
-        }
-        const auto& literalFact = facts.literals().entries()[literalSlot].value;
-        const auto& callFact = facts.calls().entries()[callSlot].value;
-        const auto& call = callFact.invocation;
-        const auto& selected = call.selected.variant();
-        const auto& place = facts.places().entries()[placeSlot].value;
-        const auto& root = place.root.variant();
-        const auto& indexFact = facts.indexes().entries()[indexSlot].value;
-        const auto& markerFact = facts.markerObligations().entries()[markerSlot].value;
-        ZC_IF_SOME(entry, authority) {
-          bool matches = false;
-          for (const auto& candidate : parameters) {
-            if (candidate.key == entry.key() &&
-                candidate.type == facts.nodeTypes().entries()[baseTypeSlot].value) {
-              matches = true;
-            }
-          }
-          if (!matches || literalFact.node != index ||
-              literalFact.type != facts.nodeTypes().entries()[indexTypeSlot].value ||
-              !sameSpan(literalFact.sourceSpan, ZC_ASSERT_NONNULL(indexSpan)) ||
-              callFact.node != shape.value || !selected.is<checker::checked::PrimitiveCallable>() ||
-              selected.get<checker::checked::PrimitiveCallable>().operation !=
-                  checker::PrimitiveOperation::Index ||
-              call.calleeType != facts.nodeTypes().entries()[baseTypeSlot].value ||
-              call.receiver == zc::none || call.receiverMode == zc::none ||
-              call.receiverAdjustment == zc::none || call.arguments.size() != 1 ||
-              call.successType != nodeType.value || call.resultType != nodeType.value ||
-              call.substitutions != zc::none || call.witnesses != zc::none ||
-              call.raises != zc::none || !root.is<checker::checked::CallableParameterPlaceRoot>() ||
-              root.get<checker::checked::CallableParameterPlaceRoot>().parameter !=
-                  ZC_ASSERT_NONNULL(parameter) ||
-              place.projections.size() != 1 ||
-              !place.projections[0].variant().is<checker::checked::IndexProjection>() ||
-              place.projections[0].variant().get<checker::checked::IndexProjection>().index !=
-                  index ||
-              place.type != nodeType.value || place.mutablePlace || place.movable ||
-              indexFact.node != shape.value ||
-              indexFact.collectionType != facts.nodeTypes().entries()[baseTypeSlot].value ||
-              indexFact.indexType != facts.nodeTypes().entries()[indexTypeSlot].value ||
-              indexFact.elementType != nodeType.value ||
-              indexFact.accessMode != checker::checked::IndexAccessMode::Read ||
-              indexFact.accessResultType != nodeType.value || markerFact.node != shape.value ||
-              markerFact.subject != nodeType.value ||
-              markerFact.polarity != checker::checked::Polarity::Positive) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
-          }
-          const auto& receiver = ZC_ASSERT_NONNULL(call.receiver);
-          const auto& adjustment = ZC_ASSERT_NONNULL(call.receiverAdjustment);
-          const auto& argument = call.arguments[0];
-          const auto mode = ZC_ASSERT_NONNULL(call.receiverMode);
-          if (receiver.sourceNode != base ||
-              receiver.sourceType != facts.nodeTypes().entries()[baseTypeSlot].value ||
-              receiver.parameterType != receiver.sourceType || receiver.adjustment != zc::none ||
-              mode != checker::checked::ReceiverMode::Shared ||
-              adjustment.source != receiver.sourceType ||
-              adjustment.destination != receiver.parameterType || adjustment.steps.size() != 1 ||
-              adjustment.steps[0] != checker::checked::ReceiverAdjustmentStep::BorrowShared ||
-              argument.sourceNode != index ||
-              argument.sourceType != facts.nodeTypes().entries()[indexTypeSlot].value ||
-              argument.parameterType != argument.sourceType || argument.adjustment != zc::none ||
-              !sameSpan(callFact.sourceSpan, valueSpanValue)) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
-          }
-          parameterIndex = HirParameterIndexExpression{HirNodeId(),
-                                                       entry.key().clone(),
-                                                       receiver.sourceType,
-                                                       argument.sourceType,
-                                                       literalFact.literal.clone(),
-                                                       nodeType.value,
-                                                       HirValueCategory::Place,
-                                                       valueSpanValue.clone(),
-                                                       ZC_ASSERT_NONNULL(indexSpan).clone()};
-        }
       }
       if (!shape.returnsLocalBorrow &&
           tree.node(shape.value).kind == ast::SyntaxKind::UnaryExpression &&
@@ -9312,8 +9192,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
       } else if (!shape.isForLoopAccumulator && !shape.isNestedForLoopAccumulator &&
                  literal == zc::none && aggregate == zc::none && parameterReference == zc::none &&
-                 parameterIndex == zc::none && localReference == zc::none &&
-                 initializerCall == zc::none && shape.localInitializer != zc::none) {
+                 localReference == zc::none && initializerCall == zc::none &&
+                 shape.localInitializer != zc::none) {
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::MissingRequiredFact, module,
                                              registries, ordinal + 2);
@@ -11009,21 +10889,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // Shared carrier-clear predicates, mirroring the guard chain.
         const bool callFieldsClear =
             allEmpty(localWrites, localWriteValues) &&
-            allNone(localFieldProjection, parameterIndex, parameterReborrow, localBorrow,
-                    statementReceiverCall, statementReceiverReference, comparisonReturn,
-                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan);
+            allNone(localFieldProjection, parameterReborrow, localBorrow, statementReceiverCall,
+                    statementReceiverReference, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan);
         const bool borrowCarriersClear =
             allNone(call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterIndex, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
             allEmpty(localWrites, localWriteValues);
         // By-value struct parameter field return.
         if (byValueParameterField && parameterFieldProjection != zc::none &&
             allNone(methodReceiver, parameterFieldWrite, statementReceiverCall,
                     statementReceiverReference, literal, call, receiverCall, local, aggregate,
-                    localReference, localFieldProjection, parameterReference, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, receiverFieldArithmetic, receiverSelfCall,
-                    unsafeBlockSpan) &&
+                    localReference, localFieldProjection, parameterReference, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    receiverFieldArithmetic, receiverSelfCall, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody) {
           return ByValueParameterFieldReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection))};
         }
@@ -11032,8 +10911,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             parameterFieldWrite != zc::none && parameterFieldWriteLiteral != zc::none &&
             allNone(literal, call, receiverCall, local, aggregate, localReference,
                     localFieldProjection, parameterReference, statementReceiverCall,
-                    statementReceiverReference, parameterIndex, parameterReborrow, localBorrow,
-                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+                    statementReceiverReference, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody) {
           return ReceiverFieldWriteReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection)),
                                           zc::mv(ZC_ASSERT_NONNULL(parameterFieldWrite)),
@@ -11044,8 +10923,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             parameterFieldWrite == zc::none &&
             allNone(statementReceiverCall, statementReceiverReference, literal, call, receiverCall,
                     local, aggregate, localReference, localFieldProjection, parameterReference,
-                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
-                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody) {
           return ReceiverFieldReturn{zc::mv(ZC_ASSERT_NONNULL(parameterFieldProjection))};
         }
@@ -11054,9 +10933,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             allNone(parameterFieldWrite, methodReceiver, parameterFieldProjection,
                     parameterFieldWriteLiteral, literal, call, receiverCall, receiverSelfCall,
                     local, aggregate, localReference, localFieldProjection, parameterReference,
-                    statementReceiverCall, statementReceiverReference, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, receiverFieldArithmetic, unsafeBlockSpan) &&
+                    statementReceiverCall, statementReceiverReference, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    receiverFieldArithmetic, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return EmptyVoidBody{};
         }
@@ -11065,22 +10944,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         const bool hasScalarLeaf = (literal != zc::none) != (parameterReference != zc::none);
         const bool onlyScalarReturn =
             allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
-                    loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn, unsafeBlockSpan) &&
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, forLoopReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues);
         const bool singleInitializedLocal =
             local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             localReference != zc::none &&
-            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues);
         const bool arrayIndexFoldLocal =
             local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             (returnsArrayIndexFold || returnsArrayLengthFold) &&
-            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues);
         if (hasScalarLeaf && onlyScalarReturn) {
           if (literal != zc::none) {
@@ -11105,8 +10984,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // Comparison return (bare binary, no local).
         if (comparisonReturn != zc::none &&
             allNone(literal, call, receiverCall, aggregate, local, localReference,
-                    localFieldProjection, parameterReference, parameterIndex, parameterReborrow,
-                    localBorrow, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+                    localFieldProjection, parameterReference, parameterReborrow, localBorrow,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return ComparisonReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn))};
         }
@@ -11114,8 +10993,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (comparisonReturn != zc::none && local != zc::none && localReference == zc::none &&
             literal != zc::none &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReference,
-                    parameterIndex, parameterReborrow, localBorrow, loopBodyReturn,
-                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+                    parameterReborrow, localBorrow, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return PrimitiveUnaryReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn)),
                                       zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal)};
@@ -11124,21 +11003,21 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (receiverFieldArithmetic != zc::none &&
             allNone(literal, call, receiverCall, receiverSelfCall, local, aggregate, localReference,
                     localFieldProjection, parameterFieldProjection, parameterReference,
-                    parameterIndex, parameterReborrow, localBorrow, comparisonReturn,
-                    loopBodyReturn, comparisonLoopBodyReturn, parameterFieldWrite,
-                    parameterFieldWriteLiteral, unsafeBlockSpan) &&
+                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
+                    comparisonLoopBodyReturn, parameterFieldWrite, parameterFieldWriteLiteral,
+                    unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return ReceiverFieldArithmeticReturn{zc::mv(ZC_ASSERT_NONNULL(receiverFieldArithmetic))};
         }
         // Enum construction return.
         if (aggregate != zc::none && aggregateIsEnumConstruction && local == zc::none &&
             allNone(call, receiverCall, literal, parameterReference, localReference,
-                    localFieldProjection, parameterFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
-                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
-                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
-                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+                    localFieldProjection, parameterFieldProjection, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn,
+                    forInLoopAccumulatorReturn, parameterFieldWrite, parameterFieldWriteLiteral,
+                    receiverSelfCall, receiverFieldArithmetic, statementReceiverCall,
+                    statementReceiverReference, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
           return EnumConstructionReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate))};
         }
@@ -11146,12 +11025,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (aggregate != zc::none && !aggregateIsEnumConstruction && returnErasure == zc::none &&
             local == zc::none &&
             allNone(call, receiverCall, literal, parameterReference, localReference,
-                    localFieldProjection, parameterFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
-                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
-                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
-                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+                    localFieldProjection, parameterFieldProjection, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn,
+                    forInLoopAccumulatorReturn, parameterFieldWrite, parameterFieldWriteLiteral,
+                    receiverSelfCall, receiverFieldArithmetic, statementReceiverCall,
+                    statementReceiverReference, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
           return AggregateReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate))};
         }
@@ -11159,12 +11038,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (aggregate != zc::none && returnErasure != zc::none && !aggregateIsEnumConstruction &&
             local == zc::none &&
             allNone(call, receiverCall, literal, parameterReference, localReference,
-                    localFieldProjection, parameterFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, forLoopReturn, forLoopAccumulatorReturn,
-                    nestedForLoopAccumulatorReturn, forInLoopAccumulatorReturn, parameterFieldWrite,
-                    parameterFieldWriteLiteral, receiverSelfCall, receiverFieldArithmetic,
-                    statementReceiverCall, statementReceiverReference, unsafeBlockSpan) &&
+                    localFieldProjection, parameterFieldProjection, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn,
+                    forInLoopAccumulatorReturn, parameterFieldWrite, parameterFieldWriteLiteral,
+                    receiverSelfCall, receiverFieldArithmetic, statementReceiverCall,
+                    statementReceiverReference, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues) && !voidBody && !byValueParameterField) {
           return ExistentialReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate)),
                                    zc::mv(ZC_ASSERT_NONNULL(returnErasure))};
@@ -11173,9 +11052,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             aggregate != zc::none && localFieldProjection != zc::none &&
             localReference != zc::none &&
-            allNone(call, receiverCall, literal, parameterReference, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allNone(call, receiverCall, literal, parameterReference, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return AggregateFieldProjectionReturn{zc::mv(ZC_ASSERT_NONNULL(aggregate)),
                                                 zc::mv(ZC_ASSERT_NONNULL(local)),
@@ -11186,9 +11064,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             localWrites.size() != 0 && localWrites.size() == localWriteValues.size() &&
             localReference != zc::none &&
-            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    comparisonLoopBodyReturn, unsafeBlockSpan)) {
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan)) {
           bool writesArePlain = true;
           for (const auto& write : localWrites) {
             if (write.field != zc::none) writesArePlain = false;
@@ -11208,8 +11086,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (local != zc::none && localWrites.size() != 0 &&
             localWrites.size() == localWriteValues.size() && localFieldProjection != zc::none &&
             localReference == zc::none &&
-            allNone(call, receiverCall, parameterIndex, parameterReborrow, localBorrow,
-                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan)) {
+            allNone(call, receiverCall, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan)) {
           const bool initializedByAggregate = ZC_ASSERT_NONNULL(local).initializer != zc::none &&
                                               aggregate != zc::none && literal == zc::none &&
                                               parameterReference == zc::none;
@@ -11285,8 +11163,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             localReference != zc::none &&
             allNone(call, literal, parameterReference, parameterFieldWrite) &&
             allEmpty(localWrites, localWriteValues) &&
-            allNone(localFieldProjection, parameterIndex, parameterReborrow, localBorrow,
-                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
+            allNone(localFieldProjection, parameterReborrow, localBorrow, comparisonReturn,
+                    loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
             !voidBody) {
           return DiscardedReceiverCall{zc::mv(ZC_ASSERT_NONNULL(statementReceiverCall)),
                                        zc::mv(ZC_ASSERT_NONNULL(statementReceiverReference)),
@@ -11328,9 +11206,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (loopBodyReturn != zc::none && local != zc::none &&
             ZC_ASSERT_NONNULL(local).initializer != zc::none && localWrites.size() != 0 &&
             localWrites.size() == localWriteValues.size() && localReference != zc::none &&
-            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, comparisonLoopBodyReturn,
-                    unsafeBlockSpan)) {
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, comparisonLoopBodyReturn, unsafeBlockSpan)) {
           bool loopWritesArePlain = true;
           for (const auto& write : localWrites) {
             if (write.field != zc::none) loopWritesArePlain = false;
@@ -11351,9 +11228,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (comparisonLoopBodyReturn != zc::none && local != zc::none &&
             ZC_ASSERT_NONNULL(local).initializer != zc::none && localWrites.size() != 0 &&
             localWrites.size() == localWriteValues.size() && localReference != zc::none &&
-            allNone(call, receiverCall, aggregate, localFieldProjection, parameterIndex,
-                    parameterReborrow, localBorrow, comparisonReturn, loopBodyReturn,
-                    unsafeBlockSpan)) {
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, unsafeBlockSpan)) {
           bool loopWritesArePlain = true;
           for (const auto& write : localWrites) {
             if (write.field != zc::none) loopWritesArePlain = false;
@@ -11373,9 +11249,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // For-loop return.
         if (forLoopReturn != zc::none &&
             allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
-                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
-                    unsafeBlockSpan) &&
+                    parameterFieldProjection, parameterReference, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return ForLoopReturn{zc::mv(ZC_ASSERT_NONNULL(forLoopReturn)),
                                zc::mv(ZC_ASSERT_NONNULL(literal))};
@@ -11383,19 +11258,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // For-loop accumulator return.
         if (forLoopAccumulatorReturn != zc::none &&
             allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
-                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
-                    forLoopReturn, forInLoopAccumulatorReturn, unsafeBlockSpan) &&
+                    parameterFieldProjection, parameterReference, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forInLoopAccumulatorReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return ForLoopAccumulatorReturn{zc::mv(ZC_ASSERT_NONNULL(forLoopAccumulatorReturn))};
         }
         // Nested for-loop accumulator return.
         if (nestedForLoopAccumulatorReturn != zc::none &&
             allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
-                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
-                    forLoopReturn, forLoopAccumulatorReturn, forInLoopAccumulatorReturn,
-                    unsafeBlockSpan) &&
+                    parameterFieldProjection, parameterReference, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forLoopAccumulatorReturn, forInLoopAccumulatorReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return NestedForLoopAccumulatorReturn{
               zc::mv(ZC_ASSERT_NONNULL(nestedForLoopAccumulatorReturn))};
@@ -11403,10 +11277,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // For-in loop accumulator return.
         if (forInLoopAccumulatorReturn != zc::none &&
             allNone(local, call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterFieldProjection, parameterReference, parameterIndex, parameterReborrow,
-                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
-                    forLoopReturn, forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn,
-                    unsafeBlockSpan) &&
+                    parameterFieldProjection, parameterReference, parameterReborrow, localBorrow,
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn, forLoopReturn,
+                    forLoopAccumulatorReturn, nestedForLoopAccumulatorReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return ForInLoopAccumulatorReturn{zc::mv(ZC_ASSERT_NONNULL(forInLoopAccumulatorReturn))};
         }
@@ -11450,7 +11323,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             localBorrow != zc::none && parameterReborrow == zc::none &&
             allNone(call, receiverCall, aggregate, localReference, localFieldProjection,
-                    parameterIndex, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
+                    comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn) &&
             allEmpty(localWrites, localWriteValues) &&
             ((literal != zc::none) != (parameterReference != zc::none))) {
           return LocalBorrowReturn{zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal),
@@ -11466,7 +11339,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                             zc::mv(localReference),
                             zc::mv(localFieldProjection),
                             zc::mv(parameterReference),
-                            zc::mv(parameterIndex),
                             zc::mv(parameterReborrow),
                             zc::mv(localBorrow),
                             zc::mv(comparisonReturn),
@@ -11653,7 +11525,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   zc::Vector<HirParameterFieldWriteStatement> parameterFieldWrites;
   zc::Vector<HirRawPointerWriteStatement> rawPointerWrites;
   zc::Vector<HirParameterReferenceExpression> parameterReferences;
-  zc::Vector<HirParameterIndexExpression> parameterIndexes;
   zc::Vector<HirParameterReborrowExpression> parameterReborrows;
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
@@ -11696,8 +11567,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       return HirFnCtx(next, functions, blocks, returns, expressions, parameterReferences, locals,
                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
-                      rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows,
-                      parameterIndexes, calls, receiverCalls, conditionals, loops, sourceNodes);
+                      rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
+                      receiverCalls, conditionals, loops, sourceNodes);
     };
     if (value.shape.is<ByValueParameterFieldReturn>()) {
       auto fnCtx = makeFnCtx();
@@ -11962,9 +11833,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::mv(errorUnions), zc::mv(locals), zc::mv(localWrites), zc::mv(localReferences),
       zc::mv(localFieldProjections), zc::mv(parameterFieldProjections),
       zc::mv(parameterFieldWrites), zc::mv(rawPointerWrites), zc::mv(parameterReferences),
-      zc::mv(parameterIndexes), zc::mv(parameterReborrows), zc::mv(localBorrows), zc::mv(calls),
-      zc::mv(receiverCalls), zc::mv(unsafeBlocks), zc::mv(primitiveBinaryOperations),
-      zc::mv(conditionals), zc::mv(loops), zc::mv(sourceNodes));
+      zc::mv(parameterReborrows), zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls),
+      zc::mv(unsafeBlocks), zc::mv(primitiveBinaryOperations), zc::mv(conditionals), zc::mv(loops),
+      zc::mv(sourceNodes));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 

@@ -273,19 +273,6 @@ struct HirParameterReferenceExpression final {
   identity::SourceSpan sourceSpan;
 };
 
-/// \brief One checked read-only constant index projection rooted at a function parameter.
-struct HirParameterIndexExpression final {
-  HirNodeId node;
-  identity::CallableParameterKey parameter;
-  identity::SemanticTypeId receiverType;
-  identity::SemanticTypeId indexType;
-  checker::checked::CanonicalConstValue index;
-  identity::SemanticTypeId type;
-  HirValueCategory category;
-  identity::SourceSpan sourceSpan;
-  identity::SourceSpan indexSpan;
-};
-
 /// \brief One checked reborrow rooted in a reference parameter.
 struct HirParameterReborrowExpression final {
   HirNodeId node;
@@ -628,7 +615,6 @@ public:
   ZC_NODISCARD zc::ArrayPtr<const HirRawPointerWriteStatement> rawPointerWrites() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReferenceExpression> parameterReferences()
       const noexcept;
-  ZC_NODISCARD zc::ArrayPtr<const HirParameterIndexExpression> parameterIndexes() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirParameterReborrowExpression> parameterReborrows()
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLocalBorrowExpression> localBorrows() const noexcept;

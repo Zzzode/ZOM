@@ -3344,6 +3344,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
+    // A single-statement `return a[0];` on a callable parameter has no
+    // admitted lowering shape: the body checker produces ReadIndex facts, but
+    // the HIR verifier has no parameter-index return carrier. Reject it as a
+    // capability gap (ZOM4099) rather than letting the builder emit an
+    // unverifiable HIR node.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::IndexExpression) {
+      return zc::none;
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;

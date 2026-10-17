@@ -69,7 +69,6 @@ struct VerifiedHirModule::Impl final {
        zc::Vector<HirParameterFieldWriteStatement>&& parameterFieldWrites,
        zc::Vector<HirRawPointerWriteStatement>&& rawPointerWrites,
        zc::Vector<HirParameterReferenceExpression>&& parameterReferences,
-       zc::Vector<HirParameterIndexExpression>&& parameterIndexes,
        zc::Vector<HirParameterReborrowExpression>&& parameterReborrows,
        zc::Vector<HirLocalBorrowExpression>&& localBorrows,
        zc::Vector<HirDirectCallExpression>&& calls,
@@ -113,7 +112,6 @@ struct VerifiedHirModule::Impl final {
         parameterFieldWrites(zc::mv(parameterFieldWrites)),
         rawPointerWrites(zc::mv(rawPointerWrites)),
         parameterReferences(zc::mv(parameterReferences)),
-        parameterIndexes(zc::mv(parameterIndexes)),
         parameterReborrows(zc::mv(parameterReborrows)),
         localBorrows(zc::mv(localBorrows)),
         calls(zc::mv(calls)),
@@ -162,7 +160,6 @@ struct VerifiedHirModule::Impl final {
   zc::Vector<HirParameterFieldWriteStatement> parameterFieldWrites;
   zc::Vector<HirRawPointerWriteStatement> rawPointerWrites;
   zc::Vector<HirParameterReferenceExpression> parameterReferences;
-  zc::Vector<HirParameterIndexExpression> parameterIndexes;
   zc::Vector<HirParameterReborrowExpression> parameterReborrows;
   zc::Vector<HirLocalBorrowExpression> localBorrows;
   zc::Vector<HirDirectCallExpression> calls;
@@ -322,11 +319,6 @@ zc::ArrayPtr<const HirRawPointerWriteStatement> VerifiedHirModule::rawPointerWri
 zc::ArrayPtr<const HirParameterReferenceExpression> VerifiedHirModule::parameterReferences()
     const noexcept {
   return impl->parameterReferences.asPtr();
-}
-
-zc::ArrayPtr<const HirParameterIndexExpression> VerifiedHirModule::parameterIndexes()
-    const noexcept {
-  return impl->parameterIndexes.asPtr();
 }
 
 zc::ArrayPtr<const HirParameterReborrowExpression> VerifiedHirModule::parameterReborrows()
@@ -16383,11 +16375,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       zc::mv(candidate.impl->localReferences), zc::mv(candidate.impl->localFieldProjections),
       zc::mv(candidate.impl->parameterFieldProjections),
       zc::mv(candidate.impl->parameterFieldWrites), zc::mv(candidate.impl->rawPointerWrites),
-      zc::mv(candidate.impl->parameterReferences), zc::mv(candidate.impl->parameterIndexes),
-      zc::mv(candidate.impl->parameterReborrows), zc::mv(candidate.impl->localBorrows),
-      zc::mv(candidate.impl->calls), zc::mv(candidate.impl->receiverCalls),
-      zc::mv(candidate.impl->unsafeBlocks), zc::mv(candidate.impl->primitiveBinaryOperations),
-      zc::mv(candidate.impl->conditionals), zc::mv(candidate.impl->loops));
+      zc::mv(candidate.impl->parameterReferences), zc::mv(candidate.impl->parameterReborrows),
+      zc::mv(candidate.impl->localBorrows), zc::mv(candidate.impl->calls),
+      zc::mv(candidate.impl->receiverCalls), zc::mv(candidate.impl->unsafeBlocks),
+      zc::mv(candidate.impl->primitiveBinaryOperations), zc::mv(candidate.impl->conditionals),
+      zc::mv(candidate.impl->loops));
   return ir::IrOperationResult<VerifiedHirModule>::verified(VerifiedHirModule(zc::mv(impl)));
 }
 

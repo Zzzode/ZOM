@@ -34,7 +34,6 @@ enum class SurfaceSyntaxKind : uint8_t {
   Label = 0x06,
   VoidReturn = 0x07,
   ExpressionStatement = 0x08,
-  FunctionBody = 0x09,
 };
 
 /// \brief One source-ordered ownership-surface rejection.

@@ -26,7 +26,6 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirUnsafeBlockExpression>& unsafeBlocks,
                    zc::Vector<HirParameterReborrowExpression>& parameterReborrows,
                    zc::Vector<HirLocalBorrowExpression>& localBorrows,
-                   zc::Vector<HirParameterIndexExpression>& parameterIndexes,
                    zc::Vector<HirDirectCallExpression>& calls,
                    zc::Vector<HirReceiverCallExpression>& receiverCalls,
                    zc::Vector<HirConditionalExpression>& conditionals,
@@ -50,7 +49,6 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       unsafeBlocks(&unsafeBlocks),
       parameterReborrows(&parameterReborrows),
       localBorrows(&localBorrows),
-      parameterIndexes(&parameterIndexes),
       calls(&calls),
       receiverCalls(&receiverCalls),
       conditionals(&conditionals),
@@ -120,10 +118,6 @@ void HirFnCtx::addParameterReborrow(HirParameterReborrowExpression reborrow) {
 
 void HirFnCtx::addLocalBorrow(HirLocalBorrowExpression borrow) {
   localBorrows->add(zc::mv(borrow));
-}
-
-void HirFnCtx::addParameterIndex(HirParameterIndexExpression index) {
-  parameterIndexes->add(zc::mv(index));
 }
 
 void HirFnCtx::addDirectCall(HirDirectCallExpression call) { calls->add(zc::mv(call)); }

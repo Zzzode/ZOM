@@ -145,8 +145,6 @@ DiagID surfaceDiagnostic(SurfaceSyntaxKind kind) {
       return DiagID::VoidReturnSemanticsUnavailable;
     case SurfaceSyntaxKind::ExpressionStatement:
       return DiagID::ExpressionStatementSemanticsUnavailable;
-    case SurfaceSyntaxKind::FunctionBody:
-      return DiagID::FunctionBodySemanticsUnavailable;
     case SurfaceSyntaxKind::Match:
     case SurfaceSyntaxKind::Loop:
     case SurfaceSyntaxKind::LoopControl:

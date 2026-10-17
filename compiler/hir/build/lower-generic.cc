@@ -227,11 +227,6 @@ void lowerGenericFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) 
         HirParameterReferenceExpression{referenceId, reference.parameter.clone(), reference.type,
                                         reference.category, reference.sourceSpan.clone()});
   }
-  ZC_IF_SOME(index, generic.parameterIndex) {
-    ctx.addParameterIndex(HirParameterIndexExpression{
-        valueId, index.parameter.clone(), index.receiverType, index.indexType, index.index.clone(),
-        index.type, index.category, index.sourceSpan.clone(), index.indexSpan.clone()});
-  }
   ZC_IF_SOME(reborrow, generic.parameterReborrow) {
     zc::Maybe<HirLocalId> sourceAlias;
     if (reborrow.sourceAlias != zc::none) { sourceAlias = hirLocalId(1); }

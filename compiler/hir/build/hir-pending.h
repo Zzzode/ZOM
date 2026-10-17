@@ -1022,7 +1022,6 @@ struct GenericShape {
   zc::Maybe<HirLocalReferenceExpression> localReference;
   zc::Maybe<HirLocalFieldProjectionExpression> localFieldProjection;
   zc::Maybe<HirParameterReferenceExpression> parameterReference;
-  zc::Maybe<HirParameterIndexExpression> parameterIndex;
   zc::Maybe<HirParameterReborrowExpression> parameterReborrow;
   zc::Maybe<HirLocalBorrowExpression> localBorrow;
   zc::Maybe<PendingEqualityCondition> comparisonReturn;
