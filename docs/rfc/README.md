@@ -123,6 +123,7 @@ not reused.
 | [RFC 0052](0052-rfc-granularity-and-internal-change-threshold.md) | RFC Granularity And Internal-Change Threshold | ACCEPTED | process | process | rfc | [Review Tracker](tracking/0052-rfc-granularity-and-internal-change-threshold-review.md) | [Implementation Tracker](tracking/0052-rfc-granularity-and-internal-change-threshold-review.md#implementation-tracker) |
 | [RFC 0053](0053-lir-structural-verification-and-translation-validation.md) | LIR Structural Verification And MIR-to-LIR Translation Validation | DRAFT | compiler | compiler | rfc | TBD | TBD |
 | [RFC 0054](0054-core-library-api-specification.md) | Core Library API Specification | DRAFT | language | language | rfc | TBD | TBD |
+| [RFC 0055](0055-definite-assignment-local-bindings.md) | Definite Assignment For Initializer-less Local Bindings | DRAFT | language | language | rfc | TBD | TBD |
 
 ## Status Values
 
