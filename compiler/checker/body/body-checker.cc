@@ -1522,7 +1522,44 @@ LocalWriteRegistry buildLocalWriteRegistry(
           };
           const bool thenEmpty = armStatementCount(thenBlockId) == 0;
           const bool elseEmpty = armStatementCount(elseBlockId) == 0;
-          if (diamondCondition && (thenEmpty || elseEmpty) &&
+          // The non-empty arm must be fully classified by this pass: every
+          // statement a plain assignment to the target (the first is the
+          // initialization, later ones are the ZOM4024 re-writes). An arm that
+          // contains any other statement keeps its ordinary unsupported-
+          // construct drain, so this pass reports only shapes the checker
+          // wholly owns.
+          auto armIsAllTargetWrites = [&](ast::NodeId blockId) -> bool {
+            const ast::NodeList arm{tree.node(blockId).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                    tree.node(blockId).payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (!tree.contains(arm) || arm.size == 0) return false;
+            for (ast::NodeId armItemNode : tree.list(arm)) {
+              const auto armItem = statementItemFor(armItemNode);
+              ast::NodeId armStmt;
+              ZC_IF_SOME(node, armItem) { armStmt = node; }
+              if (armItem == zc::none ||
+                  tree.node(armStmt).kind != ast::SyntaxKind::ExpressionStatement) {
+                return false;
+              }
+              const ast::NodeId write(
+                  tree.node(armStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+              if (!tree.contains(write) ||
+                  tree.node(write).kind != ast::SyntaxKind::AssignmentExpr ||
+                  static_cast<ast::AssignmentOperatorKind>(
+                      tree.node(write).payload.words[ast::kAssignmentExprOpWord]) !=
+                      ast::AssignmentOperatorKind::Assign) {
+                return false;
+              }
+              const ast::NodeId lhs(tree.node(write).payload.words[ast::kAssignmentExprLhsWord]);
+              if (!tree.contains(lhs) || tree.node(lhs).kind != ast::SyntaxKind::IdentExpr ||
+                  tree.node(lhs).payload.words[ast::kIdentExprNameWord] != targetName) {
+                return false;
+              }
+            }
+            return true;
+          };
+          const bool thenClassified = thenEmpty || armIsAllTargetWrites(thenBlockId);
+          const bool elseClassified = elseEmpty || armIsAllTargetWrites(elseBlockId);
+          if (diamondCondition && (thenEmpty || elseEmpty) && thenClassified && elseClassified &&
               (armInitializes(thenBlockId) || armInitializes(elseBlockId))) {
             const auto trailing = statementItemFor(tree.list(statements)[2]);
             ast::NodeId trailingStmt;
