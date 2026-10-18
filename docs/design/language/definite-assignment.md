@@ -1,7 +1,8 @@
 # Definite Assignment For Local Bindings
 
-Status: specified in the normative text, not fully implemented
+Status: straight-line and conditional-diamond late initialization implemented
 Date: 2026-10-17
+Last implementation update: 2026-10-18 (RFC 0055 slices 1-4)
 
 This note synthesizes an already-specified rule and records where the
 production compiler diverges. It does not introduce a new rule; the
@@ -58,47 +59,54 @@ Negative cases follow from the same contract:
 - `let` assigned a second time on any path: immutable mutation rejection
   (ZOM4024 family); the first write remains its single initialization.
 
-## Current production behavior (gap)
+## Current production behavior
 
-Observed on 2026-10-17 against the sanitizer build:
+Straight-line late initialization and the conditional four-block diamond are
+implemented (RFC 0055 slices 1-4). Observed against the sanitizer build:
 
 | Program | Current | Spec |
 |---|---|---|
-| `mut v: i32; v = 1; return v;` | `--check` passes; no end-to-end lowering strategy | Accept, lower |
+| `mut v: i32; v = 1; return v;` | `--check` passes; lowered natively | Accept, lower |
 | `mut v: i32; return v;` | ZOM4093 + ZOM4094 | Reject (matches) |
-| `let v: i32; v = 1; return v;` | ZOM4099 at the assignment | Accept (single init) |
-| `let v: i32; if (c) { v = 1; } else { v = 2; } return v;` | ZOM4099 in the branch | Accept (single init per path) |
+| `let v: i32; v = 1; return v;` | accepted; lowered natively | Accept (single init) |
+| `let v: i32; if (c) { v = 1; } else { v = 2; } return v;` | accepted; per-path `Initialize`, lowered | Accept (single init per path) |
+| `let v: i32; if (1 < 2) { v = 41; } else { v = 7; } return v;` | accepted; folds to `zom.module_init`, exit 41 | Accept (foldable condition) |
+| `let v: i32; if (c) { v = 1; v = 2; } else { v = 2; } return v;` | ZOM4024 on the second arm write | Reject (immutable re-write) |
+| `let v: i32; if (c) { v = 1; } else { } return v;` | ZOM4093 + ZOM4094 at the join read | Reject (missing-arm path) |
 
-The ownership rail already answers "initialized on every path" via its
-init-state tracking and emits ZOM4093/ZOM4094. The gap is upstream: the
-body-checker admission gate and the HIR/MIR lowering path.
+The ownership rail answers "initialized on every path" with a per-block AND
+meet and emits ZOM4093/ZOM4094; the MIR structural verifier independently
+enforces Initialize/Overwrite kind discipline on acyclic CFGs. Semantically
+valid shapes the current lowering carrier cannot emit (for example arm values
+that copy an earlier user local) still drain cleanly as ZOM4099.
 
-## Implementation surfaces
+## Implemented surfaces
 
-1. **Body checker admission.** `isSimpleLocalWrite`
-   (`compiler/checker/body/body-checker.cc`) admits a scalar local write
-   only when `isMutableOwnerLocal` holds; the late-init shapes drain as
-   ZOM4099. A write to an initializer-less `let` local must be admitted as
-   the dominating first assignment, and a subsequent write to that `let`
-   rejected via the immutable-mutation drain. The checker must classify the
-   first dominating write as `Initialize` and only a write to an already
-   initialized place as `Overwrite`.
-2. **HIR builder.** The shape classifier must represent a binding without
-   an initializer followed by a later `Initialize` write. Today only
-   `mut x = <init>; x = ...; return x;` (`ScalarLocalOverwrite`, which
-   requires an initializer) and the uninitialized-return arms lower; the
-   initializer-less plus late-init combination reaches the GenericShape
-   catch-all or drains.
-3. **MIR builder.** The recursive MIR builder (RFC 0048 Phase 3) must walk
-   the `LocalWrite` statement for an initializer-less binding and emit
-   `StorageLive` followed by `Assign(Initialize)`. The shape strategy table
-   has no such entry; this lands as the recursive builder gains the write
-   family.
-4. **Ownership checker.** The path-sensitive init state must accept a read
-   dominated by the late `Initialize` on every path while keeping ZOM4093
-   for uses that are not. The admitted reducible-CFG slice (straight-line,
-   four-block diamond, reducible loops) covers the current production
-   shapes.
+1. **Body checker admission.** `buildLocalWriteRegistry`
+   (`compiler/checker/body/body-checker.cc`) classifies each write to an
+   initializer-less scalar local: the first write on a reaching path is
+   `FirstInitialization` and a later write is `ImmutableReinit`. It scans
+   straight-line statements and every statement of a bounded if/else diamond
+   arm independently, so the path-scoped classification does not see the
+   sibling arm write as a second write. `ImmutableReinit` emits ZOM4024;
+   `FirstInitialization` is admitted as `BodyProductionKind::LocalWrite`.
+2. **HIR builder.** `ConditionalLocalWriteReturn` plus the
+   `HirConditionalLocalWriteStatement` block-listed node represent a
+   binding without an initializer followed by a per-arm if/else. The node
+   uses a fixed-id layout (11 ids for a bare bool condition, 13 for a
+   foldable comparison) and an independent per-node verifier arm.
+3. **MIR builder.** The recursive MIR builder walks the
+   `ConditionalLocalWrite` statement and emits the four-block CFG: a
+   SwitchInt on a bool parameter or a comparison temporary, one
+   per-path-`Initialize` arm, a Goto join, and the trailing Return. A
+   missing arm is an empty block so the error-preserving MIR reaches the
+   ownership rail.
+4. **Ownership checker.** The path-sensitive init state accepts a read
+   initialized on every predecessor and rejects a missing-arm join read with
+   ZOM4093/ZOM4094. The admitted reducible-CFG slice is straight-line plus
+   the four-block diamond; loop-header joins use the pre-existing
+   StorageLive/Overwrite encoding and remain outside the new per-block
+   discipline.
 
 ## Bounds (non-goals)
 
