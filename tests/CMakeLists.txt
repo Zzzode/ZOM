@@ -355,6 +355,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/tuple-destructure-consumer/Zom.toml::tuple_destructure_consumer::tuple_destructure_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-length-consumer/Zom.toml::array_length_consumer::array_length_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-length-consumer/Zom.toml::string_length_consumer::string_length_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-twocaller-consumer/Zom.toml::reject_twocaller_consumer::reject_twocaller_consumer"
       --reject-case
@@ -628,6 +630,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/tuple-destructure-consumer/Zom.toml::tuple_destructure_consumer::tuple_destructure_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/array-length-consumer/Zom.toml::array_length_consumer::array_length_consumer::3"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-length-consumer/Zom.toml::string_length_consumer::string_length_consumer::5"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-in-condition-consumer/Zom.toml::call_in_condition_consumer::call_in_condition_consumer::41"
       --run-case

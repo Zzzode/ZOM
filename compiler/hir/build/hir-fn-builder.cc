@@ -264,15 +264,27 @@ void lowerLocalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& c
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
 
-  if (function.shape.is<ArrayIndexFoldReturn>()) {
-    // Array index or length fold: the return value is the folded scalar literal.
-    ctx.addExpression(HirScalarLiteralExpression{
-        valueId, function.resultType, zc::mv(function.shape.get<ArrayIndexFoldReturn>().literal),
-        HirValueCategory::Value, function.valueSpan.clone()});
-  } else if (function.shape.is<ArrayLengthFoldReturn>()) {
-    ctx.addExpression(HirScalarLiteralExpression{
-        valueId, function.resultType, zc::mv(function.shape.get<ArrayLengthFoldReturn>().literal),
-        HirValueCategory::Value, function.valueSpan.clone()});
+  const bool isIndexFold = function.shape.is<ArrayIndexFoldReturn>();
+  const bool isLengthFold = function.shape.is<LengthFoldReturn>();
+  if (isIndexFold || isLengthFold) {
+    // Array index or length fold: the local binding exists with an initializer
+    // node (the array literal is validated by the builder but not lowered to a
+    // HIR expression), and the return value is the folded scalar literal.
+    const HirLocalBinding& foldLocal = isIndexFold
+                                           ? function.shape.get<ArrayIndexFoldReturn>().local
+                                           : function.shape.get<LengthFoldReturn>().local;
+    ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), foldLocal.type, initializerId,
+                                 foldLocal.sourceSpan.clone(),
+                                 ZC_ASSERT_NONNULL(foldLocal.initializerSpan).clone()});
+    if (isIndexFold) {
+      ctx.addExpression(HirScalarLiteralExpression{
+          valueId, function.resultType, zc::mv(function.shape.get<ArrayIndexFoldReturn>().literal),
+          HirValueCategory::Value, function.valueSpan.clone()});
+    } else {
+      ctx.addExpression(HirScalarLiteralExpression{
+          valueId, function.resultType, zc::mv(function.shape.get<LengthFoldReturn>().literal),
+          HirValueCategory::Value, function.valueSpan.clone()});
+    }
   } else {
     const auto& shape = function.shape.get<LocalReturn>();
     const identity::SemanticTypeId localType = shape.local.type;

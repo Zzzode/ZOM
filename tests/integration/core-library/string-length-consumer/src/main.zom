@@ -1,0 +1,6 @@
+// String length property access in return position: a single function that
+// initializes a string with a literal and returns its UTF-8 byte length. The
+// length read is folded at compile time, so it lowers to the reserved
+// no-argument i32 `zom.module_init` shape and emits a verified native ELF
+// object.
+fn entry() -> i32 { let s = "hello"; return s.length; }

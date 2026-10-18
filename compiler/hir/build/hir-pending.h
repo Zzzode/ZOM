@@ -776,10 +776,12 @@ struct UnsafeScalarReturn {
 };
 
 struct ArrayIndexFoldReturn {
+  HirLocalBinding local;
   checker::checked::CanonicalConstValue literal;
 };
 
-struct ArrayLengthFoldReturn {
+struct LengthFoldReturn {
+  HirLocalBinding local;
   checker::checked::CanonicalConstValue literal;
 };
 
@@ -1086,13 +1088,12 @@ struct GenericShape {
 using PendingFunctionShape = zc::OneOf<
     EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
     VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
-    ArrayLengthFoldReturn, LocalReturn, UninitializedLocalReturn,
-    UninitializedFieldProjectionReturn, LocalWriteReturn, LocalFieldProjectionReturn,
-    LocalBorrowReturn, ParameterReferenceReturn, ParameterReborrowReturn, LocalAliasReborrowReturn,
-    RawDereferenceReturn, RawPointerWriteReturn, AggregateReturn, EnumConstructionReturn,
-    ExistentialReturn, AggregateFieldProjectionReturn, DirectScalarLocalCallReturn,
-    DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
-    ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
+    LengthFoldReturn, LocalReturn, UninitializedLocalReturn, UninitializedFieldProjectionReturn,
+    LocalWriteReturn, LocalFieldProjectionReturn, LocalBorrowReturn, ParameterReferenceReturn,
+    ParameterReborrowReturn, LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn,
+    AggregateReturn, EnumConstructionReturn, ExistentialReturn, AggregateFieldProjectionReturn,
+    DirectScalarLocalCallReturn, DirectAggregateCallReturn, DirectExistentialCallReturn,
+    DirectCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
     ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
     DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
     ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,

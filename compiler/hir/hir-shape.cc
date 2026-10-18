@@ -3590,7 +3590,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsLocalPostfixIncrement = false;
   bool returnsPrimitiveUnary = false;
   bool returnsArrayIndexFold = false;
-  bool returnsArrayLengthFold = false;
+  bool returnsLengthFold = false;
   bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
   const auto reborrow = reborrowReference(tree, value);
   const auto localBorrow = localBorrowReference(tree, value);
@@ -3638,7 +3638,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       const auto lengthPropertyName = tree.ident(
           ast::IdentId(tree.node(value).payload.words[ast::kMemberExpressionPropertyWord]));
       if (lengthPropertyName == "length"_zc) {
-        returnsArrayLengthFold = true;
+        returnsLengthFold = true;
         returnsLocalField = false;
       }
     }
@@ -3741,10 +3741,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     return zc::none;
   }
   if (!tree.contains(initializer) && statements.size == 2) {
-    // An uninitialized local cannot drive an array-length fold; restore the
+    // An uninitialized local cannot drive a length fold; restore the
     // local-field classification so the builder uses the member-fact path.
-    if (returnsArrayLengthFold) {
-      returnsArrayLengthFold = false;
+    if (returnsLengthFold) {
+      returnsLengthFold = false;
       returnsLocalField = true;
     }
     // A local borrow requires the referent to be initialized at the borrow point.
@@ -3778,12 +3778,14 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             ast::MemberAccessKind::Qualified)) {
     return zc::none;
   }
-  // An array-length fold requires an ArrayLiteral initializer. A `x.length`
-  // access on any other initializer kind (e.g. a StringLiteralExpr) keeps the
+  // A length fold requires an initializer whose element count the body checker
+  // folded: an array literal (fixed length) or a string literal (UTF-8 byte
+  // length). A `x.length` access on any other initializer kind keeps the
   // local-field classification so the builder uses the member-fact path.
-  if (returnsArrayLengthFold && tree.contains(initializer) &&
-      tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral) {
-    returnsArrayLengthFold = false;
+  if (returnsLengthFold && tree.contains(initializer) &&
+      tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral &&
+      tree.node(initializer).kind != ast::SyntaxKind::StringLiteralExpr) {
+    returnsLengthFold = false;
     returnsLocalField = true;
   }
   // Split the sole-local direct-call carrier by initializer kind. A struct
@@ -3825,7 +3827,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
     shape.returnsLocalBorrow = localBorrow != zc::none;
     shape.returnsArrayIndexFold = returnsArrayIndexFold;
-    shape.returnsArrayLengthFold = returnsArrayLengthFold;
+    shape.returnsLengthFold = returnsLengthFold;
     shape.unsafeBlock = zc::mv(unsafeBlock);
     return shape;
   }
@@ -3958,7 +3960,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   shape.returnsDirectExistentialCall = returnsDirectExistentialCall;
   shape.returnsLocalBorrow = localBorrow != zc::none;
   shape.returnsArrayIndexFold = returnsArrayIndexFold;
-  shape.returnsArrayLengthFold = returnsArrayLengthFold;
+  shape.returnsLengthFold = returnsLengthFold;
   shape.unsafeBlock = zc::mv(unsafeBlock);
   return shape;
 }

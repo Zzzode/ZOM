@@ -348,14 +348,16 @@ struct FunctionReturnShape final {
   // literal, reusing the literal-return path. `shape.value` is the
   // IndexExpression node; `localReference` is the base IdentExpr.
   bool returnsArrayIndexFold = false;
-  // Two-statement array-length fold shape: a leading array-literal-initialized
-  // local (`let a: [T; N] = [e0, ..];`) followed by `return a.length;`. The
-  // body checker folds the length read to the array's fixed length at compile
-  // time, so the builder looks up the checked literal fact on the
-  // MemberExpression node and lowers the return to a scalar literal, reusing
-  // the literal-return path. `shape.value` is the MemberExpression node;
-  // `localReference` is the base IdentExpr.
-  bool returnsArrayLengthFold = false;
+  // Two-statement length fold shape: a leading array-literal- or
+  // string-literal-initialized local (`let a: [T; N] = [e0, ..];` /
+  // `let s = "text";`) followed by `return a.length;` / `return s.length;`.
+  // The body checker folds the length read to the array's fixed element count
+  // or the string's UTF-8 byte length at compile time, so the builder looks up
+  // the checked literal fact on the MemberExpression node and lowers the
+  // return to a scalar literal, reusing the literal-return path.
+  // `shape.value` is the MemberExpression node; `localReference` is the base
+  // IdentExpr.
+  bool returnsLengthFold = false;
   // Single-statement shared-receiver method shape:
   // `return this.<field> OP <scalar literal>;` (or the mirrored operand order)
   // reading the field through the implicit receiver with one field projection.

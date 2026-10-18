@@ -5212,6 +5212,46 @@ ZC_TEST("HIR pipeline lowers a constant array index fold return") {
   ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
 }
 
+ZC_TEST("HIR pipeline lowers an array length fold return") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 { let a: [i32; 3] = [1, 2, 3]; return a.length; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  // The length read is folded to the fixed element count at compile time; the
+  // local binding survives with an initializer node but no expression record.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& local = module.locals()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(local.initializer != zc::none);
+  ZC_EXPECT(returnStatement.value == literal.node);
+  ZC_EXPECT(literal.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
+ZC_TEST("HIR pipeline lowers a string length fold return") {
+  HirPipelineFixture fixture("fn entry() -> i32 { let s = \"hello\"; return s.length; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  // The string length read is folded to the UTF-8 byte length at compile time;
+  // the local binding survives with an initializer node but no expression
+  // record.
+  ZC_REQUIRE(module.expressions().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& local = module.locals()[0];
+  const auto& literal = module.expressions()[0];
+  const auto& returnStatement = module.returns()[0];
+  ZC_EXPECT(local.initializer != zc::none);
+  ZC_EXPECT(returnStatement.value == literal.node);
+  ZC_EXPECT(literal.type == function.resultType);
+  ZC_EXPECT(literal.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
+}
+
 ZC_TEST("HIR pipeline lowers a raw-pointer dereference return") {
   HirPipelineFixture fixture("fn entry(ptr: *const i32) -> i32 { return unsafe { *ptr }; }"_zc);
   const auto& module = fixture.hirModule();

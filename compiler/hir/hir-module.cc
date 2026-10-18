@@ -1017,8 +1017,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     ZC_IF_SOME(value, sourceShapeMaybe) { isDynFieldAccessShape = value.dynFieldAccessReturn; }
     bool isArrayIndexFoldShape = false;
     ZC_IF_SOME(value, sourceShapeMaybe) { isArrayIndexFoldShape = value.returnsArrayIndexFold; }
-    bool isArrayLengthFoldShape = false;
-    ZC_IF_SOME(value, sourceShapeMaybe) { isArrayLengthFoldShape = value.returnsArrayLengthFold; }
+    bool isLengthFoldShape = false;
+    ZC_IF_SOME(value, sourceShapeMaybe) { isLengthFoldShape = value.returnsLengthFold; }
     if (isVoidShape) {
       const FunctionReturnShape& voidSource = ZC_ASSERT_NONNULL(sourceShapeMaybe);
       // Void mutating-method branch: function F, body F+1, write F+2, write
@@ -14989,13 +14989,13 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       nextFunction += baseIncrement + ZC_ASSERT_NONNULL(unsafeExtra);
       continue;
     }
-    // Array index or length fold: `let a: [T; N] = [...]; return a[k];` or
-    // `return a.length;` where the read is folded to a scalar literal. The
-    // local binding exists with an initializer node that has no HIR
-    // expression record (the array literal is validated by the builder but
-    // not lowered), and the return value is a scalar literal at the value
-    // node (not a local reference).
-    if ((isArrayIndexFoldShape || isArrayLengthFoldShape) && returnsLocal && localHasInitializer &&
+    // Array index or length fold: `let a: [T; N] = [...]; return a[k];`,
+    // `return a.length;`, or `let s = "..."; return s.length;` where the read
+    // is folded to a scalar literal. The local binding exists with an
+    // initializer node that has no HIR expression record (the array or string
+    // literal is validated by the builder but not lowered), and the return
+    // value is a scalar literal at the value node (not a local reference).
+    if ((isArrayIndexFoldShape || isLengthFoldShape) && returnsLocal && localHasInitializer &&
         localReference == zc::none && literalExpression == zc::none && directCall == zc::none &&
         !hasLocalWrite) {
       zc::Maybe<const HirScalarLiteralExpression&> foldLiteral;
@@ -15049,7 +15049,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (source.localInitializer == zc::none || !tree.contains(source.value) ||
           (isArrayIndexFoldShape &&
            tree.node(source.value).kind != ast::SyntaxKind::IndexExpression) ||
-          (isArrayLengthFoldShape &&
+          (isLengthFoldShape &&
            tree.node(source.value).kind != ast::SyntaxKind::MemberExpression)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
