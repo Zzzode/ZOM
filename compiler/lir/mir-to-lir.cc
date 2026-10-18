@@ -4134,7 +4134,13 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     return zc::none;
   }
   // A bool-literal condition adds StorageLive(temp) + Assign(temp = literal).
+  // An RFC 0055 conditional-local-write diamond instead initializes the temp
+  // with a foldable scalar Comparison (`1 < 2`); the entry then emits one
+  // Compare statement.
   zc::Maybe<Operand> conditionTempInitializer;
+  zc::Maybe<ComparisonOp> conditionComparisonOp;
+  zc::Maybe<Operand> conditionComparisonLeft;
+  zc::Maybe<Operand> conditionComparisonRight;
   if (hasConditionTemp) {
     const auto& tempLive = entry.statements[leadingLocalCount * 2 + 1];
     const auto& tempAssign = entry.statements[leadingLocalCount * 2 + 2];
@@ -4145,16 +4151,57 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     }
     const auto& assignment = tempAssign.assignmentValue();
     if (assignment.destination.local() != conditionTempDecl->id ||
-        assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != mir::MirRvalueKind::Use) {
+        assignment.destination.projections().size() != 0) {
       return zc::none;
     }
     auto tempCarrier = boolCarrierFor(conditionTempDecl->type, semanticTypes);
     if (tempCarrier == zc::none) { return zc::none; }
-    auto lowered =
-        lirOperandFor(assignment.value.useValue().operand, ZC_REQUIRE_NONNULL(tempCarrier));
-    if (lowered == zc::none) { return zc::none; }
-    conditionTempInitializer = zc::mv(lowered);
+    if (assignment.value.kind() == mir::MirRvalueKind::Use) {
+      auto lowered =
+          lirOperandFor(assignment.value.useValue().operand, ZC_REQUIRE_NONNULL(tempCarrier));
+      if (lowered == zc::none) { return zc::none; }
+      conditionTempInitializer = zc::mv(lowered);
+    } else if (assignment.value.kind() == mir::MirRvalueKind::Comparison) {
+      const auto& comparison = assignment.value.comparisonValue();
+      if (comparison.resultType != conditionTempDecl->type) { return zc::none; }
+      // Integer scalar operands only: a constant or a projection-free place
+      // use, both sharing one non-Bit1 integer carrier. A bool/float/aggregate
+      // operand or a projected place stays fail-closed.
+      auto comparisonCarrierFor = [&](const mir::MirOperand& operand) -> zc::Maybe<ValueType> {
+        if (operand.kind() == mir::MirOperandKind::Constant) {
+          auto carrier = integerCarrierFor(operand.constantValue().type, semanticTypes);
+          if (carrier == zc::none) return zc::none;
+          if (ZC_REQUIRE_NONNULL(carrier).kind() != ValueTypeKind::Integer ||
+              ZC_REQUIRE_NONNULL(carrier).integerWidth() == IntegerBitWidth::Bit1) {
+            return zc::none;
+          }
+          return carrier;
+        }
+        if (operand.place().projections().size() != 0) { return zc::none; }
+        auto carrier = integerCarrierFor(operand.place().resultType(), semanticTypes);
+        if (carrier == zc::none) return zc::none;
+        if (ZC_REQUIRE_NONNULL(carrier).kind() != ValueTypeKind::Integer ||
+            ZC_REQUIRE_NONNULL(carrier).integerWidth() == IntegerBitWidth::Bit1) {
+          return zc::none;
+        }
+        return carrier;
+      };
+      auto leftCarrier = comparisonCarrierFor(comparison.left);
+      auto rightCarrier = comparisonCarrierFor(comparison.right);
+      if (leftCarrier == zc::none || rightCarrier == zc::none ||
+          ZC_REQUIRE_NONNULL(leftCarrier) != ZC_REQUIRE_NONNULL(rightCarrier)) {
+        return zc::none;
+      }
+      const ValueType comparisonCarrier = ZC_REQUIRE_NONNULL(leftCarrier);
+      auto loweredLeft = lirOperandFor(comparison.left, comparisonCarrier);
+      auto loweredRight = lirOperandFor(comparison.right, comparisonCarrier);
+      if (loweredLeft == zc::none || loweredRight == zc::none) { return zc::none; }
+      conditionComparisonOp = lirComparisonOpFor(comparison.op);
+      conditionComparisonLeft = zc::mv(loweredLeft);
+      conditionComparisonRight = zc::mv(loweredRight);
+    } else {
+      return zc::none;
+    }
   }
 
   const auto& switchInt = entry.terminator.switchIntValue();
@@ -4188,7 +4235,8 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
     const auto& assignment = branch.statements[0].assignmentValue();
     if (assignment.destination.local() != ternaryLocalDecl.id ||
         assignment.destination.projections().size() != 0 ||
-        assignment.value.kind() != mir::MirRvalueKind::Use) {
+        assignment.value.kind() != mir::MirRvalueKind::Use ||
+        assignment.initialization != mir::MirInitializationKind::Initialize) {
       return false;
     }
     const auto& operand = assignment.value.useValue().operand;
@@ -4237,8 +4285,15 @@ zc::Maybe<Module> MirToLirLowering::lowerTernaryLocalReturn(
                                             zc::mv(leadingInitializers[i])));
     }
     if (hasConditionTemp) {
-      entryStatements.add(Statement::assign(conditionTempDecl->id.ordinal(),
-                                            zc::mv(ZC_REQUIRE_NONNULL(conditionTempInitializer))));
+      if (conditionComparisonOp != zc::none) {
+        entryStatements.add(Statement::compare(
+            conditionTempDecl->id.ordinal(), ZC_REQUIRE_NONNULL(conditionComparisonOp),
+            zc::mv(ZC_REQUIRE_NONNULL(conditionComparisonLeft)),
+            zc::mv(ZC_REQUIRE_NONNULL(conditionComparisonRight))));
+      } else {
+        entryStatements.add(Statement::assign(
+            conditionTempDecl->id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(conditionTempInitializer))));
+      }
     }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                           Terminator::condBranch(conditionOrdinal, ZC_REQUIRE_NONNULL(thenId),

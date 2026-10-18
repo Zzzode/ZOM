@@ -50,6 +50,8 @@ zc::Maybe<HirNodeKind> lookupHirNodeKind(const VerifiedHirModule& module, HirNod
   if (poolContains(module.primitiveBinaryOperations(), node)) return HirNodeKind::PrimitiveBinary;
   if (poolContains(module.conditionals(), node)) return HirNodeKind::Conditional;
   if (poolContains(module.loops(), node)) return HirNodeKind::Loop;
+  if (poolContains(module.conditionalLocalWrites(), node))
+    return HirNodeKind::ConditionalLocalWrite;
   return zc::none;
 }
 

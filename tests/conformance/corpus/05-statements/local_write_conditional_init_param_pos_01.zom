@@ -1,0 +1,9 @@
+fn port_for(secure: bool) -> i32 {
+    let port: i32;
+    if (secure) {
+        port = 443;
+    } else {
+        port = 80;
+    }
+    return port;
+}

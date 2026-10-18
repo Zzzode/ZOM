@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, ifStatement, emptyBlock, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits an empty arm; the join read of the uninitialized place is a semantic ZOM4093 with ZOM4094."

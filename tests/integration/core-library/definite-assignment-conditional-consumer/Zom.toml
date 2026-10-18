@@ -1,0 +1,8 @@
+[package]
+name = "definite_assignment_conditional_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "definite_assignment_conditional_consumer"
+path = "src/main.zom"

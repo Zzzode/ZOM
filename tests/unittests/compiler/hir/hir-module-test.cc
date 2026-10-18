@@ -1335,6 +1335,89 @@ ZC_TEST("HIR pipeline lowers a scalar-literal mutable local write unchanged") {
   }
 }
 
+ZC_TEST("HIR conditional-local-write diamond lowers per-path Initialize at 13-id stride") {
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 { let v: i32; if (1 < 2) { v = 41; } else { v = 7; } return v; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  // Two arm values plus the two scalar comparison leaves (1, 2).
+  ZC_REQUIRE(module.expressions().size() == 4);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.conditionalLocalWrites().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() == 0);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& local = module.locals()[0];
+  const auto& conditional = module.conditionalLocalWrites()[0];
+  const auto& comparison = module.primitiveBinaryOperations()[0];
+  const auto& returnReference = module.localReferences()[0];
+  // Fixed-id comparison layout (stride 13): F+0 function, F+1 body, F+2
+  // local, F+3 then write, F+4 then value, F+5 else write, F+6 else value,
+  // F+7/F+8 comparison leaves, F+9 comparison, F+10 conditional, F+11 return,
+  // F+12 return value.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_EXPECT(local.initializer == zc::none);
+  ZC_EXPECT(module.localWrites()[0].node.ordinal() == 4);
+  ZC_EXPECT(module.localWrites()[0].value.ordinal() == 5);
+  ZC_EXPECT(module.localWrites()[1].node.ordinal() == 6);
+  ZC_EXPECT(module.localWrites()[1].value.ordinal() == 7);
+  ZC_EXPECT(comparison.node.ordinal() == 10);
+  ZC_EXPECT(comparison.left.ordinal() == 8);
+  ZC_EXPECT(comparison.right.ordinal() == 9);
+  ZC_EXPECT(conditional.node.ordinal() == 11);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 12);
+  ZC_EXPECT(returnReference.node.ordinal() == 13);
+  ZC_EXPECT(block.statements.size() == 3);
+  ZC_EXPECT(block.statements[0] == local.node);
+  ZC_EXPECT(block.statements[1] == conditional.node);
+  ZC_EXPECT(block.statements[2] == module.returns()[0].node);
+  ZC_EXPECT(conditional.condition == comparison.node);
+  ZC_EXPECT(conditional.thenWrite == module.localWrites()[0].node);
+  ZC_EXPECT(conditional.elseWrite == module.localWrites()[1].node);
+  for (const auto& write : module.localWrites()) {
+    ZC_EXPECT(write.kind == HirLocalWriteKind::Initialize);
+    ZC_EXPECT(write.field == zc::none);
+    ZC_EXPECT(write.local == local.local);
+  }
+  ZC_EXPECT(returnReference.local == local.local);
+
+  // Built MIR: one user local plus a bool condition temporary, four blocks
+  // (entry/then/else/join). The two arm blocks each Initialize the user local
+  // once; the join returns a copy of it.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    const auto& entry = mirFunction.blocks[0];
+    const auto& thenBlock = mirFunction.blocks[1];
+    const auto& elseBlock = mirFunction.blocks[2];
+    const auto& joinBlock = mirFunction.blocks[3];
+    ZC_REQUIRE(entry.terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    ZC_EXPECT(thenBlock.statements.size() == 1);
+    ZC_EXPECT(elseBlock.statements.size() == 1);
+    ZC_EXPECT(thenBlock.statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(elseBlock.statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Initialize);
+    ZC_EXPECT(thenBlock.terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(elseBlock.terminator.kind() == mir::MirTerminatorKind::Goto);
+    ZC_EXPECT(joinBlock.statements.size() == 0);
+    ZC_EXPECT(joinBlock.terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 ZC_TEST("HIR let late init arm lowers one Initialize at exact node strides") {
   HirPipelineFixture fixture("fn entry() -> i32 { let v: i32; v = 41; return v; }"_zc);
   const auto& module = fixture.hirModule();

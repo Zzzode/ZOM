@@ -1,0 +1,13 @@
+// RFC 0055 definite-assignment diamond: an initializer-less immutable local is
+// initialized exactly once on each arm of an if/else. The foldable condition
+// `1 < 2` selects the then arm, so the program exits 41; the else arm carries
+// 7 to prove branch polarity through the full pipeline.
+fn entry() -> i32 {
+  let v: i32;
+  if (1 < 2) {
+    v = 41;
+  } else {
+    v = 7;
+  }
+  return v;
+}

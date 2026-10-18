@@ -1,0 +1,8 @@
+fn f(c: bool) -> i32 {
+    let v: i32;
+    if (c) {
+        v = 41;
+    } else {
+    }
+    return v;
+}

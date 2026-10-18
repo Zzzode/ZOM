@@ -94,10 +94,9 @@ VariableStatement  ::= ( 'mut' | 'let' ) VariableDeclList ';'
 
 VariableDeclList   ::= VariableDecl (',' VariableDecl)*
 VariableDecl       ::= ( BindingIdent | BindingPattern ) TypeAnnotation? Initializer?
-                       (* mut without Initializer requires TypeAnnotation.
-                          let without Initializer is accepted only where
-                          definite assignment can prove exactly one write
-                          before first read. *)
+                       (* A runtime binding without an Initializer must carry a
+                          TypeAnnotation and is governed by the Definite
+                          Assignment subsection below. *)
 Initializer        ::= '=' AssignmentExpression
 
 ConstDeclaration   ::= 'const' ConstDeclList ';'
@@ -110,12 +109,58 @@ ConstExpression    ::= AssignmentExpression
 
 Runtime bindings are block-scoped. `const` declarations are available wherever declarations are accepted, but their initializer must be evaluable by the constant evaluator.
 
-Only `mut` bindings may be reassigned or used as mutable places, including calls that require a mutable receiver or mutable borrow. `let` bindings may be read, moved, or immutably borrowed, but may not be reassigned or mutably borrowed.
+Only `mut` bindings may be reassigned or used as mutable places, including calls that require a mutable receiver or mutable borrow. `let` bindings may be read, moved, or immutably borrowed, but may not be reassigned or mutably borrowed. A single write that initializes a previously uninitialized place is an initialization, not a reassignment: assigning an initializer-less `let` place once on a reaching path (see Definite Assignment below) does not violate this rule, while any further write to that place on the same path is a reassignment and is rejected as mutation of an immutable binding.
 
 For fields, `let` denotes immutable storage after object initialization. A `let`
 field may be definitely assigned by an `init` callable that explicitly declares
 `this`, before that receiver escapes. After initialization it follows the same
 immutable-place rule as a local `let`.
+
+### Definite Assignment
+
+A runtime binding may omit its initializer only when it carries a type annotation. Initialization is a property of control-flow paths, not of the declaration keyword. Each body-local scalar place carries one of two states:
+
+```
+Uninitialized
+      |
+Initialized
+```
+
+A binding declared without an initializer starts `Uninitialized`. A binding declared with an initializer is `Initialized` after its declaration. The first write to a place transfers it from `Uninitialized` to `Initialized` and is an initialization; every later write replaces an already initialized place and is an overwrite.
+
+At the join of two or more predecessor paths the place state is the intersection of the predecessor states: the place counts as initialized only when every predecessor leaves it initialized. Every read, move, borrow, drop, or return of a place requires it to be initialized on every reaching path. Reading, borrowing, moving, or dropping a place that is uninitialized on some reaching path is rejected with `ZOM4093` (`UninitializedPlaceUse`), and the declaration or the point where the place became unavailable is noted with `ZOM4094` (`PlaceBecameUnavailableHere`); see Chapter 14.
+
+The declaration keywords constrain writes as follows:
+
+- A `let` place accepts at most one initializing write on each reaching path and must be initialized on every path that reaches its first read. A second write to the place on a path where it is already initialized is rejected with `ZOM4024` (`CannotMutateImmutableVariable`).
+- A `mut` place accepts any number of writes. Its first write on a path is an initialization and each later write is an overwrite. The initialized-before-read requirement is identical to `let`; `mut` never grants permission to read an uninitialized place.
+
+A single plain assignment initializes a previously uninitialized place only when evaluating its right-hand side does not read that place. Compound assignments and prefix or postfix `++` and `--` read their target and therefore require an already initialized place; they are never an initialization.
+
+Conditional initialization is accepted when every arm writes the place exactly once before the join and the condition does not read it:
+
+```zom
+fn port_for(secure: bool) -> i32 {
+  let port: i32;
+  if (secure) {
+    port = 443;
+  } else {
+    port = 80;
+  }
+  return port;
+}
+```
+
+Both arms initialize `port`, so the join state is initialized and the returned read is valid. A second write to `port` in either arm is rejected with `ZOM4024`; an arm that omits the write makes the join uninitialized and the read is rejected with `ZOM4093`.
+
+Definite assignment here is bounded to body-local scalar places on the reducible straight-line and branch shapes above. The following are outside the contract:
+
+- partial field-by-field initialization of an aggregate from separate statements, which must assign the complete place in one statement;
+- loop-carried initialization on only some iterations without an assignment before the loop header;
+- module-scope bindings, for which a missing initializer is rejected with `ZOM4087` (`ModuleBindingInitializerRequired`); and
+- `const` bindings, which require a constant initializer at the declaration.
+
+Move-then-reinitialize follows the move rules of Chapter 14 and is not an initializer-less admission under this section.
 
 ### `mut` Declarations
 
@@ -1225,7 +1270,7 @@ See [Ch.13 Modules and Imports](13-modules-and-imports.md) for the full module s
   lexical capture.
 - Local value declarations (`mut`, `let`, `const`) inside block bodies follow lexical scoping and are not hoisted.
 - Forward references to functions, types, and classes at module scope are permitted.
-- Forward references to local `let`/`mut` bindings are not permitted; definite-assignment rules apply.
+- Forward references to local `let`/`mut` bindings are not permitted; the Definite Assignment rules in this chapter apply, including initialization on every reaching path before a read.
 
 ## Attributes on Declarations
 

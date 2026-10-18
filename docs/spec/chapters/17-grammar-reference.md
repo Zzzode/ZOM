@@ -184,9 +184,13 @@ ConstExpression ::= AssignmentExpression
     (* Semantically restricted to expressions accepted by the constant evaluator. *)
 
 (* `mut` and `let` are runtime bindings. Only `mut` may be reassigned or used
-   as a mutable place. `const` is a compile-time value and has no stable
-   storage address. A `let` field may be definitely assigned by an `init`
-   callable that explicitly declares `this`, before that receiver escapes. *)
+   as a mutable place. An initializer-less binding requires a type annotation
+   and is governed by the Definite Assignment rules of Chapter 6: a `let`
+   place accepts at most one initializing write per reaching path, and both
+   keywords require the place initialized on every reaching path before a
+   read. `const` is a compile-time value and has no stable storage address.
+   A `let` field may be definitely assigned by an `init` callable that
+   explicitly declares `this`, before that receiver escapes. *)
 
 FunctionDeclaration ::= ModifierList 'fn' BindingIdentifier TypeParameters?
                         FunctionSignature WhereClause? (BlockStatement | ';')

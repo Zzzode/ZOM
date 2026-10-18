@@ -83,6 +83,27 @@ zc::Maybe<MirOperand> lowerLocalReference(const hir::HirLocalReferenceExpression
                   MirPlace(localId, localRef.type, zc::mv(projections), localRef.type));
 }
 
+/// Maps a primitive operation to its MIR relational operator.
+zc::Maybe<MirComparisonOperator> comparisonOperatorFor(
+    checker::PrimitiveOperation operation) noexcept {
+  switch (operation) {
+    case checker::PrimitiveOperation::Eq:
+      return MirComparisonOperator::Eq;
+    case checker::PrimitiveOperation::Ne:
+      return MirComparisonOperator::Ne;
+    case checker::PrimitiveOperation::Lt:
+      return MirComparisonOperator::Lt;
+    case checker::PrimitiveOperation::Le:
+      return MirComparisonOperator::Le;
+    case checker::PrimitiveOperation::Gt:
+      return MirComparisonOperator::Gt;
+    case checker::PrimitiveOperation::Ge:
+      return MirComparisonOperator::Ge;
+    default:
+      return zc::none;
+  }
+}
+
 }  // namespace
 
 zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule,
@@ -141,7 +162,7 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
   for (size_t i = 0; i < block->statements.size(); ++i) {
     const HirNodeId stmtNode = block->statements[i];
     zc::Maybe<HirNodeKind> stmtKind = lookupHirNodeKind(hirModule, stmtNode);
-    if (stmtKind == zc::none) return zc::none;
+    if (stmtKind == zc::none) { return zc::none; }
 
     if (ZC_ASSERT_NONNULL(stmtKind) == HirNodeKind::LocalBinding) {
       // Local binding: declare a UserLocal and emit StorageLive. When the
@@ -212,6 +233,162 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           MirPlace(ZC_ASSERT_NONNULL(target), write->type, zc::mv(writeProjections), write->type),
           MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(writeOperand))), initialization,
           write->sourceSpan.clone()));
+    } else if (ZC_ASSERT_NONNULL(stmtKind) == HirNodeKind::ConditionalLocalWrite) {
+      // Definite-assignment diamond: `if (c) { v = a; } else { v = b; }`. The
+      // StorageLive for the target was already emitted by the preceding
+      // LocalBinding arm in the (open) entry block. Evaluate the condition into
+      // a discriminant, terminate the entry with a SwitchInt, lower each arm to
+      // a per-path Initialize of the same user local followed by a Goto, then
+      // open the join block so the trailing Return statement terminates it.
+      const auto* diamond = findRecord(hirModule.conditionalLocalWrites(), stmtNode);
+      if (diamond == nullptr) return zc::none;
+      const bool thenPresent = diamond->thenWrite != HirNodeId{};
+      const bool elsePresent = diamond->elseWrite != HirNodeId{};
+      if (!thenPresent && !elsePresent) return zc::none;
+      const auto* thenWriteRecord =
+          thenPresent ? findRecord(hirModule.localWrites(), diamond->thenWrite) : nullptr;
+      const auto* elseWriteRecord =
+          elsePresent ? findRecord(hirModule.localWrites(), diamond->elseWrite) : nullptr;
+      if ((thenPresent && thenWriteRecord == nullptr) ||
+          (elsePresent && elseWriteRecord == nullptr)) {
+        return zc::none;
+      }
+      if ((thenPresent && thenWriteRecord->field != zc::none) ||
+          (elsePresent && elseWriteRecord->field != zc::none) ||
+          (thenPresent && thenWriteRecord->kind != hir::HirLocalWriteKind::Initialize) ||
+          (elsePresent && elseWriteRecord->kind != hir::HirLocalWriteKind::Initialize)) {
+        return zc::none;
+      }
+      // Both present arms target the same user local.
+      if (thenPresent && elsePresent && thenWriteRecord->local != elseWriteRecord->local) {
+        return zc::none;
+      }
+      const auto targetHirLocal = thenPresent ? thenWriteRecord->local : elseWriteRecord->local;
+      const auto armType = thenPresent ? thenWriteRecord->type : elseWriteRecord->type;
+      auto target = findUserLocal(targetHirLocal);
+      if (target == zc::none) return zc::none;
+
+      // Lower one scalar arm value (literal or parameter copy) to a use rvalue.
+      auto armRvalue = [&](HirNodeId valueNode,
+                           identity::SemanticTypeId valueType) -> zc::Maybe<MirRvalue> {
+        auto valueKind = lookupHirNodeKind(hirModule, valueNode);
+        if (valueKind == zc::none) return zc::none;
+        zc::Maybe<MirOperand> operand;
+        if (ZC_ASSERT_NONNULL(valueKind) == HirNodeKind::ScalarLiteral) {
+          const auto* literal = findRecord(hirModule.expressions(), valueNode);
+          if (literal == nullptr) return zc::none;
+          operand = lowerScalarLiteral(*literal, valueType);
+        } else if (ZC_ASSERT_NONNULL(valueKind) == HirNodeKind::ParameterReference) {
+          if (copyMarker == zc::none) return zc::none;
+          const auto* paramRef = findRecord(hirModule.parameterReferences(), valueNode);
+          if (paramRef == nullptr) return zc::none;
+          operand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
+                                            ZC_ASSERT_NONNULL(copyMarker));
+        } else {
+          return zc::none;
+        }
+        if (operand == zc::none) return zc::none;
+        return MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(operand)));
+      };
+      zc::Maybe<MirRvalue> thenRvalue;
+      zc::Maybe<MirRvalue> elseRvalue;
+      if (thenPresent) thenRvalue = armRvalue(thenWriteRecord->value, thenWriteRecord->type);
+      if (elsePresent) elseRvalue = armRvalue(elseWriteRecord->value, elseWriteRecord->type);
+      if ((thenPresent && thenRvalue == zc::none) || (elsePresent && elseRvalue == zc::none)) {
+        return zc::none;
+      }
+
+      // Build the bool discriminant operand in the open entry block.
+      zc::Maybe<HirNodeKind> conditionKind = lookupHirNodeKind(hirModule, diamond->condition);
+      if (conditionKind == zc::none) return zc::none;
+      zc::Maybe<MirOperand> discriminant;
+      if (ZC_ASSERT_NONNULL(conditionKind) == HirNodeKind::ParameterReference) {
+        if (copyMarker == zc::none) return zc::none;
+        const auto* paramRef = findRecord(hirModule.parameterReferences(), diamond->condition);
+        if (paramRef == nullptr) return zc::none;
+        discriminant = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
+                                               ZC_ASSERT_NONNULL(copyMarker));
+      } else if (ZC_ASSERT_NONNULL(conditionKind) == HirNodeKind::PrimitiveBinary) {
+        const auto* comparison =
+            findRecord(hirModule.primitiveBinaryOperations(), diamond->condition);
+        if (comparison == nullptr) return zc::none;
+        auto operation = comparisonOperatorFor(comparison->operation);
+        if (operation == zc::none) return zc::none;
+        auto leftOperand = [&] {
+          const auto* leftLiteral = findRecord(hirModule.expressions(), comparison->left);
+          if (leftLiteral != nullptr)
+            return lowerScalarLiteral(*leftLiteral, comparison->operandType);
+          const auto* leftParam = findRecord(hirModule.parameterReferences(), comparison->left);
+          if (leftParam == nullptr || copyMarker == zc::none)
+            return zc::Maybe<MirOperand>{zc::none};
+          return lowerParameterReference(*leftParam, declaration, isMethod, proofs,
+                                         ZC_ASSERT_NONNULL(copyMarker));
+        }();
+        auto rightOperand = [&] {
+          const auto* rightLiteral = findRecord(hirModule.expressions(), comparison->right);
+          if (rightLiteral != nullptr)
+            return lowerScalarLiteral(*rightLiteral, comparison->operandType);
+          const auto* rightParam = findRecord(hirModule.parameterReferences(), comparison->right);
+          if (rightParam == nullptr || copyMarker == zc::none)
+            return zc::Maybe<MirOperand>{zc::none};
+          return lowerParameterReference(*rightParam, declaration, isMethod, proofs,
+                                         ZC_ASSERT_NONNULL(copyMarker));
+        }();
+        if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+        const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, comparison->type,
+                                                          scope, comparison->sourceSpan.clone());
+        ctx.appendStatement(
+            MirStatement::storageLive(conditionTemp, comparison->sourceSpan.clone()));
+        zc::Vector<MirProjection> tempProjections;
+        ctx.appendStatement(MirStatement::assign(
+            MirPlace(conditionTemp, comparison->type, zc::mv(tempProjections), comparison->type),
+            MirRvalue::comparison(ZC_ASSERT_NONNULL(operation),
+                                  zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+                                  zc::mv(ZC_ASSERT_NONNULL(rightOperand)), comparison->type),
+            MirInitializationKind::Initialize, comparison->sourceSpan.clone()));
+        if (copyMarker == zc::none) return zc::none;
+        zc::Vector<MirProjection> discriminantProjections;
+        discriminant = placeUse(proofs, ZC_ASSERT_NONNULL(copyMarker),
+                                MirPlace(conditionTemp, comparison->type,
+                                         zc::mv(discriminantProjections), comparison->type));
+      } else {
+        return zc::none;
+      }
+      if (discriminant == zc::none) return zc::none;
+
+      const MirBlockId thenBlock = ctx.peekBlockIdAt(0);
+      const MirBlockId elseBlock = ctx.peekBlockIdAt(1);
+      const MirBlockId joinBlock = ctx.peekBlockIdAt(2);
+      zc::Vector<MirSwitchIntArm> switchArms;
+      switchArms.add(
+          MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true), thenBlock});
+      switchArms.add(
+          MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false), elseBlock});
+      ctx.terminateBlock(MirTerminator::switchInt(zc::mv(ZC_ASSERT_NONNULL(discriminant)),
+                                                  zc::mv(switchArms), elseBlock,
+                                                  diamond->sourceSpan.clone()));
+
+      const auto emitArmBlock = [&](bool present, const hir::HirLocalWriteStatement* writeRecord,
+                                    zc::Maybe<MirRvalue> rvalue) {
+        (void)ctx.beginBlock(scope);
+        if (present) {
+          zc::Vector<MirProjection> projections;
+          ctx.appendStatement(MirStatement::assign(
+              MirPlace(ZC_ASSERT_NONNULL(target), armType, zc::mv(projections), armType),
+              zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+              writeRecord->sourceSpan.clone()));
+          ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, writeRecord->sourceSpan.clone()));
+        } else {
+          // Missing arm: the target stays uninitialized on this path. The
+          // block only joins; the ownership rail reports ZOM4093 at the read.
+          ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, diamond->sourceSpan.clone()));
+        }
+      };
+      emitArmBlock(thenPresent, thenWriteRecord, zc::mv(thenRvalue));
+      emitArmBlock(elsePresent, elseWriteRecord, zc::mv(elseRvalue));
+
+      // Open the join block; the trailing Return statement terminates it.
+      (void)ctx.beginBlock(scope);
     } else if (ZC_ASSERT_NONNULL(stmtKind) == HirNodeKind::Return) {
       // Return statement: lower the return value expression and emit a Return
       // terminator. This must be the last statement.

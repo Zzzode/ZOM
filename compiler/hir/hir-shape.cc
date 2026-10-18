@@ -2945,6 +2945,136 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.loopBodyBreak = trailingBreak;
       shape.loopBodyContinue = trailingContinue;
       return shape;
+    } else if (middleItem != zc::none && tree.node(middleStmt).kind == ast::SyntaxKind::IfStmt) {
+      // Conditional-local-write diamond: an initializer-less local binding, a
+      // statement-level if/else whose two arms each assign that binding once,
+      // and a trailing return of the binding. Bounded structurally here: one
+      // declarator with an identifier pattern and a type annotation but no
+      // initializer; each arm is a single plain AssignmentExpr whose
+      // identifier LHS is the binding; the condition is a bare identifier or a
+      // binary comparison. The bounded diamond classification (both writes are
+      // Initialize) and mutability are checker decisions.
+      const auto& ifNode = tree.node(middleStmt);
+      const ast::NodeId ifCond(ifNode.payload.words[ast::kIfStmtCondWord]);
+      const ast::NodeId ifThen(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
+      const ast::NodeId ifElse(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
+      if (!tree.contains(ifCond) || !tree.contains(ifThen) || !tree.contains(ifElse) ||
+          tree.node(ifThen).kind != ast::SyntaxKind::BlockStmt ||
+          tree.node(ifElse).kind != ast::SyntaxKind::BlockStmt) {
+        return zc::none;
+      }
+      const auto condKind = tree.node(ifCond).kind;
+      if (condKind != ast::SyntaxKind::IdentExpr && condKind != ast::SyntaxKind::BinaryExpr) {
+        return zc::none;
+      }
+      auto leadingItem = statementItem(tree, tree.list(statements)[0]);
+      ast::NodeId letNode;
+      ZC_IF_SOME(item, leadingItem) { letNode = item; }
+      if (leadingItem == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt) {
+        return zc::none;
+      }
+      const ast::NodeId declarations(
+          tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
+      if (!tree.contains(declarations) ||
+          tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+        return zc::none;
+      }
+      const ast::NodeList declarators{
+          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+          tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+      if (!tree.contains(declarators) || declarators.size != 1) return zc::none;
+      const auto declarator = tree.list(declarators)[0];
+      if (!tree.contains(declarator) ||
+          tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+        return zc::none;
+      }
+      const ast::NodeId pattern(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId declaredType(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
+      const ast::NodeId initializer(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+      // The late-init binding must have a type annotation and no initializer.
+      if (!tree.contains(pattern) ||
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !tree.contains(declaredType) || tree.contains(initializer)) {
+        return zc::none;
+      }
+      const auto targetName = tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord];
+      // Inspect one arm block. An empty block is a missing arm (the target is
+      // not initialized on that path, the error-preserving ZOM4093 case). A
+      // non-empty arm must be exactly one plain assignment to `targetName`.
+      struct ArmInfo {
+        bool present = false;
+        bool missing = false;
+        ast::NodeId assignment{};
+      };
+      auto armAssignment = [&](ast::NodeId blockNode) -> zc::Maybe<ArmInfo> {
+        const auto& block = tree.node(blockNode);
+        const ast::NodeList armStatements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                          block.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        if (!tree.contains(armStatements)) return zc::none;
+        if (armStatements.size == 0) return ArmInfo{false, true, ast::NodeId{}};
+        if (armStatements.size != 1) return zc::none;
+        auto item = statementItem(tree, tree.list(armStatements)[0]);
+        ast::NodeId stmt;
+        ZC_IF_SOME(value, item) { stmt = value; }
+        if (item == zc::none || tree.node(stmt).kind != ast::SyntaxKind::ExpressionStatement) {
+          return zc::none;
+        }
+        const ast::NodeId assignment(
+            tree.node(stmt).payload.words[ast::kExpressionStatementExpressionWord]);
+        if (!tree.contains(assignment) ||
+            tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+            static_cast<ast::AssignmentOperatorKind>(
+                tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
+                ast::AssignmentOperatorKind::Assign) {
+          return zc::none;
+        }
+        const ast::NodeId lhs(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+        const ast::NodeId rhs(tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
+        if (!tree.contains(lhs) || tree.node(lhs).kind != ast::SyntaxKind::IdentExpr ||
+            !tree.contains(rhs) ||
+            tree.node(lhs).payload.words[ast::kIdentExprNameWord] != targetName) {
+          return zc::none;
+        }
+        return ArmInfo{true, false, assignment};
+      };
+      auto thenInfo = armAssignment(ifThen);
+      auto elseInfo = armAssignment(ifElse);
+      if (thenInfo == zc::none || elseInfo == zc::none) return zc::none;
+      const ArmInfo& thenArm = ZC_ASSERT_NONNULL(thenInfo);
+      const ArmInfo& elseArm = ZC_ASSERT_NONNULL(elseInfo);
+      // At least one arm must initialize the target.
+      if (!thenArm.present && !elseArm.present) return zc::none;
+      if (tree.node(value).kind != ast::SyntaxKind::IdentExpr ||
+          tree.node(value).payload.words[ast::kIdentExprNameWord] != targetName) {
+        return zc::none;
+      }
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.localPattern = pattern;
+      shape.localInitializer = zc::none;
+      shape.returnsLocal = true;
+      shape.localReference = value;
+      shape.isConditionalLocalWrite = true;
+      shape.conditionalStatement = middleStmt;
+      shape.conditionalCondition = ifCond;
+      shape.thenArmMissing = thenArm.missing;
+      shape.elseArmMissing = elseArm.missing;
+      if (thenArm.present) {
+        shape.thenAssignment = thenArm.assignment;
+        shape.thenValue =
+            ast::NodeId(tree.node(thenArm.assignment).payload.words[ast::kAssignmentExprRhsWord]);
+      }
+      if (elseArm.present) {
+        shape.elseAssignment = elseArm.assignment;
+        shape.elseValue =
+            ast::NodeId(tree.node(elseArm.assignment).payload.words[ast::kAssignmentExprRhsWord]);
+      }
+      return shape;
     } else {
       // Discarded receiver-call statement shape:
       // `<let|mut> id = T { .. }; id.set(<literal args>); return id.get();`. The

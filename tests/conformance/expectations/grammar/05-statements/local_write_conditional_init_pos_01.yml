@@ -1,0 +1,6 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, ifStatement, blockStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "An initializer-less let is initialized exactly once on each arm of an if/else before the join read."
+  - "The foldable comparison condition selects one arm; the diamond is definitely assigned at the join."

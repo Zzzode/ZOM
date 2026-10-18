@@ -150,6 +150,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-late-init-param-consumer/Zom.toml::mut_late_init_param_consumer::mut_late_init_param_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-consumer/Zom.toml::definite_assignment_conditional_consumer::definite_assignment_conditional_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-param-consumer/Zom.toml::definite_assignment_conditional_param_consumer::definite_assignment_conditional_param_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
@@ -632,8 +636,12 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-late-init-overwrite-consumer/Zom.toml::mut_late_init_overwrite_consumer::mut_late_init_overwrite_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-consumer/Zom.toml::definite_assignment_conditional_consumer::definite_assignment_conditional_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
+      --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-param-consumer/Zom.toml::definite_assignment_conditional_param_consumer::definite_assignment_conditional_param_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arith-arm-consumer/Zom.toml::conditional_arith_arm_consumer::conditional_arith_arm_consumer"
       --target-reject-case

@@ -1,0 +1,9 @@
+fn f() -> i32 {
+    let v: i32;
+    if (1 < 2) {
+        v = 41;
+    } else {
+        v = 7;
+    }
+    return v;
+}

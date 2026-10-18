@@ -1680,6 +1680,81 @@ MirFunction makeMinimalValidFunction(identity::SemanticTypeId resultType) {
   return function;
 }
 
+/// \brief Builds a definite-assignment diamond: a bool parameter condition and
+/// one i32 user local initialized on each of two arm blocks before the join
+/// returns it. `elseKind` selects the else arm write initialization kind, and
+/// `elseHasWrite` emits the else assignment at all (the error-preserving
+/// missing-arm case leaves the else block empty).
+MirFunction makeInitializationDiamond(identity::SemanticTypeId boolType,
+                                      identity::SemanticTypeId intType,
+                                      MirInitializationKind elseKind, bool elseHasWrite) {
+  MirFunction function{tests::testDefinition(0),
+                       MirFunctionKind::Function,
+                       identity::DefinitionKind::Function,
+                       intType,
+                       sourceSpan(),
+                       zc::Vector<MirSourceScope>{},
+                       zc::Vector<MirLocalDeclaration>{},
+                       zc::Vector<MirBasicBlock>{}};
+  function.sourceScopes.add(MirSourceScope{sourceScope(1), zc::none, sourceSpan()});
+  function.locals.add(MirLocalDeclaration{local(1), MirLocalKind::Parameter, boolType,
+                                          sourceScope(1), sourceSpan()});
+  function.locals.add(MirLocalDeclaration{local(2), MirLocalKind::UserLocal, intType,
+                                          sourceScope(1), sourceSpan()});
+
+  auto intConstant = [&](uint8_t value) {
+    return MirOperand::constant(
+        intType,
+        checker::checked::CanonicalConstValue::integer(checker::signature::CanonicalInteger{
+            checker::signature::IntegerSign::NonNegative, zc::heapArray<uint8_t>(1, value)}));
+  };
+  auto copyOf = [&](MirLocalId id, identity::SemanticTypeId type) {
+    zc::Vector<MirProjection> projections;
+    return MirOperand::copy(MirPlace(id, type, zc::mv(projections), type));
+  };
+  auto armAssign = [&](uint8_t value, MirInitializationKind kind) {
+    zc::Vector<MirStatement> statements;
+    zc::Vector<MirProjection> projections;
+    statements.add(MirStatement::assign(MirPlace(local(2), intType, zc::mv(projections), intType),
+                                        MirRvalue::use(intConstant(value)), kind, sourceSpan()));
+    return statements;
+  };
+
+  // Entry block: StorageLive the target then switch on the bool parameter.
+  zc::Vector<MirStatement> entryStatements;
+  entryStatements.add(MirStatement::storageLive(local(2), sourceSpan()));
+  zc::Vector<MirSwitchIntArm> arms;
+  const auto thenId = MirBlockId::fromOrdinal(2);
+  const auto elseId = MirBlockId::fromOrdinal(3);
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(true),
+                           ZC_REQUIRE_NONNULL(thenId)});
+  arms.add(MirSwitchIntArm{checker::checked::CanonicalConstValue::boolean(false),
+                           ZC_REQUIRE_NONNULL(elseId)});
+  function.blocks.add(
+      MirBasicBlock{blockId(1), sourceScope(1), zc::mv(entryStatements),
+                    MirTerminator::switchInt(copyOf(local(1), boolType), zc::mv(arms),
+                                             ZC_REQUIRE_NONNULL(elseId), sourceSpan())});
+
+  // Then arm: Initialize 41 then goto join.
+  function.blocks.add(MirBasicBlock{
+      blockId(2), sourceScope(1), armAssign(41, MirInitializationKind::Initialize),
+      MirTerminator::gotoTarget(ZC_REQUIRE_NONNULL(MirBlockId::fromOrdinal(4)), sourceSpan())});
+
+  // Else arm: Initialize 7 (or a missing empty arm), then goto join.
+  zc::Vector<MirStatement> elseStatements;
+  if (elseHasWrite) elseStatements = armAssign(7, elseKind);
+  function.blocks.add(MirBasicBlock{
+      blockId(3), sourceScope(1), zc::mv(elseStatements),
+      MirTerminator::gotoTarget(ZC_REQUIRE_NONNULL(MirBlockId::fromOrdinal(4)), sourceSpan())});
+
+  // Join block: return a copy of the user local.
+  zc::Vector<MirStatement> joinStatements;
+  function.blocks.add(
+      MirBasicBlock{blockId(4), sourceScope(1), zc::mv(joinStatements),
+                    MirTerminator::returnValue(copyOf(local(2), intType), sourceSpan())});
+  return function;
+}
+
 }  // namespace
 
 ZC_TEST("Built MIR structural verifier accepts a minimal valid function") {
@@ -1770,6 +1845,38 @@ ZC_TEST("Built MIR structural verifier rejects a parameter after a non-parameter
   function.locals.add(
       MirLocalDeclaration{local(2), MirLocalKind::Parameter, type, sourceScope(1), sourceSpan()});
   ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier accepts a definite-assignment diamond") {
+  tests::TestSemanticTypeContext context;
+  const auto boolType = context.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto intType = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  auto function =
+      makeInitializationDiamond(boolType, intType, MirInitializationKind::Initialize, true);
+  ZC_EXPECT(validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier rejects an Overwrite on an uninitialized diamond arm") {
+  tests::TestSemanticTypeContext context;
+  const auto boolType = context.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto intType = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  // The else arm reaches its join predecessor uninitialized (the entry does
+  // not initialize the target), so an Overwrite there must fail the lattice.
+  auto function =
+      makeInitializationDiamond(boolType, intType, MirInitializationKind::Overwrite, true);
+  ZC_EXPECT(!validateStructuralWellFormedness(function));
+}
+
+ZC_TEST("Built MIR structural verifier accepts an error-preserving missing diamond arm") {
+  tests::TestSemanticTypeContext context;
+  const auto boolType = context.internPrimitive(type::semantic::PrimitiveKind::Bool);
+  const auto intType = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  // The empty else arm leaves the join uninitialized; the lattice disciplines
+  // only write kinds and does not reject the join read, so the ownership rail
+  // (not the structural verifier) owns the ZOM4093.
+  auto function =
+      makeInitializationDiamond(boolType, intType, MirInitializationKind::Initialize, false);
+  ZC_EXPECT(validateStructuralWellFormedness(function));
 }
 
 }  // namespace zomlang::compiler::mir

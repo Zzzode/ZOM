@@ -156,6 +156,119 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
                                               conditional.conditionalSpan.clone()});
 }
 
+void lowerConditionalLocalWriteReturnFunction(PendingFunctionDeclaration&& function,
+                                              HirFnCtx& ctx) {
+  auto& shape = function.shape.get<ConditionalLocalWriteReturn>();
+  const identity::SemanticTypeId localType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
+  const identity::SemanticTypeId placeType = shape.localReference.type;
+  const HirValueCategory placeCategory = shape.localReference.category;
+  const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
+  const bool isComparisonCondition = shape.conditionComparison != zc::none;
+
+  // Fixed-id layout: function, body, local, then per present arm its write and
+  // value nodes (a missing arm allocates nothing and names the zero node id),
+  // then the condition region (one parameter reference, or left operand +
+  // right operand + comparison), the conditional node, return, and return
+  // value. Stride 11/13 minus two per missing arm.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  HirNodeId thenWriteId{};
+  HirNodeId thenValueId{};
+  if (shape.thenArmPresent) {
+    thenWriteId = ctx.allocNode(shape.thenAssignmentNode);
+    thenValueId = ctx.allocNode(shape.thenValueNode);
+  }
+  HirNodeId elseWriteId{};
+  HirNodeId elseValueId{};
+  if (shape.elseArmPresent) {
+    elseWriteId = ctx.allocNode(shape.elseAssignmentNode);
+    elseValueId = ctx.allocNode(shape.elseValueNode);
+  }
+  HirNodeId conditionId{};
+  HirNodeId comparisonLeftId{};
+  HirNodeId comparisonRightId{};
+  HirNodeId comparisonId{};
+  if (isComparisonCondition) {
+    const auto& equality = ZC_ASSERT_NONNULL(shape.conditionComparison);
+    comparisonLeftId = ctx.allocNode(equality.left.sourceNode);
+    comparisonRightId = ctx.allocNode(equality.right.sourceNode);
+    comparisonId = ctx.allocNode(equality.sourceNode);
+    conditionId = comparisonId;
+  } else {
+    conditionId = ctx.allocNode(ast::NodeId());
+  }
+  const HirNodeId conditionalId = ctx.allocNode(shape.conditionalNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId valueId = ctx.allocNode(function.returnValueNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(conditionalId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
+
+  auto emitArmValue = [&](HirNodeId destination, const zc::Maybe<HirLocalWriteStatement>& write,
+                          const zc::Maybe<PendingLocalWriteValue>& value) {
+    if (write == zc::none || value == zc::none) return;
+    ZC_IF_SOME(literal, ZC_ASSERT_NONNULL(value).literal) {
+      ctx.addExpression(HirScalarLiteralExpression{destination, ZC_ASSERT_NONNULL(write).type,
+                                                   literal.clone(), HirValueCategory::Value,
+                                                   ZC_ASSERT_NONNULL(write).valueSpan.clone()});
+    }
+    ZC_IF_SOME(parameter, ZC_ASSERT_NONNULL(value).parameter) {
+      ctx.addParameterReference(HirParameterReferenceExpression{
+          destination, parameter.parameter.clone(), ZC_ASSERT_NONNULL(write).type,
+          parameter.category, parameter.sourceSpan.clone()});
+    }
+  };
+  if (shape.thenArmPresent) {
+    emitArmValue(thenValueId, shape.thenWrite, shape.thenValue);
+    ctx.addLocalWrite(HirLocalWriteStatement{thenWriteId, hirLocalId(1), zc::none, localType,
+                                             thenValueId, HirLocalWriteKind::Initialize,
+                                             ZC_ASSERT_NONNULL(shape.thenWrite).sourceSpan.clone(),
+                                             ZC_ASSERT_NONNULL(shape.thenWrite).valueSpan.clone()});
+  }
+  if (shape.elseArmPresent) {
+    emitArmValue(elseValueId, shape.elseWrite, shape.elseValue);
+    ctx.addLocalWrite(HirLocalWriteStatement{elseWriteId, hirLocalId(1), zc::none, localType,
+                                             elseValueId, HirLocalWriteKind::Initialize,
+                                             ZC_ASSERT_NONNULL(shape.elseWrite).sourceSpan.clone(),
+                                             ZC_ASSERT_NONNULL(shape.elseWrite).valueSpan.clone()});
+  }
+
+  if (isComparisonCondition) {
+    const auto& equality = ZC_ASSERT_NONNULL(shape.conditionComparison);
+    ctx.lowerArmLeaf(comparisonLeftId, equality.left);
+    ctx.lowerArmLeaf(comparisonRightId, equality.right);
+    ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+        comparisonId, comparisonLeftId, comparisonRightId, equality.operandType, equality.type,
+        HirValueCategory::Value, equality.operation, equality.sourceSpan.clone(),
+        equality.isUnaryDesugar});
+  } else {
+    ZC_IF_SOME(parameter, shape.conditionParameter) {
+      ctx.addParameterReference(
+          HirParameterReferenceExpression{conditionId, parameter.parameter.clone(), parameter.type,
+                                          parameter.category, parameter.sourceSpan.clone()});
+    }
+  }
+  ctx.addConditionalLocalWrite(HirConditionalLocalWriteStatement{
+      conditionalId, conditionId, thenWriteId, elseWriteId, localType, HirValueCategory::Place,
+      shape.conditionalSpan.clone()});
+
+  ctx.addLocal(
+      HirLocalBinding{localId, hirLocalId(1), localType, zc::none, localSpan.clone(), zc::none});
+  ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
+                                                    placeCategory, placeSpan.clone()});
+}
+
 void lowerChainedConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   PendingChainedConditionalReturn chained =
       zc::mv(function.shape.get<ChainedConditionalReturn>().chainedConditionalReturn);

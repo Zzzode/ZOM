@@ -45,6 +45,7 @@ public:
            zc::Vector<HirDirectCallExpression>& calls,
            zc::Vector<HirReceiverCallExpression>& receiverCalls,
            zc::Vector<HirConditionalExpression>& conditionals, zc::Vector<HirLoopStatement>& loops,
+           zc::Vector<HirConditionalLocalWriteStatement>& conditionalLocalWrites,
            zc::Vector<ast::NodeId>& sourceNodes) noexcept;
 
   /// \brief Allocates the next deterministic source-preorder node id and
@@ -73,6 +74,7 @@ public:
   void addReceiverCall(HirReceiverCallExpression call);
   void addConditional(HirConditionalExpression conditional);
   void addLoop(HirLoopStatement loop);
+  void addConditionalLocalWrite(HirConditionalLocalWriteStatement statement);
 
   /// Pushes a loop context onto the per-function loop context stack, making it
   /// the innermost active loop. Called when the builder enters a loop so a
@@ -122,6 +124,7 @@ private:
   zc::Vector<HirReceiverCallExpression>* receiverCalls;
   zc::Vector<HirConditionalExpression>* conditionals;
   zc::Vector<HirLoopStatement>* loops;
+  zc::Vector<HirConditionalLocalWriteStatement>* conditionalLocalWrites;
   zc::Vector<ast::NodeId>* sourceNodes;
   // Per-function stack of active loop contexts. The builder pushes a context
   // when it enters a loop and pops it when it leaves, so a break/continue in

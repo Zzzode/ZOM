@@ -1281,6 +1281,14 @@ LocalWriteRegistry buildLocalWriteRegistry(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule) {
   LocalWriteRegistry registry;
   const auto& tree = boundModule.tree();
+  // Unwraps a direct StatementListItem to its item node.
+  auto statementItemFor = [&](ast::NodeId itemNode) -> zc::Maybe<ast::NodeId> {
+    if (!tree.contains(itemNode) ||
+        tree.node(itemNode).kind != ast::SyntaxKind::StatementListItem) {
+      return zc::none;
+    }
+    return ast::NodeId(tree.node(itemNode).payload.words[ast::kStatementListItemItemWord]);
+  };
   for (const auto& definition : boundModule.definitions().definitions()) {
     const bool isFunction = definition.record.kind() == identity::DefinitionKind::Function &&
                             tree.contains(definition.node) &&
@@ -1349,6 +1357,113 @@ LocalWriteRegistry buildLocalWriteRegistry(
         initializedLets.add(ZC_ASSERT_NONNULL(binding));
       }
       // Otherwise NotClassified: the write stays Unsupported and drains ZOM4099.
+    }
+
+    // Bounded conditional-local-write diamond: an initializer-less immutable
+    // binding followed by a statement-level if/else whose two arms each hold
+    // exactly one plain assignment to that binding. Each arm write is that
+    // path's first (and only admitted) initialization. A body that is not the
+    // bounded shape contributes nothing and its nested writes stay
+    // fail-closed; that is slice 3's one-write-per-arm bound.
+    if (statements.size == 3) {
+      auto letItem = statementItemFor(tree.list(statements)[0]);
+      auto ifItem = statementItemFor(tree.list(statements)[1]);
+      ast::NodeId letStmt;
+      ast::NodeId ifStmt;
+      ZC_IF_SOME(node, letItem) { letStmt = node; }
+      ZC_IF_SOME(node, ifItem) { ifStmt = node; }
+      if (letItem != zc::none && ifItem != zc::none &&
+          tree.node(letStmt).kind == ast::SyntaxKind::LetStmt &&
+          tree.node(ifStmt).kind == ast::SyntaxKind::IfStmt) {
+        const auto& let = tree.node(letStmt);
+        const ast::NodeId declarations(let.payload.words[ast::kLetStmtDeclarationsWord]);
+        const ast::NodeId cond(tree.node(ifStmt).payload.words[ast::kIfStmtCondWord]);
+        const ast::NodeId thenBlockId(tree.node(ifStmt).payload.words[ast::kIfStmtThenStmtWord]);
+        const ast::NodeId elseBlockId(tree.node(ifStmt).payload.words[ast::kIfStmtElseStmtWord]);
+        bool bounded = tree.contains(declarations) &&
+                       tree.node(declarations).kind == ast::SyntaxKind::VariableDeclaratorList &&
+                       tree.contains(cond) && tree.contains(thenBlockId) &&
+                       tree.contains(elseBlockId) &&
+                       tree.node(thenBlockId).kind == ast::SyntaxKind::BlockStmt &&
+                       tree.node(elseBlockId).kind == ast::SyntaxKind::BlockStmt;
+        ast::NodeId pattern;
+        if (bounded) {
+          const ast::NodeList declarators{
+              tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+              tree.node(declarations).payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+          bounded = tree.contains(declarators) && declarators.size == 1;
+          if (bounded) {
+            const auto declarator = tree.list(declarators)[0];
+            const ast::NodeId init(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+            const ast::NodeId ty(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
+            pattern = ast::NodeId(
+                tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+            bounded = tree.contains(ty) && !tree.contains(init) && tree.contains(pattern) &&
+                      tree.node(pattern).kind == ast::SyntaxKind::IdentifierPattern;
+          }
+        }
+        const auto targetName = tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord];
+        // Scan every statement of each arm in source order. The first plain
+        // assignment to the target on a path is that path's Initialize; any
+        // later plain assignment to the same immutable target is an immutable
+        // re-write (ZOM4024). An arm with no target assignment is the
+        // missing-branch case left to the ownership rail (ZOM4093). Statements
+        // that are not target assignments leave the body on the fail-closed
+        // lowering drain, but recorded writes are still classified.
+        auto classifyArm = [&](ast::NodeId blockId) {
+          const ast::NodeList arm{tree.node(blockId).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                  tree.node(blockId).payload.words[ast::kBlockStmtStmtsSizeWord]};
+          if (!tree.contains(arm)) return;
+          bool armSeen = false;
+          for (ast::NodeId itemNode : tree.list(arm)) {
+            auto item = statementItemFor(itemNode);
+            ast::NodeId exprStmt;
+            ZC_IF_SOME(node, item) { exprStmt = node; }
+            if (item == zc::none ||
+                tree.node(exprStmt).kind != ast::SyntaxKind::ExpressionStatement) {
+              continue;
+            }
+            const ast::NodeId candidate(
+                tree.node(exprStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+            if (!tree.contains(candidate) ||
+                tree.node(candidate).kind != ast::SyntaxKind::AssignmentExpr) {
+              continue;
+            }
+            const auto& assignmentNode = tree.node(candidate);
+            const ast::NodeId lhs(assignmentNode.payload.words[ast::kAssignmentExprLhsWord]);
+            const ast::NodeId rhs(assignmentNode.payload.words[ast::kAssignmentExprRhsWord]);
+            const bool plainAssign =
+                static_cast<ast::AssignmentOperatorKind>(
+                    assignmentNode.payload.words[ast::kAssignmentExprOpWord]) ==
+                ast::AssignmentOperatorKind::Assign;
+            const auto binding = resolvedOwnerLocal(boundModule.bindings(), lhs);
+            if (!plainAssign || !tree.contains(lhs) ||
+                tree.node(lhs).kind != ast::SyntaxKind::IdentExpr ||
+                tree.node(lhs).payload.words[ast::kIdentExprNameWord] != targetName ||
+                binding == zc::none || isMutableOwnerLocal(boundModule, lhs)) {
+              continue;
+            }
+            if (!armSeen && tree.contains(rhs) &&
+                (eligibleLateInitValue(boundModule, assignmentNode) ||
+                 (tree.node(rhs).kind == ast::SyntaxKind::IdentExpr &&
+                  tree.node(rhs).payload.words[ast::kIdentExprNameWord] != targetName))) {
+              registry.entries.add(
+                  LocalWriteEntry{candidate, LocalWriteClass::FirstInitialization});
+              armSeen = true;
+            } else if (armSeen) {
+              // A later plain write to the same immutable target on this path
+              // is an immutable re-write regardless of its value.
+              registry.entries.add(LocalWriteEntry{candidate, LocalWriteClass::ImmutableReinit});
+            }
+          }
+        };
+        if (bounded) {
+          classifyArm(thenBlockId);
+          classifyArm(elseBlockId);
+        }
+      }
     }
   }
   return registry;

@@ -30,6 +30,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
                    zc::Vector<HirReceiverCallExpression>& receiverCalls,
                    zc::Vector<HirConditionalExpression>& conditionals,
                    zc::Vector<HirLoopStatement>& loops,
+                   zc::Vector<HirConditionalLocalWriteStatement>& conditionalLocalWrites,
                    zc::Vector<ast::NodeId>& sourceNodes) noexcept
     : nextNode(&nextNode),
       functions(&functions),
@@ -53,6 +54,7 @@ HirFnCtx::HirFnCtx(uint32_t& nextNode, zc::Vector<HirFunctionDeclaration>& funct
       receiverCalls(&receiverCalls),
       conditionals(&conditionals),
       loops(&loops),
+      conditionalLocalWrites(&conditionalLocalWrites),
       sourceNodes(&sourceNodes) {}
 
 HirNodeId HirFnCtx::allocNode(ast::NodeId source) {
@@ -129,6 +131,9 @@ void HirFnCtx::addConditional(HirConditionalExpression conditional) {
 }
 
 void HirFnCtx::addLoop(HirLoopStatement loop) { loops->add(zc::mv(loop)); }
+void HirFnCtx::addConditionalLocalWrite(HirConditionalLocalWriteStatement statement) {
+  conditionalLocalWrites->add(zc::mv(statement));
+}
 
 void HirFnCtx::pushLoopContext(LoopContext context) { loopContexts.push(zc::mv(context)); }
 

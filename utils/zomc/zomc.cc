@@ -2039,6 +2039,7 @@ private:
                   "boolean-conditional, reducible while-loop, do-while loop-body, "
                   "comparison-driven conditional, "
                   "leading-local comparison conditional, "
+                  "conditional-local-write diamond, "
                   "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
                   "by-value aggregate call, scalar-local direct call, boolean-conditional callee "
                   "call, shared-receiver method "

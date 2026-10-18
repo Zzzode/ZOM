@@ -1640,6 +1640,186 @@ static identity::SemanticTypeId rvalueResultType(const MirRvalue& rvalue) {
   ZC_UNREACHABLE
 }
 
+bool validateInitializationLattice(const MirFunction& function) {
+  // RFC 0055 definite-assignment lattice, computed per block over the CFG. A
+  // local is either Uninitialized or Initialized; a block's entry state is the
+  // intersection (AND meet) of its predecessors' exit states, so a local is
+  // initialized at a join only when every reaching path initialized it.
+  // Parameters start initialized on the entry block; all other locals start
+  // uninitialized until an Initialize assign. An Initialize assign requires an
+  // uninitialized entry and an Overwrite assign requires an initialized entry;
+  // reads on an uninitialized local are deliberately NOT rejected here because
+  // they are the error-preserving carrier for the ownership rail's ZOM4093.
+  const size_t localCount = function.locals.size();
+  const size_t blockCount = function.blocks.size();
+  if (localCount == 0 || blockCount == 0) return true;
+  auto localIndex = [&](MirLocalId id) -> zc::Maybe<size_t> {
+    for (size_t i = 0; i < localCount; ++i) {
+      if (function.locals[i].id == id) return i;
+    }
+    return zc::none;
+  };
+  // The definite-assignment AND-meet is exact on an acyclic CFG, which is the
+  // shape of the conditional-local-write diamond (and straight-line /
+  // branch-return bodies). Cyclic CFGs encode loop induction variables with a
+  // StorageLive + Overwrite reset idiom whose first-visit Overwrite targets a
+  // StorageLive-fresh slot; that established loop encoding stays under the
+  // linear StorageLive check above. Detect any back edge (a terminator edge to
+  // an equal-or-earlier dense block is a back edge in this reducible ordering)
+  // and skip the per-block discipline for cyclic functions.
+  bool cyclic = false;
+  for (size_t b = 0; b < blockCount && !cyclic; ++b) {
+    const auto checkEdge = [&](MirBlockId target) {
+      for (size_t t = 0; t < blockCount; ++t) {
+        if (function.blocks[t].id == target && t <= b) cyclic = true;
+      }
+    };
+    const auto& terminator = function.blocks[b].terminator;
+    if (terminator.kind() == MirTerminatorKind::Goto) {
+      checkEdge(terminator.gotoValue().target);
+    } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+      for (const auto& arm : terminator.switchIntValue().arms) { checkEdge(arm.target); }
+      checkEdge(terminator.switchIntValue().defaultTarget);
+    } else if (terminator.kind() == MirTerminatorKind::Call) {
+      checkEdge(terminator.callValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { checkEdge(unwind); }
+    }
+  }
+  if (cyclic) return true;
+  // Build predecessor lists from terminators.
+  zc::Vector<zc::Vector<uint32_t>> predecessors;
+  predecessors.resize(blockCount);
+  for (size_t b = 0; b < blockCount; ++b) {
+    const auto addEdge = [&](MirBlockId target) {
+      for (size_t t = 0; t < blockCount; ++t) {
+        if (function.blocks[t].id == target) predecessors[t].add(static_cast<uint32_t>(b));
+      }
+    };
+    const auto& terminator = function.blocks[b].terminator;
+    if (terminator.kind() == MirTerminatorKind::Goto) {
+      addEdge(terminator.gotoValue().target);
+    } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+      for (const auto& arm : terminator.switchIntValue().arms) { addEdge(arm.target); }
+      addEdge(terminator.switchIntValue().defaultTarget);
+    } else if (terminator.kind() == MirTerminatorKind::Call) {
+      addEdge(terminator.callValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { addEdge(unwind); }
+    }
+  }
+  // entry[b][i] is the greatest-fixpoint initialized state at block entry. Seed
+  // with all-initialized (the AND-meet top); the worklist lowers entries when a
+  // predecessor exits uninitialized. The entry block is seeded with parameters
+  // initialized and every other local uninitialized.
+  zc::Vector<zc::Vector<bool>> entry;
+  entry.resize(blockCount);
+  for (size_t b = 0; b < blockCount; ++b) {
+    entry[b].resize(localCount);
+    for (size_t i = 0; i < localCount; ++i) { entry[b][i] = true; }
+  }
+  for (size_t i = 0; i < localCount; ++i) {
+    entry[0][i] = function.locals[i].kind == MirLocalKind::Parameter;
+  }
+  // Propagates initialized state through one block without enforcing write-kind
+  // discipline: every assign to a disciplined local leaves it initialized, so
+  // the meet is computable before the fixpoint converges. Temporary scratch
+  // slots are outside the definite-assignment lattice (they are written before
+  // read by construction and re-overwritten on every loop-header visit), so
+  // their assigns neither set state nor are later disciplined. The
+  // Initialize/Overwrite discipline of user and result locals is checked
+  // separately over converged entry states.
+  auto localIsDisciplined = [&](size_t localIndex) {
+    const auto kind = function.locals[localIndex].kind;
+    return kind == MirLocalKind::UserLocal || kind == MirLocalKind::FunctionResult;
+  };
+  auto propagateExit = [&](size_t b, const zc::Vector<bool>& entryState) {
+    zc::Vector<bool> exitState;
+    exitState.resize(localCount);
+    for (size_t i = 0; i < localCount; ++i) { exitState[i] = entryState[i]; }
+    for (const auto& statement : function.blocks[b].statements) {
+      if (statement.kind() != MirStatementKind::Assign) continue;
+      auto index = localIndex(statement.assignmentValue().destination.local());
+      if (index == zc::none) continue;
+      const size_t local = ZC_ASSERT_NONNULL(index);
+      if (localIsDisciplined(local)) exitState[local] = true;
+    }
+    return exitState;
+  };
+  auto admitsAssignKinds = [&](size_t b, const zc::Vector<bool>& entryState) -> bool {
+    zc::Vector<bool> state;
+    state.resize(localCount);
+    for (size_t i = 0; i < localCount; ++i) { state[i] = entryState[i]; }
+    for (const auto& statement : function.blocks[b].statements) {
+      if (statement.kind() != MirStatementKind::Assign) continue;
+      const auto& assign = statement.assignmentValue();
+      auto index = localIndex(assign.destination.local());
+      if (index == zc::none) continue;
+      const size_t local = ZC_ASSERT_NONNULL(index);
+      if (!localIsDisciplined(local)) continue;
+      if (assign.initialization == MirInitializationKind::Initialize) {
+        if (state[local]) return false;
+        state[local] = true;
+      } else if (assign.initialization == MirInitializationKind::Overwrite) {
+        if (!state[local]) return false;
+      }
+    }
+    return true;
+  };
+  zc::Vector<uint32_t> worklist;
+  for (uint32_t b = 0; b < blockCount; ++b) { worklist.add(b); }
+  while (!worklist.empty()) {
+    const uint32_t b = worklist[worklist.size() - 1];
+    worklist.removeLast();
+    // Recompute the entry meet from current predecessor exits.
+    zc::Vector<bool> meet;
+    meet.resize(localCount);
+    if (b == 0) {
+      for (size_t i = 0; i < localCount; ++i) {
+        meet[i] = function.locals[i].kind == MirLocalKind::Parameter;
+      }
+    } else {
+      for (size_t i = 0; i < localCount; ++i) { meet[i] = true; }
+      for (uint32_t pred : predecessors[b]) {
+        auto predExit = propagateExit(pred, entry[pred]);
+        for (size_t i = 0; i < localCount; ++i) { meet[i] = meet[i] && predExit[i]; }
+      }
+    }
+    bool changed = false;
+    for (size_t i = 0; i < localCount; ++i) {
+      if (meet[i] != entry[b][i]) {
+        // The AND meet only lowers during fixpoint.
+        if (entry[b][i] && !meet[i]) {
+          entry[b][i] = false;
+          changed = true;
+        } else if (!entry[b][i] && meet[i]) {
+          return false;  // meet cannot raise a lowered entry
+        }
+      }
+    }
+    if (changed) {
+      const auto& terminator = function.blocks[b].terminator;
+      const auto enqueueTarget = [&](MirBlockId target) {
+        for (size_t t = 0; t < blockCount; ++t) {
+          if (function.blocks[t].id == target) worklist.add(static_cast<uint32_t>(t));
+        }
+      };
+      if (terminator.kind() == MirTerminatorKind::Goto) {
+        enqueueTarget(terminator.gotoValue().target);
+      } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
+        for (const auto& arm : terminator.switchIntValue().arms) { enqueueTarget(arm.target); }
+        enqueueTarget(terminator.switchIntValue().defaultTarget);
+      } else if (terminator.kind() == MirTerminatorKind::Call) {
+        enqueueTarget(terminator.callValue().normalTarget);
+        ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { enqueueTarget(unwind); }
+      }
+    }
+  }
+  // Final validation: every block must admit its assign kinds at fixpoint.
+  for (size_t b = 0; b < blockCount; ++b) {
+    if (!admitsAssignKinds(b, entry[b])) return false;
+  }
+  return true;
+}
+
 bool validateStructuralWellFormedness(const MirFunction& function) {
   // Dense contiguous ordinals: ids are 1-indexed and match vector position.
   for (size_t i = 0; i < function.sourceScopes.size(); ++i) {
@@ -1840,7 +2020,7 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
       if (!checkPlace(call.destination)) return false;
     }
   }
-  return true;
+  return validateInitializationLattice(function);
 }
 
 MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) noexcept {
@@ -2379,8 +2559,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
-                           hirModule.primitiveBinaryOperations().size() +
-                           hirModule.loops().size()) +
+                           hirModule.primitiveBinaryOperations().size() + hirModule.loops().size() +
+                           hirModule.conditionalLocalWrites().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
       leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection + rawPointerWriteExcess;
   const int64_t rhsChecksum =

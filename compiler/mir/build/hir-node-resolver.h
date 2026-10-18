@@ -42,6 +42,7 @@ enum class HirNodeKind : uint8_t {
   PrimitiveBinary,
   Conditional,
   Loop,
+  ConditionalLocalWrite,
 };
 
 /// \brief Resolves the record kind of an HIR node by linear scan over the
@@ -49,7 +50,6 @@ enum class HirNodeKind : uint8_t {
 ///
 /// This is O(n) per lookup (where n is the total record count) but
 /// acceptable for a builder; a hash map can be added later if needed.
-zc::Maybe<HirNodeKind> lookupHirNodeKind(const hir::VerifiedHirModule& module,
-                                          hir::HirNodeId node);
+zc::Maybe<HirNodeKind> lookupHirNodeKind(const hir::VerifiedHirModule& module, hir::HirNodeId node);
 
 }  // namespace zomlang::compiler::mir

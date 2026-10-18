@@ -1,0 +1,67 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/local_write_conditional_init_missing_arm_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #27 @1:1..9:1 file_name="local_write_conditional_init_missing_arm_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #26 @1:1..8:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #25 @1:1..8:2 name="f"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #3 @1:5..1:14 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #2 @1:6..1:13 name="c"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @1:9..1:13 kind=Bool
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #4 @1:18..1:21 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #24 @1:22..8:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #10 @2:5..2:16
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #9 @2:5..2:16 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #8 @2:9..2:15 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #7 @2:9..2:15
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #5 @2:9..2:10 name="v"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #6 @2:12..2:15 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #20 @3:5..6:6
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     IfStmt #19 @3:5..6:6
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         IdentExpr #12 @3:9..3:10 name="c"
+// CHECK-NEXT:                       then_stmt:
+// CHECK-NEXT:                         BlockStmt #18 @3:12..5:6
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #17 @4:9..4:16
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ExpressionStatement #16 @4:9..4:16
+// CHECK-NEXT:                                   expression:
+// CHECK-NEXT:                                     AssignmentExpr #15 @4:9..4:15 op=Assign
+// CHECK-NEXT:                                       lhs:
+// CHECK-NEXT:                                         IdentExpr #13 @4:9..4:10 name="v"
+// CHECK-NEXT:                                       rhs:
+// CHECK-NEXT:                                         IntLiteral #14 @4:13..4:15 base=10 value="41"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       else_stmt:
+// CHECK-NEXT:                         BlockStmt #11 @5:12..6:6
+// CHECK-NEXT:                           stmts: []
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #23 @7:5..7:14
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #22 @7:5..7:14
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #21 @7:12..7:13 name="v"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

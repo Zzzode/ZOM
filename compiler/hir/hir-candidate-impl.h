@@ -31,6 +31,7 @@ struct HirModuleCandidate::Impl final {
        zc::Vector<HirUnsafeBlockExpression>&& unsafeBlocks,
        zc::Vector<HirPrimitiveBinaryExpression>&& primitiveBinaryOperations,
        zc::Vector<HirConditionalExpression>&& conditionals, zc::Vector<HirLoopStatement>&& loops,
+       zc::Vector<HirConditionalLocalWriteStatement>&& conditionalLocalWrites,
        zc::Vector<ast::NodeId>&& sourceNodes) noexcept
       : checkedModule(zc::mv(checkedModule)),
         declarations(zc::mv(declarations)),
@@ -57,6 +58,7 @@ struct HirModuleCandidate::Impl final {
         primitiveBinaryOperations(zc::mv(primitiveBinaryOperations)),
         conditionals(zc::mv(conditionals)),
         loops(zc::mv(loops)),
+        conditionalLocalWrites(zc::mv(conditionalLocalWrites)),
         sourceNodes(zc::mv(sourceNodes)) {}
 
   VerifiedCheckedModule checkedModule;
@@ -84,6 +86,7 @@ struct HirModuleCandidate::Impl final {
   zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
+  zc::Vector<HirConditionalLocalWriteStatement> conditionalLocalWrites;
   /// Side-table mapping HirNodeId ordinal to the source AST node. Index 0 is a
   /// dummy so the one-based HirNodeId ordinal is the direct vector index. A
   /// default-constructed ast::NodeId (value 0) marks a synthetic HIR node with

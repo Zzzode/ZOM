@@ -400,6 +400,8 @@ mut x = 42;
 x = x + 10;
 ```
 
+A plain assignment to a still-uninitialized place is its initialization; the single-initialization rule for `let`, the overwrite rule for `mut`, and the requirement that the place be initialized on every reaching path before any read are defined by Definite Assignment in Chapter 6. Compound assignments and prefix or postfix `++` and `--` read their target and require an already initialized place.
+
 ### Compound Assignment
 
 ```zom

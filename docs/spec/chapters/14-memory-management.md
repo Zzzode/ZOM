@@ -68,8 +68,13 @@ The following contexts consume a value:
 When the consumed type has verified `Copy` evidence, the operation copies the
 value and the source remains initialized. Otherwise, the operation moves the
 value and the source becomes uninitialized until it is assigned a new value.
-Reading, borrowing, moving, or dropping an uninitialized place is a checker
-error. Assignment to the complete place reinitializes it.
+Reading, borrowing, moving, or dropping a place that is uninitialized on any
+reaching path is rejected with `ZOM4093` (`UninitializedPlaceUse`); the
+declaration or the point where the place became unavailable is noted with
+`ZOM4094` (`PlaceBecameUnavailableHere`). At a control-flow join a place is
+initialized only when it is initialized on every predecessor path, so an
+assignment omitted from one branch leaves the join uninitialized (see Definite
+Assignment in Chapter 6). Assignment to the complete place reinitializes it.
 
 Move state applies to places, including field and index projections. Moving a
 complete place invalidates its projections. Moving one projection invalidates
@@ -158,6 +163,7 @@ Ownership diagnostics are checker-owned and use registered entries in
 families include:
 
 - use after move and the originating move;
+- use of an uninitialized or deinitialized place on some reaching path (`ZOM4093` `UninitializedPlaceUse`), with the binding declaration or the move or other loss point noted (`ZOM4094` `PlaceBecameUnavailableHere`);
 - conflicting shared or mutable loans and the originating borrow;
 - moving from a borrowed place;
 - a borrow escaping its referent region;

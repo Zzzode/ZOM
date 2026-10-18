@@ -411,6 +411,14 @@ public:
   /// entry when it has no parameters, and keeps the parameterized
   /// `zom.ternary` symbol otherwise. Every other shape returns `none`.
   ///
+  /// The same matcher lowers the RFC 0055 conditional-local-write diamond
+  /// `let v: T; if (COND) { v = a; } else { v = b; } return v;`: its MIR is the
+  /// same four-block UserLocal diamond with each arm a per-path `Initialize`
+  /// (a missing arm is an empty block that leaves the join uninitialized for
+  /// the ownership rail). The condition temporary is initialized either by a
+  /// bool-literal `Use` or by a foldable scalar `Comparison` (`1 < 2`), the
+  /// latter emitting one entry `Compare` statement.
+  ///
   /// \param function Verified Built MIR function to lower.
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered LIR module, or none when the function is outside the slice.

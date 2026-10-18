@@ -20,6 +20,19 @@ namespace detail {
 /// comparison condition (plus left, right, equality before the arms).
 void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one definite-assignment diamond through the recursive
+/// destination-driven driver: an initializer-less scalar local, an
+/// `if (c) { v = a; } else { v = b; }` whose single arm statement initializes
+/// that local, and a local-reference return. Both arm writes are per-path
+/// Initialize. The condition is a bare bool parameter reference or a foldable
+/// scalar comparison of two literal/parameter leaves. Node stride is eleven for
+/// a parameter condition (function, body, local, then-write, then-value,
+/// else-write, else-value, condition, conditional, return, return value) and
+/// thirteen for a comparison condition (left operand, right operand, and the
+/// comparison replace the single condition id). The body block lists
+/// [local, conditional, return].
+void lowerConditionalLocalWriteReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers a chained integer match return (N literal arms plus one
 /// default arm) through the recursive destination-driven driver. Each literal
 /// arm synthesizes an equality comparison (scrutinee == literal) without an

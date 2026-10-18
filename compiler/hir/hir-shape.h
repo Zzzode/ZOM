@@ -376,6 +376,25 @@ struct FunctionReturnShape final {
   // body-before-condition. The loop condition and statement nodes reuse
   // `loopCondition` and `loopStatement`.
   bool isDoWhileLoopBody = false;
+  // Conditional-local-write diamond shape: a leading initializer-less local
+  // binding, a statement-level if/else whose two arms each contain exactly
+  // one plain assignment to that binding, and a trailing local return. The
+  // condition (`conditionalCondition`) is a bare bool parameter or a foldable
+  // scalar comparison; the two arm assignment nodes and their value nodes are
+  // carried separately from the flat `localWrites` list.
+  bool isConditionalLocalWrite = false;
+  ast::NodeId conditionalStatement{};
+  ast::NodeId conditionalCondition{};
+  ast::NodeId thenAssignment{};
+  ast::NodeId thenValue{};
+  ast::NodeId elseAssignment{};
+  ast::NodeId elseValue{};
+  // Error-preserving diamond: an arm block may be empty, meaning the target is
+  // not initialized on that path. The body still lowers to a four-block CFG so
+  // the ownership rail emits ZOM4093 at the join read. Exactly one arm may be
+  // missing (both empty never initializes the target).
+  bool thenArmMissing = false;
+  bool elseArmMissing = false;
   // Loop-body composite: when the loop body's trailing statement is a
   // `break;` or `continue;` (labeled or unlabeled), these record its AST
   // node (empty otherwise). At most one is set; both are empty when the body

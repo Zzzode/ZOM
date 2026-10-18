@@ -1,0 +1,18 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_conditional_init_missing_arm_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An arm that omits the initializing write leaves the join uninitialized; the
+// returned read is rejected by the ownership rail (ZOM4093) and the
+// declaration is noted as the point the place became unavailable (ZOM4094).
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_conditional_init_missing_arm_neg_01.zom:7:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 7 |     return v;
+// CHECK-LITERAL:   |     ^~~~~~~~~
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_conditional_init_missing_arm_neg_01.zom:2:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     let v: i32;
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: 1 error generated.

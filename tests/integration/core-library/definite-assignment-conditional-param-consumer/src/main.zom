@@ -1,0 +1,13 @@
+// RFC 0055 guide example: a bare bool parameter condition selects the secure
+// (443) or plaintext (80) port. The parameterized body lowers to a
+// parameterized symbol and is object-emission only; host execution stays on
+// the fail-closed path.
+fn port_for(secure: bool) -> i32 {
+  let port: i32;
+  if (secure) {
+    port = 443;
+  } else {
+    port = 80;
+  }
+  return port;
+}

@@ -481,6 +481,24 @@ struct HirLoopStatement final {
   bool isDoWhile = false;
 };
 
+/// \brief A statement-level if/else whose two arms each write the same
+/// initializer-less scalar local once (`if (c) { v = a; } else { v = b; }`).
+/// Block-listed like HirLoopStatement; it is not a value-yielding
+/// HirConditionalExpression because the arms are statements, not returns.
+/// `thenWrite`/`elseWrite` name the per-arm HirLocalWriteStatement nodes, both
+/// of which classify Initialize for the same HirLocalId. `condition` is the
+/// bare bool parameter or foldable scalar comparison operand form admitted by
+/// this slice.
+struct HirConditionalLocalWriteStatement final {
+  HirNodeId node;
+  HirNodeId condition;
+  HirNodeId thenWrite;
+  HirNodeId elseWrite;
+  identity::SemanticTypeId type;
+  HirValueCategory category;
+  identity::SourceSpan sourceSpan;
+};
+
 /// \brief One scalar return statement in immutable semantic HIR.
 struct HirReturnStatement final {
   HirNodeId node;
@@ -625,6 +643,8 @@ public:
       const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirConditionalExpression> conditionals() const noexcept;
   ZC_NODISCARD zc::ArrayPtr<const HirLoopStatement> loops() const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const HirConditionalLocalWriteStatement> conditionalLocalWrites()
+      const noexcept;
   ZC_NODISCARD zc::Maybe<zc::String> dump() const;
 
 private:

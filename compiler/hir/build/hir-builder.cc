@@ -10885,6 +10885,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // skipped — their variants are produced by specialized construction
       // sites earlier in the builder. Negative field-clear conjunctions are
       // compiler-generated via allNone/allEmpty, never hand-written.
+      // Set inside selectShape when the diamond guard hits a missing/invalid
+      // checker fact; the rejection is emitted after the lambda returns because
+      // the lambda itself can only yield a PendingFunctionShape.
+      bool diamondFactReject = false;
       auto selectShape = [&]() -> PendingFunctionShape {
         // Shared carrier-clear predicates, mirroring the guard chain.
         const bool callFieldsClear =
@@ -11059,6 +11063,312 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 zc::mv(ZC_ASSERT_NONNULL(local)),
                                                 zc::mv(ZC_ASSERT_NONNULL(localFieldProjection)),
                                                 zc::mv(ZC_ASSERT_NONNULL(localReference))};
+        }
+        // Conditional-local-write definite-assignment diamond:
+        // `let v: T; if (c) { v = a; } else { v = b; } return v;`. The binding
+        // is initializer-less and the flat write list is empty (the arm writes
+        // are nested in the IfStmt and carried on dedicated shape fields), so it
+        // cannot reach the flat LocalWriteReturn guard. Both arm writes are
+        // per-path first writes, hard-coded Initialize. This transaction lowers
+        // literal/parameter arm values and a bare-bool-parameter or foldable
+        // scalar-comparison condition; any other admitted-but-unlowered leaf
+        // falls through to the capability drain (ZOM4099), never an incident.
+        if (shape.isConditionalLocalWrite && local != zc::none && localReference != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer == zc::none && localWrites.size() == 0 &&
+            localWriteValues.size() == 0 &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
+                    localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan)) {
+          const identity::SemanticTypeId targetType = ZC_ASSERT_NONNULL(local).type;
+          struct DiamondArm {
+            HirLocalWriteStatement write;
+            PendingLocalWriteValue value;
+          };
+          bool diamondSkip = false;
+          bool diamondReject = false;
+          // Resolve one arm assignment to an Initialize write plus a literal or
+          // parameter copy value. diamondSkip means the leaf is valid source the
+          // lowering does not emit yet (fall through to ZOM4099); diamondReject
+          // means a required checker fact was missing (internal invalid fact).
+          auto resolveDiamondArm = [&](ast::NodeId assignmentNode) -> zc::Maybe<DiamondArm> {
+            const auto& assignment = tree.node(assignmentNode);
+            const ast::NodeId rhsNode(assignment.payload.words[ast::kAssignmentExprRhsWord]);
+            auto assignmentSpan = bound.parsedModule().spanFor(assignment.range);
+            auto valueSpan = bound.parsedModule().spanFor(tree.node(rhsNode).range);
+            if (assignmentSpan == zc::none || valueSpan == zc::none) {
+              diamondReject = true;
+              return zc::none;
+            }
+            PendingLocalWriteValue writeValue;
+            if (isScalarLiteral(tree.node(rhsNode).kind)) {
+              auto literalIndex = factIndex(facts.literals(), rhsNode);
+              if (literalIndex == zc::none) {
+                diamondReject = true;
+                return zc::none;
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& sourceLiteral = facts.literals().entries()[literalSlot].value;
+              if (sourceLiteral.type != targetType ||
+                  !sameSpan(sourceLiteral.sourceSpan, ZC_ASSERT_NONNULL(valueSpan))) {
+                diamondReject = true;
+                return zc::none;
+              }
+              writeValue.literal = sourceLiteral.literal.clone();
+            } else if (tree.node(rhsNode).kind == ast::SyntaxKind::IdentExpr) {
+              auto parameter = resolvedCallableParameter(bound.bindings(), rhsNode);
+              if (parameter == zc::none) {
+                // An identifier that is not a parameter is the target local or
+                // an earlier local this transaction does not lower.
+                diamondSkip = true;
+                return zc::none;
+              }
+              identity::CallableParameterId handle;
+              ZC_IF_SOME(value, parameter) { handle = value; }
+              auto authority = registries.callableParameter(handle);
+              if (authority == zc::none) {
+                diamondReject = true;
+                return zc::none;
+              }
+              bool parameterMatches = false;
+              ZC_IF_SOME(entry, authority) {
+                for (const auto& candidate : parameters) {
+                  if (candidate.key == entry.key() && candidate.type == targetType) {
+                    parameterMatches = true;
+                  }
+                }
+                if (parameterMatches) {
+                  writeValue.parameter = HirParameterReferenceExpression{
+                      HirNodeId(), entry.key().clone(), targetType, HirValueCategory::Place,
+                      ZC_ASSERT_NONNULL(valueSpan).clone()};
+                }
+              }
+              if (!parameterMatches) {
+                diamondReject = true;
+                return zc::none;
+              }
+            } else {
+              diamondSkip = true;
+              return zc::none;
+            }
+            DiamondArm arm{HirLocalWriteStatement{HirNodeId(), hirLocalId(1), zc::none, targetType,
+                                                  HirNodeId(), HirLocalWriteKind::Initialize,
+                                                  ZC_ASSERT_NONNULL(assignmentSpan).clone(),
+                                                  ZC_ASSERT_NONNULL(valueSpan).clone()},
+                           zc::mv(writeValue)};
+            return arm;
+          };
+          auto resolveIfPresent = [&](bool present,
+                                      ast::NodeId assignmentNode) -> zc::Maybe<DiamondArm> {
+            if (!present) return zc::none;
+            return resolveDiamondArm(assignmentNode);
+          };
+          auto thenArm = resolveIfPresent(!shape.thenArmMissing, shape.thenAssignment);
+          auto elseArm = resolveIfPresent(!shape.elseArmMissing, shape.elseAssignment);
+          const bool thenPresent = !shape.thenArmMissing;
+          const bool elsePresent = !shape.elseArmMissing;
+          zc::Maybe<HirParameterReferenceExpression> conditionParameter;
+          zc::Maybe<PendingEqualityCondition> conditionComparison;
+          zc::Maybe<identity::SourceSpan> conditionalSpan;
+          if (!diamondSkip && !diamondReject) {
+            const ast::NodeId condNode = shape.conditionalCondition;
+            auto condSpan =
+                bound.parsedModule().spanFor(tree.node(shape.conditionalStatement).range);
+            if (condSpan == zc::none) {
+              diamondReject = true;
+            } else {
+              conditionalSpan = ZC_ASSERT_NONNULL(condSpan).clone();
+            }
+            if (!diamondReject && tree.node(condNode).kind == ast::SyntaxKind::IdentExpr) {
+              auto parameter = resolvedCallableParameter(bound.bindings(), condNode);
+              auto condTypeIndex = factIndex(facts.nodeTypes(), condNode);
+              if (parameter == zc::none || condTypeIndex == zc::none) {
+                diamondSkip = true;
+              } else {
+                identity::CallableParameterId handle;
+                ZC_IF_SOME(value, parameter) { handle = value; }
+                auto authority = registries.callableParameter(handle);
+                size_t condTypeSlot = 0;
+                ZC_IF_SOME(index, condTypeIndex) { condTypeSlot = index; }
+                const auto condType = facts.nodeTypes().entries()[condTypeSlot].value;
+                bool parameterMatches = false;
+                ZC_IF_SOME(entry, authority) {
+                  for (const auto& candidate : parameters) {
+                    if (candidate.key == entry.key() && candidate.type == condType) {
+                      parameterMatches = true;
+                    }
+                  }
+                  if (parameterMatches &&
+                      isBoolSemanticType(checkedModule.semanticTypes(), condType)) {
+                    auto conditionReferenceSpan =
+                        bound.parsedModule().spanFor(tree.node(condNode).range);
+                    if (conditionReferenceSpan == zc::none) {
+                      diamondReject = true;
+                    } else {
+                      conditionParameter = HirParameterReferenceExpression{
+                          HirNodeId(), entry.key().clone(), condType, HirValueCategory::Place,
+                          ZC_ASSERT_NONNULL(conditionReferenceSpan).clone()};
+                    }
+                  }
+                }
+                if (conditionParameter == zc::none) diamondSkip = true;
+              }
+            } else if (!diamondReject && tree.node(condNode).kind == ast::SyntaxKind::BinaryExpr) {
+              const auto& condBinary = tree.node(condNode);
+              const ast::NodeId condLhs(condBinary.payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId condRhs(condBinary.payload.words[ast::kBinaryExprRhsWord]);
+              auto condResultTypeIndex = factIndex(facts.nodeTypes(), condNode);
+              auto condCallIndex = factIndex(facts.calls(), condNode);
+              auto condLhsTypeIndex = factIndex(facts.nodeTypes(), condLhs);
+              auto condRhsTypeIndex = factIndex(facts.nodeTypes(), condRhs);
+              if (condResultTypeIndex == zc::none || condCallIndex == zc::none ||
+                  condLhsTypeIndex == zc::none || condRhsTypeIndex == zc::none ||
+                  !tree.contains(condLhs) || !tree.contains(condRhs)) {
+                diamondReject = true;
+              } else {
+                size_t resultSlot = 0;
+                size_t callSlot = 0;
+                size_t lhsTypeSlot = 0;
+                size_t rhsTypeSlot = 0;
+                ZC_IF_SOME(index, condResultTypeIndex) { resultSlot = index; }
+                ZC_IF_SOME(index, condCallIndex) { callSlot = index; }
+                ZC_IF_SOME(index, condLhsTypeIndex) { lhsTypeSlot = index; }
+                ZC_IF_SOME(index, condRhsTypeIndex) { rhsTypeSlot = index; }
+                const auto resultType = facts.nodeTypes().entries()[resultSlot].value;
+                const auto lhsType = facts.nodeTypes().entries()[lhsTypeSlot].value;
+                const auto rhsType = facts.nodeTypes().entries()[rhsTypeSlot].value;
+                const auto& selected =
+                    facts.calls().entries()[callSlot].value.invocation.selected.variant();
+                if (!selected.is<checker::checked::PrimitiveCallable>()) {
+                  diamondReject = true;
+                } else {
+                  const auto operation =
+                      selected.get<checker::checked::PrimitiveCallable>().operation;
+                  // Resolve one comparison leaf: literal or parameter only.
+                  auto resolveCondLeaf =
+                      [&](ast::NodeId leafNode,
+                          identity::SemanticTypeId leafType) -> zc::Maybe<PendingConditionalArm> {
+                    auto leafSpan = bound.parsedModule().spanFor(tree.node(leafNode).range);
+                    if (leafSpan == zc::none) {
+                      diamondReject = true;
+                      return zc::none;
+                    }
+                    if (isScalarLiteral(tree.node(leafNode).kind)) {
+                      auto leafLiteralIndex = factIndex(facts.literals(), leafNode);
+                      if (leafLiteralIndex == zc::none) {
+                        diamondReject = true;
+                        return zc::none;
+                      }
+                      size_t leafSlot = 0;
+                      ZC_IF_SOME(index, leafLiteralIndex) { leafSlot = index; }
+                      const auto& leafLiteral = facts.literals().entries()[leafSlot].value;
+                      if (leafLiteral.type != leafType) {
+                        diamondReject = true;
+                        return zc::none;
+                      }
+                      return PendingConditionalArm{
+                          leafLiteral.literal.clone(),         zc::none, zc::none, leafType,
+                          ZC_ASSERT_NONNULL(leafSpan).clone(), zc::none, leafNode};
+                    }
+                    if (tree.node(leafNode).kind == ast::SyntaxKind::IdentExpr) {
+                      auto parameter = resolvedCallableParameter(bound.bindings(), leafNode);
+                      if (parameter == zc::none) {
+                        diamondSkip = true;
+                        return zc::none;
+                      }
+                      identity::CallableParameterId leafHandle;
+                      ZC_IF_SOME(value, parameter) { leafHandle = value; }
+                      auto leafAuthority = registries.callableParameter(leafHandle);
+                      zc::Maybe<PendingConditionalArm> leafArm;
+                      ZC_IF_SOME(entry, leafAuthority) {
+                        bool leafMatches = false;
+                        for (const auto& candidate : parameters) {
+                          if (candidate.key == entry.key() && candidate.type == leafType) {
+                            leafMatches = true;
+                          }
+                        }
+                        if (leafMatches) {
+                          auto reference = HirParameterReferenceExpression{
+                              HirNodeId(), entry.key().clone(), leafType, HirValueCategory::Place,
+                              ZC_ASSERT_NONNULL(leafSpan).clone()};
+                          leafArm = PendingConditionalArm{zc::none,
+                                                          zc::mv(reference),
+                                                          zc::none,
+                                                          leafType,
+                                                          ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                          zc::none,
+                                                          leafNode};
+                        }
+                      }
+                      if (leafArm == zc::none) diamondReject = true;
+                      return leafArm;
+                    }
+                    diamondSkip = true;
+                    return zc::none;
+                  };
+                  auto leftLeaf = resolveCondLeaf(condLhs, lhsType);
+                  auto rightLeaf = resolveCondLeaf(condRhs, rhsType);
+                  if (!diamondSkip && !diamondReject && leftLeaf != zc::none &&
+                      rightLeaf != zc::none && isScalarComparisonOperation(operation) &&
+                      isBoolSemanticType(checkedModule.semanticTypes(), resultType) &&
+                      lhsType == rhsType) {
+                    auto comparisonSpan = bound.parsedModule().spanFor(tree.node(condNode).range);
+                    if (comparisonSpan == zc::none) {
+                      diamondReject = true;
+                    } else {
+                      conditionComparison =
+                          PendingEqualityCondition{zc::mv(ZC_ASSERT_NONNULL(leftLeaf)),
+                                                   zc::mv(ZC_ASSERT_NONNULL(rightLeaf)),
+                                                   lhsType,
+                                                   resultType,
+                                                   operation,
+                                                   ZC_ASSERT_NONNULL(comparisonSpan).clone(),
+                                                   false,
+                                                   condNode};
+                    }
+                  } else if (!diamondReject) {
+                    diamondSkip = true;
+                  }
+                }
+              }
+            } else if (!diamondReject) {
+              diamondSkip = true;
+            }
+          }
+          if (diamondReject) {
+            diamondFactReject = true;
+            return GenericShape{};
+          }
+          if (!diamondSkip && (thenArm != zc::none || elseArm != zc::none) &&
+              (thenPresent == (thenArm != zc::none)) && (elsePresent == (elseArm != zc::none)) &&
+              ((conditionParameter != zc::none) != (conditionComparison != zc::none)) &&
+              conditionalSpan != zc::none) {
+            return ConditionalLocalWriteReturn{
+                zc::mv(ZC_ASSERT_NONNULL(local)),
+                thenPresent
+                    ? zc::Maybe<HirLocalWriteStatement>(zc::mv(ZC_ASSERT_NONNULL(thenArm).write))
+                    : zc::none,
+                elsePresent
+                    ? zc::Maybe<HirLocalWriteStatement>(zc::mv(ZC_ASSERT_NONNULL(elseArm).write))
+                    : zc::none,
+                thenPresent
+                    ? zc::Maybe<PendingLocalWriteValue>(zc::mv(ZC_ASSERT_NONNULL(thenArm).value))
+                    : zc::none,
+                elsePresent
+                    ? zc::Maybe<PendingLocalWriteValue>(zc::mv(ZC_ASSERT_NONNULL(elseArm).value))
+                    : zc::none,
+                zc::mv(ZC_ASSERT_NONNULL(localReference)),
+                zc::mv(conditionParameter),
+                zc::mv(conditionComparison),
+                thenPresent,
+                elsePresent,
+                shape.thenAssignment,
+                shape.elseAssignment,
+                shape.thenValue,
+                shape.elseValue,
+                shape.conditionalStatement,
+                zc::mv(ZC_ASSERT_NONNULL(conditionalSpan))};
+          }
         }
         // Local write return.
         if (local != zc::none && localWrites.size() != 0 &&
@@ -11388,6 +11698,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // evaluation order is unspecified, so calling selectShape() inside the
       // constructor argument list would race with zc::mv(methodReceiver).
       auto selectedShape = selectShape();
+      if (diamondFactReject) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             ordinal + 2);
+      }
       pendingFunctions.add(PendingFunctionDeclaration{
           definition.definition, definition.node, functionResultType, zc::mv(parameters),
           zc::mv(methodReceiver), zc::mv(visibilityValue), linkageValue, definition.source.clone(),
@@ -11572,6 +11887,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   zc::Vector<HirPrimitiveBinaryExpression> primitiveBinaryOperations;
   zc::Vector<HirConditionalExpression> conditionals;
   zc::Vector<HirLoopStatement> loops;
+  zc::Vector<HirConditionalLocalWriteStatement> conditionalLocalWrites;
   uint32_t next = 1;
   // Side-table mapping HirNodeId ordinal to the source AST node. Index 0 is a
   // dummy so the one-based HirNodeId ordinal is the direct vector index.
@@ -11607,7 +11923,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                       localWrites, localReferences, primitiveBinaryOperations, aggregates,
                       localFieldProjections, parameterFieldProjections, parameterFieldWrites,
                       rawPointerWrites, unsafeBlocks, parameterReborrows, localBorrows, calls,
-                      receiverCalls, conditionals, loops, sourceNodes);
+                      receiverCalls, conditionals, loops, conditionalLocalWrites, sourceNodes);
     };
     if (value.shape.is<ByValueParameterFieldReturn>()) {
       auto fnCtx = makeFnCtx();
@@ -11803,6 +12119,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       lowerComparisonLoopBodyReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
+    if (value.shape.is<ConditionalLocalWriteReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerConditionalLocalWriteReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
     if (value.shape.is<ForLoopReturn>()) {
       auto fnCtx = makeFnCtx();
       lowerForLoopReturnFunction(zc::mv(value), fnCtx);
@@ -11884,7 +12205,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::mv(parameterFieldWrites), zc::mv(rawPointerWrites), zc::mv(parameterReferences),
       zc::mv(parameterReborrows), zc::mv(localBorrows), zc::mv(calls), zc::mv(receiverCalls),
       zc::mv(unsafeBlocks), zc::mv(primitiveBinaryOperations), zc::mv(conditionals), zc::mv(loops),
-      zc::mv(sourceNodes));
+      zc::mv(conditionalLocalWrites), zc::mv(sourceNodes));
   return ir::IrOperationResult<HirModuleCandidate>::verified(HirModuleCandidate(zc::mv(impl)));
 }
 

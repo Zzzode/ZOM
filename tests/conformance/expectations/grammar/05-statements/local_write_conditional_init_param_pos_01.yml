@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, parameter, letStatement, ifStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "A bare bool parameter condition guards per-arm initialization of an initializer-less let (the 443/80 guide shape)."

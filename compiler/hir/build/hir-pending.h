@@ -826,6 +826,40 @@ struct LocalFieldProjectionReturn {
   HirLocalFieldProjectionExpression localFieldProjection;
 };
 
+/// One definite-assignment diamond: an initializer-less scalar binding, an
+/// `if (c) { v = a; } else { v = b; }` whose single arm statement is one plain
+/// assignment to that binding, and a trailing return of the binding. Both arm
+/// writes are per-path first writes and therefore carry
+/// HirLocalWriteKind::Initialize (the path-scoped classification, not the flat
+/// function-wide write index). The condition is exactly one of a bare bool
+/// parameter reference or a foldable scalar comparison; exactly one of the two
+/// condition Maybe fields is populated. The materializer assigns the write and
+/// value node ids; node/value carried here are empty.
+struct ConditionalLocalWriteReturn {
+  HirLocalBinding local;
+  zc::Maybe<HirLocalWriteStatement> thenWrite;
+  zc::Maybe<HirLocalWriteStatement> elseWrite;
+  zc::Maybe<PendingLocalWriteValue> thenValue;
+  zc::Maybe<PendingLocalWriteValue> elseValue;
+  HirLocalReferenceExpression localReference;
+  zc::Maybe<HirParameterReferenceExpression> conditionParameter;
+  zc::Maybe<PendingEqualityCondition> conditionComparison;
+  /// Whether each arm initializes the target. A false arm is the
+  /// error-preserving missing-arm case: no write/value nodes are allocated and
+  /// the conditional statement names a zero node id for that arm.
+  bool thenArmPresent = true;
+  bool elseArmPresent = true;
+  /// AST node ids of the two arm assignments and their RHS expressions, used by
+  /// the materializer to anchor the fixed-id side table.
+  ast::NodeId thenAssignmentNode{};
+  ast::NodeId elseAssignmentNode{};
+  ast::NodeId thenValueNode{};
+  ast::NodeId elseValueNode{};
+  /// The AST IfStmt node of the diamond.
+  ast::NodeId conditionalNode{};
+  identity::SourceSpan conditionalSpan;
+};
+
 struct LocalBorrowReturn {
   HirLocalBinding local;
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
@@ -1049,24 +1083,23 @@ struct GenericShape {
 };
 
 /// The tagged union of all function body shapes.
-using PendingFunctionShape =
-    zc::OneOf<EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
-              VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
-              ArrayLengthFoldReturn, LocalReturn, UninitializedLocalReturn,
-              UninitializedFieldProjectionReturn, LocalWriteReturn, LocalFieldProjectionReturn,
-              LocalBorrowReturn, ParameterReferenceReturn, ParameterReborrowReturn,
-              LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn,
-              AggregateReturn, EnumConstructionReturn, ExistentialReturn,
-              AggregateFieldProjectionReturn, DirectScalarLocalCallReturn,
-              DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
-              ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
-              ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn,
-              DiscardedReceiverCall, DynFieldAccessReturn, ReceiverFieldReturn,
-              ByValueParameterFieldReturn, ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn,
-              ConditionalReturn, ChainedConditionalReturn, LeadingLocalConditionalReturn,
-              LoopBodyReturn, ComparisonLoopBodyReturn, ComparisonReturn, PrimitiveUnaryReturn,
-              ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
-              NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;
+using PendingFunctionShape = zc::OneOf<
+    EmptyVoidBody, VoidLetBody, DestructorFieldWriteBody, DestructorMethodCallBody,
+    VoidMutatingMethod, ScalarLiteralReturn, UnsafeScalarReturn, ArrayIndexFoldReturn,
+    ArrayLengthFoldReturn, LocalReturn, UninitializedLocalReturn,
+    UninitializedFieldProjectionReturn, LocalWriteReturn, LocalFieldProjectionReturn,
+    LocalBorrowReturn, ParameterReferenceReturn, ParameterReborrowReturn, LocalAliasReborrowReturn,
+    RawDereferenceReturn, RawPointerWriteReturn, AggregateReturn, EnumConstructionReturn,
+    ExistentialReturn, AggregateFieldProjectionReturn, DirectScalarLocalCallReturn,
+    DirectAggregateCallReturn, DirectExistentialCallReturn, DirectCallReturn,
+    ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
+    ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
+    DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
+    ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,
+    ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
+    ComparisonLoopBodyReturn, ConditionalLocalWriteReturn, ComparisonReturn, PrimitiveUnaryReturn,
+    ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
+    NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;
 
 /// A pending function declaration ready for HIR materialization.
 ///

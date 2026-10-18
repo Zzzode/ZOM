@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, ifStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits two writes in one arm; the second per-path write to a let is a semantic ZOM4024."
