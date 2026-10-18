@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "Reassigning a let already initialized at its declaration is an immutable mutation (ZOM4024)."

@@ -1237,8 +1237,26 @@ struct LocalWriteEntry {
   LocalWriteClass classification;
 };
 
+// A plain write to the diamond target inside an arm after that arm's first
+// initialization. The write is immutable re-mutation (ZOM4024).
+struct DiamondExtraWrite {
+  identity::DefId owner;
+  ast::NodeId assignment;
+};
+
+// A trailing read of the target after a bounded diamond one arm leaves
+// uninitialized. The read is rejected as ZOM4093 with a ZOM4094 note at the
+// binding.
+struct DiamondUninitRead {
+  identity::DefId owner;
+  ast::NodeId read;
+  ast::NodeId bindingName;
+};
+
 struct LocalWriteRegistry {
   zc::Vector<LocalWriteEntry> entries;
+  zc::Vector<DiamondExtraWrite> diamondExtraWrites;
+  zc::Vector<DiamondUninitRead> diamondUninitReads;
 
   LocalWriteClass classify(ast::NodeId assignment) const noexcept {
     for (const auto& entry : entries) {
@@ -1456,12 +1474,71 @@ LocalWriteRegistry buildLocalWriteRegistry(
               // A later plain write to the same immutable target on this path
               // is an immutable re-write regardless of its value.
               registry.entries.add(LocalWriteEntry{candidate, LocalWriteClass::ImmutableReinit});
+              registry.diamondExtraWrites.add(DiamondExtraWrite{definition.definition, candidate});
             }
           }
         };
         if (bounded) {
           classifyArm(thenBlockId);
           classifyArm(elseBlockId);
+          // A join read one empty arm leaves uninitialized. The checker reports
+          // this itself (ZOM4093 + ZOM4094) so it lands in the same rejection
+          // batch as a ZOM4024 an arm write produces; the structural predicate
+          // mirrors the HIR bounded-diamond recognizer (bare parameter or
+          // comparison condition, an initializing sibling arm, trailing read
+          // of the target).
+          const auto conditionKind =
+              tree.contains(cond) ? tree.node(cond).kind : ast::SyntaxKind::Unknown;
+          const bool diamondCondition = conditionKind == ast::SyntaxKind::IdentExpr ||
+                                        conditionKind == ast::SyntaxKind::BinaryExpr;
+          auto armStatementCount = [&](ast::NodeId blockId) -> size_t {
+            const ast::NodeList arm{tree.node(blockId).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                    tree.node(blockId).payload.words[ast::kBlockStmtStmtsSizeWord]};
+            return tree.contains(arm) ? arm.size : 0;
+          };
+          auto armInitializes = [&](ast::NodeId blockId) -> bool {
+            const ast::NodeList arm{tree.node(blockId).payload.words[ast::kBlockStmtStmtsFirstWord],
+                                    tree.node(blockId).payload.words[ast::kBlockStmtStmtsSizeWord]};
+            if (!tree.contains(arm) || arm.size == 0) return false;
+            const auto first = statementItemFor(tree.list(arm)[0]);
+            ast::NodeId firstStmt;
+            ZC_IF_SOME(node, first) { firstStmt = node; }
+            if (first == zc::none ||
+                tree.node(firstStmt).kind != ast::SyntaxKind::ExpressionStatement) {
+              return false;
+            }
+            const ast::NodeId firstWrite(
+                tree.node(firstStmt).payload.words[ast::kExpressionStatementExpressionWord]);
+            if (!tree.contains(firstWrite) ||
+                tree.node(firstWrite).kind != ast::SyntaxKind::AssignmentExpr ||
+                static_cast<ast::AssignmentOperatorKind>(
+                    tree.node(firstWrite).payload.words[ast::kAssignmentExprOpWord]) !=
+                    ast::AssignmentOperatorKind::Assign) {
+              return false;
+            }
+            const ast::NodeId lhs(tree.node(firstWrite).payload.words[ast::kAssignmentExprLhsWord]);
+            return tree.contains(lhs) && tree.node(lhs).kind == ast::SyntaxKind::IdentExpr &&
+                   tree.node(lhs).payload.words[ast::kIdentExprNameWord] == targetName;
+          };
+          const bool thenEmpty = armStatementCount(thenBlockId) == 0;
+          const bool elseEmpty = armStatementCount(elseBlockId) == 0;
+          if (diamondCondition && (thenEmpty || elseEmpty) &&
+              (armInitializes(thenBlockId) || armInitializes(elseBlockId))) {
+            const auto trailing = statementItemFor(tree.list(statements)[2]);
+            ast::NodeId trailingStmt;
+            ZC_IF_SOME(node, trailing) { trailingStmt = node; }
+            if (trailing != zc::none &&
+                tree.node(trailingStmt).kind == ast::SyntaxKind::ReturnStmt) {
+              const ast::NodeId retValue(
+                  tree.node(trailingStmt).payload.words[ast::kReturnStmtValueWord]);
+              if (tree.contains(retValue) &&
+                  tree.node(retValue).kind == ast::SyntaxKind::IdentExpr &&
+                  tree.node(retValue).payload.words[ast::kIdentExprNameWord] == targetName) {
+                registry.diamondUninitReads.add(
+                    DiamondUninitRead{definition.definition, trailingStmt, pattern});
+              }
+            }
+          }
         }
       }
     }
@@ -6291,6 +6368,107 @@ checked::CheckedFactsSourceRejected rejectCannotMutateImmutableVariable(
                                              zc::Vector<checked::FrozenRecoveryLedger>()};
 }
 
+/// \brief Rejects the bounded conditional-local-write diamond's definite
+/// assignment violations in one batch: ZOM4024 for every extra immutable write
+/// on an arm path, and ZOM4093 (with a ZOM4094 note at the binding) for the
+/// trailing join read an empty arm leaves uninitialized. Reporting the join
+/// read at this pre-pass keeps both errors in a single rejection; the MIR
+/// ownership rail remains the backstop for shapes beyond the bounded slice.
+zc::Maybe<BodyCheckingResult> rejectBoundedDiamondDefiniteAssignment(
+    const BodyCheckingInput& input, const LocalWriteRegistry& registry,
+    const identity::RegistryBrandIssuer& factStoreBrands) {
+  if (registry.diamondExtraWrites.empty() && registry.diamondUninitReads.empty()) {
+    return zc::none;
+  }
+  const auto& boundModule = input.boundModule;
+  const auto& tree = boundModule.tree();
+  const auto& parsedModule = boundModule.parsedModule();
+
+  zc::Vector<checked::CheckerFailureRef> failures;
+  zc::Vector<checked::FrozenRecoveryLedger> ledgers;
+  uint32_t itemOrdinal = 0;
+  // Wraps one failure as a one-failure rejection, attaches its recovery ledger
+  // through the standard lifecycle, and collects the annotated pair.
+  auto collect = [&](checked::CheckerFailureRef&& failure) -> bool {
+    zc::Vector<checked::CheckerFailureRef> single;
+    single.add(zc::mv(failure));
+    auto ledgered = attachRecoveryLedger(
+        checked::CheckedFactsSourceRejected{zc::mv(single),
+                                            zc::Vector<checked::CheckerAdvisoryRef>(),
+                                            zc::Vector<checked::FrozenRecoveryLedger>()},
+        input, factStoreBrands);
+    if (ledgered.is<checked::CheckedFactsInvariantRejected>()) { return false; }
+    auto& rejected = ledgered.get<checked::CheckedFactsSourceRejected>();
+    if (rejected.failures.size() != 1 || rejected.recoveryLedgers.size() != 1) { return false; }
+    failures.add(zc::mv(rejected.failures[0]));
+    ledgers.add(zc::mv(rejected.recoveryLedgers[0]));
+    return true;
+  };
+  auto makeFailure = [&](ast::NodeId node, identity::SourceSpan&& span,
+                         checked::CheckerErrorId diagnostic,
+                         zc::Vector<checked::CheckerDisplayArgument> arguments,
+                         zc::Vector<checked::CheckerNoteRef> notes,
+                         uint32_t ownerPreorder) -> checked::CheckerFailureRef {
+    zc::Maybe<checked::TypeErrorId> noRecovery;
+    return checked::CheckerFailureRef{
+        diagnostic,
+        checked::CheckerDiagnosticStage::Body,
+        node,
+        zc::mv(span),
+        zc::mv(arguments),
+        zc::mv(notes),
+        checked::CheckerDiagnosticProducer::Mutation,
+        checked::CheckerRecoveryPolicy(checked::CreateRootRecoveryPolicy{
+            checked::CheckerRecoveryClass::InvalidOperation, true}),
+        checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                       ownerPreorder, ownerPreorder, itemOrdinal++},
+        zc::mv(noRecovery)};
+  };
+
+  for (const auto& extra : registry.diamondExtraWrites) {
+    ZC_IF_SOME(ownerPreorder, definitionPreorder(boundModule, extra.owner)) {
+      ZC_IF_SOME(writeSpan, parsedModule.spanFor(tree.node(extra.assignment).range)) {
+        const ast::NodeId lhs(
+            tree.node(extra.assignment).payload.words[ast::kAssignmentExprLhsWord]);
+        ZC_IF_SOME(immutableName, identity::SemanticIdentifier::fromSource(tree.ident(ast::IdentId(
+                                      tree.node(lhs).payload.words[ast::kIdentExprNameWord])))) {
+          zc::Vector<checked::CheckerDisplayArgument> arguments;
+          arguments.add(checked::CheckerDisplayArgument(
+              checked::IdentifierDisplayArg{zc::mv(immutableName)}));
+          if (!collect(makeFailure(extra.assignment, zc::mv(writeSpan),
+                                   checked::CheckerErrorId::CannotMutateImmutableVariable(),
+                                   zc::mv(arguments), zc::Vector<checked::CheckerNoteRef>(),
+                                   ownerPreorder))) {
+            return zc::none;
+          }
+        }
+      }
+    }
+  }
+  for (const auto& uninit : registry.diamondUninitReads) {
+    ZC_IF_SOME(ownerPreorder, definitionPreorder(boundModule, uninit.owner)) {
+      ZC_IF_SOME(readSpan, parsedModule.spanFor(tree.node(uninit.read).range)) {
+        ZC_IF_SOME(bindingSpan, parsedModule.spanFor(tree.node(uninit.bindingName).range)) {
+          zc::Vector<checked::CheckerNoteRef> notes;
+          zc::Vector<checked::CheckerDisplayArgument> noArguments;
+          zc::Maybe<identity::DefId> noCause;
+          notes.add(checked::CheckerNoteRef{checked::CheckerNoteId::PlaceBecameUnavailableHere(),
+                                            zc::mv(bindingSpan), zc::mv(noArguments),
+                                            zc::mv(noCause)});
+          if (!collect(makeFailure(
+                  uninit.read, zc::mv(readSpan), checked::CheckerErrorId::UninitializedPlaceUse(),
+                  zc::Vector<checked::CheckerDisplayArgument>(), zc::mv(notes), ownerPreorder))) {
+            return zc::none;
+          }
+        }
+      }
+    }
+  }
+  if (failures.empty()) { return zc::none; }
+  return zc::Maybe<BodyCheckingResult>(checked::CheckedFactsSourceRejected{
+      zc::mv(failures), zc::Vector<checked::CheckerAdvisoryRef>(), zc::mv(ledgers)});
+}
+
 /// \brief Rejects a field write through a shared (immutable) method receiver
 /// with ZOM4126. The offending place is the implicit receiver keyword, so the
 /// diagnostic carries no display arguments.
@@ -7658,6 +7836,14 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   // RFC 0055: pure straight-line classification of immutable-local writes,
   // rebuilt from the same bound module as the requirements inventory.
   const LocalWriteRegistry writeRegistry = buildLocalWriteRegistry(input.boundModule);
+
+  // Bounded conditional-local-write diamonds report all definite-assignment
+  // violations (ZOM4024 arm re-writes and the ZOM4093/ZOM4094 missing-arm join
+  // read) in one rejection before any production site is analyzed.
+  ZC_IF_SOME(diamondResult,
+             rejectBoundedDiamondDefiniteAssignment(input, writeRegistry, factStoreBrands)) {
+    return zc::mv(diamondResult);
+  }
 
   if (input.requirements.captureRequirements().size() != 0) {
     zc::Maybe<identity::DefId> closureOwner;

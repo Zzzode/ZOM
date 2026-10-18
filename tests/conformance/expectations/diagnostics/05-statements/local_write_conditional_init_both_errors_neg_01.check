@@ -1,0 +1,25 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_conditional_init_both_errors_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// One arm re-writes the immutable target (ZOM4024) while the other arm omits
+// the write, leaving the join read uninitialized (ZOM4093, noted at the
+// binding with ZOM4094). The bounded-diamond pre-pass reports both in one
+// rejection batch.
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `v`
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_conditional_init_both_errors_neg_01.zom:5:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 5 |         v = 2;
+// CHECK-LITERAL:   |         ^~~~~
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_conditional_init_both_errors_neg_01.zom:8:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 8 |     return v;
+// CHECK-LITERAL:   |     ^~~~~~~~~
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_conditional_init_both_errors_neg_01.zom:2:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     let v: i32;
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: 2 errors generated.

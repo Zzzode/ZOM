@@ -3015,6 +3015,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                           block.payload.words[ast::kBlockStmtStmtsSizeWord]};
         if (!tree.contains(armStatements)) return zc::none;
         if (armStatements.size == 0) return ArmInfo{false, true, ast::NodeId{}};
+        // A present arm is exactly one plain assignment to the target; the
+        // checker rejects arm re-writes (ZOM4024) before this recognizer runs.
         if (armStatements.size != 1) return zc::none;
         auto item = statementItem(tree, tree.list(armStatements)[0]);
         ast::NodeId stmt;

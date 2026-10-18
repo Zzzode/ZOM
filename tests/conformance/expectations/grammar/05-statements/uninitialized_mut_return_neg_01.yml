@@ -1,0 +1,5 @@
+section: "05-statements return diagnostics"
+covers_rule: "functionDeclaration, mutStatement, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; returning an initializer-less mut that was never written is a semantic ZOM4093 with ZOM4094 at the binding."

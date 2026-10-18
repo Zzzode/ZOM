@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, letStatement, ifStatement, emptyBlock, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "One arm re-writes the let (ZOM4024) while the other arm omits the write; the join read is ZOM4093 with ZOM4094, so both errors are reported together."

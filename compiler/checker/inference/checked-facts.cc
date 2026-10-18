@@ -2788,6 +2788,9 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
       // The offending place is the implicit receiver keyword; no display
       // arguments are needed.
       return argumentKinds(arguments);
+    case DiagID::UninitializedPlaceUse:
+      // The place is identified by its primary span and the ZOM4094 note.
+      return argumentKinds(arguments);
     case DiagID::DynUnsizedParameter:
       return argumentKinds(arguments, Kind::Definition, Kind::Definition, Kind::Type);
     case DiagID::TypeCheckerTypeMismatch:
@@ -2966,6 +2969,8 @@ bool validDiagnosticProduction(const CheckerFailureRef& failure) {
       return failure.stage == Stage::Exhaustiveness &&
              failure.producer == Producer::Exhaustiveness && hasNoRecoveryPolicy(failure);
     case DiagID::CannotMutateImmutableVariable:
+      return matches(Stage::Body, Producer::Mutation, Class::InvalidOperation, true);
+    case DiagID::UninitializedPlaceUse:
       return matches(Stage::Body, Producer::Mutation, Class::InvalidOperation, true);
     case DiagID::CannotMutateSharedReceiver:
       return matches(Stage::Body, Producer::Mutation, Class::InvalidOperation, true);

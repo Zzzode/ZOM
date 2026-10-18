@@ -1,0 +1,4 @@
+fn entry() -> i32 {
+    mut value: i32;
+    return value;
+}

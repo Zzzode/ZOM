@@ -73,12 +73,16 @@ implemented (RFC 0055 slices 1-4). Observed against the sanitizer build:
 | `let v: i32; if (1 < 2) { v = 41; } else { v = 7; } return v;` | accepted; folds to `zom.module_init`, exit 41 | Accept (foldable condition) |
 | `let v: i32; if (c) { v = 1; v = 2; } else { v = 2; } return v;` | ZOM4024 on the second arm write | Reject (immutable re-write) |
 | `let v: i32; if (c) { v = 1; } else { } return v;` | ZOM4093 + ZOM4094 at the join read | Reject (missing-arm path) |
+| `let v: i32; if (c) { v = 1; v = 2; } else { } return v;` | ZOM4024 on the arm re-write and ZOM4093 + ZOM4094 at the join read in one rejection | Reject (both violations) |
+| `mut value: i32; return value;` | ZOM4093 + ZOM4094 | Reject (matches) |
 
-The ownership rail answers "initialized on every path" with a per-block AND
-meet and emits ZOM4093/ZOM4094; the MIR structural verifier independently
-enforces Initialize/Overwrite kind discipline on acyclic CFGs. Semantically
-valid shapes the current lowering carrier cannot emit (for example arm values
-that copy an earlier user local) still drain cleanly as ZOM4099.
+The bounded-diamond pre-pass in the body checker answers "initialized on every
+path" for the admitted shape and emits ZOM4093/ZOM4094 itself so the join read
+lands in the same rejection batch as an arm ZOM4024 (the pipeline halts at the
+first source-rejecting phase, so diagnostics split across the checker and the
+MIR ownership rail could never co-occur). The MIR ownership rail remains the
+independent backstop for shapes beyond this bounded slice; its per-block AND
+meet and error-preserving empty-arm transport stay in place for wider lowering.
 
 ## Implemented surfaces
 
@@ -90,6 +94,10 @@ that copy an earlier user local) still drain cleanly as ZOM4099.
    arm independently, so the path-scoped classification does not see the
    sibling arm write as a second write. `ImmutableReinit` emits ZOM4024;
    `FirstInitialization` is admitted as `BodyProductionKind::LocalWrite`.
+   The same diamond scan records each arm's extra immutable writes and, when
+   one arm is empty and the trailing return reads the target, the uninitialized
+   join read; a pre-pass rejects the body with the batched ZOM4024 and
+   ZOM4093/ZOM4094 diagnostics before production sites are analyzed.
 2. **HIR builder.** `ConditionalLocalWriteReturn` plus the
    `HirConditionalLocalWriteStatement` block-listed node represent a
    binding without an initializer followed by a per-arm if/else. The node
@@ -101,12 +109,15 @@ that copy an earlier user local) still drain cleanly as ZOM4099.
    per-path-`Initialize` arm, a Goto join, and the trailing Return. A
    missing arm is an empty block so the error-preserving MIR reaches the
    ownership rail.
-4. **Ownership checker.** The path-sensitive init state accepts a read
-   initialized on every predecessor and rejects a missing-arm join read with
-   ZOM4093/ZOM4094. The admitted reducible-CFG slice is straight-line plus
-   the four-block diamond; loop-header joins use the pre-existing
-   StorageLive/Overwrite encoding and remain outside the new per-block
-   discipline.
+4. **Ownership checker.** The bounded conditional-local-write diamond is
+   rejected in a body-checker pre-pass that batches every definite-assignment
+   violation of the shape: ZOM4024 for each extra immutable write on an arm
+   path and ZOM4093 (with a ZOM4094 note at the binding) for the trailing join
+   read an empty arm leaves uninitialized. The MIR ownership rail's path
+   analysis is the independent backstop for shapes the bounded checker pass
+   does not name; the admitted reducible-CFG slice is straight-line plus the
+   four-block diamond, and loop-header joins use the pre-existing
+   StorageLive/Overwrite encoding outside the new per-block discipline.
 
 ## Bounds (non-goals)
 

@@ -1,0 +1,18 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/uninitialized_mut_return_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Initialization is a property of paths, not of the binding keyword: an
+// initializer-less mut read before any write is rejected exactly like the
+// equivalent let (ZOM4093, noted at the binding with ZOM4094).
+
+// CHECK-LITERAL: Error [ZOM4093]: Use of uninitialized or deinitialized place
+// CHECK-LITERAL:   --> conformance/05-statements/uninitialized_mut_return_neg_01.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     return value;
+// CHECK-LITERAL:   |     ^~~~~~~~~~~~~
+// CHECK-LITERAL: Note [ZOM4094]: Place became unavailable here
+// CHECK-LITERAL:   --> conformance/05-statements/uninitialized_mut_return_neg_01.zom:2:9
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 2 |     mut value: i32;
+// CHECK-LITERAL:   |         ^
+// CHECK-LITERAL: 1 error generated.

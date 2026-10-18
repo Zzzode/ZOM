@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/local_write_initialized_let_reassign_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A let initialized at its declaration may never be assigned again; the later
+// plain write is an immutable-binding mutation (ZOM4024), not a late
+// initialization.
+
+// CHECK-LITERAL: Error [ZOM4024]: Cannot mutate immutable definition `v`
+// CHECK-LITERAL:   --> conformance/05-statements/local_write_initialized_let_reassign_neg_01.zom:3:5
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 3 |     v = 2;
+// CHECK-LITERAL:   |     ^~~~~
+// CHECK-LITERAL: 1 error generated.

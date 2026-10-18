@@ -1,0 +1,40 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/uninitialized_mut_return_neg_01.zom | %FileCheck %s
+
+
+// CHECK: SourceFile #15 @1:1..5:1 file_name="uninitialized_mut_return_neg_01.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #14 @1:1..4:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #13 @1:1..4:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #1 @1:9..1:11 nparams=0
+// CHECK-NEXT:               params: []
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #2 @1:15..1:18 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #12 @1:19..4:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #8 @2:5..2:20
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #7 @2:5..2:20 kind=Mut
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #6 @2:9..2:19 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #5 @2:9..2:19
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #3 @2:9..2:14 name="value"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 PredefinedTypeExpr #4 @2:16..2:19 kind=I32
+// CHECK-NEXT:                               init: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #11 @3:5..3:18
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #10 @3:5..3:18
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IdentExpr #9 @3:12..3:17 name="value"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null

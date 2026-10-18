@@ -1,0 +1,5 @@
+section: "05-statements definite assignment"
+covers_rule: "functionDeclaration, mutStatement, assignmentExpression, returnStatement"
+expected: "ACCEPT"
+notes:
+  - "An initializer-less mut is late-initialized and then overwritten once; mut permits any number of writes before the first read."
