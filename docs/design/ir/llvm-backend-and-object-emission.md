@@ -53,9 +53,12 @@ flowchart LR
 
 ## Production Profile
 
-- translation succeeds only for one-to-three integer-returning functions in
-  the admitted single-block, call, conditional-diamond, or reducible-loop
-  shapes; unsupported shapes fail closed;
+- translation succeeds only for one-to-three integer-or-float-returning
+  functions in the admitted single-block, call, conditional-diamond, or
+  reducible-loop shapes; unsupported shapes fail closed. A float constant
+  return lowers to an LLVM `float`/`double` return in object emission, but it
+  is **object-only**: the runtime `_start` exits with the integer `%eax`, so
+  `zomc run` remains restricted to an integer-returning `zom.module_init`;
 - object emission uses the LLVM legacy pass manager file-emission path after
   mandatory verification;
 - `zomc compile --emit=binary` reaches the object path; `zomc run` links
@@ -123,8 +126,8 @@ reasons to amend the RFC contracts.
 - Close the four deviations above: verified LIR capability, executable-MIR
   consumption, verified target triple/data layout, and emit selections.
 - General ABI lowering, aggregate/argument coverage beyond the admitted
-  shapes, float/pointer codegen, attributes and `inbounds` discipline, and
-  non-external linkage policy.
+  shapes, pointer codegen, float arithmetic bodies, attributes and `inbounds`
+  discipline, and non-external linkage policy.
 - AArch64 entry/execution, Mach-O execution (entry-symbol handling open),
   cross-target execution rejection through the CLI, and general entry-point
   semantics.

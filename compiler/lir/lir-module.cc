@@ -159,6 +159,10 @@ IntegerConstant Terminator::fallbackConstant() noexcept {
 
 Terminator Terminator::returnInteger(IntegerConstant value) noexcept { return Terminator(value); }
 
+Terminator Terminator::returnFloat(FloatConstant value) noexcept {
+  return Terminator(zc::mv(value));
+}
+
 Terminator Terminator::gotoBlock(LirBlockId target) noexcept {
   return Terminator(TerminatorKind::Goto, 0, target, target);
 }

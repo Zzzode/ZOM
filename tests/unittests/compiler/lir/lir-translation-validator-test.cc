@@ -1076,5 +1076,69 @@ ZC_TEST("Translation validator rejects a void call that incorrectly carries a de
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EffectMismatch);
 }
 
+// MIR direct float constant return with no local:
+//   fn f() -> f64 { return 1.5; }
+mir::MirFunction floatScalarMir(identity::DefId owner, identity::SemanticTypeId floatType,
+                                uint64_t bits) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  auto terminator = mir::MirTerminator::returnValue(
+      mir::MirOperand::constant(floatType, checker::checked::CanonicalConstValue::float64(bits)),
+      span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), /*statements=*/{}, zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          floatType,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// LIR corresponding to floatScalarMir: one block returning a Binary64 constant.
+Module floatScalarLir(identity::DefId owner, uint64_t bits) {
+  const auto carrier = ZC_REQUIRE_NONNULL(ValueType::floating(FloatFormat::Binary64));
+  const auto constant = ZC_REQUIRE_NONNULL(FloatConstant::from(carrier, bits));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), Terminator::returnFloat(constant)));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), carrier, zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST("Translation validator accepts a folded float constant return") {
+  TestSemanticTypeContext types;
+  const auto f64 = types.internPrimitive(type::semantic::PrimitiveKind::F64);
+  const auto owner = testDefinition(95);
+  // 1.5 in Binary64.
+  constexpr uint64_t bits = 0x3ff8000000000000ULL;
+  ZC_EXPECT(TranslationValidator::validate(floatScalarMir(owner, f64, bits),
+                                           floatScalarLir(owner, bits),
+                                           types.semanticTypes()) == zc::none);
+
+  // The same shape with the wrong bit pattern is a constant mismatch.
+  auto finding = TranslationValidator::validate(floatScalarMir(owner, f64, bits),
+                                                floatScalarLir(owner, 0), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::ConstantMismatch);
+
+  // A float return lowered as an integer return is an effect mismatch.
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(bits))));
+  zc::Vector<Local> noParameters;
+  zc::Vector<Local> noLocals;
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                         zc::mv(noParameters), zc::mv(noLocals), zc::mv(blocks)));
+  Module integerModule(zc::mv(functions));
+  auto wrongKind = TranslationValidator::validate(floatScalarMir(owner, f64, bits), integerModule,
+                                                  types.semanticTypes());
+  ZC_REQUIRE(wrongKind != zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::lir

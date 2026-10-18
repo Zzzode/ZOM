@@ -834,6 +834,38 @@ ZC_TEST("LIR structural verifier rejects a void return on an integer carrier fun
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::ReturnCarrierMismatch);
 }
 
+ZC_TEST("LIR structural verifier admits a float constant return matching its carrier") {
+  const auto floatCarrier = ZC_REQUIRE_NONNULL(ValueType::floating(FloatFormat::Binary64));
+  const auto constant =
+      ZC_REQUIRE_NONNULL(FloatConstant::from(floatCarrier, 0x3ff0000000000000ULL));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(blockId(1), Terminator::returnFloat(constant)));
+  zc::Vector<Local> parameters;
+  zc::Vector<Local> locals;
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("float.ret"), floatCarrier,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
+ZC_TEST("LIR structural verifier rejects a float return whose carrier differs") {
+  const auto binary64 = ZC_REQUIRE_NONNULL(ValueType::floating(FloatFormat::Binary64));
+  const auto binary32 = ZC_REQUIRE_NONNULL(ValueType::floating(FloatFormat::Binary32));
+  const auto constant = ZC_REQUIRE_NONNULL(FloatConstant::from(binary32, 0x3f800000ULL));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(blockId(1), Terminator::returnFloat(constant)));
+  zc::Vector<Local> parameters;
+  zc::Vector<Local> locals;
+  zc::Vector<Function> functions;
+  functions.add(Function(tests::testDefinition(0), zc::heapString("float.ret"), binary64,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::ReturnCarrierMismatch);
+}
+
 ZC_TEST("LIR structural verifier rejects arithmetic into a one-bit destination") {
   zc::Vector<BasicBlock> blocks;
   {

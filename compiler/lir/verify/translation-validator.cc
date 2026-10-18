@@ -1336,6 +1336,9 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     if (expectedReturnCarrier == zc::none) {
       expectedReturnCarrier = stringCarrier(mir.resultType, types);
     }
+    if (expectedReturnCarrier == zc::none) {
+      expectedReturnCarrier = floatCarrier(mir.resultType, types);
+    }
   }
   if (expectedReturnCarrier == zc::none ||
       lir.returnCarrier() != ZC_ASSERT_NONNULL(expectedReturnCarrier)) {
@@ -2356,10 +2359,16 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                                               ? operand
                                               : fold.assignment->value.useValue().operand;
           // A string constant return lowers to ReturnString carrying the UTF-8
-          // bytes; every other direct constant lowers to ReturnInteger.
+          // bytes; a float constant return lowers to ReturnFloat carrying the
+          // IEEE-754 bit pattern; every other direct constant lowers to
+          // ReturnInteger.
           const auto wantedString = wanted.kind() == mir::MirOperandKind::Constant
                                         ? wanted.constantValue().value.stringValue()
                                         : zc::none;
+          const auto wantedFloat =
+              wantedString == zc::none && wanted.kind() == mir::MirOperandKind::Constant
+                  ? wanted.constantValue().value.floatValue()
+                  : zc::none;
           if (wantedString != zc::none) {
             if (lirTerminator.kind() != TerminatorKind::ReturnString) {
               return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
@@ -2373,6 +2382,14 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               if (actualBytes[i] != wantedBytes[i]) {
                 return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
               }
+            }
+          } else if (wantedFloat != zc::none) {
+            if (lirTerminator.kind() != TerminatorKind::ReturnFloat) {
+              return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+            }
+            if (!sameConstant(Operand::constant(lirTerminator.returnFloatValue()), wanted,
+                              ZC_ASSERT_NONNULL(expectedReturnCarrier))) {
+              return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
             }
           } else {
             if (lirTerminator.kind() != TerminatorKind::ReturnInteger) {

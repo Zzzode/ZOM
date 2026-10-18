@@ -74,6 +74,14 @@ checker::signature::CanonicalConstValue integerConstant(uint8_t value) {
       checker::signature::IntegerSign::NonNegative, zc::mv(magnitude)});
 }
 
+// An IEEE-754 bit pattern for a floating-point literal of the given width.
+checker::signature::CanonicalConstValue floatConstant(bool binary32, uint64_t bits) {
+  if (binary32) {
+    return checker::checked::CanonicalConstValue::float32(static_cast<uint32_t>(bits));
+  }
+  return checker::checked::CanonicalConstValue::float64(bits);
+}
+
 mir::MirPlace resultPlace(mir::MirLocalId local, identity::SemanticTypeId type) {
   zc::Vector<mir::MirProjection> projections;
   return mir::MirPlace(local, type, zc::mv(projections), type);
@@ -3760,6 +3768,110 @@ ZC_TEST("AggregateConstant assign lowers to a literal LLVM struct then extractva
   ZC_EXPECT(ir.contains("{ i32 42, i32 7 }"_zc));
   ZC_EXPECT(ir.contains("extractvalue"_zc));
   ZC_EXPECT(ir.contains("ret i32"_zc));
+}
+
+// MIR float scalar return shape, two variants of the same slice:
+//   fn f() -> f64 { return 1.5; }                 (no local; direct constant)
+//   fn f() -> f64 { let x: f64 = 1.5; return x; }  (one folded UserLocal)
+// The literal is 1.5 = 0x3FF8000000000000 in Binary64.
+mir::MirFunction buildFloatReturn(identity::DefId owner, identity::SemanticTypeId floatType,
+                                  uint64_t bits, bool binary32, bool withLocal) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  zc::Vector<mir::MirStatement> statements;
+  mir::MirOperand returned = mir::MirOperand::constant(floatType, floatConstant(binary32, bits));
+  if (withLocal) {
+    locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::UserLocal, floatType,
+                                        scopeId(1), span()});
+    statements.add(mir::MirStatement::storageLive(localId(1), span()));
+    statements.add(mir::MirStatement::assign(
+        resultPlace(localId(1), floatType),
+        mir::MirRvalue::use(mir::MirOperand::constant(floatType, floatConstant(binary32, bits))),
+        mir::MirInitializationKind::Initialize, span()));
+    returned = mir::MirOperand::move(resultPlace(localId(1), floatType));
+  }
+
+  auto terminator = mir::MirTerminator::returnValue(zc::mv(returned), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), zc::mv(terminator)});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          floatType,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Float scalar return lowers MIR -> LIR -> verified LLVM double and float") {
+  struct FloatCase {
+    type::semantic::PrimitiveKind kind;
+    uint64_t bits;
+    bool binary32;
+    zc::StringPtr expectedCarrier;
+    zc::StringPtr expectedReturn;
+  };
+  const FloatCase cases[] = {
+      // 1.5 in Binary64 / Binary32.
+      {type::semantic::PrimitiveKind::F64, 0x3ff8000000000000ULL, false, "double"_zc,
+       "ret double"_zc},
+      {type::semantic::PrimitiveKind::F32, 0x3fc00000ULL, true, "float"_zc, "ret float"_zc},
+  };
+
+  for (const auto& floatCase : cases) {
+    for (const bool withLocal : {false, true}) {
+      tests::TestSemanticTypeContext typeContext;
+      const auto floatType = typeContext.internPrimitive(floatCase.kind);
+      const auto owner = tests::testDefinition(0);
+      auto function =
+          buildFloatReturn(owner, floatType, floatCase.bits, floatCase.binary32, withLocal);
+
+      auto lir =
+          lir::MirToLirLowering::lowerScalarConstantReturn(function, typeContext.semanticTypes());
+      if (lir == zc::none) {
+        lir = lir::MirToLirLowering::lowerScalarReturn(function, typeContext.semanticTypes());
+      }
+      ZC_REQUIRE(lir != zc::none);
+      const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+      ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+      ZC_EXPECT(lir::TranslationValidator::validate(function, lirModule,
+                                                    typeContext.semanticTypes()) == zc::none);
+      ZC_REQUIRE(lirModule.functions().size() == 1);
+      const auto& lirFunction = lirModule.functions()[0];
+      ZC_EXPECT(lirFunction.returnCarrier().kind() == lir::ValueTypeKind::Float);
+      ZC_EXPECT(lirFunction.locals().size() == 0);
+      ZC_REQUIRE(lirFunction.blocks().size() == 1);
+      ZC_EXPECT(lirFunction.blocks()[0].terminator().kind() == lir::TerminatorKind::ReturnFloat);
+      ZC_EXPECT(lirFunction.blocks()[0].terminator().returnFloatValue().bits() == floatCase.bits);
+
+      LlvmTranslator translator;
+      auto result = translator.translate(lirModule);
+      expectVerifiedElf(result);
+      const auto ir = result.textualIr();
+      ZC_EXPECT(ir.contains(floatCase.expectedCarrier));
+      ZC_EXPECT(ir.contains(floatCase.expectedReturn));
+    }
+  }
+}
+
+ZC_TEST("Float scalar return rejects a canonical width that does not match the carrier") {
+  // A Bits32 canonical float for an F64 result must fail closed: the bits are
+  // only meaningful in the format the canonical width names, and
+  // FloatConstant::from checks the carrier kind alone.
+  tests::TestSemanticTypeContext typeContext;
+  const auto f64 = typeContext.internPrimitive(type::semantic::PrimitiveKind::F64);
+  const auto owner = tests::testDefinition(0);
+  auto function = buildFloatReturn(owner, f64, 0x3fc00000ULL, /*binary32=*/true,
+                                   /*withLocal=*/false);
+
+  ZC_EXPECT(lir::MirToLirLowering::lowerScalarReturn(function, typeContext.semanticTypes()) ==
+            zc::none);
+  ZC_EXPECT(lir::MirToLirLowering::lowerScalarConstantReturn(
+                function, typeContext.semanticTypes()) == zc::none);
 }
 
 }  // namespace

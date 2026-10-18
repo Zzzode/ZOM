@@ -159,5 +159,21 @@ ZC_TEST("LIR return string terminator does not leak aggregate slots") {
   ZC_EXPECT(terminator.returnAggregateSlots().size() == 0);
 }
 
+ZC_TEST("LIR return float terminator carries the float constant") {
+  auto carrier = ZC_REQUIRE_NONNULL(ValueType::floating(FloatFormat::Binary64));
+  auto value = FloatConstant::from(carrier, 0x3ff8000000000000ULL);
+  ZC_REQUIRE(value != zc::none);
+  auto terminator = Terminator::returnFloat(ZC_REQUIRE_NONNULL(zc::mv(value)));
+  ZC_EXPECT(terminator.kind() == TerminatorKind::ReturnFloat);
+  const auto& returned = terminator.returnFloatValue();
+  ZC_EXPECT(returned.carrier() == carrier);
+  ZC_EXPECT(returned.bits() == 0x3ff8000000000000ULL);
+}
+
+ZC_TEST("LIR float constant fails closed on a non-float carrier") {
+  auto carrier = ZC_REQUIRE_NONNULL(ValueType::integer(IntegerBitWidth::Bit64));
+  ZC_EXPECT(FloatConstant::from(carrier, 0x3ff8000000000000ULL) == zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::lir

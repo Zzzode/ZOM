@@ -54,8 +54,9 @@ stored in session state, and has no accessor on `CompilerSession`.
 - `lir-module.h` defines `Module`, `Function` (carrying the MIR
   `identity::DefId` of the function it was lowered from, plus the rendering
   symbol), one-based local slot ordinals, blocks, an `Assign`/`Compare`
-  statement set, and six terminators (`ReturnInteger`, `Goto`, `CondBranch`,
-  `ReturnLocal`, `Call`, `ReturnAggregate`).
+  statement set, and the terminators `ReturnInteger`, `ReturnFloat`, `Goto`,
+  `CondBranch`, `ReturnLocal`, `Call`, `ReturnAggregate`, `ReturnVoid`,
+  `ReturnString`, `Unreachable`, and `IndirectCall`.
 - Hard bounds are explicit: `kMaxCallArguments = 2` and
   `kMaxAggregateReturnSlots = 64`.
 - `lir-store.h`/`lir-stores.h` define `ValueType`, scalar `StorageLayout`,
@@ -68,13 +69,18 @@ stored in session state, and has no accessor on `CompilerSession`.
 
 ## Production Profile
 
-The lowerer emits integer and admitted aggregate-field bodies, conditional
-and reducible-loop bodies as slot stores plus branch terminators, and
-same-module direct calls of at most two arguments with a continuation block.
+The lowerer emits integer and float constant returns, admitted aggregate-field
+bodies, conditional and reducible-loop bodies as slot stores plus branch
+terminators, and same-module direct calls of at most two arguments with a
+continuation block. A float constant return (`ReturnFloat`) covers the F32 and
+F64 scalar literal-return shapes, including the folded one-local form; the
+canonical constant width must match the carrier format (Bits32 <-> Binary32,
+Bits64 <-> Binary64), and a mismatch fails closed at lowering. Float
+arithmetic bodies are not yet emitted by production lowering.
 Parameters and locals are stack slots; the LLVM translator realizes them as
 entry-block allocas, relying on LLVM's own optimization to promote. There is
-no monomorphization, no float/pointer/general aggregate legalization, no PHI
-or block-parameter emission, no globals, no unwind, and no general ABI
+no monomorphization, no general float/pointer/general aggregate legalization,
+no PHI or block-parameter emission, no globals, no unwind, and no general ABI
 classification. The admitted construct inventory is
 [lowerable-constructs.md](lowerable-constructs.md), and the backend wiring
 limits are [llvm-backend-and-object-emission.md](llvm-backend-and-object-emission.md).

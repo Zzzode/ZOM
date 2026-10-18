@@ -151,9 +151,10 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (candidate.returnCarrier().kind() != lir::ValueTypeKind::Integer &&
         candidate.returnCarrier().kind() != lir::ValueTypeKind::Unit &&
         candidate.returnCarrier().kind() != lir::ValueTypeKind::Pointer &&
+        candidate.returnCarrier().kind() != lir::ValueTypeKind::Float &&
         candidate.returnCarrier().kind() != lir::ValueTypeKind::Aggregate) {
       return LlvmTranslationResult::failure(zc::heapString(
-          "LIR function return carrier must be an integer, unit, pointer, or aggregate"));
+          "LIR function return carrier must be an integer, float, unit, pointer, or aggregate"));
     }
   }
   // Each function is one of: the single-block integer-constant return
@@ -177,13 +178,13 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       }
     }
     if (candidateBlocks.size() == 1) {
-      // A single-block function either returns an integer constant (scalar
-      // initializer / constant-return callee), returns a local slot (a
+      // A single-block function either returns an integer or float constant
+      // (scalar initializer / constant-return callee), returns a local slot (a
       // one-parameter callee that returns its parameter), returns a multi-slot
       // aggregate bundle, or returns a string constant pointer.
       const auto kind = candidateBlocks[0].terminator().kind();
       return kind == lir::TerminatorKind::ReturnInteger ||
-             kind == lir::TerminatorKind::ReturnLocal ||
+             kind == lir::TerminatorKind::ReturnFloat || kind == lir::TerminatorKind::ReturnLocal ||
              kind == lir::TerminatorKind::ReturnAggregate ||
              kind == lir::TerminatorKind::ReturnString || kind == lir::TerminatorKind::ReturnVoid;
     }
@@ -265,6 +266,9 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
     if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Aggregate) {
       return llvmType(*context, candidate.returnCarrier());
     }
+    if (candidate.returnCarrier().kind() == lir::ValueTypeKind::Float) {
+      return llvmType(*context, candidate.returnCarrier());
+    }
     return integerType(*context, candidate.returnCarrier().integerWidth());
   };
   zc::Vector<::llvm::Function*> llvmFunctions;
@@ -343,6 +347,17 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
       const auto& returnConstant = blocks[0].terminator().returnIntegerValue();
       ::llvm::Constant* value =
           ::llvm::ConstantInt::get(returnType, returnConstant.bits(), /*IsSigned=*/false);
+      ::llvm::ReturnInst::Create(*context, value, entryBlock);
+      continue;
+    }
+
+    if (blocks.size() == 1 && blocks[0].terminator().kind() == lir::TerminatorKind::ReturnFloat) {
+      // Single entry block returning the floating-point constant. lowerConstant
+      // materializes the IEEE-754 bit pattern in the carrier format, which is
+      // exactly the function's declared return type.
+      ::llvm::BasicBlock* entryBlock = ::llvm::BasicBlock::Create(*context, "entry", llvmFunction);
+      const auto& returnConstant = blocks[0].terminator().returnFloatValue();
+      ::llvm::Constant* value = lowerConstant(*context, lir::Operand::constant(returnConstant));
       ::llvm::ReturnInst::Create(*context, value, entryBlock);
       continue;
     }
@@ -777,6 +792,11 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
           // shape gate above (isSupportedShape) rejects a function carrying it
           // before translation reaches here, so this arm is unreachable. The
           // literal-struct lowering is the next RFC 0021 step.
+          ZC_UNREACHABLE;
+        case lir::TerminatorKind::ReturnFloat:
+          // A float constant return is lowered only as a single entry block;
+          // the shape gate above (isSupportedShape) admits it only there, so a
+          // multi-block function never reaches this arm.
           ZC_UNREACHABLE;
         case lir::TerminatorKind::ReturnString:
           // A string constant return is lowered only as a single entry block;

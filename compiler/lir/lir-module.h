@@ -125,6 +125,7 @@ enum class TerminatorKind : uint8_t {
   ReturnString = 0x08,
   Unreachable = 0x09,
   IndirectCall = 0x0a,
+  ReturnFloat = 0x0b,
 };
 
 /// \brief Upper bound on the slot count of a multi-slot aggregate return.
@@ -458,15 +459,19 @@ private:
 /// \brief Closed terminator algebra for the supported LIR subset.
 ///
 /// `ReturnInteger` returns an integer constant directly (the scalar-initializer
-/// slice). `Goto` transfers to one block; `CondBranch` selects a block by a
-/// boolean local; `ReturnLocal` returns the value held by a local slot. Together
-/// these lower the four-block diamond (a `SwitchInt` on a boolean parameter with
-/// two `Goto` arms into a `Return` of the result local). Calls and integer
-/// switches over wider carriers are later RFC 0021 steps.
+/// slice); `ReturnFloat` returns an IEEE-754 float constant directly (the
+/// float scalar return slice). `Goto` transfers to one block; `CondBranch`
+/// selects a block by a boolean local; `ReturnLocal` returns the value held by
+/// a local slot. Together these lower the four-block diamond (a `SwitchInt` on
+/// a boolean parameter with two `Goto` arms into a `Return` of the result
+/// local). Calls and integer switches over wider carriers are later RFC 0021
+/// steps.
 class Terminator final {
 public:
   /// \brief Builds a terminator that returns an integer constant.
   ZC_NODISCARD static Terminator returnInteger(IntegerConstant value) noexcept;
+  /// \brief Builds a terminator that returns a floating-point constant.
+  ZC_NODISCARD static Terminator returnFloat(FloatConstant value) noexcept;
   /// \brief Builds an unconditional branch to `target`.
   ZC_NODISCARD static Terminator gotoBlock(LirBlockId target) noexcept;
   /// \brief Builds a conditional branch selecting a block by a boolean local.
@@ -533,6 +538,10 @@ public:
 
   ZC_NODISCARD TerminatorKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD const IntegerConstant& returnIntegerValue() const noexcept { return integerValue; }
+  /// \brief The floating-point constant of a ReturnFloat terminator.
+  ZC_NODISCARD const FloatConstant& returnFloatValue() const noexcept {
+    return ZC_REQUIRE_NONNULL(floatValue);
+  }
   ZC_NODISCARD const StringConstant& returnStringValue() const noexcept {
     return ZC_REQUIRE_NONNULL(stringValue);
   }
@@ -618,12 +627,17 @@ private:
       : kindValue(TerminatorKind::ReturnString),
         integerValue(fallbackConstant()),
         stringValue(zc::mv(value)) {}
+  explicit Terminator(FloatConstant value) noexcept
+      : kindValue(TerminatorKind::ReturnFloat),
+        integerValue(fallbackConstant()),
+        floatValue(zc::mv(value)) {}
 
   ZC_NODISCARD static IntegerConstant fallbackConstant() noexcept;
 
   TerminatorKind kindValue;
   IntegerConstant integerValue;
   zc::Maybe<StringConstant> stringValue;
+  zc::Maybe<FloatConstant> floatValue;
   uint32_t localOrdinalValue = 0;
   LirBlockId trueTargetValue;
   LirBlockId falseTargetValue;

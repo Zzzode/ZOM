@@ -134,6 +134,24 @@ zc::Maybe<ValueType> floatCarrierFor(identity::SemanticTypeId type,
   return zc::none;
 }
 
+/// \brief Materializes the IEEE-754 bit pattern of a canonical float into a carrier.
+///
+/// The canonical width must match the carrier format: Bits32 lowers only into a
+/// Binary32 carrier and Bits64 only into a Binary64 carrier. `FloatConstant::from`
+/// alone checks only the carrier kind, so a width/format mismatch would otherwise
+/// reinterpret the bits in the wrong format.
+zc::Maybe<FloatConstant> floatConstantFrom(const checker::signature::CanonicalFloat& value,
+                                           ValueType carrier) noexcept {
+  if (carrier.kind() != ValueTypeKind::Float) { return zc::none; }
+  const bool widthMatchesCarrier =
+      (value.width == checker::signature::CanonicalFloatWidth::Bits32 &&
+       carrier.floatFormat() == FloatFormat::Binary32) ||
+      (value.width == checker::signature::CanonicalFloatWidth::Bits64 &&
+       carrier.floatFormat() == FloatFormat::Binary64);
+  if (!widthMatchesCarrier) { return zc::none; }
+  return FloatConstant::from(carrier, value.bits);
+}
+
 /// \brief Resolves the i1 carrier for a Bool semantic type owned by the store.
 ///
 /// The boolean discriminant of the conditional lowers to a one-bit integer
@@ -503,6 +521,20 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
     return Module(zc::mv(functions));
   }
 
+  auto floatValue = constant->value.floatValue();
+  if (floatValue != zc::none) {
+    auto carrier = floatCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto lirConstant = floatConstantFrom(ZC_REQUIRE_NONNULL(floatValue), carrierValue);
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnFloat(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
+    zc::Vector<Function> functions;
+    functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
   return zc::none;
 }
 
@@ -810,6 +842,22 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
     if (lirConstant == zc::none) { return zc::none; }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
                           Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+    zc::Vector<Function> functions;
+    functions.add(
+        Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
+  // Floating-point constants lower to their IEEE-754 carrier format.
+  auto floatValue = constant.value.floatValue();
+  if (floatValue != zc::none) {
+    auto carrier = floatCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto lirConstant = floatConstantFrom(ZC_REQUIRE_NONNULL(floatValue), carrierValue);
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnFloat(ZC_REQUIRE_NONNULL(zc::mv(lirConstant)))));
     zc::Vector<Function> functions;
     functions.add(
         Function(function.owner, zc::heapString("zom.module_init"), carrierValue, zc::mv(blocks)));
