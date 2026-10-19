@@ -1,0 +1,5 @@
+section: "04-expressions member read as an if condition"
+covers_rule: "ifStmt (condition expression)"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a member read as an if condition; the leading-local diamond classifier only admits a bare identifier or a comparison condition, so the body drains with ZOM4099 rather than reaching an AST invariant."

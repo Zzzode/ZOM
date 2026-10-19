@@ -1,0 +1,5 @@
+section: "09-interfaces impl for a primitive, dyn initializer"
+covers_rule: "standaloneImplDeclaration, predefinedTypeExpr"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits an impl whose self type is a primitive and an annotated dyn initializer; the checker selects the primitive impl so the obligation is satisfied, but the erasure carrier for a primitive receiver is not built, so the body drains with ZOM4099."
