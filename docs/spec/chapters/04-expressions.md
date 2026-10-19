@@ -134,6 +134,11 @@ A member-bearing `.`, `?.`, or `::` suffix is followed by a
 `DeclaredDefinitionName`. This name domain contains identifiers and the five
 declaration names `init`, `deinit`, `get`, `set`, and `this`.
 
+A member that names a value is a read and takes no argument list; a member that
+names a callable is invoked with one. `length` is a value member of `str` and
+of every array type, so the read form is `s.length` — `s.length()` names a
+callable and is not a length read.
+
 ```zom
 // Dot notation
 let length = myString.length;
@@ -169,7 +174,7 @@ let firstItem = user?.items?.[0];
 let result = add(5, 3);
 
 // Method call
-let length = myString.length();
+let area = shape.area();
 
 // Function call with named arguments
 let point = createPoint(x: 10, y: 20);
