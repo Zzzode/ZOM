@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1061,
+  "count": 1063,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -109,571 +109,575 @@
     },
     "02-lexical/kw_vs_ident_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "f261c956deb53bfb387309318ea6bcd0379157d20371316a349865dbbdfa8cf4"
     },
     "02-lexical/line_continuation_sequences_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/numeric_sep_pos_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "e22f2fd74cf9d868f023dfca05b9d74003671b7ca5fcb5f295469480446fdea0"
     },
     "02-lexical/radix_literals_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "ecce9192fc4c146a36dd0f97ec567ffbeb4e5cf7264d6e228bcec9c0c824442f"
     },
     "02-lexical/radix_literals_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/radix_literals_pos_02.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/radix_literals_pos_03.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/reserved_kw_reject_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "02272cba6547d93768b1fa32b377345b09d6febe79148f3538738afc0ae3bf19"
     },
     "02-lexical/reserved_kw_reject_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4d613bbbb377fb4b759bfd2bddba1d84d8f93281e2c84729dca497f2eec655da"
     },
     "02-lexical/reserved_kw_reject_neg_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "36f5c94fd8f1b6ffc9e3991d8c24912f76356960c26f152a1efb288918f0e36e"
     },
     "02-lexical/reserved_kw_reject_neg_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "713a3730f90d6d1f94b98c5d39a47a3e38b8506bb32213c02decad1f7d5fd154"
     },
     "02-lexical/reserved_kw_reject_neg_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5ab64357b4f2309d2722975d3d4157537ba3bdf96bd83ca8adf0c87bfc89661e"
     },
     "02-lexical/reserved_kw_reject_neg_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "18a54d158c9d2be32fae69b50cd7e26b745670b9a508bb13ed8b4cb0a261f222"
     },
     "02-lexical/reserved_kw_reject_neg_07.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "25fcf09b458d07a71fdf305a253768eed51da22bbb3c918c6403608c1b76109d"
     },
     "02-lexical/string_escape_closed_set_neg_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "73b77ffcb40673e5a67509b453319595bda51fb5265aa72e8ee96023e3f95990"
     },
     "02-lexical/string_escapes_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6e587d3c599a47f436307ad1cf092084124e187c923bfcd2e135e8d94e09c48c"
     },
     "02-lexical/string_escapes_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "94b71c920c3a8fe47f0a18bcdf063e99441360066134f2e342dd052a2ab4ea65"
     },
     "02-lexical/string_escapes_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/string_line_term_reject_edge_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "02-lexical/string_line_term_reject_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6e648e2268d1ec8c84095ae40aceb1d982d3c1f66ec19aa404e8fdb9e695d54b"
     },
     "02-lexical/string_line_term_reject_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8a4c1b903b7885c65cb82e4eb53f1ff8163d218ba2521b22ab6031da8cd10135"
     },
     "02-lexical/string_octal_escape_neg_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d0b9180199e4cfb9bc4add2d22d76ad4d6813baff4eee2debfe0f5faa665d0eb"
     },
     "02-lexical/template_forms_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6fa1f8e320c933adb49e8a1ae948ce6f6119620f4702c786e8583cc8acb2e7f4"
     },
     "02-lexical/whitespace_variants_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8943da02b34111b71c55b6ac718e16f359a48dba2d7b06e65d69dddb68ccf262"
     },
     "03-types/absolute_type_path_pos_37.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d80960a46f7efe337e6684a2676fc95e694080ba8536dfc71d07dd44c3bdd940"
     },
     "03-types/any_top_coercion_pos_20.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "3a724fd14d75bd69bd1dae990e62f6e6a30210c31a7e64aedef068597a0c74ea"
     },
     "03-types/associated_projection_ambiguous_neg_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "96c631e87d4927fa05e6a29239d08d35adac13676f72511494a826b37f5e1863"
     },
     "03-types/associated_projection_generic_args_pos_25.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "79e6c4633e1be2900ec9afb8790b33f4abb4bf1f515ed3b59c253805a256df9d"
     },
     "03-types/associated_projection_missing_neg_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8509d4d5a39b12df8355f755909af7a44b4f7e5d240b033c720ae91c205edc9c"
     },
     "03-types/associated_projection_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "55217ab8842316231b0e6d5962b954bed99aed91a9f740f34e58dc9a4bb68586"
     },
     "03-types/associated_projection_qualified_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "635a504b1dafcdb8452dc8c8f5c6f93f74b6810d8c3f460ce2501acc00d14613"
     },
     "03-types/associated_projection_unqualified_pos_33.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "751b2b9810faf570e1d52ca653941176574014d058fd50273a497888e865077e"
     },
     "03-types/bottom_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "e6306cd417cebc93af9cd5db60afb0d4f9d2eea922f3e3a6c581f7e3f4629176"
     },
     "03-types/class_null_initializer_neg_09.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0127dedd8fe86075cb3d5515266a6d71e9292e6461e241b4201737be59fe8137"
     },
     "03-types/dyn_argument_erasure_missing_impl_neg_52.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d367b64e550d7fd613ffd88d9db6afcfd6271174277969004f9a9ac14fda091d"
     },
     "03-types/dyn_associated_type_binding_marker_pos_34.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "69b2398371598a59d007bd0e17423e7ef81936924ad78e61a785a1d112326ca4"
     },
     "03-types/dyn_associated_type_binding_mismatch_neg_27.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b148d317c6c530d5104ea37a5006030128ffd9dd021aa2222c34bf95f37088d8"
     },
     "03-types/dyn_associated_type_binding_pos_26.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d0984b85fc7eb45b5fa51c5bde61aa0b6e145aa53b1bc277142a2753da1a6433"
     },
     "03-types/dyn_associated_type_default_pos_12.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0b176613865921a69d0bbff168d459662890fa6916f67a3329608f488f6e812e"
     },
     "03-types/dyn_concrete_erasure_missing_impl_neg_49.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5c6a49cf2e93e110128aecd59fe679e52c800aaae4230dc7d1425c8ec84449f7"
     },
     "03-types/dyn_concrete_erasure_unrelated_neg_50.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "c9368f52ea3bf807d12122b4420b0f2c6e27603cfc8c08314f236964e298c68e"
     },
     "03-types/dyn_duplicate_associated_type_binding_neg_31.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2aa13c5b8f8cc46dfbc6efdab77f4ee541b0778c53db28eae3223d1f4b63b418"
     },
     "03-types/dyn_erasure_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8aa82e197971ea86f9c20c65233168f1110c48ab0fcdc3681ee96038e35ea073"
     },
     "03-types/dyn_gat_not_allowed_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "9b9460ff130efd618b7d09acee14d27d9c4cd651e75597b45f2de81fac078b49"
     },
     "03-types/dyn_generic_erasure_unsupported_neg_51.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7d264767e6b3057dc64cd9b5e9623174395fde70cbd333a1f4e35176b7f9e69f"
     },
     "03-types/dyn_generic_interface_args_pos_35.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "f66dc07c4bc0382542e309c1cc71052c56711ab6b13879cfb12b535206572c50"
     },
     "03-types/dyn_generic_interface_associated_binding_pos_36.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "c1d51cf6cef5e4dbd27814225e035e6eb10e07e11c1931258cea2a20151fd4c8"
     },
     "03-types/dyn_generic_method_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "1f040c95ea13595140757460807ab65d1ecd4f26bb7ee5aed58ddf0425110e3d"
     },
     "03-types/dyn_identity_return_pos_57.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "17b2bcbd4884dfcb92650255e6154cc508d564b699fd6046fd319cf9c1bbc1eb"
     },
     "03-types/dyn_in_body_position_pos_37.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "ba4f10402801e1117d32bf6642905bde8952a9f1b1f761633f1e28074858b9e7"
     },
     "03-types/dyn_inherited_assoc_type_binding_head_neg_43.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d8ad62c0995515f81b60c3e5c4b93df813612d51f3bdb7887daf7cfec340ba98"
     },
     "03-types/dyn_inherited_associated_type_binding_mismatch_neg_30.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "23f4313e22166592ccc64d67a3065b994292ccc82db39c8770fabe357973b99c"
     },
     "03-types/dyn_inherited_associated_type_binding_pos_29.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "11b28909e6f7b4f0a52192ac1f4e7c094f576128a9f433fc94ec738bc1e1adcd"
     },
     "03-types/dyn_inherited_method_call_pos_15.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "a688b3e80fb794fb8340b1309cbbf7e6f6dae7c3a67cd0e4f8ad5db0e43c6ec1"
     },
     "03-types/dyn_inherited_unbound_associated_type_neg_32.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "27f43f667b3eca04732a8fe47d15fe2d47b402f4dd4c55ef24dd451ab2faac7d"
     },
     "03-types/dyn_invalid_upcast_neg_11.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "af50d4be3848d675b19b2b1eff744d30c29949a47b209a5b9daba82d5a05ba99"
     },
     "03-types/dyn_marker_concrete_impl_neg_23.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4b84156b503a0f4c5c5cdc369b151fb3b40e1483b6854eb285a017fde4b82373"
     },
     "03-types/dyn_marker_concrete_impl_pos_22.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4b84156b503a0f4c5c5cdc369b151fb3b40e1483b6854eb285a017fde4b82373"
     },
     "03-types/dyn_marker_erasure_pos_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0e2651f1139ac5fd9c83aa709142959ee5b975a1e379e93f4dd319329d269380"
     },
     "03-types/dyn_marker_list_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b93ee80d94cf4184616f80f85ca51130275264e1d07c83399c1fe06934b765f5"
     },
     "03-types/dyn_marker_missing_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "508b00aa78b024593cdc5dc144f7d6d3e99a0117ee86443aca3930a5b21f96ed"
     },
     "03-types/dyn_marker_multi_qualified_pos_24.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "bb71c754511932579f4fc54735f75bf756aace3e4a30f7f7f30a6d90de18f912"
     },
     "03-types/dyn_method_call_pos_13.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2621a44d2d3b21a70774dbd669c8cbac8c21396bab34b2c59452153f1431f5b5"
     },
     "03-types/dyn_move_self_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "19ff934cb9620ff2c6a32f4e30558d0000be950fccae32804ffe7f69bf466faa"
     },
     "03-types/dyn_null_initializer_neg_07.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "bee14c7c06ad8e24bdd069483cf5af2cdd2cd2a253a4e8b64bd6b1f611b995f5"
     },
     "03-types/dyn_object_safe_method_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "28f6bebf34aac6284e26b5c4210644b18a7ebf473ad108c65ee764b358fb25ab"
     },
     "03-types/dyn_principal_not_interface_neg_44.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "647a6de2c8929fb9dd5d2c5b5df6f5340f14f1cc7015ac491447ffa1c9f6aafd"
     },
     "03-types/dyn_return_erasure_missing_impl_neg_54.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "505a8c47716fc18b4e376100605dff3afcc9fa90392d6d345bf280be3ba13c6e"
     },
     "03-types/dyn_return_erasure_pos_53.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8da231bacf6a0e92e81b3dacc8863d01b994fa15c53c97db764f234edcfcca1b"
     },
     "03-types/dyn_return_erasure_unrelated_neg_56.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6b3c362a151c39de2015a1092864afe45cb89482d01f24cd6543776259989c40"
     },
     "03-types/dyn_return_generic_erasure_unsupported_neg_55.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "8503a9ea4a399a6cf96c252ec1d0a65b184d410042715dc17899946e838b1d40"
     },
     "03-types/dyn_self_return_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0044f676e23828d201db506515f3388608eeec4eb72a7dfa3412105d3d18d60b"
     },
     "03-types/dyn_static_method_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "11cffbb4b8a04c391f44ef93106303d36ab281cc4cb5183b8179dfc7f5793154"
     },
     "03-types/dyn_super_not_object_safe_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b7ed39e5e979482f06a88370347f7aaab9cda3a0cce7ea42d2bd5ccb871b9072"
     },
     "03-types/dyn_type_as_bound_neg_46.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "a2add35a9ae148aa4fe354f6ce8dac450fc4763884297212d80631503f39c238"
     },
     "03-types/dyn_type_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "004fea39725a11ef29e70a89987c9bc226d7dd112f86d237b06420acc72a054f"
     },
     "03-types/dyn_unbound_associated_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "9e38ad77ab8e237ca371ec13fbd35ae36d4f87b20da15a5dc761b9e9dfcb93db"
     },
     "03-types/dyn_unknown_assoc_type_binding_method_neg_42.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "736d93baff7266630c4916d8d2cc84e51181073033d4368b547cd93ca0a1cf84"
     },
     "03-types/dyn_unknown_associated_type_binding_neg_28.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "3e5b20cffc57384676353c4e9efe189012c59e63b556afcd390647bbc299e133"
     },
     "03-types/dyn_unsized_parameter_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "43418a2f61f7587e42cae87e6aff9944de433f5e920f570f6fe1cd01c6012d14"
     },
     "03-types/dyn_upcast_pos_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0f2d75c7c8ff557f5481d6179e7f8f19f3650d3fd2200c6ef2321f0d5ce4365f"
     },
     "03-types/empty_object_type_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/empty_tuple_type_pos_38.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "9ba62f1304a4cd54d23e5de6da51cb6c585ceb24ffa9dce5387467d40e32892c"
     },
     "03-types/fixed_array_length_non_literal_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4da1ef038538b5f7b3f16369f9eb1c3b9d839f2ea0848631bd75b542f1894a5d"
     },
     "03-types/function-types.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "15faa5f6c77d1a8b2955d813e799ec544d1af06b7aebdbc4d21792c6333f0aae"
     },
     "03-types/function_type_binding_pattern_reject_neg_39.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "19dde14aee7478e8923afbd7d8a1c9cd9fde936ca96aeefd5456f15332abd77a"
     },
     "03-types/function_type_edge_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/function_type_named_parameter_reject_neg_37.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "303bc5d7cde9392c129f32fe2672ced56a1ae03190a30039e60823b93e66db6e"
     },
     "03-types/function_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b1df5f2bba897b472a32e09629ec8c285b2165f346c3d03afb27f51aca5df67e"
     },
     "03-types/function_type_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/generic_raw_pointer_arg_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "105161ea3969cd9710649420d268b78ad4b097141ee47bb54dbe2a889bbed7f9"
     },
     "03-types/generic_reference_arg_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "49c572c0e259b0ff0fbcec868115aff60dfff49d19589ef2c536e4a51bce646d"
     },
     "03-types/generic_type_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "620d79875ee15731bba8a9ce3f8c0fe6b369194fd34d38c9600faba1855abd35"
     },
     "03-types/generic_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "84f25327fdf894e18a130290fb8b2d11738535d9f68fb771012186ca38297116"
     },
     "03-types/generic_type_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "77601f87bf687cd6872995f8a096057f8829672629353fb24ddfccf3852df084"
     },
     "03-types/generic_type_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "35f344bb76be3135c7e2331a2a53871207c8f8b1fea13132db3f8c1675531e73"
     },
     "03-types/intersection_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "79fd918c4478abd7cc8d7f72a7ea2490eca67a36701d8a55f7c6ca0ab4f0c4bf"
     },
     "03-types/intersection_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7f01031e378b1b91b2cc171fc6d78db711b7ba173ae1c7110e5a1abdec261657"
     },
     "03-types/intersection_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "9ee0f1ffabfe8e112af214e1ecb928bbe8e58e82dc0e037a9776fe48c8042f0f"
     },
     "03-types/keyword_qualified_type_reject_neg_39.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0ce4cbaa8cf0248aad05c0ec2ade35bf8a7d0077b1a7b154430526b822ff4219"
     },
     "03-types/named_tuple_type_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "3b4da17aa5caf01e62794811c9267103311f2c4565bc0890cb7d5fdc96eac78e"
     },
     "03-types/never_bottom_coercion_pos_21.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2a4c8d257f2bdd77e2f858ddaab1167488fb383df7ba043dd949f38387325b56"
     },
     "03-types/never_type_edge_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/never_type_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/null_initializer_missing_type_neg_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/null_unit_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "0e56dce7a9bf5dac6ba49a35e65e19dc833d2e0fa12ac5b083ce4e6134dc427f"
     },
     "03-types/null_unit_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/nullable_class_initializer_pos_10.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2fcbfafb59359f81e7e502f3c819494c73f7f38e6d61b8cb7ee3848b4cdfc26d"
     },
     "03-types/nullable_dyn_initializer_pos_08.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "89bee5fb41e37e0d8e13e692acc33799941ae323f12a91b8c009b6b5e81687ca"
     },
     "03-types/nullable_initializer_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "9ba8fcb28075dcb5444d93841a58138c79159032a8c7e2b3d6c170b6b108ce8e"
     },
     "03-types/nullable_reference_initializer_pos_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b4bd721d028e38dc7d04fb4348b6e88d0ec658f914723cb8264b7e3248a68aed"
     },
     "03-types/numeric_literal_out_of_range_neg.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6da3c5827c3bd69e6190c767cc2b322fafbe01f8d9953e9976da35fd5d731dc3"
     },
     "03-types/numeric_literal_widening_pos.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/numeric_value_widening_rejected_neg.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "f84f551d1bfd4a735a1f901e0014d4a5238283e58d20171e621512689b35705f"
     },
     "03-types/object-types.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/object_type_edge_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/object_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "db9664aad4e3e6016db47667d6dc743c39abf92116013adff9f5c08c4fdbdba5"
     },
     "03-types/object_type_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6a006b79156e6513872b0bb94246e743191aad7b6dd17d922d69987752a58d4c"
     },
     "03-types/object_type_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/plus_type_intersection_reject_neg_41.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "b735dec933e2badebd17fa7dedc815799a06daaec55425b170008b596bd69edc"
     },
     "03-types/postfix_chained_edge_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_edge_02.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "c1c80a9a8d17888184c3a5f803929506be2525a0aa3dc37a33342eca7d51c576"
     },
     "03-types/postfix_chained_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4d65ce9f22a13a55fc9cfdd1e82f2dd973a76fe026488c832cbbd62e5273d106"
     },
     "03-types/postfix_chained_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_pos_02.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_pos_03.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_pos_04.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_chained_pos_05.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/postfix_sized_array_reject_neg_40.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7541b8274aa770e16c707d04f9e417be47ea1fef89cb4ac7fd74426a0d9c983c"
     },
     "03-types/predefined_types_pos_01.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/predefined_types_pos_02.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/predefined_types_pos_03.zom": {
-      "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "exitCode": 0,
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "03-types/qualified_interface_call_pos_14.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "c7594da97f627aee83a7adb13e2e6b6018d162c45ea418d9ab4bdef59f58ec07"
     },
     "03-types/qualified_type_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "712ba95b7df2b967fb4a4430b777aacdc03945199885dc3bc2a65640b56dc608"
     },
     "03-types/qualified_type_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "c549e83674b28e38529bc3c2b333700ee0d11d29014f6bca5832d1d1d39f7886"
     },
     "03-types/qualified_type_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "891a2667e9e4b29d0b02bef65127896489d061f8f2c4d1b1d68e8d498f91d1e0"
     },
     "03-types/raises_comma_reject_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4cd41925a8e4ac8d9969c8f7fd9dc43c456f05183e62532539ac53d4e6513b68"
     },
     "03-types/raises_typelist_pipe_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "3a2d2db769ae90662149f8e26bd99a78bafbbd624eb3995b2a8c0489f2657d52"
     },
     "03-types/raises_typelist_pipe_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "1669f66ebeb6ab6881cfd8e454b72837485755b9eabc9a7afd46ac09591673d0"
     },
     "03-types/reborrow_call_pos_19.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "231d973a8ddc8d8d155aef182df5edb3e5c63bd4dffc5f0b247368ca4f110248"
     },
     "03-types/recursive_alias_cycle_neg_12.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "eb29a4241f766a0aa4ff3728cc0e58595ebe14e1416fa70db81969b38011b2ff"
+    },
+    "03-types/reference_deref_capability_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "04163dcc42ecfaae2f4006290d16cc7fddf06f9208a1aad4e2cbcd232eab2463"
     },
     "03-types/reference_null_initializer_neg_05.zom": {
       "exitCode": 1,
@@ -1172,6 +1176,10 @@
       "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
     },
     "04-expressions/mul_trait_missing_neg_10.zom": {
+      "exitCode": 1,
+      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+    },
+    "04-expressions/mut_string_length_fold_capability_neg_01.zom": {
       "exitCode": 1,
       "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
     },
@@ -2245,79 +2253,79 @@
     },
     "05-statements/return_local_index_reference_escape_neg_30.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5314381e70940b1ac31e37eb62ae43efda6addd8563c97d07bc169f863ceee91"
     },
     "05-statements/return_local_reference_alias_escape_neg_29.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "10de40f3cf32aec6d5a5f194b97d7945769cfeb724e540b126296f31e2880abc"
     },
     "05-statements/return_local_reference_binding_escape_neg_28.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "1941445c051560d4d00491273219d8651eb6413d1fb5904778fc1680b86f8b2e"
     },
     "05-statements/return_local_reference_escape_neg_14.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "30ca09f31af60f574d7760e1d24763e57a5f661697d0182db67f1d95498621e3"
     },
     "05-statements/return_match_arm_local_reference_escape_neg_37.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5031a42ecee628925b138689e7b3d0a6896ba859ff5b0839512bea0ae598fe69"
     },
     "05-statements/return_missing_semicolon_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "e0be95a43df3fc5f472a470dc3340eafbef0d7940ac5c65602c4c9e19c4d6732"
     },
     "05-statements/return_missing_value_neg_07.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "764305c07caad1841ed7b69694475832e7b26d8864c667723804a9893b8f2664"
     },
     "05-statements/return_nested_block_local_reference_escape_neg_34.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d3675aaa669166c5de29227295d7946c53f97faaeac5023b95692c7cbc5dabe2"
     },
     "05-statements/return_nested_local_field_reference_escape_neg_27.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "372be2fa9fe6fa521f7eb66eb43c59d16167643d88fbdbf428195fe413edc59d"
     },
     "05-statements/return_new_local_reference_escape_neg_50.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "84a088a1117d1662549c6c9d3161ecf2857ecb98c4560ab6b7153717ff639b8b"
     },
     "05-statements/return_null_coalesce_local_reference_escape_neg_46.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "293fd20e7dc623954accf1f3c25c8aaf3c79b7085ef82162d0721509d126487c"
     },
     "05-statements/return_object_literal_local_reference_escape_neg_42.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "fbb5ed560e2b3d97a4cc87842bdab8514773bf3367b4cdded6c91ad406dd9edc"
     },
     "05-statements/return_object_member_local_reference_escape_neg_39.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7f970c44b31319f1e39a246db33e8b2125768826233b9c39ecec2b37a206ca42"
     },
     "05-statements/return_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "ed5835bccebbd8e9941d4892c2052bbd13c241603c25f5ee2f3ab650e4e57981"
     },
     "05-statements/return_reborrow_local_reference_escape_neg_33.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "a66e1dfc27e8ee78202af8f0676ed3c91dc0a116467da170b3b786e8676851b6"
     },
     "05-statements/return_stored_alias_reference_escape_neg_32.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "cd2a924837521f19c9ce72f9c669e6e33897fedf52c5cbd8cf9dc7f544391574"
     },
     "05-statements/return_stored_local_reference_escape_neg_31.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "f46f0fbf866dd41b7c1e82855bb99bc1cafe5f2daad58eed556bd79cd62be6c8"
     },
     "05-statements/return_struct_literal_local_reference_escape_neg_41.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5d178ce9395e84c1f74347cb334272cc5bd3c13383c4186cb572b78620c4eccb"
     },
     "05-statements/return_struct_member_local_reference_escape_neg_40.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "64c2257878ac20549a7225fb537b1e02c054a9c5ea3a9e0602342dab4dda2646"
     },
     "05-statements/return_while_body_local_reference_escape_neg_36.zom": {
       "exitCode": 1,
@@ -3853,199 +3861,199 @@
     },
     "13-modules/import_wildcard_reject_neg_12.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d779b55a20310e282c77c4185ed96d3c0de5d4c0312f3b2258e3847f29e06f6f"
     },
     "13-modules/inline_module_followed_by_declaration_pos_18.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "400cd741b8472a31c80039d0f4048ad7bdeb8c26e8eabb257e73c751251e8cf6"
     },
     "13-modules/mixed_order_pos_17.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "fb576be676851567dd1fda96262470bf363f3388d198b18a009979dcab46211b"
     },
     "13-modules/mod_reject_neg_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "3813b0896b53859b9af67268e3b77855c7150f26e1042439ece2943f5a005aaa"
     },
     "13-modules/module_alias_long_path_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "16fb6c5ce962f5a65c2968cb68a3c51397945b4c823c20f38322c44731fdfbd5"
     },
     "13-modules/module_alias_single_segment_reject_neg_21.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "def0698fced02417373d85e4d9afad3b35e7c20e00913fcd6aeea69585d1bb25"
     },
     "13-modules/module_block_contents_edge_10.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2c9ffe95aa960f33ee244c39ccc986c82287db9685e6bba06d5f8b09d2a7ef01"
     },
     "13-modules/module_decl_alias_form_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "419a50c54f37fdcfeaf08a3383e6c6817bf0e3bd20beb415fbf0357f912df302"
     },
     "13-modules/module_decl_block_form_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "d6a09ad8f37197ccbc771c5138f09c971828d92e83ca7dffdb8a17fca27e5485"
     },
     "13-modules/module_decl_semi_form_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2c0104808fa94017a5508499b920a7cb270d4d2fae2e1028c9ca9ef79407742a"
     },
     "13-modules/module_executable_statement_neg_27.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "737e142b005ec01ab0b6bbef21b166a02874100d7da3e0aa9695450261407ce5"
     },
     "13-modules/module_exported_alias_pos_20.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "a625cdfb3916cdc5a292106554de2e2c8f93acad8a9b4316c266ed2a36a0f72c"
     },
     "13-modules/module_initializer_bad_operands_neg_26.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5bfbff3db8cd89aed1786d86d82b2e5252c317033ced76ea693c90fb49cd44ed"
     },
     "13-modules/module_initializer_unsupported_neg_25.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5db044ec21a6a5a0dd5ca7ab51a4dbee3669693d092822cc605a32a03ae8b102"
     },
     "13-modules/module_name_coloncol_reject_neg_16.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2161ea4078ed6cebfe58934485e2f9387840765cc2a118084c745295731fdca3"
     },
     "13-modules/module_specifier_cursor_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6b5f5a28c3d6737ea7014a133a9b6dbf8545838303e7d45649cbbb7cdd9d3aa9"
     },
     "13-modules/multi_import_top_edge_11.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "e4a50ef8d030185af1060df00571eb84895c736db5db67db80c60bde80562ba1"
     },
     "13-modules/namespace_reject_neg_18.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "158a49a3f833d5ed7d2f5a0e3511c962b8a1888cfbeb1827cbc344a6f0204e47"
     },
     "13-modules/nested_module_reject_neg_11.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "f3cdec824864bfbd829f39f6213f9cdbe9e5c6e7a8f58f9143bc752b6e6e5e5e"
     },
     "13-modules/package_reject_neg_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "a21776f9b31cbf4cb9e3b730b2b7cb03f0ed47c9680eb82fd14dc95dc96b9b4d"
     },
     "13-modules/reexport_alias_edge_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "cd3fa9403b14a9187511f3ef64e78d8276b9b708c330c21539364e662992c213"
     },
     "13-modules/string_import_reject_neg_13.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7458a9d61e03ca9c78c70e20d6d7bba1fe4e6e05cefc3728a74a0022eb801784"
     },
     "13-modules/toolchain_core_root_reserved_reject_neg.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "65a5f52a307080697684e762693be411108263ceebbbc9241da0a220325a4909"
     },
     "13-modules/trailing_coloncol_reject_neg_15.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "063d2fef06740ed3aa2f11a874df45dabca6aa402d90a81e2427be5e599d105a"
     },
     "13-modules/two_module_decls_reject_neg_10.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "57d8de1bfe28b58032de9368bee22f096aa2f29b8f6bb30f8868fd3db44cdd0b"
     },
     "13-modules/use_soft_keyword_pos_18.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6f2458188608215877ae154fbbcc60ff2b1fe6635a5c6a79277a701ea7823255"
     },
     "13-modules/visibility_ladder_reject_neg_08.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "dc01a7be7a35d9ac70657a99a3b5f7ec95b80a2ecee6516a27a29e64d3a351ae"
     },
     "15-concurrency/actor_reject_neg_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "fd18b6e6609f54f64e978e9bfd665527543e68a72b072335168fd88c35881cec"
     },
     "15-concurrency/channel_reject_neg_07.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "238ee0a513975780fc1cb5665f3b0320dc46e225f2d8916ea85c83c27af10209"
     },
     "15-concurrency/generator_reject_neg_08.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "5ff8432b40eba29d5865d081bc6900cbf24d7ee23d36d0c8470e37ebcf94f40d"
     },
     "15-concurrency/multi_suspend_edge_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "27aa229d2b402103eab63eea730e0191c15a8d8504c345cfc79eb641ddaf968a"
     },
     "15-concurrency/nested_spawn_expr_edge_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2199174df2ecfa0e895b13359b16fc82793c6ed288d9b697451fc6a3d46f6eac"
     },
     "15-concurrency/spawn_block_pos_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "effc6198a2fd6d3127f3bbedd0591864922408a092131d8a8bd7e966e7cf3910"
     },
     "15-concurrency/spawn_blocking_block_edge_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "610e2865997af1bce0e43b1de3d1f582862af9d5845c3b279d0841707a2a501d"
     },
     "15-concurrency/spawn_blocking_pos_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "7d02e33a34313aa6517ba631030b6929a0dbdee2f3f9d78618562950f89d940e"
     },
     "15-concurrency/spawn_detached_pos_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "caa6a89d6dd80107e26a76987feabad94c5d154657d8fe0ae19c87e12fda227c"
     },
     "15-concurrency/spawn_expr_pos_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "097c534abdd065479037fb1583e0f848d4410d3e4fa42441b4eb1e7674af50c7"
     },
     "15-concurrency/spawn_multi_mods_edge_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "4527b3d19a7a74d2ad1e2c1f23717deae817501289f76ee59e687242666877dd"
     },
     "15-concurrency/spawn_nested_detached_edge_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "e406b6cbde04134cb66592859f865cae8b69e66b3877037399045ef546999270"
     },
     "15-concurrency/spawn_priority_call_pos_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "1dedb598cc58f344e3e77aacb5c88cf8805db78d3cc0453dc763fd274d047f8b"
     },
     "15-concurrency/spawn_priority_nocall_reject_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "214eb9c5fd1c848c4f42a571e7c881ff41860d5ffb332bc97dafbd4f815eb16e"
     },
     "15-concurrency/spawn_priority_wrong_arg_neg_02.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "cb23525eb15d6272ae87def90c46ac1d08b70b220415c4f34fcd674b69142b9c"
     },
     "15-concurrency/spawn_raise_in_block_pos_08.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2bdacd2afdd7a3acdb20d01e16de24d92746d4f0fbdb07c463ab687c4b26b03a"
     },
     "15-concurrency/spawn_unknown_mod_reject_neg_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "59daf73e331ccb936f569507fdc616a3dedfa09292418fcdae9984b11c00ea37"
     },
     "15-concurrency/suspend_foo_reject_neg_04.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "583e6cf708b35682d1bf6587bfe799003c8119a30b2d45bdd27a5fe2ba15dcdd"
     },
     "15-concurrency/suspend_ill_formed_neg_05.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "92ae210a5b0260d8512e5aa6630f0a8d49c4c716799f6aa1226087583d3deabe"
     },
     "15-concurrency/suspend_plain_pos_06.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "6e9da1784993e9049a57c464e54108c4a1e7dfdd952d9bc5d09966b86bad3963"
     },
     "15-concurrency/suspend_until_complex_edge_03.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "555b1683c72b4e7fc703a7e9fc2e82d31458acf5cbd761000d2733d90f15d173"
     },
     "15-concurrency/suspend_until_pos_07.zom": {
       "exitCode": 1,
-      "sha256": "b9ce42c60704f82ff44440fefef3e775d8978403038b2a04bdda564c356644ce"
+      "sha256": "2e0bd0762bb1a0cf6038ae971976ccaef9a05146049b580343e050cd31d2968f"
     },
     "16-attributes/attr_expr_input_edge_06.zom": {
       "exitCode": 1,
