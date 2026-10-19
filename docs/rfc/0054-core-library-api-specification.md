@@ -184,7 +184,7 @@ The boundary is drawn at capabilities:
 
 | Layer | Needs heap? | Needs OS? | Contents |
 |---|---|---|---|
-| `core` | no | no | `Maybe`, error-union support, markers, operators, iterators, conversions, formatting, primitives, atomics, `Duration`, `Cell` |
+| `core` | no | no | `Maybe`, error-union support, markers, operators, iterators, conversions, formatting interfaces, primitive method surface, atomics, `Duration`, `Cell` |
 | `std` | yes | yes | `Vec`, `HashMap`, `HashSet`, owned `String`, I/O, files, threads, channels, networking, paths, processes |
 
 ### The Prelude
@@ -232,6 +232,12 @@ import. It is deliberately small. Additions are governance-level decisions
 |---|---|
 | `drop` | `core::mem` |
 | `panic` | `core::panic` |
+
+**Primitive method interfaces:** the sealed interfaces that carry the
+primitive method surface are prelude names. A primitive method resolves
+without an import, which is the property that made "policy-flavored
+operations are inherent" attractive in the first place. The interface names
+are fixed at implementation time and listed by the `core` implementation RFC.
 
 Notably absent (require explicit import): `Debug`, `Display`, `Hash`,
 `Default`, `Write`, `AsRef`/`AsMut`, `Borrow`/`BorrowMut`, `FromStr`,
