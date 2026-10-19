@@ -989,9 +989,15 @@ zc::Maybe<identity::ImplId> selectDynEraseImpl(
   auto concreteLookup = input.semanticTypes.get(concrete);
   if (!concreteLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
   const auto& concreteData = concreteLookup.get<type::SemanticTypeLookup>().data();
-  if (!concreteData.is<type::semantic::NominalTypeData>()) { return zc::none; }
-  const auto& nominal = concreteData.get<type::semantic::NominalTypeData>();
-  if (!nominal.arguments.empty()) { return zc::none; }
+  // The concrete type must be a closed type, i.e. one with no type arguments to
+  // substitute into the impl. A nominal with arguments is generic; a primitive
+  // is closed by construction and reaches the impl-head match below like any
+  // other closed self type.
+  if (concreteData.is<type::semantic::NominalTypeData>()) {
+    if (!concreteData.get<type::semantic::NominalTypeData>().arguments.empty()) return zc::none;
+  } else if (!concreteData.is<type::semantic::PrimitiveTypeData>()) {
+    return zc::none;
+  }
   zc::Maybe<identity::ImplId> selected;
   for (const auto& head : input.coherence.implHeads()) {
     if (head.selfType != concrete) { continue; }
@@ -1034,7 +1040,22 @@ bool hasImplForErasureOutsideSlice(const BodyCheckingInput& input,
   auto concreteLookup = input.semanticTypes.get(concrete);
   if (!concreteLookup.is<type::SemanticTypeLookup>()) { return false; }
   const auto& concreteData = concreteLookup.get<type::SemanticTypeLookup>().data();
-  if (!concreteData.is<type::semantic::NominalTypeData>()) { return false; }
+  // A nominal concrete type matches an impl whose self type names the same
+  // definition, so a generic impl head (`impl<T> I for Box<T>`) still counts.
+  // A primitive carries no definition and no arguments, so its head matches
+  // only by exact identity.
+  const bool concreteIsNominal = concreteData.is<type::semantic::NominalTypeData>();
+  if (!concreteIsNominal && !concreteData.is<type::semantic::PrimitiveTypeData>()) { return false; }
+  if (!concreteIsNominal) {
+    for (const auto& head : input.coherence.implHeads()) {
+      if (signature::SignatureFactsCanonicalCodec::implPatternInterface(head.pattern) !=
+          existential.principal.definition) {
+        continue;
+      }
+      if (head.selfType == concrete) { return true; }
+    }
+    return false;
+  }
   const auto concreteDefinition = concreteData.get<type::semantic::NominalTypeData>().definition;
   for (const auto& head : input.coherence.implHeads()) {
     if (signature::SignatureFactsCanonicalCodec::implPatternInterface(head.pattern) !=

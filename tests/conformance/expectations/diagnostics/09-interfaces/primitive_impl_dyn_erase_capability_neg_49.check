@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/primitive_impl_dyn_erase_capability_neg_49.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A primitive has an impl of the interface, so the annotated dyn initializer
+// satisfies its obligation: the checker selects the impl instead of reporting
+// ZOM4018. The HIR erasure carrier for a primitive receiver is not built yet,
+// so the body drains the capability code.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/09-interfaces/primitive_impl_dyn_erase_capability_neg_49.zom:16:1
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 16 | fn entry(s: str) -> i32 {
+// CHECK-LITERAL:    | ^~~~~~~~~~~~~~~~~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

@@ -1,0 +1,122 @@
+// An impl whose self type is a primitive parses like any other impl; the
+// checker drains the dyn erasure body (see the diagnostics expectation).
+
+// RUN: %zomc compile --dump-ast %corpus/09-interfaces/primitive_impl_dyn_erase_capability_neg_49.zom | %FileCheck %s
+
+// CHECK: SourceFile #45 @6:1..20:1 file_name="primitive_impl_dyn_erase_capability_neg_49.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #9 @6:1..8:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         InterfaceDecl #8 @6:1..8:2 name="StrExt"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ifaces_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #7 @6:18..8:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #6 @7:5..7:26 name="len2" mode=Instance visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #4 @7:12..7:18 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #3 @7:13..7:17 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #2 @7:13..7:17
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #1 @7:13..7:17 segments=["Self"] root=Relative
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #5 @7:22..7:25 kind=I32
+// CHECK-NEXT:                   raises_ty: null
+// CHECK-NEXT:                   body: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #25 @10:1..14:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StandaloneImplDecl #24 @10:1..14:2 is_unsafe=false
+// CHECK-NEXT:           interface:
+// CHECK-NEXT:             NamedTypeExpr #11 @10:6..10:12
+// CHECK-NEXT:               path:
+// CHECK-NEXT:                 ModulePath #10 @10:6..10:12 segments=["StrExt"] root=Relative
+// CHECK-NEXT:               args: []
+// CHECK-NEXT:           for_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #12 @10:17..10:20 kind=Str
+// CHECK-NEXT:           where_: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #23 @10:21..14:2 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 MethodDecl #22 @11:5..13:6 name="len2" mode=Instance visibility=Default
+// CHECK-NEXT:                   params_id:
+// CHECK-NEXT:                     FunctionParameterList #16 @11:12..11:18 nparams=1
+// CHECK-NEXT:                       params:
+// CHECK-NEXT:                         FunctionParameterDecl #15 @11:13..11:17 name="this"
+// CHECK-NEXT:                           ty:
+// CHECK-NEXT:                             NamedTypeExpr #14 @11:13..11:17
+// CHECK-NEXT:                               path:
+// CHECK-NEXT:                                 ModulePath #13 @11:13..11:17 segments=["Self"] root=Relative
+// CHECK-NEXT:                               args: []
+// CHECK-NEXT:                           default_: null
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:                   type_params_id: null
+// CHECK-NEXT:                   ret_ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #17 @11:22..11:25 kind=I32
+// CHECK-NEXT:                   raises_ty: null
+// CHECK-NEXT:                   body:
+// CHECK-NEXT:                     BlockStmt #21 @11:26..13:6
+// CHECK-NEXT:                       stmts:
+// CHECK-NEXT:                         StatementListItem #20 @12:9..12:19
+// CHECK-NEXT:                           item:
+// CHECK-NEXT:                             ReturnStmt #19 @12:9..12:19
+// CHECK-NEXT:                               value:
+// CHECK-NEXT:                                 IntLiteral #18 @12:16..12:18 base=10 value="41"
+// CHECK-NEXT:                           attrs: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #44 @16:1..19:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #43 @16:1..19:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #28 @16:9..16:17 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #27 @16:10..16:16 name="s"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #26 @16:13..16:16 kind=Str
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #29 @16:21..16:24 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #42 @16:25..19:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #38 @17:5..17:27
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     LetStmt #37 @17:5..17:27 kind=Let
+// CHECK-NEXT:                       declarations:
+// CHECK-NEXT:                         VariableDeclaratorList #36 @17:9..17:26 n_decls=1
+// CHECK-NEXT:                           decls:
+// CHECK-NEXT:                             VariableDeclarator #35 @17:9..17:26
+// CHECK-NEXT:                               pattern:
+// CHECK-NEXT:                                 IdentifierPattern #30 @17:9..17:10 name="d"
+// CHECK-NEXT:                                   ty: null
+// CHECK-NEXT:                               ty:
+// CHECK-NEXT:                                 DynTypeExpr #33 @17:12..17:22
+// CHECK-NEXT:                                   principal:
+// CHECK-NEXT:                                     NamedTypeExpr #32 @17:16..17:22
+// CHECK-NEXT:                                       path:
+// CHECK-NEXT:                                         ModulePath #31 @17:16..17:22 segments=["StrExt"] root=Relative
+// CHECK-NEXT:                                       args: []
+// CHECK-NEXT:                                   markers_id: null
+// CHECK-NEXT:                                   assoc_bindings_id: null
+// CHECK-NEXT:                               init:
+// CHECK-NEXT:                                 IdentExpr #34 @17:25..17:26 name="s"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:                 StatementListItem #41 @18:5..18:15
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     ReturnStmt #40 @18:5..18:15
+// CHECK-NEXT:                       value:
+// CHECK-NEXT:                         IntLiteral #39 @18:12..18:14 base=10 value="41"
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
