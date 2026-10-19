@@ -1,0 +1,13 @@
+// Multi-binding conditional fixture: two leading i32 bindings and one
+// comparison operand for a less-than guard. The trailing return names the
+// second binding, so the sum of the two initializers is 3 and the true arm
+// exits 43. This is the K>1 case of the leading-local comparison shape.
+fn entry() -> i32 {
+  let a: i32 = 1;
+  let b: i32 = 2;
+  if (a < 5) {
+    return 43;
+  } else {
+    return b;
+  }
+}

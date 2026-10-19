@@ -1502,6 +1502,61 @@ zc::Maybe<const hir::HirLoopStatement&> loopFor(const hir::VerifiedHirModule& mo
   return result;
 }
 
+/// \brief Accumulates the checksum weight of one HIR value subtree.
+///
+/// The shared checksum equation counts pooled nodes globally: scalar literals,
+/// aggregates, direct/receiver calls, and parameter references land on the
+/// right-hand side, while primitive binary operations and conditional arms land
+/// on the left. Local references count on neither side. A per-function shape
+/// that contributes an unbalanced subtree (for example one binding more than
+/// the pool credits) needs exactly this difference as its correction term, so
+/// derive it by walking the subtree instead of counting special cases by hand.
+struct NodeBalance final {
+  int64_t lhs = 0;
+  int64_t rhs = 0;
+};
+
+void accumulateNodeBalance(const hir::VerifiedHirModule& module, hir::HirNodeId node,
+                           NodeBalance& out, size_t depth) {
+  if (depth > 16) return;
+  if (expressionFor(module, node) != zc::none) {
+    ++out.rhs;
+    return;
+  }
+  if (parameterReferenceFor(module, node) != zc::none) {
+    ++out.rhs;
+    return;
+  }
+  if (aggregateFor(module, node) != zc::none) {
+    ++out.rhs;
+    return;
+  }
+  if (callFor(module, node) != zc::none) {
+    ++out.rhs;
+    return;
+  }
+  if (receiverCallFor(module, node) != zc::none) {
+    ++out.rhs;
+    return;
+  }
+  if (localReferenceFor(module, node) != zc::none) { return; }
+  auto binary = primitiveBinaryFor(module, node);
+  ZC_IF_SOME(binaryValue, binary) {
+    ++out.lhs;
+    accumulateNodeBalance(module, binaryValue.left, out, depth + 1);
+    accumulateNodeBalance(module, binaryValue.right, out, depth + 1);
+    return;
+  }
+  auto conditional = conditionalFor(module, node);
+  ZC_IF_SOME(conditionalValue, conditional) {
+    out.lhs += 2;
+    accumulateNodeBalance(module, conditionalValue.condition, out, depth + 1);
+    accumulateNodeBalance(module, conditionalValue.thenReturnValue, out, depth + 1);
+    accumulateNodeBalance(module, conditionalValue.elseReturnValue, out, depth + 1);
+    return;
+  }
+}
+
 bool validBuiltMirInput(const hir::VerifiedHirModule& hirModule,
                         const checker::body::BodyCheckingInput& body) {
   const auto copy = body.standardMarkers.copy();
@@ -2407,14 +2462,13 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
   }
   // A leading-local conditional function has K leading let bindings and a
-  // trailing return whose value is a conditional expression. Its let binding
-  // initializers materialize value nodes (expressions, aggregates, parameter
-  // references) on the RHS of the checksum, but the shared equation credits
-  // only the function, the conditional arms, and the comparison operation on
-  // the LHS. This term carries the per-function excess
-  // (valueNodes - binaryBindings - 1) so the balance holds for any K, mirroring
-  // the sequential-local-return computation. The -1 adjusts for the function
-  // node already counted in the LHS functions term.
+  // trailing return whose value is a conditional expression. The shared
+  // checksum already credits the function, the pooled conditional arms, and the
+  // pooled binary operations, but each binding initializer and each arm operand
+  // contributes its own value node on the right without a matching left-hand
+  // node. Derive the exact per-function difference by walking the subtree, so
+  // the balance holds for any K and for every arm form (literal, local
+  // reference, or binary) without a hand-counted special case.
   int64_t leadingLocalConditionalValueNodeExcess = 0;
   for (const auto& conditionalFunction : hirModule.functions()) {
     auto conditionalBlock = blockFor(hirModule, conditionalFunction.body);
@@ -2433,51 +2487,17 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       if (trailingReturn == zc::none) continue;
       auto conditional = conditionalFor(hirModule, ZC_ASSERT_NONNULL(trailingReturn).value);
       if (conditional == zc::none) continue;
-      int64_t valueNodes = 0;
-      int64_t binaryBindings = 0;
+      NodeBalance balance;
+      ++balance.lhs;
       for (size_t i = 0; i < bindingCount; ++i) {
-        auto localBinding = localFor(hirModule, block.statements[i]);
-        ZC_IF_SOME(local, localBinding) {
-          ZC_IF_SOME(initializer, local.initializer) {
-            auto binary = primitiveBinaryFor(hirModule, initializer);
-            ZC_IF_SOME(value, binary) {
-              ++binaryBindings;
-              for (const auto operand : {value.left, value.right}) {
-                auto nested = primitiveBinaryFor(hirModule, operand);
-                ZC_IF_SOME(nestedValue, nested) {
-                  ++binaryBindings;
-                  for (const auto leaf : {nestedValue.left, nestedValue.right}) {
-                    if (expressionFor(hirModule, leaf) != zc::none ||
-                        parameterReferenceFor(hirModule, leaf) != zc::none) {
-                      ++valueNodes;
-                    }
-                  }
-                  continue;
-                }
-                if (expressionFor(hirModule, operand) != zc::none ||
-                    parameterReferenceFor(hirModule, operand) != zc::none) {
-                  ++valueNodes;
-                }
-              }
-            }
-            if (binary == zc::none && (expressionFor(hirModule, initializer) != zc::none ||
-                                       aggregateFor(hirModule, initializer) != zc::none ||
-                                       parameterReferenceFor(hirModule, initializer) != zc::none)) {
-              ++valueNodes;
-            }
+        ZC_IF_SOME(localBinding, localFor(hirModule, block.statements[i])) {
+          ZC_IF_SOME(initializer, localBinding.initializer) {
+            accumulateNodeBalance(hirModule, initializer, balance, 0);
           }
         }
       }
-      // Conditional arms that are local references do not materialize value
-      // nodes on the RHS, so each one subtracts one credit from the
-      // conditional*2 LHS term. A binary arm does materialize value nodes (its
-      // literal and parameter leaves) and adds its own primitive-binary op on
-      // the LHS, so it is already balanced and must not subtract.
-      const auto& cond = ZC_ASSERT_NONNULL(conditional);
-      for (const auto armValue : {cond.thenReturnValue, cond.elseReturnValue}) {
-        if (localReferenceFor(hirModule, armValue) != zc::none) { --valueNodes; }
-      }
-      leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings - 1;
+      accumulateNodeBalance(hirModule, ZC_ASSERT_NONNULL(trailingReturn).value, balance, 0);
+      leadingLocalConditionalValueNodeExcess += balance.rhs - balance.lhs;
     }
   }
   // Binary-write local operands: each local reference that is an operand of a
