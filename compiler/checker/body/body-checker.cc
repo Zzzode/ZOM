@@ -3111,9 +3111,25 @@ bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
     return false;
   }
   const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
-  if (!tree.contains(object) || tree.node(object).kind != ast::SyntaxKind::IdentExpr) {
+  if (!tree.contains(object)) { return false; }
+  // A member read whose receiver is a call result (`make().field`) is legal
+  // source the field-projection slice cannot lower: every field shape requires
+  // the receiver to be an owner local or a callable parameter. The member name
+  // is resolved against the call's closed nominal result type, so the read is
+  // well-typed and belongs on the capability rail rather than the invariant
+  // rail. A call result whose type is unresolvable stays an invariant.
+  if (tree.node(object).kind == ast::SyntaxKind::CallExpression) {
+    for (const auto& entry : nodeTypes) {
+      if (entry.key != object) continue;
+      auto lookup = input.semanticTypes.get(entry.value);
+      if (!lookup.is<type::SemanticTypeLookup>()) { return false; }
+      const auto& calledType = lookup.get<type::SemanticTypeLookup>().data();
+      if (!calledType.is<type::semantic::NominalTypeData>()) { return false; }
+      return calledType.get<type::semantic::NominalTypeData>().arguments.size() == 0;
+    }
     return false;
   }
+  if (tree.node(object).kind != ast::SyntaxKind::IdentExpr) { return false; }
   zc::Maybe<identity::SemanticTypeId> receiverType;
   if (resolvedOwnerLocal(input.boundModule.bindings(), object) != zc::none) {
     receiverType = ownerLocalReferenceType(input, object, nodeTypes);

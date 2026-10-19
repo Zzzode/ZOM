@@ -5673,6 +5673,24 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                           .referent;
         }
         if (shape.returnsLocalField) {
+          // A field projection on a call-initialized local
+          // (`let q: P = make(); return q.x;`) is legal source no shape lowers:
+          // the projection needs a place root, and the only roots this slice
+          // builds are places already materialized by an aggregate or a
+          // parameter. Drain it as the function-body capability code rather
+          // than assembling a call record whose result type is the field type.
+          if (shape.localInitializer != zc::none &&
+              tree.node(ZC_ASSERT_NONNULL(shape.localInitializer)).kind ==
+                  ast::SyntaxKind::CallExpression) {
+            auto initializerSpan = bound.parsedModule().spanFor(
+                tree.node(ZC_ASSERT_NONNULL(shape.localInitializer)).range);
+            identity::SourceSpan failureSpan = initializerSpan != zc::none
+                                                   ? ZC_ASSERT_NONNULL(initializerSpan).clone()
+                                                   : definition.source.clone();
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                zc::mv(failureSpan));
+          }
           auto memberIndex = factIndex(facts.members(), shape.value);
           if (memberIndex == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
