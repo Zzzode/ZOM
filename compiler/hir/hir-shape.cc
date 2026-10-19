@@ -3634,6 +3634,13 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::IndexExpression) {
       return zc::none;
     }
+    // A tuple literal return (`return (1, 2);`) has no admitted lowering
+    // shape: the HIR verifier has no tuple-value carrier. Reject it as a
+    // capability gap rather than emitting a shape with no recognized return
+    // form, which the verifier reports as an internal error.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::TupleLiteral) {
+      return zc::none;
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
