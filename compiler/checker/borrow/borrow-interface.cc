@@ -296,11 +296,16 @@ ClassifyResult classifyType(identity::SemanticTypeId typeId, const BorrowInterfa
       // existential as no-region lets the borrow signature check publish
       // instead of rejecting the signature before the body checker runs.
       return BorrowShape::NoRegion;
-    case TypeDataTag::Slice:
     case TypeDataTag::Intersection: {
       zc::Maybe<identity::DefId> ownerValue = owner;
       return checkerFailure(input, signature::CheckerInvariantKind::InvalidFact, zc::mv(ownerValue),
                             zc::none, ordinal);
+    }
+    case TypeDataTag::Slice: {
+      auto classified = classifyType(data.get<SliceTypeData>().element, input, substitutions,
+                                     activeNominals, owner, ordinal);
+      if (!classified.is<BorrowShape>()) { return classified; }
+      return contained(classified.get<BorrowShape>());
     }
     case TypeDataTag::Tuple: {
       BorrowShape result = BorrowShape::NoRegion;
