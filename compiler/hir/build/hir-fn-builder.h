@@ -162,6 +162,10 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
 /// by a nominal aggregate: `let cell = T {...}; return cell.field;`.
 void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one multi-field struct-literal local summed over two fields:
+/// `let p: P = P { x: 1, y: 2 }; return p.x <op> p.y;`.
+void lowerLocalFieldBinaryFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one shared-receiver field-read method body:
 /// `fn m(this) -> T { return this.field; }` through the recursive driver:
 /// function -> block -> return -> parameter field projection. The receiver

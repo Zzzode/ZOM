@@ -200,6 +200,25 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerAggregateReturn(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers one multi-field struct-literal local summed over two fields.
+  ///
+  /// Admits a verified Built MIR `Function` with four dense locals (the
+  /// aggregate `UserLocal`, two `Temporary` field slots, and the `Temporary`
+  /// result), one block, and the statement sequence
+  /// `StorageLive(aggregate); aggregate = NominalAggregate{constants};
+  /// StorageLive(a); a = ExtractField(aggregate, i); StorageLive(b);
+  /// b = ExtractField(aggregate, j); StorageLive(r);
+  /// r = Arithmetic|Comparison(a, b); Return(copy r)`. The aggregate carrier's
+  /// field order is the MIR NominalAggregate element order, so each extraction
+  /// index addresses the field it read in source. Every shape outside this
+  /// slice returns `none`.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the field types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerLocalFieldBinaryReturn(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one four-block boolean-conditional return function to LIR.
   ///
   /// Admits a verified Built MIR `Function` with one boolean parameter and an

@@ -208,6 +208,28 @@ zc::Maybe<ValueType> enumAggregateCarrierFor(identity::SemanticTypeId type,
   return ValueType::aggregate(zc::mv(fields));
 }
 
+/// \brief Resolves the aggregate carrier for a nominal struct type whose
+/// fields are given in the nominal aggregate rvalue's element order.
+///
+/// The carrier's field types follow the MIR NominalAggregate element order --
+/// the source struct-literal property order preserved through HIR and MIR --
+/// which is the same order the MIR builder assigns `MirExtractFieldRvalue`
+/// indices from. Field names are metadata only.
+zc::Maybe<ValueType> nominalAggregateCarrierFor(identity::SemanticTypeId type,
+                                                const type::SemanticTypeStore& semanticTypes,
+                                                const zc::Vector<ValueType>& elementCarriers) {
+  auto lookup = semanticTypes.get(type);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+  if (!data.is<type::semantic::NominalTypeData>()) { return zc::none; }
+  if (elementCarriers.empty()) { return zc::none; }
+  zc::Vector<AggregateField> fields;
+  for (size_t index = 0; index < elementCarriers.size(); ++index) {
+    fields.add(AggregateField(zc::str("field", index), elementCarriers[index]));
+  }
+  return ValueType::aggregate(zc::mv(fields));
+}
+
 /// \brief Selects the entry symbol for a caller function.
 ///
 /// A parameter-free caller folds to the reserved no-argument `zom.module_init`
@@ -1121,6 +1143,180 @@ zc::Maybe<Module> MirToLirLowering::lowerAggregateReturn(
   zc::Vector<Function> functions;
   functions.add(Function(function.owner, zc::heapString("zom.module_init"), placeholderCarrier,
                          zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerLocalFieldBinaryReturn(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Admit only the multi-field struct-local field-binary shape. We re-check
+  // every structural fact here so lowering is total over its declared input
+  // and fail-closed otherwise.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.locals.size() != 4 || function.blocks.size() != 1) {
+    return zc::none;
+  }
+
+  const auto& aggregateLocal = function.locals[0];
+  const auto& leftLocal = function.locals[1];
+  const auto& rightLocal = function.locals[2];
+  const auto& resultLocal = function.locals[3];
+  if (aggregateLocal.kind != mir::MirLocalKind::UserLocal ||
+      leftLocal.kind != mir::MirLocalKind::Temporary ||
+      rightLocal.kind != mir::MirLocalKind::Temporary ||
+      resultLocal.kind != mir::MirLocalKind::Temporary || aggregateLocal.id.ordinal() != 1 ||
+      leftLocal.id.ordinal() != 2 || rightLocal.id.ordinal() != 3 ||
+      resultLocal.id.ordinal() != 4 || resultLocal.type != function.resultType) {
+    return zc::none;
+  }
+
+  const auto& block = function.blocks[0];
+  if (block.statements.size() != 8) { return zc::none; }
+  if (block.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[0].storageLocal() != aggregateLocal.id ||
+      block.statements[1].kind() != mir::MirStatementKind::Assign ||
+      block.statements[2].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[2].storageLocal() != leftLocal.id ||
+      block.statements[3].kind() != mir::MirStatementKind::Assign ||
+      block.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[4].storageLocal() != rightLocal.id ||
+      block.statements[5].kind() != mir::MirStatementKind::Assign ||
+      block.statements[6].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[6].storageLocal() != resultLocal.id ||
+      block.statements[7].kind() != mir::MirStatementKind::Assign) {
+    return zc::none;
+  }
+
+  // The aggregate assignment constructs the struct local from constant
+  // elements. Element order is the source struct-literal property order, so it
+  // is also the carrier's field order and the extraction index space.
+  const auto& aggregateAssignment = block.statements[1].assignmentValue();
+  if (aggregateAssignment.destination.local() != aggregateLocal.id ||
+      aggregateAssignment.destination.projections().size() != 0 ||
+      aggregateAssignment.initialization != mir::MirInitializationKind::Initialize ||
+      aggregateAssignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+    return zc::none;
+  }
+  const auto& aggregate = aggregateAssignment.value.nominalAggregateValue();
+  if (aggregate.elements.size() == 0 || aggregate.type != aggregateLocal.type) { return zc::none; }
+  zc::Vector<ValueType> elementCarriers;
+  zc::Vector<Operand> elementOperands;
+  for (const auto& element : aggregate.elements) {
+    if (element.operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
+    auto carrier = integerCarrierFor(element.operand.constantValue().type, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto lowered = lirOperandFor(element.operand, carrierValue);
+    if (lowered == zc::none) { return zc::none; }
+    elementCarriers.add(carrierValue);
+    elementOperands.add(zc::mv(ZC_REQUIRE_NONNULL(lowered)));
+  }
+  auto aggregateCarrier =
+      nominalAggregateCarrierFor(aggregate.type, semanticTypes, elementCarriers);
+  if (aggregateCarrier == zc::none) { return zc::none; }
+  const auto aggregateCarrierValue = ZC_REQUIRE_NONNULL(aggregateCarrier);
+  auto aggregateConstant = AggregateConstant::from(aggregateCarrierValue, zc::mv(elementOperands));
+  if (aggregateConstant == zc::none) { return zc::none; }
+
+  // Both field extractions read the aggregate local at their source index.
+  const auto leftCarrier = integerCarrierFor(leftLocal.type, semanticTypes);
+  const auto rightCarrier = integerCarrierFor(rightLocal.type, semanticTypes);
+  const auto resultCarrier = integerCarrierFor(resultLocal.type, semanticTypes);
+  if (leftCarrier == zc::none || rightCarrier == zc::none || resultCarrier == zc::none) {
+    return zc::none;
+  }
+  const auto leftCarrierValue = ZC_REQUIRE_NONNULL(leftCarrier);
+  const auto rightCarrierValue = ZC_REQUIRE_NONNULL(rightCarrier);
+  const auto resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  const auto aggregateFields = aggregateCarrierValue.aggregateFields();
+
+  const auto& leftAssignment = block.statements[3].assignmentValue();
+  const auto& rightAssignment = block.statements[5].assignmentValue();
+  if (leftAssignment.destination.local() != leftLocal.id ||
+      leftAssignment.destination.projections().size() != 0 ||
+      leftAssignment.initialization != mir::MirInitializationKind::Initialize ||
+      leftAssignment.value.kind() != mir::MirRvalueKind::ExtractField ||
+      rightAssignment.destination.local() != rightLocal.id ||
+      rightAssignment.destination.projections().size() != 0 ||
+      rightAssignment.initialization != mir::MirInitializationKind::Initialize ||
+      rightAssignment.value.kind() != mir::MirRvalueKind::ExtractField) {
+    return zc::none;
+  }
+  const auto& leftExtract = leftAssignment.value.extractFieldValue();
+  const auto& rightExtract = rightAssignment.value.extractFieldValue();
+  const auto extractionMatches = [&](const mir::MirExtractFieldRvalue& extract,
+                                     const mir::MirLocalDeclaration& target,
+                                     ValueType targetCarrier) {
+    return extract.source.kind() != mir::MirOperandKind::Constant &&
+           extract.source.place().local() == aggregateLocal.id &&
+           extract.source.place().projections().size() == 0 && extract.resultType == target.type &&
+           extract.fieldIndex < aggregateFields.size() &&
+           aggregateFields[extract.fieldIndex].type == targetCarrier;
+  };
+  if (!extractionMatches(leftExtract, leftLocal, leftCarrierValue) ||
+      !extractionMatches(rightExtract, rightLocal, rightCarrierValue) ||
+      leftExtract.fieldIndex == rightExtract.fieldIndex) {
+    return zc::none;
+  }
+
+  // The binary combines the two extracted fields.
+  const auto& resultAssignment = block.statements[7].assignmentValue();
+  if (resultAssignment.destination.local() != resultLocal.id ||
+      resultAssignment.destination.projections().size() != 0 ||
+      resultAssignment.initialization != mir::MirInitializationKind::Initialize) {
+    return zc::none;
+  }
+  zc::Vector<Statement> statements;
+  statements.add(
+      Statement::assign(aggregateLocal.id.ordinal(),
+                        Operand::constant(zc::mv(ZC_REQUIRE_NONNULL(aggregateConstant)))));
+  statements.add(Statement::extractField(leftLocal.id.ordinal(), aggregateLocal.id.ordinal(),
+                                         leftExtract.fieldIndex));
+  statements.add(Statement::extractField(rightLocal.id.ordinal(), aggregateLocal.id.ordinal(),
+                                         rightExtract.fieldIndex));
+  if (resultAssignment.value.kind() == mir::MirRvalueKind::Arithmetic) {
+    const auto& arithmetic = resultAssignment.value.arithmeticValue();
+    auto op = lirArithmeticOpFor(arithmetic.op);
+    if (op == zc::none || arithmetic.resultType != resultLocal.type) { return zc::none; }
+    statements.add(Statement::arithmetic(resultLocal.id.ordinal(), ZC_REQUIRE_NONNULL(op),
+                                         Operand::localUse(leftLocal.id.ordinal()),
+                                         Operand::localUse(rightLocal.id.ordinal())));
+  } else if (resultAssignment.value.kind() == mir::MirRvalueKind::Comparison) {
+    const auto& comparison = resultAssignment.value.comparisonValue();
+    auto op = lirComparisonOpFor(comparison.op);
+    if (comparison.resultType != resultLocal.type) { return zc::none; }
+    statements.add(Statement::compare(resultLocal.id.ordinal(), op,
+                                      Operand::localUse(leftLocal.id.ordinal()),
+                                      Operand::localUse(rightLocal.id.ordinal())));
+  } else {
+    return zc::none;
+  }
+
+  if (block.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+  const auto& returnValue = block.terminator.returnValue().value;
+  if (returnValue == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, returnValue) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().local() != resultLocal.id ||
+        value.place().projections().size() != 0) {
+      return zc::none;
+    }
+  }
+
+  zc::Vector<Local> locals;
+  locals.add(Local(aggregateLocal.id.ordinal(), aggregateCarrierValue));
+  locals.add(Local(leftLocal.id.ordinal(), leftCarrierValue));
+  locals.add(Local(rightLocal.id.ordinal(), rightCarrierValue));
+  locals.add(Local(resultLocal.id.ordinal(), resultCarrierValue));
+
+  auto entryId = LirBlockId::fromOrdinal(1);
+  if (entryId == zc::none) { return zc::none; }
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(statements),
+                        Terminator::returnLocal(resultLocal.id.ordinal())));
+
+  zc::Vector<Function> functions;
+  zc::Vector<Local> parameters;
+  functions.add(Function(function.owner, moduleEntrySymbol(0), resultCarrierValue,
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
   return Module(zc::mv(functions));
 }
 

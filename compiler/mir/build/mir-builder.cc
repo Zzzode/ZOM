@@ -2330,6 +2330,165 @@ zc::Maybe<RecursiveFunctionProduct> buildAggregateLocalReturn(const LoweringCont
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a multi-field struct-literal local summed over two of its
+/// fields: `let p: P = P { ..constants.. }; return p.x <op> p.y;`.
+///
+/// One UserLocal at localId(1) receives the nominal aggregate; two Temporary
+/// locals hold the extracted fields; a third Temporary holds the binary result
+/// and is returned. The field index of each extraction is the element's
+/// position in the nominal aggregate's element vector -- the source
+/// struct-literal property order preserved by the HIR builder -- because the
+/// MIR NominalAggregate rvalue and the LIR aggregate carrier both lay the
+/// fields out in that same order.
+zc::Maybe<RecursiveFunctionProduct> buildLocalFieldBinaryReturn(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.unsafeBlock != zc::none) return zc::none;
+  if (block.statements.size() != 2) return zc::none;
+
+  auto sourceLocal = localFor(hirModule, block.statements[0]);
+  auto sourceReturn = returnFor(hirModule, block.statements[1]);
+  if (sourceLocal == zc::none || sourceReturn == zc::none) return zc::none;
+  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+  if (binding.initializer == zc::none) return zc::none;
+
+  auto aggregate = aggregateFor(hirModule, ZC_ASSERT_NONNULL(binding.initializer));
+  auto binary = primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (aggregate == zc::none || binary == zc::none) return zc::none;
+  const auto& sourceAggregate = ZC_ASSERT_NONNULL(aggregate);
+  const auto& sourceBinary = ZC_ASSERT_NONNULL(binary);
+  if (sourceAggregate.type != binding.type ||
+      sourceAggregate.category != hir::HirValueCategory::Value ||
+      sourceBinary.type != declaration.resultType ||
+      sourceBinary.category != hir::HirValueCategory::Value) {
+    return zc::none;
+  }
+
+  auto leftProjection = localFieldProjectionFor(hirModule, sourceBinary.left);
+  auto rightProjection = localFieldProjectionFor(hirModule, sourceBinary.right);
+  if (leftProjection == zc::none || rightProjection == zc::none) return zc::none;
+  const auto& left = ZC_ASSERT_NONNULL(leftProjection);
+  const auto& right = ZC_ASSERT_NONNULL(rightProjection);
+  if (left.local != binding.local || right.local != binding.local ||
+      left.receiverType != binding.type || right.receiverType != binding.type ||
+      left.type != sourceBinary.operandType || right.type != sourceBinary.operandType ||
+      left.category != hir::HirValueCategory::Place ||
+      right.category != hir::HirValueCategory::Place) {
+    return zc::none;
+  }
+
+  const auto arithmeticOperator = arithmeticOperatorFor(sourceBinary.operation);
+  const auto comparisonOperator = comparisonOperatorFor(sourceBinary.operation);
+  if (arithmeticOperator == zc::none && comparisonOperator == zc::none) return zc::none;
+
+  // Resolve each projected field's zero-based index in the aggregate element
+  // order. A field that is absent from the literal is a lowerer invariant
+  // violation, not a user-reachable shape.
+  auto fieldIndex = [&](identity::DefId field) -> zc::Maybe<uint32_t> {
+    for (size_t index = 0; index < sourceAggregate.elements.size(); ++index) {
+      if (sourceAggregate.elements[index].field == field) { return static_cast<uint32_t>(index); }
+    }
+    return zc::none;
+  };
+  auto leftIndex = fieldIndex(left.field);
+  auto rightIndex = fieldIndex(right.field);
+  if (leftIndex == zc::none || rightIndex == zc::none) return zc::none;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  zc::Vector<MirNominalAggregateElement> elements;
+  for (const auto& element : sourceAggregate.elements) {
+    elements.add(MirNominalAggregateElement{
+        element.field, MirOperand::constant(element.type, element.value.clone())});
+  }
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId userLocal =
+      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+  const MirLocalId leftLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, left.type, scope, left.sourceSpan.clone());
+  const MirLocalId rightLocal =
+      ctx.declareLocal(MirLocalKind::Temporary, right.type, scope, right.sourceSpan.clone());
+  const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, sourceBinary.type, scope,
+                                                  sourceBinary.sourceSpan.clone());
+
+  const MirBlockId entry = ctx.beginBlock(scope);
+  (void)entry;
+  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(userLocal, binding.type, zc::mv(destinationProjections), binding.type),
+      MirRvalue::nominalAggregate(sourceAggregate.definition, sourceAggregate.type,
+                                  zc::mv(elements)),
+      MirInitializationKind::Initialize, sourceAggregate.sourceSpan.clone()));
+
+  // Materialize each field extraction as its own rvalue: the projection is not
+  // folded, so MIR and LIR stay in one-to-one lockstep.
+  const auto emitExtract = [&](const MirLocalId target,
+                               const hir::HirLocalFieldProjectionExpression& projection,
+                               uint32_t index) {
+    ctx.appendStatement(MirStatement::storageLive(target, projection.sourceSpan.clone()));
+    zc::Vector<MirProjection> sourceProjections;
+    auto sourceOperand =
+        placeUse(proofs, copyMarker,
+                 MirPlace(userLocal, binding.type, zc::mv(sourceProjections), binding.type));
+    zc::Vector<MirProjection> targetProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(target, projection.type, zc::mv(targetProjections), projection.type),
+        MirRvalue::extractField(zc::mv(ZC_ASSERT_NONNULL(sourceOperand)), index, projection.type),
+        MirInitializationKind::Initialize, projection.sourceSpan.clone()));
+  };
+  emitExtract(leftLocal, left, ZC_ASSERT_NONNULL(leftIndex));
+  emitExtract(rightLocal, right, ZC_ASSERT_NONNULL(rightIndex));
+
+  zc::Vector<MirProjection> leftProjections;
+  zc::Vector<MirProjection> rightProjections;
+  auto leftOperand = placeUse(proofs, copyMarker,
+                              MirPlace(leftLocal, left.type, zc::mv(leftProjections), left.type));
+  auto rightOperand = placeUse(
+      proofs, copyMarker, MirPlace(rightLocal, right.type, zc::mv(rightProjections), right.type));
+  if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+
+  zc::Maybe<MirRvalue> resultRvalue;
+  if (arithmeticOperator != zc::none) {
+    resultRvalue = MirRvalue::arithmetic(
+        ZC_ASSERT_NONNULL(arithmeticOperator), zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+        zc::mv(ZC_ASSERT_NONNULL(rightOperand)), sourceBinary.type);
+  } else {
+    resultRvalue = MirRvalue::comparison(
+        ZC_ASSERT_NONNULL(comparisonOperator), zc::mv(ZC_ASSERT_NONNULL(leftOperand)),
+        zc::mv(ZC_ASSERT_NONNULL(rightOperand)), sourceBinary.type);
+  }
+  ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceBinary.sourceSpan.clone()));
+  zc::Vector<MirProjection> resultProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocal, sourceBinary.type, zc::mv(resultProjections), sourceBinary.type),
+      zc::mv(ZC_ASSERT_NONNULL(resultRvalue)), MirInitializationKind::Initialize,
+      sourceBinary.sourceSpan.clone()));
+
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(resultLocal, sourceBinary.type, zc::mv(returnProjections), sourceBinary.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers a direct aggregate return:
 /// `fn f() -> T { return T { ..constants.. }; }` (including enum construction
 /// `return Result::Ok(41);`). One Temporary at localId(1) receives the nominal
@@ -5496,6 +5655,17 @@ zc::Maybe<RecursiveFunctionProduct> strategyAggregateLocal(const LoweringContext
   return buildAggregateLocalReturn(lctx);
 }
 
+/// Multi-field struct-literal local summed over two of its fields:
+/// `let p: P = P { x: 1, y: 2 }; return p.x <op> p.y;`. The recursive builder
+/// and the aggregate-local strategy both reject this shape because the return
+/// value is a binary over two projections rather than a bare local or one
+/// projection.
+zc::Maybe<RecursiveFunctionProduct> strategyLocalFieldBinary(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 2 || lctx.hasUnsafeBlock || lctx.hasReceiver) return zc::none;
+  return buildLocalFieldBinaryReturn(lctx);
+}
+
 /// Local-alias reborrow return: `let y = p; return &*y;` (optionally wrapped
 /// in a trailing unsafe block). The sole user local copies the sole reference
 /// parameter and the return reborrows through the local alias.
@@ -7618,6 +7788,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ScalarLocal", strategyScalarLocal},
     {"PrimitiveUnary", strategyPrimitiveUnary},
     {"AggregateLocal", strategyAggregateLocal},
+    {"LocalFieldBinary", strategyLocalFieldBinary},
     {"LocalBorrowReturn", strategyLocalBorrowReturn},
     {"ForLoopReturn", strategyForLoopReturn},
     {"NestedForLoopAccumulatorReturn", strategyNestedForLoopAccumulatorReturn},

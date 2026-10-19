@@ -188,6 +188,41 @@ zc::Maybe<ValueType> localCarrier(const mir::MirLocalDeclaration& source,
   return zc::none;
 }
 
+// Independently derives the aggregate carrier of a multi-field struct local
+// from the MIR NominalAggregate rvalue that initializes it. The field order is
+// the element order of that rvalue, which is the source struct-literal property
+// order preserved by the HIR and MIR builders; the validator re-derives it from
+// MIR rather than from any producer helper. Every element must be an integer
+// constant (the admitted slice), and a local with no aggregate initialization
+// returns none.
+zc::Maybe<ValueType> aggregateLocalCarrier(const MirFunction& function,
+                                           const mir::MirLocalDeclaration& source,
+                                           const type::SemanticTypeStore& types) noexcept {
+  for (const auto& block : function.blocks) {
+    for (const auto& statement : block.statements) {
+      if (statement.kind() != mir::MirStatementKind::Assign) continue;
+      const auto& assignment = statement.assignmentValue();
+      if (assignment.destination.local() != source.id ||
+          assignment.destination.projections().size() != 0 ||
+          assignment.value.kind() != mir::MirRvalueKind::NominalAggregate) {
+        continue;
+      }
+      const auto& aggregate = assignment.value.nominalAggregateValue();
+      if (aggregate.type != source.type || aggregate.elements.size() < 2) return zc::none;
+      zc::Vector<AggregateField> fields;
+      for (size_t index = 0; index < aggregate.elements.size(); ++index) {
+        const auto& element = aggregate.elements[index];
+        if (element.operand.kind() != mir::MirOperandKind::Constant) return zc::none;
+        auto carrier = integerCarrier(element.operand.constantValue().type, types);
+        if (carrier == zc::none) return zc::none;
+        fields.add(AggregateField(zc::str("field", index), ZC_REQUIRE_NONNULL(carrier)));
+      }
+      return ValueType::aggregate(zc::mv(fields));
+    }
+  }
+  return zc::none;
+}
+
 // Independent zero-extension of a non-negative canonical integer magnitude.
 zc::Maybe<uint64_t> zeroExtendedBits(const checker::signature::CanonicalInteger& integer,
                                      IntegerBitWidth width) noexcept {
@@ -1613,7 +1648,12 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       if (actual.ordinal() != source.id.ordinal()) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
-      const auto carrier = localCarrier(source, mir, types);
+      // A multi-field aggregate-initialized local carries an aggregate slot;
+      // every other local uses its scalar carrier. The aggregate check runs
+      // first because a struct is nominal and would otherwise resolve to the
+      // enum discriminant carrier.
+      auto carrier = aggregateLocalCarrier(mir, source, types);
+      if (carrier == zc::none) { carrier = localCarrier(source, mir, types); }
       if (carrier == zc::none || actual.carrier() != ZC_ASSERT_NONNULL(carrier)) {
         return fault(TranslationFaultKind::SlotSetMismatch, functionIndex);
       }
@@ -1981,11 +2021,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             }
             const ValueType* destinationCarrier = nullptr;
             if (actual.value().isConstant()) {
-              if (actual.value().isFloatConstant()) {
-                destinationCarrier = &actual.value().floatConstantValue().carrier();
-              } else {
-                destinationCarrier = &actual.value().constantValue().carrier();
-              }
+              destinationCarrier = &actual.value().constantCarrier();
             } else {
               destinationCarrier = lirSlotCarrier(lir, destinationOrdinal);
             }
@@ -2087,25 +2123,75 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
               }
               case mir::MirRvalueKind::NominalAggregate: {
                 // The receiver-call owner slot folds a one-element aggregate of
-                // a scalar constant into a plain integer Assign of that element;
-                // any other materialized aggregate stays outside the subset.
+                // a scalar constant into a plain integer Assign of that element.
+                // A multi-element aggregate of constants materializes as one
+                // aggregate-constant Assign whose fields match the MIR elements
+                // one-to-one, in element order. Any other materialized
+                // aggregate stays outside the subset.
                 if (actual.kind() != StatementKind::Assign) {
                   return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }
                 const auto& aggregate = assignment.value.nominalAggregateValue();
-                if (aggregate.elements.size() != 1 ||
-                    aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) {
+                if (aggregate.elements.size() == 1) {
+                  if (aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) {
+                    return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                                 statementIndex);
+                  }
+                  const auto elementCarrier =
+                      integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
+                  if (elementCarrier == zc::none ||
+                      !sameConstant(actual.value(), aggregate.elements[0].operand,
+                                    ZC_ASSERT_NONNULL(elementCarrier))) {
+                    return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1,
+                                 b + 1, statementIndex);
+                  }
+                  break;
+                }
+                // Multi-field aggregate: the destination slot carries the
+                // aggregate carrier derived from this same assignment, and the
+                // emitted aggregate constant's fields must equal the MIR
+                // elements in order.
+                const auto* destinationSlot = lirSlotCarrier(lir, destinationOrdinal);
+                const mir::MirLocalDeclaration* destinationLocal = nullptr;
+                for (const auto& candidate : mir.locals) {
+                  if (candidate.id == assignment.destination.local()) {
+                    destinationLocal = &candidate;
+                    break;
+                  }
+                }
+                auto declaredCarrier = destinationLocal == nullptr
+                                           ? zc::Maybe<ValueType>(zc::none)
+                                           : aggregateLocalCarrier(mir, *destinationLocal, types);
+                if (destinationSlot == nullptr || destinationLocal == nullptr ||
+                    destinationSlot->kind() != ValueTypeKind::Aggregate ||
+                    declaredCarrier == zc::none ||
+                    *destinationSlot != ZC_ASSERT_NONNULL(declaredCarrier) ||
+                    !actual.value().isConstant() || !actual.value().isAggregateConstant()) {
                   return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
                 }
-                const auto elementCarrier =
-                    integerCarrier(aggregate.elements[0].operand.constantValue().type, types);
-                if (elementCarrier == zc::none ||
-                    !sameConstant(actual.value(), aggregate.elements[0].operand,
-                                  ZC_ASSERT_NONNULL(elementCarrier))) {
+                const auto& valueConstant = actual.value().aggregateConstantValue();
+                if (valueConstant.carrier() != *destinationSlot ||
+                    valueConstant.fields().size() != aggregate.elements.size()) {
                   return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1,
                                statementIndex);
+                }
+                for (uint32_t elementIndex = 0; elementIndex < aggregate.elements.size();
+                     ++elementIndex) {
+                  const auto& element = aggregate.elements[elementIndex];
+                  if (element.operand.kind() != mir::MirOperandKind::Constant) {
+                    return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                                 statementIndex);
+                  }
+                  const auto elementCarrier =
+                      integerCarrier(element.operand.constantValue().type, types);
+                  if (elementCarrier == zc::none ||
+                      !sameConstant(valueConstant.fields()[elementIndex], element.operand,
+                                    ZC_ASSERT_NONNULL(elementCarrier))) {
+                    return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1,
+                                 b + 1, statementIndex);
+                  }
                 }
                 break;
               }

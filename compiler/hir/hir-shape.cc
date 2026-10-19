@@ -3581,6 +3581,57 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   ast::NodeId letNode;
   ZC_IF_SOME(statement, localStatement) { letNode = statement; }
   if (tree.node(letNode).kind != ast::SyntaxKind::LetStmt) { return zc::none; }
+  // Two-statement multi-field struct-literal local summed over two fields:
+  // `let p: P = P { x: 1, y: 2 }; return p.x <op> p.y;` (also the mirrored
+  // operand order and the arithmetic/comparison operator families). The
+  // leading binding must be a single-declarator `let` whose initializer is a
+  // struct literal, and the return value a primitive binary whose two operands
+  // are each a dot MemberExpression on that same local. This is claimed before
+  // the generic single-local fallthrough, which takes its local reference from
+  // the returned expression and therefore rejects a binary. The operator
+  // family and field indices are checker decisions resolved downstream.
+  if (statements.size == 2 && tree.contains(value) &&
+      tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+      isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+          tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
+    const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+    auto declaratorNode = localDeclarator(tree, letNode);
+    if (declaratorNode != zc::none && tree.contains(binaryLeft) && tree.contains(binaryRight)) {
+      ast::NodeId declarator;
+      ZC_IF_SOME(localDeclaratorValue, declaratorNode) { declarator = localDeclaratorValue; }
+      const ast::NodeId pattern(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId initializer(
+          tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+      auto isLocalFieldOperand = [&](ast::NodeId operand) -> bool {
+        if (tree.node(operand).kind != ast::SyntaxKind::MemberExpression) return false;
+        const auto& member = tree.node(operand);
+        if (static_cast<ast::MemberAccessKind>(
+                member.payload.words[ast::kMemberExpressionAccessWord]) !=
+            ast::MemberAccessKind::Dot) {
+          return false;
+        }
+        return matchesLocalReference(
+            tree, pattern, ast::NodeId(member.payload.words[ast::kMemberExpressionObjectWord]));
+      };
+      if (tree.node(initializer).kind == ast::SyntaxKind::StructLiteralExpr &&
+          isLocalFieldOperand(binaryLeft) && isLocalFieldOperand(binaryRight)) {
+        FunctionReturnShape shape{};
+        shape.body = body;
+        shape.returnStatement = returnNode;
+        shape.value = value;
+        shape.localPattern = pattern;
+        shape.localInitializer = initializer;
+        shape.returnsLocal = true;
+        shape.returnsLocalFieldBinary = true;
+        shape.localFieldBinaryLeft = binaryLeft;
+        shape.localFieldBinaryRight = binaryRight;
+        shape.unsafeBlock = zc::mv(unsafeBlock);
+        return shape;
+      }
+    }
+  }
   ast::NodeId localReference = value;
   bool returnsReceiverCall = false;
   bool returnsDirectAggregateCall = false;

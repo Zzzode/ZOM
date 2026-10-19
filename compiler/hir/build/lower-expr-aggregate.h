@@ -46,5 +46,13 @@ void lowerEnumConstructionReturnFunction(PendingFunctionDeclaration&& function, 
 /// rvalue and the LIR builder constructs the fat-pointer carrier.
 void lowerExistentialReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one multi-field struct-literal local summed over two fields:
+/// `let p: P = P { x: 1, y: 2 }; return p.x <op> p.y;`.
+///
+/// Node stride function F, body F+1, local F+2, aggregate F+3, left projection
+/// F+4, right projection F+5, binary F+6, return F+7. The two projections are
+/// carried in source operand order; the binary returns their combined value.
+void lowerLocalFieldBinaryFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

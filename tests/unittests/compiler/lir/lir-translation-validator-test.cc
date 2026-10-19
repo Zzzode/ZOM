@@ -298,6 +298,168 @@ Module arithmeticLir(identity::DefId owner, ArithmeticOp op, uint64_t rightBits 
   return Module(zc::mv(functions));
 }
 
+// MIR one-block multi-field struct local summed over two fields:
+// user local#1 (struct), temp#2 i32, temp#3 i32, result#4 i32; block:
+// StorageLive(1); 1 = NominalAggregate{fieldX: 1, fieldY: 2};
+// StorageLive(2); 2 = ExtractField(1, 0); StorageLive(3);
+// 3 = ExtractField(1, 1); StorageLive(4); 4 = 2 Add 3; return copy 4.
+mir::MirFunction fieldBinaryMir(identity::DefId owner, identity::SemanticTypeId structType,
+                                identity::SemanticTypeId i32, identity::DefId aggregate,
+                                identity::DefId fieldX, identity::DefId fieldY) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::UserLocal, structType,
+                                      mirScope(1), span()});
+  for (uint32_t ordinal = 2; ordinal <= 4; ++ordinal) {
+    locals.add(mir::MirLocalDeclaration{mirLocal(ordinal), mir::MirLocalKind::Temporary, i32,
+                                        mirScope(1), span()});
+  }
+  zc::Vector<mir::MirNominalAggregateElement> elements;
+  elements.add(
+      mir::MirNominalAggregateElement{fieldX, mir::MirOperand::constant(i32, integerConstant(1))});
+  elements.add(
+      mir::MirNominalAggregateElement{fieldY, mir::MirOperand::constant(i32, integerConstant(2))});
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(mirLocal(1), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(1), structType),
+      mir::MirRvalue::nominalAggregate(aggregate, structType, zc::mv(elements)),
+      mir::MirInitializationKind::Initialize, span()));
+  const auto emitExtract = [&](uint32_t target, uint32_t fieldIndex) {
+    statements.add(mir::MirStatement::storageLive(mirLocal(target), span()));
+    statements.add(mir::MirStatement::assign(
+        place(mirLocal(target), i32),
+        mir::MirRvalue::extractField(mir::MirOperand::copy(place(mirLocal(1), structType)),
+                                     fieldIndex, i32),
+        mir::MirInitializationKind::Initialize, span()));
+  };
+  emitExtract(2, 0);
+  emitExtract(3, 1);
+  statements.add(mir::MirStatement::storageLive(mirLocal(4), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(4), i32),
+      mir::MirRvalue::arithmetic(mir::MirArithmeticOperator::Add,
+                                 mir::MirOperand::copy(place(mirLocal(2), i32)),
+                                 mir::MirOperand::copy(place(mirLocal(3), i32)), i32),
+      mir::MirInitializationKind::Initialize, span()));
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(place(mirLocal(4), i32)), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// LIR corresponding to fieldBinaryMir, with both extraction indices mutable so
+// a test can prove the field-order correspondence is checked.
+Module fieldBinaryLir(identity::DefId owner, uint32_t leftIndex, uint32_t rightIndex) {
+  zc::Vector<AggregateField> fields;
+  fields.add(AggregateField(zc::str("field0"), i32Carrier()));
+  fields.add(AggregateField(zc::str("field1"), i32Carrier()));
+  auto aggregateCarrier = ZC_REQUIRE_NONNULL(ValueType::aggregate(zc::mv(fields)));
+  zc::Vector<Operand> aggregateFields;
+  aggregateFields.add(Operand::constant(i32Const(1)));
+  aggregateFields.add(Operand::constant(i32Const(2)));
+  auto aggregateConstant =
+      ZC_REQUIRE_NONNULL(AggregateConstant::from(aggregateCarrier, zc::mv(aggregateFields)));
+  zc::Vector<Statement> statements;
+  statements.add(Statement::assign(1, Operand::constant(zc::mv(aggregateConstant))));
+  statements.add(Statement::extractField(2, 1, leftIndex));
+  statements.add(Statement::extractField(3, 1, rightIndex));
+  statements.add(
+      Statement::arithmetic(4, ArithmeticOp::Add, Operand::localUse(2), Operand::localUse(3)));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(4)));
+  zc::Vector<Local> locals;
+  locals.add(Local(1, aggregateCarrier));
+  locals.add(Local(2, i32Carrier()));
+  locals.add(Local(3, i32Carrier()));
+  locals.add(Local(4, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                         zc::Vector<Local>(), zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST("Translation validator accepts a multi-field struct field arithmetic return") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = types.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = testDefinition(70);
+  const auto aggregate = testDefinition(71);
+  const auto fieldX = testDefinition(72);
+  const auto fieldY = testDefinition(73);
+  ZC_EXPECT(TranslationValidator::validate(
+                fieldBinaryMir(owner, structType, i32, aggregate, fieldX, fieldY),
+                fieldBinaryLir(owner, 0, 1), types.semanticTypes()) == zc::none);
+}
+
+ZC_TEST("Translation validator rejects a swapped multi-field extraction index") {
+  // The extraction index is the only place the field order is observable after
+  // HIR, so a wrong index must fail rather than silently read the other field.
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = types.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = testDefinition(74);
+  const auto aggregate = testDefinition(75);
+  const auto fieldX = testDefinition(76);
+  const auto fieldY = testDefinition(77);
+  auto finding = TranslationValidator::validate(
+      fieldBinaryMir(owner, structType, i32, aggregate, fieldX, fieldY),
+      fieldBinaryLir(owner, /*leftIndex=*/1, /*rightIndex=*/1), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EffectMismatch);
+}
+
+ZC_TEST("Translation validator rejects a multi-field aggregate with a wrong constant") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto structType = types.internPrimitive(type::semantic::PrimitiveKind::I64);
+  const auto owner = testDefinition(78);
+  const auto aggregate = testDefinition(79);
+  const auto fieldX = testDefinition(80);
+  const auto fieldY = testDefinition(81);
+  zc::Vector<AggregateField> fields;
+  fields.add(AggregateField(zc::str("field0"), i32Carrier()));
+  fields.add(AggregateField(zc::str("field1"), i32Carrier()));
+  auto aggregateCarrier = ZC_REQUIRE_NONNULL(ValueType::aggregate(zc::mv(fields)));
+  zc::Vector<Operand> aggregateFields;
+  aggregateFields.add(Operand::constant(i32Const(1)));
+  aggregateFields.add(Operand::constant(i32Const(9)));
+  auto aggregateConstant =
+      ZC_REQUIRE_NONNULL(AggregateConstant::from(aggregateCarrier, zc::mv(aggregateFields)));
+  zc::Vector<Statement> statements;
+  statements.add(Statement::assign(1, Operand::constant(zc::mv(aggregateConstant))));
+  statements.add(Statement::extractField(2, 1, 0));
+  statements.add(Statement::extractField(3, 1, 1));
+  statements.add(
+      Statement::arithmetic(4, ArithmeticOp::Add, Operand::localUse(2), Operand::localUse(3)));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(4)));
+  zc::Vector<Local> locals;
+  locals.add(Local(1, aggregateCarrier));
+  locals.add(Local(2, i32Carrier()));
+  locals.add(Local(3, i32Carrier()));
+  locals.add(Local(4, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                         zc::Vector<Local>(), zc::mv(locals), zc::mv(blocks)));
+  Module module(zc::mv(functions));
+  auto finding = TranslationValidator::validate(
+      fieldBinaryMir(owner, structType, i32, aggregate, fieldX, fieldY), module,
+      types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::ConstantMismatch);
+}
+
 ZC_TEST("Translation validator accepts the folded scalar and comparison diamond") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);

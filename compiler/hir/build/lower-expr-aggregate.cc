@@ -58,6 +58,65 @@ void lowerAggregateFieldProjectionFunction(PendingFunctionDeclaration&& function
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
 }
 
+void lowerLocalFieldBinaryFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  auto& shape = function.shape.get<LocalFieldBinaryReturn>();
+  const identity::SemanticTypeId aggregateType = shape.local.type;
+  const identity::SourceSpan localSpan = shape.local.sourceSpan.clone();
+  const identity::SourceSpan initializerSpan =
+      ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone();
+  const identity::DefId aggregateDefinition = shape.aggregate.definition;
+  const identity::SourceSpan aggregateSpan = shape.aggregate.sourceSpan.clone();
+  zc::Vector<HirNominalAggregateElement> aggregateElements = zc::mv(shape.aggregate.elements);
+  const identity::DefId leftField = shape.leftProjection.field;
+  const identity::DefId rightField = shape.rightProjection.field;
+  const identity::SemanticTypeId operandType = shape.operandType;
+  const identity::SemanticTypeId resultType = shape.resultType;
+  const checker::PrimitiveOperation operation = shape.operation;
+  const identity::SourceSpan binarySpan = shape.binarySpan.clone();
+  const ast::NodeId leftNode = shape.leftNode;
+  const ast::NodeId rightNode = shape.rightNode;
+  const ast::NodeId binaryNode = shape.binaryNode;
+
+  // Fixed source-preorder stride matching the verifier:
+  // function F, body F+1, local F+2, aggregate initializer F+3,
+  // left projection F+4, right projection F+5, binary F+6, return F+7.
+  // The return takes the binary node directly (no result temporary).
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+  const HirNodeId leftId = ctx.allocNode(leftNode);
+  const HirNodeId rightId = ctx.allocNode(rightNode);
+  const HirNodeId binaryId = ctx.allocNode(binaryNode);
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  zc::Vector<HirNodeId> statements;
+  statements.add(localId);
+  statements.add(returnId);
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+
+  ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), aggregateType, initializerId,
+                               localSpan.clone(), initializerSpan.clone()});
+  ctx.addAggregate(HirNominalAggregateExpression{initializerId, aggregateDefinition, aggregateType,
+                                                 zc::mv(aggregateElements), HirValueCategory::Value,
+                                                 aggregateSpan.clone()});
+  ctx.addLocalFieldProjection(HirLocalFieldProjectionExpression{
+      leftId, hirLocalId(1), leftField, aggregateType, operandType, HirValueCategory::Place,
+      shape.leftProjection.sourceSpan.clone()});
+  ctx.addLocalFieldProjection(HirLocalFieldProjectionExpression{
+      rightId, hirLocalId(1), rightField, aggregateType, operandType, HirValueCategory::Place,
+      shape.rightProjection.sourceSpan.clone()});
+  ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{binaryId, leftId, rightId, operandType,
+                                                      resultType, HirValueCategory::Value,
+                                                      operation, binarySpan.clone()});
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, binaryId, function.returnSpan.clone()});
+}
+
 void lowerUninitializedFieldProjectionReturnFunction(PendingFunctionDeclaration&& function,
                                                      HirFnCtx& ctx) {
   const auto& shape = function.shape.get<UninitializedFieldProjectionReturn>();

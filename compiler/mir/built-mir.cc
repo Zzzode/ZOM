@@ -2470,14 +2470,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       // Conditional arms that are local references do not materialize value
       // nodes on the RHS, so each one subtracts one credit from the
-      // conditional*2 LHS term.
+      // conditional*2 LHS term. A binary arm does materialize value nodes (its
+      // literal and parameter leaves) and adds its own primitive-binary op on
+      // the LHS, so it is already balanced and must not subtract.
       const auto& cond = ZC_ASSERT_NONNULL(conditional);
       for (const auto armValue : {cond.thenReturnValue, cond.elseReturnValue}) {
-        if (expressionFor(hirModule, armValue) == zc::none &&
-            aggregateFor(hirModule, armValue) == zc::none &&
-            parameterReferenceFor(hirModule, armValue) == zc::none) {
-          --valueNodes;
-        }
+        if (localReferenceFor(hirModule, armValue) != zc::none) { --valueNodes; }
       }
       leadingLocalConditionalValueNodeExcess += valueNodes - binaryBindings - 1;
     }
@@ -2556,6 +2554,36 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
     }
   }
+  // A multi-field struct-literal local summed over two fields
+  // (`let p: P = P { .. }; return p.x <op> p.y;`) pairs one function and one
+  // primitive binary on the left with one aggregate on the right. The two
+  // field projections are local-field-projection nodes, which the shared
+  // equation counts on neither side, so each such function adds one rhs term.
+  int64_t localFieldBinaryValueNodes = 0;
+  for (const auto& fieldBinaryFunction : hirModule.functions()) {
+    auto fieldBinaryBlock = blockFor(hirModule, fieldBinaryFunction.body);
+    ZC_IF_SOME(block, fieldBinaryBlock) {
+      if (block.statements.size() != 2) continue;
+      auto sourceLocal = localFor(hirModule, block.statements[0]);
+      auto sourceReturn = returnFor(hirModule, block.statements[1]);
+      if (sourceLocal == zc::none || sourceReturn == zc::none) continue;
+      ZC_IF_SOME(localValue, sourceLocal) {
+        if (localValue.initializer == zc::none ||
+            aggregateFor(hirModule, ZC_ASSERT_NONNULL(localValue.initializer)) == zc::none) {
+          continue;
+        }
+      }
+      ZC_IF_SOME(returnStatement, sourceReturn) {
+        auto binary = primitiveBinaryFor(hirModule, returnStatement.value);
+        ZC_IF_SOME(binaryValue, binary) {
+          if (localFieldProjectionFor(hirModule, binaryValue.left) != zc::none &&
+              localFieldProjectionFor(hirModule, binaryValue.right) != zc::none) {
+            ++localFieldBinaryValueNodes;
+          }
+        }
+      }
+    }
+  }
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
@@ -2571,7 +2599,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            receiverSelfCallValueNodes + voidFunctionCount - voidLetBodyCount -
                            localAliasReborrowCount - hirModule.localWrites().size() -
                            hirModule.parameterFieldWrites().size()) +
-      binaryWriteLocalOperandCount + comparisonLoopBodyReturnCount;
+      binaryWriteLocalOperandCount + comparisonLoopBodyReturnCount + localFieldBinaryValueNodes;
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=

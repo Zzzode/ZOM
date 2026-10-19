@@ -162,6 +162,16 @@ struct FunctionReturnShape final {
   // must be an identifier naming the declared local or a parameter.
   bool returnsPrimitiveUnary = false;
   bool returnsLocalField = false;
+  // Two-statement field-arithmetic return:
+  // `let p: Point = Point { ..constants.. }; return p.x <op> p.y;`.
+  // The leading binding is a struct-literal-initialized local and the return
+  // value is a primitive binary whose two operands are each a dot
+  // MemberExpression on that same local. The operands are carried in source
+  // order; the operator family (arithmetic or comparison) is a checker
+  // decision resolved from the binary's checked call fact.
+  bool returnsLocalFieldBinary = false;
+  ast::NodeId localFieldBinaryLeft;
+  ast::NodeId localFieldBinaryRight;
   // Single-statement free-function shape: `return <ordinary-parameter>.<field>;`
   // reading one field of a by-value struct parameter with one field projection.
   bool returnsParameterField = false;

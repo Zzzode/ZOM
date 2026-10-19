@@ -1498,6 +1498,9 @@ private:
           lowered = lir::MirToLirLowering::lowerAggregateReturn(fn, types);
         }
         if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerLocalFieldBinaryReturn(fn, types);
+        }
+        if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerDynFieldAggregateReturn(fn, types);
         }
         if (lowered == zc::none) {
@@ -2040,7 +2043,8 @@ private:
                   "comparison-driven conditional, "
                   "leading-local comparison conditional, "
                   "conditional-local-write diamond, "
-                  "aggregate field-return, sequential integer arithmetic, same-module direct-call, "
+                  "aggregate field-return, multi-field struct field arithmetic, "
+                  "sequential integer arithmetic, same-module direct-call, "
                   "by-value aggregate call, scalar-local direct call, boolean-conditional callee "
                   "call, shared-receiver method "
                   "call, mutating-receiver field write-read, shared-receiver constant-local "

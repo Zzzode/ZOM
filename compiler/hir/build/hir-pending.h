@@ -914,6 +914,28 @@ struct AggregateFieldProjectionReturn {
   HirLocalReferenceExpression localReference;
 };
 
+// Two-statement field-arithmetic return:
+// `let p: P = P { ..constants.. }; return p.x <op> p.y;`. The aggregate
+// initializer, the local binding, and both field projections are materialized;
+// the binary combines the two projections with an admitted scalar arithmetic or
+// comparison operation. The operands are carried in source order.
+struct LocalFieldBinaryReturn {
+  HirNominalAggregateExpression aggregate;
+  HirLocalBinding local;
+  HirLocalFieldProjectionExpression leftProjection;
+  HirLocalFieldProjectionExpression rightProjection;
+  identity::SemanticTypeId operandType;
+  identity::SemanticTypeId resultType;
+  checker::PrimitiveOperation operation;
+  identity::SourceSpan binarySpan;
+  /// The AST MemberExpression node of the left operand.
+  ast::NodeId leftNode{};
+  /// The AST MemberExpression node of the right operand.
+  ast::NodeId rightNode{};
+  /// The AST BinaryExpr node of the arithmetic operation.
+  ast::NodeId binaryNode{};
+};
+
 struct DirectScalarLocalCallReturn {
   HirDirectCallExpression call;
   checker::checked::CanonicalConstValue literal;
@@ -1092,12 +1114,12 @@ using PendingFunctionShape = zc::OneOf<
     LocalWriteReturn, LocalFieldProjectionReturn, LocalBorrowReturn, ParameterReferenceReturn,
     ParameterReborrowReturn, LocalAliasReborrowReturn, RawDereferenceReturn, RawPointerWriteReturn,
     AggregateReturn, EnumConstructionReturn, ExistentialReturn, AggregateFieldProjectionReturn,
-    DirectScalarLocalCallReturn, DirectAggregateCallReturn, DirectExistentialCallReturn,
-    DirectCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn, DirectCallInitializerReturn,
-    ReceiverCallReturn, ParameterReceiverCallReturn, ReceiverSelfCallReturn, DiscardedReceiverCall,
-    DynFieldAccessReturn, ReceiverFieldReturn, ByValueParameterFieldReturn,
-    ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn, ConditionalReturn,
-    ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
+    LocalFieldBinaryReturn, DirectScalarLocalCallReturn, DirectAggregateCallReturn,
+    DirectExistentialCallReturn, DirectCallReturn, ErrorPropagateCallReturn, ErrorUnwrapCallReturn,
+    DirectCallInitializerReturn, ReceiverCallReturn, ParameterReceiverCallReturn,
+    ReceiverSelfCallReturn, DiscardedReceiverCall, DynFieldAccessReturn, ReceiverFieldReturn,
+    ByValueParameterFieldReturn, ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn,
+    ConditionalReturn, ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
     ComparisonLoopBodyReturn, ConditionalLocalWriteReturn, ComparisonReturn, PrimitiveUnaryReturn,
     ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
     NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;

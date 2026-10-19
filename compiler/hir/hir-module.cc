@@ -5173,6 +5173,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           const HirNodeId equalityId = hirId(expectedFunction + tailBase + 2);
           const HirNodeId thenId = hirId(expectedFunction + tailBase + 3);
           const HirNodeId elseId = hirId(expectedFunction + tailBase + 3 + thenArmNodes);
+          // A binary arm materializes its two leaf operands and then the binary
+          // op; the conditional names the binary op node, not the first leaf.
+          const HirNodeId thenValueId = hirId(thenId.ordinal() + (thenIsBinary ? 2u : 0u));
+          const HirNodeId elseValueId = hirId(elseId.ordinal() + (elseIsBinary ? 2u : 0u));
           const HirNodeId conditionalId =
               hirId(expectedFunction + tailBase + 3 + thenArmNodes + elseArmNodes);
           const HirNodeId returnId =
@@ -5788,11 +5792,12 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           bool tailOk = equalityOk && thenArmOk && elseArmOk;
           if (conditionalRecord != zc::none) {
             const auto& conditional = ZC_ASSERT_NONNULL(conditionalRecord);
-            const bool condOk =
-                conditional.condition == equalityId && conditional.thenReturnValue == thenId &&
-                conditional.elseReturnValue == elseId && conditional.type == function.resultType &&
-                conditional.category == HirValueCategory::Value &&
-                sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
+            const bool condOk = conditional.condition == equalityId &&
+                                conditional.thenReturnValue == thenValueId &&
+                                conditional.elseReturnValue == elseValueId &&
+                                conditional.type == function.resultType &&
+                                conditional.category == HirValueCategory::Value &&
+                                sameSpan(conditional.sourceSpan, ZC_ASSERT_NONNULL(returnSpan));
             tailOk = tailOk && condOk;
           } else {
             tailOk = false;
@@ -14719,6 +14724,263 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         }
       }
       nextFunction += 4;
+      continue;
+    }
+    // Two-statement multi-field struct-literal local summed over two fields:
+    // `let p: P = P { ..constants.. }; return p.x <op> p.y;`. Eight node ids in
+    // source preorder: function F, body F+1, local F+2, aggregate initializer
+    // F+3, left projection F+4, right projection F+5, binary F+6, return F+7.
+    // The block lists [local, return]; the return takes the binary node.
+    bool isLocalFieldBinaryShape = false;
+    ZC_IF_SOME(shape, sourceShapeMaybe) { isLocalFieldBinaryShape = shape.returnsLocalFieldBinary; }
+    if (isLocalFieldBinaryShape) {
+      const FunctionReturnShape& source = ZC_ASSERT_NONNULL(sourceShapeMaybe);
+      const auto rejectFieldBinary = [&](ir::IrFailureKind kind) {
+        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification, kind, module,
+                                            registries, index + 1);
+      };
+      // The generic lookups above key on the single-local stride, so the value
+      // node they use can coincide with this shape's right projection. That
+      // projection is validated explicitly below, not through those lookups.
+      if (localBinding == zc::none || !localHasInitializer || hasLocalWrite ||
+          localReference != zc::none || literalExpression != zc::none || directCall != zc::none ||
+          parameterReference != zc::none) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      const auto leftNode = hirId(expectedFunction + 4);
+      const auto rightNode = hirId(expectedFunction + 5);
+      const auto binaryNode = hirId(expectedFunction + 6);
+      const uint32_t stride = 8;
+      if (function.node.ordinal() != expectedFunction ||
+          block.node.ordinal() != expectedFunction + 1 ||
+          ZC_ASSERT_NONNULL(localBinding).node != hirId(expectedFunction + 2) ||
+          ZC_ASSERT_NONNULL(localBinding).initializer != hirId(expectedFunction + 3) ||
+          returnStatement.node != hirId(expectedFunction + 7) || function.body != block.node ||
+          block.statements.size() != 2 ||
+          block.statements[0] != ZC_ASSERT_NONNULL(localBinding).node ||
+          block.statements[1] != returnStatement.node || returnStatement.value != binaryNode ||
+          function.resultType != returnStatement.resultType ||
+          ZC_ASSERT_NONNULL(localBinding).local != hirLocalId(1) ||
+          ZC_ASSERT_NONNULL(localBinding).initializerSpan == zc::none ||
+          ZC_ASSERT_NONNULL(localBinding).erasure != zc::none ||
+          !typeExists(ZC_ASSERT_NONNULL(localBinding).type, semanticTypes) ||
+          !typeExists(function.resultType, semanticTypes)) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      const auto findAggregate = [&](HirNodeId node) -> zc::Maybe<HirNodeId> {
+        zc::Maybe<HirNodeId> found;
+        for (const auto& aggregate : candidate.impl->aggregates) {
+          if (aggregate.node != node) continue;
+          if (found != zc::none) return zc::none;
+          found = aggregate.node;
+        }
+        return found;
+      };
+      const auto findProjection =
+          [&](HirNodeId node) -> zc::Maybe<const HirLocalFieldProjectionExpression&> {
+        zc::Maybe<const HirLocalFieldProjectionExpression&> found;
+        for (const auto& projection : candidate.impl->localFieldProjections) {
+          if (projection.node != node) continue;
+          if (found != zc::none) return zc::none;
+          found = projection;
+        }
+        return found;
+      };
+      const auto findBinary =
+          [&](HirNodeId node) -> zc::Maybe<const HirPrimitiveBinaryExpression&> {
+        zc::Maybe<const HirPrimitiveBinaryExpression&> found;
+        for (const auto& binary : candidate.impl->primitiveBinaryOperations) {
+          if (binary.node != node) continue;
+          if (found != zc::none) return zc::none;
+          found = binary;
+        }
+        return found;
+      };
+      auto aggregateMatch = findAggregate(hirId(expectedFunction + 3));
+      auto leftRecord = findProjection(leftNode);
+      auto rightRecord = findProjection(rightNode);
+      auto binaryRecord = findBinary(binaryNode);
+      if (aggregateMatch == zc::none || leftRecord == zc::none || rightRecord == zc::none ||
+          binaryRecord == zc::none) {
+        return rejectFieldBinary(ir::IrFailureKind::MissingRequiredFact);
+      }
+      zc::Maybe<const HirNominalAggregateExpression&> aggregateValue;
+      for (const auto& aggregate : candidate.impl->aggregates) {
+        if (aggregate.node != ZC_ASSERT_NONNULL(aggregateMatch)) continue;
+        if (aggregateValue != zc::none) {
+          return rejectFieldBinary(ir::IrFailureKind::AdditionalFact);
+        }
+        aggregateValue = aggregate;
+      }
+      if (aggregateValue == zc::none) {
+        return rejectFieldBinary(ir::IrFailureKind::MissingRequiredFact);
+      }
+      const auto& aggregate = ZC_ASSERT_NONNULL(aggregateValue);
+      const auto& leftProjection = ZC_ASSERT_NONNULL(leftRecord);
+      const auto& rightProjection = ZC_ASSERT_NONNULL(rightRecord);
+      const auto& binary = ZC_ASSERT_NONNULL(binaryRecord);
+      if (binary.left != leftNode || binary.right != rightNode ||
+          binary.category != HirValueCategory::Value || binary.type != function.resultType ||
+          binary.operandType != leftProjection.type ||
+          leftProjection.type != rightProjection.type || binary.isUnaryDesugar ||
+          binary.isIncrementDesugar ||
+          leftProjection.local != ZC_ASSERT_NONNULL(localBinding).local ||
+          rightProjection.local != ZC_ASSERT_NONNULL(localBinding).local ||
+          leftProjection.receiverType != ZC_ASSERT_NONNULL(localBinding).type ||
+          rightProjection.receiverType != ZC_ASSERT_NONNULL(localBinding).type ||
+          leftProjection.category != HirValueCategory::Place ||
+          rightProjection.category != HirValueCategory::Place ||
+          leftProjection.field == rightProjection.field ||
+          (!isScalarArithmeticOperation(binary.operation) &&
+           !isScalarComparisonOperation(binary.operation))) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      if (isScalarArithmeticOperation(binary.operation)
+              ? (binary.type != binary.operandType)
+              : !isBoolSemanticType(semanticTypes, binary.type)) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      // Every aggregate element is a constant of its declared field type, and
+      // the two projections name distinct fields of that aggregate.
+      auto sourceDefinitionIndex = definitionIndex(definitions, function.definition);
+      if (sourceDefinitionIndex == zc::none) {
+        return rejectFieldBinary(ir::IrFailureKind::MissingRequiredFact);
+      }
+      size_t definitionSlot = 0;
+      ZC_IF_SOME(value, sourceDefinitionIndex) { definitionSlot = value; }
+      const auto& sourceDefinition = definitions.definitions()[definitionSlot];
+      const auto& tree = bound.tree();
+      ast::NodeId initializer;
+      ZC_IF_SOME(value, source.localInitializer) { initializer = value; }
+      auto ownerBinding = ownerLocalBindingForPattern(definitions, source.localPattern, tree);
+      auto aggregateIndex = factIndex(facts.aggregates(), initializer);
+      auto initializerType = factIndex(facts.nodeTypes(), initializer);
+      auto aggregateSpan = bound.parsedModule().spanFor(tree.node(initializer).range);
+      auto patternSpan = bound.parsedModule().spanFor(tree.node(source.localPattern).range);
+      if (!hasExecutableBody(sourceDefinition, definitions) ||
+          sourceDefinition.record.kind() != identity::DefinitionKind::Function ||
+          !tree.contains(sourceDefinition.node) ||
+          tree.node(sourceDefinition.node).kind != ast::SyntaxKind::FunctionDecl ||
+          source.localWrites.size != 0 || ownerBinding == zc::none || aggregateIndex == zc::none ||
+          initializerType == zc::none || aggregateSpan == zc::none || patternSpan == zc::none ||
+          !ownerLocalMatches(definitions, ZC_ASSERT_NONNULL(ownerBinding), source.localPattern,
+                             tree)) {
+        return rejectFieldBinary(ir::IrFailureKind::MissingRequiredFact);
+      }
+      size_t aggregateSlot = 0;
+      size_t initializerTypeSlot = 0;
+      ZC_IF_SOME(value, aggregateIndex) { aggregateSlot = value; }
+      ZC_IF_SOME(value, initializerType) { initializerTypeSlot = value; }
+      const auto& checkedAggregate = facts.aggregates().entries()[aggregateSlot].value;
+      if (checkedAggregate.node != initializer ||
+          !checkedAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
+          checkedAggregate.kind.variant().get<checker::checked::NominalAggregate>().definition !=
+              aggregate.definition ||
+          checkedAggregate.resultType != aggregate.type ||
+          checkedAggregate.resultType != facts.nodeTypes().entries()[initializerTypeSlot].value ||
+          !sameSpan(checkedAggregate.sourceSpan, ZC_ASSERT_NONNULL(aggregateSpan)) ||
+          aggregate.type != ZC_ASSERT_NONNULL(localBinding).type ||
+          aggregate.category != HirValueCategory::Value ||
+          aggregate.elements.size() != checkedAggregate.elements.size()) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      bool leftFieldMatched = false;
+      bool rightFieldMatched = false;
+      for (size_t elementIndex = 0; elementIndex < checkedAggregate.elements.size();
+           ++elementIndex) {
+        const auto& checkedElement = checkedAggregate.elements[elementIndex];
+        const auto& aggregateElement = aggregate.elements[elementIndex];
+        auto literalIndex = factIndex(facts.literals(), checkedElement.sourceNode);
+        if (checkedElement.field == zc::none || checkedElement.index != elementIndex ||
+            checkedElement.sourceType != checkedElement.destinationType ||
+            checkedElement.adjustment != zc::none || literalIndex == zc::none ||
+            ZC_ASSERT_NONNULL(checkedElement.field) != aggregateElement.field ||
+            checkedElement.destinationType != aggregateElement.type ||
+            checkedElement.destinationType != leftProjection.type) {
+          return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+        const auto& literal = facts.literals().entries()[literalSlot].value;
+        if (literal.type != aggregateElement.type ||
+            !sameConstant(literal.literal, aggregateElement.value, module, registries,
+                          semanticTypes) ||
+            !sameSpan(literal.sourceSpan, aggregateElement.sourceSpan)) {
+          return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+        }
+        if (ZC_ASSERT_NONNULL(checkedElement.field) == leftProjection.field) {
+          leftFieldMatched = true;
+        }
+        if (ZC_ASSERT_NONNULL(checkedElement.field) == rightProjection.field) {
+          rightFieldMatched = true;
+        }
+      }
+      // Validate both field facts against the checker member and place facts
+      // keyed on the AST operand nodes.
+      const auto validateProjectionFact = [&](ast::NodeId operandNode,
+                                              const HirLocalFieldProjectionExpression& projection) {
+        auto memberIndex = factIndex(facts.members(), operandNode);
+        auto placeIndex = factIndex(facts.places(), operandNode);
+        auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+        if (memberIndex == zc::none || placeIndex == zc::none || operandSpan == zc::none) {
+          return false;
+        }
+        size_t memberSlot = 0;
+        size_t placeSlot = 0;
+        ZC_IF_SOME(value, memberIndex) { memberSlot = value; }
+        ZC_IF_SOME(value, placeIndex) { placeSlot = value; }
+        const auto& member = facts.members().entries()[memberSlot].value;
+        const auto& place = facts.places().entries()[placeSlot].value;
+        const auto& root = place.root.variant();
+        return member.node == operandNode &&
+               member.receiverType == ZC_ASSERT_NONNULL(localBinding).type &&
+               member.member == projection.field && member.memberType == projection.type &&
+               member.adjustment == zc::none && root.is<checker::checked::OwnerLocalPlaceRoot>() &&
+               root.get<checker::checked::OwnerLocalPlaceRoot>().binding ==
+                   ZC_ASSERT_NONNULL(ownerBinding) &&
+               place.projections.size() == 1 &&
+               place.projections[0].variant().is<checker::checked::FieldProjection>() &&
+               place.projections[0].variant().get<checker::checked::FieldProjection>().field ==
+                   member.member &&
+               place.type == projection.type && place.movable &&
+               sameSpan(projection.sourceSpan, ZC_ASSERT_NONNULL(operandSpan));
+      };
+      bool operationMatches = false;
+      auto binaryCallIndex = factIndex(facts.calls(), source.value);
+      auto binarySpan = bound.parsedModule().spanFor(tree.node(source.value).range);
+      if (binaryCallIndex != zc::none && binarySpan != zc::none) {
+        size_t callSlot = 0;
+        ZC_IF_SOME(value, binaryCallIndex) { callSlot = value; }
+        const auto& callFact = facts.calls().entries()[callSlot].value;
+        const auto& invocation = callFact.invocation;
+        const auto& selected = invocation.selected.variant();
+        if (selected.is<checker::checked::PrimitiveCallable>()) {
+          const auto operation = selected.get<checker::checked::PrimitiveCallable>().operation;
+          operationMatches = operation == binary.operation && callFact.node == source.value &&
+                             invocation.arguments.size() == 2 &&
+                             invocation.arguments[0].sourceNode == source.localFieldBinaryLeft &&
+                             invocation.arguments[1].sourceNode == source.localFieldBinaryRight &&
+                             invocation.arguments[0].sourceType == binary.operandType &&
+                             invocation.arguments[1].sourceType == binary.operandType &&
+                             invocation.resultType == binary.type &&
+                             invocation.receiver == zc::none &&
+                             sameSpan(callFact.sourceSpan, ZC_ASSERT_NONNULL(binarySpan)) &&
+                             sameSpan(binary.sourceSpan, ZC_ASSERT_NONNULL(binarySpan));
+        }
+      }
+      const identity::SourceSpan& initializerSpanFact =
+          ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(localBinding).initializerSpan);
+      const identity::SourceSpan& aggregateSpanFact = ZC_ASSERT_NONNULL(aggregateSpan);
+      const identity::SourceSpan& patternSpanFact = ZC_ASSERT_NONNULL(patternSpan);
+      if (!leftFieldMatched || !rightFieldMatched || !operationMatches ||
+          !validateProjectionFact(source.localFieldBinaryLeft, leftProjection) ||
+          !validateProjectionFact(source.localFieldBinaryRight, rightProjection) ||
+          !sameSpan(ZC_ASSERT_NONNULL(localBinding).sourceSpan, patternSpanFact) ||
+          !sameSpan(initializerSpanFact, aggregateSpanFact) ||
+          !sameSpan(aggregate.sourceSpan, aggregateSpanFact)) {
+        return rejectFieldBinary(ir::IrFailureKind::InvalidFact);
+      }
+      nextFunction += stride;
       continue;
     }
     if (aggregateExpression != zc::none) {
