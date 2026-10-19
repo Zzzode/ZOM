@@ -1,0 +1,15 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/chained_member_read_capability_neg_67.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A chained member read is legal source: the outer member resolves against the
+// inner member's closed nominal type. No field-projection shape roots a
+// projection at another projection, so the body slice cannot lower it. The
+// checker drains the free-function body with ZOM4099 instead of reaching a
+// missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/chained_member_read_capability_neg_67.zom:11:9
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 11 |     if (o.inner.ok) { return 1; } else { return 0; }
+// CHECK-LITERAL:    |         ^~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

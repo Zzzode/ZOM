@@ -1427,6 +1427,10 @@ LocalWriteRegistry buildLocalWriteRegistry(
                       tree.node(pattern).kind == ast::SyntaxKind::IdentifierPattern;
           }
         }
+        // A body that does not match the bounded shape leaves `pattern` empty;
+        // the nested writes stay fail-closed on the lowering drain, so there is
+        // nothing to classify here.
+        if (!bounded) continue;
         const auto targetName = tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord];
         // Scan every statement of each arm in source order. The first plain
         // assignment to the target on a path is that path's Initialize; any
@@ -3112,6 +3116,10 @@ bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
   }
   const ast::NodeId object(member.payload.words[ast::kMemberExpressionObjectWord]);
   if (!tree.contains(object)) { return false; }
+  // A chained member read (`a.b.c`) has a member expression for a receiver. No
+  // field shape roots a projection at another projection, so the read is legal
+  // source the slice cannot lower. Keep it on the capability rail.
+  if (tree.node(object).kind == ast::SyntaxKind::MemberExpression) { return true; }
   // A member read whose receiver is a call result (`make().field`) is legal
   // source the field-projection slice cannot lower: every field shape requires
   // the receiver to be an owner local or a callable parameter. The member name

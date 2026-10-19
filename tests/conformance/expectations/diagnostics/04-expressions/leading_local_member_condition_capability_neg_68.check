@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/leading_local_member_condition_capability_neg_68.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A leading local followed by a member-read condition and a trailing return
+// is legal source the diamond classifier cannot lower: the receiver's field
+// is not one of the admitted condition forms. It drains ZOM4099, never an
+// AST invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/leading_local_member_condition_capability_neg_68.zom:8:1
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 8 | fn entry() -> i32 {
+// CHECK-LITERAL:   | ^~~~~~~~~~~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

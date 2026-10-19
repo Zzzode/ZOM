@@ -1,0 +1,12 @@
+// A leading local followed by a member-read condition and a trailing return is
+// legal source the diamond classifier cannot lower: the receiver's field is not
+// one of the admitted condition forms. It drains ZOM4099, never an AST
+// invariant.
+
+struct Probe { ok: bool }
+
+fn entry() -> i32 {
+    let p: Probe = Probe { ok: true };
+    if (p.ok) { return 1; }
+    return 0;
+}

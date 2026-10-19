@@ -1,0 +1,12 @@
+// A chained member read is legal source: the outer member resolves against the
+// inner member's closed nominal type. No field-projection shape roots a
+// projection at another projection, so the body slice cannot lower it. The
+// checker drains the free-function body with ZOM4099 instead of reaching a
+// missing-fact invariant.
+
+struct Inner { ok: bool }
+struct Outer { inner: Inner }
+
+fn entry(o: Outer) -> i32 {
+    if (o.inner.ok) { return 1; } else { return 0; }
+}

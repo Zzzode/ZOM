@@ -1,0 +1,86 @@
+// A chained member read parses and binds as nested member expressions. The
+// checker drains the body (see the diagnostics expectation), but the AST shape
+// is ordinary.
+
+// RUN: %zomc compile --dump-ast %corpus/04-expressions/chained_member_read_capability_neg_67.zom | %FileCheck %s
+
+// CHECK: SourceFile #33 @7:1..13:1 file_name="chained_member_read_capability_neg_67.zom"
+// CHECK-NEXT:   module: null
+// CHECK-NEXT:   statements:
+// CHECK-NEXT:     StatementListItem #5 @7:1..7:26
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #4 @7:1..7:26 name="Inner"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #3 @7:14..7:26 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #2 @7:16..7:24 name="ok" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     PredefinedTypeExpr #1 @7:20..7:24 kind=Bool
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #11 @8:1..8:30
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         StructDecl #10 @8:1..8:30 name="Outer"
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           members_id:
+// CHECK-NEXT:             ClassMemberList #9 @8:14..8:30 nmembers=1
+// CHECK-NEXT:               members:
+// CHECK-NEXT:                 FieldDecl #8 @8:16..8:28 name="inner" is_mut=false is_static=false visibility=Default
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #7 @8:23..8:28
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #6 @8:23..8:28 segments=["Inner"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   init: null
+// CHECK-NEXT:       attrs: null
+// CHECK-NEXT:     StatementListItem #32 @10:1..12:2
+// CHECK-NEXT:       item:
+// CHECK-NEXT:         FunctionDecl #31 @10:1..12:2 name="entry"
+// CHECK-NEXT:           params_id:
+// CHECK-NEXT:             FunctionParameterList #15 @10:9..10:19 nparams=1
+// CHECK-NEXT:               params:
+// CHECK-NEXT:                 FunctionParameterDecl #14 @10:10..10:18 name="o"
+// CHECK-NEXT:                   ty:
+// CHECK-NEXT:                     NamedTypeExpr #13 @10:13..10:18
+// CHECK-NEXT:                       path:
+// CHECK-NEXT:                         ModulePath #12 @10:13..10:18 segments=["Outer"] root=Relative
+// CHECK-NEXT:                       args: []
+// CHECK-NEXT:                   default_: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:           type_params_id: null
+// CHECK-NEXT:           ret_ty:
+// CHECK-NEXT:             PredefinedTypeExpr #16 @10:23..10:26 kind=I32
+// CHECK-NEXT:           raises_ty: null
+// CHECK-NEXT:           body:
+// CHECK-NEXT:             BlockStmt #30 @10:27..12:2
+// CHECK-NEXT:               stmts:
+// CHECK-NEXT:                 StatementListItem #29 @11:5..11:53
+// CHECK-NEXT:                   item:
+// CHECK-NEXT:                     IfStmt #28 @11:5..11:53
+// CHECK-NEXT:                       cond:
+// CHECK-NEXT:                         MemberExpression #23 @11:9..11:19 property="ok" access=Dot
+// CHECK-NEXT:                           object:
+// CHECK-NEXT:                             MemberExpression #22 @11:9..11:16 property="inner" access=Dot
+// CHECK-NEXT:                               object:
+// CHECK-NEXT:                                 IdentExpr #21 @11:9..11:10 name="o"
+// CHECK-NEXT:                       then_stmt:
+// CHECK-NEXT:                         BlockStmt #27 @11:21..11:34
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #26 @11:23..11:32
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #25 @11:23..11:32
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IntLiteral #24 @11:30..11:31 base=10 value="1"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                       else_stmt:
+// CHECK-NEXT:                         BlockStmt #20 @11:40..11:53
+// CHECK-NEXT:                           stmts:
+// CHECK-NEXT:                             StatementListItem #19 @11:42..11:51
+// CHECK-NEXT:                               item:
+// CHECK-NEXT:                                 ReturnStmt #18 @11:42..11:51
+// CHECK-NEXT:                                   value:
+// CHECK-NEXT:                                     IntLiteral #17 @11:49..11:50 base=10 value="0"
+// CHECK-NEXT:                               attrs: null
+// CHECK-NEXT:                   attrs: null
+// CHECK-NEXT:       attrs: null
