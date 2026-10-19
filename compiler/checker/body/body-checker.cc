@@ -3118,7 +3118,12 @@ bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
   // is resolved against the call's closed nominal result type, so the read is
   // well-typed and belongs on the capability rail rather than the invariant
   // rail. A call result whose type is unresolvable stays an invariant.
-  if (tree.node(object).kind == ast::SyntaxKind::CallExpression) {
+  if (tree.node(object).kind == ast::SyntaxKind::CallExpression ||
+      tree.node(object).kind == ast::SyntaxKind::StructLiteralExpr) {
+    // A member read on a value produced in place (`make().field`,
+    // `P { x: 1 }.field`) is the same capability gap as a call result: the
+    // member resolves against a closed nominal type, but no field-projection
+    // shape has a place root for it.
     for (const auto& entry : nodeTypes) {
       if (entry.key != object) continue;
       auto lookup = input.semanticTypes.get(entry.value);
