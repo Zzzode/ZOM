@@ -3648,6 +3648,18 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::TupleLiteral) {
       return zc::none;
     }
+    // A dereference that reaches this fallback was not claimed as a raw-pointer
+    // dereference above, so its operand is a reference (a dereference outside an
+    // unsafe block). Reading through a reference has no place root and no
+    // lowering in this slice; the fallthrough shape carries no lowering form,
+    // so the HIR builder would emit a body the verifier rejects. Decline here
+    // so the definition drains as a capability gap.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::UnaryExpression &&
+        static_cast<ast::UnaryOperatorKind>(
+            tree.node(value).payload.words[ast::kUnaryExpressionOpWord]) ==
+            ast::UnaryOperatorKind::Deref) {
+      return zc::none;
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
