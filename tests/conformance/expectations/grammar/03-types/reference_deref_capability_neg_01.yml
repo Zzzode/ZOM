@@ -1,0 +1,5 @@
+section: "03-types dereference of a reference parameter"
+covers_rule: "unaryExpr (dereference)"
+expected: "ACCEPT"
+notes:
+  - "The grammar and binder admit `*a` on a &i32 parameter; reference reads have no place root in this slice, so the body drains with ZOM4099 rather than reaching an invariant."

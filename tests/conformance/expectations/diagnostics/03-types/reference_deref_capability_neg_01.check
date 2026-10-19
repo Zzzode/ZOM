@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/reference_deref_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Reading through a reference parameter has no place root and no lowering in
+// this slice: RFC 0007/0013 own the reference model. The body must fail closed
+// with the capability code instead of reaching a fact-verification or HIR
+// invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/03-types/reference_deref_capability_neg_01.zom:1:1
+// CHECK-LITERAL: 1 error generated.
