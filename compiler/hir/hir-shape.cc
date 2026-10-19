@@ -3990,6 +3990,18 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   // folded: an array literal (fixed length) or a string literal (UTF-8 byte
   // length). A `x.length` access on any other initializer kind keeps the
   // local-field classification so the builder uses the member-fact path.
+  // A length fold reads the element or byte count of the binding's
+  // initializer. A `mut` binding may be written after its declaration, so the
+  // initializer no longer determines the value the read observes; a runtime
+  // length carrier is not part of this slice. Keep the member-read
+  // classification so the definition drains as a capability gap. The
+  // checker's fold predicates apply the same mutability rule.
+  if (returnsLengthFold && static_cast<ast::BindingDeclarationKind>(
+                               tree.node(letNode).payload.words[ast::kLetStmtKindWord]) ==
+                               ast::BindingDeclarationKind::Mut) {
+    returnsLengthFold = false;
+    returnsLocalField = true;
+  }
   if (returnsLengthFold && tree.contains(initializer) &&
       tree.node(initializer).kind != ast::SyntaxKind::ArrayLiteral &&
       tree.node(initializer).kind != ast::SyntaxKind::StringLiteralExpr) {

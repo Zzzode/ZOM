@@ -1,0 +1,16 @@
+// RUN: cd %corpus && ! %zomc compile --check 04-expressions/mut_string_length_fold_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A `mut` string binding may be written after its declaration, so the folded
+// byte length of its literal initializer is not necessarily the value the
+// `.length` read observes. The checker keeps the runtime-member drain and the
+// HIR shape resolver rejects the fold for a mutable binding, so the body fails
+// closed with ZOM4099 instead of returning a stale constant or reaching a
+// missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/04-expressions/mut_string_length_fold_capability_neg_01.zom:4:12
+// CHECK-LITERAL:   |
+// CHECK-LITERAL: 4 |     return s.length;
+// CHECK-LITERAL:   |            ^~~~~~~~
+// CHECK-LITERAL: 1 error generated.

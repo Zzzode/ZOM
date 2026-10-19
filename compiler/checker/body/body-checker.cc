@@ -3193,6 +3193,12 @@ bool isStringLengthFoldSite(const driver::module_graph_query::CheckerBoundModule
   }
   const auto binding = resolvedOwnerLocal(boundModule.bindings(), object);
   if (binding == zc::none) { return false; }
+  // A `mut` binding may be written after its declaration, so the folded byte
+  // length of the initializer is not necessarily the value the read observes.
+  // Only an immutable binding folds; a mutable one keeps the runtime-member
+  // drain, matching the HIR shape resolver which rejects the fold for a
+  // mutable binding.
+  if (isMutableOwnerLocal(boundModule, object)) { return false; }
   const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
   if (initializer == zc::none) { return false; }
   return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&
@@ -3254,6 +3260,10 @@ bool isArrayLengthFoldSite(const driver::module_graph_query::CheckerBoundModuleV
   }
   const auto binding = resolvedOwnerLocal(boundModule.bindings(), object);
   if (binding == zc::none) { return false; }
+  // A `mut` array binding may be replaced wholesale after its declaration, so
+  // its initializer's element count does not determine the observed length.
+  // Only an immutable binding folds, matching the HIR shape resolver.
+  if (isMutableOwnerLocal(boundModule, object)) { return false; }
   const auto initializer = ownerLocalInitializer(boundModule, ZC_ASSERT_NONNULL(binding));
   if (initializer == zc::none) { return false; }
   return tree.contains(ZC_ASSERT_NONNULL(initializer)) &&

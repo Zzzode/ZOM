@@ -1,0 +1,5 @@
+section: "04-expressions length fold on a mutable string binding"
+covers_rule: "postfixExpr (member access)"
+expected: "ACCEPT"
+notes:
+  - "A mut string binding may be written after its declaration, so its literal initializer does not determine the observed length; the body drains with ZOM4099 instead of folding a stale byte count."
