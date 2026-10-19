@@ -825,6 +825,7 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
   bool sawGuard = false;
   bool sawEnumPattern = false;
   bool sawDestructurePattern = false;
+  bool sawArmBindings = false;
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return false;
@@ -894,14 +895,59 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     }
     const ast::NodeId body(arm.payload.words[ast::kMatchArmStmtBodyWord]);
     if (!tree.contains(body)) return false;
+    // A multi-statement arm is admitted when every statement before its tail
+    // return is a `let id: T = <scalar literal | identifier>;` binding. The
+    // HIR carrier hoists those bindings ahead of the synthesized conditional,
+    // so the admitted surface is exactly the leading-local binding surface.
     ast::NodeId returnStmt;
     if (tree.node(body).kind == ast::SyntaxKind::ReturnStmt) {
       returnStmt = body;
     } else if (tree.node(body).kind == ast::SyntaxKind::BlockStmt) {
       const ast::NodeList stmts{tree.node(body).payload.words[ast::kBlockStmtStmtsFirstWord],
                                 tree.node(body).payload.words[ast::kBlockStmtStmtsSizeWord]};
-      if (!tree.contains(stmts) || stmts.size != 1) return false;
-      auto item = statementItem(tree, tree.list(stmts)[0]);
+      if (!tree.contains(stmts) || stmts.size == 0) return false;
+      if (stmts.size > 1) {
+        // A hoisted multi-statement arm is admitted only for the two-arm bool
+        // match with no guard: the carrier folds the scrutinee and both arms
+        // into one conditional, so a guard or an open-domain pattern cannot be
+        // combined with hoisted bindings.
+        if (sawGuard || intLiteralCount > 0 || sawEnumPattern || sawDestructurePattern ||
+            arms.size != 2) {
+          return false;
+        }
+        sawArmBindings = true;
+      }
+      for (size_t stmtIndex = 0; stmtIndex + 1 < stmts.size; ++stmtIndex) {
+        auto item = statementItem(tree, tree.list(stmts)[stmtIndex]);
+        if (item == zc::none) return false;
+        ast::NodeId bindingStatement;
+        ZC_IF_SOME(itemValue, item) { bindingStatement = itemValue; }
+        if (tree.node(bindingStatement).kind != ast::SyntaxKind::LetStmt) return false;
+        const ast::NodeId declarations(
+            tree.node(bindingStatement).payload.words[ast::kLetStmtDeclarationsWord]);
+        if (!tree.contains(declarations) ||
+            tree.node(declarations).kind != ast::SyntaxKind::VariableDeclaratorList) {
+          return false;
+        }
+        const auto& declarationList = tree.node(declarations);
+        const ast::NodeList declarators{
+            declarationList.payload.words[ast::kVariableDeclaratorListDeclsFirstWord],
+            declarationList.payload.words[ast::kVariableDeclaratorListDeclsSizeWord]};
+        if (!tree.contains(declarators) || declarators.size != 1) return false;
+        const ast::NodeId declarator(tree.list(declarators)[0]);
+        if (!tree.contains(declarator) ||
+            tree.node(declarator).kind != ast::SyntaxKind::VariableDeclarator) {
+          return false;
+        }
+        const ast::NodeId init(
+            tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+        if (!tree.contains(init)) return false;
+        if (!isScalarLiteral(tree.node(init).kind) &&
+            tree.node(init).kind != ast::SyntaxKind::IdentExpr) {
+          return false;
+        }
+      }
+      auto item = statementItem(tree, tree.list(stmts)[stmts.size - 1]);
       if (item == zc::none) return false;
       ZC_IF_SOME(itemValue, item) { returnStmt = itemValue; }
       if (tree.node(returnStmt).kind != ast::SyntaxKind::ReturnStmt) return false;
@@ -914,8 +960,10 @@ bool isAdmittedMatchStatement(const ast::Tree& tree, ast::NodeId node) {
     // unit-variant and literal arms return scalar literals.
     if (sawDestructurePattern) {
       if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return false; }
-    } else {
-      if (!isScalarLiteral(tree.node(returnValue).kind)) { return false; }
+    } else if (!isScalarLiteral(tree.node(returnValue).kind) &&
+               !(sawArmBindings && (tree.node(returnValue).kind == ast::SyntaxKind::IdentExpr ||
+                                    tree.node(returnValue).kind == ast::SyntaxKind::BinaryExpr))) {
+      return false;
     }
   }
   // Bool: one literal arm (the checker rejects the uncovered arm with

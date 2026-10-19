@@ -1793,7 +1793,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               returnSpanValue.clone(),
               shape.conditionIsUnary || shape.conditionIsBoolReference,
               shape.conditionIsBoolReference,
-              leadingShape.ifStatement};
+              leadingShape.tailStatement};
           pendingFunctions.add(PendingFunctionDeclaration{
               definition.definition, definition.node, callable.success, zc::mv(parameters),
               zc::none, zc::mv(visibilityValue), linkageValue, definition.source.clone(),

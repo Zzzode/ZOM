@@ -562,6 +562,23 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a same-module direct call to a leading-local conditional
+  /// callee to a two-function LIR module.
+  ///
+  /// Admits the caller shape of `lowerCallModuleWithConditionalCallee` (two
+  /// blocks: entry Call with one constant argument, continuation Return) and a
+  /// callee that the single-function `lowerLeadingLocalConditionalReturn` slice
+  /// admits. The callee is lowered by that slice and re-emitted under
+  /// `zom.callee`.
+  ///
+  /// \param caller Verified caller MIR function.
+  /// \param callee Verified callee MIR function (four-block leading-local diamond).
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithLeadingLocalCallee(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a same-module direct call to a chained-conditional callee
   /// to a two-function LIR module.
   ///

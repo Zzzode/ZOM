@@ -5040,7 +5040,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             synth.initializerKind = SequentialInitializerKind::PrimitiveBinary;
             leading.bindings.add(zc::mv(synth));
             leading.body = source.body;
-            leading.ifStatement = source.returnStatement;
+            leading.tailStatement = source.returnStatement;
             bindingCount = leading.bindings.size();
           } else {
             auto leadingMaybe = leadingLocalConditionalShape(tree, source.body);

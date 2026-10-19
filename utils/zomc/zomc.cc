@@ -1627,6 +1627,10 @@ private:
                   functions[caller], functions[callee], types);
             }
             if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallModuleWithLeadingLocalCallee(
+                  functions[caller], functions[callee], types);
+            }
+            if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
                   functions[caller], functions[callee], types);
             }

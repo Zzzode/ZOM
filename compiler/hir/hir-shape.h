@@ -115,16 +115,18 @@ struct SequentialLocalShape final {
   zc::Maybe<size_t> returnsLocal;
 };
 
-// K leading scalar-local bindings followed by one comparison conditional
-// return. Each binding initializer is a scalar literal, a parameter copy, or a
-// copy of an earlier binding (only the reference part of
-// SequentialLocalBinding is populated); the trailing IfStmt is a relational
-// comparison whose arms each return a scalar literal, a bare identifier
-// (parameter or local reference), or a one-level binary expression with leaf
-// operands (literal, parameter, or local reference).
+// K leading scalar-local bindings followed by one conditional tail. Each
+// binding initializer is a scalar literal, a parameter copy, or a copy of an
+// earlier binding (only the reference part of SequentialLocalBinding is
+// populated). The trailing statement is either a relational comparison whose
+// arms each return a scalar literal, a bare identifier (parameter or local
+// reference), or a one-level binary expression with leaf operands (literal,
+// parameter, or local reference), or a bool match whose arms carry the same
+// arm-value contract and may themselves lead with `let` bindings.
 struct LeadingLocalConditionalShape final {
   ast::NodeId body;
-  ast::NodeId ifStatement;
+  // The trailing IfStmt or MatchStmt that carries the conditional arms.
+  ast::NodeId tailStatement;
   zc::Vector<SequentialLocalBinding> bindings;
 };
 
@@ -541,6 +543,15 @@ struct FunctionReturnShape final {
   // conditional source span.
   bool isMatchReturn = false;
   ast::NodeId matchStatement;
+  // True when at least one arm body leads with `let` bindings ahead of its
+  // tail return. Those bindings hoist into the leading-local conditional
+  // carrier: the HIR builder lowers them as ordinary function-level locals
+  // ahead of the synthesized conditional. This is observationally identical
+  // because every hoisted binding is a pure scalar initializer, and a guard is
+  // not admitted (the guard left-fold already consumes the scrutinee). The
+  // match then lowers through the leading-local conditional strategy, and the
+  // scrutinee is classified as a bare bool reference.
+  bool matchArmHasBindings = false;
   // True when the match-return shape has a default (wildcard) arm instead of
   // a second literal arm. The default arm produces one fewer pattern-literal
   // fact, which the count equations must subtract.

@@ -416,6 +416,91 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
   return shape;
 }
 
+// One admitted arm value: a scalar literal, a bare identifier (parameter or
+// local reference), or a one-level scalar arithmetic/comparison binary whose
+// two leaf operands are each an identifier or a scalar literal. This is the
+// value contract the leading-local conditional carrier resolves for its arms.
+bool isLeadingLocalArmValue(const ast::Tree& tree, ast::NodeId armValue) {
+  if (!tree.contains(armValue)) return false;
+  if (isScalarLiteral(tree.node(armValue).kind)) return true;
+  if (tree.node(armValue).kind == ast::SyntaxKind::IdentExpr) return true;
+  if (tree.node(armValue).kind != ast::SyntaxKind::BinaryExpr) return false;
+  const auto op = static_cast<ast::BinaryOperatorKind>(
+      tree.node(armValue).payload.words[ast::kBinaryExprOpWord]);
+  if (!isArithmeticBinaryOperator(op) && !isRelationalBinaryOperator(op)) return false;
+  const ast::NodeId left(tree.node(armValue).payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(tree.node(armValue).payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right)) return false;
+  auto isLeaf = [&](ast::NodeId leaf) -> bool {
+    return tree.node(leaf).kind == ast::SyntaxKind::IdentExpr ||
+           isScalarLiteral(tree.node(leaf).kind);
+  };
+  return isLeaf(left) && isLeaf(right);
+}
+
+// One admitted match arm body: the arm's tail `return` and its leading `let`
+// bindings. A multi-statement arm block is admitted only when every statement
+// before the tail return is a `let id: T = <initializer>;` whose initializer is
+// a scalar literal, a parameter reference, or a reference to an earlier binding
+// in the same arm. Every other statement keeps the arm unsupported.
+struct MatchArmBody final {
+  ast::NodeId returnStatement;
+  zc::Vector<SequentialLocalBinding> bindings;
+};
+
+// Classifies one match arm body. A bare `return` statement has no bindings; a
+// block is admitted when its statements are K leading let bindings followed by
+// one tail return. Returns none for any other shape.
+zc::Maybe<MatchArmBody> matchArmBody(const ast::Tree& tree, ast::NodeId armBody) {
+  if (!tree.contains(armBody)) return zc::none;
+  if (tree.node(armBody).kind == ast::SyntaxKind::ReturnStmt) {
+    return MatchArmBody{armBody, zc::Vector<SequentialLocalBinding>()};
+  }
+  if (tree.node(armBody).kind != ast::SyntaxKind::BlockStmt) return zc::none;
+  const ast::NodeList stmts{tree.node(armBody).payload.words[ast::kBlockStmtStmtsFirstWord],
+                            tree.node(armBody).payload.words[ast::kBlockStmtStmtsSizeWord]};
+  if (!tree.contains(stmts) || stmts.size == 0) return zc::none;
+  MatchArmBody body{};
+  const size_t bindingCount = stmts.size - 1;
+  for (size_t index = 0; index < bindingCount; ++index) {
+    auto declaratorNode = localDeclarator(tree, tree.list(stmts)[index]);
+    if (declaratorNode == zc::none) return zc::none;
+    ast::NodeId declarator;
+    ZC_IF_SOME(value, declaratorNode) { declarator = value; }
+    const ast::NodeId pattern(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+    const ast::NodeId initializer(
+        tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+    if (!tree.contains(initializer)) return zc::none;
+    SequentialInitializerKind kind;
+    size_t referencedLocal = 0;
+    if (isScalarLiteral(tree.node(initializer).kind)) {
+      kind = SequentialInitializerKind::Literal;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
+      kind = SequentialInitializerKind::ParameterReference;
+      for (size_t earlier = 0; earlier < index; ++earlier) {
+        if (matchesLocalReference(tree, body.bindings[earlier].pattern, initializer)) {
+          kind = SequentialInitializerKind::LocalReference;
+          referencedLocal = earlier;
+          break;
+        }
+      }
+    } else {
+      return zc::none;
+    }
+    body.bindings.add(SequentialLocalBinding{
+        declarator, pattern, initializer, kind, referencedLocal, zc::none, zc::none, zc::none,
+        zc::none, ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
+  }
+  auto item = statementItem(tree, tree.list(stmts)[bindingCount]);
+  if (item == zc::none) return zc::none;
+  ast::NodeId tail;
+  ZC_IF_SOME(value, item) { tail = value; }
+  if (tree.node(tail).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
+  body.returnStatement = tail;
+  return body;
+}
+
 // Classifies one statement as the match-return shape: a match whose
 // scrutinee is a bare identifier (a bool, integer, or enum parameter
 // reference) and whose arms each tail-return a scalar literal. A bool match
@@ -460,6 +545,20 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   // inside each pattern's single-arg payload is recorded for the builder.
   bool sawDestructurePattern = false;
   zc::Vector<ast::NodeId> destructureBindings;
+  // True when at least one arm body leads with `let` bindings. The match then
+  // lowers through the leading-local conditional carrier, and every arm value
+  // follows the leading-local arm contract. The decision is made before the
+  // arm walk so both arms are classified by one symmetric rule.
+  bool sawArmBindings = false;
+  for (size_t index = 0; index < arms.size; ++index) {
+    const ast::NodeId armId = tree.list(arms)[index];
+    if (!tree.contains(armId)) return zc::none;
+    auto probe =
+        matchArmBody(tree, ast::NodeId(tree.node(armId).payload.words[ast::kMatchArmStmtBodyWord]));
+    if (probe != zc::none && ZC_ASSERT_NONNULL(probe).bindings.size() != 0) {
+      sawArmBindings = true;
+    }
+  }
   for (size_t index = 0; index < arms.size; ++index) {
     const ast::NodeId armId = tree.list(arms)[index];
     if (!tree.contains(armId)) return zc::none;
@@ -543,28 +642,31 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
       guardNode = guard;
     }
     const ast::NodeId armBody(arm.payload.words[ast::kMatchArmStmtBodyWord]);
-    if (!tree.contains(armBody)) return zc::none;
-    ast::NodeId returnStmt;
-    if (tree.node(armBody).kind == ast::SyntaxKind::ReturnStmt) {
-      returnStmt = armBody;
-    } else if (tree.node(armBody).kind == ast::SyntaxKind::BlockStmt) {
-      const ast::NodeList stmts{tree.node(armBody).payload.words[ast::kBlockStmtStmtsFirstWord],
-                                tree.node(armBody).payload.words[ast::kBlockStmtStmtsSizeWord]};
-      if (!tree.contains(stmts) || stmts.size != 1) return zc::none;
-      auto item = statementItem(tree, tree.list(stmts)[0]);
-      if (item == zc::none) return zc::none;
-      ZC_IF_SOME(itemValue, item) { returnStmt = itemValue; }
-      if (tree.node(returnStmt).kind != ast::SyntaxKind::ReturnStmt) return zc::none;
-    } else {
-      return zc::none;
+    auto classifiedBody = matchArmBody(tree, armBody);
+    if (classifiedBody == zc::none) return zc::none;
+    MatchArmBody armBodyValue = zc::mv(classifiedBody).orDefault(MatchArmBody{});
+    if (armBodyValue.bindings.size() != 0) {
+      // A multi-statement arm hoists its leading let bindings to the
+      // leading-local conditional carrier. That carrier resolves each binding
+      // against the arm's own bindings and the function parameters, so the
+      // hoist is admitted only for the bool-match shape (a guard left-folds
+      // the scrutinee, which the hoisted bindings cannot precede).
+      if (sawEnumPattern || sawDestructurePattern || isIntLiteral || hasGuard || !sawArmBindings) {
+        return zc::none;
+      }
     }
+    const ast::NodeId returnStmt = armBodyValue.returnStatement;
     const ast::NodeId returnValue(tree.node(returnStmt).payload.words[ast::kReturnStmtValueWord]);
     if (!tree.contains(returnValue)) { return zc::none; }
     // Destructure arms return the pattern binding directly (an IdentExpr);
-    // unit-variant and literal arms return scalar literals.
+    // unit-variant and literal arms return scalar literals. Once any arm hoists
+    // leading bindings, every arm is admitted by the leading-local arm
+    // contract, which strictly contains the scalar-literal contract.
     const bool isDestructureArm = sawDestructurePattern;
     if (isDestructureArm) {
       if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+    } else if (sawArmBindings) {
+      if (!isLeadingLocalArmValue(tree, returnValue)) { return zc::none; }
     } else {
       if (!isScalarLiteral(tree.node(returnValue).kind)) { return zc::none; }
     }
@@ -593,6 +695,12 @@ zc::Maybe<FunctionReturnShape> matchReturnShape(const ast::Tree& tree, ast::Node
   shape.matchHasDefaultArm = sawDefault;
   shape.condition = scrutinee;
   shape.matchStatement = statement;
+  shape.matchArmHasBindings = sawArmBindings;
+  if (sawArmBindings) {
+    // The hoisted form lowers through the leading-local conditional carrier,
+    // which classifies a bare bool scrutinee as a bool reference.
+    shape.conditionIsBoolReference = true;
+  }
   if (sawEnumPattern) {
     // Enum match: N variant pattern arms on a closed enum domain. Two
     // arms lower to the equality conditional path; three or more lower to the
@@ -1547,7 +1655,7 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
-  if (!tree.contains(statements) || statements.size < 2) return zc::none;
+  if (!tree.contains(statements) || statements.size < 1) return zc::none;
   const size_t bindingCount = statements.size - 1;
   LeadingLocalConditionalShape shape{};
   shape.body = body;
@@ -1618,40 +1726,66 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   if (tailItem == zc::none) return zc::none;
   ast::NodeId tailStatement;
   ZC_IF_SOME(value, tailItem) { tailStatement = value; }
-  if (tree.node(tailStatement).kind != ast::SyntaxKind::IfStmt) return zc::none;
-  auto conditional = conditionalReturnShape(tree, body, tailStatement);
-  if (conditional == zc::none) return zc::none;
-  if (!ZC_ASSERT_NONNULL(conditional).conditionIsEquality &&
-      !ZC_ASSERT_NONNULL(conditional).conditionIsUnary &&
-      !ZC_ASSERT_NONNULL(conditional).conditionIsBoolReference) {
-    return zc::none;
-  }
-  // Arms must be one of: scalar literal, bare identifier (parameter or local
-  // reference), or a binary expression with leaf operands (literal, parameter,
-  // or local reference). The builder resolves the identifier and leaf kinds.
-  auto isAdmittedArm = [&](ast::NodeId armValue) -> bool {
-    if (isScalarLiteral(tree.node(armValue).kind)) return true;
-    if (tree.node(armValue).kind == ast::SyntaxKind::IdentExpr) return true;
-    if (tree.node(armValue).kind == ast::SyntaxKind::BinaryExpr) {
-      const auto op = static_cast<ast::BinaryOperatorKind>(
-          tree.node(armValue).payload.words[ast::kBinaryExprOpWord]);
-      if (!isArithmeticBinaryOperator(op) && !isRelationalBinaryOperator(op)) return false;
-      const ast::NodeId left(tree.node(armValue).payload.words[ast::kBinaryExprLhsWord]);
-      const ast::NodeId right(tree.node(armValue).payload.words[ast::kBinaryExprRhsWord]);
-      if (!tree.contains(left) || !tree.contains(right)) return false;
-      auto isLeaf = [&](ast::NodeId leaf) -> bool {
-        return tree.node(leaf).kind == ast::SyntaxKind::IdentExpr ||
-               isScalarLiteral(tree.node(leaf).kind);
-      };
-      return isLeaf(left) && isLeaf(right);
+  // The tail is either an explicit-else `if` or a two-arm bool `match`. A
+  // match whose arms lead with `let` bindings reuses this carrier: its
+  // scrutinee is a bare bool reference and each arm value follows the
+  // leading-local arm contract. The arms' own bindings hoist after the body's
+  // leading bindings, in arm order, so every initializer resolves against the
+  // bindings that precede it.
+  ast::NodeId thenValue;
+  ast::NodeId elseValue;
+  if (tree.node(tailStatement).kind == ast::SyntaxKind::IfStmt) {
+    auto conditional = conditionalReturnShape(tree, body, tailStatement);
+    if (conditional == zc::none) return zc::none;
+    const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
+    if (!conditionalValue.conditionIsEquality && !conditionalValue.conditionIsUnary &&
+        !conditionalValue.conditionIsBoolReference) {
+      return zc::none;
     }
-    return false;
-  };
-  if (!isAdmittedArm(ZC_ASSERT_NONNULL(conditional).thenReturnValue) ||
-      !isAdmittedArm(ZC_ASSERT_NONNULL(conditional).elseReturnValue)) {
+    thenValue = conditionalValue.thenReturnValue;
+    elseValue = conditionalValue.elseReturnValue;
+  } else if (tree.node(tailStatement).kind == ast::SyntaxKind::MatchStmt) {
+    auto matchShape = matchReturnShape(tree, body, tailStatement);
+    if (matchShape == zc::none) return zc::none;
+    const auto& matchValue = ZC_ASSERT_NONNULL(matchShape);
+    if (!matchValue.matchArmHasBindings || !matchValue.isMatchReturn ||
+        matchValue.isMatchEquality || matchValue.isMatchChainedEquality || matchValue.isMatchEnum ||
+        matchValue.hasMatchGuard) {
+      return zc::none;
+    }
+    thenValue = matchValue.thenReturnValue;
+    elseValue = matchValue.elseReturnValue;
+    // Hoist each arm's leading bindings in source arm order.
+    const ast::NodeList arms{tree.node(tailStatement).payload.words[ast::kMatchStmtArmsFirstWord],
+                             tree.node(tailStatement).payload.words[ast::kMatchStmtArmsSizeWord]};
+    if (!tree.contains(arms)) return zc::none;
+    for (const auto armId : tree.list(arms)) {
+      if (!tree.contains(armId) || tree.node(armId).kind != ast::SyntaxKind::MatchArmStmt) {
+        return zc::none;
+      }
+      auto armBody = matchArmBody(
+          tree, ast::NodeId(tree.node(armId).payload.words[ast::kMatchArmStmtBodyWord]));
+      if (armBody == zc::none) return zc::none;
+      // `matchArmBody` numbers each arm's local references from the start of
+      // that arm, so shift them by the hoisted prefix length.
+      const size_t armStart = shape.bindings.size();
+      for (auto& binding : ZC_ASSERT_NONNULL(armBody).bindings) {
+        SequentialLocalBinding rebased = binding;
+        if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+          rebased.referencedLocal = binding.referencedLocal + armStart;
+        }
+        shape.bindings.add(zc::mv(rebased));
+      }
+    }
+  } else {
     return zc::none;
   }
-  shape.ifStatement = tailStatement;
+  // Each arm value is a scalar literal, a bare identifier (parameter or local
+  // reference), or a one-level binary with leaf operands.
+  if (!isLeadingLocalArmValue(tree, thenValue) || !isLeadingLocalArmValue(tree, elseValue)) {
+    return zc::none;
+  }
+  shape.tailStatement = tailStatement;
   return shape;
 }
 
@@ -2152,22 +2286,38 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         return conditional;
       }
       if (tree.node(conditionalStmt).kind == ast::SyntaxKind::MatchStmt) {
-        return matchReturnShape(tree, body, conditionalStmt);
+        auto matchShape = matchReturnShape(tree, body, conditionalStmt);
+        if (matchShape != zc::none && ZC_ASSERT_NONNULL(matchShape).matchArmHasBindings) {
+          // An arm leading with `let` bindings reuses the leading-local
+          // conditional carrier so those bindings lower as ordinary
+          // function-level locals ahead of the synthesized conditional.
+          ZC_ASSERT_NONNULL(matchShape).isLeadingLocalConditional = true;
+        }
+        return matchShape;
       }
     }
   }
-  // Leading scalar-local bindings followed by one comparison conditional with
-  // literal arms. The conditional shape carries the condition/arm nodes; the
-  // leading bindings are derived on demand via leadingLocalConditionalShape.
+  // Leading scalar-local bindings followed by one conditional tail (an
+  // explicit-else `if` or a bool `match` whose arms lead with bindings). The
+  // conditional shape carries the condition/arm nodes; the leading bindings
+  // are derived on demand via leadingLocalConditionalShape.
   {
     auto leading = leadingLocalConditionalShape(tree, body);
     if (leading != zc::none) {
-      ast::NodeId ifStatement;
-      ZC_IF_SOME(value, leading) { ifStatement = value.ifStatement; }
-      auto conditional = conditionalReturnShape(tree, body, ifStatement);
-      if (conditional != zc::none) {
-        ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
-        return conditional;
+      ast::NodeId tailStatement;
+      ZC_IF_SOME(value, leading) { tailStatement = value.tailStatement; }
+      if (tree.node(tailStatement).kind == ast::SyntaxKind::MatchStmt) {
+        auto matchShape = matchReturnShape(tree, body, tailStatement);
+        if (matchShape != zc::none) {
+          ZC_ASSERT_NONNULL(matchShape).isLeadingLocalConditional = true;
+          return matchShape;
+        }
+      } else {
+        auto conditional = conditionalReturnShape(tree, body, tailStatement);
+        if (conditional != zc::none) {
+          ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
+          return conditional;
+        }
       }
     }
   }
