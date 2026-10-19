@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/type_alias_empty_tuple_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An empty tuple type expression names no semantic type, and no more specific
+// diagnostic applies. The alias target builder is the single funnel for that
+// case, so it must report ZOM4106 instead of leaving the alias without a
+// signature fact.
+// CHECK: Error [ZOM4106]: this type alias target is not supported yet
+// CHECK-NEXT:   --> conformance/03-types/type_alias_empty_tuple_neg_01.zom:1:1

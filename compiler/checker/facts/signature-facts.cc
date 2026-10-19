@@ -2120,7 +2120,19 @@ private:
 
   zc::Maybe<BuiltSourceType> buildFixedArray(uint32_t elementWord, uint32_t lengthWord) {
     auto length = arrayLength(ast::NodeId(lengthWord));
-    if (length == zc::none) return zc::none;
+    if (length == zc::none) {
+      // A fixed-array length must be an integer literal that fits in a
+      // machine word. Every other length form is ordinary user input, so it
+      // drains on the source-failure rail instead of falling through to a
+      // signature invariant. The binder already reports this for callable
+      // headers; field, class-member, and alias positions reach the checker
+      // without that gate, so this is their single funnel.
+      auto failure =
+          signatureSourceFailure(SignatureSourceDiagnostic::ConstantExpressionNotAllowed,
+                                 boundModule, ast::NodeId(lengthWord), ast::NodeId(lengthWord));
+      if (failure != zc::none) { sink.add(zc::mv(ZC_ASSERT_NONNULL(failure))); }
+      return zc::none;
+    }
     uint64_t value = 0;
     ZC_IF_SOME(admitted, length) { value = admitted; }
     auto element = build(ast::NodeId(elementWord));

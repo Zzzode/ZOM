@@ -1,0 +1,4 @@
+section: "§3.9 Fixed-size arrays"
+covers_rule: "typeExpr (fixedArrayTypeExpr)"
+expected: "ACCEPT"
+notes: []

@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/fixed_array_length_non_literal_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A fixed-array length must be an integer literal. A struct field reaches the
+// checker without the binder's callable-header gate, so the checker's source
+// type builder is the single funnel that rejects the length. It must drain as
+// ZOM4079 rather than fall through to a signature invariant.
+// CHECK: Error [ZOM4079]: Expression is not allowed in a constant value
+// CHECK-NEXT:   --> conformance/03-types/fixed_array_length_non_literal_neg_01.zom:2:16

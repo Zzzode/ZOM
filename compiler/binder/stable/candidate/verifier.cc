@@ -5,6 +5,8 @@
 
 #include "compiler/binder/stable/candidate/verifier.h"
 
+#include <cstdint>
+
 #include "compiler/ast/generated/node-traverse.h"
 #include "compiler/binder/canonical/canonical-header-verifier.h"
 #include "compiler/binder/metadata/definition-inventory.h"
@@ -247,9 +249,33 @@ zc::Vector<uint32_t> clonePath(zc::ArrayPtr<const uint32_t> path) {
   return result;
 }
 
-bool isNonLiteralFixedArrayLength(const ast::Tree& tree, ast::NodeId owner, ast::NodeId node) {
-  if (!tree.contains(owner) || !tree.contains(node) ||
-      tree.node(node).kind == ast::SyntaxKind::IntLiteral) {
+// An admitted fixed-array length is an integer literal in base 2, 8, 10, or 16
+// whose magnitude fits in 64 bits. Every other length expression -- a name, an
+// arithmetic expression, or an overflowing literal -- is ordinary user input.
+bool isAdmissibleArrayLengthLiteral(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::IntLiteral) return false;
+  const auto& syntax = tree.node(node);
+  const auto base = syntax.payload.words[ast::kIntLiteralBaseWord];
+  if (base != 2 && base != 8 && base != 10 && base != 16) return false;
+  const auto text = tree.bigInt(ast::BigIntId(syntax.payload.words[ast::kIntLiteralValueWord]));
+  uint64_t value = 0;
+  for (const auto character : text) {
+    if (character == '_') continue;
+    uint8_t digit = 0xff;
+    if (character >= '0' && character <= '9') digit = static_cast<uint8_t>(character - '0');
+    if (character >= 'a' && character <= 'f') digit = static_cast<uint8_t>(character - 'a' + 10);
+    if (character >= 'A' && character <= 'F') digit = static_cast<uint8_t>(character - 'A' + 10);
+    if (digit >= base || value > (UINT64_MAX - digit) / base) return false;
+    value = value * base + digit;
+  }
+  return true;
+}
+
+// True when `node` is the length operand of a fixed-array type expression and
+// is not an admissible length literal, so the header failure it produced is
+// ordinary user input rather than an internal inconsistency.
+bool isRejectedFixedArrayLength(const ast::Tree& tree, ast::NodeId owner, ast::NodeId node) {
+  if (!tree.contains(owner) || !tree.contains(node) || isAdmissibleArrayLengthLiteral(tree, node)) {
     return false;
   }
   bool found = false;
@@ -976,7 +1002,7 @@ static StableIdentityCandidateVerification reconstructStableCandidates(
                     CanonicalHeaderSyntaxFailureKind::InvalidConstantExpression &&
                 productionFailure->node == bad;
             if ((production == nullptr || matchingConstantFailure) &&
-                isNonLiteralFixedArrayLength(tree, entry.node, bad)) {
+                isRejectedFixedArrayLength(tree, entry.node, bad)) {
               auto source = parsedModule.spanFor(tree.node(bad).range);
               if (source == zc::none) {
                 return invariant(StableIdentityCandidateInvariantKind::InvalidSyntaxSite, bad);
