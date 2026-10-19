@@ -563,19 +563,23 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
 zc::Maybe<Module> MirToLirLowering::lowerRawDereferenceReturn(
     const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
   // Admit the verified raw-pointer dereference return shape: a standalone
-  // function with one raw-pointer Parameter local, two source scopes (root
-  // plus one unsafe child), and a single block whose two statements are the
-  // Enter/Exit unsafe-scope boundary markers and whose terminator returns a
-  // place-use of the parameter through a single [Dereference] projection.
-  // We re-check the structural facts here so lowering is total over its
-  // declared input and fail-closed on anything else.
+  // function with one raw-pointer Parameter local followed by the result local,
+  // two source scopes (root plus one unsafe child), and a single block whose
+  // statements are the Enter boundary, the storage and load of the pointee into
+  // the result local, and the Exit boundary, whose terminator returns the
+  // result local. We re-check the structural facts here so lowering is total
+  // over its declared input and fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 2 ||
-      function.locals.size() != 1 || function.blocks.size() != 1) {
+      function.locals.size() != 2 || function.blocks.size() != 1) {
     return zc::none;
   }
 
   const auto& paramLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
   if (paramLocal.kind != mir::MirLocalKind::Parameter || paramLocal.id.ordinal() != 1) {
+    return zc::none;
+  }
+  if (resultLocal.kind != mir::MirLocalKind::FunctionResult || resultLocal.id.ordinal() != 2) {
     return zc::none;
   }
 
@@ -588,16 +592,37 @@ zc::Maybe<Module> MirToLirLowering::lowerRawDereferenceReturn(
 
   const auto& block = function.blocks[0];
   // Unsafe scope boundary statements are semantically transparent for code
-  // generation: they are ownership/safety markers with no runtime effect.
-  if (block.statements.size() != 2 ||
+  // generation: they are ownership/safety markers with no runtime effect. The
+  // pointee read sits between Enter and Exit so the ownership overlay can
+  // acknowledge it inside the unsafe region.
+  if (block.statements.size() != 4 ||
       block.statements[0].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
-      block.statements[1].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
+      block.statements[1].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[2].kind() != mir::MirStatementKind::Assign ||
+      block.statements[3].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
     return zc::none;
   }
   const auto& enter = block.statements[0].unsafeScopeBoundaryValue();
-  const auto& exit = block.statements[1].unsafeScopeBoundaryValue();
+  const auto& exit = block.statements[3].unsafeScopeBoundaryValue();
   if (enter.kind != mir::MirUnsafeScopeBoundaryKind::Enter ||
       exit.kind != mir::MirUnsafeScopeBoundaryKind::Exit || enter.scope != exit.scope) {
+    return zc::none;
+  }
+  if (block.statements[1].storageLocal() != resultLocal.id) { return zc::none; }
+
+  // The read assign writes the result local from a place-use rooted at the
+  // parameter local through a single [Dereference] projection.
+  const auto& read = block.statements[2].assignmentValue();
+  if (read.initialization != mir::MirInitializationKind::Initialize) { return zc::none; }
+  if (read.destination.local() != resultLocal.id || read.destination.projections().size() != 0) {
+    return zc::none;
+  }
+  if (read.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
+  const auto& readOperand = read.value.useValue().operand;
+  if (readOperand.kind() == mir::MirOperandKind::Constant) { return zc::none; }
+  const auto& readPlace = readOperand.place();
+  if (readPlace.local() != paramLocal.id || readPlace.projections().size() != 1 ||
+      readPlace.projections()[0].kind() != mir::MirProjectionKind::Dereference) {
     return zc::none;
   }
 
@@ -605,13 +630,11 @@ zc::Maybe<Module> MirToLirLowering::lowerRawDereferenceReturn(
   const auto& returnValue = block.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
 
-  // The return value must be a copy/move place-use rooted at the parameter
-  // local through a single [Dereference] projection.
+  // The terminator returns the result local directly.
   ZC_IF_SOME(value, returnValue) {
     if (value.kind() == mir::MirOperandKind::Constant) { return zc::none; }
     const auto& place = value.place();
-    if (place.local() != paramLocal.id || place.projections().size() != 1) { return zc::none; }
-    if (place.projections()[0].kind() != mir::MirProjectionKind::Dereference) { return zc::none; }
+    if (place.local() != resultLocal.id || place.projections().size() != 0) { return zc::none; }
   }
 
   // Resolve the pointee (function result) carrier as an integer width.
@@ -655,12 +678,16 @@ zc::Maybe<Module> MirToLirLowering::lowerRawPointerWriteReturn(
   // [Dereference] projection. We re-check the structural facts here so
   // lowering is total over its declared input and fail-closed on anything else.
   if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 3 ||
-      function.locals.size() != 1 || function.blocks.size() != 1) {
+      function.locals.size() != 2 || function.blocks.size() != 1) {
     return zc::none;
   }
 
   const auto& paramLocal = function.locals[0];
+  const auto& resultLocal = function.locals[1];
   if (paramLocal.kind != mir::MirLocalKind::Parameter || paramLocal.id.ordinal() != 1) {
+    return zc::none;
+  }
+  if (resultLocal.kind != mir::MirLocalKind::FunctionResult || resultLocal.id.ordinal() != 2) {
     return zc::none;
   }
 
@@ -674,16 +701,29 @@ zc::Maybe<Module> MirToLirLowering::lowerRawPointerWriteReturn(
   const auto& block = function.blocks[0];
   // Unsafe scope boundary statements are semantically transparent for code
   // generation: they are ownership/safety markers with no runtime effect.
-  if (block.statements.size() != 5 ||
+  if (block.statements.size() != 7 ||
       block.statements[0].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
       block.statements[1].kind() != mir::MirStatementKind::Assign ||
       block.statements[2].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
       block.statements[3].kind() != mir::MirStatementKind::UnsafeScopeBoundary ||
-      block.statements[4].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
+      block.statements[4].kind() != mir::MirStatementKind::StorageLive ||
+      block.statements[5].kind() != mir::MirStatementKind::Assign ||
+      block.statements[6].kind() != mir::MirStatementKind::UnsafeScopeBoundary) {
     return zc::none;
   }
+  if (block.statements[0].unsafeScopeBoundaryValue().kind !=
+          mir::MirUnsafeScopeBoundaryKind::Enter ||
+      block.statements[2].unsafeScopeBoundaryValue().kind !=
+          mir::MirUnsafeScopeBoundaryKind::Exit ||
+      block.statements[3].unsafeScopeBoundaryValue().kind !=
+          mir::MirUnsafeScopeBoundaryKind::Enter ||
+      block.statements[6].unsafeScopeBoundaryValue().kind !=
+          mir::MirUnsafeScopeBoundaryKind::Exit) {
+    return zc::none;
+  }
+  if (block.statements[4].storageLocal() != resultLocal.id) { return zc::none; }
 
-  // Extract the write constant from the assign statement's rvalue.
+  // Extract the write constant from the write assign statement's rvalue.
   const auto& assign = block.statements[1].assignmentValue();
   if (assign.initialization != mir::MirInitializationKind::Overwrite) { return zc::none; }
   if (assign.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
@@ -696,13 +736,26 @@ zc::Maybe<Module> MirToLirLowering::lowerRawPointerWriteReturn(
   const auto& returnValue = block.terminator.returnValue().value;
   if (returnValue == zc::none) { return zc::none; }
 
-  // The return value must be a copy/move place-use rooted at the parameter
-  // local through a single [Dereference] projection.
+  // The read assign stores the pointee place-use into the result local.
+  const auto& read = block.statements[5].assignmentValue();
+  if (read.initialization != mir::MirInitializationKind::Initialize) { return zc::none; }
+  if (read.destination.local() != resultLocal.id || read.destination.projections().size() != 0) {
+    return zc::none;
+  }
+  if (read.value.kind() != mir::MirRvalueKind::Use) { return zc::none; }
+  const auto& readOperand = read.value.useValue().operand;
+  if (readOperand.kind() == mir::MirOperandKind::Constant) { return zc::none; }
+  const auto& readPlace = readOperand.place();
+  if (readPlace.local() != paramLocal.id || readPlace.projections().size() != 1 ||
+      readPlace.projections()[0].kind() != mir::MirProjectionKind::Dereference) {
+    return zc::none;
+  }
+
+  // The terminator returns the result local directly.
   ZC_IF_SOME(value, returnValue) {
     if (value.kind() == mir::MirOperandKind::Constant) { return zc::none; }
     const auto& place = value.place();
-    if (place.local() != paramLocal.id || place.projections().size() != 1) { return zc::none; }
-    if (place.projections()[0].kind() != mir::MirProjectionKind::Dereference) { return zc::none; }
+    if (place.local() != resultLocal.id || place.projections().size() != 0) { return zc::none; }
   }
 
   // Resolve the pointee (function result) carrier as an integer width.

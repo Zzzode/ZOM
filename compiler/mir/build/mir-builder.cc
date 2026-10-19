@@ -903,17 +903,36 @@ zc::Maybe<RecursiveFunctionProduct> buildRawDereferenceReturn(
   const auto unsafeScope = ctx.pushScope(scope, unsafe.sourceSpan.clone());
   ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter,
                                                         unsafeScope, unsafe.sourceSpan.clone()));
+
+  // Read the pointee inside the unsafe region. The dereference must be a
+  // statement between Enter and Exit, not part of the Return terminator: the
+  // ownership overlay walks statements in order, so a dereference carried by
+  // the terminator is observed after Exit has closed the region and has no
+  // acknowledgement to attach. The read therefore stores into a result local
+  // that the Return then copies out.
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> projections;
+  projections.add(MirProjection::dereference(param.type, declaration.resultType));
+  auto dereferenceOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(paramLocal, param.type, zc::mv(projections), declaration.resultType));
+  if (dereferenceOperand == zc::none) return zc::none;
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.appendStatement(
+      MirStatement::assign(MirPlace(result, declaration.resultType, zc::mv(destinationProjections),
+                                    declaration.resultType),
+                           MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(dereferenceOperand))),
+                           MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+
   ctx.appendStatement(MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Exit,
                                                         unsafeScope, unsafe.sourceSpan.clone()));
 
-  // Build a place rooted at the parameter local with a [Dereference]
-  // projection. The pointee type is the function result type (the HIR builder
-  // validated rawPtr.pointee == callable.success).
-  zc::Vector<MirProjection> projections;
-  projections.add(MirProjection::dereference(param.type, declaration.resultType));
-  auto returnOperand =
-      placeUse(proofs, copyMarker,
-               MirPlace(paramLocal, param.type, zc::mv(projections), declaration.resultType));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(result, declaration.resultType, zc::mv(returnProjections), declaration.resultType));
   if (returnOperand == zc::none) return zc::none;
 
   ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
@@ -999,15 +1018,34 @@ zc::Maybe<RecursiveFunctionProduct> buildRawPointerWriteReturn(
   const auto returnUnsafeScope = ctx.pushScope(scope, returnUnsafe.sourceSpan.clone());
   ctx.appendStatement(MirStatement::unsafeScopeBoundary(
       MirUnsafeScopeBoundaryKind::Enter, returnUnsafeScope, returnUnsafe.sourceSpan.clone()));
+
+  // Read the pointee inside the return-unsafe region. A dereference carried by
+  // the Return terminator would be observed by the ownership overlay after
+  // Exit closed the region, leaving it unacknowledged, so the read stores into
+  // a result local between Enter and Exit.
+  const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
+                                             scope, sourceReturn.sourceSpan.clone());
+  ctx.appendStatement(MirStatement::storageLive(result, sourceReturn.sourceSpan.clone()));
+  zc::Vector<MirProjection> readProjections;
+  readProjections.add(MirProjection::dereference(param.type, declaration.resultType));
+  auto readOperand =
+      placeUse(proofs, copyMarker,
+               MirPlace(paramLocal, param.type, zc::mv(readProjections), declaration.resultType));
+  if (readOperand == zc::none) return zc::none;
+  zc::Vector<MirProjection> readDestinationProjections;
+  ctx.appendStatement(
+      MirStatement::assign(MirPlace(result, declaration.resultType,
+                                    zc::mv(readDestinationProjections), declaration.resultType),
+                           MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(readOperand))),
+                           MirInitializationKind::Initialize, sourceReturn.sourceSpan.clone()));
+
   ctx.appendStatement(MirStatement::unsafeScopeBoundary(
       MirUnsafeScopeBoundaryKind::Exit, returnUnsafeScope, returnUnsafe.sourceSpan.clone()));
 
-  // Return the pointee read through the same [Dereference] projection.
   zc::Vector<MirProjection> returnProjections;
-  returnProjections.add(MirProjection::dereference(param.type, declaration.resultType));
-  auto returnOperand =
-      placeUse(proofs, copyMarker,
-               MirPlace(paramLocal, param.type, zc::mv(returnProjections), declaration.resultType));
+  auto returnOperand = placeUse(
+      proofs, copyMarker,
+      MirPlace(result, declaration.resultType, zc::mv(returnProjections), declaration.resultType));
   if (returnOperand == zc::none) return zc::none;
 
   ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
