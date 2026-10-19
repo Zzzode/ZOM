@@ -3487,11 +3487,18 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         }
       }
     }
-    // A single `return *ptr` where `ptr` is a raw-pointer parameter. The
-    // Deref unary over an IdentExpr parameter reference is lowered to a
-    // parameter reference wrapped in an unsafe block; the MIR builder emits
-    // a [Dereference] projection on the parameter place.
-    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::UnaryExpression) {
+    // A single `return unsafe { *ptr }` where `ptr` is a raw-pointer
+    // parameter. The Deref unary over an IdentExpr parameter reference is
+    // lowered to a parameter reference wrapped in an unsafe block; the MIR
+    // builder emits a [Dereference] projection on the parameter place.
+    //
+    // A dereference outside an unsafe block is not a raw-pointer dereference:
+    // it reads through a reference type, which has no place root and no
+    // lowering in this slice. Rejecting it here keeps the shape unclaimed so
+    // the definition drains as a capability gap instead of reaching a builder
+    // that requires the unsafe block and can only fail.
+    if (unsafeBlock != zc::none && tree.contains(value) &&
+        tree.node(value).kind == ast::SyntaxKind::UnaryExpression) {
       const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
           tree.node(value).payload.words[ast::kUnaryExpressionOpWord]);
       if (unaryOp == ast::UnaryOperatorKind::Deref) {
