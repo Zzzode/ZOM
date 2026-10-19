@@ -27,7 +27,7 @@ This RFC specifies the API surface of the ZOM core library: the module
 structure, the implicitly-imported prelude, the `Maybe<T>` sum type, the
 error-union combinators and `FromError` conversion trait, marker interfaces,
 operator interfaces, iterator interfaces, conversion interfaces, formatting
-interfaces, and inherent methods on primitive types. It also resolves
+interfaces, and the sealed primitive method surface. It also resolves
 existing spec drift where normative chapters reference `std::marker::Sendable`,
 `std::collections::HashMap`, `Atomic<T>`, and `::core::Value` without
 definitions.
@@ -80,8 +80,8 @@ RFC fills that gap.
 - Define the conversion interfaces: `From`, `Into`, `TryFrom`, `TryInto`,
   `AsRef`, `AsMut`, `Borrow`, `BorrowMut`, `FromStr`.
 - Define the formatting interfaces: `Display`, `Debug`.
-- Define inherent methods on primitive types (integers, floats, `bool`,
-  `char`, `str`).
+- Define the sealed primitive interfaces and their implementations for
+  integers, floats, `bool`, `char`, and `str`.
 - Resolve spec drift: every `std::` and `core::` reference in normative
   chapters must point to a definition in this RFC or its successor.
 
@@ -489,20 +489,39 @@ developer-facing formatting is derived (`Debug`).** This prevents
 `Display` has no derive — implementing it forces a decision about the
 human-facing representation.
 
-`toString()` is a blanket method on `Display`:
+`toString()` returns an owned `String`, which only `std` provides, so both
+`ToString` and its blanket implementation live in `std::string`:
 
 ```zom
-// Blanket: impl<T: Display> ToString for T {
-//     fn toString(this) -> String { ... }
-// }
+// std::string
+interface ToString {
+    fn toString(this) -> String;
+}
+
+impl<T: Display> ToString for T {
+    fn toString(this) -> String { ... }
+}
 ```
 
-`print()` is a `std` function (requires `std::io`), not a `core` function.
+`core::fmt` supplies the interfaces a `toString` implementation needs
+(`Display`, `Formatter`, `Write`); it does not supply the allocating
+convenience. `print()` is likewise a `std` function (requires `std::io`).
 
-### Primitive Inherent Methods
+### Primitive Method Surface
 
-Policy-flavored operations are inherent methods (not interface impls) so
-there is no import tax and no ambiguity.
+Primitive methods are interface methods: `core` declares one sealed interface
+per primitive family and implements it for the primitive. The orphan rule
+(§9.4.3) admits this form because the interface is local to `core`, so
+`impl Num for i32` and `impl StrOps for str` need no inherent-impl privilege.
+
+A user module may add its own interface for a primitive the same way; it may
+not add methods to a `core` interface, which is sealed. There is no
+inherent-impl syntax for primitives, matching Rust, where `impl u32 { }`
+outside the standard library is rejected with E0390.
+
+Because the interface is sealed and implemented by `core`, the methods need
+no import tax beyond the interface name, and no two interfaces in the prelude
+declare the same primitive method.
 
 **Integers — four arithmetic flavors:**
 
@@ -526,13 +545,17 @@ absent).
 **`bool`:** `then`, `thenSome` (bridge into `Maybe` rail).
 
 **`char`:** classification (`isAlphabetic`, `isNumeric`, `isWhitespace`),
-conversion (`toLowercase`, `toUppercase`, `toDigit`, `fromDigit`), encoding
-(`lenUtf8`, `encodeUtf8`).
+conversion (`toDigit`, `fromDigit`, `toAsciiLowercase`,
+`toAsciiUppercase`), encoding (`lenUtf8`, `encodeUtf8`).
 
 **`str`:** length/emptiness, predicates (`startsWith`, `endsWith`,
 `contains`), search (`find`, `rfind`), split (`split`, `lines`), trim
-(`trim`, `trimStart`, `trimEnd`), transform (`toLowercase`, `toUppercase`),
-parse (`parse<T: FromStr>()`), conversion (`asBytes`, `bytes`, `chars`).
+(`trim`, `trimStart`, `trimEnd`), parse (`parse<T: FromStr>()`), conversion
+(`asBytes`, `bytes`, `chars`).
+
+Allocating transforms (`toLowercase`, `toUppercase`, `repeat`, `replace`,
+`replacen`) belong to `std::string`, not `core::str`: each returns newly
+owned UTF-8, and `core` may not allocate.
 
 **General rule for slices/strings:** lookup-and-fail operations return
 `Maybe`, never trap. The trap forms (`[]`, `!!`, `unwrap`, `expect`) exist
@@ -565,6 +588,11 @@ core/src/core/
   str.zom         — str methods
   num.zom         — integer and float methods
 ```
+
+`core` holds no allocating item. The owned `String` type, its allocating
+methods (`toLowercase`, `toUppercase`, `repeat`, `replace`, `replacen`),
+and `ToString` live in `std::string`, whose layout the `std` collections RFC
+defines.
 
 ### Maybe<T> API (Normative)
 
@@ -948,12 +976,18 @@ format-spec parsing (fill, align, width, precision, sign, alternate).
 **`Debug` derive:** The compiler derives `Debug` for aggregates whose fields
 are all `Debug`.
 
-**`toString()`:** Blanket method on `Display`:
+**`toString()`:** Defined in `std::string`, not `core`: it returns an owned
+`String`, and `core` may not allocate.
 
 ```zom
-// Blanket: impl<T: Display> ToString for T {
-//     fn toString(this) -> String { ... }
-// }
+// std::string
+interface ToString {
+    fn toString(this) -> String;
+}
+
+impl<T: Display> ToString for T {
+    fn toString(this) -> String { ... }
+}
 ```
 
 ### Default Interface (Normative)
@@ -994,7 +1028,11 @@ interface Hasher {
 }
 ```
 
-### Primitive Inherent Methods (Normative)
+### Primitive Method Surface (Normative)
+
+Each primitive family has one sealed `core` interface. The listing below names
+the methods of that interface; the interface's name is fixed at implementation
+time and published in `core`'s prelude.
 
 **Integers (`i8`..`i64`, `u8`..`u64`, `isize`, `usize`):**
 
@@ -1044,10 +1082,16 @@ Methods: `then`, `thenSome`.
 
 Methods: `isAlphabetic`, `isNumeric`, `isAlphanumeric`, `isWhitespace`,
 `isControl`, `isDigit`, `isLowercase`, `isUppercase`, `isAscii`,
-`toLowercase`, `toUppercase`, `toDigit`, `fromDigit`, `lenUtf8`,
-`lenUtf16`, `encodeUtf8`, `encodeUtf16`, `isAsciiDigit`, `isAsciiAlphabetic`,
-`isAsciiAlphanumeric`, `isAsciiHexDigit`, `toAsciiLowercase`,
-`toAsciiUppercase`, `eqIgnoreAsciiCase`.
+`toDigit`, `fromDigit`, `lenUtf8`, `lenUtf16`, `encodeUtf8`, `encodeUtf16`,
+`isAsciiDigit`, `isAsciiAlphabetic`, `isAsciiAlphanumeric`,
+`isAsciiHexDigit`, `toAsciiLowercase`, `toAsciiUppercase`,
+`eqIgnoreAsciiCase`.
+
+`toLowercase` and `toUppercase` are excluded: full Unicode case mapping can
+expand a single `char` into two, so the result is not a `char`. They belong
+to `std::string` and return owned UTF-8. The `toAsciiLowercase` /
+`toAsciiUppercase` forms stay because ASCII mapping is total and
+length-preserving.
 
 **`str`:**
 
@@ -1063,7 +1107,9 @@ Split: `split`, `splitWhitespace`, `splitAsciiWhitespace`, `splitTerminator`,
 Trim: `trim`, `trimStart`, `trimEnd`, `trimMatches`, `trimStartMatches`,
 `trimEndMatches`.
 
-Transform: `toLowercase`, `toUppercase`, `repeat`, `replace`, `replacen`.
+Transform: none. `toLowercase`, `toUppercase`, `repeat`, `replace`, and
+`replacen` return newly owned UTF-8, so they live in `std::string` rather than
+a heap-free module.
 
 Parse: `parse<T: FromStr>() -> (T | T.Error)`.
 
@@ -1085,7 +1131,7 @@ This RFC resolves the following spec references:
 | `Vec<T>` (Ch.03) | Deferred to `std` collections RFC |
 | `Map<K, V>` (Ch.03) | Deferred to `std` collections RFC |
 | `print()` (throughout) | `std::io::print`; spec examples will show import |
-| `toString()` (throughout) | Blanket impl on `Display`, `core::fmt` |
+| `toString()` (throughout) | `std::string::ToString`, blanket impl on `Display`; `core` cannot allocate |
 | `Debug` (Ch.09) | Defined in this RFC, `core::fmt` |
 | `Show` (Ch.09) | Replaced by `Display` in this RFC; spec example will be updated |
 | `Display` (Ch.06, Ch.09) | Defined in this RFC, `core::fmt`; signature updated to `format(this, f: &mut Formatter)` |
@@ -1242,7 +1288,7 @@ until implementation begins.
 12. Implement `core::mem` (`sizeOf`, `alignOf`, `swap`, `replace`, `take`).
 13. Implement `core::atomic` (`AtomicBool`, `AtomicI32`, `AtomicUsize`).
 14. Implement `core::duration::Duration`.
-15. Implement primitive inherent methods.
+15. Implement the sealed primitive interfaces and their implementations.
 16. Add conformance tests for all of the above.
 
 ## Test Plan

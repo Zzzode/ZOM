@@ -34,6 +34,15 @@ Imports and aliases do not turn a declaration into a local declaration. A
 tuple, function, union, reference, pointer, array, or generic parameter does not
 acquire locality merely because a nested type is local.
 
+A primitive type is not declared in any compilation, so an impl whose self type
+is primitive is local only through clause 1: the interface must be declared in
+the current compilation. `core` uses this to give every primitive its standard
+method surface, and any compilation may do the same for an interface it owns.
+
+There is no inherent-impl form for primitives. Methods that extend a primitive
+are always interface methods, so the locality rule above is the only route by
+which a primitive acquires one.
+
 ## 22.3 Conflicting Impls
 
 Two ordinary impls conflict when they name the same interface and either:
