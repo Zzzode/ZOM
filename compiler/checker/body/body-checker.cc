@@ -4677,25 +4677,38 @@ zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& inpu
   zc::Maybe<identity::SemanticTypeId> success;
   zc::Maybe<identity::SemanticTypeId> raises;
   zc::Vector<identity::SemanticTypeId> parameters;
-  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
-    ZC_IF_SOME(definition, callee) {
+  // Fills `success`/`raises`/`parameters` from one signature. Returns false when
+  // the signature is outside the admitted direct-call slice.
+  auto readCallable = [&](const signature::SemanticSignature& semanticSignature) -> bool {
+    if (success != zc::none ||
+        !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      return false;
+    }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
+        callable.abi != zc::none) {
+      return false;
+    }
+    for (const auto& parameter : callable.parameters) {
+      if (parameter.hasDefault) { return false; }
+      parameters.add(parameter.type);
+    }
+    success = callable.success;
+    raises = callable.raises;
+    return true;
+  };
+  ZC_IF_SOME(definition, callee) {
+    for (const auto& semanticSignature : input.signatureFacts.signatures()) {
       if (semanticSignature.definition != definition) continue;
-      if (success != zc::none ||
-          !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
-        return zc::none;
+      if (!readCallable(semanticSignature)) { return zc::none; }
+    }
+    // A callee defined in another module has no entry in this module's
+    // signature facts; its verified signature is reachable through the
+    // imported-signature view the session installed for this module.
+    if (success == zc::none) {
+      ZC_IF_SOME(imported, input.importedSignatures.lookupDefinition(definition)) {
+        if (!readCallable(imported)) { return zc::none; }
       }
-      const auto& callable =
-          semanticSignature.payload.variant().get<signature::CallableSignature>();
-      if (callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
-          callable.abi != zc::none) {
-        return zc::none;
-      }
-      for (const auto& parameter : callable.parameters) {
-        if (parameter.hasDefault) { return zc::none; }
-        parameters.add(parameter.type);
-      }
-      success = callable.success;
-      raises = callable.raises;
     }
   }
   if (success == zc::none) return zc::none;

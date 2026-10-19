@@ -1,0 +1,6 @@
+module cross_module_call_consumer;
+import cross_module_call_consumer::mathx::{double};
+
+export fn entry() -> i32 {
+    return double(21);
+}
