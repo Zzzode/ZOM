@@ -12373,6 +12373,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             value.definition, registries, ir::IrFailureKind::UnsupportedExpressionStatement,
             generic.localWrites[0].sourceSpan.clone());
       }
+      // The generic materializer emits an initializer node only for a scalar
+      // literal, a nominal aggregate, or a parameter reference. Every other
+      // initializer form (`let p: P = make();`) leaves the declared
+      // initializer node unclaimed, which the verifier reports as a missing
+      // fact and turns an ordinary body into an internal error. Drain it as
+      // the function-body capability code instead.
+      if (generic.local != zc::none && ZC_ASSERT_NONNULL(generic.local).initializer != zc::none &&
+          generic.literal == zc::none && generic.aggregate == zc::none &&
+          generic.parameterReference == zc::none) {
+        return rejectHirCapability<HirModuleCandidate>(
+            value.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            ZC_ASSERT_NONNULL(ZC_ASSERT_NONNULL(generic.local).initializerSpan).clone());
+      }
     }
     // Generic catch-all: shapes no specialized guard claims land here.
     {
