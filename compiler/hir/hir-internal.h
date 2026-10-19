@@ -245,12 +245,21 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
                              const binder::ImmutableDefinitionInventory& definitions,
                              ast::NodeId initializerNode);
 
-/// \brief Resolves the concrete self-type DefId for an impl method by matching
-/// the method's enclosing impl authority against the verified impl heads.
-/// Returns none when the method is not enclosed by an impl, the impl
-/// authority cannot be resolved, or the impl head's self type is not a
-/// nominal type.
-zc::Maybe<identity::DefId> implMethodOwner(
+/// \brief The verified self type of an impl method, resolved from the impl head
+/// whose impl authority encloses the method.
+struct ImplMethodSelf final {
+  identity::SemanticTypeId type;
+  /// Set only when the impl head's self type is nominal. A primitive self type
+  /// has no defining definition, so every nominal-only check must skip instead
+  /// of treating the absence as an invalid fact.
+  zc::Maybe<identity::DefId> nominalDefinition;
+};
+
+/// \brief Resolves the concrete self type of an impl method by matching the
+/// method's enclosing impl authority against the verified impl heads. Returns
+/// none when the method is not enclosed by an impl or the impl authority cannot
+/// be resolved.
+zc::Maybe<ImplMethodSelf> implMethodSelf(
     const binder::MaterializedDefinitionInventoryEntry& definition,
     const checker::CheckerIdentityAuthority& identities,
     zc::ArrayPtr<const checker::signature::ImplHead> implHeads);

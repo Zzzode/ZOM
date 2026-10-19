@@ -355,7 +355,7 @@ bool isDeadErasedInitializer(const ast::Tree& tree,
   return false;
 }
 
-zc::Maybe<identity::DefId> implMethodOwner(
+zc::Maybe<ImplMethodSelf> implMethodSelf(
     const binder::MaterializedDefinitionInventoryEntry& definition,
     const checker::CheckerIdentityAuthority& identities,
     zc::ArrayPtr<const checker::signature::ImplHead> implHeads) {
@@ -366,8 +366,12 @@ zc::Maybe<identity::DefId> implMethodOwner(
         const auto implId = entry.handle();
         for (const auto& head : implHeads) {
           if (head.impl != implId) continue;
-          if (!head.head.variant().is<checker::signature::NominalTypeHead>()) return zc::none;
-          return head.head.variant().get<checker::signature::NominalTypeHead>().definition;
+          zc::Maybe<identity::DefId> nominalDefinition;
+          if (head.head.variant().is<checker::signature::NominalTypeHead>()) {
+            nominalDefinition =
+                head.head.variant().get<checker::signature::NominalTypeHead>().definition;
+          }
+          return ImplMethodSelf{head.selfType, nominalDefinition};
         }
       }
     }

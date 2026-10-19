@@ -16098,9 +16098,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
     zc::Maybe<checker::signature::MemberSignatureScope> memberScope;
     // Impl methods in standalone impl blocks get a
     // ModuleDefinitionSignatureScope from the signature facts because their
-    // enclosing owner is an impl, not a definition. Resolve the concrete
-    // self-type DefId from the verified impl heads.
-    zc::Maybe<identity::DefId> implOwner;
+    // enclosing owner is an impl, not a definition. Resolve the concrete self
+    // type from the verified impl heads; it is nominal for `impl I for Struct`
+    // and primitive for `impl I for str`.
+    zc::Maybe<ImplMethodSelf> implSelf;
     if (isMethod) {
       if (!signature.payload.variant().is<checker::signature::CallableSignature>()) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
@@ -16111,10 +16112,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
       } else if (signature.scope.variant()
                      .is<checker::signature::ModuleDefinitionSignatureScope>()) {
-        implOwner =
-            implMethodOwner(sourceDefinition, registries,
-                            candidate.impl->checkedModule.localSignatureFacts().implHeads());
-        if (implOwner == zc::none) {
+        implSelf = implMethodSelf(sourceDefinition, registries,
+                                  candidate.impl->checkedModule.localSignatureFacts().implHeads());
+        if (implSelf == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -16147,7 +16147,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       // Impl methods in standalone impl blocks have no member scope; their
       // visibility is external.
-      if (implOwner != zc::none) { expectedVisibility = HirVisibility::external(); }
+      if (implSelf != zc::none) { expectedVisibility = HirVisibility::external(); }
     } else {
       expectedVisibility = visibility(signatures.roots[rootSlot].visibility);
     }
@@ -16231,13 +16231,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     }
                   }
                   // For impl methods in standalone impl blocks, the receiver
-                  // referent is the concrete self-type resolved from the impl
-                  // heads.
-                  ZC_IF_SOME(owner, implOwner) {
-                    if (referentData.is<type::semantic::NominalTypeData>() &&
-                        referentData.get<type::semantic::NominalTypeData>().definition == owner) {
-                      receiverMatches = true;
-                    }
+                  // referent is the self type resolved from the impl heads.
+                  ZC_IF_SOME(self, implSelf) {
+                    if (reference.referent == self.type) { receiverMatches = true; }
                   }
                 }
               }

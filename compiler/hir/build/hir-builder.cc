@@ -209,16 +209,31 @@ zc::Maybe<PrimitiveUnaryDesugar> desugarPrimitiveUnary(checker::PrimitiveOperati
                                zc::mv(ZC_ASSERT_NONNULL(syntheticValue))};
 }
 
-// Builds the implicit `this` receiver parameter of an admitted inherent method.
-// The receiver is a borrow of the enclosing nominal (`&Owner` shared,
-// `&mut Owner` mutable); the owner nominal comes from the verified member scope
-// rather than the bare-`Self` source annotation, which is contextual and does
-// not resolve through the ordinary source-type builder. Returns none for every
-// shape outside the admitted slice (missing binder fact, generic owner, failed
-// canonicalization), keeping the method on the capability drain.
+// Canonicalizes the bare self type of a nominal owner (`Owner` with no
+// arguments) and returns its interned identity. Returns none when the store
+// cannot admit or intern it.
+zc::Maybe<identity::SemanticTypeId> nominalSelfType(identity::DefId owner,
+                                                    type::SemanticTypeStore& semanticTypes) {
+  zc::Vector<identity::SemanticTypeId> noArguments;
+  auto admitted = semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::NominalTypeData{owner, zc::mv(noArguments)}));
+  if (!admitted.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned = semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+
+// Builds the implicit `this` receiver parameter of an admitted method. The
+// receiver is a borrow of the method's self type (`&Self` shared, `&mut Self`
+// mutable). The self type arrives already canonicalized because it has two
+// authorities: an inherent method's member scope names a nominal owner, while
+// an interface impl method's verified impl head names whatever the impl
+// targets, nominal or primitive. Returns none for every shape outside the
+// admitted slice (missing binder fact, failed canonicalization), keeping the
+// method on the capability drain.
 zc::Maybe<HirParameter> buildMethodReceiverParameter(
-    const binder::MaterializedDefinitionInventoryEntry& definition, identity::DefId owner,
-    const checker::signature::ReceiverSignature& receiver,
+    const binder::MaterializedDefinitionInventoryEntry& definition,
+    identity::SemanticTypeId selfType, const checker::signature::ReceiverSignature& receiver,
     const ownership::AdmittedBoundModule& bound,
     const checker::CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes) {
   const auto& tree = bound.tree();
@@ -243,19 +258,11 @@ zc::Maybe<HirParameter> buildMethodReceiverParameter(
       receiver.mode != checker::signature::ReceiverMode::Mutable) {
     return zc::none;
   }
-  zc::Vector<identity::SemanticTypeId> noArguments;
-  auto admittedOwner = semanticTypes.canonicalizeClosed(
-      type::semantic::TypeData(type::semantic::NominalTypeData{owner, zc::mv(noArguments)}));
-  if (!admittedOwner.is<type::semantic::CanonicalTypeData>()) return zc::none;
-  auto internedOwner =
-      semanticTypes.intern(zc::mv(admittedOwner).get<type::semantic::CanonicalTypeData>());
-  if (!internedOwner.is<type::SemanticTypeInterned>()) return zc::none;
   const auto mutability = receiver.mode == checker::signature::ReceiverMode::Mutable
                               ? type::semantic::Mutability::Mutable
                               : type::semantic::Mutability::Const;
-  auto admittedReference =
-      semanticTypes.canonicalizeClosed(type::semantic::TypeData(type::semantic::ReferenceTypeData{
-          mutability, internedOwner.get<type::SemanticTypeInterned>().id}));
+  auto admittedReference = semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::ReferenceTypeData{mutability, selfType}));
   if (!admittedReference.is<type::semantic::CanonicalTypeData>()) return zc::none;
   auto internedReference =
       semanticTypes.intern(zc::mv(admittedReference).get<type::semantic::CanonicalTypeData>());
@@ -820,8 +827,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            auto built = buildMethodReceiverParameter(definition, owner, receiver, bound,
-                                                      registries, semanticTypes);
+            auto selfType = nominalSelfType(owner, semanticTypes);
+            if (selfType == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto built = buildMethodReceiverParameter(definition, ZC_ASSERT_NONNULL(selfType),
+                                                      receiver, bound, registries, semanticTypes);
             if (built == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
@@ -3028,8 +3041,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            auto built = buildMethodReceiverParameter(definition, owner, receiver, bound,
-                                                      registries, semanticTypes);
+            auto selfType = nominalSelfType(owner, semanticTypes);
+            if (selfType == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto built = buildMethodReceiverParameter(definition, ZC_ASSERT_NONNULL(selfType),
+                                                      receiver, bound, registries, semanticTypes);
             if (built == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
@@ -3319,8 +3338,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
-            auto built = buildMethodReceiverParameter(definition, owner, receiver, bound,
-                                                      registries, semanticTypes);
+            auto selfType = nominalSelfType(owner, semanticTypes);
+            if (selfType == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto built = buildMethodReceiverParameter(definition, ZC_ASSERT_NONNULL(selfType),
+                                                      receiver, bound, registries, semanticTypes);
             if (built == zc::none) {
               return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                    ir::IrFailureKind::InvalidFact, module,
@@ -3574,31 +3599,43 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              ir::IrFailureKind::InvalidFact, module, registries,
                                              ordinal + 2);
       }
-      zc::Maybe<identity::DefId> methodOwner;
+      // The method's self type. A member or enclosed scope names a nominal
+      // owner, so its self type is that owner with no arguments; an impl method
+      // takes the self type recorded on its verified impl head, which is
+      // nominal for `impl I for Struct` and primitive for `impl I for str`.
+      zc::Maybe<identity::SemanticTypeId> methodSelfType;
+      // Set only when the self type is nominal. A primitive self type has no
+      // defining definition, so the checks below skip rather than reject.
+      zc::Maybe<identity::DefId> methodSelfDefinition;
       zc::Maybe<HirVisibility> methodScopeVisibility;
       if (isMethod) {
         if (signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
           const auto& scope =
               signature.scope.variant().get<checker::signature::MemberSignatureScope>();
-          methodOwner = scope.owner;
+          methodSelfDefinition = scope.owner;
+          methodSelfType = nominalSelfType(scope.owner, semanticTypes);
           methodScopeVisibility = memberVisibility(scope.visibility, module);
         } else if (signature.scope.variant().is<checker::signature::EnclosedSignatureScope>()) {
-          methodOwner =
+          const auto owner =
               signature.scope.variant().get<checker::signature::EnclosedSignatureScope>().owner;
+          methodSelfDefinition = owner;
+          methodSelfType = nominalSelfType(owner, semanticTypes);
           methodScopeVisibility = HirVisibility::external();
         } else if (signature.scope.variant()
                        .is<checker::signature::ModuleDefinitionSignatureScope>()) {
           // Impl methods in standalone impl blocks get a
           // ModuleDefinitionSignatureScope from the signature facts because
           // their enclosing owner is an impl, not a definition. Resolve the
-          // concrete self-type DefId from the verified impl heads.
-          methodOwner = implMethodOwner(definition, registries,
-                                        checkedModule.localSignatureFacts().implHeads());
-          if (methodOwner == zc::none) {
+          // concrete self type from the verified impl heads.
+          auto self = implMethodSelf(definition, registries,
+                                     checkedModule.localSignatureFacts().implHeads());
+          if (self == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
+          methodSelfType = ZC_ASSERT_NONNULL(self).type;
+          methodSelfDefinition = ZC_ASSERT_NONNULL(self).nominalDefinition;
           methodScopeVisibility = HirVisibility::external();
         } else {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3714,19 +3751,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       zc::Maybe<HirParameter> methodReceiver;
       if (isMethod) {
         ZC_IF_SOME(receiver, callable.receiver) {
-          if (methodOwner == zc::none) {
+          if (methodSelfType == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          const auto owner = ZC_ASSERT_NONNULL(methodOwner);
-          if (owner == definition.definition) {
-            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                 ir::IrFailureKind::InvalidFact, module, registries,
-                                                 ordinal + 2);
+          // A nominal self type may not be the method's own definition. A
+          // primitive self type has no definition to compare against.
+          ZC_IF_SOME(selfDefinition, methodSelfDefinition) {
+            if (selfDefinition == definition.definition) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
           }
-          auto built = buildMethodReceiverParameter(definition, owner, receiver, bound, registries,
-                                                    semanticTypes);
+          auto built = buildMethodReceiverParameter(definition, ZC_ASSERT_NONNULL(methodSelfType),
+                                                    receiver, bound, registries, semanticTypes);
           if (built == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
