@@ -3141,6 +3141,16 @@ bool isUnsupportedResolvedMemberRead(const BodyCheckingInput& input,
     auto lookup = input.semanticTypes.get(type);
     if (lookup.is<type::SemanticTypeLookup>()) {
       const auto& typeData = lookup.get<type::SemanticTypeLookup>().data();
+      // A `.length` read on an array-typed receiver (`a.length` where `a` is a
+      // slice or array parameter) is legal source whose runtime length the
+      // current slice cannot compute; only literal-initialized locals fold.
+      // Drain it on the capability rail like the other unsupported member
+      // reads instead of falling through to a fact invariant.
+      if (typeData.is<type::semantic::SliceTypeData>() ||
+          typeData.is<type::semantic::DynamicArrayTypeData>() ||
+          typeData.is<type::semantic::FixedArrayTypeData>()) {
+        return true;
+      }
       if (typeData.is<type::semantic::NominalTypeData>()) {
         // A known field on the zero-argument nominal matches one of the field
         // shapes and never reaches this guard; an unknown member name on such a
