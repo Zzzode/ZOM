@@ -516,14 +516,18 @@ convenience. `print()` is likewise a `std` function (requires `std::io`).
 ### Primitive Method Surface
 
 Primitive methods are interface methods: `core` declares one sealed interface
-per primitive family and implements it for the primitive. The orphan rule
-(§9.4.3) admits this form because the interface is local to `core`, so
-`impl Num for i32` and `impl StrOps for str` need no inherent-impl privilege.
+per primitive family and implements it for the primitive. Locality is
+module-scoped (chapter 22 §22.2), so each interface is declared in the same
+module that carries its impl — `num.zom` declares and implements the integer
+interface, `str.zom` declares and implements the `str` interface. That makes
+the interface local to its impl and admits `impl Num for i32` and
+`impl StrOps for str` with no inherent-impl privilege.
 
-A user module may add its own interface for a primitive the same way; it may
-not add methods to a `core` interface, which is sealed. There is no
-inherent-impl syntax for primitives, matching Rust, where `impl u32 { }`
-outside the standard library is rejected with E0390.
+A user module may add its own interface for a primitive the same way, provided
+it declares that interface locally; it may not add methods to a `core`
+interface, which is sealed. There is no inherent-impl syntax for primitives,
+matching Rust, where `impl u32 { }` outside the standard library is rejected
+with E0390.
 
 Because the interface is sealed and implemented by `core`, the methods need
 no import tax beyond the interface name, and no two interfaces in the prelude

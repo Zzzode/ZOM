@@ -21,8 +21,8 @@ implemented coherence surface.
 
 ## 22.2 Locality
 
-An impl is local when at least one of these declarations occurs in the current
-checked source compilation:
+An impl is local when at least one of these declarations occurs in the module
+containing the impl:
 
 1. the implemented interface or marker; or
 2. the named self type.
@@ -30,14 +30,20 @@ checked source compilation:
 If neither declaration is local, the impl is rejected with registered
 `ZOM4054 OrphanImpl`.
 
+Locality is module-scoped, not compilation-scoped. Declaring an interface in a
+sibling module of the same package does not make `impl ThatInterface for
+ForeignType` local to the module that writes it; the interface must be declared
+in that module. This is the narrower of the two readings an implementer might
+expect, and it is what the checker enforces.
+
 Imports and aliases do not turn a declaration into a local declaration. A
 tuple, function, union, reference, pointer, array, or generic parameter does not
 acquire locality merely because a nested type is local.
 
-A primitive type is not declared in any compilation, so an impl whose self type
-is primitive is local only through clause 1: the interface must be declared in
-the current compilation. `core` uses this to give every primitive its standard
-method surface, and any compilation may do the same for an interface it owns.
+A primitive type is not declared in any module, so an impl whose self type is
+primitive is local only through clause 1: the interface must be declared in the
+module containing the impl. `core` relies on this: each primitive method
+interface is declared in the same module that implements it for the primitive.
 
 There is no inherent-impl form for primitives. Methods that extend a primitive
 are always interface methods, so the locality rule above is the only route by
