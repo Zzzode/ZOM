@@ -1953,6 +1953,12 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
     if (terminator.kind() == MirTerminatorKind::Call) {
       addTarget(terminator.callValue().normalTarget);
       ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { addTarget(unwind); }
+    } else if (terminator.kind() == MirTerminatorKind::IndirectCall) {
+      // A dyn-trait method call transfers to its normal target like a direct
+      // call; omitting it makes every block after the dispatch look
+      // unreachable and fails the whole function.
+      addTarget(terminator.indirectCallValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.indirectCallValue().unwindTarget) { addTarget(unwind); }
     } else if (terminator.kind() == MirTerminatorKind::Goto) {
       addTarget(terminator.gotoValue().target);
     } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
