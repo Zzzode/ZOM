@@ -157,6 +157,7 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
     MirLocalId mirId;
   };
   zc::Vector<UserLocalEntry> userLocals;
+  bool sawReturn = false;
   const auto findUserLocal = [&](hir::HirLocalId id) -> zc::Maybe<MirLocalId> {
     for (const auto& entry : userLocals) {
       if (entry.hirId == id) return entry.mirId;
@@ -453,6 +454,7 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
 
       ctx.terminateBlock(
           MirTerminator::returnValue(zc::mv(returnOperand), returnStmt->sourceSpan.clone()));
+      sawReturn = true;
     } else {
       // Unsupported statement kind.
       return zc::none;
@@ -461,6 +463,13 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
 
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
+
+  // A void-returning body (destructor, module initializer) ends without a
+  // Return statement: the statement loop lowers its bindings and leaves the
+  // entry block open. `finish` requires a terminator in every block, so this
+  // builder must decline the shape and let the strategy table's void-body
+  // strategies close the block with an explicit ReturnVoid.
+  if (!sawReturn) return zc::none;
 
   return ctx.finish(
       declaration.definition, MirFunctionKind::Function,
