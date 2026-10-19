@@ -234,23 +234,28 @@ bool isOwnerLocalPattern(const driver::module_graph_query::CheckerBoundModuleVie
       continue;
     }
     for (const auto& definition : boundModule.definitions().definitions()) {
-      // An owner local may be declared inside a function, method, or destructor
-      // body. The later HIR gate drains every non-admitted body per definition
-      // (ZOM4099), so accepting the pattern here only removes a spurious fact
-      // requirement; it does not admit the body to lowering.
+      // An owner local may be declared inside a function, method, constructor,
+      // or destructor body. The later HIR gate drains every non-admitted body
+      // per definition (ZOM4099), so accepting the pattern here only removes a
+      // spurious fact requirement; it does not admit the body to lowering.
       const bool isFunction = definition.record.kind() == identity::DefinitionKind::Function &&
                               tree.contains(definition.node) &&
                               tree.node(definition.node).kind == ast::SyntaxKind::FunctionDecl;
       const bool isMethod = definition.record.kind() == identity::DefinitionKind::Method &&
                             tree.contains(definition.node) &&
                             tree.node(definition.node).kind == ast::SyntaxKind::MethodDecl;
+      const bool isConstructor =
+          definition.record.kind() == identity::DefinitionKind::Constructor &&
+          tree.contains(definition.node) &&
+          tree.node(definition.node).kind == ast::SyntaxKind::ConstructorDecl;
       const bool isDestructor = definition.record.kind() == identity::DefinitionKind::Destructor &&
                                 tree.contains(definition.node) &&
                                 tree.node(definition.node).kind == ast::SyntaxKind::DestructorDecl;
-      if (!isFunction && !isMethod && !isDestructor) continue;
-      const auto bodyWord = isFunction ? ast::kFunctionDeclBodyWord
-                            : isMethod ? ast::kMethodDeclBodyWord
-                                       : ast::kDestructorDeclBodyWord;
+      if (!isFunction && !isMethod && !isConstructor && !isDestructor) continue;
+      const auto bodyWord = isFunction      ? ast::kFunctionDeclBodyWord
+                            : isMethod      ? ast::kMethodDeclBodyWord
+                            : isConstructor ? ast::kConstructorDeclBodyWord
+                                            : ast::kDestructorDeclBodyWord;
       const ast::NodeId body(tree.node(definition.node).payload.words[bodyWord]);
       if (tree.contains(body) && subtreeContains(tree, body, node)) { return true; }
     }
