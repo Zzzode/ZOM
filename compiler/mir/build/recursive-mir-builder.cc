@@ -126,6 +126,12 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
   const hir::HirBlockStatement* block = findRecord(hirModule.blocks(), declaration.body);
   if (block == nullptr) return zc::none;
   if (block->statements.size() == 0) return zc::none;
+  // This builder walks statements structurally and does not model unsafe
+  // scopes: it would lower `return unsafe { *ptr };` as a bare parameter
+  // reference, returning the pointer where the pointee is required. Every
+  // unsafe-wrapped body belongs to a shape strategy that emits the scope
+  // boundaries and the dereference projection, so decline the function.
+  if (declaration.unsafeBlock != zc::none) return zc::none;
 
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
@@ -151,7 +157,6 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
     MirLocalId mirId;
   };
   zc::Vector<UserLocalEntry> userLocals;
-  bool sawReturn = false;
   const auto findUserLocal = [&](hir::HirLocalId id) -> zc::Maybe<MirLocalId> {
     for (const auto& entry : userLocals) {
       if (entry.hirId == id) return entry.mirId;
@@ -448,7 +453,6 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
 
       ctx.terminateBlock(
           MirTerminator::returnValue(zc::mv(returnOperand), returnStmt->sourceSpan.clone()));
-      sawReturn = true;
     } else {
       // Unsupported statement kind.
       return zc::none;
@@ -457,13 +461,6 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
 
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) return zc::none;
-
-  // A void-returning body (destructor, module initializer) ends without a
-  // Return statement: the statement loop lowers its bindings and leaves the
-  // entry block open. `finish` requires a terminator in every block, so this
-  // builder must decline the shape and let the strategy table's void-body
-  // strategies close the block with an explicit ReturnVoid.
-  if (!sawReturn) return zc::none;
 
   return ctx.finish(
       declaration.definition, MirFunctionKind::Function,
