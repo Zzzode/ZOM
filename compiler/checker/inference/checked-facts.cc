@@ -3343,8 +3343,14 @@ CheckedFactsVerificationResult CheckedFactsVerifier::verify(
 
   for (size_t index = 0; index < input.nodeRequirements.size(); ++index) {
     const auto& requirement = input.nodeRequirements[index];
+    // A dereference registers an UnsafeOperation requirement from syntax alone,
+    // but only a raw-pointer dereference produces the fact: reading through a
+    // reference needs no unsafe acknowledgement. The requirement therefore
+    // stays optional here, matching the body checker's fact-count gate, which
+    // excludes this group for the same reason.
+    const bool optionalGroup = requirement.group == CheckedFactGroup::UnsafeOperation;
     if (!requirement.node || requirement.key.schemaPreorder == UINT32_MAX ||
-        !hasNodeFact(candidate, requirement.group, requirement.node)) {
+        (!optionalGroup && !hasNodeFact(candidate, requirement.group, requirement.node))) {
       return reject(checkerInvariant(signature::CheckerInvariantKind::MissingRequiredFact,
                                      candidate.module, static_cast<uint32_t>(index)));
     }
@@ -3397,7 +3403,6 @@ CheckedFactsVerificationResult CheckedFactsVerifier::verify(
   ZOM_REJECT_ADDITIONAL_NODE(observedOperations, ObservedOperation)
   ZOM_REJECT_ADDITIONAL_NODE(markerObligations, MarkerObligation)
   ZOM_REJECT_ADDITIONAL_NODE(exhaustiveness, Exhaustiveness)
-  ZOM_REJECT_ADDITIONAL_NODE(unsafeOperations, UnsafeOperation)
   ZOM_REJECT_ADDITIONAL_NODE(projections, Projection)
   ZOM_REJECT_ADDITIONAL_NODE(obligations, Obligation)
   // ErrorUnionShape facts are produced on the operand (call) node, while the
