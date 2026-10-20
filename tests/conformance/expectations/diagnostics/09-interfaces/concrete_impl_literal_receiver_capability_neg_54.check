@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/concrete_impl_literal_receiver_capability_neg_54.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A dot-method call whose receiver is an aggregate literal rather than an owner
+// local has no admitted receiver-call lowering. The site must drain with the
+// spelled method name instead of reaching a missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `d` is not supported yet
+// CHECK-LITERAL:   --> conformance/09-interfaces/concrete_impl_literal_receiver_capability_neg_54.zom:14:12
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 14 |     return (Pt { x: 1 }).d();
+// CHECK-LITERAL:    |            ^~~~~~~~~~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

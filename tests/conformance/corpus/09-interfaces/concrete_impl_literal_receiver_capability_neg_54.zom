@@ -1,0 +1,15 @@
+struct Pt {
+    x: i32,
+}
+
+interface Draw {
+    fn d(this) -> i32;
+}
+
+impl Draw for Pt {
+    fn d(this) -> i32 { return 41; }
+}
+
+fn entry() -> i32 {
+    return (Pt { x: 1 }).d();
+}

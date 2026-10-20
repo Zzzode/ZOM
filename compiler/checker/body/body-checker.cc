@@ -6616,16 +6616,20 @@ bool isExistentialOwnerLocalArgument(const BodyCheckingInput& input, ast::NodeId
   return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ExistentialTypeData>();
 }
 
-/// \brief Source name of an interface-qualified method call `I::m(receiver,
-/// ...)`, or none when the callee is not a qualified member expression.
+/// \brief Source name of a method call whose callee is a member expression, or
+/// none when the callee is not one.
 ///
-/// The qualified form names the dispatch target statically and passes the
-/// receiver as the first argument (Ch.09 §9.5.3). No receiver-call lowering
-/// shape accepts it yet, so every such call is legal source the body slice
-/// cannot lower. Resolving its name keeps the site on the ZOM4125/ZOM4099
-/// capability rail instead of reaching the missing-fact invariant.
-zc::Maybe<identity::DeclaredDefinitionName> qualifiedMethodCallName(const BodyCheckingInput& input,
-                                                                    ast::NodeId callNode) {
+/// Two shapes reach the capability rail through this resolver. An
+/// interface-qualified call `I::m(receiver, ...)` names its dispatch target
+/// statically and passes the receiver as the first argument (Ch.09 §9.5.3). A
+/// dot call on a receiver that is neither an owner local nor a callable
+/// parameter — an aggregate literal, a field projection, or a call result —
+/// also has no admitted lowering shape. Both are legal source the body slice
+/// cannot lower, so resolving the spelled name keeps the site on the
+/// ZOM4125/ZOM4099 capability rail instead of reaching the missing-fact
+/// invariant.
+zc::Maybe<identity::DeclaredDefinitionName> memberCallName(const BodyCheckingInput& input,
+                                                           ast::NodeId callNode) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
     return zc::none;
@@ -6635,10 +6639,6 @@ zc::Maybe<identity::DeclaredDefinitionName> qualifiedMethodCallName(const BodyCh
     return zc::none;
   }
   const auto& member = tree.node(callee);
-  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
-      ast::MemberAccessKind::Qualified) {
-    return zc::none;
-  }
   return identity::DeclaredDefinitionName::fromSource(
       tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
 }
@@ -8987,9 +8987,6 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           const ast::NodeList fallbackArguments{
               fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsFirstWord],
               fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsSizeWord]};
-          if (auto qualified = qualifiedMethodCallName(input, site.node); qualified != zc::none) {
-            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(qualified));
-          }
           auto methodName = receiverMethodCallName(input, nodeTypes.asPtr(), site.node);
           ZC_IF_SOME(resolved, methodName) {
             if (resolved.methodResolved && fallbackTree.contains(fallbackArguments) &&
@@ -9005,6 +9002,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
             return rejectMethodCallCapability(site, input, factStoreBrands,
                                               zc::mv(ZC_ASSERT_NONNULL(methodName).name));
+          }
+          if (auto spelled = memberCallName(input, site.node); spelled != zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(spelled));
           }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,
@@ -10373,9 +10373,6 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           const ast::NodeList referenceArguments{
               referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsFirstWord],
               referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
-          if (auto qualified = qualifiedMethodCallName(input, callNode); qualified != zc::none) {
-            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(qualified));
-          }
           auto referenceName = receiverMethodCallName(input, nodeTypes.asPtr(), callNode);
           ZC_IF_SOME(resolved, referenceName) {
             if (resolved.methodResolved && referenceTree.contains(referenceArguments) &&
@@ -10391,6 +10388,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
             }
             return rejectMethodCallCapability(site, input, factStoreBrands,
                                               zc::mv(ZC_ASSERT_NONNULL(referenceName).name));
+          }
+          if (auto spelled = memberCallName(input, callNode); spelled != zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(spelled));
           }
           return rejectMethodCallCapability(
               site, input, factStoreBrands,

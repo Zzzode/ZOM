@@ -1,0 +1,5 @@
+section: "09-interfaces dot call on an aggregate-literal receiver"
+covers_rule: "memberExpression, callExpression, aggregateLiteral"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits a dot call whose receiver is a parenthesized aggregate literal; no receiver-call lowering shape roots a borrow at a temporary, so the body drains it as a capability gap."
