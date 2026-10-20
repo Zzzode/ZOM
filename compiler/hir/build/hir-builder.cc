@@ -4085,6 +4085,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                 definition.source.clone());
           }
+          // A direct-call initializer (`let x = callee();`) is classified by the
+          // shape but has no HIR initializer arm yet. The single-local
+          // DirectCallInitializerReturn shape owns the one-call case; a binding
+          // inside a multi-local body drains as a capability rejection
+          // (ZOM4099) instead of reaching the identifier/parameter fallthrough.
+          if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
+          }
           // Locals must be distinct bindings.
           for (const auto existing : localBindingIds) {
             if (existing == ZC_ASSERT_NONNULL(ownerBinding)) rejected = true;

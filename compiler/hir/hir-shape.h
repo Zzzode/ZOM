@@ -30,7 +30,8 @@ enum class SequentialInitializerKind : uint8_t {
   EnumVariant,
   EnumVariantConstruction,
   FoldedStringLength,
-  FoldedStringConcat
+  FoldedStringConcat,
+  DirectCall
 };
 
 // One operand of a sequential primitive-binary initializer. Exactly one payload

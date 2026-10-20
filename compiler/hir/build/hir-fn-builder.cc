@@ -706,6 +706,11 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         // filters it out of the sequential shape. The case is listed for
         // switch exhaustiveness only.
         break;
+      case SequentialInitializerKind::DirectCall:
+        // A direct-call binding has no initializer carrier yet: the builder
+        // drains it as a capability rejection before materialization, so this
+        // arm is never reached. It is listed for exhaustiveness only.
+        break;
     }
     ctx.addLocal(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
                                  binding.type, initializerNodeId, binding.patternSpan.clone(),
