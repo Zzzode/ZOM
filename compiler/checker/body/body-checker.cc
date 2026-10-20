@@ -4526,22 +4526,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     for (const auto& entry : nodeTypes) {
       if (entry.key == operandNode) typeFact = entry;
     }
-    if (typeFact == zc::none) {
-      // A value reference to an owner local whose initializer is a call,
-      // struct/tuple/array literal, or conditional expression is deferred to a
-      // later stage than the binary (the initializer must produce its own fact
-      // first), so the reference's node-type fact does not exist yet. Resolve
-      // the operand type from the binding instead, exactly as the receiver-field
-      // form above does: the reference's own production site recomputes the
-      // same type through `ownerLocalReferenceType` and fails closed on its own
-      // if it disagrees. A literal operand has no such binding rail, so a
-      // missing fact still refuses it.
-      if (!isReference) return false;
-      auto resolved = referenceType(operandNode);
-      bool referenceOk = false;
-      ZC_IF_SOME(value, resolved) { referenceOk = value == operand; }
-      return referenceOk;
-    }
+    if (typeFact == zc::none) return false;
     bool typeOk = false;
     ZC_IF_SOME(entry, typeFact) { typeOk = entry.value == operand; }
     if (!typeOk) return false;
