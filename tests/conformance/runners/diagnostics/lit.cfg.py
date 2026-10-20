@@ -73,6 +73,7 @@ zomc_command = f"python3 {package_runner_path} --zomc {zomc_path}"
 
 config.substitutions.append(("%zomc", zomc_command))
 config.substitutions.append(("%corpus", corpus_root))
+config.substitutions.append(("%repo", repo_root))
 config.substitutions.append(("%FileCheck", f"python3 {filecheck_path}"))
 
 config.environment["ZOMLANG_TEST_ROOT"] = conformance_root

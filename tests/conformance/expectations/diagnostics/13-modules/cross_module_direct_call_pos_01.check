@@ -1,0 +1,7 @@
+// RUN: %zomc compile --check --manifest-path %repo/tests/integration/core-library/cross-module-call-consumer/Zom.toml --package cross_module_call_consumer --lib
+
+// A direct call to a function declared in a sibling module resolves through the
+// import binding. The checker reads the callee's verified signature from the
+// imported-signature view when this module's own signature facts do not define
+// it. A multi-module package cannot reach native emission yet, so this asserts
+// the frontend contract only.
