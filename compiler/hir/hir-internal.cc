@@ -385,6 +385,18 @@ bool isDevirtualizedEraseInitializer(const ast::Tree& tree,
                                      const checker::checked::VerifiedCheckedFacts& facts,
                                      ast::NodeId initializerNode) {
   if (!tree.contains(initializerNode)) return false;
+  // A devirtualized erase is an erasure first: the initializer must carry an
+  // annotated-initializer DynErase coercion. Without this gate the shape test
+  // below would also accept a plain concrete receiver of a concrete-method
+  // call, and the receiver type-identity checks it exempts would be silently
+  // skipped rather than passing.
+  bool erased = false;
+  for (const auto& entry : facts.coercions().entries()) {
+    if (entry.key != initializerNode) continue;
+    if (entry.value.site == checker::checked::CoercionSite::AnnotatedInitializer) { erased = true; }
+    break;
+  }
+  if (!erased) return false;
   // Find the VariableDeclarator whose init word is the initializer, then read
   // its identifier pattern name. Mirrors isDeadErasedInitializer.
   zc::Maybe<ast::NodeId> pattern;
