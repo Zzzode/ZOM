@@ -1,0 +1,8 @@
+[package]
+name = "concrete_impl_precedence_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "concrete_impl_precedence_consumer"
+path = "src/main.zom"

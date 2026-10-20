@@ -549,6 +549,45 @@ function, or a `dyn I` stored in a struct field — is not admitted yet. A
 local and its transitively-dead concrete source are skipped during lowering,
 so only scalar locals reach MIR/LIR.
 
+### 9.6.12 Interface Methods Through a Concrete Receiver
+
+A method declared in an `impl I for T` block is called through a receiver of
+the concrete type `T` when no member of `T` itself has that name. The
+receiver does not have to be erased to `dyn I`:
+
+```zom
+interface Draw {
+    fn area(this) -> i32;
+}
+
+struct Square {
+    side: i32,
+}
+
+impl Draw for Square {
+    fn area(this) -> i32 { return 41; }
+}
+
+fn entry() -> i32 {
+    let s: Square = Square { side: 1 };
+    return s.area();
+}
+```
+
+The checker searches the receiver type's own members first, so a method
+declared in the struct body always takes precedence over an interface method
+of the same name. When no own member matches, the checker selects the impl
+whose self type is the receiver's concrete type and whose body declares a
+method of that name, then lowers a regular receiver call with the concrete
+receiver source type. The same direct-call carrier serves this case and the
+devirtualized `dyn` case in §9.6.11.
+
+A call whose method name is declared by two impls of different interfaces on
+the same concrete type is ambiguous and is not resolved by this rule; the
+qualified form `I::method(receiver, ...)` described in §9.5.3 names the
+interface explicitly. A receiver of primitive type (`impl I for str`) supplies
+no aggregate place to borrow, so such a call is not admitted yet.
+
 ## 9.7 Interfaces as Generic Bounds
 
 Interface names and marker names both participate in the same `BoundList` syntax, shared with [Ch.12 §Generics](12-generics.md). The full `BoundList` grammar (normative in Ch.12) is:

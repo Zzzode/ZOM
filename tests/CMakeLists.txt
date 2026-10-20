@@ -302,6 +302,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirt-multi-call-consumer/Zom.toml::devirt_multi_call_consumer::devirt_multi_call_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/concrete-impl-call-consumer/Zom.toml::concrete_impl_call_consumer::concrete_impl_call_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/concrete-impl-precedence-consumer/Zom.toml::concrete_impl_precedence_consumer::concrete_impl_precedence_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-methods-consumer/Zom.toml::enum_methods_consumer::enum_methods_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-ops-consumer/Zom.toml::string_ops_consumer::string_ops_consumer"
@@ -582,6 +586,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirt-two-impl-consumer/Zom.toml::devirt_two_impl_consumer::devirt_two_impl_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirt-multi-call-consumer/Zom.toml::devirt_multi_call_consumer::devirt_multi_call_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/concrete-impl-call-consumer/Zom.toml::concrete_impl_call_consumer::concrete_impl_call_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/concrete-impl-precedence-consumer/Zom.toml::concrete_impl_precedence_consumer::concrete_impl_precedence_consumer::7"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-methods-consumer/Zom.toml::enum_methods_consumer::enum_methods_consumer::41"
       --run-case

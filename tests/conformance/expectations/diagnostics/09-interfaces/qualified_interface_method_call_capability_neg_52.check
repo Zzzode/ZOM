@@ -1,0 +1,14 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/qualified_interface_method_call_capability_neg_52.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An interface-qualified call `A::d(p)` names its dispatch target statically
+// and passes the receiver as the first argument. No receiver-call lowering
+// shape accepts that form yet, so the body drains ZOM4125 with the method name
+// it spells instead of reaching a missing-fact invariant.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `d` is not supported yet
+// CHECK-LITERAL:   --> conformance/09-interfaces/qualified_interface_method_call_capability_neg_52.zom:15:12
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 15 |     return A::d(p);
+// CHECK-LITERAL:    |            ^~~~~~~
+// CHECK-LITERAL: 1 error generated.

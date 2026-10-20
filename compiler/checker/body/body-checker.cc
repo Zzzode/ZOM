@@ -4947,6 +4947,176 @@ zc::Maybe<ConcreteMethodCallShape> concreteMethodCallShape(
   ZC_UNREACHABLE
 }
 
+/// \brief True when the given implementation authority declares a method with
+/// the given name. Impl methods are module-scope definitions owned by the
+/// implementation, so the match walks each definition's stable owner chain.
+bool implDeclaresMethod(const BodyCheckingInput& input, identity::ImplId impl,
+                        zc::StringPtr memberName) {
+  auto implEntry = input.identities.implementation(impl);
+  if (implEntry == zc::none) { return false; }
+  const auto& implKey = ZC_ASSERT_NONNULL(implEntry).key();
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Method ||
+        definition.record.name() != memberName) {
+      continue;
+    }
+    for (const auto& owner : definition.record.owners()) {
+      if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) { continue; }
+      ZC_IF_SOME(ownerImplKey, owner.implKey()) {
+        if (ownerImplKey == implKey) { return true; }
+      }
+    }
+  }
+  return false;
+}
+
+/// \brief Builds the receiver-call shape for an impl method selected from a
+/// statically known concrete receiver type.
+///
+/// The impl's methods are module-scope definitions owned by the implementation
+/// authority, not members of the nominal signature, so the impl key is matched
+/// against each definition's stable owner chain. The method name must resolve
+/// uniquely inside the impl. The receiver source type is the concrete type the
+/// caller resolved, which is what the HIR/MIR receiver rail already lowers.
+///
+/// \param requireMutableLocal When set, a mutable receiver on an immutable
+///   owner local is declined and reported through \p immutableReceiver so the
+///   caller emits ZOM4024. A devirtualized call resolves its mutable-receiver
+///   permission from the erasure site instead, so it passes false.
+zc::Maybe<ConcreteMethodCallShape> implMethodCallShapeForImpl(
+    const BodyCheckingInput& input, ast::NodeId callNode,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    identity::SemanticTypeId concreteType, identity::ImplId impl, bool requireMutableLocal,
+    zc::Maybe<ast::NodeId>* immutableReceiver) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(arguments)) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
+    return zc::none;
+  }
+  const bool receiverLocalIsMutable = isMutableOwnerLocal(input.boundModule, receiverNode);
+  auto implEntry = input.identities.implementation(impl);
+  if (implEntry == zc::none) { return zc::none; }
+  const auto& implKey = ZC_ASSERT_NONNULL(implEntry).key();
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::DefId> selectedMethod;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Method ||
+        definition.record.name() != memberName) {
+      continue;
+    }
+    bool ownedByImpl = false;
+    for (const auto& owner : definition.record.owners()) {
+      if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) {
+        ZC_IF_SOME(ownerImplKey, owner.implKey()) {
+          if (ownerImplKey == implKey) { ownedByImpl = true; }
+        }
+      }
+    }
+    if (!ownedByImpl) { continue; }
+    if (selectedMethod != zc::none) { return zc::none; }
+    selectedMethod = definition.definition;
+  }
+  if (selectedMethod == zc::none) { return zc::none; }
+  // An impl method's signature is module-scoped, so only the CallableSignature
+  // payload is needed; its scope is not a MemberSignatureScope.
+  zc::Maybe<signature::ReceiverMode> receiverMode;
+  zc::Maybe<identity::SemanticTypeId> success;
+  zc::Vector<identity::SemanticTypeId> parameters;
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != ZC_ASSERT_NONNULL(selectedMethod) ||
+        !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      continue;
+    }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
+        callable.raises != zc::none || callable.abi != zc::none) {
+      return zc::none;
+    }
+    const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
+    if (requireMutableLocal && receiverSignature.mode == signature::ReceiverMode::Mutable &&
+        !receiverLocalIsMutable) {
+      // A mutable receiver on an immutable owner local is the genuine
+      // mutability error (ZOM4024), reported by the caller.
+      if (immutableReceiver != nullptr) *immutableReceiver = receiverNode;
+      return zc::none;
+    }
+    if (receiverSignature.mode != signature::ReceiverMode::Shared &&
+        receiverSignature.mode != signature::ReceiverMode::Mutable) {
+      return zc::none;
+    }
+    receiverMode = receiverSignature.mode;
+    for (const auto& parameter : callable.parameters) {
+      if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
+        return zc::none;
+      }
+      parameters.add(parameter.type);
+    }
+    success = callable.success;
+  }
+  if (receiverMode == zc::none || success == zc::none || arguments.size != parameters.size()) {
+    return zc::none;
+  }
+  // The binder records a deferred member for a dot-method call on a receiver
+  // whose type is not known at bind time.
+  bool deferredMember = false;
+  for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
+    if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
+        fact.expectedNamespaces.size() != 1 ||
+        fact.expectedNamespaces[0] != binder::Namespace::Value ||
+        fact.genericArguments.size() != 0 || deferredMember) {
+      continue;
+    }
+    deferredMember = true;
+  }
+  if (!deferredMember) { return zc::none; }
+
+  const auto receiverMutability =
+      ZC_ASSERT_NONNULL(receiverMode) == signature::ReceiverMode::Mutable
+          ? type::semantic::Mutability::Mutable
+          : type::semantic::Mutability::Const;
+  auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::ReferenceTypeData{receiverMutability, concreteType}));
+  if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto receiverParameter = input.semanticTypes.intern(
+      zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
+  if (!receiverParameter.is<type::SemanticTypeInterned>()) { return zc::none; }
+
+  zc::Vector<identity::SemanticTypeId> canonicalParameters;
+  for (const auto parameter : parameters) { canonicalParameters.add(parameter); }
+  zc::Maybe<identity::SemanticTypeId> noRaises;
+  auto canonical = input.semanticTypes.canonicalizeClosed(
+      type::semantic::TypeData(type::semantic::FunctionTypeData{
+          zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+  return ConcreteMethodCallShape{receiverNode,
+                                 ZC_ASSERT_NONNULL(selectedMethod),
+                                 concreteType,
+                                 receiverParameter.get<type::SemanticTypeInterned>().id,
+                                 interned.get<type::SemanticTypeInterned>().id,
+                                 ZC_ASSERT_NONNULL(success),
+                                 ZC_ASSERT_NONNULL(receiverMode),
+                                 zc::mv(parameters),
+                                 zc::Maybe<identity::ImplId>(impl),
+                                 zc::Maybe<identity::DefId>()};
+}
+
 /// \brief Resolves a dot-method call on a dyn-trait owner local whose concrete
 /// type is statically known from its initializer, devirtualizing the call to
 /// the impl method.
@@ -5011,113 +5181,81 @@ zc::Maybe<ConcreteMethodCallShape> devirtualizedMethodCallShape(
       concreteLookup.get<type::SemanticTypeLookup>().data().get<type::semantic::NominalTypeData>();
   if (!concreteNominal.arguments.empty()) { return zc::none; }
   ZC_IF_SOME(impl, selectDynEraseImpl(input, concreteType, existential)) {
-    // Resolve the impl key so the impl's methods can be matched by owner.
-    auto implEntry = input.identities.implementation(impl);
-    if (implEntry == zc::none) { return zc::none; }
-    const auto& implKey = ZC_ASSERT_NONNULL(implEntry).key();
-    const auto memberName =
-        tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
-    zc::Maybe<identity::DefId> selectedMethod;
-    for (const auto& definition : input.boundModule.definitions().definitions()) {
-      if (definition.record.kind() != identity::DefinitionKind::Method ||
-          definition.record.name() != memberName) {
-        continue;
-      }
-      bool ownedByImpl = false;
-      for (const auto& owner : definition.record.owners()) {
-        if (owner.kind() == identity::EnclosingStableOwnerKind::Implementation) {
-          ZC_IF_SOME(ownerImplKey, owner.implKey()) {
-            if (ownerImplKey == implKey) { ownedByImpl = true; }
-          }
-        }
-      }
-      if (!ownedByImpl) { continue; }
-      if (selectedMethod != zc::none) { return zc::none; }
-      selectedMethod = definition.definition;
-    }
-    if (selectedMethod == zc::none) { return zc::none; }
-    // Resolve the impl method's callable signature. Impl methods are scoped
-    // as module-level definitions, so the scope is not a MemberSignatureScope;
-    // only the CallableSignature payload is needed.
-    zc::Maybe<signature::ReceiverMode> receiverMode;
-    zc::Maybe<identity::SemanticTypeId> success;
-    zc::Vector<identity::SemanticTypeId> parameters;
-    for (const auto& semanticSignature : input.signatureFacts.signatures()) {
-      if (semanticSignature.definition != ZC_ASSERT_NONNULL(selectedMethod) ||
-          !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
-        continue;
-      }
-      const auto& callable =
-          semanticSignature.payload.variant().get<signature::CallableSignature>();
-      if (callable.genericParameters.size() != 0 || callable.receiver == zc::none ||
-          callable.raises != zc::none || callable.abi != zc::none) {
-        return zc::none;
-      }
-      const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
-      if (receiverSignature.mode != signature::ReceiverMode::Shared &&
-          receiverSignature.mode != signature::ReceiverMode::Mutable) {
-        return zc::none;
-      }
-      receiverMode = receiverSignature.mode;
-      for (const auto& parameter : callable.parameters) {
-        if (parameter.hasDefault || parameter.mode != signature::ParameterMode::Value) {
-          return zc::none;
-        }
-        parameters.add(parameter.type);
-      }
-      success = callable.success;
-    }
-    if (receiverMode == zc::none || success == zc::none || arguments.size != parameters.size()) {
-      return zc::none;
-    }
-    // The binder records a deferred member for a dot-method call on a
-    // receiver whose type is not known at bind time. A devirtualized call
-    // must have one, matching the concrete-method-call shape.
-    bool deferredMember = false;
-    for (const auto& fact : input.boundModule.bindings().deferredMembers()) {
-      if (fact.node != callee || fact.base != receiverNode || fact.member.text() != memberName ||
-          fact.expectedNamespaces.size() != 1 ||
-          fact.expectedNamespaces[0] != binder::Namespace::Value ||
-          fact.genericArguments.size() != 0 || deferredMember) {
-        continue;
-      }
-      deferredMember = true;
-    }
-    if (!deferredMember) { return zc::none; }
-
-    const auto receiverMutability =
-        ZC_ASSERT_NONNULL(receiverMode) == signature::ReceiverMode::Mutable
-            ? type::semantic::Mutability::Mutable
-            : type::semantic::Mutability::Const;
-    auto canonicalReceiver = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-        type::semantic::ReferenceTypeData{receiverMutability, concreteType}));
-    if (!canonicalReceiver.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
-    auto receiverParameter = input.semanticTypes.intern(
-        zc::mv(canonicalReceiver).get<type::semantic::CanonicalTypeData>());
-    if (!receiverParameter.is<type::SemanticTypeInterned>()) { return zc::none; }
-
-    zc::Vector<identity::SemanticTypeId> canonicalParameters;
-    for (const auto parameter : parameters) { canonicalParameters.add(parameter); }
-    zc::Maybe<identity::SemanticTypeId> noRaises;
-    auto canonical = input.semanticTypes.canonicalizeClosed(
-        type::semantic::TypeData(type::semantic::FunctionTypeData{
-            zc::mv(canonicalParameters), ZC_ASSERT_NONNULL(success), zc::mv(noRaises)}));
-    if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
-    auto interned =
-        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
-    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
-    return ConcreteMethodCallShape{receiverNode,
-                                   ZC_ASSERT_NONNULL(selectedMethod),
-                                   concreteType,
-                                   receiverParameter.get<type::SemanticTypeInterned>().id,
-                                   interned.get<type::SemanticTypeInterned>().id,
-                                   ZC_ASSERT_NONNULL(success),
-                                   ZC_ASSERT_NONNULL(receiverMode),
-                                   zc::mv(parameters),
-                                   zc::Maybe<identity::ImplId>(impl),
-                                   zc::Maybe<identity::DefId>()};
+    return implMethodCallShapeForImpl(input, callNode, nodeTypes, concreteType, impl,
+                                      /*requireMutableLocal=*/false, nullptr);
   }
   return zc::none;
+}
+
+/// \brief Resolves a dot-method call on a concrete receiver type to an
+/// interface method supplied by `impl I for ConcreteType`.
+///
+/// A nominal's own members are searched first (`concreteMethodCallShape`), so
+/// an inherent struct method always wins over an interface method of the same
+/// name. This resolver covers the remaining case: the method exists only in an
+/// impl block. The impl head whose self type is the receiver's concrete type
+/// supplies the impl; the impl's methods are matched by name inside that
+/// authority. Two impls of different interfaces declaring the same method name
+/// leave the call genuinely ambiguous, so it declines rather than selecting one
+/// arbitrarily and keeps the site on the capability rail.
+zc::Maybe<ConcreteMethodCallShape> concreteImplMethodCallShape(
+    const BodyCheckingInput& input, ast::NodeId callNode,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    zc::Maybe<ast::NodeId>* immutableReceiver) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(callNode);
+  const ast::NodeId callee(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression ||
+      !tree.contains(typeArguments) || !typeArguments.empty()) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Dot) {
+    return zc::none;
+  }
+  const ast::NodeId receiverNode(member.payload.words[ast::kMemberExpressionObjectWord]);
+  if (!tree.contains(receiverNode) || tree.node(receiverNode).kind != ast::SyntaxKind::IdentExpr ||
+      resolvedOwnerLocal(input.boundModule.bindings(), receiverNode) == zc::none) {
+    return zc::none;
+  }
+  const auto receiverSourceType = ownerLocalReferenceType(input, receiverNode, nodeTypes);
+  if (receiverSourceType == zc::none) { return zc::none; }
+  auto receiverLookup = input.semanticTypes.get(ZC_ASSERT_NONNULL(receiverSourceType));
+  if (!receiverLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  const auto& receiverData = receiverLookup.get<type::SemanticTypeLookup>().data();
+  // The receiver rail borrows a place rooted at the owner local, which only a
+  // nominal has an aggregate carrier for. A primitive self type (`impl I for
+  // str`) has no such carrier in this slice, so it keeps its capability drain
+  // rather than reaching an unlowered shape.
+  if (!receiverData.is<type::semantic::NominalTypeData>()) { return zc::none; }
+  if (!receiverData.get<type::semantic::NominalTypeData>().arguments.empty()) { return zc::none; }
+  const auto concreteType = ZC_ASSERT_NONNULL(receiverSourceType);
+  // Count the impls of the receiver's concrete type that declare a method of
+  // this name. An impl that declares nothing by that name cannot supply the
+  // call; a second declaring impl makes the selection ambiguous.
+  const auto memberName =
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord]));
+  zc::Maybe<identity::ImplId> declaring;
+  bool ambiguous = false;
+  for (const auto& head : input.coherence.implHeads()) {
+    if (head.selfType != concreteType || head.genericParameters.size() != 0) { continue; }
+    if (!implDeclaresMethod(input, head.impl, memberName)) { continue; }
+    if (declaring != zc::none) {
+      ambiguous = true;
+      break;
+    }
+    declaring = head.impl;
+  }
+  if (ambiguous || declaring == zc::none) { return zc::none; }
+  return implMethodCallShapeForImpl(input, callNode, nodeTypes, concreteType,
+                                    ZC_ASSERT_NONNULL(declaring), /*requireMutableLocal=*/true,
+                                    immutableReceiver);
 }
 
 /// \brief Resolves a dot-method call on a dyn-trait receiver whose concrete
@@ -6413,6 +6551,33 @@ bool isExistentialOwnerLocalArgument(const BodyCheckingInput& input, ast::NodeId
   auto lookup = input.semanticTypes.get(argumentType);
   if (!lookup.is<type::SemanticTypeLookup>()) return false;
   return lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::ExistentialTypeData>();
+}
+
+/// \brief Source name of an interface-qualified method call `I::m(receiver,
+/// ...)`, or none when the callee is not a qualified member expression.
+///
+/// The qualified form names the dispatch target statically and passes the
+/// receiver as the first argument (Ch.09 §9.5.3). No receiver-call lowering
+/// shape accepts it yet, so every such call is legal source the body slice
+/// cannot lower. Resolving its name keeps the site on the ZOM4125/ZOM4099
+/// capability rail instead of reaching the missing-fact invariant.
+zc::Maybe<identity::DeclaredDefinitionName> qualifiedMethodCallName(const BodyCheckingInput& input,
+                                                                    ast::NodeId callNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(callNode) || tree.node(callNode).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const ast::NodeId callee(tree.node(callNode).payload.words[ast::kCallExpressionCalleeWord]);
+  if (!tree.contains(callee) || tree.node(callee).kind != ast::SyntaxKind::MemberExpression) {
+    return zc::none;
+  }
+  const auto& member = tree.node(callee);
+  if (static_cast<ast::MemberAccessKind>(member.payload.words[ast::kMemberExpressionAccessWord]) !=
+      ast::MemberAccessKind::Qualified) {
+    return zc::none;
+  }
+  return identity::DeclaredDefinitionName::fromSource(
+      tree.ident(ast::IdentId(member.payload.words[ast::kMemberExpressionPropertyWord])));
 }
 
 /// \brief Attaches a ZOM4125 recovery ledger for a method-call site, resolving
@@ -8728,6 +8893,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           shape = dynMethodCallShape(input, site.node, nodeTypes.asPtr());
         }
         if (shape == zc::none) {
+          // A dot-method call on a concrete receiver whose method is supplied
+          // by `impl I for T` rather than by the nominal's own members.
+          shape =
+              concreteImplMethodCallShape(input, site.node, nodeTypes.asPtr(), &immutableReceiver);
+        }
+        if (shape == zc::none) {
           // A mutable-receiver method invoked on an immutable `let` local is a
           // genuine mutability error (ZOM4024), distinct from a method the
           // lowering does not implement yet (ZOM4125).
@@ -8745,14 +8916,17 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               }
             }
           }
-          // Resolve the callee name without the lowering shape's mutability and
-          // arity gates so ordinary user errors do not collapse into an
-          // invariant: a wrong argument count is ZOM4036, while an unknown
-          // method or any other unlowered receiver call drains ZOM4125.
+          // A wrong argument count is ZOM4036, while an unknown or unlowered
+          // method drains ZOM4125. An interface-qualified call (`I::m(recv)`)
+          // names its target statically and has no receiver-call lowering, so
+          // it drains with the method name it spells.
           const auto& fallbackTree = input.boundModule.tree();
           const ast::NodeList fallbackArguments{
               fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsFirstWord],
               fallbackTree.node(site.node).payload.words[ast::kCallExpressionArgsSizeWord]};
+          if (auto qualified = qualifiedMethodCallName(input, site.node); qualified != zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(qualified));
+          }
           auto methodName = receiverMethodCallName(input, nodeTypes.asPtr(), site.node);
           ZC_IF_SOME(resolved, methodName) {
             if (resolved.methodResolved && fallbackTree.contains(fallbackArguments) &&
@@ -10111,6 +10285,10 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
         if (shape == zc::none) { shape = dynMethodCallShape(input, callNode, nodeTypes.asPtr()); }
         if (shape == zc::none) {
+          shape =
+              concreteImplMethodCallShape(input, callNode, nodeTypes.asPtr(), &immutableReceiver);
+        }
+        if (shape == zc::none) {
           if (immutableReceiver != zc::none) {
             ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, callNode)) {
               ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
@@ -10132,6 +10310,9 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           const ast::NodeList referenceArguments{
               referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsFirstWord],
               referenceTree.node(callNode).payload.words[ast::kCallExpressionArgsSizeWord]};
+          if (auto qualified = qualifiedMethodCallName(input, callNode); qualified != zc::none) {
+            return rejectMethodCallCapability(site, input, factStoreBrands, zc::mv(qualified));
+          }
           auto referenceName = receiverMethodCallName(input, nodeTypes.asPtr(), callNode);
           ZC_IF_SOME(resolved, referenceName) {
             if (resolved.methodResolved && referenceTree.contains(referenceArguments) &&

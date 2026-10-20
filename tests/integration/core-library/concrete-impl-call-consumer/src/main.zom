@@ -1,0 +1,21 @@
+// Concrete-receiver interface method fixture: the receiver local has the
+// concrete nominal type `Pt`, and the method exists only in `impl Draw for Pt`.
+// The checker selects that impl, records an ImplMethodCallable, and the HIR
+// builder lowers a regular receiver call with the concrete receiver source
+// type. `p.d()` returns 41.
+struct Pt {
+  x: i32,
+}
+
+interface Draw {
+  fn d(this) -> i32;
+}
+
+impl Draw for Pt {
+  fn d(this) -> i32 { return 41; }
+}
+
+fn entry() -> i32 {
+  let p: Pt = Pt { x: 1 };
+  return p.d();
+}

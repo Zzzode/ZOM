@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/ambiguous_concrete_impl_method_call_capability_neg_53.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Two impls of different interfaces declare `d` for the same concrete type, so
+// a dot call has no unique target. The resolver declines and the body drains
+// ZOM4125 rather than selecting one impl arbitrarily.
+
+// CHECK-LITERAL: Error [ZOM4125]: method call `d` is not supported yet
+// CHECK-LITERAL:   --> conformance/09-interfaces/ambiguous_concrete_impl_method_call_capability_neg_53.zom:23:12
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 23 |     return p.d();
+// CHECK-LITERAL:    |            ^~~~~
+// CHECK-LITERAL: 1 error generated.

@@ -1,0 +1,5 @@
+section: "09-interfaces ambiguous concrete impl method call"
+covers_rule: "memberExpression, callExpression, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "Two impls of different interfaces declare the same method name for one concrete type. The grammar and coherence rules admit both; only the call site is unresolvable, so the body drains it as a capability gap."

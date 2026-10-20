@@ -1,0 +1,5 @@
+section: "09-interfaces interface-qualified method call"
+covers_rule: "qualifiedMemberExpression, callExpression, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "The grammar admits the interface-qualified call form `A::d(p)`; the checker records the qualified access and drains the call as a capability gap because no receiver-call lowering shape accepts a qualified callee."

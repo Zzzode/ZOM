@@ -1,0 +1,16 @@
+struct Pt {
+    x: i32,
+}
+
+interface A {
+    fn d(this) -> i32;
+}
+
+impl A for Pt {
+    fn d(this) -> i32 { return 41; }
+}
+
+fn entry() -> i32 {
+    let p = Pt { x: 0 };
+    return A::d(p);
+}
