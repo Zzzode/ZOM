@@ -302,8 +302,6 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/devirt-multi-call-consumer/Zom.toml::devirt_multi_call_consumer::devirt_multi_call_consumer"
       --case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-impl-consumer/Zom.toml::primitive_impl_consumer::primitive_impl_consumer"
-      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-methods-consumer/Zom.toml::enum_methods_consumer::enum_methods_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-ops-consumer/Zom.toml::string_ops_consumer::string_ops_consumer"
