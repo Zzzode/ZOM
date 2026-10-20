@@ -310,6 +310,8 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
     (4090, "GenericMarkerInterfaceNotAllowed", "kError", "Marker interfaces cannot declare generic parameters", 0),
     (4091, "PositiveMarkerImplRequiresUnsafe", "kError", "A positive marker implementation requires unsafe", 0),
     (4092, "ExplicitImplConflictsWithBuiltinMarker", "kError", "Builtin marker evidence cannot be replaced by an explicit implementation", 0),
+    (4093, "UninitializedPlaceUse", "kError", "Use of uninitialized or deinitialized place", 0),
+    (4094, "PlaceBecameUnavailableHere", "kNote", "Place became unavailable here", 0),
     (4103, "BinaryOperatorSemanticsUnavailable", "kError", "operator `{0}` is not supported yet", 1),
     (4104, "ModuleInitializerSemanticsUnavailable", "kError",
      "compile-time evaluation of this module-scope value is not supported yet", 0),
@@ -982,12 +984,13 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
     for code, name, severity, _message, _arity in ACCEPTED_CHECKER_DIAGNOSTICS:
         if severity == "kError" and (
             4001 <= code <= 4055 or 4077 <= code <= 4081 or code == 4103 or code == 4124
-            or code == 4125 or code == 4126 or code == 4099 or 4131 <= code <= 4133
+            or code == 4125 or code == 4126 or code == 4099 or code == 4093
+            or 4131 <= code <= 4133
         ):
             expected_errors.append(("ERROR", name))
         elif code == 4023:
             expected_warnings.append(("WARNING", name))
-        elif 4071 <= code <= 4076:
+        elif 4071 <= code <= 4076 or code == 4094:
             expected_notes.append(("NOTE", name))
     expected_ownership = expected_errors + expected_warnings + expected_notes
     if actual_ownership != expected_ownership:
