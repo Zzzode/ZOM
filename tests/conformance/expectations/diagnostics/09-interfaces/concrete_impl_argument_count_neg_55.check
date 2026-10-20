@@ -1,0 +1,13 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/concrete_impl_argument_count_neg_55.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A method supplied by `impl I for T` reports its declared parameter count, so
+// a genuine argument mismatch is ZOM4036 exactly as it is for an inherent
+// method, rather than collapsing into the capability drain.
+
+// CHECK-LITERAL: Error [ZOM4036]: Expected 1 arguments, got 2
+// CHECK-LITERAL:   --> conformance/09-interfaces/concrete_impl_argument_count_neg_55.zom:15:12
+// CHECK-LITERAL:    |
+// CHECK-LITERAL: 15 |     return p.s(1, 2);
+// CHECK-LITERAL:    |            ^~~~~~~~~
+// CHECK-LITERAL: 1 error generated.

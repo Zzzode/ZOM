@@ -3938,6 +3938,12 @@ struct ReceiverMethodCallName final {
   uint32_t parameterCount;
 };
 
+/// \brief True when the given implementation authority declares a method with
+/// the given name. Defined below, next to the resolver that shares its
+/// owner-chain walk.
+bool implDeclaresMethod(const BodyCheckingInput& input, identity::ImplId impl,
+                        zc::StringPtr memberName);
+
 zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
     const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
     ast::NodeId callNode) {
@@ -4048,6 +4054,63 @@ zc::Maybe<ReceiverMethodCallName> receiverMethodCallName(
     }
   }
   if (selected == zc::none) {
+    // The method may be supplied by `impl I for T` rather than by the nominal's
+    // own members. Report its declared parameter count so a genuine argument
+    // mismatch stays ZOM4036 instead of collapsing into the capability drain.
+    // A name declared by more than one impl is ambiguous and keeps the drain.
+    auto selfCanonical = input.semanticTypes.canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::NominalTypeData{nominal.definition, {}}));
+    if (selfCanonical.is<type::semantic::CanonicalTypeData>()) {
+      auto selfInterned = input.semanticTypes.intern(
+          zc::mv(selfCanonical).get<type::semantic::CanonicalTypeData>());
+      if (selfInterned.is<type::SemanticTypeInterned>()) {
+        const auto selfType = selfInterned.get<type::SemanticTypeInterned>().id;
+        zc::Maybe<identity::ImplId> declaringImpl;
+        bool ambiguousImpl = false;
+        for (const auto& head : input.coherence.implHeads()) {
+          if (head.selfType != selfType || head.genericParameters.size() != 0) { continue; }
+          if (!implDeclaresMethod(input, head.impl, memberName)) { continue; }
+          if (declaringImpl != zc::none) {
+            ambiguousImpl = true;
+            break;
+          }
+          declaringImpl = head.impl;
+        }
+        if (!ambiguousImpl && declaringImpl != zc::none) {
+          auto declaringEntry = input.identities.implementation(ZC_ASSERT_NONNULL(declaringImpl));
+          if (declaringEntry != zc::none) {
+            const auto& declaringKey = ZC_ASSERT_NONNULL(declaringEntry).key();
+            zc::Maybe<identity::DefId> implMethod;
+            for (const auto& definition : input.boundModule.definitions().definitions()) {
+              if (definition.record.kind() != identity::DefinitionKind::Method ||
+                  definition.record.name() != memberName) {
+                continue;
+              }
+              for (const auto& owner : definition.record.owners()) {
+                if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) {
+                  continue;
+                }
+                ZC_IF_SOME(ownerImpl, owner.implKey()) {
+                  if (ownerImpl == declaringKey) { implMethod = definition.definition; }
+                }
+              }
+            }
+            ZC_IF_SOME(method, implMethod) {
+              for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+                if (semanticSignature.definition != method ||
+                    !semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+                  continue;
+                }
+                const auto& callable =
+                    semanticSignature.payload.variant().get<signature::CallableSignature>();
+                return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), true,
+                                              static_cast<uint32_t>(callable.parameters.size())};
+              }
+            }
+          }
+        }
+      }
+    }
     return ReceiverMethodCallName{zc::mv(ZC_ASSERT_NONNULL(sourceName)), false, 0};
   }
   if (selectedName == zc::none) return zc::none;

@@ -1,0 +1,16 @@
+struct Pt {
+    x: i32,
+}
+
+interface Scale {
+    fn s(this, k: i32) -> i32;
+}
+
+impl Scale for Pt {
+    fn s(this, k: i32) -> i32 { return k; }
+}
+
+fn entry() -> i32 {
+    let p = Pt { x: 1 };
+    return p.s(1, 2);
+}

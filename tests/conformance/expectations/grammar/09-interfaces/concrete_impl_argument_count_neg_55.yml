@@ -1,0 +1,5 @@
+section: "09-interfaces impl method argument-count mismatch"
+covers_rule: "memberExpression, callExpression, standaloneImplDeclaration"
+expected: "ACCEPT"
+notes:
+  - "An impl-supplied method called with the wrong number of arguments is well-formed syntax; the checker reports ZOM4036 exactly as it does for an inherent method."
