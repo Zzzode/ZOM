@@ -3784,43 +3784,89 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        // Method header: member-signature scope, a shared-or-mutating receiver
-        // matching the header, zero ordinary parameters, and matching
-        // linkage/visibility. A field read is sound through either receiver mode.
+        // Method header: a shared-or-mutating receiver matching the header, zero
+        // ordinary parameters, and matching linkage/visibility. A field read is
+        // sound through either receiver mode. An impl method carries no
+        // module-interface signature, so fall back to the local signature facts.
         auto signaturePosition =
             signatureIndex(signatures.definitions.asPtr(), function.definition);
-        if (signaturePosition == zc::none) {
+        const checker::signature::SemanticSignature* signaturePtr = nullptr;
+        if (signaturePosition != zc::none) {
+          size_t slot = 0;
+          ZC_IF_SOME(value, signaturePosition) { slot = value; }
+          signaturePtr = &signatures.definitions[slot];
+        } else {
+          const auto& localSignatures =
+              candidate.impl->checkedModule.localSignatureFacts().signatures();
+          for (const auto& sig : localSignatures) {
+            if (sig.definition == function.definition) {
+              signaturePtr = &sig;
+              break;
+            }
+          }
+        }
+        if (signaturePtr == nullptr) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::MissingRequiredFact, module,
                                               registries, index + 1);
         }
-        size_t signatureSlot = 0;
-        ZC_IF_SOME(value, signaturePosition) { signatureSlot = value; }
-        const auto& signature = signatures.definitions[signatureSlot];
+        const auto& signature = *signaturePtr;
         if (!signature.payload.variant().is<checker::signature::CallableSignature>() ||
-            !signature.scope.variant().is<checker::signature::MemberSignatureScope>() ||
             signature.definition != function.definition ||
             signature.definitionKind != identity::DefinitionKind::Method) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
-        const auto& memberScope =
-            signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+        // An inherent method names its owner through the member-signature scope.
+        // An impl method's signature is module-scoped, so its owner nominal is
+        // the self type recorded on the verified impl head and its visibility is
+        // external.
+        zc::Maybe<checker::signature::MemberSignatureScope> memberScope;
+        zc::Maybe<ImplMethodSelf> implSelf;
+        if (signature.scope.variant().is<checker::signature::MemberSignatureScope>()) {
+          memberScope = signature.scope.variant().get<checker::signature::MemberSignatureScope>();
+        } else if (signature.scope.variant()
+                       .is<checker::signature::ModuleDefinitionSignatureScope>()) {
+          implSelf =
+              implMethodSelf(sourceDefinition, registries,
+                             candidate.impl->checkedModule.localSignatureFacts().implHeads());
+          if (implSelf == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
         const auto& callable =
             signature.payload.variant().get<checker::signature::CallableSignature>();
-        const auto expectedVisibility = memberVisibility(memberScope.visibility, module);
-        const auto expectedLinkage = linkage(callable);
-        if (memberScope.owner == function.definition || callable.success != function.resultType ||
-            callable.parameters.size() != 0 || function.parameters.size() != 0 ||
-            callable.receiver == zc::none ||
+        // An inherent method's scope is a member scope with a real visibility and
+        // an owner nominal that is never the method itself. An impl method is
+        // module-scoped, so it has no member visibility and is published as
+        // external by the same rule the generic method header applies.
+        zc::Maybe<HirVisibility> expectedVisibility;
+        ZC_IF_SOME(scope, memberScope) {
+          if (scope.owner == function.definition) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          expectedVisibility = memberVisibility(scope.visibility, module);
+        }
+        if (implSelf != zc::none) { expectedVisibility = HirVisibility::external(); }
+        const auto& expectedLinkage = linkage(callable);
+        if (callable.success != function.resultType || callable.parameters.size() != 0 ||
+            function.parameters.size() != 0 || callable.receiver == zc::none ||
             (ZC_ASSERT_NONNULL(callable.receiver).mode !=
                  checker::signature::ReceiverMode::Shared &&
              ZC_ASSERT_NONNULL(callable.receiver).mode !=
                  checker::signature::ReceiverMode::Mutable) ||
             ZC_ASSERT_NONNULL(callable.receiver).parameter != receiver.key ||
-            expectedLinkage == zc::none ||
-            !sameVisibility(function.visibility, expectedVisibility) ||
+            expectedVisibility == zc::none || expectedLinkage == zc::none ||
+            !sameVisibility(function.visibility, ZC_ASSERT_NONNULL(expectedVisibility)) ||
             function.linkage != ZC_ASSERT_NONNULL(expectedLinkage) ||
             !sameSpan(function.sourceSpan, sourceDefinition.source) ||
             !sameSpan(signature.declarationSpan, sourceDefinition.source)) {

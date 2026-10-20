@@ -2310,9 +2310,29 @@ struct EnclosingMethodReceiver final {
   bool receiverMutable;
 };
 
-/// \brief Resolves the implicit receiver of the inherent method enclosing a
-/// `this` expression. Both a shared const receiver and a mutating mutable
-/// receiver are accepted; the caller applies the slice-specific mode gate.
+/// \brief The impl head that owns a method definition supplied by a standalone
+/// `impl` block, or none when the definition has no implementation owner.
+zc::Maybe<identity::ImplId> enclosingImplementation(const BodyCheckingInput& input,
+                                                    identity::DefId method) {
+  ZC_IF_SOME(entry, input.boundModule.definitions().definition(method)) {
+    for (const auto& owner : entry.record().owners()) {
+      if (owner.kind() != identity::EnclosingStableOwnerKind::Implementation) { continue; }
+      ZC_IF_SOME(key, owner.implKey()) {
+        ZC_IF_SOME(impl, input.identities.implementation(key)) { return impl.handle(); }
+      }
+    }
+  }
+  return zc::none;
+}
+
+/// \brief Resolves the implicit receiver of the method enclosing a `this`
+/// expression. Both a shared const receiver and a mutating mutable receiver are
+/// accepted; the caller applies the slice-specific mode gate.
+///
+/// An inherent method names its owner through the member-signature scope. An
+/// impl method's signature is module-scoped because its enclosing owner is an
+/// impl rather than a definition, so its owner nominal is read from the self
+/// type recorded on the verified impl head.
 zc::Maybe<EnclosingMethodReceiver> enclosingMethodReceiver(const BodyCheckingInput& input,
                                                            ast::NodeId object) {
   const auto& tree = input.boundModule.tree();
@@ -2352,17 +2372,36 @@ zc::Maybe<EnclosingMethodReceiver> enclosingMethodReceiver(const BodyCheckingInp
 
   auto receiverAuthority = input.identities.callableParameter(ZC_ASSERT_NONNULL(receiverParameter));
   if (receiverAuthority == zc::none) { return zc::none; }
+  // The owner nominal of the enclosing method. An inherent method names it in
+  // its member-signature scope; an impl method is module-scoped, so its owner is
+  // the nominal self type recorded on the verified impl head.
   zc::Maybe<identity::DefId> ownerDefinition;
+  zc::Maybe<identity::SemanticTypeId> ownerType;
+  ZC_IF_SOME(impl, enclosingImplementation(input, ZC_ASSERT_NONNULL(methodDefinition))) {
+    bool foundHead = false;
+    for (const auto& head : input.coherence.implHeads()) {
+      if (head.impl != impl) { continue; }
+      foundHead = true;
+      auto selfLookup = input.semanticTypes.get(head.selfType);
+      if (!selfLookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+      const auto& selfData = selfLookup.get<type::SemanticTypeLookup>().data();
+      // A primitive self type (`impl I for str`) has no nominal field carrier
+      // for a `this.<field>` projection, so it keeps its capability drain.
+      if (!selfData.is<type::semantic::NominalTypeData>()) { return zc::none; }
+      if (!selfData.get<type::semantic::NominalTypeData>().arguments.empty()) { return zc::none; }
+      ownerType = head.selfType;
+      ownerDefinition = selfData.get<type::semantic::NominalTypeData>().definition;
+    }
+    if (!foundHead) { return zc::none; }
+  }
   zc::Maybe<identity::SemanticTypeId> receiverReferenceType;
   zc::Maybe<identity::SemanticTypeId> receiverType;
   bool receiverMutable = false;
   for (const auto& signature : input.signatureFacts.signatures()) {
     if (signature.definition != ZC_ASSERT_NONNULL(methodDefinition)) { continue; }
     if (!signature.payload.variant().is<signature::CallableSignature>()) { continue; }
-    if (!signature.scope.variant().is<signature::MemberSignatureScope>()) { continue; }
     const auto& callable = signature.payload.variant().get<signature::CallableSignature>();
-    const auto& scope = signature.scope.variant().get<signature::MemberSignatureScope>();
-    if (callable.receiver == zc::none || ownerDefinition != zc::none) { return zc::none; }
+    if (callable.receiver == zc::none || receiverType != zc::none) { return zc::none; }
     const auto& receiverSignature = ZC_ASSERT_NONNULL(callable.receiver);
     if ((receiverSignature.mode != signature::ReceiverMode::Shared &&
          receiverSignature.mode != signature::ReceiverMode::Mutable) ||
@@ -2370,24 +2409,28 @@ zc::Maybe<EnclosingMethodReceiver> enclosingMethodReceiver(const BodyCheckingInp
       return zc::none;
     }
     receiverMutable = receiverSignature.mode == signature::ReceiverMode::Mutable;
-    auto admitted = input.semanticTypes.canonicalizeClosed(
-        type::semantic::TypeData(type::semantic::NominalTypeData{scope.owner, {}}));
-    if (!admitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
-    auto interned =
-        input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
-    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
-    const auto ownerType = interned.get<type::SemanticTypeInterned>().id;
+    if (ownerType == zc::none) {
+      if (!signature.scope.variant().is<signature::MemberSignatureScope>()) { return zc::none; }
+      const auto& scope = signature.scope.variant().get<signature::MemberSignatureScope>();
+      auto admitted = input.semanticTypes.canonicalizeClosed(
+          type::semantic::TypeData(type::semantic::NominalTypeData{scope.owner, {}}));
+      if (!admitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+      auto interned =
+          input.semanticTypes.intern(zc::mv(admitted).get<type::semantic::CanonicalTypeData>());
+      if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+      ownerType = interned.get<type::SemanticTypeInterned>().id;
+      ownerDefinition = scope.owner;
+    }
     auto referenceAdmitted = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
         type::semantic::ReferenceTypeData{receiverMutable ? type::semantic::Mutability::Mutable
                                                           : type::semantic::Mutability::Const,
-                                          ownerType}));
+                                          ZC_ASSERT_NONNULL(ownerType)}));
     if (!referenceAdmitted.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
     auto referenceInterned = input.semanticTypes.intern(
         zc::mv(referenceAdmitted).get<type::semantic::CanonicalTypeData>());
     if (!referenceInterned.is<type::SemanticTypeInterned>()) { return zc::none; }
     receiverReferenceType = referenceInterned.get<type::SemanticTypeInterned>().id;
     receiverType = ownerType;
-    ownerDefinition = scope.owner;
   }
   if (receiverType == zc::none || receiverReferenceType == zc::none ||
       ownerDefinition == zc::none) {

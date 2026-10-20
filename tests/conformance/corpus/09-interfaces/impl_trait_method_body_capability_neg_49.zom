@@ -5,5 +5,8 @@ struct C {
     v: i32,
 }
 impl I for C {
-    fn m(this) -> i32 { return this.v; }
+    fn m(this) -> i32 {
+        let local = this.v;
+        return local;
+    }
 }

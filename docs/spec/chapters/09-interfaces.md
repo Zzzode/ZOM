@@ -588,6 +588,36 @@ qualified form `I::method(receiver, ...)` described in §9.5.3 names the
 interface explicitly. A receiver of primitive type (`impl I for str`) supplies
 no aggregate place to borrow, so such a call is not admitted yet.
 
+### 9.6.13 Receiver Field Reads Inside an Impl Method
+
+A method supplied by `impl I for T` reads the fields of its receiver the same
+way an inherent method does. The receiver is the implicit `this` parameter, its
+owner nominal is the concrete `T` of the impl head, and `this.<field>` is a
+field projection rooted at that parameter:
+
+```zom
+interface Get {
+    fn value(this) -> i32;
+}
+
+struct Cell {
+    value: i32,
+}
+
+impl Get for Cell {
+    fn value(this) -> i32 {
+        return this.value;
+    }
+}
+```
+
+The projection carries the same member and place facts in both positions; only
+the source of the owner nominal differs. An inherent method names its owner
+through the member signature scope, while an impl method's signature is
+module-scoped and its owner is the self type recorded on the verified impl
+head. A primitive self type (`impl I for str`) has no nominal field carrier, so
+`this.<field>` is not admitted there.
+
 ## 9.7 Interfaces as Generic Bounds
 
 Interface names and marker names both participate in the same `BoundList` syntax, shared with [Ch.12 §Generics](12-generics.md). The full `BoundList` grammar (normative in Ch.12) is:

@@ -1,0 +1,24 @@
+// Impl-method field-read fixture: the method is supplied by a standalone
+// `impl Get for Cell` block rather than declared inside the struct, so its
+// signature is module-scoped and its owner nominal has to be read from the
+// verified impl head. The body is the same `return this.value;` projection the
+// inherent-method fixture uses, and it lowers to the same one-offset-zero field
+// load, so the program links against the runtime `_start` and exits 41.
+struct Cell {
+  value: i32,
+}
+
+interface Get {
+  fn get(this) -> i32;
+}
+
+impl Get for Cell {
+  fn get(this) -> i32 {
+    return this.value;
+  }
+}
+
+fn entry() -> i32 {
+  let cell: Cell = Cell { value: 41 };
+  return cell.get();
+}

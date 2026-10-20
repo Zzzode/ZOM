@@ -1,5 +1,5 @@
-section: "09-interfaces impl trait method with receiver body"
+section: "09-interfaces impl trait method with a local-mediated receiver body"
 covers_rule: "funDeclaration (impl member)"
 expected: "ACCEPT"
 notes:
-  - "The grammar admits a concrete receiver-bearing trait method in an impl block; only empty impls and associated-type assignments lower, so the method drains with ZOM4099."
+  - "The grammar admits a concrete receiver-bearing trait method in an impl block; only empty impls, associated-type assignments, and the single `return this.<field>;` body lower, so a body that routes the field read through a local drains with ZOM4099."

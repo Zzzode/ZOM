@@ -2,9 +2,11 @@
 // RUN: %FileCheck %s --input-file %t
 
 // A concrete trait method supplied by a standalone impl block is not in the
-// lowered surface yet (empty impls and `type Item = T` assignments are). The
-// body checker drains the unsupported receiver-field read as ZOM4099, not as
-// an internal compiler error.
+// lowered surface yet (empty impls and `type Item = T` assignments are). A body
+// that reads a receiver field into a local and returns the local has no shape,
+// so the body checker drains it as ZOM4099 rather than an internal compiler
+// error. The single `return this.<field>;` shape is covered by the
+// impl-receiver-field native fixture instead.
 
 // CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:8:32
+// CHECK-LITERAL:   --> conformance/09-interfaces/impl_trait_method_body_capability_neg_49.zom:10:16
