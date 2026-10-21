@@ -4085,15 +4085,104 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                 definition.source.clone());
           }
-          // A direct-call initializer (`let x = callee();`) is classified by the
-          // shape but has no HIR initializer arm yet. The single-local
-          // DirectCallInitializerReturn shape owns the one-call case; a binding
-          // inside a multi-local body drains as a capability rejection
-          // (ZOM4099) instead of reaching the identifier/parameter fallthrough.
+          // A direct-call initializer (`let x = callee();`) resolves the checked
+          // call fact and its dispatch fact into a zero-argument HirDirectCall
+          // expression carried as this binding's initializer. Only the slice the
+          // MIR strategy and the LIR lowering admit is resolved here: a
+          // zero-argument direct call whose result is the binding type, with no
+          // receiver, erasure, substitution, witness, or raises clause. Any other
+          // call binding keeps draining as a capability rejection (ZOM4099)
+          // rather than reaching a lowering that cannot emit it.
+          zc::Maybe<HirDirectCallExpression> bindingCall;
           if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
-            return rejectHirCapability<HirModuleCandidate>(
-                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-                definition.source.clone());
+            auto callIndex = factIndex(facts.calls(), binding.initializer);
+            auto callKey = checkedNodeKey(tree, bound.parsedModule(), binding.initializer);
+            if (callIndex == zc::none || callKey == zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            auto dispatchIndex = dispatchFactIndex(checkedModule.dispatchFacts().facts(),
+                                                   ZC_ASSERT_NONNULL(callKey));
+            const ast::NodeId callCalleeNode(
+                tree.node(binding.initializer).payload.words[ast::kCallExpressionCalleeWord]);
+            auto callCallee = tree.contains(callCalleeNode)
+                                  ? resolvedDefinition(bound.bindings(), callCalleeNode)
+                                  : zc::Maybe<identity::DefId>(zc::none);
+            if (dispatchIndex == zc::none || callCallee == zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            size_t callSlot = 0;
+            size_t dispatchSlot = 0;
+            ZC_IF_SOME(index, callIndex) { callSlot = index; }
+            ZC_IF_SOME(index, dispatchIndex) { dispatchSlot = index; }
+            const auto& checkedCall = facts.calls().entries()[callSlot].value;
+            const auto& invocation = checkedCall.invocation;
+            const auto& selected = invocation.selected.variant();
+            const auto& dispatch = checkedModule.dispatchFacts().facts()[dispatchSlot];
+            const auto& dispatchTarget = dispatch.fact.target.variant();
+            const auto& dispatchTransform = dispatch.fact.resultTransform.variant();
+            bool dispatchOwnerMatches = false;
+            ZC_IF_SOME(owner, dispatch.owner) {
+              dispatchOwnerMatches = owner == definition.definition;
+            }
+            // The MIR strategy rejects an argument-bearing call, a receiver, an
+            // erasure, and a non-integer result, so admitting any of them here
+            // would turn a clean ZOM4099 into an IR incident. The guards below
+            // are therefore a strict subset of the strategy's accepted shape.
+            // The integer result is an explicit allowlist so a new primitive kind
+            // keeps failing closed here instead of being admitted silently.
+            const auto resultKind = primitiveKindOf(checkedModule.semanticTypes(), bindingType);
+            bool integerResult = false;
+            ZC_IF_SOME(kind, resultKind) {
+              switch (kind) {
+                case type::semantic::PrimitiveKind::I8:
+                case type::semantic::PrimitiveKind::I16:
+                case type::semantic::PrimitiveKind::I32:
+                case type::semantic::PrimitiveKind::I64:
+                case type::semantic::PrimitiveKind::U8:
+                case type::semantic::PrimitiveKind::U16:
+                case type::semantic::PrimitiveKind::U32:
+                case type::semantic::PrimitiveKind::U64:
+                case type::semantic::PrimitiveKind::Isize:
+                case type::semantic::PrimitiveKind::Usize:
+                  integerResult = true;
+                  break;
+                default:
+                  break;
+              }
+            }
+            if (!selected.is<checker::checked::DirectCallable>() ||
+                selected.get<checker::checked::DirectCallable>().callee !=
+                    ZC_ASSERT_NONNULL(callCallee) ||
+                invocation.resultType != bindingType || invocation.successType != bindingType ||
+                invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+                invocation.receiverAdjustment != zc::none || invocation.arguments.size() != 0 ||
+                invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+                invocation.raises != zc::none ||
+                !sameSpan(checkedCall.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+                !dispatchOwnerMatches || !dispatchTarget.is<checker::dispatch::DirectTarget>() ||
+                dispatchTarget.get<checker::dispatch::DirectTarget>().callee !=
+                    ZC_ASSERT_NONNULL(callCallee) ||
+                !dispatchTransform.is<checker::dispatch::IdentityResultTransform>() ||
+                dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
+                dispatch.fact.successType != bindingType ||
+                dispatch.fact.resultType != bindingType ||
+                dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+                dispatch.fact.raises != zc::none ||
+                !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+                !integerResult) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            zc::Vector<HirDirectCallArgument> noArguments;
+            bindingCall = HirDirectCallExpression{
+                HirNodeId(),           ZC_ASSERT_NONNULL(callCallee),
+                invocation.calleeType, bindingType,
+                zc::mv(noArguments),   ZC_ASSERT_NONNULL(initializerSpan).clone()};
           }
           // Locals must be distinct bindings.
           for (const auto existing : localBindingIds) {
@@ -4980,6 +5069,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             bindingTernaryConditionSpan = ZC_ASSERT_NONNULL(condSpan).clone();
             bindingTernaryThenSpan = ZC_ASSERT_NONNULL(thenSpan).clone();
             bindingTernaryElseSpan = ZC_ASSERT_NONNULL(elseSpan).clone();
+          } else if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
+            // The payload was resolved with the call fact above; the initializer
+            // is a HirDirectCallExpression and carries no further operand.
+            if (bindingCall == zc::none) {
+              rejected = true;
+              break;
+            }
           } else {
             // A reference to a parameter must resolve to a declared parameter.
             auto parameterHandle = resolvedCallableParameter(bound.bindings(), binding.initializer);
@@ -5011,6 +5107,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               binding.initializerKind,
               zc::mv(bindingLiteral),
               zc::mv(bindingAggregate),
+              zc::mv(bindingCall),
               zc::mv(bindingParameter),
               binding.referencedLocal,
               zc::mv(bindingOperation),

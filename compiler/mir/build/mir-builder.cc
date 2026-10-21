@@ -3639,6 +3639,152 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectCallInitializerReturn(const Lower
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers a call-then-local-arithmetic body:
+/// `fn f(...) -> T { let x = g(); let a: T = <const>; let y: T = a <op> <const>;
+/// return y; }`. Three user locals, a two-block CFG: block 1 storage-lives the
+/// call destination, calls the zero-argument callee into it, and continues to
+/// block 2; block 2 initializes the constant local, computes the arithmetic
+/// into the returned local, and returns it. No Temporary is declared, so the
+/// three declared locals keep ordinals 1..3 and the LIR lowering can map them
+/// one-to-one.
+zc::Maybe<RecursiveFunctionProduct> buildCallThenLocalArithmetic(const LoweringContext& lctx) {
+  const auto& declaration = lctx.declaration;
+  const auto& block = lctx.block;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+
+  if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) return zc::none;
+  if (declaration.parameters.size() != 0) return zc::none;
+  if (block.statements.size() != 4) return zc::none;
+  auto sourceReturn = returnFor(hirModule, block.statements[3]);
+  auto callLocal = localFor(hirModule, block.statements[0]);
+  auto constantLocal = localFor(hirModule, block.statements[1]);
+  auto resultLocal = localFor(hirModule, block.statements[2]);
+  if (sourceReturn == zc::none || callLocal == zc::none || constantLocal == zc::none ||
+      resultLocal == zc::none) {
+    return zc::none;
+  }
+  const auto& callBinding = ZC_ASSERT_NONNULL(callLocal);
+  const auto& constantBinding = ZC_ASSERT_NONNULL(constantLocal);
+  const auto& arithmeticBinding = ZC_ASSERT_NONNULL(resultLocal);
+  if (callBinding.local.ordinal() != 1 || constantBinding.local.ordinal() != 2 ||
+      arithmeticBinding.local.ordinal() != 3) {
+    return zc::none;
+  }
+  if (callBinding.initializer == zc::none || constantBinding.initializer == zc::none ||
+      arithmeticBinding.initializer == zc::none || callBinding.erasure != zc::none ||
+      constantBinding.erasure != zc::none || arithmeticBinding.erasure != zc::none) {
+    return zc::none;
+  }
+  auto initCall = callFor(hirModule, ZC_ASSERT_NONNULL(callBinding.initializer));
+  auto initExpression = expressionFor(hirModule, ZC_ASSERT_NONNULL(constantBinding.initializer));
+  auto initBinary = primitiveBinaryFor(hirModule, ZC_ASSERT_NONNULL(arithmeticBinding.initializer));
+  auto returnReference = localReferenceFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (initCall == zc::none || initExpression == zc::none || initBinary == zc::none ||
+      returnReference == zc::none) {
+    return zc::none;
+  }
+  const auto& sourceCall = ZC_ASSERT_NONNULL(initCall);
+  const auto& sourceExpression = ZC_ASSERT_NONNULL(initExpression);
+  const auto& sourceBinary = ZC_ASSERT_NONNULL(initBinary);
+  const auto& sourceReference = ZC_ASSERT_NONNULL(returnReference);
+  if (sourceCall.arguments.size() != 0 || sourceCall.resultType != callBinding.type ||
+      sourceExpression.type != constantBinding.type ||
+      sourceExpression.category != hir::HirValueCategory::Value ||
+      sourceBinary.type != arithmeticBinding.type ||
+      sourceBinary.operandType != arithmeticBinding.type ||
+      sourceBinary.category != hir::HirValueCategory::Value ||
+      sourceReference.local != arithmeticBinding.local ||
+      sourceReference.type != arithmeticBinding.type ||
+      sourceReference.category != hir::HirValueCategory::Place ||
+      arithmeticBinding.type != declaration.resultType ||
+      callBinding.type != declaration.resultType ||
+      constantBinding.type != declaration.resultType) {
+    return zc::none;
+  }
+  auto arithmetic = arithmeticOperatorFor(sourceBinary.operation);
+  if (arithmetic == zc::none) return zc::none;
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId callLocalId = ctx.declareLocal(MirLocalKind::UserLocal, callBinding.type, scope,
+                                                  callBinding.sourceSpan.clone());
+  const MirLocalId constantLocalId = ctx.declareLocal(MirLocalKind::UserLocal, constantBinding.type,
+                                                      scope, constantBinding.sourceSpan.clone());
+  const MirLocalId resultLocalId = ctx.declareLocal(MirLocalKind::UserLocal, arithmeticBinding.type,
+                                                    scope, arithmeticBinding.sourceSpan.clone());
+  if (callLocalId.ordinal() != 1 || constantLocalId.ordinal() != 2 ||
+      resultLocalId.ordinal() != 3) {
+    return zc::none;
+  }
+
+  // Block 1: storage-live the call destination, call the initializer into it,
+  // and continue to block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(callLocalId, callBinding.sourceSpan.clone()));
+  zc::Vector<MirOperand> arguments;
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.terminateBlock(MirTerminator::call(
+      sourceCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(callLocalId, callBinding.type, zc::mv(destinationProjections), callBinding.type),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), sourceCall.sourceSpan.clone()));
+
+  // Block 2: initialize the constant local, compute the arithmetic into the
+  // result local, and return it.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(
+      MirStatement::storageLive(constantLocalId, constantBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> constantProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(constantLocalId, constantBinding.type, zc::mv(constantProjections),
+               constantBinding.type),
+      MirRvalue::use(MirOperand::constant(constantBinding.type, sourceExpression.value.clone())),
+      MirInitializationKind::Initialize, sourceExpression.sourceSpan.clone()));
+  // The arithmetic binding is the third binding (zero-based index 2), so its
+  // operands may name either of the two preceding locals.
+  zc::Vector<MirLocalId> noParameterLocals;
+  zc::Vector<MirLocalId> precedingLocals;
+  precedingLocals.add(callLocalId);
+  precedingLocals.add(constantLocalId);
+  constexpr size_t kArithmeticBindingIndex = 2;
+  auto left = binaryLeafOperand(
+      hirModule, declaration, sourceBinary.left, noParameterLocals.asPtr(), precedingLocals.asPtr(),
+      kArithmeticBindingIndex, sourceBinary.operandType, proofs, copyMarker);
+  auto right =
+      binaryLeafOperand(hirModule, declaration, sourceBinary.right, noParameterLocals.asPtr(),
+                        precedingLocals.asPtr(), kArithmeticBindingIndex, sourceBinary.operandType,
+                        proofs, copyMarker);
+  if (left == zc::none || right == zc::none) return zc::none;
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocalId, arithmeticBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> resultProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocalId, arithmeticBinding.type, zc::mv(resultProjections),
+               arithmeticBinding.type),
+      MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(left)),
+                            zc::mv(ZC_ASSERT_NONNULL(right)), sourceBinary.type),
+      MirInitializationKind::Initialize, sourceBinary.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocalId, arithmeticBinding.type,
+                                         zc::mv(returnProjections), arithmeticBinding.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(
+      MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                 ZC_ASSERT_NONNULL(sourceReturn).sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn m(this) -> T { let x = <literal>; return x; }` on a shared
 /// receiver: one root scope, one receiver parameter local at localId(1), one
 /// UserLocal at localId(2), StorageLive followed by an Initialize Assign of the
@@ -5590,6 +5736,14 @@ zc::Maybe<RecursiveFunctionProduct> strategyDirectCallInitializerReturn(
   if (!lctx.hasTrailingReturn) return zc::none;
   if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
   return buildDirectCallInitializerReturn(lctx);
+}
+
+/// Call-then-local-arithmetic caller:
+/// `fn f() -> T { let x = g(); let a: T = <const>; let y: T = a <op> <const>; return y; }`.
+zc::Maybe<RecursiveFunctionProduct> strategyCallThenLocalArithmetic(const LoweringContext& lctx) {
+  if (!lctx.hasTrailingReturn) return zc::none;
+  if (lctx.statementCount != 4 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  return buildCallThenLocalArithmetic(lctx);
 }
 
 /// Single direct-call return: `fn f(...) -> T { return g(args); }` and the
@@ -7821,6 +7975,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ScalarLocalCall", strategyScalarLocalCall},
     {"ErrorUnwrapCallReturn", strategyErrorUnwrapCallReturn},
     {"DirectCallInitializerReturn", strategyDirectCallInitializerReturn},
+    {"CallThenLocalArithmetic", strategyCallThenLocalArithmetic},
     {"DirectCall", strategyDirectCall},
     {"ArrayIndexFold", strategyArrayIndexFold},
     {"ScalarLocal", strategyScalarLocal},

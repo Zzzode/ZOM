@@ -2441,7 +2441,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             }
             if (binary == zc::none && (expressionFor(hirModule, initializer) != zc::none ||
                                        aggregateFor(hirModule, initializer) != zc::none ||
-                                       parameterReferenceFor(hirModule, initializer) != zc::none)) {
+                                       parameterReferenceFor(hirModule, initializer) != zc::none ||
+                                       callFor(hirModule, initializer) != zc::none)) {
               ++valueNodes;
             }
             // A ternary conditional initializer: the two arm literals are
