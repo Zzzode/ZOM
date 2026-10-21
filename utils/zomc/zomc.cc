@@ -1639,6 +1639,10 @@ private:
                                                                       functions[callee], types);
             }
             if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCallThenLocalArithmeticModule(
+                  functions[caller], functions[callee], types);
+            }
+            if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerCallModuleWithArguments(functions[caller],
                                                                         functions[callee], types);
             }

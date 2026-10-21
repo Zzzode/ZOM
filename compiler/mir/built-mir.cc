@@ -2441,7 +2441,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
             }
             if (binary == zc::none && (expressionFor(hirModule, initializer) != zc::none ||
                                        aggregateFor(hirModule, initializer) != zc::none ||
-                                       parameterReferenceFor(hirModule, initializer) != zc::none)) {
+                                       parameterReferenceFor(hirModule, initializer) != zc::none ||
+                                       callFor(hirModule, initializer) != zc::none)) {
               ++valueNodes;
             }
             // A ternary conditional initializer: the two arm literals are
@@ -6424,10 +6425,17 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 }
               }
             }
+            // `built == false` means a binding initializer fell outside the
+            // literal / aggregate / parameter-reference / local-reference /
+            // primitive-binary set this legacy rail can emit. That is a
+            // capability boundary, not a broken invariant: the source is valid
+            // and a dedicated strategy may simply not exist yet. Draining it as
+            // a capability rejection keeps a future strategy-predicate drift a
+            // ZOM4099 instead of a compiler incident.
             if (!built || returnOperand == zc::none) {
-              return rejectMir<BuiltMirCandidate>(
-                  ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::InvalidFact, module,
-                  declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+              return rejectMirCapability<BuiltMirCandidate>(
+                  ir::IrFailureKind::UnsupportedSourceConstruct, declaration.definition, identities,
+                  block.sourceSpan.clone());
             }
             identity::SourceSpan returnSpan = declaration.sourceSpan.clone();
             ZC_IF_SOME(returnStatement, sequentialReturn) {

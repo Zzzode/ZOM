@@ -8,6 +8,7 @@
 #include <cstddef>
 
 #include "compiler/checker/body/marker-proof.h"
+#include "compiler/hir/hir-call-arithmetic.h"
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/mir/build/mir-fn-builder.h"
 #include "compiler/mir/build/recursive-mir-builder.h"
@@ -3639,6 +3640,112 @@ zc::Maybe<RecursiveFunctionProduct> buildDirectCallInitializerReturn(const Lower
   return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
 }
 
+/// \brief Lowers an already-admitted call-then-local-arithmetic body:
+/// `fn f() -> T { let x = g(); let a: T = <const>; let y: T = a <op> <b>; return
+/// y; }`. Three user locals, a two-block CFG: block 1 storage-lives the call
+/// destination, calls the zero-argument callee into it, and continues to block
+/// 2; block 2 initializes the constant local, computes the arithmetic into the
+/// returned local, and returns it. No Temporary is declared, so the three
+/// declared locals keep ordinals 1..3 and the LIR lowering can map them one to
+/// one.
+///
+/// The shape decision is not made here: `parts` comes from
+/// hir::detail::matchCallThenLocalArithmetic, the single definition of this
+/// body. Every guard below is a MIR-construction invariant that cannot fire for
+/// an admitted body.
+zc::Maybe<RecursiveFunctionProduct> buildCallThenLocalArithmetic(
+    const LoweringContext& lctx, const hir::detail::CallArithmeticParts& parts,
+    MirArithmeticOperator arithmetic) {
+  const auto& declaration = lctx.declaration;
+  const auto& hirModule = lctx.hirModule;
+  const auto& identities = lctx.identities;
+  auto& proofs = lctx.proofs;
+  auto copyMarker = lctx.copyMarker;
+  const auto& callBinding = parts.callLocal;
+  const auto& constantBinding = parts.constantLocal;
+  const auto& arithmeticBinding = parts.resultLocal;
+  const auto& sourceBinary = parts.binary;
+
+  auto definition = identities.definition(declaration.definition);
+  if (definition == zc::none) return zc::none;
+
+  detail::MirFnCtx ctx;
+  const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  const MirLocalId callLocalId = ctx.declareLocal(MirLocalKind::UserLocal, callBinding.type, scope,
+                                                  callBinding.sourceSpan.clone());
+  const MirLocalId constantLocalId = ctx.declareLocal(MirLocalKind::UserLocal, constantBinding.type,
+                                                      scope, constantBinding.sourceSpan.clone());
+  const MirLocalId resultLocalId = ctx.declareLocal(MirLocalKind::UserLocal, arithmeticBinding.type,
+                                                    scope, arithmeticBinding.sourceSpan.clone());
+  // The predicate pinned the HIR ordinals at 1..3 and this builder declares the
+  // same three locals in the same order, so a mismatch is a broken invariant,
+  // not an unadmitted shape.
+  ZC_IREQUIRE(
+      callLocalId.ordinal() == 1 && constantLocalId.ordinal() == 2 && resultLocalId.ordinal() == 3,
+      "admitted call-then-arithmetic body must declare locals 1..3");
+
+  // Block 1: storage-live the call destination, call the initializer into it,
+  // and continue to block 2.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(MirStatement::storageLive(callLocalId, callBinding.sourceSpan.clone()));
+  zc::Vector<MirOperand> arguments;
+  zc::Maybe<MirBlockId> noUnwind;
+  zc::Vector<MirProjection> destinationProjections;
+  ctx.terminateBlock(MirTerminator::call(
+      parts.call.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+      MirPlace(callLocalId, callBinding.type, zc::mv(destinationProjections), callBinding.type),
+      ctx.peekBlockIdAt(0), zc::mv(noUnwind), parts.call.sourceSpan.clone()));
+
+  // Block 2: initialize the constant local, compute the arithmetic into the
+  // result local, and return it.
+  (void)ctx.beginBlock(scope);
+  ctx.appendStatement(
+      MirStatement::storageLive(constantLocalId, constantBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> constantProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(constantLocalId, constantBinding.type, zc::mv(constantProjections),
+               constantBinding.type),
+      MirRvalue::use(MirOperand::constant(constantBinding.type, parts.constant.value.clone())),
+      MirInitializationKind::Initialize, parts.constant.sourceSpan.clone()));
+  // The arithmetic binding is the third binding (zero-based index 2), so its
+  // operands may name either of the two preceding locals.
+  zc::Vector<MirLocalId> noParameterLocals;
+  zc::Vector<MirLocalId> precedingLocals;
+  precedingLocals.add(callLocalId);
+  precedingLocals.add(constantLocalId);
+  constexpr size_t kArithmeticBindingIndex = 2;
+  auto left = binaryLeafOperand(
+      hirModule, declaration, sourceBinary.left, noParameterLocals.asPtr(), precedingLocals.asPtr(),
+      kArithmeticBindingIndex, sourceBinary.operandType, proofs, copyMarker);
+  auto right =
+      binaryLeafOperand(hirModule, declaration, sourceBinary.right, noParameterLocals.asPtr(),
+                        precedingLocals.asPtr(), kArithmeticBindingIndex, sourceBinary.operandType,
+                        proofs, copyMarker);
+  if (left == zc::none || right == zc::none) return zc::none;
+  ctx.appendStatement(
+      MirStatement::storageLive(resultLocalId, arithmeticBinding.sourceSpan.clone()));
+  zc::Vector<MirProjection> resultProjections;
+  ctx.appendStatement(MirStatement::assign(
+      MirPlace(resultLocalId, arithmeticBinding.type, zc::mv(resultProjections),
+               arithmeticBinding.type),
+      MirRvalue::arithmetic(arithmetic, zc::mv(ZC_ASSERT_NONNULL(left)),
+                            zc::mv(ZC_ASSERT_NONNULL(right)), sourceBinary.type),
+      MirInitializationKind::Initialize, sourceBinary.sourceSpan.clone()));
+  zc::Vector<MirProjection> returnProjections;
+  auto returnOperand = placeUse(proofs, copyMarker,
+                                MirPlace(resultLocalId, arithmeticBinding.type,
+                                         zc::mv(returnProjections), arithmeticBinding.type));
+  if (returnOperand == zc::none) return zc::none;
+  ctx.terminateBlock(MirTerminator::returnValue(zc::mv(ZC_ASSERT_NONNULL(returnOperand)),
+                                                parts.returnStatement.sourceSpan.clone()));
+
+  MirFunction function = ctx.finish(declaration.definition, MirFunctionKind::Function,
+                                    identity::DefinitionKind::Function, declaration.resultType,
+                                    declaration.sourceSpan.clone());
+  zc::Array<uint8_t> ownerKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  return RecursiveFunctionProduct{zc::mv(function), zc::mv(ownerKey)};
+}
+
 /// \brief Lowers `fn m(this) -> T { let x = <literal>; return x; }` on a shared
 /// receiver: one root scope, one receiver parameter local at localId(1), one
 /// UserLocal at localId(2), StorageLive followed by an Initialize Assign of the
@@ -5590,6 +5697,22 @@ zc::Maybe<RecursiveFunctionProduct> strategyDirectCallInitializerReturn(
   if (!lctx.hasTrailingReturn) return zc::none;
   if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
   return buildDirectCallInitializerReturn(lctx);
+}
+
+/// Call-then-local-arithmetic caller. The guard IS
+/// hir::detail::matchCallThenLocalArithmetic, the same function the HIR
+/// admission gate and the HIR verifier call, so every body HIR admits is a body
+/// this strategy emits. There is deliberately no second shape gate here: a
+/// second predicate is exactly the drift this shared one removes.
+zc::Maybe<RecursiveFunctionProduct> strategyCallThenLocalArithmetic(const LoweringContext& lctx) {
+  auto parts = hir::detail::matchCallThenLocalArithmetic(
+      hir::detail::CallArithmeticPools::of(lctx.hirModule), lctx.semanticTypes, lctx.declaration,
+      lctx.block);
+  if (parts == zc::none) return zc::none;
+  auto arithmetic = arithmeticOperatorFor(ZC_ASSERT_NONNULL(parts).operation);
+  if (arithmetic == zc::none) return zc::none;
+  return buildCallThenLocalArithmetic(lctx, ZC_ASSERT_NONNULL(parts),
+                                      ZC_ASSERT_NONNULL(arithmetic));
 }
 
 /// Single direct-call return: `fn f(...) -> T { return g(args); }` and the
@@ -7821,6 +7944,7 @@ static constexpr StrategyEntry kStrategyTable[] = {
     {"ScalarLocalCall", strategyScalarLocalCall},
     {"ErrorUnwrapCallReturn", strategyErrorUnwrapCallReturn},
     {"DirectCallInitializerReturn", strategyDirectCallInitializerReturn},
+    {"CallThenLocalArithmetic", strategyCallThenLocalArithmetic},
     {"DirectCall", strategyDirectCall},
     {"ArrayIndexFold", strategyArrayIndexFold},
     {"ScalarLocal", strategyScalarLocal},

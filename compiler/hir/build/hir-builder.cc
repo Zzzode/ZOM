@@ -23,6 +23,7 @@
 #include "compiler/hir/build/lower-stmt-control.h"
 #include "compiler/hir/build/lower-stmt-discarded-call.h"
 #include "compiler/hir/build/lower-stmt-write.h"
+#include "compiler/hir/hir-call-arithmetic.h"
 #include "compiler/hir/hir-candidate-impl.h"
 #include "compiler/hir/hir-internal.h"
 #include "compiler/hir/hir-shape.h"
@@ -430,6 +431,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
   }
   zc::Vector<PendingValueDeclaration> pending;
   zc::Vector<PendingFunctionDeclaration> pendingFunctions;
+  // Definitions whose sequential body binds a direct call. Their whole-body
+  // admission is decided after materialization, once the HIR pools exist and
+  // the shared call-then-local-arithmetic predicate can be evaluated.
+  zc::Vector<identity::DefId> sequentialCallDefinitions;
   const auto& ownInterface = checkedModule.ownModuleInterface();
   const auto& signatures = ownInterface.signatures();
   const auto& localSignatures = checkedModule.localSignatureFacts().signatures();
@@ -4085,15 +4090,84 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                 definition.source.clone());
           }
-          // A direct-call initializer (`let x = callee();`) is classified by the
-          // shape but has no HIR initializer arm yet. The single-local
-          // DirectCallInitializerReturn shape owns the one-call case; a binding
-          // inside a multi-local body drains as a capability rejection
-          // (ZOM4099) instead of reaching the identifier/parameter fallthrough.
+          // A direct-call initializer (`let x = callee();`) resolves the checked
+          // call fact and its dispatch fact into a zero-argument HirDirectCall
+          // expression carried as this binding's initializer. This site decides
+          // only whether the checked call can be *represented* as such a record:
+          // a plain, zero-argument, monomorphic, non-raising direct call. It
+          // cannot see the enclosing body, so it deliberately does not decide
+          // whether the body is lowerable. That decision belongs to the
+          // whole-body gate after materialization, which calls the same
+          // predicate the MIR strategy calls. Failing here is a capability
+          // rejection (ZOM4099), never an invariant: every condition below is
+          // ordinary source the pipeline does not lower yet.
+          zc::Maybe<HirDirectCallExpression> bindingCall;
           if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
-            return rejectHirCapability<HirModuleCandidate>(
-                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
-                definition.source.clone());
+            auto callIndex = factIndex(facts.calls(), binding.initializer);
+            auto callKey = checkedNodeKey(tree, bound.parsedModule(), binding.initializer);
+            if (callIndex == zc::none || callKey == zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            auto dispatchIndex = dispatchFactIndex(checkedModule.dispatchFacts().facts(),
+                                                   ZC_ASSERT_NONNULL(callKey));
+            const ast::NodeId callCalleeNode(
+                tree.node(binding.initializer).payload.words[ast::kCallExpressionCalleeWord]);
+            auto callCallee = tree.contains(callCalleeNode)
+                                  ? resolvedDefinition(bound.bindings(), callCalleeNode)
+                                  : zc::Maybe<identity::DefId>(zc::none);
+            if (dispatchIndex == zc::none || callCallee == zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            size_t callSlot = 0;
+            size_t dispatchSlot = 0;
+            ZC_IF_SOME(index, callIndex) { callSlot = index; }
+            ZC_IF_SOME(index, dispatchIndex) { dispatchSlot = index; }
+            const auto& checkedCall = facts.calls().entries()[callSlot].value;
+            const auto& invocation = checkedCall.invocation;
+            const auto& selected = invocation.selected.variant();
+            const auto& dispatch = checkedModule.dispatchFacts().facts()[dispatchSlot];
+            const auto& dispatchTarget = dispatch.fact.target.variant();
+            const auto& dispatchTransform = dispatch.fact.resultTransform.variant();
+            bool dispatchOwnerMatches = false;
+            ZC_IF_SOME(owner, dispatch.owner) {
+              dispatchOwnerMatches = owner == definition.definition;
+            }
+            if (!selected.is<checker::checked::DirectCallable>() ||
+                selected.get<checker::checked::DirectCallable>().callee !=
+                    ZC_ASSERT_NONNULL(callCallee) ||
+                invocation.resultType != bindingType || invocation.successType != bindingType ||
+                invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
+                invocation.receiverAdjustment != zc::none || invocation.arguments.size() != 0 ||
+                invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+                invocation.raises != zc::none ||
+                !sameSpan(checkedCall.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+                !dispatchOwnerMatches || !dispatchTarget.is<checker::dispatch::DirectTarget>() ||
+                dispatchTarget.get<checker::dispatch::DirectTarget>().callee !=
+                    ZC_ASSERT_NONNULL(callCallee) ||
+                !dispatchTransform.is<checker::dispatch::IdentityResultTransform>() ||
+                dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
+                dispatch.fact.successType != bindingType ||
+                dispatch.fact.resultType != bindingType ||
+                dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+                dispatch.fact.raises != zc::none ||
+                !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            zc::Vector<HirDirectCallArgument> noArguments;
+            bindingCall = HirDirectCallExpression{
+                HirNodeId(),           ZC_ASSERT_NONNULL(callCallee),
+                invocation.calleeType, bindingType,
+                zc::mv(noArguments),   ZC_ASSERT_NONNULL(initializerSpan).clone()};
+            // The body-level admission for this definition is decided after every
+            // pool is materialized; record the definition so the gate runs the
+            // shared whole-body predicate on it.
+            sequentialCallDefinitions.add(definition.definition);
           }
           // Locals must be distinct bindings.
           for (const auto existing : localBindingIds) {
@@ -4980,6 +5054,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             bindingTernaryConditionSpan = ZC_ASSERT_NONNULL(condSpan).clone();
             bindingTernaryThenSpan = ZC_ASSERT_NONNULL(thenSpan).clone();
             bindingTernaryElseSpan = ZC_ASSERT_NONNULL(elseSpan).clone();
+          } else if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
+            // The payload was resolved with the call fact above; the initializer
+            // is a HirDirectCallExpression and carries no further operand.
+            if (bindingCall == zc::none) {
+              rejected = true;
+              break;
+            }
           } else {
             // A reference to a parameter must resolve to a declared parameter.
             auto parameterHandle = resolvedCallableParameter(bound.bindings(), binding.initializer);
@@ -5011,6 +5092,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               binding.initializerKind,
               zc::mv(bindingLiteral),
               zc::mv(bindingAggregate),
+              zc::mv(bindingCall),
               zc::mv(bindingParameter),
               binding.referencedLocal,
               zc::mv(bindingOperation),
@@ -12459,6 +12541,53 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     {
       auto fnCtx = makeFnCtx();
       lowerGenericFunction(zc::mv(value), fnCtx);
+    }
+  }
+  // Whole-body admission for call-initialized sequential bodies.
+  //
+  // The per-binding loop above could only decide whether a checked call can be
+  // represented as one HIR record. It cannot decide whether the enclosing body
+  // is one the MIR and LIR lowerings emit, because it runs before any HIR
+  // record exists. That decision is made here, on exactly the records the
+  // lowering will read, by the same function the MIR strategy and the HIR
+  // verifier call. A body outside the predicate drains as a capability
+  // rejection (ZOM4099) instead of reaching a lowering that cannot emit it.
+  for (const auto definition : sequentialCallDefinitions) {
+    const HirFunctionDeclaration* function = nullptr;
+    bool functionAmbiguous = false;
+    for (const auto& candidate : functions) {
+      if (candidate.definition != definition) continue;
+      if (function != nullptr) {
+        functionAmbiguous = true;
+        break;
+      }
+      function = &candidate;
+    }
+    // A definition with no admitted function record, or an ambiguous one, was
+    // already rejected on another rail; there is nothing to gate here.
+    if (function == nullptr || functionAmbiguous) continue;
+    const HirBlockStatement* block = nullptr;
+    bool blockAmbiguous = false;
+    for (const auto& candidate : blocks) {
+      if (candidate.node != function->body) continue;
+      if (block != nullptr) {
+        blockAmbiguous = true;
+        break;
+      }
+      block = &candidate;
+    }
+    if (block == nullptr || blockAmbiguous) continue;
+    const detail::CallArithmeticPools pools{blocks.asPtr(),
+                                            returns.asPtr(),
+                                            expressions.asPtr(),
+                                            locals.asPtr(),
+                                            localReferences.asPtr(),
+                                            calls.asPtr(),
+                                            primitiveBinaryOperations.asPtr()};
+    if (detail::matchCallThenLocalArithmetic(pools, semanticTypes, *function, *block) == zc::none) {
+      return rejectHirCapability<HirModuleCandidate>(definition, registries,
+                                                     ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                     function->sourceSpan.clone());
     }
   }
   auto impl = zc::heap<HirModuleCandidate::Impl>(

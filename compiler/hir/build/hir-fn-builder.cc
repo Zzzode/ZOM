@@ -707,9 +707,14 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         // switch exhaustiveness only.
         break;
       case SequentialInitializerKind::DirectCall:
-        // A direct-call binding has no initializer carrier yet: the builder
-        // drains it as a capability rejection before materialization, so this
-        // arm is never reached. It is listed for exhaustiveness only.
+        // A zero-argument direct-call initializer (`let x = callee();`). The
+        // call is the binding's initializer node, so the statement it
+        // contributes is exactly the local node emitted after this switch.
+        ZC_IF_SOME(call, binding.call) {
+          ctx.addDirectCall(HirDirectCallExpression{initializerNodeId, call.callee, call.calleeType,
+                                                    call.resultType, zc::mv(call.arguments),
+                                                    call.sourceSpan.clone()});
+        }
         break;
     }
     ctx.addLocal(HirLocalBinding{localNodeId, hirLocalId(static_cast<uint32_t>(index + 1)),
