@@ -2045,30 +2045,14 @@ private:
       }
     }
     if (lir == zc::none) {
+      // The per-shape ladders above are an implementation detail: a user can
+      // neither read nor act on the inventory of slices. The condition that
+      // rejected the module is already reported as a capability diagnostic on
+      // the source path; this string is the backstop for a module that no
+      // ladder claimed, so it stays short and stable.
       return NativeObjectResult(
-          zc::str("MIR -> LIR lowering rejected this module (outside the scalar-initializer, "
-                  "boolean-conditional, reducible while-loop, do-while loop-body, "
-                  "comparison-driven conditional, "
-                  "leading-local comparison conditional, "
-                  "conditional-local-write diamond, "
-                  "aggregate field-return, multi-field struct field arithmetic, "
-                  "sequential integer arithmetic, same-module direct-call, "
-                  "by-value aggregate call, scalar-local direct call, boolean-conditional callee "
-                  "call, shared-receiver method "
-                  "call, mutating-receiver field write-read, shared-receiver constant-local "
-                  "method, shared-receiver parameter-arithmetic method, shared-receiver "
-                  "field-arithmetic method, shared-receiver conditional method (constant and "
-                  "comparison argument), shared-receiver "
-                  "self-call, three-function direct-call-with-leaf, "
-                  "two-impl devirtualization-with-leaf, "
-                  "dyn live-erase indirect-call-with-leaf, "
-                  "stored-erase indirect-call-with-leaf, "
-                  "void-setter-then-value-getter receiver-call, "
-                  "standalone multi-function, "
-                  "empty-body void, "
-                  "array-literal constant-index fold, "
-                  "sequential local return, and "
-                  "string literal return slices)."));
+          zc::str("MIR -> LIR lowering rejected this module: no backend slice "
+                  "generates code for its shape yet."));
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {

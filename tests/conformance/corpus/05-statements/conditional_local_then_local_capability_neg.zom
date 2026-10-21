@@ -1,0 +1,1 @@
+fn entry(p: bool) -> i32 { let x = p ? 40 : 1; let y: i32 = 2; return y; }

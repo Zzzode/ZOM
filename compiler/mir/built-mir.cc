@@ -8738,8 +8738,28 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     auto call = callFor(hirModule, expressionNode);
     auto definition = identities.definition(declaration.definition);
     auto semanticType = semanticTypes.get(declaration.resultType);
-    if (sourceReturn == zc::none || (expression == zc::none) == (call == zc::none) ||
-        definition == zc::none || !semanticType.is<type::SemanticTypeLookup>() ||
+    if (sourceReturn == zc::none || (expression == zc::none) == (call == zc::none)) {
+      // Split the two meanings of that disjunction, because they are different
+      // kinds of failure:
+      //
+      //   - An initializer that resolves to BOTH a scalar expression and a call
+      //     is a fact conflict the HIR verifier should have rejected. That stays
+      //     on the incident rail.
+      //   - No return, or an initializer that resolves to NEITHER form, means
+      //     this last rail met a valid function whose initializer kind no
+      //     constructed strategy emits yet. That is a capability boundary, and
+      //     downgrading it to the incident rail turns a readable ZOM4099 into an
+      //     internal compiler error.
+      if (sourceReturn != zc::none && expression != zc::none && call != zc::none) {
+        return rejectMir<BuiltMirCandidate>(
+            ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::MissingRequiredFact, module,
+            declaration.definition, identities, static_cast<uint32_t>(pending.size() + 1));
+      }
+      return rejectMirCapability<BuiltMirCandidate>(ir::IrFailureKind::UnsupportedSourceConstruct,
+                                                    declaration.definition, identities,
+                                                    declaration.sourceSpan.clone());
+    }
+    if (definition == zc::none || !semanticType.is<type::SemanticTypeLookup>() ||
         !declaration.definition.belongsTo(hirModule.semanticContext()) ||
         !declaration.resultType.belongsTo(hirModule.semanticContext())) {
       return rejectMir<BuiltMirCandidate>(
