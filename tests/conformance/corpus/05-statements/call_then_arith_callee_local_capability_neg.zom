@@ -1,0 +1,2 @@
+fn callee() -> i32 { let t: i32 = 40; return t; }
+fn entry() -> i32 { let x = callee(); let a: i32 = 2; let y: i32 = a + 40; return y; }

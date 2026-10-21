@@ -1,0 +1,18 @@
+// Call-then-local-arithmetic fixture: a zero-argument module call binding
+// followed by a constant binding and an integer binary over those two locals.
+// The shape is admitted by exactly one predicate,
+// hir::detail::matchCallThenLocalArithmetic, which the HIR admission gate, the
+// HIR verifier and the MIR strategy all call, and it lowers as a caller/callee
+// pair. The callee is the scalar constant-return shape, so the caller folds to
+// the reserved `zom.module_init` entry the runtime `_start` runs and the
+// program exits 40 + 2 = 42.
+fn callee() -> i32 {
+  return 40;
+}
+
+fn entry() -> i32 {
+  let x = callee();
+  let a: i32 = 2;
+  let y: i32 = a + 40;
+  return y;
+}

@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/call_then_arith_two_local_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A two-local body with a call binding is not the four-statement call-then-arithmetic shape. It drains ZOM4099 rather than reaching a MIR builder that has no initializer for the call binding -- the failure mode that turned this shape into an IR incident before the whole-body predicate existed.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/call_then_arith_two_local_capability_neg.zom:2:1

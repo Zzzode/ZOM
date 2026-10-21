@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/call_then_arith_callee_local_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A call-then-arithmetic body is only emitted by the caller/callee pair lowering, which requires the callee to be the scalar constant-return shape. A callee that binds a local first is outside it, so the body drains at the HIR function span instead of reaching the driver's module-level lowering rejection.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/call_then_arith_callee_local_capability_neg.zom:2:1

@@ -12577,13 +12577,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       block = &candidate;
     }
     if (block == nullptr || blockAmbiguous) continue;
-    const detail::CallArithmeticPools pools{blocks.asPtr(),
-                                            returns.asPtr(),
-                                            expressions.asPtr(),
-                                            locals.asPtr(),
-                                            localReferences.asPtr(),
-                                            calls.asPtr(),
-                                            primitiveBinaryOperations.asPtr()};
+    const detail::CallArithmeticPools pools{functions.asPtr(), blocks.asPtr(),
+                                            returns.asPtr(),   expressions.asPtr(),
+                                            locals.asPtr(),    localReferences.asPtr(),
+                                            calls.asPtr(),     primitiveBinaryOperations.asPtr()};
     if (detail::matchCallThenLocalArithmetic(pools, semanticTypes, *function, *block) == zc::none) {
       return rejectHirCapability<HirModuleCandidate>(definition, registries,
                                                      ir::IrFailureKind::UnsupportedSourceConstruct,

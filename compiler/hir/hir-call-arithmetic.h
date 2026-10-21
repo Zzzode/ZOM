@@ -18,6 +18,7 @@ namespace detail {
 /// already owns a verified module uses of() instead. One struct keeps the
 /// predicate independent of how the records were produced.
 struct CallArithmeticPools final {
+  zc::ArrayPtr<const HirFunctionDeclaration> functions;
   zc::ArrayPtr<const HirBlockStatement> blocks;
   zc::ArrayPtr<const HirReturnStatement> returns;
   zc::ArrayPtr<const HirScalarLiteralExpression> expressions;
@@ -40,7 +41,6 @@ struct CallArithmeticParts final {
   const HirDirectCallExpression& call;
   const HirScalarLiteralExpression& constant;
   const HirPrimitiveBinaryExpression& binary;
-  const HirLocalReferenceExpression& returnReference;
   const HirReturnStatement& returnStatement;
   /// \brief The binary's operation, already narrowed to the set both the MIR
   /// strategy and the LIR lowering map. Never Pow: LIR's arithmetic operator
@@ -59,6 +59,16 @@ struct CallArithmeticParts final {
 /// LIR accepts: the result type's primitive kind must have a LIR integer width
 /// (so Isize/Usize are excluded), and the operation must have a LIR arithmetic
 /// arm (so Pow is excluded).
+///
+/// It also owns the module half. The body is emitted only by
+/// `lowerCallThenLocalArithmeticModule`, which the driver dispatches for a
+/// two-function module whose callee is the scalar constant-return shape. A body
+/// accepted in any other module would pass HIR and then meet the driver's
+/// module-level rejection, which reports an internal slice inventory instead of
+/// a capability drain. So the module must be exactly the one that lowering
+/// receives: two functions, one of them the called callee, that callee an
+/// ordinary parameter-free function returning the caller's type from a single
+/// integer literal.
 ///
 /// \param pools The HIR record pools to resolve against.
 /// \param semanticTypes Session-owned type store that owns the result type.

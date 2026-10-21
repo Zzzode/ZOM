@@ -112,15 +112,64 @@ bool isAdmittedArithmeticOperand(const CallArithmeticPools& pools,
 
 }  // namespace
 
+/// \brief True when the module is the caller/callee pair this body lowers in.
+///
+/// The lowering that emits this body is `lowerCallThenLocalArithmeticModule`, a
+/// *pair* lowering dispatched only for a two-function module. A module with a
+/// third function reaches the standalone ladder instead, which has no arm for a
+/// two-block call body, and a callee outside the constant-return shape is
+/// rejected by the pair lowering's own callee gate. Deciding the body alone
+/// would therefore admit modules the next stage cannot lower, so the module
+/// half is part of the same predicate: a body is admitted only together with a
+/// module this lowering actually receives.
+///
+/// The checks mirror `lowerCallThenLocalArithmeticModule`'s callee gate: an
+/// ordinary parameter-free module function returning the same type, whose body
+/// is one block holding a single return of an integer literal.
+bool moduleMatchesCallArithmetic(const CallArithmeticPools& pools,
+                                 const HirFunctionDeclaration& caller,
+                                 const HirDirectCallExpression& call) noexcept {
+  if (pools.functions.size() != 2) return false;
+  const HirFunctionDeclaration* callee = nullptr;
+  for (const auto& candidate : pools.functions) {
+    if (candidate.definition == caller.definition) continue;
+    if (callee != nullptr) return false;
+    callee = &candidate;
+  }
+  if (callee == nullptr || callee->definition != call.callee) return false;
+  // The pair lowering emits the callee as a function, not a method, with no
+  // parameters and the caller's own result type.
+  if (callee->receiver != zc::none || callee->parameters.size() != 0 ||
+      callee->unsafeBlock != zc::none || callee->writeUnsafeBlock != zc::none) {
+    return false;
+  }
+  if (callee->resultType != caller.resultType) return false;
+  // The callee body is exactly one block with exactly one statement: the
+  // return of the integer constant. Any local, write, or further statement
+  // puts the callee outside the constant-return shape.
+  const HirBlockStatement* calleeBlock = nullptr;
+  for (const auto& candidate : pools.blocks) {
+    if (candidate.node != callee->body) continue;
+    if (calleeBlock != nullptr) return false;
+    calleeBlock = &candidate;
+  }
+  if (calleeBlock == nullptr || calleeBlock->statements.size() != 1) return false;
+  auto calleeReturn = uniqueRecordFor(pools.returns, calleeBlock->statements[0]);
+  if (calleeReturn == zc::none) return false;
+  const auto& returned = ZC_ASSERT_NONNULL(calleeReturn);
+  if (returned.resultType != callee->resultType) return false;
+  auto literal = uniqueRecordFor(pools.expressions, returned.value);
+  if (literal == zc::none) return false;
+  const auto& value = ZC_ASSERT_NONNULL(literal);
+  return value.type == callee->resultType && value.category == HirValueCategory::Value;
+}
+
 CallArithmeticPools CallArithmeticPools::of(const VerifiedHirModule& module) noexcept {
   return CallArithmeticPools{
-      module.blocks(),
-      module.returns(),
-      module.expressions(),
-      module.locals(),
-      module.localReferences(),
-      module.calls(),
-      module.primitiveBinaryOperations(),
+      module.functions(), module.blocks(),
+      module.returns(),   module.expressions(),
+      module.locals(),    module.localReferences(),
+      module.calls(),     module.primitiveBinaryOperations(),
   };
 }
 
@@ -203,9 +252,13 @@ zc::Maybe<CallArithmeticParts> matchCallThenLocalArithmetic(
       !isAdmittedArithmeticOperand(pools, binaryValue.operandType, binaryValue.right)) {
     return zc::none;
   }
-  return CallArithmeticParts{callBinding,    constantBinding, resultBinding,
-                             callValue,      constantValue,   binaryValue,
-                             referenceValue, returnValue,     binaryValue.operation};
+  // The body is only ever emitted by the caller/callee pair lowering, so the
+  // module must be the shape that lowering receives. Without this half a
+  // module the pair lowering never sees would pass HIR and reach a rejection
+  // message instead of a capability drain.
+  if (!moduleMatchesCallArithmetic(pools, declaration, callValue)) { return zc::none; }
+  return CallArithmeticParts{callBinding,   constantBinding, resultBinding, callValue,
+                             constantValue, binaryValue,     returnValue,   binaryValue.operation};
 }
 
 }  // namespace detail

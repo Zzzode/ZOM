@@ -3360,13 +3360,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // one definition, shared with the HIR builder's admission gate and the MIR
       // strategy, so an admitted body is a lowered body by construction.
       if (sawCallBinding) {
-        const detail::CallArithmeticPools pools{candidate.impl->blocks.asPtr(),
-                                                candidate.impl->returns.asPtr(),
-                                                candidate.impl->expressions.asPtr(),
-                                                candidate.impl->locals.asPtr(),
-                                                candidate.impl->localReferences.asPtr(),
-                                                candidate.impl->calls.asPtr(),
-                                                candidate.impl->primitiveBinaryOperations.asPtr()};
+        const detail::CallArithmeticPools pools{
+            candidate.impl->functions.asPtr(), candidate.impl->blocks.asPtr(),
+            candidate.impl->returns.asPtr(),   candidate.impl->expressions.asPtr(),
+            candidate.impl->locals.asPtr(),    candidate.impl->localReferences.asPtr(),
+            candidate.impl->calls.asPtr(),     candidate.impl->primitiveBinaryOperations.asPtr()};
         if (matchCallThenLocalArithmetic(pools, semanticTypes, function, block) == zc::none) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,

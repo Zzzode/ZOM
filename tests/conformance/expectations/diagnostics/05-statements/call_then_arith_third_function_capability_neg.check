@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/call_then_arith_third_function_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The same body in a three-function module: the pair lowering is dispatched only for two functions, so the third function places the module outside the reachable lowering and the body drains at its own function span.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/call_then_arith_third_function_capability_neg.zom:3:1

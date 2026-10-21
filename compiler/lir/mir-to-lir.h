@@ -676,7 +676,8 @@ public:
   /// block storage-lives local 1 and calls the callee into it, continuing to
   /// the second block, which assigns the constant into local 2, computes the
   /// arithmetic into local 3, and returns local 3. Both arithmetic operands are
-  /// an integer constant or a bare place-use of local 2. A parameter-free
+  /// an integer constant or a bare place-use of local 1 (the call local) or
+  /// local 2 (the constant local). A parameter-free
   /// caller folds to the reserved `zom.module_init` entry symbol so the runtime
   /// `_start` runs it; the callee emits as `zom.callee`. Every other shape
   /// returns `none`.

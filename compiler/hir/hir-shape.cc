@@ -1361,9 +1361,10 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       // Either an enum tuple-variant construction `Enum::Variant(args)` or a
       // direct call to a module function `callee(args)`. The builder
       // dead-erases an unread construction binding, so no aggregate
-      // representation is needed in HIR/MIR/LIR. A direct-call binding has no
-      // HIR initializer carrier yet: the builder drains it as a capability
-      // rejection instead of falling through to the identifier/parameter arm.
+      // representation is needed in HIR/MIR/LIR. A direct-call binding carries
+      // `HirDirectCallExpression` as its initializer; whether the enclosing
+      // body is one the lowerings emit is decided after materialization, by
+      // hir::detail::matchCallThenLocalArithmetic.
       const ast::NodeId callee(
           tree.node(initializer).payload.words[ast::kCallExpressionCalleeWord]);
       if (!tree.contains(callee)) return zc::none;
