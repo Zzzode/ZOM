@@ -75,10 +75,6 @@ struct PendingSequentialBinding final {
   SequentialInitializerKind kind;
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<HirNominalAggregateExpression> aggregate;
-  /// Populated for a DirectCall binding: the zero-argument direct call that
-  /// initializes this local. The call is the local's initializer node, so it
-  /// allocates no argument nodes.
-  zc::Maybe<HirDirectCallExpression> call;
   zc::Maybe<identity::CallableParameterKey> parameter;
   size_t referencedLocal;
   zc::Maybe<checker::PrimitiveOperation> operation;

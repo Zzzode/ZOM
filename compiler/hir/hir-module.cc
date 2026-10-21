@@ -2155,11 +2155,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       // return statement follows the last binding's nodes. This mirrors the
       // materializer's id allocation exactly.
       auto bindingWidth = [&](const SequentialLocalBinding& binding) -> uint32_t {
-        if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
-          // local + initializer call. A zero-argument call allocates no
-          // argument nodes, so the width is exactly two.
-          return 2u;
-        }
         if (binding.initializerKind == SequentialInitializerKind::Ternary) {
           // local + conditional + condition + then-branch + else-branch
           return 5u;
@@ -2390,103 +2385,6 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               ZC_ASSERT_NONNULL(reference).category != HirValueCategory::Place ||
               !sameSpan(ZC_ASSERT_NONNULL(reference).sourceSpan,
                         ZC_ASSERT_NONNULL(initializerSpan))) {
-            bindingsValid = false;
-            break;
-          }
-        } else if (binding.initializerKind == SequentialInitializerKind::DirectCall) {
-          // DirectCall: the initializer node is a zero-argument
-          // HirDirectCallExpression whose result is the binding type. The
-          // checked call fact and its dispatch fact must agree on the callee and
-          // on the direct, identity-transform dispatch; the same guards the HIR
-          // builder applied, re-derived here so the producer and verifier cannot
-          // drift.
-          zc::Maybe<const HirDirectCallExpression&> initializerCall;
-          for (const auto& candidateCall : candidate.impl->calls) {
-            if (candidateCall.node != hirId(initializerNodeOrdinal)) continue;
-            if (initializerCall != zc::none) bindingsValid = false;
-            initializerCall = candidateCall;
-          }
-          if (!bindingsValid || initializerCall == zc::none) {
-            bindingsValid = false;
-            break;
-          }
-          const auto& callValue = ZC_ASSERT_NONNULL(initializerCall);
-          auto callIndex = factIndex(facts.calls(), binding.initializer);
-          auto callKey = checkedNodeKey(tree, bound.parsedModule(), binding.initializer);
-          const ast::NodeId callCalleeNode(
-              tree.node(binding.initializer).payload.words[ast::kCallExpressionCalleeWord]);
-          auto callCallee = tree.contains(callCalleeNode)
-                                ? resolvedDefinition(bound.bindings(), callCalleeNode)
-                                : zc::Maybe<identity::DefId>(zc::none);
-          if (callIndex == zc::none || callKey == zc::none || callCallee == zc::none) {
-            bindingsValid = false;
-            break;
-          }
-          auto dispatchIndex = dispatchFactIndex(
-              candidate.impl->checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(callKey));
-          if (dispatchIndex == zc::none) {
-            bindingsValid = false;
-            break;
-          }
-          size_t callSlot = 0;
-          size_t dispatchSlot = 0;
-          ZC_IF_SOME(value, callIndex) { callSlot = value; }
-          ZC_IF_SOME(value, dispatchIndex) { dispatchSlot = value; }
-          const auto& checkedCall = facts.calls().entries()[callSlot].value;
-          const auto& invocation = checkedCall.invocation;
-          const auto& selected = invocation.selected.variant();
-          const auto& dispatch =
-              candidate.impl->checkedModule.dispatchFacts().facts()[dispatchSlot];
-          const auto& dispatchTarget = dispatch.fact.target.variant();
-          const auto& dispatchTransform = dispatch.fact.resultTransform.variant();
-          bool dispatchOwnerMatches = false;
-          ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
-          // The integer-result allowlist must match the builder's guard exactly:
-          // a call binding whose result type is not a plain integer has no MIR
-          // strategy and must fail here rather than reach an IR incident.
-          auto resultLookup = semanticTypes.get(bindingType);
-          bool integerResult = false;
-          if (resultLookup.is<type::SemanticTypeLookup>()) {
-            ZC_IF_SOME(kind, resultLookup.get<type::SemanticTypeLookup>().data().primitiveKind()) {
-              switch (kind) {
-                case type::semantic::PrimitiveKind::I8:
-                case type::semantic::PrimitiveKind::I16:
-                case type::semantic::PrimitiveKind::I32:
-                case type::semantic::PrimitiveKind::I64:
-                case type::semantic::PrimitiveKind::U8:
-                case type::semantic::PrimitiveKind::U16:
-                case type::semantic::PrimitiveKind::U32:
-                case type::semantic::PrimitiveKind::U64:
-                case type::semantic::PrimitiveKind::Isize:
-                case type::semantic::PrimitiveKind::Usize:
-                  integerResult = true;
-                  break;
-                default:
-                  break;
-              }
-            }
-          }
-          if (callValue.callee != ZC_ASSERT_NONNULL(callCallee) ||
-              callValue.resultType != bindingType || callValue.arguments.size() != 0 ||
-              !sameSpan(callValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
-              !selected.is<checker::checked::DirectCallable>() ||
-              selected.get<checker::checked::DirectCallable>().callee != callValue.callee ||
-              invocation.calleeType != callValue.calleeType ||
-              invocation.successType != bindingType || invocation.resultType != bindingType ||
-              invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
-              invocation.receiverAdjustment != zc::none || invocation.arguments.size() != 0 ||
-              invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
-              invocation.raises != zc::none || !dispatchOwnerMatches ||
-              !dispatchTarget.is<checker::dispatch::DirectTarget>() ||
-              dispatchTarget.get<checker::dispatch::DirectTarget>().callee != callValue.callee ||
-              !dispatchTransform.is<checker::dispatch::IdentityResultTransform>() ||
-              dispatch.fact.receiver != zc::none || dispatch.fact.arguments.size() != 0 ||
-              dispatch.fact.successType != bindingType || dispatch.fact.resultType != bindingType ||
-              dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
-              dispatch.fact.raises != zc::none ||
-              !sameSpan(checkedCall.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
-              !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
-              !integerResult) {
             bindingsValid = false;
             break;
           }

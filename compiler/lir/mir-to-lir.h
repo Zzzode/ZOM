@@ -665,30 +665,6 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
-  /// \brief Lowers a zero-argument call followed by a local arithmetic to a
-  /// two-function LIR module.
-  ///
-  /// Admits the verified pair produced by the `CallThenLocalArithmetic` MIR
-  /// strategy: a caller `fn entry() -> T { let x = g(); let a: T = <const>;
-  /// let y: T = a <op> <const>; return y; }` and a callee that is the scalar
-  /// constant-return shape. The caller is a `Function` with one source scope,
-  /// three integer `UserLocal`s at ordinals 1..3, and two blocks: the entry
-  /// block storage-lives local 1 and calls the callee into it, continuing to
-  /// the second block, which assigns the constant into local 2, computes the
-  /// arithmetic into local 3, and returns local 3. Both arithmetic operands are
-  /// an integer constant or a bare place-use of local 2. A parameter-free
-  /// caller folds to the reserved `zom.module_init` entry symbol so the runtime
-  /// `_start` runs it; the callee emits as `zom.callee`. Every other shape
-  /// returns `none`.
-  ///
-  /// \param caller Verified caller MIR function (two-block call-then-arith).
-  /// \param callee Verified callee MIR function (scalar constant-return shape).
-  /// \param semanticTypes Session-owned type store that owns the function types.
-  /// \return The lowered two-function LIR module, or none when outside the slice.
-  ZC_NODISCARD static zc::Maybe<Module> lowerCallThenLocalArithmeticModule(
-      const mir::MirFunction& caller, const mir::MirFunction& callee,
-      const type::SemanticTypeStore& semanticTypes);
-
   /// \brief Lowers a three-function module (a zero-argument direct call plus one
   /// standalone leaf) to a three-function LIR module.
   ///
