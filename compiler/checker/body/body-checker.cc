@@ -7453,6 +7453,22 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       if (tree.contains(collection)) { forInCollections.add(collection); }
     }
   });
+  // Collect every node inside a struct or class field's default-value
+  // expression. A field default belongs to the field signature, not to any
+  // executable body: `FieldDecl` owns no body, so nothing downstream claims a
+  // checked fact on its initializer, and the pre-pass has no owner to attach a
+  // recovery ledger to when a shape does not build. Producing facts there only
+  // gives the inventory a shape it cannot lower, which surfaced as a
+  // missing-fact invariant for `a: i32 = 1 + 2` or `v: [i32; 2] = [1, 2]`.
+  zc::Vector<ast::NodeId> fieldInitializerNodes;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node& syntax) {
+    if (syntax.kind != ast::SyntaxKind::FieldDecl) { return; }
+    const ast::NodeId initializer(syntax.payload.words[ast::kFieldDeclInitWord]);
+    if (!tree.contains(initializer)) { return; }
+    ast::visitTreePreOrder(tree, initializer, [&](ast::NodeId node, const ast::Node&) {
+      fieldInitializerNodes.add(node);
+    });
+  });
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
     if (failure != zc::none) return;
     const uint32_t ordinal = schemaPreorder++;
@@ -7460,6 +7476,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
       failure = rejectInvariant(signature::CheckerInvariantKind::InvalidFact, boundModule.module(),
                                 ordinal, zc::none, node);
       return;
+    }
+    // The ordinal above must still advance for a skipped node: the checked-node
+    // key of every later node is derived from this dense preorder range.
+    for (const auto fieldInitializer : fieldInitializerNodes) {
+      if (fieldInitializer == node) { return; }
     }
     // EnumPattern nodes inside match arms are skipped by the bodyNode check
     // below (match-arm patterns are covered by the arm's exhaustiveness fact),

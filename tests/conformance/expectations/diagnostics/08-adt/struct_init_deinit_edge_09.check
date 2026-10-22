@@ -1,0 +1,11 @@
+// RUN: cd %corpus && %zomc compile --check 08-adt/struct_init_deinit_edge_09.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A field default value belongs to the field signature, not to an executable
+// body. The body-fact walk must not claim checked facts on the initializer
+// subtree: `FieldDecl` owns no body, so the aggregate pre-pass has no owner to
+// attach a recovery ledger to and used to fall through to a missing-fact
+// compiler incident for `children: [Node] = []`.
+
+// CHECK-NOT: Error
+// CHECK-NOT: internal compiler error
