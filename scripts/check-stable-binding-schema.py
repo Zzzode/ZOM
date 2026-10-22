@@ -233,7 +233,7 @@ MACRO_SIGNATURES = {
 }
 EXPECTED_COUNTS = {
     "Bound": 17,
-    "Record": 94,
+    "Record": 93,
     "NestedRecord": 1,
     "NestedField": 2,
     "Sum": 11,
@@ -245,8 +245,8 @@ EXPECTED_COUNTS = {
     "InlineSumVariantField": 3,
     "RuntimeSumVariant": 4,
     "RuntimeVariantField": 4,
-    "Field": 320,
-    "FieldLimit": 121,
+    "Field": 311,
+    "FieldLimit": 117,
     "Query": 22,
     "Input": 6,
     "CapabilityQuery": 5,
