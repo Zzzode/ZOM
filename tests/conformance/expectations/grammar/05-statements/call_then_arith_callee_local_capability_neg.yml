@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, callExpression, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a callee whose body binds a local before returning is outside the admitted call-then-arithmetic shape, so the body drains ZOM4099."

@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, conditionalExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a ternary initializer followed by a plain local has no admitted MIR initializer form, so the body drains ZOM4099."

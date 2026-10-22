@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/destructuring_binding_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A module-scope `let`/`mut` whose pattern is not a bare identifier carries a
+// non-empty pattern path and a non-identifier leaf. The lowering has no
+// producer for a destructuring binding yet, so the declaration drains as a
+// source diagnostic instead of a checker invariant.
+// CHECK: Error [ZOM4135]: destructuring module-scope bindings are not supported yet

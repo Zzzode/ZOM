@@ -1,0 +1,82 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/match_local_binary_operand_capability_neg.zom | %FileCheck %s
+
+// CHECK: SourceFile #35 @1:1..2:1 file_name="match_local_binary_operand_capability_neg.zom"
+// CHECK:   module: null
+// CHECK:   statements:
+// CHECK:     StatementListItem #34 @1:1..1:116
+// CHECK:       item:
+// CHECK:         FunctionDecl #33 @1:1..1:116 name="entry"
+// CHECK:           params_id:
+// CHECK:             FunctionParameterList #3 @1:9..1:18 nparams=1
+// CHECK:               params:
+// CHECK:                 FunctionParameterDecl #2 @1:10..1:17 name="q"
+// CHECK:                   ty:
+// CHECK:                     PredefinedTypeExpr #1 @1:13..1:17 kind=Bool
+// CHECK:                   default_: null
+// CHECK:                   attrs: null
+// CHECK:           type_params_id: null
+// CHECK:           ret_ty:
+// CHECK:             PredefinedTypeExpr #4 @1:22..1:25 kind=I32
+// CHECK:           raises_ty: null
+// CHECK:           body:
+// CHECK:             BlockStmt #32 @1:26..1:116
+// CHECK:               stmts:
+// CHECK:                 StatementListItem #19 @1:28..1:84
+// CHECK:                   item:
+// CHECK:                     LetStmt #18 @1:28..1:84 kind=Let
+// CHECK:                       declarations:
+// CHECK:                         VariableDeclaratorList #17 @1:32..1:83 n_decls=1
+// CHECK:                           decls:
+// CHECK:                             VariableDeclarator #16 @1:32..1:83
+// CHECK:                               pattern:
+// CHECK:                                 IdentifierPattern #5 @1:32..1:33 name="x"
+// CHECK:                                   ty: null
+// CHECK:                               ty: null
+// CHECK:                               init:
+// CHECK:                                 MatchExpr #15 @1:36..1:83
+// CHECK:                                   scrutinee:
+// CHECK:                                     IdentExpr #14 @1:43..1:44 name="q"
+// CHECK:                                   arms:
+// CHECK:                                     MatchArmExpr #9 @1:48..1:63
+// CHECK:                                       pattern:
+// CHECK:                                         LiteralPattern #7 @1:53..1:57
+// CHECK:                                           literal:
+// CHECK:                                             BoolLiteral #6 @1:53..1:57 value=true
+// CHECK:                                       guard: null
+// CHECK:                                       body:
+// CHECK:                                         IntLiteral #8 @1:61..1:63 base=10 value="40"
+// CHECK:                                     MatchArmExpr #13 @1:65..1:80
+// CHECK:                                       pattern:
+// CHECK:                                         LiteralPattern #11 @1:70..1:75
+// CHECK:                                           literal:
+// CHECK:                                             BoolLiteral #10 @1:70..1:75 value=false
+// CHECK:                                       guard: null
+// CHECK:                                       body:
+// CHECK:                                         IntLiteral #12 @1:79..1:80 base=10 value="1"
+// CHECK:                   attrs: null
+// CHECK:                 StatementListItem #28 @1:85..1:104
+// CHECK:                   item:
+// CHECK:                     LetStmt #27 @1:85..1:104 kind=Let
+// CHECK:                       declarations:
+// CHECK:                         VariableDeclaratorList #26 @1:89..1:103 n_decls=1
+// CHECK:                           decls:
+// CHECK:                             VariableDeclarator #25 @1:89..1:103
+// CHECK:                               pattern:
+// CHECK:                                 IdentifierPattern #20 @1:89..1:90 name="y"
+// CHECK:                                   ty: null
+// CHECK:                               ty:
+// CHECK:                                 PredefinedTypeExpr #21 @1:92..1:95 kind=I32
+// CHECK:                               init:
+// CHECK:                                 BinaryExpr #24 @1:98..1:103 op=Mul
+// CHECK:                                   lhs:
+// CHECK:                                     IdentExpr #22 @1:98..1:99 name="x"
+// CHECK:                                   rhs:
+// CHECK:                                     IntLiteral #23 @1:102..1:103 base=10 value="2"
+// CHECK:                   attrs: null
+// CHECK:                 StatementListItem #31 @1:105..1:114
+// CHECK:                   item:
+// CHECK:                     ReturnStmt #30 @1:105..1:114
+// CHECK:                       value:
+// CHECK:                         IdentExpr #29 @1:112..1:113 name="y"
+// CHECK:                   attrs: null
+// CHECK:       attrs: null

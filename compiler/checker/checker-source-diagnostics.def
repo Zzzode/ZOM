@@ -63,6 +63,8 @@ CHECKER_ERROR(CannotMutateSharedReceiver)
 CHECKER_ERROR(DuplicateStructField)
 CHECKER_ERROR(InvalidUnaryOperands)
 CHECKER_ERROR(MatchScrutineePatternMismatch)
+CHECKER_ERROR(MemberConstantSemanticsUnavailable)
+CHECKER_ERROR(DestructuringBindingSemanticsUnavailable)
 CHECKER_ERROR(FunctionBodySemanticsUnavailable)
 
 CHECKER_WARNING(CheckerUnreachableMatchArm)

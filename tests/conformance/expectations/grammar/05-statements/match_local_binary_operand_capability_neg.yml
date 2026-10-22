@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, matchExpression, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a match result used as a binary operand is outside the admitted shape, so the body drains ZOM4099."

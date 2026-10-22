@@ -1,0 +1,5 @@
+section: "§6.9 LetDecl"
+covers_rule: "letDecl, arrayPattern"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a module-scope destructuring binding has no admitted lowering yet and is rejected with ZOM4135."

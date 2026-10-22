@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, tupleType, tupleLiteral"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the tuple-literal initializer has no admitted middle-end lowering, so the body drains ZOM4099."

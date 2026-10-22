@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, callExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a call result bound without a following arithmetic binding is outside the admitted shape, so the body drains ZOM4099."

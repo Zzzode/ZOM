@@ -1,0 +1,5 @@
+section: "05-statements let declaration"
+covers_rule: "functionDeclaration, letStatement, arrayType, arrayLiteral"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the array-literal initializer has no admitted middle-end lowering, so the body drains ZOM4099."

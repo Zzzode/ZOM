@@ -1,0 +1,78 @@
+// RUN: %zomc compile --dump-ast %corpus/05-statements/call_then_arith_two_local_capability_neg.zom | %FileCheck %s
+
+// CHECK: SourceFile #31 @1:1..3:1 file_name="call_then_arith_two_local_capability_neg.zom"
+// CHECK:   module: null
+// CHECK:   statements:
+// CHECK:     StatementListItem #8 @1:1..1:34
+// CHECK:       item:
+// CHECK:         FunctionDecl #7 @1:1..1:34 name="callee"
+// CHECK:           params_id:
+// CHECK:             FunctionParameterList #1 @1:10..1:12 nparams=0
+// CHECK:               params: []
+// CHECK:           type_params_id: null
+// CHECK:           ret_ty:
+// CHECK:             PredefinedTypeExpr #2 @1:16..1:19 kind=I32
+// CHECK:           raises_ty: null
+// CHECK:           body:
+// CHECK:             BlockStmt #6 @1:20..1:34
+// CHECK:               stmts:
+// CHECK:                 StatementListItem #5 @1:22..1:32
+// CHECK:                   item:
+// CHECK:                     ReturnStmt #4 @1:22..1:32
+// CHECK:                       value:
+// CHECK:                         IntLiteral #3 @1:29..1:31 base=10 value="40"
+// CHECK:                   attrs: null
+// CHECK:       attrs: null
+// CHECK:     StatementListItem #30 @2:1..2:66
+// CHECK:       item:
+// CHECK:         FunctionDecl #29 @2:1..2:66 name="entry"
+// CHECK:           params_id:
+// CHECK:             FunctionParameterList #9 @2:9..2:11 nparams=0
+// CHECK:               params: []
+// CHECK:           type_params_id: null
+// CHECK:           ret_ty:
+// CHECK:             PredefinedTypeExpr #10 @2:15..2:18 kind=I32
+// CHECK:           raises_ty: null
+// CHECK:           body:
+// CHECK:             BlockStmt #28 @2:19..2:66
+// CHECK:               stmts:
+// CHECK:                 StatementListItem #17 @2:21..2:38
+// CHECK:                   item:
+// CHECK:                     LetStmt #16 @2:21..2:38 kind=Let
+// CHECK:                       declarations:
+// CHECK:                         VariableDeclaratorList #15 @2:25..2:37 n_decls=1
+// CHECK:                           decls:
+// CHECK:                             VariableDeclarator #14 @2:25..2:37
+// CHECK:                               pattern:
+// CHECK:                                 IdentifierPattern #11 @2:25..2:26 name="x"
+// CHECK:                                   ty: null
+// CHECK:                               ty: null
+// CHECK:                               init:
+// CHECK:                                 CallExpression #13 @2:29..2:37
+// CHECK:                                   callee:
+// CHECK:                                     IdentExpr #12 @2:29..2:35 name="callee"
+// CHECK:                                   type_args: []
+// CHECK:                                   args: []
+// CHECK:                   attrs: null
+// CHECK:                 StatementListItem #24 @2:39..2:54
+// CHECK:                   item:
+// CHECK:                     LetStmt #23 @2:39..2:54 kind=Let
+// CHECK:                       declarations:
+// CHECK:                         VariableDeclaratorList #22 @2:43..2:53 n_decls=1
+// CHECK:                           decls:
+// CHECK:                             VariableDeclarator #21 @2:43..2:53
+// CHECK:                               pattern:
+// CHECK:                                 IdentifierPattern #18 @2:43..2:44 name="y"
+// CHECK:                                   ty: null
+// CHECK:                               ty:
+// CHECK:                                 PredefinedTypeExpr #19 @2:46..2:49 kind=I32
+// CHECK:                               init:
+// CHECK:                                 IntLiteral #20 @2:52..2:53 base=10 value="1"
+// CHECK:                   attrs: null
+// CHECK:                 StatementListItem #27 @2:55..2:64
+// CHECK:                   item:
+// CHECK:                     ReturnStmt #26 @2:55..2:64
+// CHECK:                       value:
+// CHECK:                         IdentExpr #25 @2:62..2:63 name="y"
+// CHECK:                   attrs: null
+// CHECK:       attrs: null

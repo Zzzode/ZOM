@@ -1,0 +1,5 @@
+section: "§6.9 ConstDecl"
+covers_rule: "classDeclaration, classConst"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; a member-scoped const has no compile-time constant producer yet and is rejected with ZOM4134."

@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/member_const_semantics_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A class-body `const` member is grammar the parser and binder accept, but the
+// signature stage has no producer for a member-scoped compile-time constant.
+// It used to reach a checker invariant instead of a source diagnostic.
+// CHECK: Error [ZOM4134]: member-scoped `const` declarations are not supported yet

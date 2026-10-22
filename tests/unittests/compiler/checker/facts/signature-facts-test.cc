@@ -1867,6 +1867,40 @@ ZC_TEST("SignatureFactsBuilder source-rejects a non-interface dyn principal") {
   ZC_REQUIRE(failure.arguments[0].variant().is<SignatureDefinitionDisplayArg>());
 }
 
+constexpr zc::StringPtr kMemberConstantSource = R"zom(class RecoveryOwner {}
+class Holder {
+    const y: i32 = 1;
+}
+)zom"_zc;
+
+constexpr zc::StringPtr kModuleDestructuringSource = R"zom(class RecoveryOwner {}
+let [a, b] = [1, 2];
+)zom"_zc;
+
+// A class-body `const` member is grammar the parser and binder accept, but the
+// signature stage has no producer for a member-scoped compile-time constant.
+// It must drain as ZOM4134 on the source rail, not surface as an invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects a member-scoped const") {
+  auto result = buildSignatures(kMemberConstantSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::MemberConstantSemanticsUnavailable);
+}
+
+// A module-scope destructuring binding carries a non-empty pattern path and a
+// non-identifier leaf. One declarator introduces both leaves, so the
+// declaration drains once as ZOM4135 rather than once per leaf.
+ZC_TEST("SignatureFactsBuilder source-rejects a module-scope destructuring binding") {
+  auto result = buildSignatures(kModuleDestructuringSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::DestructuringBindingSemanticsUnavailable);
+}
+
 constexpr zc::StringPtr kImplAssociatedAssignmentSource = R"zom(class RecoveryOwner {}
 interface Iterator {
     type Item;

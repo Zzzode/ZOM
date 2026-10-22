@@ -232,3 +232,15 @@ DIAG(4132, InvalidUnaryOperands, kError, "Operator `{0}` is not defined for type
 // (e.g. an integer scrutinee with bool literal patterns) is a type error.
 DIAG(4133, MatchScrutineePatternMismatch, kError,
      "match scrutinee type `{0}` does not match pattern type `{1}`", 2)
+// A class or impl body `const` member is grammar the parser and binder accept,
+// but the signature stage has no producer for a member-scoped compile-time
+// constant. Drain the declaration as unsupported instead of applying the
+// module-binding declarator contract and reaching a compiler invariant.
+DIAG(4134, MemberConstantSemanticsUnavailable, kError,
+     "member-scoped `const` declarations are not supported yet", 0)
+// A module-scope `let`/`mut` whose pattern is not a bare identifier
+// (`let [a, b] = ...`, `let x @ (a, b) = ...`) is grammar the parser accepts,
+// but the lowering has no producer for a destructuring binding yet. Drain the
+// declaration as unsupported instead of reaching a compiler invariant.
+DIAG(4135, DestructuringBindingSemanticsUnavailable, kError,
+     "destructuring module-scope bindings are not supported yet", 0)

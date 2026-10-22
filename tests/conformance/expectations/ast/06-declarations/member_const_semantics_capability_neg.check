@@ -1,0 +1,19 @@
+// RUN: %zomc compile --dump-ast %corpus/06-declarations/member_const_semantics_capability_neg.zom | %FileCheck %s
+
+// CHECK: SourceFile #7 @1:1..2:1 file_name="member_const_semantics_capability_neg.zom"
+// CHECK:   module: null
+// CHECK:   statements:
+// CHECK:     StatementListItem #6 @1:1..1:30
+// CHECK:       item:
+// CHECK:         ClassDecl #5 @1:1..1:30 name="C"
+// CHECK:           type_params_id: null
+// CHECK:           base_ty: null
+// CHECK:           members_id:
+// CHECK:             ClassMemberList #4 @1:9..1:30 nmembers=1
+// CHECK:               members:
+// CHECK:                 ClassConstDecl #3 @1:11..1:28 name="y" is_static=false visibility=Default
+// CHECK:                   ty:
+// CHECK:                     PredefinedTypeExpr #1 @1:20..1:23 kind=I32
+// CHECK:                   init:
+// CHECK:                     IntLiteral #2 @1:26..1:27 base=10 value="1"
+// CHECK:       attrs: null

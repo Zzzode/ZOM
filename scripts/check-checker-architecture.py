@@ -368,6 +368,10 @@ ACCEPTED_CHECKER_DIAGNOSTICS = (
      "Operator `{0}` is not defined for type `{1}`", 2),
     (4133, "MatchScrutineePatternMismatch", "kError",
      "match scrutinee type `{0}` does not match pattern type `{1}`", 2),
+    (4134, "MemberConstantSemanticsUnavailable", "kError",
+     "member-scoped `const` declarations are not supported yet", 0),
+    (4135, "DestructuringBindingSemanticsUnavailable", "kError",
+     "destructuring module-scope bindings are not supported yet", 0),
     (4099, "FunctionBodySemanticsUnavailable", "kError",
      "this function body uses a construct the compiler cannot generate code for yet", 0),
 )
@@ -985,7 +989,7 @@ def check_diagnostic_registry(files: dict[Path, str], errors: list[str]) -> None
         if severity == "kError" and (
             4001 <= code <= 4055 or 4077 <= code <= 4081 or code == 4103 or code == 4124
             or code == 4125 or code == 4126 or code == 4099 or code == 4093
-            or 4131 <= code <= 4133
+            or 4131 <= code <= 4135
         ):
             expected_errors.append(("ERROR", name))
         elif code == 4023:

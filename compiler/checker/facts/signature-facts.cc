@@ -7711,6 +7711,10 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   zc::Vector<ImplAuthorityCensusEntry> sourceImplCensus(builtImplCensus.size());
   for (auto& value : builtImplCensus) { sourceImplCensus.add(zc::mv(value.entry)); }
 
+  // One destructuring declarator introduces several leaf definitions. Report
+  // the declaration once rather than once per leaf.
+  zc::Vector<ast::NodeId> reportedDestructuringIntroducers;
+
   for (const auto& definition : input.boundModule.definitions().definitions()) {
     const auto definitionKind = definition.record.kind();
     if (!isLocalDefinition(definition) || !isSignatureBearingDefinition(definitionKind)) {
@@ -7761,16 +7765,62 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
         }
         const auto& site = definitionSite.value();
         if (!site.is<binder::PatternBindingSite>()) {
+          // A module-scope `let`/`mut`/`const` always publishes a pattern site
+          // (binder `visitLet` collects its declarator pattern). A declaration
+          // site therefore names a member-scoped `const`, which is grammar the
+          // parser and binder accept but which has no compile-time constant
+          // producer at the signature stage. Drain the declaration itself as
+          // ZOM4134 rather than applying the module-binding declarator contract
+          // and reaching an invariant.
+          if (tree.contains(definition.node) &&
+              tree.node(definition.node).kind == ast::SyntaxKind::ClassConstDecl) {
+            auto failure = signatureSourceFailure(
+                SignatureSourceDiagnostic::MemberConstantSemanticsUnavailable, input.boundModule,
+                definition.node, definition.node);
+            if (failure == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                  module, definition.node.value));
+            }
+            ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+            continue;
+          }
           return buildReject(
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
         }
         const auto& patternSite = site.get<binder::PatternBindingSite>();
-        if (patternSite.patternPath.size() != 0 || !tree.contains(patternSite.introducer) ||
+        if (!tree.contains(patternSite.introducer) ||
             tree.node(patternSite.introducer).kind != ast::SyntaxKind::VariableDeclarator ||
-            !tree.contains(definition.node) ||
-            tree.node(definition.node).kind != ast::SyntaxKind::IdentifierPattern) {
+            !tree.contains(definition.node)) {
           return buildReject(
               checkerInvariant(CheckerInvariantKind::InvalidFact, module, definition.node.value));
+        }
+        if (patternSite.patternPath.size() != 0 ||
+            tree.node(definition.node).kind != ast::SyntaxKind::IdentifierPattern) {
+          // A destructuring binding (`let [a, b] = ...`, `let x @ (a, b) = ...`)
+          // carries a non-empty pattern path and a non-identifier leaf. The
+          // lowering has no producer for it yet, so drain the declaration as
+          // ZOM4135 instead of reporting an invariant violation. Every leaf of
+          // one pattern is a separate definition, so report the declaration
+          // once and anchor it at the declarator.
+          bool alreadyReported = false;
+          for (const auto reported : reportedDestructuringIntroducers) {
+            if (reported == patternSite.introducer) {
+              alreadyReported = true;
+              break;
+            }
+          }
+          if (!alreadyReported) {
+            reportedDestructuringIntroducers.add(patternSite.introducer);
+            auto failure = signatureSourceFailure(
+                SignatureSourceDiagnostic::DestructuringBindingSemanticsUnavailable,
+                input.boundModule, patternSite.introducer, patternSite.introducer);
+            if (failure == zc::none) {
+              return buildReject(checkerInvariant(CheckerInvariantKind::InputReceiptMismatch,
+                                                  module, patternSite.introducer.value));
+            }
+            ZC_IF_SOME(value, failure) { sourceFailures.add(zc::mv(value)); }
+          }
+          continue;
         }
         auto declarationKind = declarationKindForDeclarator(tree, patternSite.introducer);
         if (declarationKind == zc::none) {

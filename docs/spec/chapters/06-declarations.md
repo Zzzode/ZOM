@@ -206,6 +206,11 @@ let { name, age } = getPerson();
 let [head, ...tail] = getArray();
 ```
 
+A destructuring binding at module scope has no admitted lowering yet and is
+rejected with `ZOM4135` (`DestructuringBindingSemanticsUnavailable`). Body-local
+destructuring whose shape the middle end does not lower is rejected with
+`ZOM4099`.
+
 ### `const` Declarations
 
 Declare compile-time constants:
@@ -235,6 +240,10 @@ I/O, non-deterministic operations, and ordinary function calls are rejected by
 const evaluation. A `const` has no stable storage address; it is a named
 compile-time value that may be substituted at use sites. Storage-backed global
 objects are intentionally separate from `const`.
+
+A `const` declared as a class or impl member has no compile-time constant
+producer yet and is rejected with `ZOM4134`
+(`MemberConstantSemanticsUnavailable`).
 
 ### Rejected `var`
 
