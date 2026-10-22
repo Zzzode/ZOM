@@ -4526,7 +4526,27 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     for (const auto& entry : nodeTypes) {
       if (entry.key == operandNode) typeFact = entry;
     }
-    if (typeFact == zc::none) return false;
+    if (typeFact == zc::none) {
+      // A reference to an owner local whose own initializer is still being
+      // produced has no node-type fact at this site yet. Resolve the operand
+      // type from the binding instead; `referenceType` reads the binding's
+      // declared annotation, tuple-destructure element type, or structurally
+      // derived binary result, so it agrees with what the reference's own
+      // production site will compute.
+      //
+      // This resolves types; it does not admit shapes. Every downstream stage
+      // keeps its own barrier: an unannotated ternary or match initializer has
+      // no resolvable type here and stays rejected, and an annotated one that
+      // does resolve still meets the HIR whole-body predicate and the MIR
+      // capability rail, so it drains rather than reaching a lowering that
+      // cannot emit it. A literal operand has no binding rail and still
+      // requires a fact.
+      if (!isReference) return false;
+      auto resolved = referenceType(operandNode);
+      bool referenceOk = false;
+      ZC_IF_SOME(value, resolved) { referenceOk = value == operand; }
+      return referenceOk;
+    }
     bool typeOk = false;
     ZC_IF_SOME(entry, typeFact) { typeOk = entry.value == operand; }
     if (!typeOk) return false;

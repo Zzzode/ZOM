@@ -1,0 +1,16 @@
+// Call-local operand fixture: a zero-argument module call binding whose result
+// is used directly as an arithmetic operand beside the constant binding. The
+// body is the same four-statement call-then-local-arithmetic shape the
+// callee/module predicate already admits, so the call local is an ordinary
+// ordinal-1 operand the MIR strategy and LIR lowering both emit. The callee
+// returns 40, and the caller computes 40 + 2, so the program exits 42.
+fn callee() -> i32 {
+  return 40;
+}
+
+fn entry() -> i32 {
+  let x = callee();
+  let a: i32 = 2;
+  let y: i32 = x + a;
+  return y;
+}

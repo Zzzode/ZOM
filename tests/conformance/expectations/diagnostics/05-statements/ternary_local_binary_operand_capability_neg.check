@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/ternary_local_binary_operand_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The checker resolves a reference operand from its binding when the operand's node-type fact is not produced yet. That fallback covers a call-initialized or annotated local, but not a ternary: its result type is only known from a later fact, so referenceType returns none and the shape stays rejected. This is the class a previous attempt admitted into a binary the MIR builder could not lower; it must keep draining, never become an incident.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/ternary_local_binary_operand_capability_neg.zom:1:26
