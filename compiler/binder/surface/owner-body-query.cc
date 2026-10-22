@@ -1250,32 +1250,6 @@ zc::Maybe<StableCallableParameterQueryKey> verifierReceiver(const StableOwnerBod
   return zc::none;
 }
 
-// Destructors have no callable receiver parameter by design (RFC 0014: the
-// destruction place is not an ordinary receiver). A `this` expression inside a
-// destructor body therefore has no StableCallableParameterQueryKey to bind to.
-// The projection skips such entries instead of failing so the owner-body query
-// can publish; the checker resolves destructor `this` through the owner nominal
-// rather than a this-binding fact.
-//
-// A constructor without an explicit `this` parameter has the same shape, but
-// its `this` expressions are *not* admitted receiver syntax: the checker drains
-// the constructor body through the ordinary lexical lookup, where `this` is
-// simply not in scope and records the standard ZOM3001 undefined-identifier
-// failure. Only an explicit `init(this, ...)` receiver (already drained by the
-// binder as ZOM2108) is skipped here.
-bool ownerHasNoReceiverParameter(const StableOwnerBodyQueryKey& owner,
-                                 const BoundModuleSkeleton& skeleton) {
-  ZC_IF_SOME(definition, owner.owner().definitionKey()) {
-    for (const auto& candidate : skeleton.declarations().values()) {
-      if (candidate.queryKey().definition() != definition) { continue; }
-      const auto kind = candidate.kind();
-      return kind == identity::DefinitionKind::Destructor ||
-             kind == identity::DefinitionKind::Constructor;
-    }
-  }
-  return false;
-}
-
 bool isLoopSyntaxKind(ast::SyntaxKind kind) {
   switch (kind) {
     case ast::SyntaxKind::WhileStmt:
@@ -2166,7 +2140,6 @@ zc::Maybe<OwnerBodyReceiverProjection> OwnerBodyReceiverProjection::from(
   auto traversal = OwnerBodySyntaxTraversal::from(syntax);
   if (traversal == zc::none) { return zc::none; }
   auto receiver = providerReceiver(owner, skeleton);
-  const bool receiverlessOwner = ownerHasNoReceiverParameter(owner, skeleton);
   zc::Vector<StableThisBindingFact> bindings;
   for (const auto& entry : ZC_ASSERT_NONNULL(traversal).entries()) {
     if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
@@ -2174,8 +2147,16 @@ zc::Maybe<OwnerBodyReceiverProjection> OwnerBodyReceiverProjection::from(
       continue;
     }
     if (receiver == zc::none) {
-      if (receiverlessOwner) { continue; }
-      return zc::none;
+      // The owner has no receiver parameter to bind `this` to. A destructor or
+      // receiver-less constructor has that shape by design (RFC 0014: the
+      // destruction place is not an ordinary receiver), and so does ordinary
+      // source where `this` has no meaning at all — a free function body or a
+      // module-scope expression. This projection publishes receiver facts; it
+      // does not adjudicate whether `this` is legal here. Failing the query
+      // instead collapsed that judgement into a binder runtime failure, which
+      // the session reports as an internal compiler error before the checker
+      // can diagnose the expression.
+      continue;
     }
     auto binding = StableThisBindingFact::from(owner.clone(), entry.path.clone(),
                                                ZC_ASSERT_NONNULL(receiver).clone());
@@ -2199,7 +2180,6 @@ bool OwnerBodyReceiverProjection::verify(const StableOwnerBodyQueryKey& owner,
   auto traversal = OwnerBodySyntaxTraversal::from(syntax);
   if (traversal == zc::none) { return false; }
   auto receiver = verifierReceiver(owner, skeleton);
-  const bool receiverlessOwner = ownerHasNoReceiverParameter(owner, skeleton);
   zc::Vector<StableThisBindingFact> expected;
   const auto entries = ZC_ASSERT_NONNULL(traversal).entries();
   for (size_t index = entries.size(); index != 0; --index) {
@@ -2209,8 +2189,10 @@ bool OwnerBodyReceiverProjection::verify(const StableOwnerBodyQueryKey& owner,
       continue;
     }
     if (receiver == zc::none) {
-      if (receiverlessOwner) { continue; }
-      return false;
+      // Mirrors from(): an owner with no receiver publishes no binding. The
+      // verifier must agree with the producer or every such module fails
+      // verification.
+      continue;
     }
     auto binding = StableThisBindingFact::from(owner.clone(), entry.path.clone(),
                                                ZC_ASSERT_NONNULL(receiver).clone());
