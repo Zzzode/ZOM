@@ -578,7 +578,8 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> projectLocalExportFacts(
     const ModuleBodyProvenance& provenance, const RevisionLocalDefinitionSites& definitionSites,
     const CanonicalSequence<StableDeclarationFact>& declarations,
     const CanonicalSequence<StableImportFact>& imports,
-    const graph_query::ModuleDependencyProvenanceMap& dependencies) {
+    const graph_query::ModuleDependencyProvenanceMap& dependencies,
+    zc::Vector<StableFailedLookupFact>& failures) {
   const auto& tree = parsed.tree();
   if (!tree.contains(tree.root()) || tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
     return zc::none;
@@ -679,7 +680,20 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> projectLocalExportFacts(
         nameSpace = import.nameSpace();
       }
       if (binding == zc::none || canonicalTarget == zc::none || nameSpace == zc::none) {
-        return zc::none;
+        // An export specifier naming nothing declared or imported is a source
+        // error, not a reason to abandon the whole skeleton. Record one failed
+        // lookup at the specifier so the binding diagnostic projector publishes
+        // ZOM3001 and the remaining specifiers still publish their exports.
+        auto specifierPath = moduleBodyPathForNode(provenance, specifier);
+        auto unresolvedName = identity::DeclaredDefinitionName::fromCanonical(sourceName);
+        if (specifierPath == zc::none || unresolvedName == zc::none) { return zc::none; }
+        auto failure = StableFailedLookupFact::from(
+            BinderQueryOwner::module(module.clone()), zc::mv(ZC_ASSERT_NONNULL(specifierPath)),
+            Namespace::Value, zc::mv(ZC_ASSERT_NONNULL(unresolvedName)),
+            StableFailedLookupOutcome::missing());
+        if (failure == zc::none) { return zc::none; }
+        failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+        continue;
       }
       auto name = identity::DeclaredDefinitionName::fromCanonical(exportedName);
       if (name == zc::none) { return zc::none; }
@@ -707,7 +721,8 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> verifyLocalExportFacts(
     const ModuleBodyProvenance& provenance, const RevisionLocalDefinitionSites& definitionSites,
     const CanonicalSequence<StableDeclarationFact>& declarations,
     const CanonicalSequence<StableImportFact>& imports,
-    const graph_query::ModuleDependencyProvenanceMap& dependencies) {
+    const graph_query::ModuleDependencyProvenanceMap& dependencies,
+    zc::Vector<StableFailedLookupFact>& failures) {
   const auto& tree = parsed.tree();
   if (!tree.contains(tree.root()) || tree.node(tree.root()).kind != ast::SyntaxKind::SourceFile) {
     return zc::none;
@@ -812,7 +827,20 @@ zc::Maybe<CanonicalSequence<StableLocalExportFact>> verifyLocalExportFacts(
         canonical = imported.canonicalTarget().clone();
         nameSpace = imported.nameSpace();
       }
-      if (target == zc::none || canonical == zc::none || nameSpace == zc::none) { return zc::none; }
+      if (target == zc::none || canonical == zc::none || nameSpace == zc::none) {
+        // Mirror the producer: an unresolved export specifier contributes a
+        // failed lookup instead of abandoning the whole export sequence.
+        auto specifierPath = moduleBodyPathForNode(provenance, specifier);
+        auto unresolvedName = identity::DeclaredDefinitionName::fromCanonical(sourceName);
+        if (specifierPath == zc::none || unresolvedName == zc::none) { return zc::none; }
+        auto failure = StableFailedLookupFact::from(
+            BinderQueryOwner::module(module.clone()), zc::mv(ZC_ASSERT_NONNULL(specifierPath)),
+            Namespace::Value, zc::mv(ZC_ASSERT_NONNULL(unresolvedName)),
+            StableFailedLookupOutcome::missing());
+        if (failure == zc::none) { return zc::none; }
+        failures.add(zc::mv(ZC_ASSERT_NONNULL(failure)));
+        continue;
+      }
       auto name =
           identity::DeclaredDefinitionName::fromCanonical(tree.ident(alias ? alias : source));
       if (name == zc::none) { return zc::none; }
@@ -1575,7 +1603,7 @@ zc::Maybe<BoundModuleSkeleton> buildModuleSkeleton(
           ? zc::Maybe<CanonicalSequence<StableLocalExportFact>>()
           : projectLocalExportFacts(module, parsed, moduleProvenance, definitionSites,
                                     ZC_ASSERT_NONNULL(declarationFacts),
-                                    ZC_ASSERT_NONNULL(importedFacts), dependencies);
+                                    ZC_ASSERT_NONNULL(importedFacts), dependencies, failures);
   auto admittedFailures = admitFacts(zc::mv(failures));
   sortBodyOwners(bodyOwnerValues);
   auto owners =
@@ -1739,7 +1767,7 @@ zc::Maybe<BoundModuleSkeleton> rebuildModuleSkeletonForVerification(
           ? zc::Maybe<CanonicalSequence<StableLocalExportFact>>()
           : verifyLocalExportFacts(module, authority.parsed, moduleProvenance,
                                    authority.definitionSites, ZC_ASSERT_NONNULL(declarationFacts),
-                                   ZC_ASSERT_NONNULL(importedFacts), dependencies);
+                                   ZC_ASSERT_NONNULL(importedFacts), dependencies, failures);
   auto admittedFailures = admitFacts(zc::mv(failures));
   sortBodyOwners(bodyOwnerValues);
   auto owners =
