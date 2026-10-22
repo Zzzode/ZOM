@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/nested_labels_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A label chain nests LabeledStatement nodes, so an outer label's child is the
+// inner label rather than the loop. The label projection used to reject that
+// shape, failing the whole owner body and reaching the driver as an internal
+// compiler error. It now drains as a capability diagnostic.
+
+// CHECK: Error [ZOM4096]: this control-flow construct is not supported yet
+// CHECK-LITERAL:   --> conformance/05-statements/nested_labels_pos_01.zom:2:19
+
+// CHECK-NOT: internal compiler error
