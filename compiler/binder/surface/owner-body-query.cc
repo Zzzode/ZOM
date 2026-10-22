@@ -2977,6 +2977,24 @@ zc::Maybe<OwnerBodyLabelProjection> OwnerBodyLabelProjection::from(
     }
     auto statementPath = providerChildPath(entry.path, ZC_ASSERT_NONNULL(child).firstChildOrdinal);
     if (statementPath == zc::none) { return zc::none; }
+    // A label chain (`outer: inner: while ...`) nests LabeledStatement nodes, so
+    // the immediate child of an outer label is the inner label, not the loop.
+    // Every label in the chain targets the same terminal statement, so walk past
+    // the nested labels before asking what kind of statement is labelled.
+    while (true) {
+      auto nested = providerEntryAtPath(entries, ZC_ASSERT_NONNULL(statementPath));
+      if (nested == zc::none) { return zc::none; }
+      if (ZC_ASSERT_NONNULL(nested).syntaxKind != ast::SyntaxKind::LabeledStatement) { break; }
+      auto innerChild = syntax.nodes()[ZC_ASSERT_NONNULL(nested).nodeIndex].childField(1);
+      if (innerChild == zc::none || !ZC_ASSERT_NONNULL(innerChild).present ||
+          ZC_ASSERT_NONNULL(innerChild).childCount != 1) {
+        return zc::none;
+      }
+      auto innerPath = providerChildPath(ZC_ASSERT_NONNULL(nested).path,
+                                         ZC_ASSERT_NONNULL(innerChild).firstChildOrdinal);
+      if (innerPath == zc::none) { return zc::none; }
+      statementPath = zc::mv(innerPath);
+    }
     auto statement = providerEntryAtPath(entries, ZC_ASSERT_NONNULL(statementPath));
     auto scope = providerNodeScope(ZC_ASSERT_NONNULL(statementPath), nodeScopes);
     if (statement == zc::none || scope == zc::none) { return zc::none; }
@@ -3048,6 +3066,22 @@ bool OwnerBodyLabelProjection::verify(const StableOwnerBodyQueryKey& owner,
     }
     auto statementPath = verifierChildPath(entry.path, ZC_ASSERT_NONNULL(child).firstChildOrdinal);
     if (statementPath == zc::none) { return false; }
+    // Mirror the producer: walk past nested labels to the terminal statement the
+    // whole chain targets.
+    while (true) {
+      auto nested = verifierEntryAtPath(entries.asPtr(), ZC_ASSERT_NONNULL(statementPath));
+      if (nested == zc::none) { return false; }
+      if (ZC_ASSERT_NONNULL(nested).syntaxKind != ast::SyntaxKind::LabeledStatement) { break; }
+      auto innerChild = syntax.nodes()[ZC_ASSERT_NONNULL(nested).nodeIndex].childField(1);
+      if (innerChild == zc::none || !ZC_ASSERT_NONNULL(innerChild).present ||
+          ZC_ASSERT_NONNULL(innerChild).childCount != 1) {
+        return false;
+      }
+      auto innerPath = verifierChildPath(ZC_ASSERT_NONNULL(nested).path,
+                                         ZC_ASSERT_NONNULL(innerChild).firstChildOrdinal);
+      if (innerPath == zc::none) { return false; }
+      statementPath = zc::mv(innerPath);
+    }
     auto statement = verifierEntryAtPath(entries.asPtr(), ZC_ASSERT_NONNULL(statementPath));
     auto scope = verifierNodeScope(ZC_ASSERT_NONNULL(statementPath), nodeScopes);
     if (statement == zc::none || scope == zc::none) { return false; }
