@@ -1150,11 +1150,21 @@ zc::Maybe<OwnerBodyLookupFacts> projectOwnerBodyLookups(
       }
       auto segments = syntax.nodes()[entry.nodeIndex].identifierListField(0);
       if (segments == zc::none || ZC_ASSERT_NONNULL(segments).size() == 0) { return zc::none; }
-      name =
-          entry.syntaxKind == ast::SyntaxKind::AttributePath
-              ? markerImplPathTerminalName(ZC_ASSERT_NONNULL(segments), skeleton.module())
-              : zc::Maybe<identity::DeclaredDefinitionName>(ZC_ASSERT_NONNULL(segments)[0].clone());
-      if (name == zc::none) { return zc::none; }
+      if (entry.syntaxKind == ast::SyntaxKind::AttributePath) {
+        auto terminal = markerImplPathTerminalName(ZC_ASSERT_NONNULL(segments), skeleton.module());
+        if (terminal == zc::none) {
+          // A module-qualified marker path (`impl !std::marker::Shared for T`)
+          // names its trait through the module system, not through the lexical
+          // scope this projection publishes. Skipping keeps the projection on
+          // its own contract; failing the query instead turned every such
+          // source into a binder runtime failure before any later stage could
+          // resolve or reject the path.
+          continue;
+        }
+        name = zc::mv(terminal);
+      } else {
+        name = ZC_ASSERT_NONNULL(segments)[0].clone();
+      }
       nameSpace = Namespace::Type;
     } else {
       continue;
@@ -1985,11 +1995,15 @@ bool OwnerBodyLookupProjection::verify(
       }
       auto segments = syntax.nodes()[entry.nodeIndex].identifierListField(0);
       if (segments == zc::none || ZC_ASSERT_NONNULL(segments).size() == 0) { return false; }
-      name =
-          entry.syntaxKind == ast::SyntaxKind::AttributePath
-              ? markerImplPathTerminalName(ZC_ASSERT_NONNULL(segments), skeleton.module())
-              : zc::Maybe<identity::DeclaredDefinitionName>(ZC_ASSERT_NONNULL(segments)[0].clone());
-      if (name == zc::none) { return false; }
+      if (entry.syntaxKind == ast::SyntaxKind::AttributePath) {
+        // Mirrors from(): a module-qualified marker path is resolved by the
+        // module system, not by this lexical projection.
+        auto terminal = markerImplPathTerminalName(ZC_ASSERT_NONNULL(segments), skeleton.module());
+        if (terminal == zc::none) { continue; }
+        name = zc::mv(terminal);
+      } else {
+        name = ZC_ASSERT_NONNULL(segments)[0].clone();
+      }
       nameSpace = Namespace::Type;
     } else {
       continue;

@@ -1,0 +1,8 @@
+// RUN: cd %corpus && ! %zomc compile --check 09-interfaces/marker_impl_negative_pos_14.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A module-qualified marker path names its trait through the module system.
+// When the leading segment resolves to no module, the marker implementation
+// records ZOM4120 at the path instead of failing the binder query.
+
+// CHECK: Error [ZOM4120]: cannot find type `std` in this scope

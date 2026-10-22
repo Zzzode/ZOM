@@ -1319,6 +1319,36 @@ public:
     return resolvedDefinition(node);
   }
 
+  /// \brief Record ZOM4120 for a marker implementation's `AttributePath` that
+  /// names no definition.
+  ///
+  /// `impl !std::marker::Shared for T` writes its trait as an attribute path,
+  /// which `resolvedDefinition` never resolves: it reads module paths and
+  /// recorded node bindings only, and the binder records no binding for a
+  /// marker path. Recording the failure here keeps the marker branch on the
+  /// "declined with a diagnostic" contract every other signature type position
+  /// honours, instead of surfacing as a MissingRequiredFact invariant.
+  void recordUnresolvedMarkerPath(ast::NodeId path) {
+    const auto& tree = boundModule.tree();
+    if (!tree.contains(path) || tree.node(path).kind != ast::SyntaxKind::AttributePath) { return; }
+    const ast::IdentList segments{
+        tree.node(path).payload.words[ast::kAttributePathSegmentsFirstWord],
+        tree.node(path).payload.words[ast::kAttributePathSegmentsSizeWord]};
+    if (!tree.contains(segments) || segments.size == 0) { return; }
+    const auto firstName = tree.identList(segments)[0];
+    if (!tree.contains(firstName)) { return; }
+    auto failure = signatureSourceFailure(SignatureSourceDiagnostic::TypeNameUnresolved,
+                                          boundModule, path, path);
+    if (failure == zc::none) { return; }
+    ZC_IF_SOME(value, failure) {
+      auto name = identity::SemanticIdentifier::fromSource(tree.ident(firstName));
+      if (name == zc::none) { return; }
+      value.arguments.add(
+          SignatureSourceArgument(SignatureIdentifierDisplayArg{zc::mv(ZC_ASSERT_NONNULL(name))}));
+      sink.add(zc::mv(value));
+    }
+  }
+
   /// \brief True when `path` is a single-segment, relative `Self` module path.
   static bool isBareSelfPath(const ast::Tree& tree, ast::NodeId path) {
     if (!tree.contains(path)) return false;
@@ -9564,6 +9594,9 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
     const ast::NodeId markerPath(syntax.payload.words[ast::kMarkerImplMarkerPathWord]);
     auto markerDefinition = typeBuilder.definitionAtPath(markerPath);
     auto self = typeBuilder.build(ast::NodeId(syntax.payload.words[ast::kMarkerImplForTyWord]));
+    if (markerDefinition == zc::none && sourceFailures.empty()) {
+      typeBuilder.recordUnresolvedMarkerPath(markerPath);
+    }
     if (markerDefinition == zc::none || self == zc::none) {
       if (!sourceFailures.empty()) { continue; }
       return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
