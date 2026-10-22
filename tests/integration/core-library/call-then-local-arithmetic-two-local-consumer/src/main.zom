@@ -1,0 +1,14 @@
+// Two-binding call-then-arithmetic fixture: the call result local is used
+// directly as an arithmetic operand, with no intervening constant binding. The
+// body is the two-binding shape the same shared predicate admits, and it lowers
+// through the same caller/callee pair slice with the constant steps elided. The
+// callee returns 40 and the caller computes 40 + 2, so the program exits 42.
+fn callee() -> i32 {
+  return 40;
+}
+
+fn entry() -> i32 {
+  let x = callee();
+  let y: i32 = x + 2;
+  return y;
+}

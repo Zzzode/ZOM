@@ -79,12 +79,14 @@ bool isLirArithmeticOperation(checker::PrimitiveOperation operation) noexcept {
   }
 }
 
-/// \brief Highest local ordinal an arithmetic operand may name.
+/// \brief Highest local ordinal an arithmetic operand may name in the
+/// three-binding form.
 ///
 /// The computing binding is the third (zero-based index 2), and both leaf
 /// builders admit a reference to a local at or before that index, so only
 /// ordinals 1 (the call local) and 2 (the constant local) qualify. A reference
-/// to the result local itself is excluded: no builder emits it.
+/// to the result local itself is excluded: no builder emits it. The
+/// two-binding form has no constant local, so it passes 1 instead.
 constexpr uint32_t kHighestAdmittedOperandOrdinal = 2;
 
 /// \brief True when one arithmetic operand is a leaf both the MIR strategy and
@@ -97,7 +99,8 @@ constexpr uint32_t kHighestAdmittedOperandOrdinal = 2;
 /// returns none. The declaration has no parameters, so no parameter leaf can
 /// occur.
 bool isAdmittedArithmeticOperand(const CallArithmeticPools& pools,
-                                 identity::SemanticTypeId operandType, HirNodeId operand) {
+                                 identity::SemanticTypeId operandType, HirNodeId operand,
+                                 uint32_t highestAdmittedOrdinal) {
   auto literal = uniqueRecordFor(pools.expressions, operand);
   if (literal != zc::none) {
     const auto& value = ZC_ASSERT_NONNULL(literal);
@@ -107,7 +110,7 @@ bool isAdmittedArithmeticOperand(const CallArithmeticPools& pools,
   if (reference == zc::none) return false;
   const auto& value = ZC_ASSERT_NONNULL(reference);
   return value.type == operandType && value.category == HirValueCategory::Place &&
-         value.local.ordinal() >= 1 && value.local.ordinal() <= kHighestAdmittedOperandOrdinal;
+         value.local.ordinal() >= 1 && value.local.ordinal() <= highestAdmittedOrdinal;
 }
 
 }  // namespace
@@ -177,79 +180,104 @@ zc::Maybe<CallArithmeticParts> matchCallThenLocalArithmetic(
     const CallArithmeticPools& pools, const type::SemanticTypeStore& semanticTypes,
     const HirFunctionDeclaration& declaration, const HirBlockStatement& block) {
   // The declaration half: an ordinary, safe, parameter-free function whose body
-  // is exactly the four statements below.
+  // is one of the two admitted statement lists: three bindings then a return, or
+  // two bindings then a return.
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none ||
       declaration.writeUnsafeBlock != zc::none || declaration.parameters.size() != 0 ||
-      block.statements.size() != 4) {
+      (block.statements.size() != 4 && block.statements.size() != 3)) {
     return zc::none;
   }
-  // The three leading statements are the bindings, in order; the fourth is the
-  // return. Every resolution must be unique.
+  // The three-binding form puts the constant in slot 1 and the result in slot 2;
+  // the two-binding form puts the result in slot 1 directly. The return is last.
+  const bool hasConstantBinding = block.statements.size() == 4;
+  const size_t resultSlot = hasConstantBinding ? 2 : 1;
   auto callLocal = uniqueRecordFor(pools.locals, block.statements[0]);
-  auto constantLocal = uniqueRecordFor(pools.locals, block.statements[1]);
-  auto resultLocal = uniqueRecordFor(pools.locals, block.statements[2]);
-  auto returnStatement = uniqueRecordFor(pools.returns, block.statements[3]);
-  if (callLocal == zc::none || constantLocal == zc::none || resultLocal == zc::none ||
-      returnStatement == zc::none) {
+  zc::Maybe<const HirLocalBinding&> constantLocal =
+      hasConstantBinding ? uniqueRecordFor(pools.locals, block.statements[1])
+                         : zc::Maybe<const HirLocalBinding&>();
+  auto resultLocal = uniqueRecordFor(pools.locals, block.statements[resultSlot]);
+  auto returnStatement = uniqueRecordFor(pools.returns, block.statements[resultSlot + 1]);
+  if (callLocal == zc::none || resultLocal == zc::none || returnStatement == zc::none) {
     return zc::none;
   }
+  if (hasConstantBinding && constantLocal == zc::none) { return zc::none; }
   const auto& callBinding = ZC_ASSERT_NONNULL(callLocal);
-  const auto& constantBinding = ZC_ASSERT_NONNULL(constantLocal);
   const auto& resultBinding = ZC_ASSERT_NONNULL(resultLocal);
   const auto& returnValue = ZC_ASSERT_NONNULL(returnStatement);
-  // The lowering maps the three declared locals to MIR ordinals 1..3 one to
-  // one, so any other ordinal means the body is not this shape.
-  if (callBinding.local.ordinal() != 1 || constantBinding.local.ordinal() != 2 ||
-      resultBinding.local.ordinal() != 3) {
+  // The lowering maps the declared locals to MIR ordinals 1..N one to one, so
+  // any other ordinal means the body is not this shape.
+  if (callBinding.local.ordinal() != 1) { return zc::none; }
+  if (hasConstantBinding) {
+    if (ZC_ASSERT_NONNULL(constantLocal).local.ordinal() != 2) { return zc::none; }
+    if (resultBinding.local.ordinal() != 3) { return zc::none; }
+  } else if (resultBinding.local.ordinal() != 2) {
     return zc::none;
   }
   // Every binding is initialized and none carries an erasure: the lowering has
   // no erasure rvalue in this shape.
-  if (callBinding.initializer == zc::none || constantBinding.initializer == zc::none ||
-      resultBinding.initializer == zc::none || callBinding.erasure != zc::none ||
-      constantBinding.erasure != zc::none || resultBinding.erasure != zc::none) {
+  if (callBinding.initializer == zc::none || resultBinding.initializer == zc::none ||
+      callBinding.erasure != zc::none || resultBinding.erasure != zc::none) {
     return zc::none;
   }
+  if (hasConstantBinding) {
+    const auto& constantBinding = ZC_ASSERT_NONNULL(constantLocal);
+    if (constantBinding.initializer == zc::none || constantBinding.erasure != zc::none) {
+      return zc::none;
+    }
+  }
   HirNodeId callInitializer{};
-  HirNodeId constantInitializer{};
   HirNodeId resultInitializer{};
   ZC_IF_SOME(value, callBinding.initializer) { callInitializer = value; }
-  ZC_IF_SOME(value, constantBinding.initializer) { constantInitializer = value; }
   ZC_IF_SOME(value, resultBinding.initializer) { resultInitializer = value; }
   // The call binding's initializer node is the zero-argument direct call
   // itself; a zero-argument call allocates no argument nodes.
   auto call = uniqueRecordFor(pools.calls, callInitializer);
-  auto constant = uniqueRecordFor(pools.expressions, constantInitializer);
   auto binary = uniqueRecordFor(pools.primitiveBinaryOperations, resultInitializer);
   auto returnReference = uniqueRecordFor(pools.localReferences, returnValue.value);
-  if (call == zc::none || constant == zc::none || binary == zc::none ||
-      returnReference == zc::none) {
-    return zc::none;
-  }
+  if (call == zc::none || binary == zc::none || returnReference == zc::none) { return zc::none; }
   const auto& callValue = ZC_ASSERT_NONNULL(call);
-  const auto& constantValue = ZC_ASSERT_NONNULL(constant);
   const auto& binaryValue = ZC_ASSERT_NONNULL(binary);
   const auto& referenceValue = ZC_ASSERT_NONNULL(returnReference);
-  // The four records describe exactly this binding list, and every one carries
-  // the single shared type the declaration returns.
+  // Every record describes exactly this binding list, and every one carries the
+  // single shared type the declaration returns.
   if (callValue.node != callInitializer || callValue.arguments.size() != 0 ||
-      callValue.resultType != callBinding.type || constantValue.node != constantInitializer ||
-      constantValue.type != constantBinding.type ||
-      constantValue.category != HirValueCategory::Value || binaryValue.node != resultInitializer ||
+      callValue.resultType != callBinding.type || binaryValue.node != resultInitializer ||
       binaryValue.type != resultBinding.type || binaryValue.operandType != resultBinding.type ||
       binaryValue.category != HirValueCategory::Value ||
       referenceValue.local != resultBinding.local || referenceValue.type != resultBinding.type ||
       referenceValue.category != HirValueCategory::Place ||
-      callBinding.type != constantBinding.type || callBinding.type != resultBinding.type ||
-      callBinding.type != declaration.resultType) {
+      callBinding.type != resultBinding.type || callBinding.type != declaration.resultType) {
     return zc::none;
   }
+  // The three-binding form also requires the constant record to agree and every
+  // binding to share the one type.
+  zc::Maybe<const HirScalarLiteralExpression&> constantValue;
+  if (hasConstantBinding) {
+    const auto& constantBinding = ZC_ASSERT_NONNULL(constantLocal);
+    HirNodeId constantInitializer{};
+    ZC_IF_SOME(value, constantBinding.initializer) { constantInitializer = value; }
+    auto constant = uniqueRecordFor(pools.expressions, constantInitializer);
+    if (constant == zc::none) { return zc::none; }
+    const auto& value = ZC_ASSERT_NONNULL(constant);
+    if (value.node != constantInitializer || value.type != constantBinding.type ||
+        value.category != HirValueCategory::Value || constantBinding.type != callBinding.type) {
+      return zc::none;
+    }
+    constantValue = value;
+  }
   // The operation and the carrier must both be ones the LIR lowering maps, and
-  // both operands must be leaves the lowering emits.
+  // both operands must be leaves the lowering emits. The admitted operand
+  // ordinals are exactly the locals declared before the computing binding, so
+  // the two-binding form admits only the call local and the three-binding form
+  // also admits the constant local.
+  const uint32_t highestAdmittedOperandOrdinal =
+      hasConstantBinding ? kHighestAdmittedOperandOrdinal : 1u;
   if (!isLirArithmeticOperation(binaryValue.operation) ||
       !isLirIntegerType(semanticTypes, resultBinding.type) ||
-      !isAdmittedArithmeticOperand(pools, binaryValue.operandType, binaryValue.left) ||
-      !isAdmittedArithmeticOperand(pools, binaryValue.operandType, binaryValue.right)) {
+      !isAdmittedArithmeticOperand(pools, binaryValue.operandType, binaryValue.left,
+                                   highestAdmittedOperandOrdinal) ||
+      !isAdmittedArithmeticOperand(pools, binaryValue.operandType, binaryValue.right,
+                                   highestAdmittedOperandOrdinal)) {
     return zc::none;
   }
   // The body is only ever emitted by the caller/callee pair lowering, so the
@@ -257,8 +285,8 @@ zc::Maybe<CallArithmeticParts> matchCallThenLocalArithmetic(
   // module the pair lowering never sees would pass HIR and reach a rejection
   // message instead of a capability drain.
   if (!moduleMatchesCallArithmetic(pools, declaration, callValue)) { return zc::none; }
-  return CallArithmeticParts{callBinding,   constantBinding, resultBinding, callValue,
-                             constantValue, binaryValue,     returnValue,   binaryValue.operation};
+  return CallArithmeticParts{callBinding,   constantLocal, resultBinding, callValue,
+                             constantValue, binaryValue,   returnValue,   binaryValue.operation};
 }
 
 }  // namespace detail

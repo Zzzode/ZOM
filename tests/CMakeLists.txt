@@ -214,6 +214,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-local-operand-consumer/Zom.toml::call_local_operand_consumer::call_local_operand_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-then-local-arithmetic-two-local-consumer/Zom.toml::call_then_local_arithmetic_two_local_consumer::call_then_local_arithmetic_two_local_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-arg-consumer/Zom.toml::receiver_arg_consumer::receiver_arg_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-mut-consumer/Zom.toml::receiver_mut_consumer::receiver_mut_consumer"
@@ -462,6 +464,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-then-local-arithmetic-consumer/Zom.toml::call_then_local_arithmetic_consumer::call_then_local_arithmetic_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-local-operand-consumer/Zom.toml::call_local_operand_consumer::call_local_operand_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-then-local-arithmetic-two-local-consumer/Zom.toml::call_then_local_arithmetic_two_local_consumer::call_then_local_arithmetic_two_local_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/receiver-arg-consumer/Zom.toml::receiver_arg_consumer::receiver_arg_consumer::42"
       --run-case

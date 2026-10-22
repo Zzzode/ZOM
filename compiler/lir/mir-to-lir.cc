@@ -7294,11 +7294,12 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
   }
   if (calleeConstant == zc::none) { return zc::none; }
 
-  // ---- Caller: one source scope, three integer UserLocals at ordinals 1..3,
-  // two blocks. No parameter locals: this slice is the parameter-free entry
-  // shape that folds to `zom.module_init`.
+  // ---- Caller: one source scope, two or three integer UserLocals at ordinals
+  // 1..N, two blocks. No parameter locals: this slice is the parameter-free
+  // entry shape that folds to `zom.module_init`. The two-local form has no
+  // constant binding, so the call local itself is an arithmetic operand.
   if (caller.kind != mir::MirFunctionKind::Function || caller.sourceScopes.size() != 1 ||
-      caller.locals.size() != 3 || caller.blocks.size() != 2 ||
+      (caller.locals.size() != 3 && caller.locals.size() != 2) || caller.blocks.size() != 2 ||
       caller.resultType != callee.resultType) {
     return zc::none;
   }
@@ -7309,9 +7310,14 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
       return zc::none;
     }
   }
+  const bool hasConstantLocal = caller.locals.size() == 3;
   const auto& callLocal = caller.locals[0];
-  const auto& constantLocal = caller.locals[1];
-  const auto& resultLocal = caller.locals[2];
+  // The two-binding form declares no constant local. Bind the call local as a
+  // placeholder so the reference stays valid; every read of `constantLocal`
+  // below is guarded by `hasConstantLocal`, so the placeholder is never used to
+  // describe the shape.
+  const auto& constantLocal = hasConstantLocal ? caller.locals[1] : callLocal;
+  const auto& resultLocal = caller.locals[hasConstantLocal ? 2 : 1];
 
   const auto& entry = caller.blocks[0];
   const auto* continuation = mir::findCallContinuation(caller, entry);
@@ -7331,49 +7337,63 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
     return zc::none;
   }
 
-  // Continuation: StorageLive(constant), Assign(constant = <const>),
-  // StorageLive(result), Assign(result = Arithmetic), Return(result).
-  if (continuation->statements.size() != 4 ||
+  // Continuation. Three-binding form:
+  //   StorageLive(constant), Assign(constant = <const>),
+  //   StorageLive(result), Assign(result = Arithmetic), Return(result).
+  // Two-binding form drops the two constant statements:
+  //   StorageLive(result), Assign(result = Arithmetic), Return(result).
+  const size_t expectedContinuationStatements = hasConstantLocal ? 4 : 2;
+  if (continuation->statements.size() != expectedContinuationStatements ||
       continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
-  const auto& liveConstant = continuation->statements[0];
-  const auto& assignConstant = continuation->statements[1];
-  const auto& liveResult = continuation->statements[2];
-  const auto& assignResult = continuation->statements[3];
-  if (liveConstant.kind() != mir::MirStatementKind::StorageLive ||
-      liveConstant.storageLocal() != constantLocal.id ||
-      assignConstant.kind() != mir::MirStatementKind::Assign ||
-      liveResult.kind() != mir::MirStatementKind::StorageLive ||
+  const size_t liveResultIndex = hasConstantLocal ? 2 : 0;
+  const size_t assignResultIndex = hasConstantLocal ? 3 : 1;
+  const auto& liveResult = continuation->statements[liveResultIndex];
+  const auto& assignResult = continuation->statements[assignResultIndex];
+  if (liveResult.kind() != mir::MirStatementKind::StorageLive ||
       liveResult.storageLocal() != resultLocal.id ||
       assignResult.kind() != mir::MirStatementKind::Assign) {
     return zc::none;
   }
-  const auto& constantAssignment = assignConstant.assignmentValue();
-  if (constantAssignment.initialization != mir::MirInitializationKind::Initialize ||
-      constantAssignment.destination.local() != constantLocal.id ||
-      constantAssignment.destination.projections().size() != 0 ||
-      constantAssignment.value.kind() != mir::MirRvalueKind::Use) {
-    return zc::none;
+  zc::Maybe<Operand> loweredConstant;
+  if (hasConstantLocal) {
+    const auto& liveConstant = continuation->statements[0];
+    const auto& assignConstant = continuation->statements[1];
+    if (liveConstant.kind() != mir::MirStatementKind::StorageLive ||
+        liveConstant.storageLocal() != constantLocal.id ||
+        assignConstant.kind() != mir::MirStatementKind::Assign) {
+      return zc::none;
+    }
+    const auto& constantAssignment = assignConstant.assignmentValue();
+    if (constantAssignment.initialization != mir::MirInitializationKind::Initialize ||
+        constantAssignment.destination.local() != constantLocal.id ||
+        constantAssignment.destination.projections().size() != 0 ||
+        constantAssignment.value.kind() != mir::MirRvalueKind::Use) {
+      return zc::none;
+    }
+    const auto& constantOperand = constantAssignment.value.useValue().operand;
+    if (constantOperand.kind() != mir::MirOperandKind::Constant ||
+        constantOperand.constantValue().type != constantLocal.type) {
+      return zc::none;
+    }
+    loweredConstant = lirOperandFor(constantOperand, carrierValue);
+    if (loweredConstant == zc::none) { return zc::none; }
   }
-  const auto& constantOperand = constantAssignment.value.useValue().operand;
-  if (constantOperand.kind() != mir::MirOperandKind::Constant ||
-      constantOperand.constantValue().type != constantLocal.type) {
-    return zc::none;
-  }
-  auto loweredConstant = lirOperandFor(constantOperand, carrierValue);
-  if (loweredConstant == zc::none) { return zc::none; }
 
-  // The arithmetic operands are an integer constant or a bare place-use of one
-  // of the two preceding locals, in either order. The MIR strategy admits the
-  // same operand set, so no MIR-admitted shape is rejected here.
+  // The arithmetic operands are an integer constant or a bare place-use of a
+  // local declared before the computing binding, in either order. The MIR
+  // strategy admits the same operand set, so no MIR-admitted shape is rejected
+  // here. The two-local form has no constant local, so only the call local
+  // qualifies as a place operand.
   auto arithmeticLeaf = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
     if (operand.kind() == mir::MirOperandKind::Constant) {
       if (operand.constantValue().type != caller.resultType) { return zc::none; }
       return lirOperandFor(operand, carrierValue);
     }
-    if (operand.place().projections().size() != 0 ||
-        (operand.place().local() != constantLocal.id && operand.place().local() != callLocal.id)) {
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    if (operand.place().local() != callLocal.id &&
+        (!hasConstantLocal || operand.place().local() != constantLocal.id)) {
       return zc::none;
     }
     return Operand::localUse(operand.place().local().ordinal());
@@ -7423,8 +7443,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
                                 zc::mv(ZC_REQUIRE_NONNULL(callTerminator))));
     zc::Vector<Statement> continuationStatements;
-    continuationStatements.add(
-        Statement::assign(constantLocal.id.ordinal(), zc::mv(ZC_REQUIRE_NONNULL(loweredConstant))));
+    if (hasConstantLocal) {
+      continuationStatements.add(Statement::assign(constantLocal.id.ordinal(),
+                                                   zc::mv(ZC_REQUIRE_NONNULL(loweredConstant))));
+    }
     continuationStatements.add(
         Statement::arithmetic(resultLocal.id.ordinal(), ZC_REQUIRE_NONNULL(arithmeticOp),
                               zc::mv(ZC_REQUIRE_NONNULL(left)), zc::mv(ZC_REQUIRE_NONNULL(right))));
@@ -7433,7 +7455,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
                                 Terminator::returnLocal(resultLocal.id.ordinal())));
     zc::Vector<Local> locals;
     locals.add(Local(callLocal.id.ordinal(), carrierValue));
-    locals.add(Local(constantLocal.id.ordinal(), carrierValue));
+    if (hasConstantLocal) { locals.add(Local(constantLocal.id.ordinal(), carrierValue)); }
     locals.add(Local(resultLocal.id.ordinal(), carrierValue));
     zc::Vector<Local> parameters;
     functions.add(Function(caller.owner, moduleEntrySymbol(0), carrierValue, zc::mv(parameters),

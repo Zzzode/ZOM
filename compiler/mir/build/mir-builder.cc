@@ -3662,7 +3662,6 @@ zc::Maybe<RecursiveFunctionProduct> buildCallThenLocalArithmetic(
   auto& proofs = lctx.proofs;
   auto copyMarker = lctx.copyMarker;
   const auto& callBinding = parts.callLocal;
-  const auto& constantBinding = parts.constantLocal;
   const auto& arithmeticBinding = parts.resultLocal;
   const auto& sourceBinary = parts.binary;
 
@@ -3673,16 +3672,28 @@ zc::Maybe<RecursiveFunctionProduct> buildCallThenLocalArithmetic(
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
   const MirLocalId callLocalId = ctx.declareLocal(MirLocalKind::UserLocal, callBinding.type, scope,
                                                   callBinding.sourceSpan.clone());
-  const MirLocalId constantLocalId = ctx.declareLocal(MirLocalKind::UserLocal, constantBinding.type,
-                                                      scope, constantBinding.sourceSpan.clone());
+  // The three-binding form declares the constant local at ordinal 2; the
+  // two-binding form has no constant, so the result local takes ordinal 2.
+  const hir::HirLocalBinding* constantBinding = nullptr;
+  ZC_IF_SOME(value, parts.constantLocal) { constantBinding = &value; }
+  zc::Maybe<MirLocalId> constantLocalId;
+  if (constantBinding != nullptr) {
+    constantLocalId = ctx.declareLocal(MirLocalKind::UserLocal, constantBinding->type, scope,
+                                       constantBinding->sourceSpan.clone());
+  }
   const MirLocalId resultLocalId = ctx.declareLocal(MirLocalKind::UserLocal, arithmeticBinding.type,
                                                     scope, arithmeticBinding.sourceSpan.clone());
-  // The predicate pinned the HIR ordinals at 1..3 and this builder declares the
-  // same three locals in the same order, so a mismatch is a broken invariant,
-  // not an unadmitted shape.
-  ZC_IREQUIRE(
-      callLocalId.ordinal() == 1 && constantLocalId.ordinal() == 2 && resultLocalId.ordinal() == 3,
-      "admitted call-then-arithmetic body must declare locals 1..3");
+  // The predicate pinned the HIR ordinals, and this builder declares the same
+  // locals in the same order, so a mismatch is a broken invariant, not an
+  // unadmitted shape.
+  if (constantBinding != nullptr) {
+    ZC_IREQUIRE(callLocalId.ordinal() == 1 && ZC_ASSERT_NONNULL(constantLocalId).ordinal() == 2 &&
+                    resultLocalId.ordinal() == 3,
+                "admitted three-binding call-then-arithmetic body must declare locals 1..3");
+  } else {
+    ZC_IREQUIRE(callLocalId.ordinal() == 1 && resultLocalId.ordinal() == 2,
+                "admitted two-binding call-then-arithmetic body must declare locals 1..2");
+  }
 
   // Block 1: storage-live the call destination, call the initializer into it,
   // and continue to block 2.
@@ -3696,30 +3707,38 @@ zc::Maybe<RecursiveFunctionProduct> buildCallThenLocalArithmetic(
       MirPlace(callLocalId, callBinding.type, zc::mv(destinationProjections), callBinding.type),
       ctx.peekBlockIdAt(0), zc::mv(noUnwind), parts.call.sourceSpan.clone()));
 
-  // Block 2: initialize the constant local, compute the arithmetic into the
-  // result local, and return it.
+  // Block 2: initialize the constant local when the body declares one, compute
+  // the arithmetic into the result local, and return it.
   (void)ctx.beginBlock(scope);
-  ctx.appendStatement(
-      MirStatement::storageLive(constantLocalId, constantBinding.sourceSpan.clone()));
-  zc::Vector<MirProjection> constantProjections;
-  ctx.appendStatement(MirStatement::assign(
-      MirPlace(constantLocalId, constantBinding.type, zc::mv(constantProjections),
-               constantBinding.type),
-      MirRvalue::use(MirOperand::constant(constantBinding.type, parts.constant.value.clone())),
-      MirInitializationKind::Initialize, parts.constant.sourceSpan.clone()));
-  // The arithmetic binding is the third binding (zero-based index 2), so its
-  // operands may name either of the two preceding locals.
-  zc::Vector<MirLocalId> noParameterLocals;
   zc::Vector<MirLocalId> precedingLocals;
   precedingLocals.add(callLocalId);
-  precedingLocals.add(constantLocalId);
-  constexpr size_t kArithmeticBindingIndex = 2;
+  if (constantBinding != nullptr) {
+    const MirLocalId constantId = ZC_ASSERT_NONNULL(constantLocalId);
+    // The predicate produces `constantLocal` and `constant` from the same
+    // branch, so a declared constant binding always carries its literal.
+    ZC_IREQUIRE(parts.constant != zc::none,
+                "admitted constant binding must carry its scalar literal");
+    ctx.appendStatement(MirStatement::storageLive(constantId, constantBinding->sourceSpan.clone()));
+    zc::Vector<MirProjection> constantProjections;
+    ZC_IF_SOME(constantValue, parts.constant) {
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(constantId, constantBinding->type, zc::mv(constantProjections),
+                   constantBinding->type),
+          MirRvalue::use(MirOperand::constant(constantBinding->type, constantValue.value.clone())),
+          MirInitializationKind::Initialize, constantValue.sourceSpan.clone()));
+    }
+    precedingLocals.add(constantId);
+  }
+  // The arithmetic binding is the last declared local, so its operands may name
+  // any preceding one. The admitted index is that binding's zero-based position.
+  zc::Vector<MirLocalId> noParameterLocals;
+  const size_t arithmeticBindingIndex = precedingLocals.size();
   auto left = binaryLeafOperand(
       hirModule, declaration, sourceBinary.left, noParameterLocals.asPtr(), precedingLocals.asPtr(),
-      kArithmeticBindingIndex, sourceBinary.operandType, proofs, copyMarker);
+      arithmeticBindingIndex, sourceBinary.operandType, proofs, copyMarker);
   auto right =
       binaryLeafOperand(hirModule, declaration, sourceBinary.right, noParameterLocals.asPtr(),
-                        precedingLocals.asPtr(), kArithmeticBindingIndex, sourceBinary.operandType,
+                        precedingLocals.asPtr(), arithmeticBindingIndex, sourceBinary.operandType,
                         proofs, copyMarker);
   if (left == zc::none || right == zc::none) return zc::none;
   ctx.appendStatement(

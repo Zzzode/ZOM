@@ -31,15 +31,20 @@ struct CallArithmeticPools final {
   static CallArithmeticPools of(const VerifiedHirModule& module) noexcept;
 };
 
-/// \brief The records the three bindings resolve to, so a lowering never
+/// \brief The records the admitted bindings resolve to, so a lowering never
 /// re-derives the shape. Every reference points into the module the predicate
 /// saw.
+///
+/// Two body shapes are admitted. The three-binding form declares a call local,
+/// a constant local and a result local; the two-binding form drops the constant
+/// local, so the call local is one of the arithmetic operands. `constantLocal`
+/// and `constant` are set only for the three-binding form.
 struct CallArithmeticParts final {
   const HirLocalBinding& callLocal;
-  const HirLocalBinding& constantLocal;
+  zc::Maybe<const HirLocalBinding&> constantLocal;
   const HirLocalBinding& resultLocal;
   const HirDirectCallExpression& call;
-  const HirScalarLiteralExpression& constant;
+  zc::Maybe<const HirScalarLiteralExpression&> constant;
   const HirPrimitiveBinaryExpression& binary;
   const HirReturnStatement& returnStatement;
   /// \brief The binary's operation, already narrowed to the set both the MIR
@@ -48,10 +53,11 @@ struct CallArithmeticParts final {
   checker::PrimitiveOperation operation;
 };
 
-/// \brief True exactly when the declaration plus block are the admitted body:
+/// \brief True exactly when the declaration plus block are an admitted body:
 ///   fn f() -> T { let x = g(); let a: T = <const>; let y: T = a <op> b; return y; }
+///   fn f() -> T { let x = g(); let y: T = x <op> b; return y; }
 ///
-/// This is the single definition of that body. The HIR admission gate, the HIR
+/// This is the single definition of both bodies. The HIR admission gate, the HIR
 /// verifier, and the MIR strategy all call it, so the admitted set and the
 /// lowered set are the same set by construction.
 ///
