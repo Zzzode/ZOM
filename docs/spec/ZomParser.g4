@@ -1909,6 +1909,7 @@ atomType
     | BIT_AND MUT? typeExpr                                                               # typeReference
     | MUL ( CONST | MUT )? typeExpr                                                       # typeRawPointer
     | dynType                                                                             # typeDyn
+    | typeQuery                                                                           # typeQueryAtom
     | associatedTypeProjection                                                            # typeAssociatedProjection
     | qualifiedTypePath ( LT typeArgList genericClose )?                                 # typeQualified
     | identifier ( LT typeArgList genericClose )?                                        # typeNamed
@@ -1919,6 +1920,12 @@ atomType
     | identifier LPAREN variantTypeList RPAREN                                                    # typeTupleVariant
     | LBRACE RBRACE                                                                        # typeObjectEmpty
     | LBRACK typeExpr (SEMICOLON expression)? RBRACK                                         # typeArrayLiteralAtom
+    ;
+
+// TypeQuery ::= 'typeof' TypeQueryExpression
+// TypeQueryExpression ::= Identifier ('.' Identifier)*  (chapter 17)
+typeQuery
+    : TYPEOF qualifiedPathOrIdent
     ;
 
 dynType
