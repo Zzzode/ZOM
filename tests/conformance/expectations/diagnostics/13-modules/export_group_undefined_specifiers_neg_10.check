@@ -1,0 +1,11 @@
+// RUN: cd %corpus && ! %zomc compile --check 13-modules/export_group_pos_10.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An aliased specifier whose source name is undeclared is still an undefined
+// identifier: the alias names the exported surface, not the binding source.
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'foo'
+// CHECK-LITERAL:   --> conformance/13-modules/export_group_pos_10.zom:1:10
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'bar'
+// CHECK-LITERAL:   --> conformance/13-modules/export_group_pos_10.zom:1:15

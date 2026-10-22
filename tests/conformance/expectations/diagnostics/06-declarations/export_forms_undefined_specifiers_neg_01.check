@@ -1,0 +1,15 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/export_forms_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A specifier group names its exports through the lexical scope. Every
+// specifier that names nothing declared or imported is a source error rather
+// than a binder invariant, and the remaining specifiers still publish.
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'Foo'
+// CHECK-LITERAL:   --> conformance/06-declarations/export_forms_pos_01.zom:1:9
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'bar'
+// CHECK-LITERAL:   --> conformance/06-declarations/export_forms_pos_01.zom:1:14
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'Baz'
+// CHECK-LITERAL:   --> conformance/06-declarations/export_forms_pos_01.zom:1:19

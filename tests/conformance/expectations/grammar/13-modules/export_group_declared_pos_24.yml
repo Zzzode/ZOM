@@ -1,0 +1,4 @@
+section: "§4.2 ExportDeclaration"
+covers_rule: "exportDecl, exportGroup"
+expected: "ACCEPT"
+notes: []

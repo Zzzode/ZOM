@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check 13-modules/export_group_declared_pos_24.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A specifier group whose names are all declared publishes its exports. The
+// materialized skeleton used to require an inline declaration child, so every
+// group export failed the exporter with a runtime invariant.
+
+// CHECK-NOT: Error
+// CHECK-NOT: internal compiler error
