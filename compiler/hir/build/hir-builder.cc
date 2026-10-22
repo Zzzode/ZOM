@@ -4053,6 +4053,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         zc::Vector<PendingSequentialBinding> pendingBindings;
         zc::Vector<binder::OwnerLocalBindingId> localBindingIds;
         bool rejected = false;
+        // Set only when a binding's checked aggregate fact is a non-nominal
+        // form (array or tuple literal) that has no HIR initializer carrier
+        // yet. That is a capability boundary, so it drains as ZOM4099 instead
+        // of reaching the incident rail. Every other `rejected` cause in this
+        // loop is a genuine fact mismatch and keeps the incident rail.
+        bool unsupportedAggregateInitializer = false;
         for (size_t bindingIndex = 0; bindingIndex < sequentialShape.bindings.size();
              ++bindingIndex) {
           const auto& binding = sequentialShape.bindings[bindingIndex];
@@ -4274,9 +4280,20 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             ZC_IF_SOME(index, aggregateIndex) { aggregateSlot = index; }
             const auto& sourceAggregate = facts.aggregates().entries()[aggregateSlot].value;
             if (sourceAggregate.node != binding.initializer ||
-                !sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>() ||
                 sourceAggregate.resultType != bindingType ||
                 !sameSpan(sourceAggregate.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              rejected = true;
+              break;
+            }
+            // An array or tuple literal is a checked aggregate too, but it is
+            // not a *nominal* one: it carries ArrayAggregate / TupleAggregate
+            // and has no nominal definition or per-field keys. This binding
+            // form simply has no HIR carrier yet, which is a capability
+            // boundary rather than a broken fact. Reporting it through the
+            // incident rail turned valid source into "internal compiler error,
+            // phase: ir" (incident 95eaea1e7d70f823bda9c065af855866).
+            if (!sourceAggregate.kind.variant().is<checker::checked::NominalAggregate>()) {
+              unsupportedAggregateInitializer = true;
               rejected = true;
               break;
             }
@@ -5117,6 +5134,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               binding.initializer});
         }
         if (rejected) {
+          // A non-nominal aggregate initializer (array or tuple literal) is a
+          // valid binding form with no HIR carrier yet, so it drains as a
+          // capability rejection (ZOM4099). Any other cause is a fact the
+          // verifier should have established, and stays on the incident rail.
+          if (unsupportedAggregateInitializer) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
+          }
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);

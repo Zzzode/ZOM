@@ -1,0 +1,7 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/array_literal_then_local_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An array-literal binding is a checked aggregate fact with ArrayAggregate kind. HIR has a carrier only for the NominalAggregate form, so this binding has no representation and the body drains ZOM4099 at its function span. It previously reached rejectHir(InvalidFact) at phase ir -- internal compiler error 95eaea1e7d70f823bda9c065af855866.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/array_literal_then_local_capability_neg.zom:1:1
