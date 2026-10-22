@@ -1056,7 +1056,8 @@ enum class SignatureSourceDiagnostic : uint16_t {
   GenericBoundNotInterface = 4129,
   PrimitiveTypeBoundUnsupported = 4130,
   MemberConstantSemanticsUnavailable = 4134,
-  DestructuringBindingSemanticsUnavailable = 4135
+  DestructuringBindingSemanticsUnavailable = 4135,
+  TypeExpressionSemanticsUnavailable = 4136
 };
 
 struct SignatureLiteralDisplayArg final {

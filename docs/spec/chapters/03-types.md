@@ -894,6 +894,10 @@ type PersonKeys = keyof { name: str, age: i32 }; // "name" | "age"
 
 The `typeof` operator returns the static type of its operand expression. The `keyof` operator returns the union of string literal types corresponding to the field names of an object type.
 
+A type expression the signature stage has no producer for — `typeof`, or a
+function type used as a generic bound — is rejected with `ZOM4136`
+(`TypeExpressionSemanticsUnavailable`).
+
 ## Type Annotations
 
 Type annotations explicitly specify types.

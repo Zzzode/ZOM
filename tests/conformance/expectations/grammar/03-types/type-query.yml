@@ -1,0 +1,5 @@
+section: "03-types type query expression"
+covers_rule: "letDecl, typeAnnotation, typeOfExpression"
+expected: "ACCEPT"
+notes:
+  - "Syntax is valid; the signature stage has no producer for a `typeof` type expression and drains ZOM4136."

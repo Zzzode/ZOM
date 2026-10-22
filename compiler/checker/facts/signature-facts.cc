@@ -1173,6 +1173,15 @@ public:
       case ast::SyntaxKind::DynTypeExpr:
         return buildDyn(node);
       default:
+        // The parser accepts type-expression forms the signature stage has no
+        // producer for (`typeof x`, a function-type generic bound, ...). Drain
+        // the annotation as unsupported so the caller's "declined with no
+        // diagnostic" fallthrough never turns it into an invariant.
+        ZC_IF_SOME(failure, signatureSourceFailure(
+                                SignatureSourceDiagnostic::TypeExpressionSemanticsUnavailable,
+                                boundModule, node, node)) {
+          sink.add(zc::mv(failure));
+        }
         return zc::none;
     }
   }
@@ -1241,8 +1250,18 @@ public:
     auto built = buildInterface(node);
     if (built != zc::none) return built;
     if (syntax.kind != ast::SyntaxKind::NamedTypeExpr) {
-      // DynTypeExpr and the other rejected shapes record their own failure
-      // inside buildInterface.
+      // DynTypeExpr records its own failure inside buildInterface. Any other
+      // shape (a function-type bound, for example) has no interface meaning at
+      // all, so record it here: this function promises every rejected bound is
+      // a registered source failure, and a silent zc::none would surface as a
+      // MissingRequiredFact invariant in the caller.
+      if (syntax.kind != ast::SyntaxKind::DynTypeExpr) {
+        ZC_IF_SOME(failure, signatureSourceFailure(
+                                SignatureSourceDiagnostic::TypeExpressionSemanticsUnavailable,
+                                boundModule, node, node)) {
+          sink.add(zc::mv(failure));
+        }
+      }
       return zc::none;
     }
     const ast::NodeId path(syntax.payload.words[ast::kNamedTypeExprPathWord]);

@@ -244,3 +244,8 @@ DIAG(4134, MemberConstantSemanticsUnavailable, kError,
 // declaration as unsupported instead of reaching a compiler invariant.
 DIAG(4135, DestructuringBindingSemanticsUnavailable, kError,
      "destructuring module-scope bindings are not supported yet", 0)
+// A type expression the signature stage has no producer for (`typeof x`, a
+// function-type generic bound, ...) is grammar the parser accepts. Drain the
+// annotation as unsupported instead of reporting a missing required fact.
+DIAG(4136, TypeExpressionSemanticsUnavailable, kError,
+     "this type expression is not supported yet", 0)

@@ -1901,6 +1901,40 @@ ZC_TEST("SignatureFactsBuilder source-rejects a module-scope destructuring bindi
             SignatureSourceDiagnostic::DestructuringBindingSemanticsUnavailable);
 }
 
+constexpr zc::StringPtr kTypeExpressionUnsupportedSource = R"zom(class RecoveryOwner {}
+let x: i32 = 10;
+let y: typeof x = 20;
+)zom"_zc;
+
+constexpr zc::StringPtr kFunctionTypeBoundSource = R"zom(class RecoveryOwner {}
+fn constrained<T: fn(i32, i32) -> i32>(value: T) -> T {
+    return value;
+}
+)zom"_zc;
+
+// A `typeof` type annotation has no producer at the signature stage. It must
+// drain as ZOM4136 rather than reaching a MissingRequiredFact invariant.
+ZC_TEST("SignatureFactsBuilder source-rejects an unsupported type expression") {
+  auto result = buildSignatures(kTypeExpressionUnsupportedSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::TypeExpressionSemanticsUnavailable);
+}
+
+// A function-type generic bound has no interface meaning. buildGenericBound
+// promises every rejected bound is a registered source failure, so this must
+// drain as ZOM4136 instead of returning zc::none silently.
+ZC_TEST("SignatureFactsBuilder source-rejects a function-type generic bound") {
+  auto result = buildSignatures(kFunctionTypeBoundSource);
+  ZC_REQUIRE(result.is<SignatureFactsSourceRejected>());
+  const auto& failures = result.get<SignatureFactsSourceRejected>().failures;
+  ZC_REQUIRE(failures.size() == 1);
+  ZC_EXPECT(failures[0].diagnostic ==
+            SignatureSourceDiagnostic::TypeExpressionSemanticsUnavailable);
+}
+
 constexpr zc::StringPtr kImplAssociatedAssignmentSource = R"zom(class RecoveryOwner {}
 interface Iterator {
     type Item;

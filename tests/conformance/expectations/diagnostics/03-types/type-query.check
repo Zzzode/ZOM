@@ -1,0 +1,6 @@
+// RUN: cd %corpus && ! %zomc compile --check 03-types/type-query.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// The signature stage has no producer for this type expression. It used
+// to reach a MissingRequiredFact invariant; it now drains as ZOM4136.
+// CHECK: Error [ZOM4136]: this type expression is not supported yet
