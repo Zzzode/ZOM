@@ -17,6 +17,7 @@
 #include <cstring>
 
 #include "compiler/ast/generated/node-payload.h"
+#include "compiler/ast/generated/node-traverse.h"
 #include "compiler/ast/tree.h"
 #include "compiler/basic/string-pool.h"
 #include "compiler/basic/zomlang-opts.h"
@@ -524,6 +525,44 @@ ZC_TEST("ParserTest.TupleType") {
 
   auto result = parser.parse();
   ZC_EXPECT(result != zc::none, "Should parse positional tuple type");
+}
+
+// A compound first tuple element forces the parser to build that element once
+// to locate its boundary. It must continue the element list from the built
+// node instead of re-parsing the tuple from the opening paren: a second parse
+// leaves the first copy unreachable, and a tree walk that cannot reach every
+// node breaks the dense schema-preorder ordinal range every later phase needs.
+ZC_TEST("ParserTest.TupleTypeWithCompoundFirstElementIsFullyReachable") {
+  auto sourceManager = zc::heap<source::SourceManager>();
+  basic::LangOptions langOpts;
+  basic::StringPool stringPool;
+
+  auto bufferId =
+      sourceManager->addMemBufferCopy(zc::str("alias C = (i32 | i32, i32);").asBytes(), "test.zom");
+  Parser parser(*sourceManager, langOpts, stringPool, bufferId);
+
+  auto result = parser.parse();
+  ZC_EXPECT(result != zc::none, "Should parse a tuple type with a union first element");
+  ZC_IF_SOME(tree, result) {
+    size_t reached = 0;
+    ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId, const ast::Node&) { ++reached; });
+    ZC_EXPECT(reached == tree.nodeCount(),
+              "Every node must be reachable from the root; unreachable nodes have no ordinal");
+
+    const ast::Node& alias = topLevelStatement(tree, 0);
+    ZC_EXPECT(alias.kind == ast::SyntaxKind::AliasDecl);
+    const ast::Node& target =
+        tree.node(ast::NodeId(alias.payload.words[ast::kAliasDeclTargetWord]));
+    ZC_EXPECT(target.kind == ast::SyntaxKind::TupleTypeExpr);
+
+    ast::NodeList elems;
+    elems.first = target.payload.words[ast::kTupleTypeExprElemsFirstWord];
+    elems.size = target.payload.words[ast::kTupleTypeExprElemsSizeWord];
+    const auto elementNodes = tree.list(elems);
+    ZC_REQUIRE(elementNodes.size() == 2);
+    ZC_EXPECT(tree.node(elementNodes[0]).kind == ast::SyntaxKind::UnionTypeExpr);
+    ZC_EXPECT(tree.node(elementNodes[1]).kind == ast::SyntaxKind::PredefinedTypeExpr);
+  }
 }
 
 // ================================================================================

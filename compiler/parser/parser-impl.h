@@ -439,6 +439,9 @@ struct Parser::Impl {
 
   ast::NodeId parseTupleTypeRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
+  ast::NodeId parseTupleTypeTail(ParserSyntaxFactory& builder, size_t start, size_t end,
+                                 ast::NodeId first, TokenCursor cursor) const;
+
   ast::NodeId parseObjectTypeRange(ParserSyntaxFactory& builder, size_t start, size_t end) const;
 
   TypeParseResult parseTypeExpression(ParserSyntaxFactory& builder, TokenCursor& cursor,

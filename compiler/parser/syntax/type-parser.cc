@@ -325,10 +325,23 @@ ast::NodeList Parser::Impl::parseFunctionTypeParameters(ParserSyntaxFactory& bui
 
 ast::NodeId Parser::Impl::parseTupleTypeRange(ParserSyntaxFactory& builder, size_t start,
                                               size_t end) const {
+  return parseTupleTypeTail(builder, start, end, ast::NodeId(), tokenCursorAt(start + 1));
+}
+
+// Parses the element list of a tuple type. `first` is either empty (parse
+// every element from `cursor`) or an element the caller already built, in
+// which case `cursor` sits just past it. The caller reaches this with a
+// pre-built element only after parsing a compound first element to find the
+// true boundary; restarting the element loop there would build a second copy
+// of that subtree and leave the first copy unreachable, which breaks every
+// later schema-preorder consumer (a tree walk that does not reach every node
+// cannot assign a dense ordinal range).
+ast::NodeId Parser::Impl::parseTupleTypeTail(ParserSyntaxFactory& builder, size_t start, size_t end,
+                                             ast::NodeId first, TokenCursor cursor) const {
   zc::Vector<ast::NodeId> elems;
+  if (first) { elems.add(first); }
   bool hasTrailingComma = false;
   const size_t bodyEnd = end > start ? end - 1 : start;
-  TokenCursor cursor = tokenCursorAt(start + 1);
   while (cursor.position() < bodyEnd) {
     if (cursor.peek() == ast::SyntaxKind::Comma) {
       if (cursor.position() + 1 >= bodyEnd && elems.size() > 0) { hasTrailingComma = true; }
@@ -808,7 +821,11 @@ Parser::Impl::TypeParseResult Parser::Impl::parseParenthesizedOrTupleType(
       if (!firstElem.node) { return TypeParseResult(); }
       if (cursor.position() < closeParen && (cursor.peek() == ast::SyntaxKind::Comma ||
                                              cursor.peek() == ast::SyntaxKind::DotDotDot)) {
-        const ast::NodeId tuple = parseTupleTypeRange(builder, start, closeParen + 1);
+        // Continue the tuple from the element already built. Restarting the
+        // element loop at `start` would build this subtree a second time and
+        // strand the first copy outside the reachable tree.
+        const ast::NodeId tuple =
+            parseTupleTypeTail(builder, start, closeParen + 1, firstElem.node, cursor);
         if (tuple) { cursor.moveTo(closeParen + 1); }
         return TypeParseResult{tuple, tuple ? cursor.position() : start};
       }
