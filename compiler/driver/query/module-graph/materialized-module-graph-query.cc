@@ -3722,9 +3722,40 @@ zc::Maybe<zc::Vector<binder::LocalExportFact>> materializeLocalExports(
     zc::Vector<binder::ReexportProvenanceStep> reexportChain;
     const auto stableChain = stableExport.reexportChain().values();
     if (stableChain.size() == 0) {
-      if (!tree.contains(declaration) ||
-          definitionSite.get<binder::DeclarationDefinitionSite>().node != declaration) {
-        return zc::none;
+      // Two source forms publish a chain-less local export. An inline
+      // `export fn Foo()` owns its declaration as the export's declaration
+      // child, so the definition site must be exactly that node. A specifier
+      // group `export {Foo}` owns no declaration child at all and identifies
+      // its target through the specifier that names the definition, so
+      // requiring an inline declaration would reject every group export.
+      if (tree.contains(declaration)) {
+        if (definitionSite.get<binder::DeclarationDefinitionSite>().node != declaration) {
+          return zc::none;
+        }
+      } else {
+        bool exactSpecifier = false;
+        for (const auto specifier : tree.list(specifiers)) {
+          if (!tree.contains(specifier) ||
+              tree.node(specifier).kind != ast::SyntaxKind::ExportSpecifier) {
+            return zc::none;
+          }
+          const auto& specifierSyntax = tree.node(specifier);
+          const ast::IdentId sourceIdentifier(
+              specifierSyntax.payload.words[ast::kExportSpecifierNameWord]);
+          const ast::IdentId aliasIdentifier(
+              specifierSyntax.payload.words[ast::kExportSpecifierAliasWord]);
+          if (!sourceIdentifier) { return zc::none; }
+          if (tree.ident(sourceIdentifier) != ZC_ASSERT_NONNULL(definition).name.text() ||
+              tree.ident(aliasIdentifier ? aliasIdentifier : sourceIdentifier) !=
+                  stableExport.name().name().text()) {
+            continue;
+          }
+          // A renamed specifier publishes a re-export step, so a chain-less
+          // export whose matching specifier carries an alias is inconsistent.
+          if (aliasIdentifier || exactSpecifier) { return zc::none; }
+          exactSpecifier = true;
+        }
+        if (!exactSpecifier) { return zc::none; }
       }
     } else if (stableChain.size() == 1) {
       const auto& stableStep = stableChain[0];
