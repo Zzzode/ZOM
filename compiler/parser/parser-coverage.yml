@@ -276,7 +276,7 @@ productions:
   TemplateTail: {status: lexical}
   TupleElementTypes: {status: inlined, parser: parseTupleTypeRange, parent: TupleType}
   TuplePattern: {status: inlined, parser: parsePatternRange, parent: Pattern}
-  TupleType: {status: direct, parser: parseTupleTypeRange, ast: [TupleTypeExpr]}
+  TupleType: {status: direct, parser: parseTupleTypeRange, delegates: [parseTupleTypeTail], ast: [TupleTypeExpr]}
   TypeAnnotation: {status: inlined, parser: parseTypeRange, parent: TypeExpression}
   TypeArgumentList: {status: inlined, parser: parseTypeArgumentList, parent: TypeArguments}
   TypeArguments: {status: direct, parser: parseTypeArguments}

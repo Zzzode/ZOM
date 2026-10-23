@@ -338,7 +338,6 @@ BODY_CHECKER_SOURCE = os.path.join(
 # entry and the production arrive in the same change, and this gate fails if they
 # disagree.
 CHECKER_UNSUPPORTED_EXPRESSIONS = frozenset({
-    "ArrayLiteral",
     "CommaExpr",
     "ErrorDefaultExpr",
     "FunctionExpression",
@@ -352,7 +351,6 @@ CHECKER_UNSUPPORTED_EXPRESSIONS = frozenset({
     "SuperExpr",
     "TemplateLiteralExpr",
     "ThisExpr",
-    "TupleLiteral",
     "TypeOfExpression",
 })
 
