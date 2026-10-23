@@ -200,6 +200,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/literal-comparison-conditional-consumer/Zom.toml::literal_comparison_conditional_consumer::literal_comparison_conditional_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arm-binding-consumer/Zom.toml::conditional_arm_binding_consumer::conditional_arm_binding_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-inference-consumer/Zom.toml::binary_inference_consumer::binary_inference_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/comparison-inference-consumer/Zom.toml::comparison_inference_consumer::comparison_inference_consumer"
@@ -450,6 +452,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/multi-binding-conditional-consumer/Zom.toml::multi_binding_conditional_consumer::multi_binding_conditional_consumer::43"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/literal-comparison-conditional-consumer/Zom.toml::literal_comparison_conditional_consumer::literal_comparison_conditional_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-arm-binding-consumer/Zom.toml::conditional_arm_binding_consumer::conditional_arm_binding_consumer::7"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/binary-inference-consumer/Zom.toml::binary_inference_consumer::binary_inference_consumer::41"
       --run-case

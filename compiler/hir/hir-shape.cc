@@ -1750,6 +1750,30 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     }
     thenValue = conditionalValue.thenReturnValue;
     elseValue = conditionalValue.elseReturnValue;
+    // A branch block that leads with `let` bindings hoists them ahead of the
+    // conditional, exactly as a multi-statement match arm does below. Each
+    // branch numbers its own local references from the start of that branch, so
+    // shift them by the hoisted prefix length.
+    const ast::NodeId thenStmt(tree.node(tailStatement).payload.words[ast::kIfStmtThenStmtWord]);
+    const ast::NodeId elseStmt(tree.node(tailStatement).payload.words[ast::kIfStmtElseStmtWord]);
+    for (const ast::NodeId branch : {thenStmt, elseStmt}) {
+      auto branchBody = matchArmBody(tree, branch);
+      if (branchBody == zc::none) return zc::none;
+      const size_t branchStart = shape.bindings.size();
+      for (auto& binding : ZC_ASSERT_NONNULL(branchBody).bindings) {
+        SequentialLocalBinding rebased = binding;
+        if (binding.initializerKind == SequentialInitializerKind::LocalReference) {
+          rebased.referencedLocal = binding.referencedLocal + branchStart;
+        }
+        shape.bindings.add(zc::mv(rebased));
+      }
+    }
+    // With hoisted bindings present, each branch value is a scalar literal, a
+    // bare identifier (parameter or hoisted local), or a one-level binary.
+    if (shape.bindings.size() != 0 &&
+        (!isLeadingLocalArmValue(tree, thenValue) || !isLeadingLocalArmValue(tree, elseValue))) {
+      return zc::none;
+    }
   } else if (tree.node(tailStatement).kind == ast::SyntaxKind::MatchStmt) {
     auto matchShape = matchReturnShape(tree, body, tailStatement);
     if (matchShape == zc::none) return zc::none;

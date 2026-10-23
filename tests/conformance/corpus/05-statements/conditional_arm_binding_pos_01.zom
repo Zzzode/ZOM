@@ -1,0 +1,11 @@
+fn entry() -> i32 {
+  let a: i32 = 4;
+  let b: i32 = 3;
+  if (a < b) {
+    let r: i32 = 41;
+    return r;
+  } else {
+    let r: i32 = 7;
+    return r;
+  }
+}

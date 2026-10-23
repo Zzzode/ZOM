@@ -1,0 +1,16 @@
+// Conditional-arm binding backend-lowering fixture: each branch of an
+// `if`/`else` leads with its own `let` binding before the tail return. The
+// branches reuse the same name, so a correct exit code proves both that each
+// branch's binding hoists ahead of the conditional and that the two hoists stay
+// independent. `4 < 3` is false, so the else branch runs and the program exits 7.
+fn entry() -> i32 {
+  let a: i32 = 4;
+  let b: i32 = 3;
+  if (a < b) {
+    let r: i32 = 41;
+    return r;
+  } else {
+    let r: i32 = 7;
+    return r;
+  }
+}
