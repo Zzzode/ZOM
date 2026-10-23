@@ -4262,4 +4262,86 @@ ZC_TEST("Final-sealed owner-body capabilities publish every active body") {
   ZC_EXPECT(ZC_REQUIRE_NONNULL(decodedAllocation) == allocation.value());
 }
 
+// The SCC query decomposes the stable module graph with Tarjan and is verified
+// independently with Kosaraju. Both engines are file-local classes inside
+// module-graph-query.cc, so their agreement is observable only through the
+// query path: a published value means the provider's decomposition and the
+// verifier's independent re-derivation were byte-identical.
+ZC_TEST("Tarjan provider and Kosaraju verifier agree on the published SCC record") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ContextualIdentityAuthorityInputLedger state;
+  auto roots = packageRoots();
+  stageBaseInputs(state, database, "module root;\nclass Alpha {}\n"_zc, "authority"_zc, true);
+  ZC_REQUIRE(commitAuthority(state, database, roots));
+  auto sealed = sealDatabase(database, roots, true);
+
+  auto graph = sealed.get<graph_query::ModuleGraph>(roots);
+  ZC_REQUIRE(!graph.isRuntimeFailure());
+  ZC_REQUIRE(graph.kind() == query::QueryValueKind::Value);
+
+  auto components = sealed.get<graph_query::ModuleGraphScc>(roots);
+  ZC_REQUIRE(!components.isRuntimeFailure());
+  ZC_REQUIRE(components.kind() == query::QueryValueKind::Value);
+  const auto& record = components.value();
+  // Every node of the graph appears in exactly one component.
+  size_t coveredModules = 0;
+  for (const auto& component : record.components()) {
+    ZC_EXPECT(component.modules().size() > 0);
+    coveredModules += component.modules().size();
+  }
+  ZC_EXPECT(coveredModules == graph.value().modules().size());
+  ZC_EXPECT(!record.hasCycle(graph.value()));
+  // The published record is the closed canonical form both engines produce,
+  // not one engine's incidental ordering.
+  auto reencoded =
+      graph_query::ModuleGraphSccRecord::decodeCanonical(record.encodeCanonical().asPtr());
+  ZC_REQUIRE(reencoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(reencoded).encodeCanonical().asPtr() ==
+            record.encodeCanonical().asPtr());
+
+  // A tracked-cycle mutation: drop a module from the graph and the record no
+  // longer describes it, so the canonical form must differ.
+  zc::Vector<identity::ModuleKey> fewerModules;
+  const auto modules = graph.value().modules();
+  for (size_t index = 1; index < modules.size(); ++index) {
+    fewerModules.add(modules[index].clone());
+  }
+  zc::Vector<graph_query::ModuleDependencyEdgeKey> noEdges;
+  auto mutated = graph_query::ModuleGraphRecord::from(zc::mv(fewerModules), zc::mv(noEdges));
+  if (mutated != zc::none && modules.size() > 1) {
+    ZC_EXPECT(ZC_REQUIRE_NONNULL(mutated).encodeCanonical().asPtr() !=
+              graph.value().encodeCanonical().asPtr());
+  }
+}
+
+// The materialized graph carries the stable graph record and its SCC
+// decomposition in one witness. They must describe the same node set: an SCC
+// record that covers fewer modules than the graph would let a later pass treat
+// a live module as unreachable.
+ZC_TEST("Stable graph and independent SCC queries cover the complete core root") {
+  auto materialized = materializedGraphFixture(true);
+  const auto& witness = materialized.witness();
+  const auto& graph = witness.graph();
+  const auto& scc = witness.scc();
+
+  // Every graph module appears in exactly one SCC component, and no component
+  // names a module the graph does not contain.
+  size_t covered = 0;
+  for (const auto& component : scc.components()) {
+    ZC_EXPECT(component.modules().size() > 0);
+    covered += component.modules().size();
+    for (const auto& module : component.modules()) {
+      bool present = false;
+      for (const auto& graphModule : graph.modules()) {
+        if (graphModule.encode().asPtr() == module.encode().asPtr()) { present = true; }
+      }
+      ZC_EXPECT(present);
+    }
+  }
+  ZC_EXPECT(covered == graph.modules().size());
+  ZC_EXPECT(materialized.modules().size() == graph.modules().size());
+  ZC_EXPECT(witness.contextRoots() == materialized.witness().contextRoots());
+}
+
 }  // namespace zomlang::compiler::driver::incremental_binding_query

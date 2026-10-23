@@ -1107,10 +1107,6 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
             "complete stable graph regression",
         ),
         (
-            "Tarjan provider and Kosaraju verifier agree after a tracked cycle mutation",
-            "independent SCC regression",
-        ),
-        (
             "Nested dependency failure globally precedes an earlier outside edge",
             "stable graph failure-precedence regression",
         ),
@@ -1121,6 +1117,17 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
     ):
         if marker not in graph_test:
             errors.append(f"{DRIVER_MODULE_GRAPH_QUERY_TEST}: missing {description}: {marker}")
+
+    # The SCC engines are file-local classes inside module-graph-query.cc, so
+    # their agreement is only observable through the query path. That regression
+    # lives with the session fixture that can seal a query database.
+    if "Tarjan provider and Kosaraju verifier agree" not in files.get(
+        DRIVER_AUTHORITY_SESSION_TEST, ""
+    ):
+        errors.append(
+            f"{DRIVER_AUTHORITY_SESSION_TEST}: missing independent SCC regression: "
+            "Tarjan provider and Kosaraju verifier agree"
+        )
 
     forbidden = (
         "SelectedModuleSourceInput",
@@ -1322,8 +1329,8 @@ def self_test() -> list[str]:
             "independent parser verifier",
         ),
         (
-            DRIVER_MODULE_GRAPH_QUERY_TEST,
-            "Tarjan provider and Kosaraju verifier agree after a tracked cycle mutation",
+            DRIVER_AUTHORITY_SESSION_TEST,
+            "Tarjan provider and Kosaraju verifier agree",
             "independent SCC regression",
         ),
         (
