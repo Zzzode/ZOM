@@ -883,16 +883,10 @@ Type queries extract type information from values at compile time.
 
 ```zom
 let value = 42;
-type ValueType = typeof value; // i32
-
-let obj = { name: "Alice", age: 30 };
-type ObjectType = typeof obj; // { name: str, age: i32 }
-
-// Keyof operator
-type PersonKeys = keyof { name: str, age: i32 }; // "name" | "age"
+alias ValueType = typeof value; // i32
 ```
 
-The `typeof` operator returns the static type of its operand expression. The `keyof` operator returns the union of string literal types corresponding to the field names of an object type.
+The `typeof` operator returns the static type of its operand expression.
 
 A type expression the signature stage has no producer for — `typeof`, or a
 function type used as a generic bound — is rejected with `ZOM4136`
