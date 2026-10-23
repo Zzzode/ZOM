@@ -1,0 +1,4 @@
+section: "§4 FunctionExpression parameters"
+covers_rule: "functionExpression, functionParameterList, functionParameterDecl"
+expected: "ACCEPT"
+notes: []

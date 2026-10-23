@@ -1,0 +1,15 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A closure parameter is a local binding of the closure body. Before it was
+// bound, every reference to one reported ZOM3001 "Undefined identifier". The
+// body here uses both parameters and re-declares an enclosing local of the same
+// name, so a correct result means the parameters resolved and the inner
+// declaration still shadows the outer one. The closure body itself is outside
+// the admitted lowering slice, which is the only error that remains.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom:3:13
+
+// CHECK-NOT: ZOM3001
+// CHECK-NOT: internal compiler error

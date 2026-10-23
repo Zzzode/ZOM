@@ -1,0 +1,8 @@
+fn entry() -> i32 {
+  let shadow = 7;
+  let add = fn (a: i32, b: i32) -> i32 {
+    let shadow = a;
+    return shadow;
+  };
+  return 0;
+}

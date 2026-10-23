@@ -103,7 +103,8 @@ enum class BindingIntroducer : uint8_t {
   None = 0,
   VariableDeclarator = 1,
   MatchArm = 2,
-  ForIn = 3
+  ForIn = 3,
+  ClosureParameter = 4
 };
 
 struct VerifierBindingPendingNode final {
@@ -494,7 +495,8 @@ zc::Maybe<StableScopeOwnerKey> verifierNodeScope(
 }
 
 bool isBindingPatternSyntax(ast::SyntaxKind kind) noexcept {
-  return kind == ast::SyntaxKind::BindingPattern || kind == ast::SyntaxKind::IdentifierPattern;
+  return kind == ast::SyntaxKind::BindingPattern || kind == ast::SyntaxKind::IdentifierPattern ||
+         kind == ast::SyntaxKind::FunctionParameterDecl;
 }
 
 BindingIntroducer bindingIntroducerAncestor(const OwnerBodySyntaxPathEntry& entry,
@@ -518,6 +520,12 @@ BindingIntroducer bindingIntroducerAncestor(const OwnerBodySyntaxPathEntry& entr
       if (ancestor.syntaxKind == ast::SyntaxKind::ForInStatement) {
         return BindingIntroducer::ForIn;
       }
+      if (ancestor.syntaxKind == ast::SyntaxKind::FunctionParameterList) {
+        // A parameter list is reached only under a closure: a `FunctionDecl`'s
+        // parameters are stable callable parameters published from the module
+        // skeleton, and those nodes are not body-syntax entries of this owner.
+        return BindingIntroducer::ClosureParameter;
+      }
     }
     ancestorIndex = ancestor.parentIndex;
   }
@@ -534,12 +542,18 @@ OwnerLocalBindingKind bindingKindForIntroducer(BindingIntroducer introducer) noe
 DefinitionActivation activationForIntroducer(BindingIntroducer introducer) noexcept {
   if (introducer == BindingIntroducer::MatchArm) { return DefinitionActivation::MatchPattern; }
   if (introducer == BindingIntroducer::ForIn) { return DefinitionActivation::LoopPattern; }
+  if (introducer == BindingIntroducer::ClosureParameter) {
+    return DefinitionActivation::ParameterList;
+  }
   return DefinitionActivation::ExpressionIntroduction;
 }
 
 BindingIntroducer introducerForActivation(DefinitionActivation activation) noexcept {
   if (activation == DefinitionActivation::MatchPattern) { return BindingIntroducer::MatchArm; }
   if (activation == DefinitionActivation::LoopPattern) { return BindingIntroducer::ForIn; }
+  if (activation == DefinitionActivation::ParameterList) {
+    return BindingIntroducer::ClosureParameter;
+  }
   return BindingIntroducer::VariableDeclarator;
 }
 
@@ -547,6 +561,29 @@ bool isVerifierBindingPattern(const DetachedModuleBodyNode& node, BindingIntrodu
   if (introducer == BindingIntroducer::None) { return false; }
   const auto kind = node.syntaxKind();
   return kind != zc::none && isBindingPatternSyntax(ZC_ASSERT_NONNULL(kind));
+}
+
+/// \brief Path of the innermost enclosing closure that owns `entry`'s parameter
+/// list, or none when `entry` is not a closure parameter.
+///
+/// A closure parameter lives in the closure body's scope, not in the scope its
+/// own declaration node sits in: the declaration is inside the parameter list,
+/// which the closure scope encloses. Binding it to its own node scope would put
+/// the name where no body expression can see it.
+zc::Maybe<LocalSyntaxPath> closurePathForParameter(
+    const OwnerBodySyntaxPathEntry& entry, zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries) {
+  if (entry.syntaxKind != ast::SyntaxKind::FunctionParameterDecl) { return zc::none; }
+  uint32_t ancestorIndex = entry.parentIndex;
+  while (ancestorIndex != kNoParent) {
+    if (ancestorIndex >= entries.size()) { return zc::none; }
+    const auto& ancestor = entries[ancestorIndex];
+    if (ancestor.syntaxKind == ast::SyntaxKind::FunctionExpression ||
+        ancestor.syntaxKind == ast::SyntaxKind::LambdaExpression) {
+      return ancestor.path.clone();
+    }
+    ancestorIndex = ancestor.parentIndex;
+  }
+  return zc::none;
 }
 
 bool pathHasPrefix(const LocalSyntaxPath& path, const LocalSyntaxPath& prefix) {
@@ -571,6 +608,20 @@ zc::Maybe<size_t> bindingActivationEnd(zc::ArrayPtr<const OwnerBodySyntaxPathEnt
   auto binding = entryAtPath(entries, bindingPath);
   if (binding == zc::none) { return zc::none; }
   size_t current = ZC_ASSERT_NONNULL(binding);
+  if (introducer == BindingIntroducer::ClosureParameter) {
+    // A closure parameter is in scope for the whole closure body, so it
+    // activates at the closure node itself: every use inside that subtree has
+    // useIndex >= the closure entry's own index.
+    while (entries[current].parentIndex != kNoParent) {
+      current = entries[current].parentIndex;
+      if (current >= entries.size()) { return zc::none; }
+      if (entries[current].syntaxKind == ast::SyntaxKind::FunctionExpression ||
+          entries[current].syntaxKind == ast::SyntaxKind::LambdaExpression) {
+        return current + 1;
+      }
+    }
+    return zc::none;
+  }
   if (introducer == BindingIntroducer::MatchArm || introducer == BindingIntroducer::ForIn) {
     // Pattern bindings activate immediately after the pattern node itself;
     // the arm body or loop body follows in DFS order, so uses inside the
@@ -1783,6 +1834,13 @@ zc::Maybe<OwnerBodyBindingProjection> OwnerBodyBindingProjection::from(
     if (introducer == BindingIntroducer::None) { continue; }
     auto name = syntax.nodes()[entry.nodeIndex].identifierField(0);
     auto scope = providerNodeScope(entry.path, nodeScopes);
+    if (introducer == BindingIntroducer::ClosureParameter) {
+      // The parameter declaration sits inside the parameter list; the name is
+      // visible in the closure body, so bind it to the closure's own scope.
+      auto closurePath = closurePathForParameter(entry, entries);
+      if (closurePath == zc::none) { return zc::none; }
+      scope = providerNodeScope(ZC_ASSERT_NONNULL(closurePath), nodeScopes);
+    }
     if (name == zc::none || scope == zc::none) { return zc::none; }
     const auto bindingKind = bindingKindForIntroducer(introducer);
     const auto activation = activationForIntroducer(introducer);
@@ -1832,6 +1890,8 @@ bool OwnerBodyBindingProjection::verify(
         introducer = BindingIntroducer::MatchArm;
       } else if (parent.syntaxKind == ast::SyntaxKind::ForInStatement) {
         introducer = BindingIntroducer::ForIn;
+      } else if (parent.syntaxKind == ast::SyntaxKind::FunctionParameterList) {
+        introducer = BindingIntroducer::ClosureParameter;
       }
     }
     if (path == zc::none ||
@@ -1846,6 +1906,21 @@ bool OwnerBodyBindingProjection::verify(
         isVerifierBindingPattern(node, introducer)) {
       auto name = node.identifierField(0);
       auto scope = verifierNodeScope(ZC_ASSERT_NONNULL(path), nodeScopes);
+      if (introducer == BindingIntroducer::ClosureParameter) {
+        // Mirror the producer: the name lives in the closure body's scope, not
+        // in the parameter declaration's own scope.
+        zc::Maybe<LocalSyntaxPath> closurePath;
+        for (size_t frame = pending.size(); frame != 0; --frame) {
+          const auto& enclosing = pending[frame - 1];
+          if (enclosing.syntaxKind == ast::SyntaxKind::FunctionExpression ||
+              enclosing.syntaxKind == ast::SyntaxKind::LambdaExpression) {
+            closurePath = enclosing.path.clone();
+            break;
+          }
+        }
+        if (closurePath == zc::none) { return false; }
+        scope = verifierNodeScope(ZC_ASSERT_NONNULL(closurePath), nodeScopes);
+      }
       if (name == zc::none || scope == zc::none) { return false; }
       const auto bindingKind = bindingKindForIntroducer(introducer);
       const auto activation = activationForIntroducer(introducer);
