@@ -9,7 +9,6 @@ add_test(NAME binder-architecture-negative
   COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --self-test)
 set_tests_properties(binder-architecture-negative PROPERTIES LABELS "binding;architecture")
 add_ztest_unit_test("definition-inventory-test" "metadata/definition-inventory-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
-add_ztest_unit_test("import-binding-test" "identity/import-binding-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("identity-pre-admission-test" "identity/identity-pre-admission-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("local-identity-test" "identity/local-identity-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("module-dependency-requests-test" "graph/module-dependency-requests-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)

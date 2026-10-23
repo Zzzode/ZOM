@@ -25,7 +25,6 @@ set(BINDER_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/metadata/immutable-binding-metadata.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/metadata/immutable-definition-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity/identity-pre-admission.cc
-  ${CMAKE_CURRENT_SOURCE_DIR}/identity/import-binding.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity/local-identity.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity/named-identity-inventory.cc
   ${CMAKE_CURRENT_SOURCE_DIR}/identity/revision-local-identity-sites.cc
