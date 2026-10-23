@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/closure_capture_capability_neg_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A closure that captures an enclosing binding is legal source the body slice
+// cannot lower yet: it produces no capture facts. The requirement used to fall
+// through to the MissingRequiredFact invariant, which reached the user as an
+// internal compiler error. It now drains as a capability diagnostic.
+
+// CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/closure_capture_capability_neg_01.zom:6:18
+
+// CHECK-NOT: internal compiler error

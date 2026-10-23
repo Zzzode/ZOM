@@ -1,0 +1,21 @@
+// RUN: cd %corpus && ! %zomc compile --check 06-declarations/functions/closure-function-definitions/captures.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A capture item names a binding in the enclosing lexical scope. An item that
+// names nothing is a source error, so the lookup projection records a failed
+// lookup at the item path instead of failing the whole owner body. Failing it
+// reached the driver as an internal compiler error.
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'x'
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/captures.zom:2:33
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'y'
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/captures.zom:2:36
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'this'
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/captures.zom:2:40
+
+// CHECK: Error [ZOM3001]: Undefined identifier: 'x'
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/captures.zom:3:10
+
+// CHECK-NOT: internal compiler error

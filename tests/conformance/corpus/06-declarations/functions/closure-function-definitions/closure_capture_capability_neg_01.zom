@@ -1,0 +1,10 @@
+fn entry() -> i32 {
+  let multiplier = 3;
+  let captured = fn () use [multiplier] {
+    return 0;
+  };
+  let inferred = fn () {
+    return multiplier;
+  };
+  return 0;
+}

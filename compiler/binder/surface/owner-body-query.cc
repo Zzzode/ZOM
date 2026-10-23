@@ -1120,6 +1120,14 @@ zc::Maybe<StableSelfOwner> verifierContextualSelfOwner(const StableOwnerBodyQuer
   return zc::none;
 }
 
+bool appendProviderCaptureItemFailures(
+    const StableOwnerBodyQueryKey& owner, const ModuleBodySyntax& syntax,
+    const BoundModuleSkeleton& skeleton, const CanonicalSequence<StableBodyScopeFact>& scopes,
+    const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
+    const CanonicalSequence<StableOwnerLocalBindingFact>& bindings,
+    zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries,
+    zc::Vector<StableFailedLookupFact>& failedLookups);
+
 zc::Maybe<OwnerBodyLookupFacts> projectOwnerBodyLookups(
     const StableOwnerBodyQueryKey& owner, const ModuleBodySyntax& syntax,
     const BoundModuleSkeleton& skeleton, const CanonicalSequence<StableBodyScopeFact>& scopes,
@@ -1211,6 +1219,10 @@ zc::Maybe<OwnerBodyLookupFacts> projectOwnerBodyLookups(
     if (fact == zc::none) { return zc::none; }
     failedLookups.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
   }
+  if (!appendProviderCaptureItemFailures(owner, syntax, skeleton, scopes, nodeScopes, bindings,
+                                         entries, failedLookups)) {
+    return zc::none;
+  }
   sortProviderCanonical(resolutions);
   sortProviderCanonical(failedLookups);
   auto admittedResolutions =
@@ -1285,6 +1297,72 @@ zc::Maybe<const OwnerBodySyntaxPathEntry&> providerEntryAtPath(
     if (entry.path == path) { return entry; }
   }
   return zc::none;
+}
+
+// A closure `use [...]` capture item resolves its name in the enclosing scope,
+// so an item that names nothing is a source error on this projection's failure
+// rail. Recording it here (rather than failing the owner body) keeps an
+// undeclared capture a ZOM3001 instead of an internal incident.
+bool appendProviderCaptureItemFailures(
+    const StableOwnerBodyQueryKey& owner, const ModuleBodySyntax& syntax,
+    const BoundModuleSkeleton& skeleton, const CanonicalSequence<StableBodyScopeFact>& scopes,
+    const CanonicalSequence<StableBodyNodeScopeFact>& nodeScopes,
+    const CanonicalSequence<StableOwnerLocalBindingFact>& bindings,
+    zc::ArrayPtr<const OwnerBodySyntaxPathEntry> entries,
+    zc::Vector<StableFailedLookupFact>& failedLookups) {
+  for (const auto& entry : entries) {
+    if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
+        entry.syntaxKind != ast::SyntaxKind::FunctionExpression) {
+      continue;
+    }
+    auto captureField = syntax.nodes()[entry.nodeIndex].childField(2);
+    if (captureField == zc::none || !ZC_ASSERT_NONNULL(captureField).present ||
+        ZC_ASSERT_NONNULL(captureField).childCount != 1) {
+      continue;
+    }
+    auto captureListPath =
+        providerChildPath(entry.path, ZC_ASSERT_NONNULL(captureField).firstChildOrdinal);
+    if (captureListPath == zc::none) { continue; }
+    auto captureList = providerEntryAtPath(entries, ZC_ASSERT_NONNULL(captureListPath));
+    if (captureList == zc::none) { continue; }
+    auto items = syntax.nodes()[ZC_ASSERT_NONNULL(captureList).nodeIndex].childField(1);
+    if (items == zc::none) { continue; }
+    auto closureScope = providerNodeScope(entry.path, nodeScopes);
+    auto enclosingScope = closureScope == zc::none
+                              ? zc::Maybe<StableScopeOwnerKey>()
+                              : scopeParent(ZC_ASSERT_NONNULL(closureScope), skeleton, scopes);
+    for (uint32_t ordinal = 0; ordinal < ZC_ASSERT_NONNULL(items).childCount; ++ordinal) {
+      auto itemPath = providerChildPath(ZC_ASSERT_NONNULL(captureListPath),
+                                        ZC_ASSERT_NONNULL(items).firstChildOrdinal + ordinal);
+      if (itemPath == zc::none) { continue; }
+      auto item = providerEntryAtPath(entries, ZC_ASSERT_NONNULL(itemPath));
+      if (item == zc::none || ZC_ASSERT_NONNULL(item).syntaxKind != ast::SyntaxKind::CaptureItem) {
+        continue;
+      }
+      const auto& itemNode = syntax.nodes()[ZC_ASSERT_NONNULL(item).nodeIndex];
+      auto captureName = itemNode.identifierField(1);
+      auto mode = explicitCaptureMode(itemNode);
+      if (captureName == zc::none || mode == zc::none) { continue; }
+      if (ZC_ASSERT_NONNULL(mode) == StableExplicitCaptureMode::This) {
+        if (providerReceiver(owner, skeleton) != zc::none) { continue; }
+      } else {
+        if (enclosingScope == zc::none) { continue; }
+        auto candidates =
+            lexicalCandidates(owner, ZC_ASSERT_NONNULL(enclosingScope),
+                              ZC_ASSERT_NONNULL(captureName), Namespace::Value, entries,
+                              ZC_ASSERT_NONNULL(item).nodeIndex, skeleton, scopes, bindings);
+        if (candidates == zc::none) { return false; }
+        if (!ZC_ASSERT_NONNULL(candidates).values.empty()) { continue; }
+      }
+      auto fact = StableFailedLookupFact::from(
+          BinderQueryOwner::body(owner.clone()), ZC_ASSERT_NONNULL(itemPath).clone(),
+          Namespace::Value, ZC_ASSERT_NONNULL(captureName).clone(),
+          StableFailedLookupOutcome::missing());
+      if (fact == zc::none) { return false; }
+      failedLookups.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+    }
+  }
+  return true;
 }
 
 zc::Maybe<const VerifierLabelNode&> verifierEntryAtPath(
@@ -2050,6 +2128,67 @@ bool OwnerBodyLookupProjection::verify(
     if (fact == zc::none) { return false; }
     expectedFailedLookups.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
   }
+  // A closure `use [...]` capture item resolves its name in the enclosing
+  // scope. An item that names nothing contributes a failed lookup at the item
+  // path, published through this projection's own failure sequence so the
+  // owner body keeps a single failure rail.
+  for (const auto& entry : entries) {
+    if (entry.kind != DetachedModuleBodyNodeKind::Syntax ||
+        entry.syntaxKind != ast::SyntaxKind::FunctionExpression) {
+      continue;
+    }
+    auto captureField = syntax.nodes()[entry.nodeIndex].childField(2);
+    if (captureField == zc::none || !ZC_ASSERT_NONNULL(captureField).present ||
+        ZC_ASSERT_NONNULL(captureField).childCount != 1) {
+      continue;
+    }
+    auto captureListPath =
+        verifierChildPath(entry.path, ZC_ASSERT_NONNULL(captureField).firstChildOrdinal);
+    if (captureListPath == zc::none) { continue; }
+    auto captureListIndex = entryAtPath(entries, ZC_ASSERT_NONNULL(captureListPath));
+    if (captureListIndex == zc::none) { continue; }
+    auto items =
+        syntax.nodes()[entries[ZC_ASSERT_NONNULL(captureListIndex)].nodeIndex].childField(1);
+    if (items == zc::none) { continue; }
+    auto closureScope = verifierNodeScope(entry.path, nodeScopes);
+    auto enclosingScope =
+        closureScope == zc::none
+            ? zc::Maybe<StableScopeOwnerKey>()
+            : verifierScopeParent(ZC_ASSERT_NONNULL(closureScope), skeleton, scopes);
+    for (uint32_t ordinal = 0; ordinal < ZC_ASSERT_NONNULL(items).childCount; ++ordinal) {
+      auto itemPath = verifierChildPath(ZC_ASSERT_NONNULL(captureListPath),
+                                        ZC_ASSERT_NONNULL(items).firstChildOrdinal + ordinal);
+      if (itemPath == zc::none) { continue; }
+      auto itemIndex = entryAtPath(entries, ZC_ASSERT_NONNULL(itemPath));
+      if (itemIndex == zc::none ||
+          entries[ZC_ASSERT_NONNULL(itemIndex)].syntaxKind != ast::SyntaxKind::CaptureItem) {
+        continue;
+      }
+      const auto& item = syntax.nodes()[entries[ZC_ASSERT_NONNULL(itemIndex)].nodeIndex];
+      auto name = item.identifierField(1);
+      auto mode = explicitCaptureMode(item);
+      if (name == zc::none || mode == zc::none) { continue; }
+      if (ZC_ASSERT_NONNULL(mode) == StableExplicitCaptureMode::This) {
+        // `this` resolves through the receiver, not the lexical scope; a
+        // receiver-less owner records the same missing lookup the capture
+        // projection records.
+        if (verifierReceiver(owner, skeleton) != zc::none || enclosingScope == zc::none) {
+          continue;
+        }
+      } else {
+        if (enclosingScope == zc::none) { continue; }
+        auto candidates = verifierLexicalCandidates(
+            owner, ZC_ASSERT_NONNULL(enclosingScope), ZC_ASSERT_NONNULL(name), Namespace::Value,
+            entries, ZC_ASSERT_NONNULL(itemIndex), skeleton, scopes, bindings);
+        if (candidates == zc::none || !ZC_ASSERT_NONNULL(candidates).values.empty()) { continue; }
+      }
+      auto fact = StableFailedLookupFact::from(
+          BinderQueryOwner::body(owner.clone()), ZC_ASSERT_NONNULL(itemPath).clone(),
+          Namespace::Value, ZC_ASSERT_NONNULL(name).clone(), StableFailedLookupOutcome::missing());
+      if (fact == zc::none) { return false; }
+      expectedFailedLookups.add(zc::mv(ZC_ASSERT_NONNULL(fact)));
+    }
+  }
   sortVerifierCanonical(expectedResolutions);
   sortVerifierCanonical(expectedFailedLookups);
   auto admittedResolutions =
@@ -2793,12 +2932,22 @@ zc::Maybe<OwnerBodyExplicitCaptureProjection> OwnerBodyExplicitCaptureProjection
         auto candidates = lexicalCandidates(
             owner, ZC_ASSERT_NONNULL(enclosingScope), ZC_ASSERT_NONNULL(name), Namespace::Value,
             entries, ZC_ASSERT_NONNULL(itemIndex), skeleton, scopes, bindings);
-        if (candidates == zc::none || ZC_ASSERT_NONNULL(candidates).values.size() != 1) {
-          return zc::none;
+        if (candidates == zc::none) { return zc::none; }
+        if (ZC_ASSERT_NONNULL(candidates).values.empty()) {
+          // A capture item that names nothing in the enclosing scope is a source
+          // error. The lookup projection owns the failure rail for a capture
+          // item's name, so skip here and let it publish ZOM3001; failing the
+          // whole owner body turned an undeclared capture into an incident.
+          continue;
         }
+        if (ZC_ASSERT_NONNULL(candidates).values.size() != 1) { return zc::none; }
         target = ZC_ASSERT_NONNULL(candidates).values[0].binding.clone();
       }
-      if (target == zc::none) return zc::none;
+      if (target == zc::none) {
+        // `use [this]` in an owner with no receiver captures nothing; the
+        // lookup projection records it on the same failure rail.
+        continue;
+      }
       auto capture = StableExplicitCaptureBindingFact::from(ZC_ASSERT_NONNULL(itemPath).clone(),
                                                             zc::mv(ZC_ASSERT_NONNULL(target)),
                                                             ZC_ASSERT_NONNULL(mode));
@@ -2890,10 +3039,8 @@ bool OwnerBodyExplicitCaptureProjection::verify(
     }
     auto items =
         syntax.nodes()[entries[ZC_ASSERT_NONNULL(captureListIndex)].nodeIndex].childField(1);
-    if (items == zc::none ||
-        row.captures().values().size() != ZC_ASSERT_NONNULL(items).childCount) {
-      return false;
-    }
+    if (items == zc::none) { return false; }
+    size_t resolvedItems = 0;
     for (uint32_t ordinal = 0; ordinal < ZC_ASSERT_NONNULL(items).childCount; ++ordinal) {
       auto itemPath = verifierChildPath(ZC_ASSERT_NONNULL(captureListPath),
                                         ZC_ASSERT_NONNULL(items).firstChildOrdinal + ordinal);
@@ -2906,8 +3053,6 @@ bool OwnerBodyExplicitCaptureProjection::verify(
         if (captureIndex != zc::none) { return false; }
         captureIndex = index - 1;
       }
-      if (captureIndex == zc::none) { return false; }
-      const auto& capture = row.captures().values()[ZC_ASSERT_NONNULL(captureIndex)];
       auto itemIndex = entryAtPath(entries, ZC_ASSERT_NONNULL(itemPath));
       if (itemIndex == zc::none ||
           entries[ZC_ASSERT_NONNULL(itemIndex)].syntaxKind != ast::SyntaxKind::CaptureItem) {
@@ -2916,9 +3061,15 @@ bool OwnerBodyExplicitCaptureProjection::verify(
       const auto& item = syntax.nodes()[entries[ZC_ASSERT_NONNULL(itemIndex)].nodeIndex];
       auto name = item.identifierField(1);
       auto mode = explicitCaptureMode(item);
-      if (name == zc::none || mode == zc::none || ZC_ASSERT_NONNULL(mode) != capture.mode()) {
-        return false;
+      if (name == zc::none || mode == zc::none) { return false; }
+      if (captureIndex == zc::none) {
+        // Mirror the producer: an item that resolved to no binding is absent
+        // from the row. The lookup projection owns the failure rail for it.
+        continue;
       }
+      ++resolvedItems;
+      const auto& capture = row.captures().values()[ZC_ASSERT_NONNULL(captureIndex)];
+      if (ZC_ASSERT_NONNULL(mode) != capture.mode()) { return false; }
       zc::Maybe<StableBindingTargetKey> target;
       if (ZC_ASSERT_NONNULL(mode) == StableExplicitCaptureMode::This) {
         auto receiver = verifierReceiver(owner, skeleton);
@@ -2937,6 +3088,7 @@ bool OwnerBodyExplicitCaptureProjection::verify(
       }
       if (target == zc::none || ZC_ASSERT_NONNULL(target) != capture.target()) { return false; }
     }
+    if (row.captures().values().size() != resolvedItems) { return false; }
     ++expectedRows;
   }
   return expectedRows == captures.values().size();

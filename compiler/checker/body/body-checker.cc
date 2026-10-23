@@ -8283,9 +8283,32 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   }
 
   if (input.requirements.captureRequirements().size() != 0) {
+    // The body slice produces no capture facts yet, so an explicit `use [...]`
+    // clause or an inferred free-variable capture is legal source it cannot
+    // lower. Drain it as a capability rejection (ZOM4125 inside an inherent
+    // method, ZOM4099 otherwise) instead of reaching the MissingRequiredFact
+    // invariant, which surfaces to the user as an internal compiler error.
+    const auto& closure = input.requirements.captureRequirements()[0].key.closure;
+    for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
+      if (entity.key != closure) { continue; }
+      const auto& tree = input.boundModule.tree();
+      if (!tree.contains(entity.node)) { break; }
+      ZC_IF_SOME(owner, enclosingBodyOwner(input.boundModule, entity.node)) {
+        ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, owner)) {
+          BodyProductionSite site{
+              entity.node,
+              checked::CheckedNodeKey{static_cast<uint32_t>(tree.node(entity.node).kind),
+                                      ownerOrdinal, entity.source.clone()},
+              CheckedFactGroup::NodeType, BodyProductionKind::Unsupported};
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
+        }
+      }
+      break;
+    }
     zc::Maybe<identity::DefId> closureOwner;
-    ZC_IF_SOME(ownerKey,
-               input.requirements.captureRequirements()[0].key.closure.owner().definitionKey()) {
+    ZC_IF_SOME(ownerKey, closure.owner().definitionKey()) {
       ZC_IF_SOME(owner, input.identities.definition(ownerKey)) { closureOwner = owner.handle(); }
     }
     return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module, 0,
