@@ -1,0 +1,8 @@
+// Return-position arithmetic over a declared local: the return value is
+// `x + 2` rather than a bare local. Both operands are real source nodes, so the
+// HIR carries two leaf arms instead of the unary form's synthetic constant.
+// The entry folds to the no-argument i32 module initializer and exits 42.
+fn entry() -> i32 {
+    let x: i32 = 40;
+    return x + 2;
+}

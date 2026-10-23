@@ -1,0 +1,7 @@
+// Both operands may name the same declared local (`x + x`). Neither operand is
+// a literal, so this spelling is only reachable through the explicit binary
+// carrier; the entry exits 10.
+fn entry() -> i32 {
+    let x: i32 = 5;
+    return x + x;
+}

@@ -286,6 +286,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-bit-not-consumer/Zom.toml::primitive_unary_bit_not_consumer::primitive_unary_bit_not_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-add-consumer/Zom.toml::return_binary_add_consumer::return_binary_add_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-mul-consumer/Zom.toml::return_binary_mul_consumer::return_binary_mul_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-commuted-consumer/Zom.toml::return_binary_commuted_consumer::return_binary_commuted_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-same-local-consumer/Zom.toml::return_binary_same_local_consumer::return_binary_same_local_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
@@ -540,6 +548,14 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-neg-consumer/Zom.toml::primitive_unary_neg_consumer::primitive_unary_neg_consumer::215"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/primitive-unary-bit-not-consumer/Zom.toml::primitive_unary_bit_not_consumer::primitive_unary_bit_not_consumer::214"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-add-consumer/Zom.toml::return_binary_add_consumer::return_binary_add_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-mul-consumer/Zom.toml::return_binary_mul_consumer::return_binary_mul_consumer::80"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-commuted-consumer/Zom.toml::return_binary_commuted_consumer::return_binary_commuted_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-same-local-consumer/Zom.toml::return_binary_same_local_consumer::return_binary_same_local_consumer::10"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --run-case

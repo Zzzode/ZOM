@@ -1,0 +1,6 @@
+// Return-position multiplication over a declared local (`x * 2`). The second
+// operand is a literal of the local's type; the entry exits 80.
+fn entry() -> i32 {
+    let x: i32 = 40;
+    return x * 2;
+}

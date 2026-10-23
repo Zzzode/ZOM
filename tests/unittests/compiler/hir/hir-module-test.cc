@@ -5071,6 +5071,85 @@ ZC_TEST("HIR pipeline lowers a return-position unary bitwise-not") {
   ZC_EXPECT(synthetic.value.tag() == checker::signature::CanonicalConstValueTag::Integer);
 }
 
+ZC_TEST("HIR pipeline lowers a return-position binary over a declared local") {
+  HirPipelineFixture fixture("fn add() -> i32 { let x: i32 = 40; return x + 2; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  // Both operands are real source nodes, so the carrier supplies no synthetic
+  // literal: one primitive-binary node, one local reference for `x`, one
+  // literal for the operand `2`, and one literal for the binding initializer.
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 2);
+  ZC_REQUIRE(module.parameterReferences().size() == 0);
+  ZC_REQUIRE(module.conditionals().size() == 0);
+  const auto& function = module.functions()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& reference = module.localReferences()[0];
+  // Eight-node stride: function 1, body 2, local 3, initializer 4, left 5,
+  // right 6, binary 7, return 8.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(binary.node.ordinal() == 7);
+  ZC_EXPECT(returnStatement.node.ordinal() == 8);
+  ZC_EXPECT(returnStatement.value == binary.node);
+  ZC_EXPECT(binary.operation == checker::PrimitiveOperation::Add);
+  ZC_EXPECT(!binary.isUnaryDesugar);
+  // The local is the left operand and the literal the right one, as written.
+  ZC_EXPECT(binary.left == reference.node);
+  ZC_EXPECT(reference.type == binary.operandType);
+  ZC_EXPECT(binary.operandType == function.resultType);
+  ZC_EXPECT(binary.type == function.resultType);
+}
+
+ZC_TEST("HIR pipeline keeps the literal operand on the left when written there") {
+  HirPipelineFixture fixture("fn add() -> i32 { let x: i32 = 40; return 2 + x; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() == 1);
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  const auto& reference = module.localReferences()[0];
+  // Operand order follows the source spelling, so the local is on the right.
+  ZC_EXPECT(binary.right == reference.node);
+  ZC_EXPECT(binary.left != reference.node);
+  ZC_EXPECT(binary.operation == checker::PrimitiveOperation::Add);
+  ZC_EXPECT(!binary.isUnaryDesugar);
+}
+
+ZC_TEST("HIR pipeline drains a return-position comparison over a declared local") {
+  // A relational comparison in return position over a declared local is a
+  // shape the arithmetic carrier does not admit: its LIR operator table has no
+  // relational entry, so admitting it would move the rejection from the
+  // per-definition capability drain to a whole-module lowering rejection.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn below(a: i32) -> bool { let x: i32 = 2; return a < x; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
+ZC_TEST("HIR pipeline drains a two-local return-position binary as ZOM4099") {
+  // `return a + b` over two declared locals is a shape the binary carrier does
+  // not admit: that carrier binds exactly one local and one operand leaf. The
+  // body is well-formed source, so the owning definition must surface the
+  // capability diagnostic rather than an invariant. Binding the sum to a third
+  // local (`let z = a + b; return z;`) is the supported spelling.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn sum() -> i32 { let a: i32 = 40; let b: i32 = 2; return a + b; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {
   HirPipelineFixture fixture(
       "enum Result { Ok(i32), Err(i32) }\n"

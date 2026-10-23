@@ -2611,13 +2611,46 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
     }
   }
+  // A local binding whose trailing return is an explicit primitive binary over
+  // leaves (`let x: T = <lit>; return x <op> <operand>;`) contributes the
+  // function and the binary to the left, but only the initializer literal to
+  // the right: both operands are local references, which the shared equation
+  // credits on neither side. The unary spelling is already balanced because its
+  // desugared operand is a pooled literal, so the desugar flag excludes it.
+  // Derive the exact difference by walking the subtree rather than counting
+  // operands, so nested and literal/mixed spellings stay correct.
+  int64_t primitiveBinaryLocalValueNodeBalance = 0;
+  for (const auto& binaryFunction : hirModule.functions()) {
+    auto binaryBlock = blockFor(hirModule, binaryFunction.body);
+    ZC_IF_SOME(block, binaryBlock) {
+      if (block.statements.size() != 2) continue;
+      auto sourceLocal = localFor(hirModule, block.statements[0]);
+      auto sourceReturn = returnFor(hirModule, block.statements[1]);
+      if (sourceLocal == zc::none || sourceReturn == zc::none) continue;
+      ZC_IF_SOME(local, sourceLocal) {
+        if (local.initializer == zc::none) continue;
+        ZC_IF_SOME(returnStatement, sourceReturn) {
+          auto binary = primitiveBinaryFor(hirModule, returnStatement.value);
+          ZC_IF_SOME(binaryValue, binary) {
+            if (binaryValue.isUnaryDesugar) continue;
+            NodeBalance balance;
+            ++balance.lhs;
+            accumulateNodeBalance(hirModule, ZC_ASSERT_NONNULL(local.initializer), balance, 0);
+            accumulateNodeBalance(hirModule, returnStatement.value, balance, 0);
+            primitiveBinaryLocalValueNodeBalance += balance.rhs - balance.lhs;
+          }
+        }
+      }
+    }
+  }
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
                            hirModule.primitiveBinaryOperations().size() + hirModule.loops().size() +
                            hirModule.conditionalLocalWrites().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
-      leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection + rawPointerWriteExcess;
+      leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection +
+      rawPointerWriteExcess + primitiveBinaryLocalValueNodeBalance;
   const int64_t rhsChecksum =
       static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
                            hirModule.aggregates().size() + uninitializedLocalReturnCount +

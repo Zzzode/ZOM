@@ -1,0 +1,7 @@
+// The literal may sit on either side of the operator (`2 + x`). The local
+// reference resolves by operand position, not by spelling order; the entry
+// exits 42.
+fn entry() -> i32 {
+    let x: i32 = 40;
+    return 2 + x;
+}

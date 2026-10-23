@@ -104,6 +104,21 @@ bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Structurally admits a binary whose result type is the operand type — the
+// arithmetic and bitwise families, plus the logical short-circuit pair. The
+// relational comparisons are excluded: their result is bool, and the LIR
+// operator table has no relational carrier, so admitting them here would move
+// the rejection from the per-definition capability drain to a whole-module
+// lowering rejection.
+bool isPrimitiveBinaryArithmeticOperator(ast::BinaryOperatorKind syntax) {
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<checker::PrimitiveOperation>()) return false;
+    return isScalarArithmeticOperation(variant.get<checker::PrimitiveOperation>());
+  }
+  return false;
+}
+
 // Structurally admits a `"a" + "b"` binary as a compile-time fold initializer.
 // Both operands must be string literals and the operator must be `+`. The fold
 // itself (concatenating the string bytes and emitting the constant) runs in the
@@ -3846,6 +3861,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   bool returnsLocalIncrement = false;
   bool returnsLocalPostfixIncrement = false;
   bool returnsPrimitiveUnary = false;
+  bool returnsPrimitiveBinary = false;
+  ast::NodeId returnedBinaryLeft;
+  ast::NodeId returnedBinaryRight;
   bool returnsArrayIndexFold = false;
   bool returnsLengthFold = false;
   bool returnsLocalField = tree.node(value).kind == ast::SyntaxKind::MemberExpression;
@@ -3938,6 +3956,34 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         returnsPrimitiveUnary = true;
       }
     }
+  } else if (tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+             isPrimitiveBinaryArithmeticOperator(static_cast<ast::BinaryOperatorKind>(
+                 tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
+    // A primitive arithmetic return over an already-declared local:
+    // `let x: T = <lit>; return x <op> <operand>;`. The spelling is the
+    // explicit counterpart of the desugared unary form above, so it reuses the
+    // same leaf-arm carrier; the builder resolves the operation from the
+    // binary's checked call fact. The operands are classified here only
+    // structurally (scalar literal or identifier); the binding pattern is not
+    // resolved yet, so the local-reference anchor and the admitted leaf set are
+    // settled further down.
+    const ast::NodeId binaryLeft(tree.node(value).payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId binaryRight(tree.node(value).payload.words[ast::kBinaryExprRhsWord]);
+    if (!tree.contains(binaryLeft) || !tree.contains(binaryRight)) { return zc::none; }
+    const auto isAdmittedLeaf = [&](ast::NodeId operand) {
+      if (!tree.contains(operand)) { return false; }
+      if (isScalarLiteral(tree.node(operand).kind)) { return true; }
+      return tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
+    };
+    if (isAdmittedLeaf(binaryLeft) && isAdmittedLeaf(binaryRight)) {
+      returnedBinaryLeft = binaryLeft;
+      returnedBinaryRight = binaryRight;
+      // The local-reference anchor is deliberately left untouched here. It
+      // names the declared local, and at this point the binding pattern is not
+      // yet resolved, so treating the first identifier operand as the anchor
+      // would let a parameter operand masquerade as the local.
+      returnsPrimitiveBinary = true;
+    }
   } else if (tree.node(value).kind == ast::SyntaxKind::PostfixExpression) {
     // A postfix increment/decrement return (`return x++;` / `return x--;`)
     // returns the old value. The increment write is dead (the local is
@@ -3971,8 +4017,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       returnsArrayIndexFold = true;
     }
   }
-  if (!tree.contains(localReference) ||
-      tree.node(localReference).kind != ast::SyntaxKind::IdentExpr) {
+  // The binary carrier resolves its local-reference anchor below, once the
+  // binding pattern is known; every other carrier anchors here.
+  if (!returnsPrimitiveBinary && (!tree.contains(localReference) ||
+                                  tree.node(localReference).kind != ast::SyntaxKind::IdentExpr)) {
     return zc::none;
   }
   const ast::NodeId declarations(tree.node(letNode).payload.words[ast::kLetStmtDeclarationsWord]);
@@ -4076,6 +4124,43 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       return zc::none;
     }
   }
+  if (returnsPrimitiveBinary) {
+    // Settle the local-reference anchor and the admitted leaf set now that the
+    // binding pattern is known. Every identifier operand must name the declared
+    // local: the MIR and LIR rails lower only literal and declared-local
+    // leaves, so a parameter operand (`return a + x;`) stays unclaimed here and
+    // drains as the per-definition capability code rather than reaching a
+    // whole-module lowering rejection. At least one operand must name the local.
+    bool foundLocal = false;
+    for (const ast::NodeId operand : {returnedBinaryLeft, returnedBinaryRight}) {
+      if (tree.node(operand).kind != ast::SyntaxKind::IdentExpr) continue;
+      if (!matchesLocalReference(tree, pattern, operand)) { return zc::none; }
+      localReference = operand;
+      foundLocal = true;
+    }
+    if (!foundLocal) { return zc::none; }
+    // A parameterized function is excluded even when its operands are pure
+    // literal/local leaves: the MIR rail's parameterized single-block lowering
+    // has no binary-return arm, so admitting one would move the rejection from
+    // the per-definition capability drain (ZOM4099) to a whole-module lowering
+    // rejection. Widening this set has to land together with that arm.
+    const auto parameterListWord = function.kind == ast::SyntaxKind::MethodDecl
+                                       ? ast::kMethodDeclParamsIdWord
+                                       : ast::kFunctionDeclParamsIdWord;
+    const ast::NodeId parameterListNode(function.payload.words[parameterListWord]);
+    if (!tree.contains(parameterListNode) ||
+        tree.node(parameterListNode).kind != ast::SyntaxKind::FunctionParameterList) {
+      return zc::none;
+    }
+    const ast::NodeList functionParameters{
+        tree.node(parameterListNode).payload.words[ast::kFunctionParameterListParamsFirstWord],
+        tree.node(parameterListNode).payload.words[ast::kFunctionParameterListParamsSizeWord]};
+    if (!tree.contains(functionParameters) || functionParameters.size != 0) { return zc::none; }
+  }
+  if (!tree.contains(localReference) ||
+      tree.node(localReference).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
   if (statements.size == 2) {
     FunctionReturnShape shape{};
     shape.body = body;
@@ -4088,6 +4173,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     shape.returnsLocalIncrement = returnsLocalIncrement;
     shape.returnsLocalPostfixIncrement = returnsLocalPostfixIncrement;
     shape.returnsPrimitiveUnary = returnsPrimitiveUnary;
+    shape.returnsPrimitiveBinary = returnsPrimitiveBinary;
+    shape.primitiveBinaryLeft = returnedBinaryLeft;
+    shape.primitiveBinaryRight = returnedBinaryRight;
     shape.returnsLocalField = returnsLocalField;
     shape.returnsLocalReborrow = reborrow != zc::none;
     shape.returnsReceiverCall = returnsReceiverCall;
@@ -4221,6 +4309,9 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   shape.returnsLocalIncrement = returnsLocalIncrement;
   shape.returnsLocalPostfixIncrement = returnsLocalPostfixIncrement;
   shape.returnsPrimitiveUnary = returnsPrimitiveUnary;
+  shape.returnsPrimitiveBinary = returnsPrimitiveBinary;
+  shape.primitiveBinaryLeft = returnedBinaryLeft;
+  shape.primitiveBinaryRight = returnedBinaryRight;
   shape.returnsLocalField = returnsLocalField;
   shape.returnsLocalReborrow = reborrow != zc::none;
   shape.returnsReceiverCall = returnsReceiverCall;

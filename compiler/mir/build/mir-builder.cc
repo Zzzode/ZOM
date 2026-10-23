@@ -1807,34 +1807,25 @@ zc::Maybe<RecursiveFunctionProduct> buildPrimitiveUnaryReturn(
 
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
+  // Parameters come first so the dense local ordinals match the ABI order the
+  // rest of the MIR rail assumes.
+  zc::Vector<MirLocalId> parameterLocals;
+  for (size_t index = 0; index < declaration.parameters.size(); ++index) {
+    parameterLocals.add(ctx.declareLocal(MirLocalKind::Parameter,
+                                         declaration.parameters[index].type, scope,
+                                         declaration.parameters[index].sourceSpan.clone()));
+  }
   const MirLocalId userLocal = ctx.declareLocal(MirLocalKind::UserLocal, sourceLocal.type, scope,
                                                 sourceLocal.sourceSpan.clone());
   const MirLocalId result = ctx.declareLocal(MirLocalKind::FunctionResult, declaration.resultType,
                                              scope, sourceReturn.sourceSpan.clone());
+  zc::Vector<MirLocalId> userLocals;
+  userLocals.add(userLocal);
 
-  // Resolve a binary operand: a scalar constant or a place-use of the user
-  // local. The HIR builder guarantees one of each; anything else rejects.
-  auto resolveOperand = [&](hir::HirNodeId operandNode) -> zc::Maybe<MirOperand> {
-    if (auto literal = expressionFor(hirModule, operandNode); literal != zc::none) {
-      if (ZC_ASSERT_NONNULL(literal).type != binary.operandType) return zc::none;
-      return MirOperand::constant(binary.operandType, ZC_ASSERT_NONNULL(literal).value.clone());
-    }
-    if (auto reference = localReferenceFor(hirModule, operandNode); reference != zc::none) {
-      const auto& value = ZC_ASSERT_NONNULL(reference);
-      if (value.type != binary.operandType || value.category != hir::HirValueCategory::Place ||
-          value.local != sourceLocal.local) {
-        return zc::none;
-      }
-      zc::Vector<MirProjection> projections;
-      return placeUse(
-          proofs, copyMarker,
-          MirPlace(userLocal, binary.operandType, zc::mv(projections), binary.operandType));
-    }
-    return zc::none;
-  };
-
-  auto left = resolveOperand(binary.left);
-  auto right = resolveOperand(binary.right);
+  auto left = binaryLeafOperand(hirModule, declaration, binary.left, parameterLocals.asPtr(),
+                                userLocals.asPtr(), 1, binary.operandType, proofs, copyMarker);
+  auto right = binaryLeafOperand(hirModule, declaration, binary.right, parameterLocals.asPtr(),
+                                 userLocals.asPtr(), 1, binary.operandType, proofs, copyMarker);
   if (left == zc::none || right == zc::none) return zc::none;
 
   zc::Maybe<MirRvalue> rvalue;
@@ -5809,22 +5800,32 @@ zc::Maybe<RecursiveFunctionProduct> strategyPrimitiveUnary(const LoweringContext
   auto binary = primitiveBinaryFor(lctx.hirModule, lctx.valueNode);
   if (literal == zc::none || binary == zc::none) return zc::none;
   if (binding.initializer != ZC_ASSERT_NONNULL(literal).node) return zc::none;
-  if (binding.type != lctx.declaration.resultType) return zc::none;
   if (ZC_ASSERT_NONNULL(literal).type != binding.type) return zc::none;
   const auto& bin = ZC_ASSERT_NONNULL(binary);
-  auto leftLocal = localReferenceFor(lctx.hirModule, bin.left);
-  auto rightLocal = localReferenceFor(lctx.hirModule, bin.right);
-  auto leftLiteral = expressionFor(lctx.hirModule, bin.left);
-  auto rightLiteral = expressionFor(lctx.hirModule, bin.right);
-  const bool localOnLeft = leftLocal != zc::none && rightLiteral != zc::none &&
-                           ZC_ASSERT_NONNULL(leftLocal).local == binding.local &&
-                           ZC_ASSERT_NONNULL(leftLocal).type == binding.type &&
-                           ZC_ASSERT_NONNULL(leftLocal).category == hir::HirValueCategory::Place;
-  const bool localOnRight = rightLocal != zc::none && leftLiteral != zc::none &&
-                            ZC_ASSERT_NONNULL(rightLocal).local == binding.local &&
-                            ZC_ASSERT_NONNULL(rightLocal).type == binding.type &&
-                            ZC_ASSERT_NONNULL(rightLocal).category == hir::HirValueCategory::Place;
-  if (!localOnLeft && !localOnRight) return zc::none;
+  // An arithmetic operation returns the local's own type; a relational
+  // comparison over the local returns bool, so only the arithmetic family is
+  // constrained here. The lowering re-derives the same rule.
+  if (arithmeticOperatorFor(bin.operation) != zc::none &&
+      binding.type != lctx.declaration.resultType) {
+    return zc::none;
+  }
+  if (bin.type != lctx.declaration.resultType) return zc::none;
+  // Each operand is a scalar literal of the binding's type or a place use of
+  // the binding itself. The desugared unary spelling pairs one of each; the
+  // explicit binary spelling can name the local on both sides (`return x + x;`),
+  // so admission is per operand rather than requiring a complementary split.
+  auto admittedOperand = [&](hir::HirNodeId operandNode) {
+    if (auto operandLiteral = expressionFor(lctx.hirModule, operandNode);
+        operandLiteral != zc::none) {
+      return ZC_ASSERT_NONNULL(operandLiteral).type == binding.type;
+    }
+    auto operandLocal = localReferenceFor(lctx.hirModule, operandNode);
+    if (operandLocal == zc::none) return false;
+    const auto& value = ZC_ASSERT_NONNULL(operandLocal);
+    return value.local == binding.local && value.type == binding.type &&
+           value.category == hir::HirValueCategory::Place;
+  };
+  if (!admittedOperand(bin.left) || !admittedOperand(bin.right)) return zc::none;
   return buildPrimitiveUnaryReturn(lctx, binding, ZC_ASSERT_NONNULL(literal), bin);
 }
 

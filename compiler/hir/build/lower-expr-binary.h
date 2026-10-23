@@ -25,5 +25,11 @@ void lowerComparisonReturnFunction(PendingFunctionDeclaration&& function, HirFnC
 /// Node stride: function, body, local, initializer, left, right, binary, return.
 void lowerPrimitiveUnaryReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one `let x: T = <lit>; return x <op> <operand>;` explicit
+/// primitive-arithmetic function. Unlike the unary form, both operands are real
+/// AST nodes, so the checker-produced facts cover them and no synthetic operand
+/// is fabricated. Node stride matches the unary carrier.
+void lowerPrimitiveBinaryReturnFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

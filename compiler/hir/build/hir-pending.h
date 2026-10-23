@@ -1070,6 +1070,15 @@ struct PrimitiveUnaryReturn {
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
 };
 
+/// Explicit primitive-arithmetic return: `let x: T = <lit>; return x <op> y;`.
+/// Both operands are real AST nodes carried by `comparisonReturn`, so unlike
+/// the unary carrier there is no synthetic literal to supply.
+struct PrimitiveBinaryReturn {
+  PendingEqualityCondition comparisonReturn;
+  HirLocalBinding local;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+};
+
 struct ForLoopReturn {
   PendingForLoopReturn forLoopReturn;
   checker::checked::CanonicalConstValue literal;
@@ -1125,7 +1134,7 @@ using PendingFunctionShape = zc::OneOf<
     ByValueParameterFieldReturn, ReceiverFieldWriteReturn, ReceiverFieldArithmeticReturn,
     ConditionalReturn, ChainedConditionalReturn, LeadingLocalConditionalReturn, LoopBodyReturn,
     ComparisonLoopBodyReturn, ConditionalLocalWriteReturn, ComparisonReturn, PrimitiveUnaryReturn,
-    ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
+    PrimitiveBinaryReturn, ForLoopReturn, ForLoopAccumulatorReturn, ForInLoopAccumulatorReturn,
     NestedForLoopAccumulatorReturn, SequentialLocalReturn, GenericShape>;
 
 /// A pending function declaration ready for HIR materialization.

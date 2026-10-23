@@ -5878,7 +5878,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         if (!shape.returnsLocalField && !shape.returnsLocalReborrow && !shape.returnsLocalBorrow &&
             !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
             !shape.returnsDirectExistentialCall && !shape.returnsArrayIndexFold &&
-            !shape.returnsLengthFold && !shape.returnsPrimitiveUnary) {
+            !shape.returnsLengthFold && !shape.returnsPrimitiveUnary &&
+            !shape.returnsPrimitiveBinary) {
           localReference =
               HirLocalReferenceExpression{HirNodeId(), HirLocalId(), nodeType.value,
                                           HirValueCategory::Place, valueSpanValue.clone()};
@@ -5898,11 +5899,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
                !shape.returnsArrayIndexFold && !shape.returnsLengthFold &&
+               !shape.returnsPrimitiveUnary && !shape.returnsPrimitiveBinary &&
                initializerType != nodeType.value) ||
               (!shape.returnsLocalField && !shape.returnsReceiverCall &&
                !shape.returnsDirectAggregateCall && !shape.returnsDirectScalarLocalCall &&
                !shape.returnsDirectExistentialCall && !shape.returnsLocalBorrow &&
                !shape.returnsArrayIndexFold && !shape.returnsLengthFold &&
+               !shape.returnsPrimitiveUnary && !shape.returnsPrimitiveBinary &&
                initializerType != callable.success) ||
               (shape.returnsLocalBorrow && initializerType != localType)) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -5951,7 +5954,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               !shape.returnsLocalBorrow && !shape.returnsDirectAggregateCall &&
               !shape.returnsDirectScalarLocalCall && !shape.returnsDirectExistentialCall &&
               !shape.returnsArrayIndexFold && !shape.returnsLengthFold &&
-              !shape.returnsPrimitiveUnary) {
+              !shape.returnsPrimitiveUnary && !shape.returnsPrimitiveBinary) {
             identity::SourceSpan referenceSpan = valueSpanValue.clone();
             if (shape.returnsReceiverCall) {
               const auto& sourceCall = tree.node(shape.value);
@@ -7286,6 +7289,115 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                         ZC_ASSERT_NONNULL(unarySpan).clone(),
                                                         true,
                                                         ast::NodeId()};
+          }
+        }
+        if (shape.returnsPrimitiveBinary) {
+          // Explicit primitive binary return: `let x: T = <lit>;
+          // return x <op> <operand>;`. The two operands are real AST nodes, so
+          // both carry checker-produced node-type facts. The operation comes
+          // from the binary's own checked call fact, the same source the unary
+          // desugar uses, but no synthetic operand is fabricated here.
+          auto binaryTypeIndex = factIndex(facts.nodeTypes(), shape.value);
+          auto binaryCallIndex = factIndex(facts.calls(), shape.value);
+          auto binarySpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
+          if (binaryTypeIndex == zc::none || binaryCallIndex == zc::none ||
+              binarySpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t binaryTypeSlot = 0;
+          ZC_IF_SOME(index, binaryTypeIndex) { binaryTypeSlot = index; }
+          const auto& binaryType = facts.nodeTypes().entries()[binaryTypeSlot].value;
+          size_t binaryCallSlot = 0;
+          ZC_IF_SOME(index, binaryCallIndex) { binaryCallSlot = index; }
+          const auto& binaryCallFact = facts.calls().entries()[binaryCallSlot].value;
+          const auto& binaryCall = binaryCallFact.invocation;
+          const auto& binarySelected = binaryCall.selected.variant();
+          if (!binarySelected.is<checker::checked::PrimitiveCallable>() ||
+              binaryCallFact.node != shape.value || binaryCall.receiver != zc::none ||
+              binaryCall.receiverMode != zc::none || binaryCall.receiverAdjustment != zc::none ||
+              binaryCall.arguments.size() != 2 ||
+              binaryCall.arguments[0].sourceNode != shape.primitiveBinaryLeft ||
+              binaryCall.arguments[1].sourceNode != shape.primitiveBinaryRight ||
+              binaryCall.successType != binaryType || binaryCall.resultType != binaryType ||
+              binaryCall.substitutions != zc::none || binaryCall.witnesses != zc::none ||
+              binaryCall.raises != zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto binaryOperation =
+              binarySelected.get<checker::checked::PrimitiveCallable>().operation;
+          if (!isScalarArithmeticOperation(binaryOperation)) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Classifies one operand leaf as a scalar literal or the declared
+          // local; the shape layer already settled that every identifier
+          // operand names the local.
+          const auto classifyOperand =
+              [&](ast::NodeId operandNode) -> zc::Maybe<PendingConditionalArm> {
+            auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+            auto operandTypeIndex = factIndex(facts.nodeTypes(), operandNode);
+            if (operandSpan == zc::none || operandTypeIndex == zc::none) { return zc::none; }
+            size_t operandTypeSlot = 0;
+            ZC_IF_SOME(index, operandTypeIndex) { operandTypeSlot = index; }
+            const auto& operandType = facts.nodeTypes().entries()[operandTypeSlot].value;
+            if (isScalarLiteral(tree.node(operandNode).kind)) {
+              auto literalIndex = factIndex(facts.literals(), operandNode);
+              if (literalIndex == zc::none) { return zc::none; }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.type != operandType ||
+                  !sameSpan(ZC_ASSERT_NONNULL(operandSpan), literalFact.sourceSpan)) {
+                return zc::none;
+              }
+              return PendingConditionalArm{literalFact.literal.clone(),
+                                           zc::none,
+                                           zc::none,
+                                           operandType,
+                                           ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                           zc::none,
+                                           operandNode};
+            }
+            if (tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+            if (shape.localPattern == ast::NodeId() ||
+                !matchesLocalReference(tree, shape.localPattern, operandNode)) {
+              return zc::none;
+            }
+            return PendingConditionalArm{
+                zc::none,
+                zc::none,
+                HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), operandType,
+                                            HirValueCategory::Place,
+                                            ZC_ASSERT_NONNULL(operandSpan).clone()},
+                operandType,
+                ZC_ASSERT_NONNULL(operandSpan).clone(),
+                zc::none,
+                operandNode};
+          };
+          auto leftArm = classifyOperand(shape.primitiveBinaryLeft);
+          auto rightArm = classifyOperand(shape.primitiveBinaryRight);
+          if (leftArm == zc::none || rightArm == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          // Every admitted operator returns its operand type, so the callee's
+          // parameter type and the binary's checked type agree here.
+          const auto binaryOperandType = binaryCall.calleeType;
+          ZC_IF_SOME(left, leftArm) {
+            ZC_IF_SOME(right, rightArm) {
+              comparisonReturn = PendingEqualityCondition{
+                  zc::mv(left), zc::mv(right),   binaryOperandType,
+                  binaryType,   binaryOperation, ZC_ASSERT_NONNULL(binarySpan).clone(),
+                  false,        shape.value};
+              ZC_IREQUIRE(binaryOperandType == binaryType,
+                          "an admitted primitive arithmetic operator returns its operand type");
+            }
           }
         }
         if (shape.returnsArrayIndexFold || shape.returnsLengthFold) {
@@ -11347,15 +11459,29 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             allEmpty(localWrites, localWriteValues)) {
           return ComparisonReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn))};
         }
-        // Primitive unary return (comparison + local + literal).
-        if (comparisonReturn != zc::none && local != zc::none && localReference == zc::none &&
-            literal != zc::none &&
+        // Primitive unary return (comparison + local + literal). The desugar
+        // flag is the discriminator: a synthetic operand exists only on that
+        // arm, so the explicit binary spelling must not fall through to it.
+        if (comparisonReturn != zc::none && ZC_ASSERT_NONNULL(comparisonReturn).isUnaryDesugar &&
+            local != zc::none && localReference == zc::none && literal != zc::none &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReference,
                     parameterReborrow, localBorrow, loopBodyReturn, comparisonLoopBodyReturn,
                     unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues)) {
           return PrimitiveUnaryReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn)),
                                       zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal)};
+        }
+        // Primitive binary return: both operands are real source nodes. The
+        // carried literal is the local binding's initializer, the same field
+        // the unary carrier uses; `isUnaryDesugar` is what tells the two apart.
+        if (comparisonReturn != zc::none && !ZC_ASSERT_NONNULL(comparisonReturn).isUnaryDesugar &&
+            local != zc::none && localReference == zc::none && literal != zc::none &&
+            allNone(call, receiverCall, aggregate, localFieldProjection, parameterReference,
+                    parameterReborrow, localBorrow, loopBodyReturn, comparisonLoopBodyReturn,
+                    unsafeBlockSpan) &&
+            allEmpty(localWrites, localWriteValues)) {
+          return PrimitiveBinaryReturn{zc::mv(ZC_ASSERT_NONNULL(comparisonReturn)),
+                                       zc::mv(ZC_ASSERT_NONNULL(local)), zc::mv(literal)};
         }
         // Receiver field arithmetic return.
         if (receiverFieldArithmetic != zc::none &&
@@ -12339,6 +12465,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (value.shape.is<ComparisonReturn>()) {
       auto fnCtx = makeFnCtx();
       lowerComparisonReturnFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.shape.is<PrimitiveBinaryReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerPrimitiveBinaryReturnFunction(zc::mv(value), fnCtx);
       continue;
     }
     if (value.shape.is<PrimitiveUnaryReturn>()) {

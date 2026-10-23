@@ -164,6 +164,15 @@ struct FunctionReturnShape final {
   // with a synthetic constant operand (e.g. `!x == false`). The operand
   // must be an identifier naming the declared local or a parameter.
   bool returnsPrimitiveUnary = false;
+  // Two-statement primitive-arithmetic return:
+  // `let x: T = <lit>; return x <op> <operand>;` where each operand is a
+  // scalar literal or the declared local. Carries the real AST operand nodes;
+  // the operation is resolved from the binary's checked call fact. A sibling of
+  // `returnsPrimitiveUnary`, which handles the desugared unary spelling with a
+  // synthetic operand.
+  bool returnsPrimitiveBinary = false;
+  ast::NodeId primitiveBinaryLeft;
+  ast::NodeId primitiveBinaryRight;
   bool returnsLocalField = false;
   // Two-statement field-arithmetic return:
   // `let p: Point = Point { ..constants.. }; return p.x <op> p.y;`.
