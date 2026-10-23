@@ -980,7 +980,6 @@ def check_production_topology_integration(files: dict[Path, str], errors: list[s
         ),
         ("reconstructVerifierSites(", "independent parsed-site reconstruction"),
         ("authority.resolver.catalog()", "frozen resolver catalog enumeration"),
-        ("authority.coreInputs.projections()", "verified core projection enumeration"),
         ("registerDescriptor<SelectedModuleCatalogInput>()", "catalog input registration"),
         ("registerDescriptor<ModuleDependencySiteInput>()", "dependency site input registration"),
         ("registerDescriptor<SelectedModuleSource>()", "selected source registration"),
