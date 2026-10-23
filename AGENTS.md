@@ -51,6 +51,22 @@ Project-wide guidance for AI coding agents working on the ZOM language repositor
    the current contract and every producer, consumer, oracle, and gate in one
    change. RFC numbers, user SemVer, and externally assigned standard or
    protocol names retain their official spelling.
+10. **Long-running work runs in the background.** Builds, full test suites,
+    corpus sweeps, and any command whose wall clock exceeds roughly a minute
+    MUST be started as a background task the moment they begin, never held in
+    the foreground. Start the job, keep working on the next slice, and read its
+    result when the completion notification arrives.
+
+    - Never poll a running job's output file in a loop. The completion
+      notification is the signal; polling burns the same attention the rule
+      exists to protect.
+    - Never leave a foreground command sitting on a multi-minute test run. A
+      foreground slot is for edits, reads, greps, and sub-minute commands.
+    - Report progress from work already finished, not from a spinner. "Started
+      the suite, moving on to X" is the correct shape of an in-flight update.
+    - A background run and a concurrent rebuild corrupt each other: every test
+      binary replaced mid-run makes that run's results unusable. Rebuild first,
+      then start the tests, and do not touch the build tree until they finish.
 
 Additional path-scoped rules live in `.codex/rules/*.md`. Skills loadable via
 `/skill` live in `.codex/skills/*/SKILL.md`. Subagent gate specs live in
