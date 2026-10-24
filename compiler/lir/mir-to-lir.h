@@ -542,6 +542,28 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a same-module direct call whose callee computes its result.
+  ///
+  /// The sibling call lowerings all require a callee that returns a constant or
+  /// its own parameter. This one admits a callee that performs one scalar
+  /// arithmetic operation before returning: a single block of
+  /// `StorageLive(result)`, `Assign(result = <param> <op> <constant>)`, and a
+  /// place-copy `Return` of that result. The caller is the two-block shape the
+  /// single-argument call lowerings already produce: entry `StorageLive` plus
+  /// `Call` with one argument, continuation `Return`.
+  ///
+  /// The carrier may be any scalar (integer, bool, or float). Every other
+  /// construct — more than one arithmetic statement, a non-leaf operand, an
+  /// aggregate, a call inside the callee — returns `none`.
+  ///
+  /// \param caller Verified two-block caller MIR function.
+  /// \param callee Verified single-block arithmetic-return callee.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithArithmeticCallee(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a same-module direct call passing one integer-constant
   /// argument to a two-function LIR module where the callee is a four-block
   /// boolean-conditional return.

@@ -306,6 +306,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-call-constant-consumer/Zom.toml::float_call_constant_consumer::float_call_constant_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-call-arithmetic-callee-consumer/Zom.toml::float_call_arithmetic_callee_consumer::float_call_arithmetic_callee_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"

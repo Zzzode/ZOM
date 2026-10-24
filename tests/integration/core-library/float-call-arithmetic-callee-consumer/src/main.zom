@@ -1,0 +1,12 @@
+// Float cross-call backend-lowering fixture: the callee performs a scalar
+// arithmetic operation on its own parameter before returning, so the callee
+// needs an arithmetic statement rather than a constant or parameter return. No
+// two-function call lowering admitted that shape before, so the whole module
+// failed with "no backend slice". Object emission proves the full chain.
+fn increment(x: f64) -> f64 {
+  return x + 1.0;
+}
+
+fn entry() -> f64 {
+  return increment(41.0);
+}
