@@ -1072,7 +1072,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 bindingLiteral = literalFact.literal.clone();
               } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
                          binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
-                         binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
+                         binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+                         binding.initializerKind ==
+                             SequentialInitializerKind::FoldedLiteralArithmetic) {
                 // A qualified enum variant access lowers to an integer constant
                 // (the variant discriminant), a string-length fold lowers to the
                 // string's byte length, and a string-concat fold lowers to the
@@ -4236,7 +4238,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             bindingLiteral = literalFact.literal.clone();
           } else if (binding.initializerKind == SequentialInitializerKind::EnumVariant ||
                      binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
-                     binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
+                     binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+                     binding.initializerKind ==
+                         SequentialInitializerKind::FoldedLiteralArithmetic) {
             // A qualified enum variant access `Enum::Variant` lowers to an
             // integer constant (the variant discriminant), a string-length
             // fold `s.length` lowers to the string's byte length, and a

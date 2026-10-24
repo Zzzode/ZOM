@@ -2275,7 +2275,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         if (binding.initializerKind == SequentialInitializerKind::Literal ||
             binding.initializerKind == SequentialInitializerKind::EnumVariant ||
             binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
-            binding.initializerKind == SequentialInitializerKind::FoldedStringConcat) {
+            binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+            binding.initializerKind == SequentialInitializerKind::FoldedLiteralArithmetic) {
           zc::Maybe<const HirScalarLiteralExpression&> literal;
           for (const auto& expression : candidate.impl->expressions) {
             if (expression.node != hirId(initializerNodeOrdinal)) continue;

@@ -124,10 +124,10 @@ bool isComparisonReturnSyntax(const ast::Tree& tree, ast::NodeId value) {
 
 // Structurally admits a binary whose result type is the operand type — the
 // arithmetic and bitwise families, plus the logical short-circuit pair. The
-// relational comparisons are excluded: their result is bool, and the LIR
-// operator table has no relational carrier, so admitting them here would move
-// the rejection from the per-definition capability drain to a whole-module
-// lowering rejection.
+// relational comparisons are excluded because their result is bool: the caller
+// here anchors an operand type on a result type, so a comparison has no
+// matching anchor and belongs on the paths that model the bool result
+// explicitly.
 bool isPrimitiveBinaryArithmeticOperator(ast::BinaryOperatorKind syntax) {
   ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
     const auto& variant = kind.variant();
@@ -1055,6 +1055,16 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
           break;
         }
       }
+    } else if (isLiteralArithmeticFoldSyntax(tree, initializer) &&
+               !tree.contains(ast::NodeId(
+                   tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]))) {
+      // An unannotated `let x = 40 + 2;`. The body checker folds the operation
+      // to an integer literal fact, so the binding lowers to a scalar literal
+      // with no Call/dispatch fact. This must precede the PrimitiveBinary
+      // branch for the same reason as the string-concat fold. The annotated
+      // spelling keeps PrimitiveBinary: its annotation anchors the operand type
+      // and that rail already emits the binary.
+      kind = SequentialInitializerKind::FoldedLiteralArithmetic;
     } else if (isStringConcatFoldInitializer(tree, initializer)) {
       // A string-concat fold `"a" + "b"`. The checker folds the concatenation
       // to a string constant; the builder lowers it to a scalar literal. This
@@ -3893,6 +3903,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
               shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+              shape.bindings[0].initializerKind ==
+                  SequentialInitializerKind::FoldedLiteralArithmetic ||
               isComparisonReturnSyntax(tree, shape.returnValue)));
       }
       if (routeToSequential) {

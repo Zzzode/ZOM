@@ -1,0 +1,4 @@
+fn entry() -> i32 {
+  let folded = 40 + 2;
+  return folded;
+}

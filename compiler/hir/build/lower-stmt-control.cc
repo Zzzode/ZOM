@@ -472,6 +472,7 @@ void lowerLeadingLocalConditionalReturnFunction(PendingFunctionDeclaration&& fun
       case SequentialInitializerKind::Ternary:
       case SequentialInitializerKind::EnumVariantConstruction:
       case SequentialInitializerKind::FoldedStringConcat:
+      case SequentialInitializerKind::FoldedLiteralArithmetic:
       case SequentialInitializerKind::DirectCall:
         break;
     }

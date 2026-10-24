@@ -31,6 +31,11 @@ enum class SequentialInitializerKind : uint8_t {
   EnumVariantConstruction,
   FoldedStringLength,
   FoldedStringConcat,
+  /// An unannotated `let x = <int-literal> <op> <int-literal>;`. The body
+  /// checker folds the operation to an integer literal fact, so the binding
+  /// lowers to a scalar literal. The annotated spelling keeps
+  /// `PrimitiveBinary` because its annotation anchors the operand type.
+  FoldedLiteralArithmetic,
   DirectCall
 };
 

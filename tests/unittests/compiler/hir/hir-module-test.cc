@@ -5190,6 +5190,23 @@ ZC_TEST("HIR pipeline drains a literal-literal trailing binary") {
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
+ZC_TEST("HIR pipeline folds an unannotated literal binary binding") {
+  // `let folded = 40 + 2;` has no annotation to anchor the operand type, so the
+  // body checker folds the operation to an integer literal fact and the binding
+  // lowers to a scalar literal. The annotated spelling keeps the binary rail,
+  // so this also pins that the two spellings classify differently.
+  HirPipelineFixture fixture("fn fold() -> i32 { let folded = 40 + 2; return folded; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_EXPECT(module.primitiveBinaryOperations().size() == 0);
+  const auto& local = module.locals()[0];
+  const auto& literal = module.expressions()[0];
+  ZC_EXPECT(local.initializer == literal.node);
+  ZC_EXPECT(literal.value.integerValue() != zc::none);
+}
+
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {
   HirPipelineFixture fixture(
       "enum Result { Ok(i32), Err(i32) }\n"

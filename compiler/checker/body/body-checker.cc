@@ -794,12 +794,14 @@ bool dependsOnTernaryLocalInitializer(const BodyCheckingInput& input, ast::NodeI
 // initializer or the declarator carries no closed type annotation. Used to
 // enforce that a primitive-binary initializer's result type matches the local's
 // annotation.
-// Whether a node is the initializer expression of an owner-local (a `let` /
-// `mut` binding declared inside a body). Those initializers have their own
-// annotated-binding rail, which anchors the operand type from the annotation,
-// so a fold must not claim them.
-bool isOwnerLocalInitializer(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
-                             ast::NodeId initializer) {
+// Whether a node is the initializer of an owner-local binding that carries a
+// closed type annotation (`let x: T = <expr>;`). That annotation anchors the
+// operand type of a primitive binary, so the binary rail already emits it; an
+// unannotated initializer has no anchor and a literal-vs-literal binary there
+// must fold to a constant instead.
+bool isAnnotatedOwnerLocalInitializer(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    ast::NodeId initializer) {
   const auto& tree = boundModule.tree();
   for (const auto& local : boundModule.definitions().ownerLocalBindings()) {
     if (!local.site.value().is<binder::PatternBindingSite>()) continue;
@@ -808,10 +810,11 @@ bool isOwnerLocalInitializer(const driver::module_graph_query::CheckerBoundModul
         tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
       continue;
     }
-    if (ast::NodeId(tree.node(site.introducer).payload.words[ast::kVariableDeclaratorInitWord]) ==
-        initializer) {
-      return true;
+    const auto& declarator = tree.node(site.introducer);
+    if (ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorInitWord]) != initializer) {
+      continue;
     }
+    return tree.contains(ast::NodeId(declarator.payload.words[ast::kVariableDeclaratorTyWord]));
   }
   return false;
 }
@@ -7934,8 +7937,9 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
         // covers the string-concat fold and the integer-literal arithmetic
         // fold; both compute the constant at compile time.
         if (syntax.kind == ast::SyntaxKind::BinaryExpr &&
-            (isStringConcatFoldSite(tree, node) || (isLiteralArithmeticFoldSite(tree, node) &&
-                                                    !isOwnerLocalInitializer(boundModule, node)))) {
+            (isStringConcatFoldSite(tree, node) ||
+             (isLiteralArithmeticFoldSite(tree, node) &&
+              !isAnnotatedOwnerLocalInitializer(boundModule, node)))) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
         } else if (syntax.kind == ast::SyntaxKind::UnaryExpression &&
                    static_cast<ast::UnaryOperatorKind>(
@@ -8102,12 +8106,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
           // A binary over two integer literals folds to a constant for the same
           // reason: the primitive-binary rail needs a reference operand to
-          // anchor the operand type, and a literal pair has none. A `let`
-          // initializer is excluded because the annotated-binding rail already
-          // anchors the operand type from the annotation and produces its own
-          // facts; claiming it here would replace a working path.
+          // anchor the operand type, and a literal pair has none. An annotated
+          // `let` initializer is excluded because its annotation anchors the
+          // operand type and that rail already produces the facts; claiming it
+          // here would replace a working path. An unannotated one has no
+          // anchor, so it folds here.
           if (isLiteralArithmeticFoldSite(tree, node) &&
-              !isOwnerLocalInitializer(boundModule, node)) {
+              !isAnnotatedOwnerLocalInitializer(boundModule, node)) {
             production = BodyProductionKind::LiteralArithmeticFold;
             break;
           }
