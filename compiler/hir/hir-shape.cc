@@ -1485,6 +1485,17 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       returnValueKind != ast::SyntaxKind::BinaryExpr) {
     return zc::none;
   }
+  // Only the arithmetic operators ride the trailing-binary rail. A relational
+  // comparison return is claimed earlier by the dedicated comparison-return
+  // shape when the operands name a single local; over several locals it has no
+  // carrier yet, so leave it unclaimed here and let the definition drain as the
+  // per-definition capability code rather than reaching a verifier that can
+  // only fail.
+  if (returnValueKind == ast::SyntaxKind::BinaryExpr &&
+      !isPrimitiveBinaryArithmeticOperator(static_cast<ast::BinaryOperatorKind>(
+          tree.node(returnValue).payload.words[ast::kBinaryExprOpWord]))) {
+    return zc::none;
+  }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
   if (returnValueKind == ast::SyntaxKind::IdentExpr) {
