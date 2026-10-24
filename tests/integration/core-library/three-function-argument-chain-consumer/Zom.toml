@@ -1,0 +1,4 @@
+[package]
+name = "three_function_argument_chain_consumer"
+version = "0.1.0"
+edition = "2026"

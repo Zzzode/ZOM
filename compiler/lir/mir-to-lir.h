@@ -750,6 +750,9 @@ public:
   /// functions emit in the fixed order `[entry, middle, leaf]`, so the entry's
   /// call index is 1 and the middle's is 2. This is the chained counterpart of
   /// `lowerCallModuleWithLeaf`, whose third function is referenced by no call.
+  /// A link may declare up to `kMaxCallArguments` leading parameters and forward
+  /// each callee argument as a scalar constant or one of those parameters; the
+  /// leaf then returns its own parameter instead of a constant.
   ///
   /// \param entry Verified outermost caller MIR function.
   /// \param middle Verified forwarding caller MIR function.

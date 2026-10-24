@@ -7702,9 +7702,11 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
 zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     const mir::MirFunction& entry, const mir::MirFunction& middle, const mir::MirFunction& leaf,
     const type::SemanticTypeStore& semanticTypes) {
-  // Leaf: the scalar constant-return shape the sibling lowerings already admit.
-  if (leaf.kind != mir::MirFunctionKind::Function || leaf.locals.size() != 0 ||
-      leaf.blocks.size() != 1) {
+  // Leaf: one block returning either a scalar constant (the shape the sibling
+  // lowerings already admit) or its own single parameter, which is what a
+  // chain's innermost function looks like when the chain carries a value.
+  if (leaf.kind != mir::MirFunctionKind::Function || leaf.blocks.size() != 1 ||
+      leaf.locals.size() > 1) {
     return zc::none;
   }
   auto leafCarrier = integerCarrierFor(leaf.resultType, semanticTypes);
@@ -7715,21 +7717,36 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
       leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
   }
+  zc::Maybe<mir::MirLocalId> leafParameterId;
+  if (leaf.locals.size() == 1) {
+    const auto& leafParameter = leaf.locals[0];
+    if (leafParameter.kind != mir::MirLocalKind::Parameter ||
+        leafParameter.type != leaf.resultType) {
+      return zc::none;
+    }
+    leafParameterId = leafParameter.id;
+  }
   const auto& leafReturn = leafBlock.terminator.returnValue().value;
   if (leafReturn == zc::none) { return zc::none; }
   zc::Maybe<IntegerConstant> leafConstant;
+  bool leafReturnsParameter = false;
   ZC_IF_SOME(value, leafReturn) {
-    if (value.kind() != mir::MirOperandKind::Constant ||
-        value.constantValue().type != leaf.resultType) {
-      return zc::none;
+    if (value.kind() == mir::MirOperandKind::Constant) {
+      if (value.constantValue().type != leaf.resultType) { return zc::none; }
+      const auto integer = value.constantValue().value.integerValue();
+      if (integer == zc::none) { return zc::none; }
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
+      if (bits == zc::none) { return zc::none; }
+      leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
+      if (leafConstant == zc::none) { return zc::none; }
+    } else {
+      if (value.place().projections().size() != 0 || leafParameterId == zc::none ||
+          value.place().local() != ZC_REQUIRE_NONNULL(leafParameterId)) {
+        return zc::none;
+      }
+      leafReturnsParameter = true;
     }
-    const auto integer = value.constantValue().value.integerValue();
-    if (integer == zc::none) { return zc::none; }
-    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
-    if (bits == zc::none) { return zc::none; }
-    leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
   }
-  if (leafConstant == zc::none) { return zc::none; }
 
   // One link of the chain: the two-block zero-argument call shape, returning a
   // scalar. Both the outermost entry and the middle forwarding function use it.
@@ -7738,12 +7755,13 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     uint32_t resultOrdinal;
     zc::Vector<Local> linkLocals;
     zc::Vector<Statement> continuationStatements;
+    zc::Vector<Local> parameters;
+    zc::Vector<Operand> forwardedArguments;
   };
   auto admitLink = [&](const mir::MirFunction& function, const mir::MirFunction& callee,
                        ValueType carrier) -> zc::Maybe<Link> {
     if (function.kind != mir::MirFunctionKind::Function || function.blocks.size() != 2 ||
-        function.locals.size() != 2 || function.resultType != leaf.resultType ||
-        function.resultType != callee.resultType) {
+        function.resultType != leaf.resultType || function.resultType != callee.resultType) {
       return zc::none;
     }
     size_t parameterCount = 0;
@@ -7751,11 +7769,12 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
            function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
       ++parameterCount;
     }
-    // A parameterized link keeps the object-only `zom.caller` symbol, which this
-    // chain slice does not carry.
-    if (parameterCount != 0) { return zc::none; }
-    const auto& temporaryLocal = function.locals[0];
-    const auto& resultLocal = function.locals[1];
+    // A link is P leading parameters plus the call temporary and the result.
+    if (parameterCount > kMaxCallArguments || function.locals.size() != parameterCount + 2) {
+      return zc::none;
+    }
+    const auto& temporaryLocal = function.locals[parameterCount];
+    const auto& resultLocal = function.locals[parameterCount + 1];
     if (temporaryLocal.kind != mir::MirLocalKind::Temporary ||
         resultLocal.kind != mir::MirLocalKind::FunctionResult ||
         temporaryLocal.type != function.resultType || resultLocal.type != function.resultType) {
@@ -7769,10 +7788,34 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
       return zc::none;
     }
     const auto& call = linkEntry.terminator.callValue();
-    if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
+    // The callee's parameter count bounds the argument list, not this link's.
+    if (call.arguments.size() > kMaxCallArguments || call.destination.projections().size() != 0 ||
         call.destination.local() != temporaryLocal.id || call.normalTarget != continuation->id ||
         call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
       return zc::none;
+    }
+    // Each forwarded argument is a scalar constant or a use of one of this
+    // link's own leading parameters: the chain passes values straight through.
+    zc::Vector<Operand> forwardedArguments;
+    for (const auto& argument : call.arguments) {
+      if (argument.kind() == mir::MirOperandKind::Constant) {
+        if (argument.constantValue().type != function.resultType) { return zc::none; }
+        auto constant = lirOperandFor(argument, carrier);
+        if (constant == zc::none) { return zc::none; }
+        forwardedArguments.add(zc::mv(ZC_ASSERT_NONNULL(constant)));
+        continue;
+      }
+      if (argument.place().projections().size() != 0) { return zc::none; }
+      bool namesLinkParameter = false;
+      for (size_t index = 0; index < parameterCount; ++index) {
+        if (function.locals[index].id == argument.place().local() &&
+            function.locals[index].type == function.resultType) {
+          namesLinkParameter = true;
+          break;
+        }
+      }
+      if (!namesLinkParameter) { return zc::none; }
+      forwardedArguments.add(Operand::localUse(argument.place().local().ordinal()));
     }
     if (linkEntry.statements.size() != 1 ||
         linkEntry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
@@ -7805,6 +7848,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
         return zc::none;
       }
     }
+    zc::Vector<Local> linkParameters;
+    for (size_t index = 0; index < parameterCount; ++index) {
+      linkParameters.add(Local(function.locals[index].id.ordinal(), carrier));
+    }
     zc::Vector<Local> linkLocals;
     linkLocals.add(Local(temporaryLocal.id.ordinal(), carrier));
     linkLocals.add(Local(resultLocal.id.ordinal(), carrier));
@@ -7812,7 +7859,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     loweredContinuation.add(Statement::assign(resultLocal.id.ordinal(),
                                               Operand::localUse(temporaryLocal.id.ordinal())));
     return Link{temporaryLocal.id.ordinal(), resultLocal.id.ordinal(), zc::mv(linkLocals),
-                zc::mv(loweredContinuation)};
+                zc::mv(loweredContinuation), zc::mv(linkParameters),   zc::mv(forwardedArguments)};
   };
 
   auto entryLink = admitLink(entry, middle, leafCarrierValue);
@@ -7835,48 +7882,57 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
   {
     zc::Vector<BasicBlock> blocks;
     zc::Vector<Statement> entryStatements;
-    zc::Vector<Operand> noArguments;
-    auto callTerminator =
-        Terminator::callFunction(/*calleeIndex=*/1, entryShape.destinationOrdinal,
-                                 zc::mv(noArguments), ZC_REQUIRE_NONNULL(linkContId));
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/1, entryShape.destinationOrdinal, zc::mv(entryShape.forwardedArguments),
+        ZC_REQUIRE_NONNULL(linkContId));
     if (callTerminator == zc::none) { return zc::none; }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(linkEntryId), zc::mv(entryStatements),
                           ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(linkContId), zc::mv(entryShape.continuationStatements),
                           Terminator::returnLocal(entryShape.resultOrdinal)));
-    zc::Vector<Local> noParameters;
-    functions.add(Function(entry.owner, moduleEntrySymbol(0), leafCarrierValue,
-                           zc::mv(noParameters), zc::mv(entryShape.linkLocals), zc::mv(blocks)));
+    const size_t entryParameterCount = entryShape.parameters.size();
+    functions.add(Function(entry.owner, moduleEntrySymbol(entryParameterCount), leafCarrierValue,
+                           zc::mv(entryShape.parameters), zc::mv(entryShape.linkLocals),
+                           zc::mv(blocks)));
   }
 
   // Function 1: the middle, calling function 2 (the leaf).
   {
     zc::Vector<BasicBlock> blocks;
     zc::Vector<Statement> middleStatements;
-    zc::Vector<Operand> noArguments;
-    auto callTerminator =
-        Terminator::callFunction(/*calleeIndex=*/2, middleShape.destinationOrdinal,
-                                 zc::mv(noArguments), ZC_REQUIRE_NONNULL(linkContId));
+    auto callTerminator = Terminator::callFunction(
+        /*calleeIndex=*/2, middleShape.destinationOrdinal, zc::mv(middleShape.forwardedArguments),
+        ZC_REQUIRE_NONNULL(linkContId));
     if (callTerminator == zc::none) { return zc::none; }
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(linkEntryId), zc::mv(middleStatements),
                           ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(linkContId),
                           zc::mv(middleShape.continuationStatements),
                           Terminator::returnLocal(middleShape.resultOrdinal)));
-    zc::Vector<Local> noParameters;
     functions.add(Function(middle.owner, zc::heapString("zom.chain_middle"), leafCarrierValue,
-                           zc::mv(noParameters), zc::mv(middleShape.linkLocals), zc::mv(blocks)));
+                           zc::mv(middleShape.parameters), zc::mv(middleShape.linkLocals),
+                           zc::mv(blocks)));
   }
 
-  // Function 2: the leaf, a single block returning its scalar constant.
+  // Function 2: the leaf, a single block returning its scalar constant or its
+  // own parameter.
   {
     zc::Vector<BasicBlock> blocks;
-    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
-                          Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
-    zc::Vector<Local> noParameters;
+    zc::Vector<Local> leafParameters;
     zc::Vector<Local> noLocals;
+    ZC_IF_SOME(parameterId, leafParameterId) {
+      leafParameters.add(Local(parameterId.ordinal(), leafCarrierValue));
+    }
+    if (leafReturnsParameter) {
+      blocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                     Terminator::returnLocal(ZC_REQUIRE_NONNULL(leafParameterId).ordinal())));
+    } else {
+      blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                            Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
+    }
     functions.add(Function(leaf.owner, zc::heapString("zom.chain_leaf"), leafCarrierValue,
-                           zc::mv(noParameters), zc::mv(noLocals), zc::mv(blocks)));
+                           zc::mv(leafParameters), zc::mv(noLocals), zc::mv(blocks)));
   }
 
   return Module(zc::mv(functions));

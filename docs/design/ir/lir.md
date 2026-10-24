@@ -87,7 +87,10 @@ a constant lowers with one or two parameters, so `fn add(a, b) { return a + b; }
 called from `entry` reaches native code. A same-module call chain of three
 functions - `entry` calls `middle`, `middle` calls `leaf`, and the leaf returns a
 scalar constant - lowers as one three-function module, the chained counterpart
-of the slice whose third function is never called. A float constant
+of the slice whose third function is never called. A chain may also carry
+arguments: each link forwards a scalar constant or one of its own leading
+parameters, and the innermost function returns its own parameter instead of a
+constant. A float constant
 return (`ReturnFloat`) covers the F32 and F64 scalar literal-return shapes,
 including the folded one-local form; the
 canonical constant width must match the carrier format (Bits32 <-> Binary32,
