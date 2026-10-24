@@ -5207,6 +5207,24 @@ ZC_TEST("HIR pipeline folds an unannotated literal binary binding") {
   ZC_EXPECT(literal.value.integerValue() != zc::none);
 }
 
+ZC_TEST("HIR pipeline folds a literal unary binding and return") {
+  // An integer unary over a literal has no reference to anchor the operand
+  // type, so the body checker folds it to an integer literal fact. Both the
+  // binding and the return-position spelling lower to that constant.
+  HirPipelineFixture fixture("fn fold() -> i32 { let negated = -1; return negated; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.expressions().size() == 1);
+  ZC_EXPECT(module.primitiveBinaryOperations().size() == 0);
+  const auto& local = module.locals()[0];
+  const auto& literal = module.expressions()[0];
+  ZC_EXPECT(local.initializer == literal.node);
+  ZC_EXPECT(literal.value.integerValue() != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(literal.value.integerValue()).sign ==
+            checker::signature::IntegerSign::Negative);
+}
+
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {
   HirPipelineFixture fixture(
       "enum Result { Ok(i32), Err(i32) }\n"

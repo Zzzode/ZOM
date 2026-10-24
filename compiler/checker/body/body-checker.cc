@@ -65,6 +65,7 @@ enum class BodyProductionKind : uint8_t {
   TupleLiteral = 0x29,
   ArrayElementWrite = 0x2a,
   LiteralArithmeticFold = 0x2b,
+  LiteralUnaryFold = 0x2c,
   Unsupported = 0x17
 };
 
@@ -3427,6 +3428,30 @@ bool isLiteralArithmeticFoldSite(const ast::Tree& tree, ast::NodeId node) {
          tree.node(right).kind == ast::SyntaxKind::IntLiteral;
 }
 
+// Whether a unary node folds to a constant because its operand is an integer
+// literal and the operator is one of the three integer unary operations. Such a
+// node has no reference operand to anchor the operand type, so the
+// primitive-unary rail cannot resolve it; the fold computes the constant
+// instead.
+bool isLiteralUnaryFoldSite(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::UnaryExpression) {
+    return false;
+  }
+  const auto& unary = tree.node(node);
+  auto operation = OperatorKind::fromUnary(
+      static_cast<ast::UnaryOperatorKind>(unary.payload.words[ast::kUnaryExpressionOpWord]));
+  if (operation == zc::none) return false;
+  const auto& variant = ZC_ASSERT_NONNULL(operation).variant();
+  if (!variant.is<PrimitiveOperation>()) return false;
+  const auto primitive = variant.get<PrimitiveOperation>();
+  if (primitive != PrimitiveOperation::Neg && primitive != PrimitiveOperation::UnaryPlus &&
+      primitive != PrimitiveOperation::BitNot) {
+    return false;
+  }
+  const ast::NodeId operand(unary.payload.words[ast::kUnaryExpressionOperandWord]);
+  return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IntLiteral;
+}
+
 // Whether a cast node is a float-literal-to-integer cast fold candidate: the
 // inner expression is a float literal. The target type is validated
 // semantically by the production classifier; this predicate is shared with the
@@ -3678,6 +3703,92 @@ zc::Maybe<signature::CanonicalInteger> floatToIntMagnitude(double value,
   const uint64_t magnitude = static_cast<uint64_t>(truncated);
   const uint64_t clamped = magnitude > maxMagnitude ? maxMagnitude : magnitude;
   return signature::CanonicalInteger{signature::IntegerSign::NonNegative, magnitudeBytes(clamped)};
+}
+
+// Folds one primitive unary operator over one integer-literal operand. The
+// operand type decides the width and signedness bound; the result is the
+// canonical signed value, or none when the operation has no defined constant at
+// this slice (an unsigned kind cannot hold a negation) or the magnitude does not
+// fit the operand kind.
+zc::Maybe<signature::CanonicalInteger> foldIntegerUnary(checker::PrimitiveOperation operation,
+                                                        const signature::CanonicalInteger& operand,
+                                                        type::semantic::PrimitiveKind kind) {
+  using type::semantic::PrimitiveKind;
+  if (operand.magnitude.size() > 8) return zc::none;
+  uint64_t magnitude = 0;
+  for (size_t index = 0; index < operand.magnitude.size(); ++index) {
+    magnitude = (magnitude << 8) | operand.magnitude[index];
+  }
+  const bool negative = operand.sign == signature::IntegerSign::Negative;
+  bool signedKind = true;
+  uint64_t maxMagnitude = 0;
+  switch (kind) {
+    case PrimitiveKind::I8:
+      maxMagnitude = 128ull;
+      break;
+    case PrimitiveKind::I16:
+      maxMagnitude = 32768ull;
+      break;
+    case PrimitiveKind::I32:
+      maxMagnitude = 2147483648ull;
+      break;
+    case PrimitiveKind::I64:
+    case PrimitiveKind::Isize:
+      maxMagnitude = 9223372036854775808ull;
+      break;
+    case PrimitiveKind::U8:
+      maxMagnitude = 255ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U16:
+      maxMagnitude = 65535ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U32:
+      maxMagnitude = 4294967295ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U64:
+    case PrimitiveKind::Usize:
+      maxMagnitude = 18446744073709551615ull;
+      signedKind = false;
+      break;
+    default:
+      return zc::none;
+  }
+  switch (operation) {
+    case checker::PrimitiveOperation::Neg:
+      // Negating the minimum magnitude is representable; an unsigned kind has no
+      // negative value.
+      if (!signedKind || magnitude > maxMagnitude) return zc::none;
+      if (magnitude == 0) {
+        return signature::CanonicalInteger{signature::IntegerSign::NonNegative, magnitudeBytes(0)};
+      }
+      return signature::CanonicalInteger{
+          negative ? signature::IntegerSign::NonNegative : signature::IntegerSign::Negative,
+          magnitudeBytes(magnitude)};
+    case checker::PrimitiveOperation::UnaryPlus:
+      if (magnitude > maxMagnitude) return zc::none;
+      return signature::CanonicalInteger{operand.sign, magnitudeBytes(magnitude)};
+    case checker::PrimitiveOperation::BitNot: {
+      if (magnitude > maxMagnitude || !signedKind) return zc::none;
+      // `~v` equals `-v - 1` in two's complement. For a non-negative operand
+      // that is negative with magnitude `|v| + 1`; for a negative operand it is
+      // non-negative with magnitude `|v| - 1`.
+      if (negative) {
+        // A canonical negative value always has a non-zero magnitude, but guard
+        // the subtraction so a malformed sign/magnitude pair cannot underflow.
+        if (magnitude == 0) return zc::none;
+        return signature::CanonicalInteger{signature::IntegerSign::NonNegative,
+                                           magnitudeBytes(magnitude - 1)};
+      }
+      if (magnitude + 1 > maxMagnitude) return zc::none;
+      return signature::CanonicalInteger{signature::IntegerSign::Negative,
+                                         magnitudeBytes(magnitude + 1)};
+    }
+    default:
+      return zc::none;
+  }
 }
 
 }  // namespace
@@ -7942,6 +8053,9 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
               !isAnnotatedOwnerLocalInitializer(boundModule, node)))) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
         } else if (syntax.kind == ast::SyntaxKind::UnaryExpression &&
+                   isLiteralUnaryFoldSite(tree, node)) {
+          addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
+        } else if (syntax.kind == ast::SyntaxKind::UnaryExpression &&
                    static_cast<ast::UnaryOperatorKind>(
                        syntax.payload.words[ast::kUnaryExpressionOpWord]) ==
                        ast::UnaryOperatorKind::Deref) {
@@ -8224,7 +8338,11 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                   tree.node(operand).kind == ast::SyntaxKind::IdentExpr &&
                   (resolvedCallableParameter(boundModule.bindings(), operand) != zc::none ||
                    resolvedOwnerLocal(boundModule.bindings(), operand) != zc::none);
-              if (operandIsReference) { production = BodyProductionKind::PrimitiveUnaryOperation; }
+              if (operandIsReference) {
+                production = BodyProductionKind::PrimitiveUnaryOperation;
+              } else if (isLiteralUnaryFoldSite(tree, node)) {
+                production = BodyProductionKind::LiteralUnaryFold;
+              }
             }
           }
           break;
@@ -11585,6 +11703,63 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 site.node,
                 signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(magnitude))),
                 target, site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::LiteralUnaryFold) {
+        // A unary operation over one integer literal (`-1`, `+42`, `~5`) folds
+        // to the constant at compile time. The classification precondition
+        // guarantees an integer-literal operand and an integer unary operator,
+        // so the result type is the operand's own type. The folded value is
+        // emitted as an integer literal fact so the HIR builder lowers the unary
+        // to a scalar constant.
+        const auto& tree = input.boundModule.tree();
+        const auto& unaryNode = tree.node(site.node);
+        const ast::NodeId operand(unaryNode.payload.words[ast::kUnaryExpressionOperandWord]);
+        if (!tree.contains(operand)) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto operandValue = scalar_literal::integerLiteralNodeValue(tree, operand);
+        zc::Maybe<identity::SemanticTypeId> operandType;
+        for (const auto& entry : nodeTypes) {
+          if (entry.key == operand) operandType = entry.value;
+        }
+        if (operandValue == zc::none || operandType == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto operandKind =
+            integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType));
+        auto unaryOperation = OperatorKind::fromUnary(static_cast<ast::UnaryOperatorKind>(
+            unaryNode.payload.words[ast::kUnaryExpressionOpWord]));
+        if (operandKind == zc::none || unaryOperation == zc::none ||
+            !ZC_ASSERT_NONNULL(unaryOperation).variant().is<PrimitiveOperation>()) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto folded =
+            foldIntegerUnary(ZC_ASSERT_NONNULL(unaryOperation).variant().get<PrimitiveOperation>(),
+                             ZC_ASSERT_NONNULL(operandValue), ZC_ASSERT_NONNULL(operandKind));
+        if (folded == zc::none) {
+          // An operation the fold refuses (an unsigned negation) is not a
+          // constant this slice can emit. It stays a capability drain rather
+          // than being folded to a wrong value.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = ZC_ASSERT_NONNULL(operandType);
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{
+                site.node,
+                signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(folded))),
+                ZC_ASSERT_NONNULL(operandType), site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::LiteralArithmeticFold) {
         // A binary over two integer literals (`40 + 2`) folds to the constant

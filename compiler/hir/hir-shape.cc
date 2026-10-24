@@ -1209,27 +1209,36 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         if (!isPrimitiveUnary) return zc::none;
         const ast::NodeId unaryOperandNode(
             tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
-        if (!tree.contains(unaryOperandNode) ||
-            tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
-          return zc::none;
-        }
-        SequentialBinaryOperand classified{};
-        classified.node = unaryOperandNode;
-        classified.kind = SequentialBinaryOperandKind::ParameterReference;
-        for (size_t earlier = 0; earlier < index; ++earlier) {
-          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
-            classified.kind = SequentialBinaryOperandKind::LocalReference;
-            classified.referencedLocal = earlier;
-            break;
+        if (tree.contains(unaryOperandNode) &&
+            tree.node(unaryOperandNode).kind == ast::SyntaxKind::IntLiteral) {
+          // An integer-literal operand has no reference to anchor the operand
+          // type, so the body checker folds the unary to an integer literal
+          // fact. The binding lowers to that scalar constant.
+          kind = SequentialInitializerKind::FoldedLiteralUnary;
+        } else {
+          if (!tree.contains(unaryOperandNode) ||
+              tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
+            return zc::none;
           }
+          SequentialBinaryOperand classified{};
+          classified.node = unaryOperandNode;
+          classified.kind = SequentialBinaryOperandKind::ParameterReference;
+          for (size_t earlier = 0; earlier < index; ++earlier) {
+            if (matchesLocalReference(tree, shape.bindings[earlier].pattern, unaryOperandNode)) {
+              classified.kind = SequentialBinaryOperandKind::LocalReference;
+              classified.referencedLocal = earlier;
+              break;
+            }
+          }
+          auto operation = checker::OperatorKind::fromUnary(unaryOp);
+          if (operation == zc::none) return zc::none;
+          if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
+            return zc::none;
+          kind = SequentialInitializerKind::PrimitiveUnary;
+          unaryOperation =
+              ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
+          unaryOperand = zc::mv(classified);
         }
-        auto operation = checker::OperatorKind::fromUnary(unaryOp);
-        if (operation == zc::none) return zc::none;
-        if (!ZC_ASSERT_NONNULL(operation).variant().is<checker::PrimitiveOperation>())
-          return zc::none;
-        kind = SequentialInitializerKind::PrimitiveUnary;
-        unaryOperation = ZC_ASSERT_NONNULL(operation).variant().get<checker::PrimitiveOperation>();
-        unaryOperand = zc::mv(classified);
       }
     } else if (tree.node(initializer).kind == ast::SyntaxKind::PostfixExpression) {
       const auto postfixOp = static_cast<ast::PostfixOperatorKind>(
@@ -3638,14 +3647,26 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         if (tree.contains(operand)) {
           const bool operandIdent = tree.node(operand).kind == ast::SyntaxKind::IdentExpr;
           const bool operandLiteral = isScalarLiteral(tree.node(operand).kind);
-          if (operandIdent || operandLiteral) {
+          if (operandIdent) {
             FunctionReturnShape shape{};
             shape.body = body;
             shape.returnStatement = returnNode;
             shape.value = value;
             shape.returnsUnary = true;
             shape.unaryOperand = operand;
-            shape.unaryOperandIsLiteral = operandLiteral;
+            shape.unsafeBlock = zc::mv(unsafeBlock);
+            return shape;
+          }
+          if (operandLiteral && tree.node(operand).kind == ast::SyntaxKind::IntLiteral) {
+            // An integer-literal operand has no reference to anchor the operand
+            // type, so the body checker folds the operation to a literal fact on
+            // the unary node. The builder lowers the return to that constant.
+            // Every other literal kind stays unclaimed and drains.
+            FunctionReturnShape shape{};
+            shape.body = body;
+            shape.returnStatement = returnNode;
+            shape.value = value;
+            shape.returnsFoldedLiteralUnary = true;
             shape.unsafeBlock = zc::mv(unsafeBlock);
             return shape;
           }
@@ -3905,6 +3926,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
               shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat ||
               shape.bindings[0].initializerKind ==
                   SequentialInitializerKind::FoldedLiteralArithmetic ||
+              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedLiteralUnary ||
               isComparisonReturnSyntax(tree, shape.returnValue)));
       }
       if (routeToSequential) {

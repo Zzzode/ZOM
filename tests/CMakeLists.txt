@@ -310,6 +310,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/unannotated-literal-fold-consumer/Zom.toml::unannotated_literal_fold_consumer::unannotated_literal_fold_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/negative-literal-fold-consumer/Zom.toml::negative_literal_fold_consumer::negative_literal_fold_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-negative-consumer/Zom.toml::return_folded_negative_consumer::return_folded_negative_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-consumer/Zom.toml::mut_diamond_overwrite_consumer::mut_diamond_overwrite_consumer"
@@ -427,8 +429,6 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-match-nonexhaustive-consumer/Zom.toml::enum_match_nonexhaustive_consumer::enum_match_nonexhaustive_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/bool-match-nonexhaustive-consumer/Zom.toml::bool_match_nonexhaustive_consumer::bool_match_nonexhaustive_consumer"
-      --reject-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-unary-literal-consumer/Zom.toml::reject_unary_literal_consumer::reject_unary_literal_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-match-pattern-consumer/Zom.toml::reject_match_pattern_consumer::reject_match_pattern_consumer"
       --reject-case
@@ -610,6 +610,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-add-consumer/Zom.toml::return_folded_add_consumer::return_folded_add_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/unannotated-literal-fold-consumer/Zom.toml::unannotated_literal_fold_consumer::unannotated_literal_fold_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/negative-literal-fold-consumer/Zom.toml::negative_literal_fold_consumer::negative_literal_fold_consumer::255"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-negative-consumer/Zom.toml::return_folded_negative_consumer::return_folded_negative_consumer::216"
       --run-case

@@ -1074,7 +1074,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                          binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
                          binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
                          binding.initializerKind ==
-                             SequentialInitializerKind::FoldedLiteralArithmetic) {
+                             SequentialInitializerKind::FoldedLiteralArithmetic ||
+                         binding.initializerKind == SequentialInitializerKind::FoldedLiteralUnary) {
                 // A qualified enum variant access lowers to an integer constant
                 // (the variant discriminant), a string-length fold lowers to the
                 // string's byte length, and a string-concat fold lowers to the
@@ -4240,7 +4241,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                      binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
                      binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
                      binding.initializerKind ==
-                         SequentialInitializerKind::FoldedLiteralArithmetic) {
+                         SequentialInitializerKind::FoldedLiteralArithmetic ||
+                     binding.initializerKind == SequentialInitializerKind::FoldedLiteralUnary) {
             // A qualified enum variant access `Enum::Variant` lowers to an
             // integer constant (the variant discriminant), a string-length
             // fold `s.length` lowers to the string's byte length, and a
@@ -7821,7 +7823,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
                  shape.returnsFoldedFloatCast || shape.returnsFoldedLiteralArithmetic ||
-                 shape.returnsArrayIndexFold || shape.returnsLengthFold) {
+                 shape.returnsFoldedLiteralUnary || shape.returnsArrayIndexFold ||
+                 shape.returnsLengthFold) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
         if (literalIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

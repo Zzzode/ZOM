@@ -2276,7 +2276,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             binding.initializerKind == SequentialInitializerKind::EnumVariant ||
             binding.initializerKind == SequentialInitializerKind::FoldedStringLength ||
             binding.initializerKind == SequentialInitializerKind::FoldedStringConcat ||
-            binding.initializerKind == SequentialInitializerKind::FoldedLiteralArithmetic) {
+            binding.initializerKind == SequentialInitializerKind::FoldedLiteralArithmetic ||
+            binding.initializerKind == SequentialInitializerKind::FoldedLiteralUnary) {
           zc::Maybe<const HirScalarLiteralExpression&> literal;
           for (const auto& expression : candidate.impl->expressions) {
             if (expression.node != hirId(initializerNodeOrdinal)) continue;
@@ -17314,7 +17315,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         valueSpanMatches = sameSpan(expression.sourceSpan, value);
       }
       if ((!isScalarLiteral(tree.node(sourceValueNode).kind) && !source.returnsFoldedStringConcat &&
-           !source.returnsFoldedFloatCast && !source.returnsFoldedLiteralArithmetic) ||
+           !source.returnsFoldedFloatCast && !source.returnsFoldedLiteralArithmetic &&
+           !source.returnsFoldedLiteralUnary) ||
           literalIndex == zc::none || expression.type != function.resultType ||
           expression.category != HirValueCategory::Value || !valueSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,

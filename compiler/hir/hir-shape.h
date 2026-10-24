@@ -31,6 +31,11 @@ enum class SequentialInitializerKind : uint8_t {
   EnumVariantConstruction,
   FoldedStringLength,
   FoldedStringConcat,
+  /// A `let x = <op> <int-literal>;` for an integer unary operator. The body
+  /// checker folds the operation to an integer literal fact, so the binding
+  /// lowers to a scalar literal. The reference-operand spelling keeps
+  /// `PrimitiveUnary`.
+  FoldedLiteralUnary,
   /// An unannotated `let x = <int-literal> <op> <int-literal>;`. The body
   /// checker folds the operation to an integer literal fact, so the binding
   /// lowers to a scalar literal. The annotated spelling keeps
@@ -364,6 +369,11 @@ struct FunctionReturnShape final {
   // A `return <int-literal> <op> <int-literal>` whose value the body checker
   // folded to an integer literal fact for the binary node.
   bool returnsFoldedLiteralArithmetic = false;
+  // A single `return <op> <int-literal>;` for an integer unary operator
+  // (`-1`, `+42`, `~5`). The body checker folds the operation to an integer
+  // literal fact for the unary node, so the builder lowers the return to that
+  // scalar constant. The reference-operand spelling keeps `returnsUnary`.
+  bool returnsFoldedLiteralUnary = false;
   // When the body is a single `return <float-literal> as <integer-primitive>;`,
   // the body checker folds the cast to an integer constant at compile time.
   // `shape.value` is the CastExpression node; the builder looks up its checked

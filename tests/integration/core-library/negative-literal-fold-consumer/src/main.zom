@@ -1,0 +1,4 @@
+fn entry() -> i32 {
+  let magnitude = -1;
+  return magnitude;
+}
