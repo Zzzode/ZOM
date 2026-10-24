@@ -430,6 +430,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/bool-match-nonexhaustive-consumer/Zom.toml::bool_match_nonexhaustive_consumer::bool_match_nonexhaustive_consumer"
       --reject-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-literal-conditional-consumer/Zom.toml::reject_literal_conditional_consumer::reject_literal_conditional_consumer"
+      --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-match-pattern-consumer/Zom.toml::reject_match_pattern_consumer::reject_match_pattern_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-number-dot-consumer/Zom.toml::reject_number_dot_consumer::reject_number_dot_consumer"

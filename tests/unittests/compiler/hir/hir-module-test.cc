@@ -5225,6 +5225,23 @@ ZC_TEST("HIR pipeline folds a literal unary binding and return") {
             checker::signature::IntegerSign::Negative);
 }
 
+ZC_TEST("HIR pipeline drains a literal bool conditional as ZOM4099") {
+  // A bare `true` / `false` condition has no carrier: the conditional shape
+  // classifies equality, unary, bool-reference, and call conditions only. It
+  // must drain as the per-definition capability code, never reach the builder's
+  // exactly-one-condition-flag requirement as an invariant.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn pick() -> i32 { if (true) { return 41; } else { return 40; } }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {
   HirPipelineFixture fixture(
       "enum Result { Ok(i32), Err(i32) }\n"

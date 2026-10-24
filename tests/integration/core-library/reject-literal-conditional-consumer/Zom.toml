@@ -1,0 +1,4 @@
+[package]
+name = "reject_literal_conditional_consumer"
+version = "0.1.0"
+edition = "2026"

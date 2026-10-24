@@ -1,0 +1,8 @@
+// Fail-closed fixture: a bare bool literal condition (`if (true)`) has no
+// conditional carrier yet, so the definition drains ZOM4099 instead of
+// reaching the HIR builder's condition-flag requirement as an invariant.
+fn pick() -> i32 {
+  if (true) { return 41; } else { return 40; }
+}
+
+fn entry() -> i32 { return pick(); }

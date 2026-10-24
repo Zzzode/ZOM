@@ -486,6 +486,15 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     }
     shape.conditionIsCall = true;
   }
+  // A condition none of the classifications above recognizes (most commonly a
+  // bare `true` / `false` literal) carries no carrier downstream: the builder
+  // requires exactly one condition flag to be set. Leaving it claimed would
+  // reach that requirement as an invariant failure, so decline here and let the
+  // definition drain as the per-definition capability code instead.
+  if (!shape.conditionIsEquality && !shape.conditionIsUnary && !shape.conditionIsBoolReference &&
+      !shape.conditionIsCall) {
+    return zc::none;
+  }
   return shape;
 }
 
