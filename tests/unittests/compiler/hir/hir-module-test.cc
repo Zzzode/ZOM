@@ -5117,11 +5117,10 @@ ZC_TEST("HIR pipeline keeps the literal operand on the left when written there")
   ZC_EXPECT(!binary.isUnaryDesugar);
 }
 
-ZC_TEST("HIR pipeline drains a return-position comparison over a declared local") {
-  // A relational comparison in return position over a declared local is a
-  // shape the arithmetic carrier does not admit: its LIR operator table has no
-  // relational entry, so admitting it would move the rejection from the
-  // per-definition capability drain to a whole-module lowering rejection.
+ZC_TEST("HIR pipeline drains a return-position comparison over a parameter") {
+  // The trailing-binary rail resolves its operands against the leading `let`
+  // bindings and scalar literals. A parameter operand has no carrier on that
+  // rail, so the definition stays on the per-definition capability drain.
   identity::SemanticContextFactory contextFactory;
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
@@ -5151,6 +5150,44 @@ ZC_TEST("HIR pipeline lowers a two-local return-position binary") {
   ZC_EXPECT(binary.category == HirValueCategory::Value);
   // Both operands are references to the declared locals.
   ZC_REQUIRE(module.localReferences().size() == 2);
+}
+
+ZC_TEST("HIR pipeline lowers a two-local return-position comparison") {
+  // The trailing-binary rail carries the relational operators too, so a
+  // comparison over the declared locals reaches the same binary carrier as the
+  // arithmetic spelling. Its result type is the function's bool result, which
+  // differs from the operand type the two local references carry.
+  HirPipelineFixture fixture(
+      "fn less() -> bool { let a: i32 = 1; let b: i32 = 2; return a < b; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(returnStatement.value == binary.node);
+  ZC_EXPECT(binary.type == function.resultType);
+  ZC_EXPECT(binary.operandType != binary.type);
+  ZC_EXPECT(binary.category == HirValueCategory::Value);
+  ZC_REQUIRE(module.localReferences().size() == 2);
+}
+
+ZC_TEST("HIR pipeline drains a literal-literal trailing binary") {
+  // A trailing binary over two literals has no operand-type anchor in return
+  // position: the body checker folds it to a constant instead of emitting the
+  // call fact the trailing-binary rail resolves. It must stay a capability
+  // drain, never become a construction invariant.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn fold() -> i32 { let a: i32 = 1; return 40 + 2; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {

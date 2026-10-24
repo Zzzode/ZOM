@@ -548,6 +548,23 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
     return Module(zc::mv(functions));
   }
 
+  // A boolean constant has no integer value in the canonical representation,
+  // so it needs its own branch; its carrier is the one-bit integer the LLVM
+  // translator and the translation validator both spell Bit1.
+  auto booleanValue = constant->value.booleanValue();
+  if (booleanValue != zc::none) {
+    auto carrier = boolCarrierFor(function.resultType, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    auto lirConstant = IntegerConstant::from(carrierValue, ZC_ASSERT_NONNULL(booleanValue) ? 1 : 0);
+    if (lirConstant == zc::none) { return zc::none; }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId),
+                          Terminator::returnInteger(ZC_REQUIRE_NONNULL(lirConstant))));
+    zc::Vector<Function> functions;
+    functions.add(Function(function.owner, moduleEntrySymbol(0), carrierValue, zc::mv(blocks)));
+    return Module(zc::mv(functions));
+  }
+
   auto integer = constant->value.integerValue();
   if (integer != zc::none) {
     auto carrier = integerCarrierFor(function.resultType, semanticTypes);

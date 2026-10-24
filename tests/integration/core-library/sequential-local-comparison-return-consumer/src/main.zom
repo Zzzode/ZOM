@@ -1,0 +1,5 @@
+fn entry() -> bool {
+  let bound = 1;
+  let observed = 2;
+  return bound < observed;
+}

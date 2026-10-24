@@ -104,6 +104,24 @@ bool isPrimitiveBinaryOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Whether a single-binding body's trailing value is a relational comparison.
+// The arithmetic spelling over one binding already has its own carrier, so only
+// the comparison form re-routes here; widening the route to every binary would
+// change that carrier's node layout.
+bool isComparisonReturnSyntax(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(static_cast<ast::BinaryOperatorKind>(
+                       tree.node(value).payload.words[ast::kBinaryExprOpWord]))) {
+    const auto& variant = kind.variant();
+    if (variant.is<checker::PrimitiveOperation>()) {
+      return isScalarComparisonOperation(variant.get<checker::PrimitiveOperation>());
+    }
+  }
+  return false;
+}
+
 // Structurally admits a binary whose result type is the operand type — the
 // arithmetic and bitwise families, plus the logical short-circuit pair. The
 // relational comparisons are excluded: their result is bool, and the LIR
@@ -1485,16 +1503,28 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       returnValueKind != ast::SyntaxKind::BinaryExpr) {
     return zc::none;
   }
-  // Only the arithmetic operators ride the trailing-binary rail. A relational
-  // comparison return is claimed earlier by the dedicated comparison-return
-  // shape when the operands name a single local; over several locals it has no
-  // carrier yet, so leave it unclaimed here and let the definition drain as the
-  // per-definition capability code rather than reaching a verifier that can
-  // only fail.
-  if (returnValueKind == ast::SyntaxKind::BinaryExpr &&
-      !isPrimitiveBinaryArithmeticOperator(static_cast<ast::BinaryOperatorKind>(
-          tree.node(returnValue).payload.words[ast::kBinaryExprOpWord]))) {
-    return zc::none;
+  // Only the primitive operator families ride the trailing-binary rail: the
+  // arithmetic, bitwise, and relational operators plus the logical
+  // short-circuit pair. Any other binary spelling stays unclaimed so the
+  // definition drains as the per-definition capability code rather than
+  // reaching a lowering that cannot emit it.
+  if (returnValueKind == ast::SyntaxKind::BinaryExpr) {
+    const auto& returnBinaryNode = tree.node(returnValue);
+    if (!isPrimitiveBinaryOperator(static_cast<ast::BinaryOperatorKind>(
+            returnBinaryNode.payload.words[ast::kBinaryExprOpWord]))) {
+      return zc::none;
+    }
+    // At least one operand must name a value, mirroring the binding-initializer
+    // rule. A literal-vs-literal pair has no operand-type anchor in return
+    // position, so the body checker folds it to a constant instead of emitting
+    // the call fact this rail resolves; leaving it unclaimed keeps it on the
+    // per-definition capability drain.
+    const bool anyReferenceOperand =
+        tree.node(ast::NodeId(returnBinaryNode.payload.words[ast::kBinaryExprLhsWord])).kind ==
+            ast::SyntaxKind::IdentExpr ||
+        tree.node(ast::NodeId(returnBinaryNode.payload.words[ast::kBinaryExprRhsWord])).kind ==
+            ast::SyntaxKind::IdentExpr;
+    if (!anyReferenceOperand) { return zc::none; }
   }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
@@ -3862,7 +3892,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
               shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat));
+              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+              isComparisonReturnSyntax(tree, shape.returnValue)));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};
