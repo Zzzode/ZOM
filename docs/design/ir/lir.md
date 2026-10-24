@@ -81,7 +81,10 @@ terminators, and same-module direct calls of at most two arguments with a
 continuation block. It also emits the error-operator call slice: a caller that
 returns `callee(...)?!` or `callee(...)!!` as its whole result, with at most one
 argument, over a callee that returns either a scalar constant or its own single
-parameter, lowered as a call plus the trap/success diamond. A float constant
+parameter, lowered as a call plus the trap/success diamond. A same-module call
+whose callee performs one scalar arithmetic operation over its own parameters or
+a constant lowers with one or two parameters, so `fn add(a, b) { return a + b; }`
+called from `entry` reaches native code. A float constant
 return (`ReturnFloat`) covers the F32 and F64 scalar literal-return shapes,
 including the folded one-local form; the
 canonical constant width must match the carrier format (Bits32 <-> Binary32,

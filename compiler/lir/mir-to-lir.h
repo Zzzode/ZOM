@@ -547,10 +547,12 @@ public:
   /// The sibling call lowerings all require a callee that returns a constant or
   /// its own parameter. This one admits a callee that performs one scalar
   /// arithmetic operation before returning: a single block of
-  /// `StorageLive(result)`, `Assign(result = <param> <op> <constant>)`, and a
-  /// place-copy `Return` of that result. The caller is the two-block shape the
-  /// single-argument call lowerings already produce: entry `StorageLive` plus
-  /// `Call` with one argument, continuation `Return`.
+  /// `StorageLive(result)`, `Assign(result = <leaf> <op> <leaf>)`, and a
+  /// place-copy `Return` of that result, where a leaf is one of the callee's
+  /// parameters or a scalar constant. The callee may declare one or two
+  /// parameters (`kMaxCallArguments` caps any call). The caller is the two-block
+  /// shape the call lowerings already produce: entry `StorageLive` plus `Call`
+  /// with the matching argument list, continuation `Return`.
   ///
   /// The carrier may be any scalar (integer, bool, or float). Every other
   /// construct — more than one arithmetic statement, a non-leaf operand, an
