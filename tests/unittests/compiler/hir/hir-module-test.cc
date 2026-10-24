@@ -5415,6 +5415,29 @@ ZC_TEST("HIR pipeline lowers a forced-unwrap call return") {
   ZC_EXPECT(module.returns()[1].value == call.node);
 }
 
+ZC_TEST("HIR pipeline lowers a forced-unwrap call return with one argument") {
+  HirPipelineFixture fixture(
+      "enum Probe { Bad(i32) }\n"
+      "fn accept(ok: i32) -> i32 raises Probe { return ok; }\n"
+      "fn entry() -> i32 raises Probe { return accept(41)!!; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 2);
+  ZC_REQUIRE(module.calls().size() == 1);
+  const auto& accept = module.functions()[0];
+  const auto& entry = module.functions()[1];
+  const auto& call = module.calls()[0];
+  ZC_REQUIRE(call.arguments.size() == 1);
+  // The callee declares one parameter, so the direct call carries exactly one
+  // argument; the forced-unwrap trap CFG is retained on the caller.
+  ZC_EXPECT(accept.parameters.size() == 1);
+  ZC_EXPECT(call.callee == accept.definition);
+  ZC_EXPECT(call.arguments[0].value != zc::none);
+  ZC_EXPECT(entry.returnsErrorUnwrapCall);
+  ZC_EXPECT(entry.errorUnwrapTagType != zc::none);
+  ZC_EXPECT(entry.errorUnwrapBoolType != zc::none);
+  ZC_EXPECT(module.returns()[1].value == call.node);
+}
+
 ZC_TEST("HIR pipeline lowers a for-loop accumulator body") {
   HirPipelineFixture fixture(
       "fn entry() -> i32 {\n"

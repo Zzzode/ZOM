@@ -1,0 +1,9 @@
+enum Probe { Bad(i32) }
+
+fn accept(ok: i32) -> i32 raises Probe {
+  return ok;
+}
+
+fn entry() -> i32 raises Probe {
+  return accept(41)!!;
+}

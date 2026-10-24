@@ -175,12 +175,16 @@ with the reason:
   closed with `CheckerMissingRequiredFact`. Regression-guarded by
   compiler-session-test "RejectsLogicalInitializerInSequentialLocalBody"
   (l.1315).
-- **Error operators `?!` / `!!`.** `isAdmittedErrorPostfix` (`:207-222`) admits
-  the postfix at the surface, but they are **spec-blocked**: no error-union
-  value type exists, so a raising call forms no callable shape and
-  `ErrorUnionShapeFact` has zero producers (the empty fact map is emitted at
-  `body-checker.cc:3411` at the current HEAD). Blocked on RFC 0006, not a
-  frontend slice.
+- **Error operators `?!` / `!!` on a general callee.** `isAdmittedErrorPostfix`
+  (`:207-222`) admits the postfix at the surface, and a raising direct call now
+  produces an `ErrorUnionShapeFact` (`body-checker.cc`, the `RaisingCall`
+  origin), so the checker validates both operators against the call's success
+  and residual types. What remains fail-closed is the codegen shape: the LIR
+  slice (`lowerErrorUnwrapCallModule`) admits a callee that either returns a
+  scalar constant or returns its own single parameter, and a caller that spells
+  the operator as the whole return expression with at most one argument. A
+  callee with a body beyond that, a `let`-position operator, or a multi-argument
+  call still drains `ZOM4099`. General error-union lowering is RFC 0006.
 - **`spawn`, `suspend`, `match`, `for`/`for-in`/`do-while`, `break`/`continue`,
   labeled statements, void `return`.** All hard-rejected in `admit`
   (`surface-admission.cc:772-808`) as un-admitted surface syntax; no HIR or MIR

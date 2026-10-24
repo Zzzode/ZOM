@@ -9928,10 +9928,11 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
 zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
-  // Callee: the scalar constant-return shape (no locals, one block returning an
-  // integer constant). Build its single-block ReturnInteger LIR function.
-  if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() != 0 ||
-      callee.blocks.size() != 1) {
+  // Callee: one block returning either a scalar constant (no locals) or its own
+  // single parameter. Both are the same LIR function with an optional parameter
+  // slot, so one entry serves `f()!!` and `f(41)!!`.
+  if (callee.kind != mir::MirFunctionKind::Function || callee.blocks.size() != 1 ||
+      callee.locals.size() > 1) {
     return zc::none;
   }
   auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
@@ -9944,26 +9945,44 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
-  zc::Maybe<IntegerConstant> calleeConstant;
-  ZC_IF_SOME(value, calleeReturn) {
-    if (value.kind() != mir::MirOperandKind::Constant ||
-        value.constantValue().type != callee.resultType) {
+  // The optional parameter slot. Its presence is independent of what the block
+  // returns: a callee may read its parameter or ignore it.
+  zc::Maybe<mir::MirLocalId> calleeParameterId;
+  if (callee.locals.size() == 1) {
+    const auto& calleeParameter = callee.locals[0];
+    if (calleeParameter.kind != mir::MirLocalKind::Parameter ||
+        calleeParameter.type != callee.resultType) {
       return zc::none;
     }
-    const auto integer = value.constantValue().value.integerValue();
-    if (integer == zc::none) { return zc::none; }
-    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
-    if (bits == zc::none) { return zc::none; }
-    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    calleeParameterId = calleeParameter.id;
   }
-  if (calleeConstant == zc::none) { return zc::none; }
+  zc::Maybe<IntegerConstant> calleeConstant;
+  bool calleeReturnsParameter = false;
+  ZC_IF_SOME(value, calleeReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant) {
+      if (value.constantValue().type != callee.resultType) { return zc::none; }
+      const auto integer = value.constantValue().value.integerValue();
+      if (integer == zc::none) { return zc::none; }
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+      if (bits == zc::none) { return zc::none; }
+      calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+      if (calleeConstant == zc::none) { return zc::none; }
+    } else {
+      if (value.place().projections().size() != 0 || calleeParameterId == zc::none ||
+          value.place().local() != ZC_REQUIRE_NONNULL(calleeParameterId)) {
+        return zc::none;
+      }
+      calleeReturnsParameter = true;
+    }
+  }
 
   // Caller: P leading parameter locals, a scalar call-result Temporary, a tag
   // temp (i32, unused in LIR), a bool temp, and a FunctionResult.  The 4-block
   // CFG is entry (Call), test (Compare + CondBranch), trap (Unreachable), and
-  // success (Assign + ReturnLocal).  The callee is a constant return, so the
-  // error-unwrap tag test is trivially true; the LIR compares two constant
-  // true values and the success block copies the scalar call result.
+  // success (Assign + ReturnLocal).  The callee either returns a constant or
+  // its own parameter, so the error-unwrap tag test is trivially true; the LIR
+  // compares two constant true values and the success block copies the scalar
+  // call result.
   if (caller.kind != mir::MirFunctionKind::Function || caller.blocks.size() != 4 ||
       caller.resultType != callee.resultType) {
     return zc::none;
@@ -10014,16 +10033,47 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
     return zc::none;
   }
   const auto& call = entry.terminator.callValue();
-  if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
+  if (call.arguments.size() > 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != test->id || call.unwindTarget != zc::none ||
       !(call.callee == callee.owner)) {
     return zc::none;
   }
+  // The call carries one argument exactly when the callee declares a parameter.
+  if (call.arguments.size() != (calleeParameterId != zc::none ? 1u : 0u)) { return zc::none; }
   if (entry.statements.size() != 1 ||
       entry.statements[0].kind() != mir::MirStatementKind::StorageLive ||
       entry.statements[0].storageLocal() != temporaryLocal.id ||
       call.destination.local() != temporaryLocal.id) {
     return zc::none;
+  }
+
+  // Lower the single argument to a constant operand or a use of a leading
+  // parameter slot, exactly as `lowerCallModuleWithArgument` does.
+  zc::Maybe<Operand> argumentOperand;
+  if (calleeParameterId != zc::none) {
+    const auto& argument = call.arguments[0];
+    bool namesLeadingParameter = false;
+    if (argument.kind() != mir::MirOperandKind::Constant &&
+        argument.place().projections().size() == 0) {
+      const uint32_t ordinal = argument.place().local().ordinal();
+      for (size_t p = 0; p < callerParameterCount; ++p) {
+        // The slot carrier must equal the callee parameter carrier; this slice
+        // has no conversion, so any other type fails closed here rather than
+        // reaching the structural verifier as a carrier mismatch.
+        if (caller.locals[p].id.ordinal() == ordinal &&
+            caller.locals[p].type == callee.resultType) {
+          namesLeadingParameter = true;
+          break;
+        }
+      }
+    }
+    if (argument.kind() == mir::MirOperandKind::Constant) {
+      if (argument.constantValue().type != callee.resultType) { return zc::none; }
+      argumentOperand = lirOperandFor(argument, calleeCarrierValue);
+    } else if (namesLeadingParameter) {
+      argumentOperand = lirOperandFor(argument, calleeCarrierValue);
+    }
+    if (argumentOperand == zc::none) { return zc::none; }
   }
 
   // Test block: StorageLive(tagTemp), Assign(tagTemp = ExtractField(T, 0)),
@@ -10108,8 +10158,8 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
     return zc::none;
   }
 
-  // The comparison is trivially true: the callee is a constant return, so the
-  // error-unwrap tag is always zero (success).  Compare two constant true
+  // The comparison is trivially true: the callee returns a scalar directly, so
+  // the error-unwrap tag is always zero (success).  Compare two constant true
   // values so the CondBranch always selects the success block.
   auto trueConstant = IntegerConstant::from(boolCarrierValue, 1);
   if (trueConstant == zc::none) { return zc::none; }
@@ -10123,9 +10173,11 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
   {
     zc::Vector<BasicBlock> callerBlocks;
     zc::Vector<Statement> entryStatements;
-    zc::Vector<Operand> noArguments;
+    zc::Vector<Operand> argumentOperands;
+    ZC_IF_SOME(operand, argumentOperand) { argumentOperands.add(zc::mv(operand)); }
     auto callTerminator = Terminator::callFunction(
-        /*calleeIndex=*/1, scalarResultOrdinal, zc::mv(noArguments), ZC_REQUIRE_NONNULL(testId));
+        /*calleeIndex=*/1, scalarResultOrdinal, zc::mv(argumentOperands),
+        ZC_REQUIRE_NONNULL(testId));
     if (callTerminator == zc::none) { return zc::none; }
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(entryId), zc::mv(entryStatements),
                                 ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
@@ -10162,15 +10214,27 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
                            zc::mv(callerBlocks)));
   }
 
-  // Function 1: the callee, a single block returning the integer constant.
+  // Function 1: the callee, a single block returning either the integer constant
+  // or its own parameter slot.
   {
     auto calleeEntryId = LirBlockId::fromOrdinal(1);
     if (calleeEntryId == zc::none) { return zc::none; }
     zc::Vector<BasicBlock> calleeBlocks;
-    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
-                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    zc::Vector<Local> calleeParameters;
+    zc::Vector<Local> calleeLocals;
+    ZC_IF_SOME(parameterId, calleeParameterId) {
+      calleeParameters.add(Local(parameterId.ordinal(), calleeCarrierValue));
+    }
+    if (calleeReturnsParameter) {
+      calleeBlocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                     Terminator::returnLocal(ZC_REQUIRE_NONNULL(calleeParameterId).ordinal())));
+    } else {
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                  Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    }
     functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
-                           zc::mv(calleeBlocks)));
+                           zc::mv(calleeParameters), zc::mv(calleeLocals), zc::mv(calleeBlocks)));
   }
 
   return Module(zc::mv(functions));

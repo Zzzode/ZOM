@@ -78,8 +78,12 @@ stored in session state, and has no accessor on `CompilerSession`.
 The lowerer emits integer and float constant returns, admitted aggregate-field
 bodies, conditional and reducible-loop bodies as slot stores plus branch
 terminators, and same-module direct calls of at most two arguments with a
-continuation block. A float constant return (`ReturnFloat`) covers the F32 and
-F64 scalar literal-return shapes, including the folded one-local form; the
+continuation block. It also emits the error-operator call slice: a caller that
+returns `callee(...)?!` or `callee(...)!!` as its whole result, with at most one
+argument, over a callee that returns either a scalar constant or its own single
+parameter, lowered as a call plus the trap/success diamond. A float constant
+return (`ReturnFloat`) covers the F32 and F64 scalar literal-return shapes,
+including the folded one-local form; the
 canonical constant width must match the carrier format (Bits32 <-> Binary32,
 Bits64 <-> Binary64), and a mismatch fails closed at lowering. Float
 arithmetic bodies are not yet emitted by production lowering.

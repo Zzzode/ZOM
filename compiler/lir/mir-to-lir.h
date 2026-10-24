@@ -833,13 +833,17 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
-  /// \brief Lowers a forced-unwrap (`!!`) call module to a two-function LIR module.
+  /// \brief Lowers an error-operator (`?!` / `!!`) call module to a
+  /// two-function LIR module.
   ///
   /// Admits a two-function module: a Function-sourced caller with a 4-block
   /// CFG (entry Call, test ExtractField+Compare+CondBranch, trap Unreachable,
-  /// success ExtractField+Return) and a scalar-constant callee. The caller
-  /// folds to `zom.module_init` when parameter-free. Every other shape
-  /// returns none.
+  /// success ExtractField+Return) and a callee whose single block returns
+  /// either a scalar constant or its own single parameter. The call carries an
+  /// argument exactly when the callee declares that parameter, and the argument
+  /// is a scalar constant or a use of one of the caller's leading parameters.
+  /// The caller folds to `zom.module_init` when parameter-free. Every other
+  /// shape returns none.
   ZC_NODISCARD static zc::Maybe<Module> lowerErrorUnwrapCallModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
