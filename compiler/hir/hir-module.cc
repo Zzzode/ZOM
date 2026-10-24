@@ -3378,6 +3378,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       const bool sourceReturnsBinary =
           source.returnsLocal == zc::none && tree.contains(source.returnValue) &&
           tree.node(source.returnValue).kind == ast::SyntaxKind::BinaryExpr;
+      // A trailing binary over a one-level nested operand reserves two extra
+      // node ids for that operand's inner leaves, exactly as a nested binary
+      // binding initializer does. The unsafe-block boundary (when present) sits
+      // after them.
+      uint32_t returnTrailingExtra = 0;
+      if (sourceReturnsBinary) {
+        const auto& trailingBinaryNode = tree.node(source.returnValue);
+        for (const auto word : {ast::kBinaryExprLhsWord, ast::kBinaryExprRhsWord}) {
+          if (tree.node(ast::NodeId(trailingBinaryNode.payload.words[word])).kind ==
+              ast::SyntaxKind::BinaryExpr) {
+            returnTrailingExtra = 2;
+          }
+        }
+      }
       if (sourceReturnsBinary) {
         zc::Maybe<const HirPrimitiveBinaryExpression&> returnBinary;
         for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
@@ -3395,6 +3409,129 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                       ZC_ASSERT_NONNULL(returnValueSpan)) ||
             ZC_ASSERT_NONNULL(returnBinary).left.ordinal() == 0 ||
             ZC_ASSERT_NONNULL(returnBinary).right.ordinal() == 0) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // Re-derive each operand from syntax: the outer operand nodes are the
+        // two ids after the value node, and a nested operand's inner leaves take
+        // the two ids after those, with the nested binary itself at the operand
+        // node id. This mirrors the binding-initializer layout exactly.
+        const auto& trailingSource = tree.node(source.returnValue);
+        const ast::NodeId trailingLeftNode(trailingSource.payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId trailingRightNode(trailingSource.payload.words[ast::kBinaryExprRhsWord]);
+        const uint32_t trailingLeftOrdinal = returnNodeOrdinal + 2;
+        const uint32_t trailingRightOrdinal = returnNodeOrdinal + 3;
+        const uint32_t trailingLeafOrdinal = returnNodeOrdinal + 4;
+        const auto& verifiedBinary = ZC_ASSERT_NONNULL(returnBinary);
+        auto verifyTrailingLeaf = [&](uint32_t leafOrdinal, ast::NodeId leafNode,
+                                      identity::SemanticTypeId leafType) -> bool {
+          auto leafSpan = bound.parsedModule().spanFor(tree.node(leafNode).range);
+          if (leafSpan == zc::none) return false;
+          if (isScalarLiteral(tree.node(leafNode).kind)) {
+            zc::Maybe<const HirScalarLiteralExpression&> literalValue;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != hirId(leafOrdinal)) continue;
+              if (literalValue != zc::none) return false;
+              literalValue = expression;
+            }
+            auto literalIndex = factIndex(facts.literals(), leafNode);
+            if (literalValue == zc::none || literalIndex == zc::none) return false;
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            const auto& literalExpression = ZC_ASSERT_NONNULL(literalValue);
+            return literalExpression.type == leafType &&
+                   literalExpression.category == HirValueCategory::Value &&
+                   literalFact.type == leafType &&
+                   sameConstant(literalExpression.value, literalFact.literal, module, registries,
+                                semanticTypes) &&
+                   sameSpan(literalExpression.sourceSpan, ZC_ASSERT_NONNULL(leafSpan));
+          }
+          if (tree.node(leafNode).kind != ast::SyntaxKind::IdentExpr) return false;
+          size_t referencedLocal = 0;
+          bool foundLocal = false;
+          for (size_t localIndex = 0; localIndex < source.bindings.size(); ++localIndex) {
+            if (matchesLocalReference(tree, source.bindings[localIndex].pattern, leafNode)) {
+              referencedLocal = localIndex;
+              foundLocal = true;
+              break;
+            }
+          }
+          if (!foundLocal) return false;
+          zc::Maybe<const HirLocalReferenceExpression&> localValue;
+          for (const auto& reference : candidate.impl->localReferences) {
+            if (reference.node != hirId(leafOrdinal)) continue;
+            if (localValue != zc::none) return false;
+            localValue = reference;
+          }
+          if (localValue == zc::none) return false;
+          const auto& referenceValue = ZC_ASSERT_NONNULL(localValue);
+          return referenceValue.local == hirLocalId(static_cast<uint32_t>(referencedLocal + 1)) &&
+                 referenceValue.type == leafType &&
+                 referenceValue.category == HirValueCategory::Place &&
+                 sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(leafSpan));
+        };
+        auto verifyTrailingOperand = [&](uint32_t operandOrdinal, ast::NodeId operandNode) -> bool {
+          auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+          if (operandSpan == zc::none) return false;
+          if (tree.node(operandNode).kind != ast::SyntaxKind::BinaryExpr) {
+            return verifyTrailingLeaf(operandOrdinal, operandNode, verifiedBinary.operandType);
+          }
+          // The nested binary lives at the operand node id and owns the two
+          // shared leaf ids.
+          zc::Maybe<const HirPrimitiveBinaryExpression&> nestedBinary;
+          for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+            if (operation.node != hirId(operandOrdinal)) continue;
+            if (nestedBinary != zc::none) return false;
+            nestedBinary = operation;
+          }
+          auto nestedCallIndex = factIndex(facts.calls(), operandNode);
+          if (nestedBinary == zc::none || nestedCallIndex == zc::none) return false;
+          size_t nestedCallSlot = 0;
+          ZC_IF_SOME(value, nestedCallIndex) { nestedCallSlot = value; }
+          const auto& nestedFact = facts.calls().entries()[nestedCallSlot].value;
+          const auto& nestedCall = nestedFact.invocation;
+          const auto& nestedSelected = nestedCall.selected.variant();
+          if (!nestedSelected.is<checker::checked::PrimitiveCallable>()) return false;
+          const auto nestedOperation =
+              nestedSelected.get<checker::checked::PrimitiveCallable>().operation;
+          const bool nestedComparison = isScalarComparisonOperation(nestedOperation);
+          const bool nestedArithmetic = isScalarArithmeticOperation(nestedOperation);
+          const auto& nestedValue = ZC_ASSERT_NONNULL(nestedBinary);
+          if ((!nestedComparison && !nestedArithmetic) ||
+              nestedValue.left != hirId(trailingLeafOrdinal) ||
+              nestedValue.right != hirId(trailingLeafOrdinal + 1) ||
+              nestedValue.type != verifiedBinary.operandType ||
+              nestedValue.category != HirValueCategory::Value ||
+              nestedValue.operation != nestedOperation ||
+              !sameSpan(nestedValue.sourceSpan, ZC_ASSERT_NONNULL(operandSpan)) ||
+              nestedFact.node != operandNode || nestedCall.calleeType != nestedValue.operandType ||
+              nestedCall.receiver != zc::none || nestedCall.receiverMode != zc::none ||
+              nestedCall.receiverAdjustment != zc::none || nestedCall.arguments.size() != 2 ||
+              nestedCall.arguments[0].sourceType != nestedValue.operandType ||
+              nestedCall.arguments[1].sourceType != nestedValue.operandType ||
+              nestedCall.resultType != verifiedBinary.operandType ||
+              nestedCall.substitutions != zc::none || nestedCall.witnesses != zc::none ||
+              nestedCall.raises != zc::none) {
+            return false;
+          }
+          const ast::NodeId nestedLeftNode(
+              tree.node(operandNode).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId nestedRightNode(
+              tree.node(operandNode).payload.words[ast::kBinaryExprRhsWord]);
+          if (nestedCall.arguments[0].sourceNode != nestedLeftNode ||
+              nestedCall.arguments[1].sourceNode != nestedRightNode) {
+            return false;
+          }
+          return verifyTrailingLeaf(trailingLeafOrdinal, nestedLeftNode, nestedValue.operandType) &&
+                 verifyTrailingLeaf(trailingLeafOrdinal + 1, nestedRightNode,
+                                    nestedValue.operandType);
+        };
+        if (verifiedBinary.left != hirId(trailingLeftOrdinal) ||
+            verifiedBinary.right != hirId(trailingRightOrdinal) ||
+            !verifyTrailingOperand(trailingLeftOrdinal, trailingLeftNode) ||
+            !verifyTrailingOperand(trailingRightOrdinal, trailingRightNode)) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
@@ -3462,7 +3599,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             index + 1);
       }
       if (returnShape.unsafeBlock != zc::none) {
-        const auto expectedUnsafeBlock = hirId(returnNodeOrdinal + 2);
+        const auto expectedUnsafeBlock = hirId(returnNodeOrdinal + 2 + returnTrailingExtra);
         if (function.unsafeBlock != expectedUnsafeBlock) {
           return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                               ir::IrFailureKind::InvalidFact, module, registries,
@@ -3494,9 +3631,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 index + 1);
           }
         }
-        nextFunction += bindingNodeSpan + 5;
+        nextFunction += bindingNodeSpan + 5 + returnTrailingExtra;
       } else {
-        nextFunction += bindingNodeSpan + 4;
+        nextFunction += bindingNodeSpan + 4 + returnTrailingExtra;
       }
       continue;
     }

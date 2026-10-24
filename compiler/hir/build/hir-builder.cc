@@ -5224,12 +5224,114 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
           }
-          // Each operand is a scalar literal or one of the leading bindings.
+          // Each operand is a scalar literal, one of the leading bindings, or a
+          // one-level nested primitive binary over those same leaves. The
+          // nested form mirrors the binding-initializer rail exactly, so the
+          // two positions share one leaf contract.
           auto resolveTrailingLeaf =
               [&](ast::NodeId operandNode) -> zc::Maybe<PendingSequentialBinaryOperand> {
             auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
             if (operandSpan == zc::none) { return zc::none; }
             zc::Maybe<zc::Maybe<identity::CallableParameterKey>> noParameter;
+            if (tree.node(operandNode).kind == ast::SyntaxKind::BinaryExpr) {
+              // A nested one-level binary carries its own checked call fact keyed
+              // on the operand node; it must be a same-typed arithmetic (or a
+              // comparison agreeing with the parent operand slot) over two
+              // literal/binding leaves.
+              auto nestedCallIndex = factIndex(facts.calls(), operandNode);
+              if (nestedCallIndex == zc::none) { return zc::none; }
+              size_t nestedCallSlot = 0;
+              ZC_IF_SOME(index, nestedCallIndex) { nestedCallSlot = index; }
+              const auto& nestedFact = facts.calls().entries()[nestedCallSlot].value;
+              const auto& nestedCall = nestedFact.invocation;
+              const auto& nestedSelected = nestedCall.selected.variant();
+              if (!nestedSelected.is<checker::checked::PrimitiveCallable>()) { return zc::none; }
+              const auto nestedOp =
+                  nestedSelected.get<checker::checked::PrimitiveCallable>().operation;
+              const bool nestedComparison = isScalarComparisonOperation(nestedOp);
+              const bool nestedArithmetic = isScalarArithmeticOperation(nestedOp);
+              if (nestedCall.arguments.size() != 2) { return zc::none; }
+              const auto nestedOperandType = nestedCall.arguments[0].sourceType;
+              const bool nestedSupported =
+                  (nestedArithmetic && nestedOperandType == binaryOperandType) ||
+                  (nestedComparison && binaryOperandType == nestedCall.resultType);
+              const ast::NodeId nestedLeftNode(
+                  tree.node(operandNode).payload.words[ast::kBinaryExprLhsWord]);
+              const ast::NodeId nestedRightNode(
+                  tree.node(operandNode).payload.words[ast::kBinaryExprRhsWord]);
+              if (!nestedSupported || nestedFact.node != operandNode ||
+                  nestedCall.calleeType != nestedOperandType || nestedCall.receiver != zc::none ||
+                  nestedCall.receiverMode != zc::none ||
+                  nestedCall.receiverAdjustment != zc::none ||
+                  nestedCall.arguments[0].sourceNode != nestedLeftNode ||
+                  nestedCall.arguments[0].sourceType != nestedOperandType ||
+                  nestedCall.arguments[1].sourceNode != nestedRightNode ||
+                  nestedCall.arguments[1].sourceType != nestedOperandType ||
+                  nestedCall.resultType != binaryOperandType ||
+                  nestedCall.substitutions != zc::none || nestedCall.witnesses != zc::none ||
+                  nestedCall.raises != zc::none) {
+                return zc::none;
+              }
+              // The inner leaves are literal or leading-binding references; a
+              // further binary nesting stays unclaimed.
+              auto resolveNestedLeaf =
+                  [&](ast::NodeId leafNode) -> zc::Maybe<PendingSequentialBinaryLeafOperand> {
+                auto leafSpan = bound.parsedModule().spanFor(tree.node(leafNode).range);
+                if (leafSpan == zc::none) { return zc::none; }
+                if (isScalarLiteral(tree.node(leafNode).kind)) {
+                  auto leafLiteral = factIndex(facts.literals(), leafNode);
+                  if (leafLiteral == zc::none) { return zc::none; }
+                  size_t leafLiteralSlot = 0;
+                  ZC_IF_SOME(index, leafLiteral) { leafLiteralSlot = index; }
+                  const auto& literalFact = facts.literals().entries()[leafLiteralSlot].value;
+                  if (literalFact.type != nestedOperandType) { return zc::none; }
+                  zc::Maybe<identity::CallableParameterKey> noLeafParameter;
+                  zc::Maybe<checker::checked::CanonicalConstValue> leafLiteralValue =
+                      literalFact.literal.clone();
+                  return PendingSequentialBinaryLeafOperand{SequentialBinaryOperandKind::Literal,
+                                                            nestedOperandType,
+                                                            ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                                            zc::mv(leafLiteralValue),
+                                                            zc::mv(noLeafParameter),
+                                                            0,
+                                                            leafNode};
+                }
+                if (tree.node(leafNode).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+                for (size_t index = 0; index < sequentialShape.bindings.size(); ++index) {
+                  if (!matchesLocalReference(tree, sequentialShape.bindings[index].pattern,
+                                             leafNode)) {
+                    continue;
+                  }
+                  zc::Maybe<checker::checked::CanonicalConstValue> noLeafLiteral;
+                  zc::Maybe<identity::CallableParameterKey> noLeafParameter;
+                  return PendingSequentialBinaryLeafOperand{
+                      SequentialBinaryOperandKind::LocalReference,
+                      nestedOperandType,
+                      ZC_ASSERT_NONNULL(leafSpan).clone(),
+                      zc::mv(noLeafLiteral),
+                      zc::mv(noLeafParameter),
+                      index,
+                      leafNode};
+                }
+                return zc::none;
+              };
+              auto nestedLeft = resolveNestedLeaf(nestedLeftNode);
+              auto nestedRight = resolveNestedLeaf(nestedRightNode);
+              if (nestedLeft == zc::none || nestedRight == zc::none) { return zc::none; }
+              zc::Maybe<checker::PrimitiveOperation> nestedOperation = nestedOp;
+              zc::Maybe<checker::checked::CanonicalConstValue> noNestedLiteral;
+              zc::Maybe<identity::CallableParameterKey> noNestedParameter;
+              return PendingSequentialBinaryOperand{SequentialBinaryOperandKind::NestedBinary,
+                                                    binaryOperandType,
+                                                    ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                    zc::mv(noNestedLiteral),
+                                                    zc::mv(noNestedParameter),
+                                                    0,
+                                                    zc::mv(nestedOperation),
+                                                    zc::mv(nestedLeft),
+                                                    zc::mv(nestedRight),
+                                                    operandNode};
+            }
             if (isScalarLiteral(tree.node(operandNode).kind)) {
               auto literalIndex = factIndex(facts.literals(), operandNode);
               if (literalIndex == zc::none) { return zc::none; }

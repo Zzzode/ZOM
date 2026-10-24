@@ -783,12 +783,56 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringCon
     auto comparison = comparisonOperatorFor(binaryValue.operation);
     if (arithmetic == zc::none && comparison == zc::none) { return zc::none; }
     if (arithmetic != zc::none && binaryValue.type != binaryValue.operandType) { return zc::none; }
-    auto binaryLeft = binaryLeafOperand(hirModule, declaration, binaryValue.left, parameterLocals,
-                                        userLocals.asPtr(), bindingCount, binaryValue.operandType,
-                                        proofs, copyMarker);
-    auto binaryRight = binaryLeafOperand(hirModule, declaration, binaryValue.right, parameterLocals,
-                                         userLocals.asPtr(), bindingCount, binaryValue.operandType,
+    // A one-level nested operand (`return a + b + c;`) evaluates into its own
+    // temporary assigned a same-typed rvalue over its two leaves, and the outer
+    // binary consumes a place-use of that temporary. This is the same shape the
+    // binding-initializer rail emits.
+    auto returnLeaf = [&](hir::HirNodeId operandNode,
+                          identity::SemanticTypeId operandType) -> zc::Maybe<MirOperand> {
+      auto leaf =
+          binaryLeafOperand(hirModule, declaration, operandNode, parameterLocals,
+                            userLocals.asPtr(), bindingCount, operandType, proofs, copyMarker);
+      if (leaf != zc::none) { return leaf; }
+      auto nested = primitiveBinaryFor(hirModule, operandNode);
+      if (nested == zc::none) { return zc::none; }
+      const auto& binary = ZC_ASSERT_NONNULL(nested);
+      if (binary.type != operandType || binary.category != hir::HirValueCategory::Value) {
+        return zc::none;
+      }
+      auto nestedArithmetic = arithmeticOperatorFor(binary.operation);
+      auto nestedComparison = comparisonOperatorFor(binary.operation);
+      if (nestedArithmetic == zc::none && nestedComparison == zc::none) { return zc::none; }
+      auto innerLeft = binaryLeafOperand(hirModule, declaration, binary.left, parameterLocals,
+                                         userLocals.asPtr(), bindingCount, binary.operandType,
                                          proofs, copyMarker);
+      auto innerRight = binaryLeafOperand(hirModule, declaration, binary.right, parameterLocals,
+                                          userLocals.asPtr(), bindingCount, binary.operandType,
+                                          proofs, copyMarker);
+      if (innerLeft == zc::none || innerRight == zc::none) { return zc::none; }
+      zc::Maybe<MirRvalue> nestedRvalue;
+      if (nestedArithmetic != zc::none) {
+        nestedRvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(nestedArithmetic),
+                                             zc::mv(ZC_ASSERT_NONNULL(innerLeft)),
+                                             zc::mv(ZC_ASSERT_NONNULL(innerRight)), binary.type);
+      } else {
+        nestedRvalue = MirRvalue::comparison(ZC_ASSERT_NONNULL(nestedComparison),
+                                             zc::mv(ZC_ASSERT_NONNULL(innerLeft)),
+                                             zc::mv(ZC_ASSERT_NONNULL(innerRight)), binary.type);
+      }
+      const MirLocalId nestedTemp =
+          ctx.declareLocal(MirLocalKind::Temporary, binary.type, scope, binary.sourceSpan.clone());
+      ctx.appendStatement(MirStatement::storageLive(nestedTemp, binary.sourceSpan.clone()));
+      zc::Vector<MirProjection> nestedProjections;
+      ctx.appendStatement(MirStatement::assign(
+          MirPlace(nestedTemp, binary.type, zc::mv(nestedProjections), binary.type),
+          zc::mv(ZC_ASSERT_NONNULL(nestedRvalue)), MirInitializationKind::Initialize,
+          binary.sourceSpan.clone()));
+      zc::Vector<MirProjection> tempProjections;
+      return placeUse(proofs, copyMarker,
+                      MirPlace(nestedTemp, operandType, zc::mv(tempProjections), operandType));
+    };
+    auto binaryLeft = returnLeaf(binaryValue.left, binaryValue.operandType);
+    auto binaryRight = returnLeaf(binaryValue.right, binaryValue.operandType);
     if (binaryLeft == zc::none || binaryRight == zc::none) { return zc::none; }
     const MirLocalId binaryTemp = ctx.declareLocal(MirLocalKind::Temporary, binaryValue.type, scope,
                                                    binaryValue.sourceSpan.clone());

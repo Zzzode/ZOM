@@ -432,13 +432,31 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
   // A trailing binary return allocates its two operand nodes after the value
-  // node, mirroring how a binary binding initializer allocates its operands.
+  // node, mirroring how a binary binding initializer allocates its operands. A
+  // nested operand additionally allocates its two inner leaf nodes in the same
+  // two slots the binding rail reserves, so one window serves both positions.
   zc::Maybe<HirNodeId> returnLeftOperandId;
   zc::Maybe<HirNodeId> returnRightOperandId;
+  zc::Maybe<HirNodeId> returnNestedLeafLeftId;
+  zc::Maybe<HirNodeId> returnNestedLeafRightId;
   ZC_IF_SOME(binary, sequential.returnBinary) {
     ZC_IF_SOME(left, binary.leftOperand) { returnLeftOperandId = ctx.allocNode(left.sourceNode); }
     ZC_IF_SOME(right, binary.rightOperand) {
       returnRightOperandId = ctx.allocNode(right.sourceNode);
+    }
+    // A nested operand's two inner leaf nodes come after both operand ids, in
+    // one shared window — the same order the binding rail allocates.
+    ZC_IF_SOME(left, binary.leftOperand) {
+      if (left.kind == SequentialBinaryOperandKind::NestedBinary) {
+        returnNestedLeafLeftId = ctx.allocNode(ZC_ASSERT_NONNULL(left.nestedLeft).sourceNode);
+        returnNestedLeafRightId = ctx.allocNode(ZC_ASSERT_NONNULL(left.nestedRight).sourceNode);
+      }
+    }
+    ZC_IF_SOME(right, binary.rightOperand) {
+      if (right.kind == SequentialBinaryOperandKind::NestedBinary) {
+        returnNestedLeafLeftId = ctx.allocNode(ZC_ASSERT_NONNULL(right.nestedLeft).sourceNode);
+        returnNestedLeafRightId = ctx.allocNode(ZC_ASSERT_NONNULL(right.nestedRight).sourceNode);
+      }
     }
   }
   zc::Maybe<HirNodeId> unsafeBlockId;
@@ -738,13 +756,42 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     const auto& binary = ZC_ASSERT_NONNULL(sequential.returnBinary);
     HirNodeId leftOperandId;
     HirNodeId rightOperandId;
+    HirNodeId nestedLeafLeftId;
+    HirNodeId nestedLeafRightId;
     ZC_IF_SOME(id, returnLeftOperandId) { leftOperandId = id; }
     ZC_IF_SOME(id, returnRightOperandId) { rightOperandId = id; }
-    auto emitLeaf = [&](HirNodeId nodeId, const PendingSequentialBinaryOperand& operand) {
+    ZC_IF_SOME(id, returnNestedLeafLeftId) { nestedLeafLeftId = id; }
+    ZC_IF_SOME(id, returnNestedLeafRightId) { nestedLeafRightId = id; }
+    auto emitLeaf = [&](HirNodeId nodeId, const PendingSequentialBinaryLeafOperand& leaf) {
+      switch (leaf.kind) {
+        case SequentialBinaryOperandKind::Literal:
+          ZC_IF_SOME(literal, leaf.literal) {
+            ctx.addExpression(HirScalarLiteralExpression{nodeId, leaf.type, literal.clone(),
+                                                         HirValueCategory::Value,
+                                                         leaf.sourceSpan.clone()});
+          }
+          break;
+        case SequentialBinaryOperandKind::ParameterReference:
+          ZC_IF_SOME(parameter, leaf.parameter) {
+            ctx.addParameterReference(
+                HirParameterReferenceExpression{nodeId, parameter.clone(), leaf.type,
+                                                HirValueCategory::Place, leaf.sourceSpan.clone()});
+          }
+          break;
+        case SequentialBinaryOperandKind::LocalReference:
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              nodeId, hirLocalId(static_cast<uint32_t>(leaf.referencedLocal + 1)), leaf.type,
+              HirValueCategory::Place, leaf.sourceSpan.clone()});
+          break;
+        case SequentialBinaryOperandKind::NestedBinary:
+          break;
+      }
+    };
+    auto emitOperand = [&](HirNodeId operandId, const PendingSequentialBinaryOperand& operand) {
       switch (operand.kind) {
         case SequentialBinaryOperandKind::Literal:
           ZC_IF_SOME(literal, operand.literal) {
-            ctx.addExpression(HirScalarLiteralExpression{nodeId, operand.type, literal.clone(),
+            ctx.addExpression(HirScalarLiteralExpression{operandId, operand.type, literal.clone(),
                                                          HirValueCategory::Value,
                                                          operand.sourceSpan.clone()});
           }
@@ -752,21 +799,30 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         case SequentialBinaryOperandKind::ParameterReference:
           ZC_IF_SOME(parameter, operand.parameter) {
             ctx.addParameterReference(HirParameterReferenceExpression{
-                nodeId, parameter.clone(), operand.type, HirValueCategory::Place,
+                operandId, parameter.clone(), operand.type, HirValueCategory::Place,
                 operand.sourceSpan.clone()});
           }
           break;
         case SequentialBinaryOperandKind::LocalReference:
           ctx.addLocalReference(HirLocalReferenceExpression{
-              nodeId, hirLocalId(static_cast<uint32_t>(operand.referencedLocal + 1)), operand.type,
-              HirValueCategory::Place, operand.sourceSpan.clone()});
+              operandId, hirLocalId(static_cast<uint32_t>(operand.referencedLocal + 1)),
+              operand.type, HirValueCategory::Place, operand.sourceSpan.clone()});
           break;
         case SequentialBinaryOperandKind::NestedBinary:
+          // The nested operand owns its own HirPrimitiveBinaryExpression at
+          // operandId over the two inner leaf nodes, mirroring the binding rail.
+          ZC_IF_SOME(leaf, operand.nestedLeft) { emitLeaf(nestedLeafLeftId, leaf); }
+          ZC_IF_SOME(leaf, operand.nestedRight) { emitLeaf(nestedLeafRightId, leaf); }
+          ZC_IF_SOME(operation, operand.nestedOperation) {
+            ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+                operandId, nestedLeafLeftId, nestedLeafRightId, operand.type, operand.type,
+                HirValueCategory::Value, operation, operand.sourceSpan.clone()});
+          }
           break;
       }
     };
-    ZC_IF_SOME(left, binary.leftOperand) { emitLeaf(leftOperandId, left); }
-    ZC_IF_SOME(right, binary.rightOperand) { emitLeaf(rightOperandId, right); }
+    ZC_IF_SOME(left, binary.leftOperand) { emitOperand(leftOperandId, left); }
+    ZC_IF_SOME(right, binary.rightOperand) { emitOperand(rightOperandId, right); }
     ZC_IF_SOME(operation, binary.operation) {
       ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
           returnValueId, leftOperandId, rightOperandId, binary.operandType, binary.type,

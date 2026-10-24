@@ -1,0 +1,6 @@
+fn entry() -> i32 {
+  let a = 20;
+  let b = 11;
+  let c = 11;
+  return a + b + c;
+}

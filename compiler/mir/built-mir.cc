@@ -2466,11 +2466,24 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         if (parameterReferenceFor(hirModule, returnStatement.value) != zc::none) ++valueNodes;
         // A trailing primitive binary over the leading bindings contributes one
         // pooled binary operation (already credited on the left) and one value
-        // node per literal or parameter leaf on the right.
+        // node per literal or parameter leaf on the right. A nested operand
+        // contributes its own op node (one more binaryBinding) and its two leaf
+        // operands, exactly as a nested binding initializer does.
         auto trailingBinary = primitiveBinaryFor(hirModule, returnStatement.value);
         ZC_IF_SOME(binary, trailingBinary) {
           ++binaryBindings;
           for (const auto operand : {binary.left, binary.right}) {
+            auto nested = primitiveBinaryFor(hirModule, operand);
+            ZC_IF_SOME(nestedValue, nested) {
+              ++binaryBindings;
+              for (const auto leaf : {nestedValue.left, nestedValue.right}) {
+                if (expressionFor(hirModule, leaf) != zc::none ||
+                    parameterReferenceFor(hirModule, leaf) != zc::none) {
+                  ++valueNodes;
+                }
+              }
+              continue;
+            }
             if (expressionFor(hirModule, operand) != zc::none ||
                 parameterReferenceFor(hirModule, operand) != zc::none) {
               ++valueNodes;

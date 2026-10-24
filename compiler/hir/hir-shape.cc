@@ -1547,12 +1547,26 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     // position, so the body checker folds it to a constant instead of emitting
     // the call fact this rail resolves; leaving it unclaimed keeps it on the
     // per-definition capability drain.
-    const bool anyReferenceOperand =
-        tree.node(ast::NodeId(returnBinaryNode.payload.words[ast::kBinaryExprLhsWord])).kind ==
-            ast::SyntaxKind::IdentExpr ||
-        tree.node(ast::NodeId(returnBinaryNode.payload.words[ast::kBinaryExprRhsWord])).kind ==
-            ast::SyntaxKind::IdentExpr;
-    if (!anyReferenceOperand) { return zc::none; }
+    const ast::NodeId returnBinaryLeft(returnBinaryNode.payload.words[ast::kBinaryExprLhsWord]);
+    const ast::NodeId returnBinaryRight(returnBinaryNode.payload.words[ast::kBinaryExprRhsWord]);
+    // An operand contributes a type anchor when it is an identifier, or when it
+    // is a one-level nested binary that itself has an identifier leaf.
+    auto namesValue = [&](ast::NodeId operand) {
+      if (tree.node(operand).kind == ast::SyntaxKind::IdentExpr) { return true; }
+      if (tree.node(operand).kind != ast::SyntaxKind::BinaryExpr) { return false; }
+      const auto& nested = tree.node(operand);
+      return tree.node(ast::NodeId(nested.payload.words[ast::kBinaryExprLhsWord])).kind ==
+                 ast::SyntaxKind::IdentExpr ||
+             tree.node(ast::NodeId(nested.payload.words[ast::kBinaryExprRhsWord])).kind ==
+                 ast::SyntaxKind::IdentExpr;
+    };
+    if (!namesValue(returnBinaryLeft) && !namesValue(returnBinaryRight)) { return zc::none; }
+    // At most one operand may be a nested binary: the two inner leaf node ids
+    // are a single shared window, the same bound the binding-initializer rail
+    // applies.
+    const bool leftIsNested = tree.node(returnBinaryLeft).kind == ast::SyntaxKind::BinaryExpr;
+    const bool rightIsNested = tree.node(returnBinaryRight).kind == ast::SyntaxKind::BinaryExpr;
+    if (leftIsNested && rightIsNested) { return zc::none; }
   }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
