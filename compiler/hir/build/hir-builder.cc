@@ -5166,11 +5166,161 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        // The returned value names a parameter or one of the declared locals.
+        // The returned value names a parameter, one of the declared locals, or is
+        // one primitive binary over those bindings and scalar literals.
         zc::Maybe<identity::CallableParameterKey> returnParameter;
+        zc::Maybe<PendingSequentialBinding> returnBinary;
         size_t returnLocal = 0;
         ZC_IF_SOME(index, sequentialShape.returnsLocal) { returnLocal = index; }
-        if (sequentialShape.returnsLocal == zc::none) {
+        const bool returnsPrimitiveBinary =
+            sequentialShape.returnsLocal == zc::none &&
+            tree.contains(sequentialShape.returnValue) &&
+            tree.node(sequentialShape.returnValue).kind == ast::SyntaxKind::BinaryExpr;
+        if (returnsPrimitiveBinary) {
+          // A trailing binary reuses the binding-initializer contract exactly:
+          // one checked scalar call over two leaf operands, each a literal or
+          // one of the leading bindings.
+          const ast::NodeId binaryNode = sequentialShape.returnValue;
+          auto binaryCallIndex = factIndex(facts.calls(), binaryNode);
+          auto binaryTypeIndex = factIndex(facts.nodeTypes(), binaryNode);
+          if (binaryCallIndex == zc::none || binaryTypeIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t binaryCallSlot = 0;
+          size_t binaryTypeSlot = 0;
+          ZC_IF_SOME(index, binaryCallIndex) { binaryCallSlot = index; }
+          ZC_IF_SOME(index, binaryTypeIndex) { binaryTypeSlot = index; }
+          const auto& binaryCallFact = facts.calls().entries()[binaryCallSlot].value;
+          const auto& binaryCall = binaryCallFact.invocation;
+          const auto& binarySelected = binaryCall.selected.variant();
+          const auto binaryNodeType = facts.nodeTypes().entries()[binaryTypeSlot].value;
+          if (!binarySelected.is<checker::checked::PrimitiveCallable>() ||
+              binaryCallFact.node != binaryNode || binaryCall.arguments.size() != 2 ||
+              binaryCall.receiver != zc::none || binaryCall.receiverMode != zc::none ||
+              binaryCall.receiverAdjustment != zc::none || binaryCall.substitutions != zc::none ||
+              binaryCall.witnesses != zc::none || binaryCall.raises != zc::none ||
+              binaryNodeType != sequentialType) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          const auto binaryOperation =
+              binarySelected.get<checker::checked::PrimitiveCallable>().operation;
+          const bool binaryComparison = isScalarComparisonOperation(binaryOperation);
+          const bool binaryArithmetic = isScalarArithmeticOperation(binaryOperation);
+          const auto binaryOperandType = binaryCall.arguments[0].sourceType;
+          if (!(binaryComparison || (binaryArithmetic && sequentialType == binaryOperandType)) ||
+              binaryCall.calleeType != binaryOperandType ||
+              binaryCall.arguments[1].sourceType != binaryOperandType) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          // Each operand is a scalar literal or one of the leading bindings.
+          auto resolveTrailingLeaf =
+              [&](ast::NodeId operandNode) -> zc::Maybe<PendingSequentialBinaryOperand> {
+            auto operandSpan = bound.parsedModule().spanFor(tree.node(operandNode).range);
+            if (operandSpan == zc::none) { return zc::none; }
+            zc::Maybe<zc::Maybe<identity::CallableParameterKey>> noParameter;
+            if (isScalarLiteral(tree.node(operandNode).kind)) {
+              auto literalIndex = factIndex(facts.literals(), operandNode);
+              if (literalIndex == zc::none) { return zc::none; }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.type != binaryOperandType) { return zc::none; }
+              zc::Maybe<checker::PrimitiveOperation> noNestedOperation;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+              return PendingSequentialBinaryOperand{SequentialBinaryOperandKind::Literal,
+                                                    binaryOperandType,
+                                                    ZC_ASSERT_NONNULL(operandSpan).clone(),
+                                                    literalFact.literal.clone(),
+                                                    zc::Maybe<identity::CallableParameterKey>(),
+                                                    0,
+                                                    zc::mv(noNestedOperation),
+                                                    zc::mv(noNestedLeft),
+                                                    zc::mv(noNestedRight),
+                                                    operandNode};
+            }
+            if (tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+            if (localBindingIds.empty()) { return zc::none; }
+            size_t referencedLocal = 0;
+            bool found = false;
+            for (size_t index = 0; index < sequentialShape.bindings.size(); ++index) {
+              if (matchesLocalReference(tree, sequentialShape.bindings[index].pattern,
+                                        operandNode)) {
+                referencedLocal = index;
+                found = true;
+                break;
+              }
+            }
+            if (!found) { return zc::none; }
+            zc::Maybe<checker::PrimitiveOperation> noNestedOperation;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+            return PendingSequentialBinaryOperand{
+                SequentialBinaryOperandKind::LocalReference,
+                binaryOperandType,
+                ZC_ASSERT_NONNULL(operandSpan).clone(),
+                zc::Maybe<checker::checked::CanonicalConstValue>(),
+                zc::Maybe<identity::CallableParameterKey>(),
+                referencedLocal,
+                zc::mv(noNestedOperation),
+                zc::mv(noNestedLeft),
+                zc::mv(noNestedRight),
+                operandNode};
+          };
+          const ast::NodeId binaryLeft(
+              tree.node(binaryNode).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId binaryRight(
+              tree.node(binaryNode).payload.words[ast::kBinaryExprRhsWord]);
+          auto trailingLeft = resolveTrailingLeaf(binaryLeft);
+          auto trailingRight = resolveTrailingLeaf(binaryRight);
+          if (trailingLeft == zc::none || trailingRight == zc::none) {
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                definition.source.clone());
+          }
+          auto trailingSpan = bound.parsedModule().spanFor(tree.node(binaryNode).range);
+          if (trailingSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          returnBinary =
+              PendingSequentialBinding{sequentialType,
+                                       ZC_ASSERT_NONNULL(trailingSpan).clone(),
+                                       ZC_ASSERT_NONNULL(trailingSpan).clone(),
+                                       SequentialInitializerKind::PrimitiveBinary,
+                                       zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                       zc::Maybe<HirNominalAggregateExpression>(),
+                                       zc::Maybe<HirDirectCallExpression>(),
+                                       zc::Maybe<identity::CallableParameterKey>(),
+                                       0,
+                                       binaryOperation,
+                                       binaryOperandType,
+                                       zc::mv(trailingLeft),
+                                       zc::mv(trailingRight),
+                                       /*isUnaryDesugar=*/false,
+                                       zc::Maybe<identity::CallableParameterKey>(),
+                                       /*ternaryConditionIsLocal=*/false,
+                                       /*ternaryConditionLocal=*/0,
+                                       /*ternaryConditionIsLiteral=*/false,
+                                       sequentialType,
+                                       zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                       zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                       zc::Maybe<checker::checked::CanonicalConstValue>(),
+                                       zc::Maybe<identity::SourceSpan>(),
+                                       zc::Maybe<identity::SourceSpan>(),
+                                       zc::Maybe<identity::SourceSpan>(),
+                                       /*isMatchExpr=*/false,
+                                       /*matchHasDefaultArm=*/false,
+                                       /*declaratorNode=*/ast::NodeId(),
+                                       /*initializerNode=*/binaryNode};
+        } else if (sequentialShape.returnsLocal == zc::none) {
           auto parameterHandle =
               resolvedCallableParameter(bound.bindings(), sequentialShape.returnValue);
           if (parameterHandle == zc::none) {
@@ -5202,6 +5352,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                registries, ordinal + 2);
         }
         PendingSequentialLocalReturn sequential{zc::mv(pendingBindings),
+                                                zc::mv(returnBinary),
                                                 sequentialType,
                                                 zc::mv(returnParameter),
                                                 returnLocal,

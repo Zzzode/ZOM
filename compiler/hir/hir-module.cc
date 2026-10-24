@@ -3371,8 +3371,33 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               index + 1);
         }
       }
-      // Verify the returned place: a parameter or one of the declared locals.
-      if (source.returnsLocal != zc::none) {
+      // Verify the returned place: a parameter, one of the declared locals, or
+      // one trailing primitive binary over those bindings and scalar literals.
+      const bool sourceReturnsBinary =
+          source.returnsLocal == zc::none && tree.contains(source.returnValue) &&
+          tree.node(source.returnValue).kind == ast::SyntaxKind::BinaryExpr;
+      if (sourceReturnsBinary) {
+        zc::Maybe<const HirPrimitiveBinaryExpression&> returnBinary;
+        for (const auto& operation : candidate.impl->primitiveBinaryOperations) {
+          if (operation.node != hirId(returnNodeOrdinal + 1)) continue;
+          if (returnBinary != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnBinary = operation;
+        }
+        if (returnBinary == zc::none || ZC_ASSERT_NONNULL(returnBinary).type != sequentialType ||
+            ZC_ASSERT_NONNULL(returnBinary).category != HirValueCategory::Value ||
+            !sameSpan(ZC_ASSERT_NONNULL(returnBinary).sourceSpan,
+                      ZC_ASSERT_NONNULL(returnValueSpan)) ||
+            ZC_ASSERT_NONNULL(returnBinary).left.ordinal() == 0 ||
+            ZC_ASSERT_NONNULL(returnBinary).right.ordinal() == 0) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      } else if (source.returnsLocal != zc::none) {
         size_t returnLocal = 0;
         ZC_IF_SOME(value, source.returnsLocal) { returnLocal = value; }
         zc::Maybe<const HirLocalReferenceExpression&> returnReference;

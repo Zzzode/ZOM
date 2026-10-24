@@ -431,6 +431,16 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
   }
   const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
+  // A trailing binary return allocates its two operand nodes after the value
+  // node, mirroring how a binary binding initializer allocates its operands.
+  zc::Maybe<HirNodeId> returnLeftOperandId;
+  zc::Maybe<HirNodeId> returnRightOperandId;
+  ZC_IF_SOME(binary, sequential.returnBinary) {
+    ZC_IF_SOME(left, binary.leftOperand) { returnLeftOperandId = ctx.allocNode(left.sourceNode); }
+    ZC_IF_SOME(right, binary.rightOperand) {
+      returnRightOperandId = ctx.allocNode(right.sourceNode);
+    }
+  }
   zc::Maybe<HirNodeId> unsafeBlockId;
   if (function.unsafeBlockSpan != zc::none) {
     unsafeBlockId = ctx.allocNode(ast::NodeId());
@@ -722,6 +732,46 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
                                  binding.initializerSpan.clone()});
   }
 
+  if (sequential.returnBinary != zc::none) {
+    const auto& binary = ZC_ASSERT_NONNULL(sequential.returnBinary);
+    HirNodeId leftOperandId;
+    HirNodeId rightOperandId;
+    ZC_IF_SOME(id, returnLeftOperandId) { leftOperandId = id; }
+    ZC_IF_SOME(id, returnRightOperandId) { rightOperandId = id; }
+    auto emitLeaf = [&](HirNodeId nodeId, const PendingSequentialBinaryOperand& operand) {
+      switch (operand.kind) {
+        case SequentialBinaryOperandKind::Literal:
+          ZC_IF_SOME(literal, operand.literal) {
+            ctx.addExpression(HirScalarLiteralExpression{nodeId, operand.type, literal.clone(),
+                                                         HirValueCategory::Value,
+                                                         operand.sourceSpan.clone()});
+          }
+          break;
+        case SequentialBinaryOperandKind::ParameterReference:
+          ZC_IF_SOME(parameter, operand.parameter) {
+            ctx.addParameterReference(HirParameterReferenceExpression{
+                nodeId, parameter.clone(), operand.type, HirValueCategory::Place,
+                operand.sourceSpan.clone()});
+          }
+          break;
+        case SequentialBinaryOperandKind::LocalReference:
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              nodeId, hirLocalId(static_cast<uint32_t>(operand.referencedLocal + 1)), operand.type,
+              HirValueCategory::Place, operand.sourceSpan.clone()});
+          break;
+        case SequentialBinaryOperandKind::NestedBinary:
+          break;
+      }
+    };
+    ZC_IF_SOME(left, binary.leftOperand) { emitLeaf(leftOperandId, left); }
+    ZC_IF_SOME(right, binary.rightOperand) { emitLeaf(rightOperandId, right); }
+    ZC_IF_SOME(operation, binary.operation) {
+      ctx.addPrimitiveBinary(HirPrimitiveBinaryExpression{
+          returnValueId, leftOperandId, rightOperandId, binary.operandType, binary.type,
+          HirValueCategory::Value, operation, sequential.returnValueSpan.clone()});
+    }
+    return;
+  }
   ZC_IF_SOME(parameter, sequential.returnParameter) {
     ctx.addParameterReference(HirParameterReferenceExpression{
         returnValueId, parameter.clone(), sequential.type, HirValueCategory::Place,

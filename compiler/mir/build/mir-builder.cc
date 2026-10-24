@@ -399,8 +399,12 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringCon
   auto returnLocalReference = localReferenceFor(hirModule, returnNode);
   auto returnParameterReference = parameterReferenceFor(hirModule, returnNode);
   auto returnFieldProjection = localFieldProjectionFor(hirModule, returnNode);
+  auto returnBinary = primitiveBinaryFor(hirModule, returnNode);
   if (returnFieldProjection != zc::none) return zc::none;
-  if (returnLocalReference == zc::none && returnParameterReference == zc::none) return zc::none;
+  if (returnLocalReference == zc::none && returnParameterReference == zc::none &&
+      returnBinary == zc::none) {
+    return zc::none;
+  }
 
   // Ternary-initialized local: the last binding's initializer is a
   // HirConditionalExpression whose condition is a bool parameter or local
@@ -770,7 +774,47 @@ zc::Maybe<RecursiveFunctionProduct> buildSequentialLocalReturn(const LoweringCon
   }
 
   zc::Maybe<MirOperand> returnOperand;
+  // Binary return over the leading locals: `let x = ..; let y = ..;
+  // return x <op> y;`. The result lands in a fresh temporary and that
+  // temporary is what the Return terminator reads.
+  ZC_IF_SOME(binaryValue, returnBinary) {
+    if (binaryValue.type != declaration.resultType) { return zc::none; }
+    auto arithmetic = arithmeticOperatorFor(binaryValue.operation);
+    auto comparison = comparisonOperatorFor(binaryValue.operation);
+    if (arithmetic == zc::none && comparison == zc::none) { return zc::none; }
+    if (arithmetic != zc::none && binaryValue.type != binaryValue.operandType) { return zc::none; }
+    auto binaryLeft = binaryLeafOperand(hirModule, declaration, binaryValue.left, parameterLocals,
+                                        userLocals.asPtr(), bindingCount, binaryValue.operandType,
+                                        proofs, copyMarker);
+    auto binaryRight = binaryLeafOperand(hirModule, declaration, binaryValue.right, parameterLocals,
+                                         userLocals.asPtr(), bindingCount, binaryValue.operandType,
+                                         proofs, copyMarker);
+    if (binaryLeft == zc::none || binaryRight == zc::none) { return zc::none; }
+    const MirLocalId binaryTemp = ctx.declareLocal(MirLocalKind::Temporary, binaryValue.type, scope,
+                                                   binaryValue.sourceSpan.clone());
+    ctx.appendStatement(MirStatement::storageLive(binaryTemp, binaryValue.sourceSpan.clone()));
+    zc::Maybe<MirRvalue> binaryRvalue;
+    if (arithmetic != zc::none) {
+      binaryRvalue = MirRvalue::arithmetic(
+          ZC_ASSERT_NONNULL(arithmetic), zc::mv(ZC_ASSERT_NONNULL(binaryLeft)),
+          zc::mv(ZC_ASSERT_NONNULL(binaryRight)), binaryValue.type);
+    } else {
+      binaryRvalue = MirRvalue::comparison(
+          ZC_ASSERT_NONNULL(comparison), zc::mv(ZC_ASSERT_NONNULL(binaryLeft)),
+          zc::mv(ZC_ASSERT_NONNULL(binaryRight)), binaryValue.type);
+    }
+    zc::Vector<MirProjection> binaryProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(binaryTemp, binaryValue.type, zc::mv(binaryProjections), binaryValue.type),
+        zc::mv(ZC_ASSERT_NONNULL(binaryRvalue)), MirInitializationKind::Initialize,
+        binaryValue.sourceSpan.clone()));
+    zc::Vector<MirProjection> resultProjections;
+    returnOperand = placeUse(
+        proofs, copyMarker,
+        MirPlace(binaryTemp, binaryValue.type, zc::mv(resultProjections), binaryValue.type));
+  }
   ZC_IF_SOME(reference, returnLocalReference) {
+    if (returnOperand != zc::none) { return zc::none; }
     if (reference.type != declaration.resultType ||
         reference.category != hir::HirValueCategory::Place || reference.local.ordinal() == 0 ||
         reference.local.ordinal() > static_cast<uint32_t>(bindingCount)) {

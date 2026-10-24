@@ -2464,6 +2464,19 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       ZC_IF_SOME(returnStatement, sequentialReturn) {
         if (parameterReferenceFor(hirModule, returnStatement.value) != zc::none) ++valueNodes;
+        // A trailing primitive binary over the leading bindings contributes one
+        // pooled binary operation (already credited on the left) and one value
+        // node per literal or parameter leaf on the right.
+        auto trailingBinary = primitiveBinaryFor(hirModule, returnStatement.value);
+        ZC_IF_SOME(binary, trailingBinary) {
+          ++binaryBindings;
+          for (const auto operand : {binary.left, binary.right}) {
+            if (expressionFor(hirModule, operand) != zc::none ||
+                parameterReferenceFor(hirModule, operand) != zc::none) {
+              ++valueNodes;
+            }
+          }
+        }
       }
       sequentialValueNodeExcess += valueNodes - binaryBindings - 1;
     }

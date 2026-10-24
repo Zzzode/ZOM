@@ -123,6 +123,11 @@ struct PendingSequentialBinding final {
 
 struct PendingSequentialLocalReturn final {
   zc::Vector<PendingSequentialBinding> bindings;
+  /// A trailing primitive binary over the leading bindings and scalar literals.
+  /// When set, the function's return value is this operation's result rather
+  /// than a place. Its operands are resolved against the same leading bindings
+  /// the binding initializers use.
+  zc::Maybe<PendingSequentialBinding> returnBinary;
   identity::SemanticTypeId type;
   // The returned place: a parameter (`returnParameter` populated) or one of the
   // declared locals (`returnLocal` holds its zero-based index).

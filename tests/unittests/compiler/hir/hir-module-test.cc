@@ -5133,21 +5133,24 @@ ZC_TEST("HIR pipeline drains a return-position comparison over a declared local"
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
-ZC_TEST("HIR pipeline drains a two-local return-position binary as ZOM4099") {
-  // `return a + b` over two declared locals is a shape the binary carrier does
-  // not admit: that carrier binds exactly one local and one operand leaf. The
-  // body is well-formed source, so the owning definition must surface the
-  // capability diagnostic rather than an invariant. Binding the sum to a third
-  // local (`let z = a + b; return z;`) is the supported spelling.
-  identity::SemanticContextFactory contextFactory;
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  bool checked = HirPipelineFixture::prepareCheckedSession(
-      session, "fn sum() -> i32 { let a: i32 = 40; let b: i32 = 2; return a + b; }"_zc);
-  ZC_EXPECT(!checked);
-  ZC_EXPECT(session.hasDiagnosticErrors());
-  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+ZC_TEST("HIR pipeline lowers a two-local return-position binary") {
+  // `return a + b` over two declared locals is the trailing-binary form of the
+  // sequential local return: it reuses the binary-binding contract, so the
+  // function's return value is the binary node itself.
+  HirPipelineFixture fixture(
+      "fn sum() -> i32 { let a: i32 = 40; let b: i32 = 2; return a + b; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(returnStatement.value == binary.node);
+  ZC_EXPECT(binary.type == function.resultType);
+  ZC_EXPECT(binary.category == HirValueCategory::Value);
+  // Both operands are references to the declared locals.
+  ZC_REQUIRE(module.localReferences().size() == 2);
 }
 
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {

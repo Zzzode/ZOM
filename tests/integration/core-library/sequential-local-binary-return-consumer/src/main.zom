@@ -1,0 +1,5 @@
+fn entry() -> i32 {
+  let base = 40;
+  let step = 3;
+  return base + step;
+}

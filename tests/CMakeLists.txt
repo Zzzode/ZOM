@@ -300,6 +300,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-same-local-consumer/Zom.toml::return_binary_same_local_consumer::return_binary_same_local_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/sequential-local-binary-return-consumer/Zom.toml::sequential_local_binary_return_consumer::sequential_local_binary_return_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-add-consumer/Zom.toml::return_folded_add_consumer::return_folded_add_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-negative-consumer/Zom.toml::return_folded_negative_consumer::return_folded_negative_consumer"
@@ -588,6 +590,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-commuted-consumer/Zom.toml::return_binary_commuted_consumer::return_binary_commuted_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-binary-same-local-consumer/Zom.toml::return_binary_same_local_consumer::return_binary_same_local_consumer::10"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/sequential-local-binary-return-consumer/Zom.toml::sequential_local_binary_return_consumer::sequential_local_binary_return_consumer::43"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-add-consumer/Zom.toml::return_folded_add_consumer::return_folded_add_consumer::42"
       --run-case

@@ -1477,13 +1477,22 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(returnValue)) return zc::none;
   }
-  if (tree.node(returnValue).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
+  // The trailing value is a bare identifier naming one of the leading bindings,
+  // or one primitive binary over those bindings and scalar literals. The binary
+  // form reuses the same leaf-operand rail as a binary binding initializer.
+  const auto returnValueKind = tree.node(returnValue).kind;
+  if (returnValueKind != ast::SyntaxKind::IdentExpr &&
+      returnValueKind != ast::SyntaxKind::BinaryExpr) {
+    return zc::none;
+  }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
-  for (size_t index = 0; index < shape.bindings.size(); ++index) {
-    if (matchesLocalReference(tree, shape.bindings[index].pattern, returnValue)) {
-      shape.returnsLocal = index;
-      break;
+  if (returnValueKind == ast::SyntaxKind::IdentExpr) {
+    for (size_t index = 0; index < shape.bindings.size(); ++index) {
+      if (matchesLocalReference(tree, shape.bindings[index].pattern, returnValue)) {
+        shape.returnsLocal = index;
+        break;
+      }
     }
   }
   return shape;
