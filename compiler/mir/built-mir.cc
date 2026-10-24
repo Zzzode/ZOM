@@ -2659,6 +2659,16 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
           auto binary = primitiveBinaryFor(hirModule, returnStatement.value);
           ZC_IF_SOME(binaryValue, binary) {
             if (binaryValue.isUnaryDesugar) continue;
+            // A binary whose operands are both field projections of the local is
+            // the multi-field struct shape, which `localFieldBinaryValueNodes`
+            // balances. Applying this correction to it as well double-counts:
+            // the two projections are uncounted leaves here, so this walk sees
+            // one extra left-hand node and would subtract a term the other
+            // correction has already added.
+            if (localFieldProjectionFor(hirModule, binaryValue.left) != zc::none &&
+                localFieldProjectionFor(hirModule, binaryValue.right) != zc::none) {
+              continue;
+            }
             NodeBalance balance;
             ++balance.lhs;
             accumulateNodeBalance(hirModule, ZC_ASSERT_NONNULL(local.initializer), balance, 0);

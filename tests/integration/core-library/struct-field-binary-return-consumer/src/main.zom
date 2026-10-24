@@ -1,0 +1,6 @@
+struct P { x: i32, y: i32 }
+
+fn entry() -> i32 {
+  let p = P { x: 20, y: 21 };
+  return p.y + p.x;
+}

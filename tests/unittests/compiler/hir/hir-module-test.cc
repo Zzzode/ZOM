@@ -5242,6 +5242,51 @@ ZC_TEST("HIR pipeline drains a literal bool conditional as ZOM4099") {
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
+ZC_TEST("HIR pipeline lowers a two-field struct-literal arithmetic return") {
+  // `let p = P { x, y }; return p.x + p.y;` is the multi-field struct shape: the
+  // binary's operands are the two field projections of the aggregate local, not
+  // a local reference and a literal. Its node layout is F function, F+1 body,
+  // F+2 local, F+3 aggregate, F+4 left projection, F+5 right projection,
+  // F+6 binary, F+7 return.
+  HirPipelineFixture fixture(
+      "struct P { x: i32, y: i32 }\n"
+      "fn f() -> i32 { let p = P { x: 20, y: 21 }; return p.x + p.y; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.aggregates().size() == 1);
+  ZC_REQUIRE(module.localFieldProjections().size() == 2);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_REQUIRE(block.statements.size() == 2);
+  ZC_EXPECT(returned.node.ordinal() == 8);
+  // The return takes the binary node directly; the two projections are its
+  // operands and read distinct fields of the same local.
+  ZC_EXPECT(returned.value == binary.node);
+  ZC_EXPECT(binary.left.ordinal() == 5);
+  ZC_EXPECT(binary.right.ordinal() == 6);
+  ZC_EXPECT(binary.type == binary.operandType);
+  const auto& leftProjection = module.localFieldProjections()[0];
+  const auto& rightProjection = module.localFieldProjections()[1];
+  ZC_EXPECT(leftProjection.local == rightProjection.local);
+  ZC_EXPECT(leftProjection.field != rightProjection.field);
+  ZC_EXPECT(leftProjection.type == rightProjection.type);
+  // The whole body reaches Built MIR: publication proves the node-balance
+  // equation accepted this shape. Before the double-count fix this module
+  // failed with an InputRevisionMismatch incident instead.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+}
+
 ZC_TEST("HIR pipeline lowers a return-position nested-operand binary") {
   // `return a + b + c;` over three leading locals is the return-position
   // sibling of the nested binding initializer: the nested operand becomes its
