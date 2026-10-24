@@ -298,6 +298,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-negative-consumer/Zom.toml::return_folded_negative_consumer::return_folded_negative_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-consumer/Zom.toml::mut_diamond_overwrite_consumer::mut_diamond_overwrite_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-local-condition-consumer/Zom.toml::mut_diamond_overwrite_local_condition_consumer::mut_diamond_overwrite_local_condition_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
@@ -564,6 +568,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-add-consumer/Zom.toml::return_folded_add_consumer::return_folded_add_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/return-folded-negative-consumer/Zom.toml::return_folded_negative_consumer::return_folded_negative_consumer::216"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-consumer/Zom.toml::mut_diamond_overwrite_consumer::mut_diamond_overwrite_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-local-condition-consumer/Zom.toml::mut_diamond_overwrite_local_condition_consumer::mut_diamond_overwrite_local_condition_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/string-return-consumer/Zom.toml::string_return_consumer::string_return_consumer::0"
       --run-case

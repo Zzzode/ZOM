@@ -3229,12 +3229,18 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           tree.node(declarator).payload.words[ast::kVariableDeclaratorTyWord]);
       const ast::NodeId initializer(
           tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
-      // The late-init binding must have a type annotation and no initializer.
+      // The binding must be an identifier pattern with a type annotation. It
+      // may be late-initialized (no initializer, so each arm performs the first
+      // write) or already initialized (so each arm overwrites). An unannotated
+      // binding has no closed declared type for the diamond, so it stays
+      // unclaimed.
       if (!tree.contains(pattern) ||
           tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
-          !tree.contains(declaredType) || tree.contains(initializer)) {
+          !tree.contains(declaredType)) {
         return zc::none;
       }
+      const bool overwrites = tree.contains(initializer);
+      if (overwrites && !isScalarLiteral(tree.node(initializer).kind)) { return zc::none; }
       const auto targetName = tree.node(pattern).payload.words[ast::kIdentifierPatternNameWord];
       // Inspect one arm block. An empty block is a missing arm (the target is
       // not initialized on that path, the error-preserving ZOM4093 case). A
@@ -3293,10 +3299,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       shape.returnStatement = returnNode;
       shape.value = value;
       shape.localPattern = pattern;
-      shape.localInitializer = zc::none;
+      shape.localInitializer = overwrites ? zc::Maybe<ast::NodeId>(initializer) : zc::none;
       shape.returnsLocal = true;
       shape.localReference = value;
       shape.isConditionalLocalWrite = true;
+      shape.conditionalLocalWriteOverwrites = overwrites;
       shape.conditionalStatement = middleStmt;
       shape.conditionalCondition = ifCond;
       shape.thenArmMissing = thenArm.missing;

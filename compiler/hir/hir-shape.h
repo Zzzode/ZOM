@@ -410,6 +410,11 @@ struct FunctionReturnShape final {
   // scalar comparison; the two arm assignment nodes and their value nodes are
   // carried separately from the flat `localWrites` list.
   bool isConditionalLocalWrite = false;
+  // The binding this diamond writes already has an initializer, so the arm
+  // writes are Overwrite rather than Initialize. The late-init form (no
+  // initializer) keeps the Initialize contract the definite-assignment rail
+  // verifies.
+  bool conditionalLocalWriteOverwrites = false;
   ast::NodeId conditionalStatement{};
   ast::NodeId conditionalCondition{};
   ast::NodeId thenAssignment{};

@@ -1531,6 +1531,14 @@ private:
         if (lowered == zc::none) {
           lowered = lir::MirToLirLowering::lowerEmptyBodyVoidFunction(fn, types);
         }
+        // General construct-level lowering, appended last so every shape
+        // template above keeps its current lowering byte-for-byte. It serves
+        // the scalar bodies no template enumerates (a leading initialized user
+        // local, a derived bool temporary, a diamond overwriting a local that
+        // already holds a value) and declines everything else.
+        if (lowered == zc::none) {
+          lowered = lir::MirToLirLowering::lowerGeneralScalarFunction(fn, types);
+        }
         return lowered;
       };
       // Standalone multi-function fallback: lower each function independently

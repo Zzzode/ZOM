@@ -165,15 +165,23 @@ void lowerConditionalLocalWriteReturnFunction(PendingFunctionDeclaration&& funct
   const HirValueCategory placeCategory = shape.localReference.category;
   const identity::SourceSpan placeSpan = shape.localReference.sourceSpan.clone();
   const bool isComparisonCondition = shape.conditionComparison != zc::none;
+  const bool initialized = shape.local.initializer != zc::none;
+  // Both arm writes carry the same kind: per-path Initialize when the binding is
+  // late-initialized, per-path Overwrite when the binding already holds a value.
+  const HirLocalWriteKind armWriteKind =
+      initialized ? HirLocalWriteKind::Overwrite : HirLocalWriteKind::Initialize;
 
-  // Fixed-id layout: function, body, local, then per present arm its write and
-  // value nodes (a missing arm allocates nothing and names the zero node id),
-  // then the condition region (one parameter reference, or left operand +
-  // right operand + comparison), the conditional node, return, and return
-  // value. Stride 11/13 minus two per missing arm.
+  // Fixed-id layout: function, body, local, the binding's own initializer leaf
+  // when it is already initialized, then per present arm its write and value
+  // nodes (a missing arm allocates nothing and names the zero node id), then
+  // the condition region (one parameter reference, or left operand + right
+  // operand + comparison), the conditional node, return, and return value.
+  // Stride 12/14 minus two per missing arm.
   const HirNodeId functionId = ctx.allocNode(function.sourceNode);
   const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
   const HirNodeId localId = ctx.allocNode(ast::NodeId());
+  zc::Maybe<HirNodeId> initializerId;
+  if (initialized) { initializerId = ctx.allocNode(ast::NodeId()); }
   HirNodeId thenWriteId{};
   HirNodeId thenValueId{};
   if (shape.thenArmPresent) {
@@ -232,14 +240,14 @@ void lowerConditionalLocalWriteReturnFunction(PendingFunctionDeclaration&& funct
   if (shape.thenArmPresent) {
     emitArmValue(thenValueId, shape.thenWrite, shape.thenValue);
     ctx.addLocalWrite(HirLocalWriteStatement{thenWriteId, hirLocalId(1), zc::none, localType,
-                                             thenValueId, HirLocalWriteKind::Initialize,
+                                             thenValueId, armWriteKind,
                                              ZC_ASSERT_NONNULL(shape.thenWrite).sourceSpan.clone(),
                                              ZC_ASSERT_NONNULL(shape.thenWrite).valueSpan.clone()});
   }
   if (shape.elseArmPresent) {
     emitArmValue(elseValueId, shape.elseWrite, shape.elseValue);
     ctx.addLocalWrite(HirLocalWriteStatement{elseWriteId, hirLocalId(1), zc::none, localType,
-                                             elseValueId, HirLocalWriteKind::Initialize,
+                                             elseValueId, armWriteKind,
                                              ZC_ASSERT_NONNULL(shape.elseWrite).sourceSpan.clone(),
                                              ZC_ASSERT_NONNULL(shape.elseWrite).valueSpan.clone()});
   }
@@ -263,8 +271,20 @@ void lowerConditionalLocalWriteReturnFunction(PendingFunctionDeclaration&& funct
       conditionalId, conditionId, thenWriteId, elseWriteId, localType, HirValueCategory::Place,
       shape.conditionalSpan.clone()});
 
-  ctx.addLocal(
-      HirLocalBinding{localId, hirLocalId(1), localType, zc::none, localSpan.clone(), zc::none});
+  zc::Maybe<HirNodeId> boundInitializer;
+  ZC_IF_SOME(id, initializerId) {
+    boundInitializer = id;
+    ZC_IF_SOME(literalValue, shape.initializerLiteral) {
+      ctx.addExpression(
+          HirScalarLiteralExpression{id, localType, literalValue.clone(), HirValueCategory::Value,
+                                     ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone()});
+    }
+  }
+  ctx.addLocal(HirLocalBinding{
+      localId, hirLocalId(1), localType, zc::mv(boundInitializer), localSpan.clone(),
+      shape.local.initializerSpan != zc::none
+          ? zc::Maybe<identity::SourceSpan>(ZC_ASSERT_NONNULL(shape.local.initializerSpan).clone())
+          : zc::none});
   ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
                                                     placeCategory, placeSpan.clone()});
 }

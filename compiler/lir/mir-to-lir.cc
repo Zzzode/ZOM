@@ -12204,4 +12204,230 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerGeneralScalarFunction(
+    const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes) {
+  // Construct-level translation instead of a shape template. Every shape
+  // template above re-derives one whole-function syntax pattern; this pass maps
+  // each MIR construct to its LIR effect under the same dense block bijection
+  // and 1:1 slot correspondence the translation validator re-checks, so any
+  // body built from these constructs lowers without a new template.
+  //
+  // Admission is decided from the MIR alone: one source scope, dense one-based
+  // block and local ordinals (the bijection is ordinal-based), a scalar
+  // integer-or-bool carrier for the result and every local, and only constructs
+  // with a LIR counterpart below. Everything else declines so the caller keeps
+  // trying its remaining templates and ultimately fails closed.
+  if (function.kind != mir::MirFunctionKind::Function || function.sourceScopes.size() != 1 ||
+      function.blocks.size() == 0 || function.locals.size() == 0) {
+    return zc::none;
+  }
+  for (uint32_t i = 0; i < function.blocks.size(); ++i) {
+    if (function.blocks[i].id.ordinal() != i + 1) { return zc::none; }
+  }
+  size_t parameterCount = 0;
+  while (parameterCount < function.locals.size() &&
+         function.locals[parameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++parameterCount;
+  }
+  for (size_t i = 0; i < function.locals.size(); ++i) {
+    if (function.locals[i].id.ordinal() != i + 1) { return zc::none; }
+    if (i >= parameterCount && function.locals[i].kind == mir::MirLocalKind::Parameter) {
+      return zc::none;
+    }
+  }
+
+  // One scalar carrier per slot, derived the way the translation validator
+  // derives it: integers and booleans resolve through the semantic type store,
+  // so a one-bit comparison temporary sits beside an integer result slot. Any
+  // width that resolves to neither declines.
+  auto carrierOf = [&](identity::SemanticTypeId type) -> zc::Maybe<ValueType> {
+    auto integer = integerCarrierFor(type, semanticTypes);
+    if (integer != zc::none) { return integer; }
+    return boolCarrierFor(type, semanticTypes);
+  };
+  auto resultCarrier = carrierOf(function.resultType);
+  if (resultCarrier == zc::none) { return zc::none; }
+  zc::Vector<ValueType> slotCarriers;
+  for (const auto& local : function.locals) {
+    auto slotCarrier = carrierOf(local.type);
+    if (slotCarrier == zc::none) { return zc::none; }
+    slotCarriers.add(ZC_REQUIRE_NONNULL(slotCarrier));
+  }
+
+  // A place operand must be an unprojected local slot this function declares.
+  auto slotCarrierFor = [&](uint32_t ordinal) -> zc::Maybe<ValueType> {
+    if (ordinal == 0 || ordinal > slotCarriers.size()) { return zc::none; }
+    return slotCarriers[ordinal - 1];
+  };
+  // Lowers one operand at the carrier its own type resolves to. Comparison
+  // operands do not share the one-bit result slot, so the carrier comes from
+  // the operand, never from the destination.
+  auto operandFor = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
+    if (operand.kind() == mir::MirOperandKind::Constant) {
+      auto carrier = carrierOf(operand.constantValue().type);
+      if (carrier == zc::none) { return zc::none; }
+      return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+    }
+    if (operand.place().projections().size() != 0) { return zc::none; }
+    auto carrier = slotCarrierFor(operand.place().local().ordinal());
+    if (carrier == zc::none) { return zc::none; }
+    return lirOperandFor(operand, ZC_REQUIRE_NONNULL(carrier));
+  };
+
+  zc::Vector<BasicBlock> blocks;
+  for (uint32_t b = 0; b < function.blocks.size(); ++b) {
+    const auto& source = function.blocks[b];
+    zc::Vector<Statement> statements;
+    for (const auto& statement : source.statements) {
+      switch (statement.kind()) {
+        case mir::MirStatementKind::StorageLive:
+        case mir::MirStatementKind::StorageDead:
+        case mir::MirStatementKind::UnsafeScopeBoundary:
+          // LIR slots are always-live stack slots and the unsafe boundary is a
+          // frontend marker, so neither carries a LIR effect in this slice.
+          break;
+        case mir::MirStatementKind::Assign: {
+          const auto& assignment = statement.assignmentValue();
+          if (assignment.destination.projections().size() != 0) { return zc::none; }
+          const uint32_t destination = assignment.destination.local().ordinal();
+          if (destination == 0 || destination > function.locals.size()) { return zc::none; }
+          switch (assignment.value.kind()) {
+            case mir::MirRvalueKind::Use: {
+              auto lowered = operandFor(assignment.value.useValue().operand);
+              if (lowered == zc::none) { return zc::none; }
+              statements.add(Statement::assign(destination, zc::mv(ZC_REQUIRE_NONNULL(lowered))));
+              break;
+            }
+            case mir::MirRvalueKind::Arithmetic: {
+              const auto& arithmetic = assignment.value.arithmeticValue();
+              auto op = lirArithmeticOpFor(arithmetic.op);
+              if (op == zc::none) { return zc::none; }
+              auto left = operandFor(arithmetic.left);
+              auto right = operandFor(arithmetic.right);
+              if (left == zc::none || right == zc::none) { return zc::none; }
+              statements.add(Statement::arithmetic(destination, ZC_REQUIRE_NONNULL(op),
+                                                   zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                                   zc::mv(ZC_REQUIRE_NONNULL(right))));
+              break;
+            }
+            case mir::MirRvalueKind::Comparison: {
+              const auto& comparison = assignment.value.comparisonValue();
+              auto left = operandFor(comparison.left);
+              auto right = operandFor(comparison.right);
+              if (left == zc::none || right == zc::none) { return zc::none; }
+              statements.add(Statement::compare(destination, lirComparisonOpFor(comparison.op),
+                                                zc::mv(ZC_REQUIRE_NONNULL(left)),
+                                                zc::mv(ZC_REQUIRE_NONNULL(right))));
+              break;
+            }
+            default:
+              // Nominal aggregates, erasure, error unions, field extraction, and
+              // deinitialization each need their own carrier model.
+              return zc::none;
+          }
+          break;
+        }
+        default:
+          return zc::none;
+      }
+    }
+
+    // Terminators map one-to-one; the block ordinal itself is the bijection.
+    zc::Maybe<Terminator> terminator;
+    const auto blockId = LirBlockId::fromOrdinal(b + 1);
+    if (blockId == zc::none) { return zc::none; }
+    switch (source.terminator.kind()) {
+      case mir::MirTerminatorKind::Return: {
+        const auto& returned = source.terminator.returnValue().value;
+        if (returned == zc::none) { return zc::none; }
+        const auto& operand = ZC_ASSERT_NONNULL(returned);
+        if (operand.kind() == mir::MirOperandKind::Constant) {
+          // A constant return carries its bits in the terminator rather than a
+          // slot, which is the folded mode the validator admits.
+          const auto integer = operand.constantValue().value.integerValue();
+          const auto boolean = operand.constantValue().value.booleanValue();
+          const ValueType& constantCarrier = ZC_REQUIRE_NONNULL(resultCarrier);
+          zc::Maybe<IntegerConstant> constant;
+          if (boolean != zc::none) {
+            if (constantCarrier.kind() != ValueTypeKind::Integer ||
+                constantCarrier.integerWidth() != IntegerBitWidth::Bit1) {
+              return zc::none;
+            }
+            constant = IntegerConstant::from(constantCarrier, ZC_ASSERT_NONNULL(boolean) ? 1 : 0);
+          } else if (integer != zc::none) {
+            auto bits =
+                zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), constantCarrier.integerWidth());
+            if (bits == zc::none) {
+              bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), constantCarrier.integerWidth());
+            }
+            if (bits == zc::none) { return zc::none; }
+            constant = IntegerConstant::from(constantCarrier, ZC_REQUIRE_NONNULL(bits));
+          } else {
+            return zc::none;
+          }
+          if (constant == zc::none) { return zc::none; }
+          terminator = Terminator::returnInteger(ZC_REQUIRE_NONNULL(constant));
+          break;
+        }
+        if (operand.place().projections().size() != 0) { return zc::none; }
+        const uint32_t ordinal = operand.place().local().ordinal();
+        if (ordinal == 0 || ordinal > function.locals.size()) { return zc::none; }
+        terminator = Terminator::returnLocal(ordinal);
+        break;
+      }
+      case mir::MirTerminatorKind::Goto: {
+        auto target = LirBlockId::fromOrdinal(source.terminator.gotoValue().target.ordinal());
+        if (target == zc::none) { return zc::none; }
+        terminator = Terminator::gotoBlock(ZC_REQUIRE_NONNULL(target));
+        break;
+      }
+      case mir::MirTerminatorKind::SwitchInt: {
+        // The two-way boolean diamond: a true arm plus a false default. LIR
+        // models exactly that shape, and the validator reads the arm value to
+        // prove polarity, so anything else stays outside the slice.
+        const auto& switchInt = source.terminator.switchIntValue();
+        if (switchInt.arms.size() != 2) { return zc::none; }
+        if (switchInt.discriminant.kind() == mir::MirOperandKind::Constant ||
+            switchInt.discriminant.place().projections().size() != 0) {
+          return zc::none;
+        }
+        const auto trueValue = switchInt.arms[0].value.booleanValue();
+        if (trueValue == zc::none || !ZC_ASSERT_NONNULL(trueValue)) { return zc::none; }
+        auto trueTarget = LirBlockId::fromOrdinal(switchInt.arms[0].target.ordinal());
+        auto falseTarget = LirBlockId::fromOrdinal(switchInt.defaultTarget.ordinal());
+        if (trueTarget == zc::none || falseTarget == zc::none) { return zc::none; }
+        const uint32_t condition = switchInt.discriminant.place().local().ordinal();
+        if (condition == 0 || condition > function.locals.size()) { return zc::none; }
+        terminator = Terminator::condBranch(condition, ZC_REQUIRE_NONNULL(trueTarget),
+                                            ZC_REQUIRE_NONNULL(falseTarget));
+        break;
+      }
+      default:
+        // Calls, indirect calls, and unreachable stay on their own templates.
+        return zc::none;
+    }
+    blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(blockId), zc::mv(statements),
+                          zc::mv(ZC_REQUIRE_NONNULL(terminator))));
+  }
+
+  zc::Vector<Local> parameters;
+  for (size_t i = 0; i < parameterCount; ++i) {
+    parameters.add(Local(function.locals[i].id.ordinal(), slotCarriers[i]));
+  }
+  zc::Vector<Local> locals;
+  for (size_t i = parameterCount; i < function.locals.size(); ++i) {
+    locals.add(Local(function.locals[i].id.ordinal(), slotCarriers[i]));
+  }
+
+  // A parameter-free body folds to the reserved no-argument `zom.module_init`
+  // entry the runtime `_start` calls, so it runs natively; a parameterized
+  // body keeps the index-independent `zom.general` symbol and stays
+  // object-only, exactly like the overwrite family.
+  zc::String symbol = zc::heapString(parameterCount == 0 ? "zom.module_init" : "zom.general");
+  zc::Vector<Function> functions;
+  functions.add(Function(function.owner, zc::mv(symbol), ZC_REQUIRE_NONNULL(resultCarrier),
+                         zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  return Module(zc::mv(functions));
+}
+
 }  // namespace zomlang::compiler::lir

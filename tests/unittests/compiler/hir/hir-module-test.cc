@@ -5693,5 +5693,120 @@ ZC_TEST("HIR pipeline retains external visibility on a public method") {
   ZC_EXPECT(method.visibility.visibleModule() == zc::none);
 }
 
+ZC_TEST("HIR lowers an initialized-mut diamond with per-path Overwrite") {
+  // An already-initialized `mut` binding means both arm writes overwrite a live
+  // value rather than performing the first write, so the conditional carries
+  // Overwrite on both arms and the binding keeps its own initializer leaf.
+  // Fixed-id layout (stride 14): F+0 function, F+1 body, F+2 local, F+3 the
+  // binding's initializer, F+4 then write, F+5 then value, F+6 else write,
+  // F+7 else value, F+8/F+9 comparison leaves, F+10 comparison, F+11
+  // conditional, F+12 return, F+13 return value.
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 { mut s: i32 = 10; if (1 < 2) { s = 41; } else { s = 7; } return s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 2);
+  ZC_REQUIRE(module.conditionalLocalWrites().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // The binding's initializer plus the two arm values and the two comparison
+  // leaves.
+  ZC_REQUIRE(module.expressions().size() == 5);
+  const auto& function = module.functions()[0];
+  const auto& local = module.locals()[0];
+  const auto& conditional = module.conditionalLocalWrites()[0];
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(local.node.ordinal() == 3);
+  ZC_REQUIRE(local.initializer != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(local.initializer).ordinal() == 4);
+  ZC_EXPECT(local.initializerSpan != zc::none);
+  ZC_EXPECT(module.localWrites()[0].node.ordinal() == 5);
+  ZC_EXPECT(module.localWrites()[0].value.ordinal() == 6);
+  ZC_EXPECT(module.localWrites()[1].node.ordinal() == 7);
+  ZC_EXPECT(module.localWrites()[1].value.ordinal() == 8);
+  ZC_EXPECT(conditional.node.ordinal() == 12);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 13);
+  for (const auto& write : module.localWrites()) {
+    ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+    ZC_EXPECT(write.field == zc::none);
+    ZC_EXPECT(write.local == local.local);
+  }
+  ZC_EXPECT(conditional.thenWrite == module.localWrites()[0].node);
+  ZC_EXPECT(conditional.elseWrite == module.localWrites()[1].node);
+
+  // Built MIR: the entry block initializes the user local from the binding's
+  // own literal, then branches; both arm blocks overwrite it.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 4);
+    const auto& entry = mirFunction.blocks[0];
+    // StorageLive(user local), its Initialize from the binding's own literal,
+    // then StorageLive + Assign for the bool condition temporary.
+    ZC_REQUIRE(entry.statements.size() == 4);
+    ZC_REQUIRE(entry.statements[1].kind() == mir::MirStatementKind::Assign);
+    const auto& initialize = entry.statements[1].assignmentValue();
+    ZC_EXPECT(initialize.initialization == mir::MirInitializationKind::Initialize);
+    ZC_REQUIRE(initialize.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(initialize.value.useValue().operand.kind() == mir::MirOperandKind::Constant);
+    ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
+    ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[1].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[1].statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].assignmentValue().initialization ==
+              mir::MirInitializationKind::Overwrite);
+  }
+}
+
+ZC_TEST("HIR lowers an initialized-mut diamond whose condition reads the target local") {
+  // The comparison leaf reads the local being written. That is only sound
+  // because the binding already holds a value when the test runs, so the leaf
+  // lowers to a localReference against the diamond's user local.
+  HirPipelineFixture fixture(
+      "fn entry() -> i32 { mut s: i32 = 10; if (s < 20) { s = 41; } else { s = 7; } return s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.conditionalLocalWrites().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& local = module.locals()[0];
+  const auto& comparison = module.primitiveBinaryOperations()[0];
+  // One local reference is the condition leaf; the other is the returned value.
+  ZC_REQUIRE(module.localReferences().size() == 2);
+  bool conditionLeafIsTargetLocal = false;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node != comparison.left && reference.node != comparison.right) continue;
+    conditionLeafIsTargetLocal = reference.local == local.local;
+  }
+  ZC_EXPECT(conditionLeafIsTargetLocal);
+  for (const auto& write : module.localWrites()) {
+    ZC_EXPECT(write.kind == HirLocalWriteKind::Overwrite);
+  }
+}
+
+ZC_TEST("HIR pipeline drains a diamond whose late-init condition reads the target local") {
+  // In the late-init form the target holds no value when the condition runs, so
+  // reading it is a definite-assignment question this carrier does not model.
+  // The body is well-formed source, so it must drain as the capability code
+  // rather than reach the generic materializer and become an invariant.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session,
+      "fn entry() -> i32 { mut s: i32; if (s < 20) { s = 41; } else { s = 7; } return s; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::hir

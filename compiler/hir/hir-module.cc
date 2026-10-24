@@ -9983,8 +9983,14 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           // Fixed-id layout, cursor-based so a missing arm allocates no nodes.
           const bool thenPresent = !source.thenArmMissing;
           const bool elsePresent = !source.elseArmMissing;
+          const bool overwrites = source.conditionalLocalWriteOverwrites;
           const auto localNode = hirId(expectedFunction + 2);
           uint32_t next = expectedFunction + 3;  // ordinal following the local
+          HirNodeId initializerNode{};
+          if (overwrites) {
+            initializerNode = hirId(next);
+            ++next;
+          }
           HirNodeId thenWriteNode{};
           HirNodeId thenValueNode{};
           if (thenPresent) {
@@ -10061,27 +10067,67 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 ir::IrFailureKind::MissingRequiredFact, module,
                                                 registries, index + 1);
           }
-          // The declared local is the uninitialized user local.
+          // The declared local has no initializer in the late-init form and one
+          // scalar literal initializer in the overwrite form.
           const auto& binding = ZC_ASSERT_NONNULL(localBinding);
-          if (binding.local != hirLocalId(1) || binding.initializer != zc::none ||
+          if (binding.local != hirLocalId(1) ||
+              (overwrites ? binding.initializer != zc::Maybe<HirNodeId>(initializerNode)
+                          : binding.initializer != zc::none) ||
               binding.type != function.resultType ||
               !typeExists(function.resultType, semanticTypes)) {
             return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                 ir::IrFailureKind::InvalidFact, module, registries,
                                                 index + 1);
           }
-          // Present arm writes are per-path Initialize to the same field-less
-          // user local, each naming its own value node. A missing arm must name
-          // the zero node id and carry no write record.
+          if (overwrites) {
+            auto initializerSpan = bound.parsedModule().spanFor(
+                tree.node(ZC_ASSERT_NONNULL(source.localInitializer)).range);
+            zc::Maybe<const HirScalarLiteralExpression&> initializer;
+            if (!findUnique(candidate.impl->expressions, initializerNode, initializer) ||
+                initializer == zc::none || initializerSpan == zc::none ||
+                binding.initializerSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            auto literalIndex =
+                factIndex(facts.literals(), ZC_ASSERT_NONNULL(source.localInitializer));
+            if (literalIndex == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& initializerFact = facts.literals().entries()[literalSlot].value;
+            const auto& initializerValue = ZC_ASSERT_NONNULL(initializer);
+            if (initializerValue.type != function.resultType ||
+                initializerValue.category != HirValueCategory::Value ||
+                initializerFact.type != function.resultType ||
+                !sameConstant(initializerValue.value, initializerFact.literal, module, registries,
+                              semanticTypes) ||
+                !sameSpan(initializerValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan)) ||
+                !sameSpan(ZC_ASSERT_NONNULL(binding.initializerSpan),
+                          ZC_ASSERT_NONNULL(initializerSpan))) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          }
+          // Present arm writes go to the same field-less user local, each naming
+          // its own value node: per-path Initialize when the local is
+          // late-initialized, per-path Overwrite when it already holds a value.
+          // A missing arm must name the zero node id and carry no write record.
+          const auto expectedWriteKind =
+              overwrites ? HirLocalWriteKind::Overwrite : HirLocalWriteKind::Initialize;
           const auto armRecordOk = [&](bool present,
                                        zc::Maybe<const HirLocalWriteStatement&> record,
                                        HirNodeId expectedValue) {
             if (!present) return true;
             if (record == zc::none) return false;
             const auto& r = ZC_ASSERT_NONNULL(record);
-            return r.local == hirLocalId(1) && r.field == zc::none &&
-                   r.kind == HirLocalWriteKind::Initialize && r.type == function.resultType &&
-                   r.value == expectedValue;
+            return r.local == hirLocalId(1) && r.field == zc::none && r.kind == expectedWriteKind &&
+                   r.type == function.resultType && r.value == expectedValue;
           };
           if (!armRecordOk(thenPresent, thenWrite, thenValueNode) ||
               !armRecordOk(elsePresent, elseWrite, elseValueNode)) {
@@ -10260,13 +10306,34 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                   ir::IrFailureKind::InvalidFact, module,
                                                   registries, index + 1);
             }
-            // Each comparison leaf is a literal or a parameter; an identifier
-            // naming the target local is rejected because the local is
-            // uninitialized at the condition.
+            // Each comparison leaf is a literal, a parameter, or the diamond's
+            // own target local. A target-local leaf is only reachable in the
+            // overwrite form, where the binding already holds a value at the
+            // condition; the late-init form would read an uninitialized slot,
+            // and the definite-assignment rail rejects that upstream.
             auto verifyCondLeaf = [&](ast::NodeId leafNode, HirNodeId leafId) {
-              if (resolvedOwnerLocal(bound.bindings(), leafNode) != zc::none) return false;
+              auto leafOwner = resolvedOwnerLocal(bound.bindings(), leafNode);
+              const bool leafIsTargetLocal =
+                  leafOwner != zc::none &&
+                  leafOwner == resolvedOwnerLocal(bound.bindings(), source.value);
+              if (leafOwner != zc::none && !leafIsTargetLocal) return false;
+              if (leafIsTargetLocal && !overwrites) return false;
               auto leafSpan = bound.parsedModule().spanFor(tree.node(leafNode).range);
               if (leafSpan == zc::none) return false;
+              if (leafIsTargetLocal ||
+                  (tree.node(leafNode).kind == ast::SyntaxKind::IdentExpr &&
+                   resolvedCallableParameter(bound.bindings(), leafNode) == zc::none)) {
+                zc::Maybe<const HirLocalReferenceExpression&> localReference;
+                if (!findUnique(candidate.impl->localReferences, leafId, localReference) ||
+                    localReference == zc::none) {
+                  return false;
+                }
+                const auto& localValue = ZC_ASSERT_NONNULL(localReference);
+                return localValue.local == hirLocalId(1) &&
+                       localValue.type == function.resultType &&
+                       localValue.category == HirValueCategory::Place &&
+                       sameSpan(localValue.sourceSpan, ZC_ASSERT_NONNULL(leafSpan));
+              }
               if (isScalarLiteral(tree.node(leafNode).kind)) {
                 zc::Maybe<const HirScalarLiteralExpression&> literal;
                 if (!findUnique(candidate.impl->expressions, leafId, literal) ||

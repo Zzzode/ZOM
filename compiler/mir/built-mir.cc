@@ -2643,6 +2643,24 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
     }
   }
+  // A conditional-local-write diamond whose condition compares a leaf against
+  // the target local (`if (s < 20) { s = 41; }`) spends one left-hand slot on
+  // the comparison but credits only one value node on the right: the literal
+  // operand. A local-reference operand is a localReference, which the shared
+  // equation credits on neither side, so the balance drifts by one per such
+  // operand. Derive the exact difference from the condition subtree instead of
+  // assuming a leaf spelling, so literal, local, and mixed comparisons all
+  // balance.
+  int64_t diamondConditionLocalOperandBalance = 0;
+  for (const auto& conditional : hirModule.conditionalLocalWrites()) {
+    if (primitiveBinaryFor(hirModule, conditional.condition) == zc::none) continue;
+    NodeBalance balance;
+    accumulateNodeBalance(hirModule, conditional.condition, balance, 0);
+    // A comparison carries one operator node and two operand leaves. Every
+    // operand that is not a value node is an uncounted local reference.
+    if (balance.lhs != 1) continue;
+    diamondConditionLocalOperandBalance += balance.rhs - 2;
+  }
   const int64_t lhsChecksum =
       static_cast<int64_t>(hirModule.declarations().size() + hirModule.functions().size() +
                            hirModule.conditionals().size() * 2 +
@@ -2650,7 +2668,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            hirModule.conditionalLocalWrites().size()) +
       sequentialValueNodeExcess + directAggregateCallValueNodes +
       leadingLocalConditionalValueNodeExcess + forLoopAccumulatorCorrection +
-      rawPointerWriteExcess + primitiveBinaryLocalValueNodeBalance;
+      rawPointerWriteExcess + primitiveBinaryLocalValueNodeBalance +
+      diamondConditionLocalOperandBalance;
   const int64_t rhsChecksum =
       static_cast<int64_t>(hirModule.expressions().size() + hirModule.calls().size() +
                            hirModule.aggregates().size() + uninitializedLocalReturnCount +

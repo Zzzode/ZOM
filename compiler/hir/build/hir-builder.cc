@@ -11353,6 +11353,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       // checker fact; the rejection is emitted after the lambda returns because
       // the lambda itself can only yield a PendingFunctionShape.
       bool diamondFactReject = false;
+      // Set inside selectShape when the source is a conditional-local-write
+      // diamond the recognizer claims but this transaction cannot lower (a
+      // condition that reads the written local, a non-scalar arm leaf). The HIR
+      // verifier re-derives the diamond from the AST alone, so falling through
+      // to the generic materializer would emit a different node set and become
+      // an internal error. Drain it as the function-body capability code.
+      bool diamondLoweringUnsupported = false;
+      zc::Maybe<identity::SourceSpan> diamondLoweringSpan;
       auto selectShape = [&]() -> PendingFunctionShape {
         // Shared carrier-clear predicates, mirroring the guard chain.
         const bool callFieldsClear =
@@ -11416,14 +11424,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     comparisonLoopBodyReturn, forLoopReturn, unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues);
         const bool singleInitializedLocal =
-            local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
-            localReference != zc::none &&
+            !shape.isConditionalLocalWrite && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none && localReference != zc::none &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
                     localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
                     unsafeBlockSpan) &&
             allEmpty(localWrites, localWriteValues);
         const bool arrayIndexFoldLocal =
-            local != zc::none && ZC_ASSERT_NONNULL(local).initializer != zc::none &&
+            !shape.isConditionalLocalWrite && local != zc::none &&
+            ZC_ASSERT_NONNULL(local).initializer != zc::none &&
             (returnsArrayIndexFold || returnsLengthFold) &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
                     localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
@@ -11545,17 +11554,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 zc::mv(ZC_ASSERT_NONNULL(localReference))};
         }
         // Conditional-local-write definite-assignment diamond:
-        // `let v: T; if (c) { v = a; } else { v = b; } return v;`. The binding
-        // is initializer-less and the flat write list is empty (the arm writes
-        // are nested in the IfStmt and carried on dedicated shape fields), so it
-        // cannot reach the flat LocalWriteReturn guard. Both arm writes are
-        // per-path first writes, hard-coded Initialize. This transaction lowers
-        // literal/parameter arm values and a bare-bool-parameter or foldable
-        // scalar-comparison condition; any other admitted-but-unlowered leaf
-        // falls through to the capability drain (ZOM4099), never an incident.
+        // `let v: T; if (c) { v = a; } else { v = b; } return v;`, or the same
+        // diamond over a binding that already holds a value
+        // (`mut v: T = 10; if (v < 20) { v = a; } else { v = b; } return v;`),
+        // where both arm writes are per-path Overwrite. The flat write list is
+        // empty either way (the arm writes are nested in the IfStmt and carried
+        // on dedicated shape fields), so it cannot reach the flat
+        // LocalWriteReturn guard. This transaction lowers literal/parameter arm
+        // values and a bare-bool-parameter or foldable scalar-comparison
+        // condition; any other admitted-but-unlowered leaf falls through to the
+        // capability drain (ZOM4099), never an incident.
         if (shape.isConditionalLocalWrite && local != zc::none && localReference != zc::none &&
-            ZC_ASSERT_NONNULL(local).initializer == zc::none && localWrites.size() == 0 &&
-            localWriteValues.size() == 0 &&
+            localWrites.size() == 0 && localWriteValues.size() == 0 &&
             allNone(call, receiverCall, aggregate, localFieldProjection, parameterReborrow,
                     localBorrow, comparisonReturn, loopBodyReturn, comparisonLoopBodyReturn,
                     unsafeBlockSpan)) {
@@ -11631,8 +11641,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               diamondSkip = true;
               return zc::none;
             }
+            // A binding that already has an initializer is overwritten on each
+            // path; the late-init form performs the first write on each path.
+            const auto writeKind = shape.conditionalLocalWriteOverwrites
+                                       ? HirLocalWriteKind::Overwrite
+                                       : HirLocalWriteKind::Initialize;
             DiamondArm arm{HirLocalWriteStatement{HirNodeId(), hirLocalId(1), zc::none, targetType,
-                                                  HirNodeId(), HirLocalWriteKind::Initialize,
+                                                  HirNodeId(), writeKind,
                                                   ZC_ASSERT_NONNULL(assignmentSpan).clone(),
                                                   ZC_ASSERT_NONNULL(valueSpan).clone()},
                            zc::mv(writeValue)};
@@ -11753,8 +11768,39 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     if (tree.node(leafNode).kind == ast::SyntaxKind::IdentExpr) {
                       auto parameter = resolvedCallableParameter(bound.bindings(), leafNode);
                       if (parameter == zc::none) {
-                        diamondSkip = true;
-                        return zc::none;
+                        // A condition leaf may also read the diamond's own
+                        // target local (`if (s < 20) { s = 41; }`), which is
+                        // already live on every path that reaches the test.
+                        auto targetLocal = resolvedOwnerLocal(bound.bindings(), leafNode);
+                        if (targetLocal == zc::none) {
+                          diamondSkip = true;
+                          return zc::none;
+                        }
+                        if (ZC_ASSERT_NONNULL(targetLocal) !=
+                            resolvedOwnerLocal(bound.bindings(), shape.value)) {
+                          diamondSkip = true;
+                          return zc::none;
+                        }
+                        // Reading the target in the condition is only sound when
+                        // the binding already holds a value. In the late-init
+                        // form this test reads an unassigned slot, which the
+                        // definite-assignment rail owns; this transaction does
+                        // not emit it, so it declines rather than building a
+                        // reference to a dead local.
+                        if (!shape.conditionalLocalWriteOverwrites) {
+                          diamondSkip = true;
+                          return zc::none;
+                        }
+                        return PendingConditionalArm{
+                            zc::none,
+                            zc::none,
+                            HirLocalReferenceExpression{HirNodeId(), hirLocalId(1), leafType,
+                                                        HirValueCategory::Place,
+                                                        ZC_ASSERT_NONNULL(leafSpan).clone()},
+                            leafType,
+                            ZC_ASSERT_NONNULL(leafSpan).clone(),
+                            zc::none,
+                            leafNode};
                       }
                       identity::CallableParameterId leafHandle;
                       ZC_IF_SOME(value, parameter) { leafHandle = value; }
@@ -11842,12 +11888,23 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 zc::mv(conditionComparison),
                 thenPresent,
                 elsePresent,
+                shape.conditionalLocalWriteOverwrites
+                    ? zc::mv(literal)
+                    : zc::Maybe<checker::checked::CanonicalConstValue>{},
                 shape.thenAssignment,
                 shape.elseAssignment,
                 shape.thenValue,
                 shape.elseValue,
                 shape.conditionalStatement,
                 zc::mv(ZC_ASSERT_NONNULL(conditionalSpan))};
+          }
+          // The recognizer claims this diamond but the lowering above did not
+          // produce a carrier. The verifier re-derives the diamond from syntax,
+          // so a generic fallthrough is an internal error, not a drain.
+          diamondLoweringUnsupported = true;
+          ZC_IF_SOME(candidateSpan,
+                     bound.parsedModule().spanFor(tree.node(shape.conditionalStatement).range)) {
+            diamondLoweringSpan = candidateSpan.clone();
           }
         }
         // Local write return.
@@ -12182,6 +12239,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                              ir::IrFailureKind::InvalidFact, module, registries,
                                              ordinal + 2);
+      }
+      if (diamondLoweringUnsupported) {
+        return rejectHirCapability<HirModuleCandidate>(
+            definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            diamondLoweringSpan != zc::none ? ZC_ASSERT_NONNULL(diamondLoweringSpan).clone()
+                                            : definition.source.clone());
       }
       pendingFunctions.add(PendingFunctionDeclaration{
           definition.definition, definition.node, functionResultType, zc::mv(parameters),

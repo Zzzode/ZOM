@@ -986,6 +986,35 @@ public:
   ZC_NODISCARD static zc::Maybe<Module> lowerCallInConditionModule(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers one scalar function by general construct-level translation.
+  ///
+  /// Every other lowering in this class is a shape template: it re-derives a
+  /// whole-function syntax pattern from the MIR and bails on anything else.
+  /// This one translates construct by construct instead, so it serves every
+  /// scalar integer body those templates do not enumerate — a leading
+  /// initialized user local, a derived bool temporary, a two-way diamond that
+  /// overwrites a local already holding a value, and any nesting of those.
+  ///
+  /// Admission is decided from the MIR alone: a `Function` whose one source
+  /// scope and dense block/local ordinals match the translation validator's
+  /// bijection, and whose result type, every local, and every operand resolve
+  /// to an integer or one-bit boolean carrier. Blocks map
+  /// one-to-one under the dense block bijection the translation validator
+  /// requires. `StorageLive`/`StorageDead`/unsafe boundaries emit nothing
+  /// (slots are always-live), `Assign` of a `Use`, `Arithmetic`, or
+  /// `Comparison` rvalue emits the corresponding statement, and `Return`,
+  /// `Goto`, and two-arm boolean `SwitchInt` emit the corresponding terminator.
+  ///
+  /// Every other construct — float, aggregate, pointer, existential, erasure,
+  /// call, loop, projection, non-boolean discriminant — returns `none`, and the
+  /// caller falls through to its remaining shape templates.
+  ///
+  /// \param function Verified Built MIR function to lower.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered LIR module, or none when the function is outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerGeneralScalarFunction(
+      const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

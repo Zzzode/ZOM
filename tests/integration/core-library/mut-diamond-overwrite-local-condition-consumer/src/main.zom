@@ -1,0 +1,14 @@
+// Initialized-mut diamond with a target-local condition: the arm writes are
+// Overwrite and the condition compares the binding against a literal. `10 < 20`
+// is true, so the true arm runs and the program exits 41. This is the
+// comparison-leaf form of the conditional-local-write family: the leaf reads
+// the local being written rather than a parameter.
+fn entry() -> i32 {
+  mut s: i32 = 10;
+  if (s < 20) {
+    s = 41;
+  } else {
+    s = 7;
+  }
+  return s;
+}

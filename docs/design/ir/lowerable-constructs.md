@@ -1,6 +1,6 @@
 # Lowerable Constructs Inventory
 
-Updated: 2026-09-14. Predicate names are authoritative; the parenthesized
+Updated: 2026-10-24. Predicate names are authoritative; the parenthesized
 line numbers were recorded at HEAD `a0f894ab` and are retained as a historical
 lookup aid only (line numbers drift as the files change). Look up a predicate
 by name in `surface-admission.cc` and a test by its `ZC_TEST` label.
@@ -90,6 +90,8 @@ lookup aid only; current predicate definitions in `surface-admission.cc`
 | 20 | Local borrow (`let y=p; return &*y`) | `isAdmittedLocalBorrow` / reborrow of local (`:191-205`) | `HirLocalBorrowExpression` (`hir-module.h:189`) | `BorrowCreation` from local place | compiler-session-test "reborrow ... let local = value" (l.1084) |
 | 21 | Unsafe block wrapping a scalar/reborrow tail (`unsafe { &*p }`) | `isAdmittedReturnValue` UnsafeBlockExpr arm (`:273`) | `HirUnsafeBlockExpression` (`hir-module.h:247`) | `UnsafeScopeBoundary` Enter/Exit (0x07) around the value | "HIR pipeline lowers an unsafe block wrapping a parameter reborrow" (l.1298) and two siblings (l.1305, l.1323) |
 | 22 | Mutable-receiver method call (`return cell.read(1)`) | `isAdmittedReceiverCall` (`:149-164`) | `HirReceiverCallExpression` (`hir-module.h:228`) | `Call` w/ `MirCallEffectKind::ActivateMutableReceiver` | ownership-event-overlay-test "records mutable receiver activation on normal call edge" (l.4178) |
+| 23 | Conditional-local-write diamond over an initialized `mut` binding (`mut s=10; if (c) { s=a; } else { s=b; } return s;`) | `isAdmittedConditionalBody` | `HirConditionalLocalWriteStatement` + `HirLocalWriteStatement` with `Overwrite` | `SwitchInt` (0x05) entry, per-arm `Assign` `Overwrite`, join `Return` | hir-module-test "HIR lowers an initialized-mut diamond with per-path Overwrite"; "...whose condition reads the target local"; native-run-cli `mut-diamond-overwrite-consumer` (exit 41) and `mut-diamond-overwrite-local-condition-consumer` (exit 41) |
+| 24 | General scalar body: any nesting of leading locals, derived bool temporaries, `Goto`, and a two-way boolean diamond | n/a — decided in `lir::MirToLirLowering::lowerGeneralScalarFunction`, not by a surface predicate | whatever rows 2, 3, 8-15, 23 produce | the same statements/terminators, translated construct by construct | native-run-cli `mut-diamond-overwrite-*-consumer`; the pass is appended last in the ladder so every row above keeps its existing lowering |
 
 ### Coverage note
 
@@ -98,7 +100,9 @@ Every row above has a project-native test that drives source through the live
 that row 2's dedicated single-literal-return assertion is covered indirectly
 through the loop-exit block and the empty-module baseline rather than a
 standalone "one function returns one literal" MIR assertion; the HIR-level
-literal-return path is asserted directly. No row is "lowered but untested":
+literal-return path is asserted directly. Row 24 is a lowering dispatch, not an
+admitted surface construct, so its coverage is the native run fixtures named in
+the row. No row is "lowered but untested":
 receiver calls (row 22) and borrows (rows 19-21), which the plan prose grouped
 under call-dispatch widening, in fact already reach Built MIR for the single
 admitted shape and are asserted at the MIR level in the ownership/session suites.

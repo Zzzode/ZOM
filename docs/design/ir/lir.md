@@ -1,6 +1,6 @@
 # LIR
 
-Updated: 2026-09-21
+Updated: 2026-10-24
 
 ## Authority And Status
 
@@ -40,7 +40,13 @@ flowchart LR
 `MirToLirLowering` exposes static per-shape entry points (scalar initializer,
 aggregate field initializer, aggregate return, equality-conditional, loop,
 comparison-driven conditional, leading-local comparison conditional, and
-direct-call module variants). The
+direct-call module variants), plus one construct-level entry point:
+`lowerGeneralScalarFunction` translates a scalar body statement by statement and
+terminator by terminator instead of matching a whole-function shape, so a body
+built from `Use`/`Arithmetic`/`Comparison` assigns, `Return`, `Goto`, and a
+two-way boolean `SwitchInt` lowers without a dedicated template. The CLI appends
+it last in its ladder, so every shape-specific entry point above keeps its
+existing lowering. The
 production consumer is the CLI native path, which selects the entry point from
 the module's function and block counts, then runs both verification stages on
 the exact MIR function set it handed to lowering before calling the LLVM

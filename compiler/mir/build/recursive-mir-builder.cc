@@ -260,12 +260,22 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           (elsePresent && elseWriteRecord == nullptr)) {
         return zc::none;
       }
+      // Both arms write the same local with the same kind: per-path Initialize
+      // when the binding is late-initialized, per-path Overwrite when it already
+      // holds a value.
       if ((thenPresent && thenWriteRecord->field != zc::none) ||
-          (elsePresent && elseWriteRecord->field != zc::none) ||
-          (thenPresent && thenWriteRecord->kind != hir::HirLocalWriteKind::Initialize) ||
-          (elsePresent && elseWriteRecord->kind != hir::HirLocalWriteKind::Initialize)) {
+          (elsePresent && elseWriteRecord->field != zc::none)) {
         return zc::none;
       }
+      zc::Maybe<hir::HirLocalWriteKind> writeKind;
+      if (thenPresent) writeKind = thenWriteRecord->kind;
+      if (elsePresent) {
+        if (writeKind != zc::none && ZC_ASSERT_NONNULL(writeKind) != elseWriteRecord->kind) {
+          return zc::none;
+        }
+        writeKind = elseWriteRecord->kind;
+      }
+      if (writeKind == zc::none) return zc::none;
       // Both present arms target the same user local.
       if (thenPresent && elsePresent && thenWriteRecord->local != elseWriteRecord->local) {
         return zc::none;
@@ -326,20 +336,30 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           if (leftLiteral != nullptr)
             return lowerScalarLiteral(*leftLiteral, comparison->operandType);
           const auto* leftParam = findRecord(hirModule.parameterReferences(), comparison->left);
-          if (leftParam == nullptr || copyMarker == zc::none)
+          if (leftParam != nullptr && copyMarker != zc::none)
+            return lowerParameterReference(*leftParam, declaration, isMethod, proofs,
+                                           ZC_ASSERT_NONNULL(copyMarker));
+          // A condition leaf may read the diamond's own target local
+          // (`if (s < 20)`), which the arm writes.
+          const auto* leftLocal = findRecord(hirModule.localReferences(), comparison->left);
+          if (leftLocal == nullptr || copyMarker == zc::none)
             return zc::Maybe<MirOperand>{zc::none};
-          return lowerParameterReference(*leftParam, declaration, isMethod, proofs,
-                                         ZC_ASSERT_NONNULL(copyMarker));
+          return lowerLocalReference(*leftLocal, ZC_ASSERT_NONNULL(target), proofs,
+                                     ZC_ASSERT_NONNULL(copyMarker));
         }();
         auto rightOperand = [&] {
           const auto* rightLiteral = findRecord(hirModule.expressions(), comparison->right);
           if (rightLiteral != nullptr)
             return lowerScalarLiteral(*rightLiteral, comparison->operandType);
           const auto* rightParam = findRecord(hirModule.parameterReferences(), comparison->right);
-          if (rightParam == nullptr || copyMarker == zc::none)
+          if (rightParam != nullptr && copyMarker != zc::none)
+            return lowerParameterReference(*rightParam, declaration, isMethod, proofs,
+                                           ZC_ASSERT_NONNULL(copyMarker));
+          const auto* rightLocal = findRecord(hirModule.localReferences(), comparison->right);
+          if (rightLocal == nullptr || copyMarker == zc::none)
             return zc::Maybe<MirOperand>{zc::none};
-          return lowerParameterReference(*rightParam, declaration, isMethod, proofs,
-                                         ZC_ASSERT_NONNULL(copyMarker));
+          return lowerLocalReference(*rightLocal, ZC_ASSERT_NONNULL(target), proofs,
+                                     ZC_ASSERT_NONNULL(copyMarker));
         }();
         if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
         const MirLocalId conditionTemp = ctx.declareLocal(MirLocalKind::Temporary, comparison->type,
@@ -382,7 +402,10 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           zc::Vector<MirProjection> projections;
           ctx.appendStatement(MirStatement::assign(
               MirPlace(ZC_ASSERT_NONNULL(target), armType, zc::mv(projections), armType),
-              zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+              zc::mv(ZC_ASSERT_NONNULL(rvalue)),
+              ZC_ASSERT_NONNULL(writeKind) == hir::HirLocalWriteKind::Overwrite
+                  ? MirInitializationKind::Overwrite
+                  : MirInitializationKind::Initialize,
               writeRecord->sourceSpan.clone()));
           ctx.terminateBlock(MirTerminator::gotoTarget(joinBlock, writeRecord->sourceSpan.clone()));
         } else {

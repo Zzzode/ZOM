@@ -855,6 +855,10 @@ struct ConditionalLocalWriteReturn {
   /// the conditional statement names a zero node id for that arm.
   bool thenArmPresent = true;
   bool elseArmPresent = true;
+  /// The binding's own scalar literal initializer, present exactly when the
+  /// binding is already initialized, i.e. when both arm writes are Overwrite.
+  /// The lowering emits it as the local's initializer leaf.
+  zc::Maybe<checker::checked::CanonicalConstValue> initializerLiteral;
   /// AST node ids of the two arm assignments and their RHS expressions, used by
   /// the materializer to anchor the fixed-id side table.
   ast::NodeId thenAssignmentNode{};

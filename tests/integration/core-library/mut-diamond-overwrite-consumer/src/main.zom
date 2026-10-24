@@ -1,0 +1,13 @@
+// Initialized-mut diamond backend-lowering fixture: each `if`/`else` arm
+// overwrites a binding that already holds a value, which exercises the
+// Overwrite branch of the conditional-local-write family rather than the
+// late-initialization branch. `1 < 2` is true, so the program exits 41.
+fn entry() -> i32 {
+  mut s: i32 = 10;
+  if (1 < 2) {
+    s = 41;
+  } else {
+    s = 7;
+  }
+  return s;
+}
