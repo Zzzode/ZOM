@@ -505,6 +505,62 @@ ZC_TEST("CompilerSessionTest.ErrorUnwrapNonUnionUsesCheckerDiagnostic") {
   ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 0);
 }
 
+// A raises clause on a body whose return shape the HIR carrier does not
+// implement yet is well-formed source. It must drain through the capability
+// diagnostic, never the internal incident rail: each of these four shapes used
+// to surface as "internal compiler error, phase: ir".
+ZC_TEST("CompilerSessionTest.RaisingArithmeticReturnDrainsAsCapability") {
+  auto session = packageSession(
+      "enum E { Bad(i32) }\n"
+      "fn inc(a: i32) -> i32 raises E { return a + 1; }\n"
+      "fn entry() -> i32 { return 41; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.RaisingComparisonReturnDrainsAsCapability") {
+  auto session = packageSession(
+      "enum E { Bad(i32) }\n"
+      "fn lt(a: i32, b: i32) -> bool raises E { return a < b; }\n"
+      "fn entry() -> i32 { return 41; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.RaisingUnaryReturnDrainsAsCapability") {
+  auto session = packageSession(
+      "enum E { Bad(i32) }\n"
+      "fn neg(a: i32) -> i32 raises E { return -a; }\n"
+      "fn entry() -> i32 { return 41; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.RaisingConditionalReturnDrainsAsCapability") {
+  auto session = packageSession(
+      "enum E { Bad(i32) }\n"
+      "fn pick(c: bool) -> i32 raises E { if (c) { return 1; } else { return 2; } }\n"
+      "fn entry() -> i32 { return 41; }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.ErrorPropagateOrdinaryUnionUsesCheckerDiagnostic") {
   auto session = packageSession("fn entry(value: i32 | bool) -> i32 { return value?!; }\n"_zc);
 

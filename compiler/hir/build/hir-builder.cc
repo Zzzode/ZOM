@@ -758,11 +758,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             isMethod ? definitionBelongsToModule(definition, bound.definitions())
                      : (signatures.roots[rootSlot].sourceModule == module &&
                         signatures.roots[rootSlot].canonicalDefinition == definition.definition);
+        // A raises clause on this return shape is well-formed source the
+        // current lowering does not emit; drain the owning definition with the
+        // capability code rather than an invariant.
+        if (callable.raises != zc::none) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        }
         if (functionVisibility == zc::none || functionLinkage == zc::none ||
             signature.definitionKind != (isMethod ? identity::DefinitionKind::Method
                                                   : identity::DefinitionKind::Function) ||
-            !conditionalModuleMembershipValid || callable.raises != zc::none ||
-            (!isMethod && callable.receiver != zc::none) ||
+            !conditionalModuleMembershipValid || (!isMethod && callable.receiver != zc::none) ||
             (isMethod && callable.receiver == zc::none) ||
             !sameSpan(signature.declarationSpan, definition.source)) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -2972,11 +2979,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             isMethod ? definitionBelongsToModule(definition, bound.definitions())
                      : (signatures.roots[rootSlot].sourceModule == module &&
                         signatures.roots[rootSlot].canonicalDefinition == definition.definition);
+        // See the conditional-return arm: a raises clause here is a capability
+        // boundary, not a broken fact.
+        if (callable.raises != zc::none) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        }
         if (functionVisibility == zc::none || functionLinkage == zc::none ||
             signature.definitionKind != (isMethod ? identity::DefinitionKind::Method
                                                   : identity::DefinitionKind::Function) ||
-            !comparisonModuleMembershipValid || callable.raises != zc::none ||
-            (!isMethod && callable.receiver != zc::none) ||
+            !comparisonModuleMembershipValid || (!isMethod && callable.receiver != zc::none) ||
             (isMethod && callable.receiver == zc::none) || callable.success != resultType ||
             !sameSpan(signature.declarationSpan, definition.source)) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
@@ -3272,11 +3285,17 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             isMethod ? definitionBelongsToModule(definition, bound.definitions())
                      : (signatures.roots[rootSlot].sourceModule == module &&
                         signatures.roots[rootSlot].canonicalDefinition == definition.definition);
+        // See the conditional-return arm: a raises clause here is a capability
+        // boundary, not a broken fact.
+        if (callable.raises != zc::none) {
+          return rejectHirCapability<HirModuleCandidate>(
+              definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+              definition.source.clone());
+        }
         if (functionVisibility == zc::none || functionLinkage == zc::none ||
             signature.definitionKind != (isMethod ? identity::DefinitionKind::Method
                                                   : identity::DefinitionKind::Function) ||
-            !unaryModuleMembershipValid || callable.raises != zc::none ||
-            (!isMethod && callable.receiver != zc::none) ||
+            !unaryModuleMembershipValid || (!isMethod && callable.receiver != zc::none) ||
             (isMethod && callable.receiver == zc::none) || callable.success != resultType ||
             !sameSpan(signature.declarationSpan, definition.source)) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
