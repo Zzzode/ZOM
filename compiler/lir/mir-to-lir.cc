@@ -12911,7 +12911,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
   // blocks (entry StorageLive(T) + Call(dest=T), continuation stores R from T and
   // returns R). One call argument, a leading parameter or a constant.
   if (caller.kind != mir::MirFunctionKind::Function || caller.blocks.size() != 2 ||
-      caller.locals.size() < 2 || caller.resultType != callee.resultType) {
+      caller.locals.size() < 1 || caller.resultType != callee.resultType) {
     return zc::none;
   }
   size_t callerParameterCount = 0;
@@ -12919,12 +12919,26 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
          caller.locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
     ++callerParameterCount;
   }
-  if (caller.locals.size() != callerParameterCount + 2) { return zc::none; }
+  // Two caller spellings: `return inc(41);` yields a Temporary plus a
+  // FunctionResult; `let x = inc(41); return x;` yields one UserLocal that the
+  // call writes and the continuation returns directly.
+  if (caller.locals.size() == callerParameterCount + 1) {
+    const auto& onlyLocal = caller.locals[callerParameterCount];
+    if (onlyLocal.kind != mir::MirLocalKind::UserLocal || onlyLocal.type != caller.resultType) {
+      return zc::none;
+    }
+  } else if (caller.locals.size() != callerParameterCount + 2) {
+    return zc::none;
+  }
+  const bool singleResultSpelling = caller.locals.size() == callerParameterCount + 1;
   const auto& temporaryLocal = caller.locals[callerParameterCount];
-  const auto& resultLocal = caller.locals[callerParameterCount + 1];
-  if (temporaryLocal.kind != mir::MirLocalKind::Temporary ||
-      resultLocal.kind != mir::MirLocalKind::FunctionResult ||
-      temporaryLocal.type != caller.resultType || resultLocal.type != caller.resultType) {
+  const auto& resultLocal =
+      caller.locals[singleResultSpelling ? callerParameterCount : callerParameterCount + 1];
+  if (singleResultSpelling) {
+    if (temporaryLocal.type != caller.resultType) { return zc::none; }
+  } else if (temporaryLocal.kind != mir::MirLocalKind::Temporary ||
+             resultLocal.kind != mir::MirLocalKind::FunctionResult ||
+             temporaryLocal.type != caller.resultType || resultLocal.type != caller.resultType) {
     return zc::none;
   }
   const auto& callerEntry = caller.blocks[0];
@@ -12954,23 +12968,29 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
                          value.place().projections().size() == 0;
   }
   if (!returnsResultLocal) { return zc::none; }
-  if (continuation->statements.size() != 3 ||
-      continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
-      continuation->statements[0].storageLocal() != resultLocal.id ||
-      continuation->statements[1].kind() != mir::MirStatementKind::Assign ||
-      continuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
-      continuation->statements[2].storageLocal() != temporaryLocal.id) {
-    return zc::none;
-  }
-  const auto& moveAssign = continuation->statements[1].assignmentValue();
-  if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
-      moveAssign.destination.local() != resultLocal.id ||
-      moveAssign.destination.projections().size() != 0 ||
-      moveAssign.value.kind() != mir::MirRvalueKind::Use ||
-      moveAssign.value.useValue().operand.kind() != mir::MirOperandKind::Move ||
-      moveAssign.value.useValue().operand.place().local() != temporaryLocal.id ||
-      moveAssign.value.useValue().operand.place().projections().size() != 0) {
-    return zc::none;
+  // The single-result spelling writes the call straight into the local that the
+  // continuation returns, so the continuation carries no move.
+  if (singleResultSpelling) {
+    if (!continuation->statements.empty()) { return zc::none; }
+  } else {
+    if (continuation->statements.size() != 3 ||
+        continuation->statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        continuation->statements[0].storageLocal() != resultLocal.id ||
+        continuation->statements[1].kind() != mir::MirStatementKind::Assign ||
+        continuation->statements[2].kind() != mir::MirStatementKind::StorageDead ||
+        continuation->statements[2].storageLocal() != temporaryLocal.id) {
+      return zc::none;
+    }
+    const auto& moveAssign = continuation->statements[1].assignmentValue();
+    if (moveAssign.initialization != mir::MirInitializationKind::Initialize ||
+        moveAssign.destination.local() != resultLocal.id ||
+        moveAssign.destination.projections().size() != 0 ||
+        moveAssign.value.kind() != mir::MirRvalueKind::Use ||
+        moveAssign.value.useValue().operand.kind() != mir::MirOperandKind::Move ||
+        moveAssign.value.useValue().operand.place().local() != temporaryLocal.id ||
+        moveAssign.value.useValue().operand.place().projections().size() != 0) {
+      return zc::none;
+    }
   }
   // Each argument is a scalar constant or a use of one of the *caller's*
   // leading parameter slots. The slot is resolved against the caller, not the
@@ -13016,8 +13036,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
                                 ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
     zc::Vector<Statement> continuationStatements;
-    continuationStatements.add(Statement::assign(resultLocal.id.ordinal(),
-                                                 Operand::localUse(temporaryLocal.id.ordinal())));
+    if (!singleResultSpelling) {
+      continuationStatements.add(Statement::assign(resultLocal.id.ordinal(),
+                                                   Operand::localUse(temporaryLocal.id.ordinal())));
+    }
     callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(continuationStatements),
                                 Terminator::returnLocal(resultLocal.id.ordinal())));
     zc::Vector<Local> parameters;
@@ -13028,7 +13050,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
     }
     zc::Vector<Local> locals;
     locals.add(Local(temporaryLocal.id.ordinal(), carrierValue));
-    locals.add(Local(resultLocal.id.ordinal(), carrierValue));
+    if (!singleResultSpelling) { locals.add(Local(resultLocal.id.ordinal(), carrierValue)); }
     functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount), carrierValue,
                            zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
   }

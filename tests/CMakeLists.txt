@@ -318,6 +318,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-arithmetic-callee-consumer/Zom.toml::two_parameter_arithmetic_callee_consumer::two_parameter_arithmetic_callee_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-bound-arithmetic-call-consumer/Zom.toml::let_bound_arithmetic_call_consumer::let_bound_arithmetic_call_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"
@@ -480,6 +482,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer::3"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-arithmetic-callee-consumer/Zom.toml::two_parameter_arithmetic_callee_consumer::two_parameter_arithmetic_callee_consumer::43"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-bound-arithmetic-call-consumer/Zom.toml::let_bound_arithmetic_call_consumer::let_bound_arithmetic_call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer::42"
       --run-case

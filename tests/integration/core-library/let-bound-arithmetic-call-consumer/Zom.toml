@@ -1,0 +1,4 @@
+[package]
+name = "let_bound_arithmetic_call_consumer"
+version = "0.1.0"
+edition = "2026"
