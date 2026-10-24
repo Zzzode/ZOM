@@ -738,6 +738,28 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee, const mir::MirFunction& leaf,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers an N-deep same-module call chain to a three-function LIR
+  /// module.
+  ///
+  /// Admits the chain `entry -> middle -> leaf` where every link returns a
+  /// scalar and takes no arguments: the entry and the middle each have the
+  /// two-block zero-argument call shape `lowerCallModule` accepts (entry
+  /// `StorageLive` plus `Call`, continuation `Return`), and the leaf is the
+  /// scalar constant-return shape. The entry's `Call` targets the middle and
+  /// the middle's `Call` targets the leaf, both by owner match. The three
+  /// functions emit in the fixed order `[entry, middle, leaf]`, so the entry's
+  /// call index is 1 and the middle's is 2. This is the chained counterpart of
+  /// `lowerCallModuleWithLeaf`, whose third function is referenced by no call.
+  ///
+  /// \param entry Verified outermost caller MIR function.
+  /// \param middle Verified forwarding caller MIR function.
+  /// \param leaf Verified scalar constant-return MIR function.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered three-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallChainModule(
+      const mir::MirFunction& entry, const mir::MirFunction& middle, const mir::MirFunction& leaf,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers one shared-receiver inherent method call module to LIR.
   ///
   /// Admits a two-function pair: a caller with one aggregate-initialized owner

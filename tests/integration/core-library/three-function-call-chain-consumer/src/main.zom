@@ -1,0 +1,11 @@
+fn origin() -> i32 {
+  return 41;
+}
+
+fn forward() -> i32 {
+  return origin();
+}
+
+fn entry() -> i32 {
+  return forward();
+}

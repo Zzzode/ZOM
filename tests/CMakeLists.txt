@@ -188,6 +188,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/three-function-call-chain-consumer/Zom.toml::three_function_call_chain_consumer::three_function_call_chain_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/aggregate-consumer/Zom.toml::aggregate_consumer::aggregate_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/multifield-aggregate-consumer/Zom.toml::multifield_aggregate_consumer::multifield_aggregate_consumer"
@@ -474,6 +476,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/two-parameter-arithmetic-callee-consumer/Zom.toml::two_parameter_arithmetic_callee_consumer::two_parameter_arithmetic_callee_consumer::43"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/three-function-call-chain-consumer/Zom.toml::three_function_call_chain_consumer::three_function_call_chain_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/leading-local-comparison-consumer/Zom.toml::leading_local_comparison_consumer::leading_local_comparison_consumer::41"
       --run-case

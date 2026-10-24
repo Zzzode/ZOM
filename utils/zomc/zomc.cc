@@ -1829,6 +1829,68 @@ private:
             }
           }
           if (lir == zc::none) {
+            // Same-module call chain `entry -> middle -> leaf`. Unlike the
+            // direct-call ladder below, TWO functions here have the two-block
+            // call shape, so that ladder's uniqueness test would clear the
+            // caller index and skip this shape entirely. Identify the chain by
+            // following calls instead: the caller is the two-block function
+            // whose call target is itself called by no other function, its
+            // callee is the function it names, and the leaf is the callee's own
+            // call target. Any other topology leaves `lir` as none.
+            auto isChainLink = [](const mir::MirFunction& fn) {
+              return fn.kind == mir::MirFunctionKind::Function && fn.blocks.size() == 2 &&
+                     !fn.blocks.empty() &&
+                     fn.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call;
+            };
+            zc::Maybe<size_t> outermost;
+            for (size_t index = 0; index < functions.size(); ++index) {
+              if (!isChainLink(functions[index])) { continue; }
+              const auto& target = functions[index].blocks[0].terminator.callValue().callee;
+              // The outermost link is the one nobody else calls.
+              bool calledByAnother = false;
+              for (size_t other = 0; other < functions.size(); ++other) {
+                if (other == index || !isChainLink(functions[other])) { continue; }
+                if (functions[other].blocks[0].terminator.callValue().callee ==
+                    functions[index].owner) {
+                  calledByAnother = true;
+                  break;
+                }
+              }
+              if (!calledByAnother && target != functions[index].owner) {
+                if (outermost != zc::none) {
+                  outermost = zc::none;
+                  break;
+                }
+                outermost = index;
+              }
+            }
+            ZC_IF_SOME(outer, outermost) {
+              const auto& outerFn = functions[outer];
+              const auto middleOwner = outerFn.blocks[0].terminator.callValue().callee;
+              zc::Maybe<size_t> middleIndex;
+              for (size_t index = 0; index < functions.size(); ++index) {
+                if (index != outer && functions[index].owner == middleOwner) {
+                  middleIndex = index;
+                }
+              }
+              ZC_IF_SOME(middle, middleIndex) {
+                if (isChainLink(functions[middle])) {
+                  const auto leafOwner = functions[middle].blocks[0].terminator.callValue().callee;
+                  zc::Maybe<size_t> leafIndex;
+                  for (size_t index = 0; index < functions.size(); ++index) {
+                    if (index != outer && index != middle && functions[index].owner == leafOwner) {
+                      leafIndex = index;
+                    }
+                  }
+                  ZC_IF_SOME(leaf, leafIndex) {
+                    lir = lir::MirToLirLowering::lowerCallChainModule(
+                        functions[outer], functions[middle], functions[leaf], types);
+                  }
+                }
+              }
+            }
+          }
+          if (lir == zc::none) {
             // Three-function direct-call ladder. Identify the unique caller by the
             // two-block Call+Return shape, locate its callee among the other two
             // functions by owner match (`call.callee == other.owner`), and require
