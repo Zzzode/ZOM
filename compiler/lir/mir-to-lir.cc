@@ -7702,49 +7702,99 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
 zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     const mir::MirFunction& entry, const mir::MirFunction& middle, const mir::MirFunction& leaf,
     const type::SemanticTypeStore& semanticTypes) {
-  // Leaf: one block returning either a scalar constant (the shape the sibling
-  // lowerings already admit) or its own single parameter, which is what a
-  // chain's innermost function looks like when the chain carries a value.
-  if (leaf.kind != mir::MirFunctionKind::Function || leaf.blocks.size() != 1 ||
-      leaf.locals.size() > 1) {
-    return zc::none;
-  }
+  // Leaf: one block returning a scalar constant, its own parameter, or the
+  // result of one scalar arithmetic operation over those leaves. These are the
+  // innermost shapes a chain carries.
+  if (leaf.kind != mir::MirFunctionKind::Function || leaf.blocks.size() != 1) { return zc::none; }
   auto leafCarrier = integerCarrierFor(leaf.resultType, semanticTypes);
   if (leafCarrier == zc::none) { return zc::none; }
   const auto leafCarrierValue = ZC_REQUIRE_NONNULL(leafCarrier);
-  const auto& leafBlock = leaf.blocks[0];
-  if (leafBlock.statements.size() != 0 ||
-      leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
-    return zc::none;
+  size_t leafParameterCount = 0;
+  while (leafParameterCount < leaf.locals.size() &&
+         leaf.locals[leafParameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++leafParameterCount;
   }
-  zc::Maybe<mir::MirLocalId> leafParameterId;
-  if (leaf.locals.size() == 1) {
-    const auto& leafParameter = leaf.locals[0];
-    if (leafParameter.kind != mir::MirLocalKind::Parameter ||
-        leafParameter.type != leaf.resultType) {
+  if (leafParameterCount > kMaxCallArguments) { return zc::none; }
+  for (size_t index = 0; index < leafParameterCount; ++index) {
+    if (leaf.locals[index].type != leaf.resultType) { return zc::none; }
+  }
+  auto leafParameterNamed = [&](mir::MirLocalId local) -> bool {
+    for (size_t index = 0; index < leafParameterCount; ++index) {
+      if (leaf.locals[index].id == local) { return true; }
+    }
+    return false;
+  };
+  const auto& leafBlock = leaf.blocks[0];
+  if (leafBlock.terminator.kind() != mir::MirTerminatorKind::Return) { return zc::none; }
+
+  // The leaf's single arithmetic operation, when present: one result local, one
+  // `Assign` of an Arithmetic rvalue, and a return of that result.
+  zc::Maybe<mir::MirLocalId> leafResultLocal;
+  zc::Maybe<ArithmeticOp> leafOperation;
+  zc::Maybe<Operand> leafLeftOperand;
+  zc::Maybe<Operand> leafRightOperand;
+  if (leafBlock.statements.size() != 0) {
+    if (leaf.locals.size() != leafParameterCount + 1 || leafBlock.statements.size() != 2 ||
+        leafBlock.statements[0].kind() != mir::MirStatementKind::StorageLive ||
+        leafBlock.statements[1].kind() != mir::MirStatementKind::Assign) {
       return zc::none;
     }
-    leafParameterId = leafParameter.id;
+    const auto& resultLocal = leaf.locals[leafParameterCount];
+    if (resultLocal.type != leaf.resultType ||
+        leafBlock.statements[0].storageLocal() != resultLocal.id) {
+      return zc::none;
+    }
+    const auto& computeAssign = leafBlock.statements[1].assignmentValue();
+    if (computeAssign.destination.local() != resultLocal.id ||
+        computeAssign.destination.projections().size() != 0 ||
+        computeAssign.initialization != mir::MirInitializationKind::Initialize ||
+        computeAssign.value.kind() != mir::MirRvalueKind::Arithmetic) {
+      return zc::none;
+    }
+    const auto& arithmetic = computeAssign.value.arithmeticValue();
+    auto operation = lirArithmeticOpFor(arithmetic.op);
+    if (operation == zc::none || arithmetic.resultType != leaf.resultType) { return zc::none; }
+    auto leafLeaf = [&](const mir::MirOperand& operand) -> zc::Maybe<Operand> {
+      if (operand.kind() == mir::MirOperandKind::Constant) {
+        return lirOperandFor(operand, leafCarrierValue);
+      }
+      if (operand.place().projections().size() != 0) { return zc::none; }
+      if (!leafParameterNamed(operand.place().local())) { return zc::none; }
+      return Operand::localUse(operand.place().local().ordinal());
+    };
+    auto leftOperand = leafLeaf(arithmetic.left);
+    auto rightOperand = leafLeaf(arithmetic.right);
+    if (leftOperand == zc::none || rightOperand == zc::none) { return zc::none; }
+    leafResultLocal = resultLocal.id;
+    leafOperation = ZC_REQUIRE_NONNULL(operation);
+    leafLeftOperand = zc::mv(ZC_ASSERT_NONNULL(leftOperand));
+    leafRightOperand = zc::mv(ZC_ASSERT_NONNULL(rightOperand));
+  } else if (leaf.locals.size() != leafParameterCount) {
+    return zc::none;
   }
+
   const auto& leafReturn = leafBlock.terminator.returnValue().value;
   if (leafReturn == zc::none) { return zc::none; }
   zc::Maybe<IntegerConstant> leafConstant;
-  bool leafReturnsParameter = false;
+  zc::Maybe<mir::MirLocalId> leafReturnedParameter;
   ZC_IF_SOME(value, leafReturn) {
     if (value.kind() == mir::MirOperandKind::Constant) {
-      if (value.constantValue().type != leaf.resultType) { return zc::none; }
+      if (leafBlock.statements.size() != 0 || value.constantValue().type != leaf.resultType) {
+        return zc::none;
+      }
       const auto integer = value.constantValue().value.integerValue();
       if (integer == zc::none) { return zc::none; }
       auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), leafCarrierValue.integerWidth());
       if (bits == zc::none) { return zc::none; }
       leafConstant = IntegerConstant::from(leafCarrierValue, ZC_REQUIRE_NONNULL(bits));
       if (leafConstant == zc::none) { return zc::none; }
+    } else if (value.place().projections().size() != 0) {
+      return zc::none;
+    } else if (leafResultLocal != zc::none) {
+      if (value.place().local() != ZC_REQUIRE_NONNULL(leafResultLocal)) { return zc::none; }
     } else {
-      if (value.place().projections().size() != 0 || leafParameterId == zc::none ||
-          value.place().local() != ZC_REQUIRE_NONNULL(leafParameterId)) {
-        return zc::none;
-      }
-      leafReturnsParameter = true;
+      if (!leafParameterNamed(value.place().local())) { return zc::none; }
+      leafReturnedParameter = value.place().local();
     }
   }
 
@@ -7914,25 +7964,37 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
                            zc::mv(blocks)));
   }
 
-  // Function 2: the leaf, a single block returning its scalar constant or its
-  // own parameter.
+  // Function 2: the leaf, a single block returning its scalar constant, one of
+  // its parameters, or the result of its one arithmetic operation.
   {
     zc::Vector<BasicBlock> blocks;
     zc::Vector<Local> leafParameters;
-    zc::Vector<Local> noLocals;
-    ZC_IF_SOME(parameterId, leafParameterId) {
-      leafParameters.add(Local(parameterId.ordinal(), leafCarrierValue));
+    for (size_t index = 0; index < leafParameterCount; ++index) {
+      leafParameters.add(Local(leaf.locals[index].id.ordinal(), leafCarrierValue));
     }
-    if (leafReturnsParameter) {
-      blocks.add(
-          BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
-                     Terminator::returnLocal(ZC_REQUIRE_NONNULL(leafParameterId).ordinal())));
-    } else {
+    zc::Vector<Local> leafBodyLocals;
+    ZC_IF_SOME(resultLocal, leafResultLocal) {
+      leafBodyLocals.add(Local(resultLocal.ordinal(), leafCarrierValue));
+      zc::Vector<Statement> leafStatements;
+      leafStatements.add(Statement::arithmetic(resultLocal.ordinal(),
+                                               ZC_REQUIRE_NONNULL(leafOperation),
+                                               zc::mv(ZC_REQUIRE_NONNULL(leafLeftOperand)),
+                                               zc::mv(ZC_REQUIRE_NONNULL(leafRightOperand))));
+      blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId), zc::mv(leafStatements),
+                            Terminator::returnLocal(resultLocal.ordinal())));
+    }
+    if (blocks.empty()) {
+      ZC_IF_SOME(parameterId, leafReturnedParameter) {
+        blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
+                              Terminator::returnLocal(parameterId.ordinal())));
+      }
+    }
+    if (blocks.empty()) {
       blocks.add(BasicBlock(ZC_REQUIRE_NONNULL(leafEntryId),
                             Terminator::returnInteger(ZC_REQUIRE_NONNULL(leafConstant))));
     }
     functions.add(Function(leaf.owner, zc::heapString("zom.chain_leaf"), leafCarrierValue,
-                           zc::mv(leafParameters), zc::mv(noLocals), zc::mv(blocks)));
+                           zc::mv(leafParameters), zc::mv(leafBodyLocals), zc::mv(blocks)));
   }
 
   return Module(zc::mv(functions));

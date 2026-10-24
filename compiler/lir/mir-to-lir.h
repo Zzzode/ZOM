@@ -752,7 +752,8 @@ public:
   /// `lowerCallModuleWithLeaf`, whose third function is referenced by no call.
   /// A link may declare up to `kMaxCallArguments` leading parameters and forward
   /// each callee argument as a scalar constant or one of those parameters; the
-  /// leaf then returns its own parameter instead of a constant.
+  /// leaf then returns its own parameter, or the result of one scalar arithmetic
+  /// operation over its parameters and scalar constants, instead of a constant.
   ///
   /// \param entry Verified outermost caller MIR function.
   /// \param middle Verified forwarding caller MIR function.
