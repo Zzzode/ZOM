@@ -17221,7 +17221,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         valueSpanMatches = sameSpan(expression.sourceSpan, value);
       }
       if ((!isScalarLiteral(tree.node(sourceValueNode).kind) && !source.returnsFoldedStringConcat &&
-           !source.returnsFoldedFloatCast) ||
+           !source.returnsFoldedFloatCast && !source.returnsFoldedLiteralArithmetic) ||
           literalIndex == zc::none || expression.type != function.resultType ||
           expression.category != HirValueCategory::Value || !valueSpanMatches) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,

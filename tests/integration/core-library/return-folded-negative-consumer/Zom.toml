@@ -1,0 +1,8 @@
+[package]
+name = "return_folded_negative_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "return_folded_negative_consumer"
+path = "src/main.zom"

@@ -1,0 +1,7 @@
+// A return-position arithmetic over two integer literals (`40 + 2`) folds to
+// the constant at compile time. The body checker emits the integer literal
+// fact for the binary node and the HIR lowers the return to that scalar
+// constant. The entry exits 42.
+fn entry() -> i32 {
+    return 40 + 2;
+}

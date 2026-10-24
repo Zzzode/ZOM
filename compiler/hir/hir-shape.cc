@@ -119,6 +119,46 @@ bool isPrimitiveBinaryArithmeticOperator(ast::BinaryOperatorKind syntax) {
   return false;
 }
 
+// Structurally admits a `<int-literal> <op> <int-literal>` binary as a
+// return-position compile-time fold. The fold itself (computing the constant
+// and emitting the literal fact) runs in the body checker, so the shape layer
+// only verifies the structure. The operator set is the arithmetic and bitwise
+// family, matching the checker's fold predicate.
+bool isLiteralArithmeticFoldSyntax(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) { return false; }
+  const auto& binary = tree.node(node);
+  const auto syntax =
+      static_cast<ast::BinaryOperatorKind>(binary.payload.words[ast::kBinaryExprOpWord]);
+  bool folds = false;
+  ZC_IF_SOME(kind, checker::OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (variant.is<checker::PrimitiveOperation>()) {
+      switch (variant.get<checker::PrimitiveOperation>()) {
+        case checker::PrimitiveOperation::Add:
+        case checker::PrimitiveOperation::Sub:
+        case checker::PrimitiveOperation::Mul:
+        case checker::PrimitiveOperation::Div:
+        case checker::PrimitiveOperation::Rem:
+        case checker::PrimitiveOperation::BitAnd:
+        case checker::PrimitiveOperation::BitOr:
+        case checker::PrimitiveOperation::BitXor:
+        case checker::PrimitiveOperation::Shl:
+        case checker::PrimitiveOperation::Shr:
+          folds = true;
+          break;
+        default:
+          break;
+      }
+    }
+  }
+  if (!folds) return false;
+  const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+  return tree.contains(left) && tree.contains(right) &&
+         tree.node(left).kind == ast::SyntaxKind::IntLiteral &&
+         tree.node(right).kind == ast::SyntaxKind::IntLiteral;
+}
+
 // Structurally admits a `"a" + "b"` binary as a compile-time fold initializer.
 // Both operands must be string literals and the operator must be `+`. The fold
 // itself (concatenating the string bytes and emitting the constant) runs in the
@@ -3427,6 +3467,19 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     unsafeBlock = zc::none;
   }
   if (statements.size == 1) {
+    // A single `return <int-literal> <op> <int-literal>` folds the arithmetic at
+    // compile time. The body checker emits an integer-literal fact for the
+    // binary node, so the builder lowers the return to that scalar constant.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::BinaryExpr &&
+        isLiteralArithmeticFoldSyntax(tree, value)) {
+      FunctionReturnShape shape{};
+      shape.body = body;
+      shape.returnStatement = returnNode;
+      shape.value = value;
+      shape.returnsFoldedLiteralArithmetic = true;
+      shape.unsafeBlock = zc::mv(unsafeBlock);
+      return shape;
+    }
     // A single `return "a" + "b"` folds the concatenation at compile time.
     // The body checker emits a string-literal fact for the binary node; the
     // builder lowers it to a scalar literal return, reusing the

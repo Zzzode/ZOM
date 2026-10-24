@@ -356,6 +356,9 @@ struct FunctionReturnShape final {
   // literal fact and lowers the return to a scalar literal, reusing the
   // string-literal-return path.
   bool returnsFoldedStringConcat = false;
+  // A `return <int-literal> <op> <int-literal>` whose value the body checker
+  // folded to an integer literal fact for the binary node.
+  bool returnsFoldedLiteralArithmetic = false;
   // When the body is a single `return <float-literal> as <integer-primitive>;`,
   // the body checker folds the cast to an integer constant at compile time.
   // `shape.value` is the CastExpression node; the builder looks up its checked

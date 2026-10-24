@@ -433,7 +433,13 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarInitializer(
 
   const auto integer = constant.value.integerValue();
   if (integer == zc::none) { return zc::none; }
+  // Prefer zero extension for non-negative values; fall back to two's
+  // complement sign extension for a negative folded constant, the same rule
+  // the operand path applies.
   auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  if (bits == zc::none) {
+    bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  }
   if (bits == zc::none) { return zc::none; }
 
   auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
@@ -532,7 +538,13 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarReturn(
     auto carrier = integerCarrierFor(function.resultType, semanticTypes);
     if (carrier == zc::none) { return zc::none; }
     const auto carrierValue = ZC_REQUIRE_NONNULL(carrier);
+    // Prefer zero extension for non-negative values; fall back to two's
+    // complement sign extension for a negative constant, the same rule the
+    // operand path applies.
     auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+    if (bits == zc::none) {
+      bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+    }
     if (bits == zc::none) { return zc::none; }
     auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));
     if (lirConstant == zc::none) { return zc::none; }
@@ -946,7 +958,13 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarConstantReturn(
 
   const auto integer = constant.value.integerValue();
   if (integer == zc::none) { return zc::none; }
+  // Prefer zero extension for non-negative values; fall back to two's
+  // complement sign extension for a negative folded constant, the same rule
+  // the operand path applies.
   auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  if (bits == zc::none) {
+    bits = signExtendedBits(ZC_REQUIRE_NONNULL(integer), carrierValue.integerWidth());
+  }
   if (bits == zc::none) { return zc::none; }
 
   auto lirConstant = IntegerConstant::from(carrierValue, ZC_REQUIRE_NONNULL(bits));

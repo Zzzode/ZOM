@@ -1,0 +1,6 @@
+// A folded constant may be negative (`0 - 40`). The canonical integer keeps
+// the sign separately from the magnitude, and the LIR fallback materializes
+// the two's complement bit pattern. The entry exits 216, the low byte of -40.
+fn entry() -> i32 {
+    return 0 - 40;
+}

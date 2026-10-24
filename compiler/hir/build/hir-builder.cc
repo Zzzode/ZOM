@@ -7646,8 +7646,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                            eraseStep.interface.interface};
         }
       } else if (isScalarLiteral(tree.node(shape.value).kind) || shape.returnsFoldedStringConcat ||
-                 shape.returnsFoldedFloatCast || shape.returnsArrayIndexFold ||
-                 shape.returnsLengthFold) {
+                 shape.returnsFoldedFloatCast || shape.returnsFoldedLiteralArithmetic ||
+                 shape.returnsArrayIndexFold || shape.returnsLengthFold) {
         auto literalIndex = factIndex(facts.literals(), shape.value);
         if (literalIndex == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,

@@ -64,6 +64,7 @@ enum class BodyProductionKind : uint8_t {
   ArrayLengthFold = 0x28,
   TupleLiteral = 0x29,
   ArrayElementWrite = 0x2a,
+  LiteralArithmeticFold = 0x2b,
   Unsupported = 0x17
 };
 
@@ -793,6 +794,28 @@ bool dependsOnTernaryLocalInitializer(const BodyCheckingInput& input, ast::NodeI
 // initializer or the declarator carries no closed type annotation. Used to
 // enforce that a primitive-binary initializer's result type matches the local's
 // annotation.
+// Whether a node is the initializer expression of an owner-local (a `let` /
+// `mut` binding declared inside a body). Those initializers have their own
+// annotated-binding rail, which anchors the operand type from the annotation,
+// so a fold must not claim them.
+bool isOwnerLocalInitializer(const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+                             ast::NodeId initializer) {
+  const auto& tree = boundModule.tree();
+  for (const auto& local : boundModule.definitions().ownerLocalBindings()) {
+    if (!local.site.value().is<binder::PatternBindingSite>()) continue;
+    const auto& site = local.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      continue;
+    }
+    if (ast::NodeId(tree.node(site.introducer).payload.words[ast::kVariableDeclaratorInitWord]) ==
+        initializer) {
+      return true;
+    }
+  }
+  return false;
+}
+
 zc::Maybe<identity::SemanticTypeId> ownerLocalInitializerDeclaredType(
     const driver::module_graph_query::CheckerBoundModuleView& boundModule,
     const CheckerIdentityAuthority& identities, type::SemanticTypeStore& semanticTypes,
@@ -3363,6 +3386,44 @@ bool isStringConcatFoldSite(const ast::Tree& tree, ast::NodeId node) {
          tree.node(right).kind == ast::SyntaxKind::StringLiteralExpr;
 }
 
+// Whether a binary node folds to a constant because both operands are scalar
+// literals of the same primitive type. The result is computed at compile time
+// and emitted as a scalar literal fact, so the HIR builder lowers the binary to
+// a scalar constant through the literal-return path instead of requiring an
+// operand the local-binary rail can anchor on. Only the arithmetic and bitwise
+// families fold: a relational comparison yields bool, which the same literal
+// path cannot express, and it already has its own shape.
+bool isLiteralArithmeticFoldSite(const ast::Tree& tree, ast::NodeId node) {
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) { return false; }
+  const auto& binary = tree.node(node);
+  const auto syntax =
+      static_cast<ast::BinaryOperatorKind>(binary.payload.words[ast::kBinaryExprOpWord]);
+  ZC_IF_SOME(kind, OperatorKind::fromBinary(syntax)) {
+    const auto& variant = kind.variant();
+    if (!variant.is<PrimitiveOperation>()) return false;
+    switch (variant.get<PrimitiveOperation>()) {
+      case PrimitiveOperation::Add:
+      case PrimitiveOperation::Sub:
+      case PrimitiveOperation::Mul:
+      case PrimitiveOperation::Div:
+      case PrimitiveOperation::Rem:
+      case PrimitiveOperation::BitAnd:
+      case PrimitiveOperation::BitOr:
+      case PrimitiveOperation::BitXor:
+      case PrimitiveOperation::Shl:
+      case PrimitiveOperation::Shr:
+        break;
+      default:
+        return false;
+    }
+  }
+  const ast::NodeId left(binary.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(binary.payload.words[ast::kBinaryExprRhsWord]);
+  return tree.contains(left) && tree.contains(right) &&
+         tree.node(left).kind == ast::SyntaxKind::IntLiteral &&
+         tree.node(right).kind == ast::SyntaxKind::IntLiteral;
+}
+
 // Whether a cast node is a float-literal-to-integer cast fold candidate: the
 // inner expression is a float literal. The target type is validated
 // semantically by the production classifier; this predicate is shared with the
@@ -3392,6 +3453,128 @@ zc::Array<uint8_t> magnitudeBytes(uint64_t magnitude) {
     result[index] = bytes[bytes.size() - index - 1];
   }
   return result;
+}
+
+// Folds one integer binary over two integer-literal operands. Returns the
+// canonical signed result, or none when the operation has no defined constant
+// value at this slice (division by zero, a shift wider than the operand width,
+// or a magnitude that does not fit the operand kind).
+zc::Maybe<signature::CanonicalInteger> foldIntegerBinary(ast::BinaryOperatorKind syntax,
+                                                         const signature::CanonicalInteger& left,
+                                                         const signature::CanonicalInteger& right,
+                                                         type::semantic::PrimitiveKind kind) {
+  using type::semantic::PrimitiveKind;
+  auto magnitudeOf = [](const signature::CanonicalInteger& value) -> zc::Maybe<uint64_t> {
+    if (value.magnitude.size() > 8) return zc::none;
+    uint64_t magnitude = 0;
+    for (size_t index = 0; index < value.magnitude.size(); ++index) {
+      magnitude = (magnitude << 8) | value.magnitude[index];
+    }
+    return magnitude;
+  };
+  auto leftMagnitude = magnitudeOf(left);
+  auto rightMagnitude = magnitudeOf(right);
+  if (leftMagnitude == zc::none || rightMagnitude == zc::none) return zc::none;
+  const bool leftNegative = left.sign == signature::IntegerSign::Negative;
+  const bool rightNegative = right.sign == signature::IntegerSign::Negative;
+  const uint64_t leftValue = ZC_ASSERT_NONNULL(leftMagnitude);
+  const uint64_t rightValue = ZC_ASSERT_NONNULL(rightMagnitude);
+  // Width and signedness of the operand kind, so an out-of-range result is
+  // refused instead of silently wrapping.
+  uint64_t maxMagnitude = 0;
+  bool signedKind = true;
+  switch (kind) {
+    case PrimitiveKind::I8:
+      maxMagnitude = 128ull;
+      break;
+    case PrimitiveKind::I16:
+      maxMagnitude = 32768ull;
+      break;
+    case PrimitiveKind::I32:
+      maxMagnitude = 2147483648ull;
+      break;
+    case PrimitiveKind::I64:
+    case PrimitiveKind::Isize:
+      maxMagnitude = 9223372036854775808ull;
+      break;
+    case PrimitiveKind::U8:
+      maxMagnitude = 255ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U16:
+      maxMagnitude = 65535ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U32:
+      maxMagnitude = 4294967295ull;
+      signedKind = false;
+      break;
+    case PrimitiveKind::U64:
+    case PrimitiveKind::Usize:
+      maxMagnitude = 18446744073709551615ull;
+      signedKind = false;
+      break;
+    default:
+      return zc::none;
+  }
+  // Compute in unsigned space, tracking the sign separately. Only the four
+  // basic operations and the shifts have a constant value this slice emits;
+  // remainder follows C truncating semantics.
+  bool negative = false;
+  uint64_t magnitude = 0;
+  switch (syntax) {
+    case ast::BinaryOperatorKind::Add:
+      if (leftNegative == rightNegative) {
+        negative = leftNegative;
+        if (leftValue > maxMagnitude - rightValue) return zc::none;
+        magnitude = leftValue + rightValue;
+      } else if (leftValue >= rightValue) {
+        negative = leftNegative;
+        magnitude = leftValue - rightValue;
+      } else {
+        negative = rightNegative;
+        magnitude = rightValue - leftValue;
+      }
+      break;
+    case ast::BinaryOperatorKind::Sub:
+      if (leftNegative != rightNegative) {
+        negative = leftNegative;
+        if (leftValue > maxMagnitude - rightValue) return zc::none;
+        magnitude = leftValue + rightValue;
+      } else if (leftValue >= rightValue) {
+        negative = leftNegative;
+        magnitude = leftValue - rightValue;
+      } else {
+        negative = !leftNegative;
+        magnitude = rightValue - leftValue;
+      }
+      break;
+    case ast::BinaryOperatorKind::Mul:
+      if (rightValue != 0 && leftValue > maxMagnitude / rightValue) return zc::none;
+      negative = leftNegative != rightNegative;
+      magnitude = leftValue * rightValue;
+      break;
+    case ast::BinaryOperatorKind::Div:
+      if (rightValue == 0) return zc::none;
+      negative = leftNegative != rightNegative;
+      magnitude = leftValue / rightValue;
+      break;
+    case ast::BinaryOperatorKind::Mod:
+      if (rightValue == 0) return zc::none;
+      negative = leftNegative;
+      magnitude = leftValue % rightValue;
+      break;
+    default:
+      return zc::none;
+  }
+  // An unsigned operand kind cannot hold a negative result. A signed minimum
+  // magnitude is representable, so the bound is inclusive.
+  if (!signedKind && negative && magnitude != 0) return zc::none;
+  if (magnitude > maxMagnitude) return zc::none;
+  return signature::CanonicalInteger{negative && magnitude != 0
+                                         ? signature::IntegerSign::Negative
+                                         : signature::IntegerSign::NonNegative,
+                                     magnitudeBytes(magnitude)};
 }
 
 // Saturating float-to-integer magnitude for the `as` cast fold. Truncates
@@ -7746,9 +7929,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
                  syntax.kind == ast::SyntaxKind::BinaryExpr ||
                  syntax.kind == ast::SyntaxKind::PostfixExpression ||
                  syntax.kind == ast::SyntaxKind::AssignmentExpr) {
-        // A string-concat fold emits a Literal fact, not a Call fact, so it
-        // needs only a Literal requirement and skips the operator requirement.
-        if (syntax.kind == ast::SyntaxKind::BinaryExpr && isStringConcatFoldSite(tree, node)) {
+        // A folded binary emits a Literal fact, not a Call fact, so it needs
+        // only a Literal requirement and skips the operator requirement. This
+        // covers the string-concat fold and the integer-literal arithmetic
+        // fold; both compute the constant at compile time.
+        if (syntax.kind == ast::SyntaxKind::BinaryExpr &&
+            (isStringConcatFoldSite(tree, node) || (isLiteralArithmeticFoldSite(tree, node) &&
+                                                    !isOwnerLocalInitializer(boundModule, node)))) {
           addNodeRequirement(nodeRequirements, CheckedFactGroup::Literal, node, key);
         } else if (syntax.kind == ast::SyntaxKind::UnaryExpression &&
                    static_cast<ast::UnaryOperatorKind>(
@@ -7911,6 +8098,17 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           // literal-vs-literal-annotated path and reject it with ZOM4028.
           if (isStringConcatFoldSite(tree, node)) {
             production = BodyProductionKind::StringConcatFold;
+            break;
+          }
+          // A binary over two integer literals folds to a constant for the same
+          // reason: the primitive-binary rail needs a reference operand to
+          // anchor the operand type, and a literal pair has none. A `let`
+          // initializer is excluded because the annotated-binding rail already
+          // anchors the operand type from the annotation and produces its own
+          // facts; claiming it here would replace a working path.
+          if (isLiteralArithmeticFoldSite(tree, node) &&
+              !isOwnerLocalInitializer(boundModule, node)) {
+            production = BodyProductionKind::LiteralArithmeticFold;
             break;
           }
           // Admit the six relational comparisons (result bool, any position),
@@ -11382,6 +11580,66 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 site.node,
                 signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(magnitude))),
                 target, site.key.sourceSpan.clone()},
+            zc::Array<uint8_t>()});
+      } else if (site.production == BodyProductionKind::LiteralArithmeticFold) {
+        // A binary over two integer literals (`40 + 2`) folds to the constant
+        // at compile time. The classification precondition guarantees both
+        // operands are integer literals and the operator is arithmetic or
+        // bitwise, so the result type is the operands' shared type. The folded
+        // value is emitted as an integer literal fact so the HIR builder lowers
+        // the binary to a scalar constant through the literal-return path.
+        const auto& tree = input.boundModule.tree();
+        const auto& binaryNode = tree.node(site.node);
+        const ast::NodeId left(binaryNode.payload.words[ast::kBinaryExprLhsWord]);
+        const ast::NodeId right(binaryNode.payload.words[ast::kBinaryExprRhsWord]);
+        if (!tree.contains(left) || !tree.contains(right)) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto leftValue = scalar_literal::integerLiteralNodeValue(tree, left);
+        auto rightValue = scalar_literal::integerLiteralNodeValue(tree, right);
+        zc::Maybe<identity::SemanticTypeId> leftType;
+        zc::Maybe<identity::SemanticTypeId> rightType;
+        for (const auto& entry : nodeTypes) {
+          if (entry.key == left) leftType = entry.value;
+          if (entry.key == right) rightType = entry.value;
+        }
+        if (leftValue == zc::none || rightValue == zc::none || leftType == zc::none ||
+            rightType == zc::none || ZC_ASSERT_NONNULL(leftType) != ZC_ASSERT_NONNULL(rightType)) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        const auto operandType = ZC_ASSERT_NONNULL(leftType);
+        auto operandKind = integerPrimitiveKind(input.semanticTypes, operandType);
+        if (operandKind == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        auto folded = foldIntegerBinary(
+            static_cast<ast::BinaryOperatorKind>(binaryNode.payload.words[ast::kBinaryExprOpWord]),
+            ZC_ASSERT_NONNULL(leftValue), ZC_ASSERT_NONNULL(rightValue),
+            ZC_ASSERT_NONNULL(operandKind));
+        if (folded == zc::none) {
+          // An operation the fold refuses (division by zero, an overflowing
+          // shift) is not a constant this slice can emit. It stays a
+          // capability drain rather than being folded to a wrong value.
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        producedType = operandType;
+        literals.add(checked::LiteralFactMap::Entry{
+            site.node,
+            checked::CheckedLiteralFact{
+                site.node,
+                signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(folded))),
+                operandType, site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::EnumVariantConstruction) {
         // An enum tuple-variant construction `Enum::Variant(args)`. The variant

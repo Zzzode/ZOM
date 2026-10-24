@@ -984,6 +984,64 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsBoolComparisonBinaryLocalInitializer") {
   ZC_EXPECT(call.invocation.resultType == boolType);
 }
 
+ZC_TEST("PrimitiveBinaryOperation.FoldsLiteralArithmeticInReturnPosition") {
+  // `return 40 + 2` has no reference operand to anchor the operand type, so the
+  // primitive-binary rail cannot admit it. The checker folds it instead and
+  // emits an integer literal fact for the binary node, which the HIR lowers to
+  // a scalar constant return. No Call fact is produced.
+  PrimitiveBinaryFixture fixture("fn f() -> i32 { return 40 + 2; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_EXPECT(facts.calls().entries().size() == 0);
+  const auto i32 = fixture.primitive(type::semantic::PrimitiveKind::I32);
+  bool foldedLiteral = false;
+  for (const auto& literal : facts.literals().entries()) {
+    if (literal.value.type != i32) continue;
+    auto integer = literal.value.literal.integerValue();
+    if (integer == zc::none) continue;
+    if (ZC_ASSERT_NONNULL(integer).sign != checker::signature::IntegerSign::NonNegative) continue;
+    uint64_t magnitude = 0;
+    for (const auto byte : ZC_ASSERT_NONNULL(integer).magnitude) {
+      magnitude = (magnitude << 8) | byte;
+    }
+    if (magnitude == 42) foldedLiteral = true;
+  }
+  ZC_EXPECT(foldedLiteral);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.FoldsLiteralArithmeticToANegativeConstant") {
+  // The folded value keeps its sign separately from the magnitude, so a
+  // negative result is representable rather than wrapping.
+  PrimitiveBinaryFixture fixture("fn f() -> i32 { return 0 - 40; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_EXPECT(facts.calls().entries().size() == 0);
+  bool foldedNegative = false;
+  for (const auto& literal : facts.literals().entries()) {
+    auto integer = literal.value.literal.integerValue();
+    if (integer == zc::none) continue;
+    const auto& value = ZC_ASSERT_NONNULL(integer);
+    if (value.sign != checker::signature::IntegerSign::Negative) continue;
+    uint64_t magnitude = 0;
+    for (const auto byte : value.magnitude) { magnitude = (magnitude << 8) | byte; }
+    if (magnitude == 40) foldedNegative = true;
+  }
+  ZC_EXPECT(foldedNegative);
+}
+
+ZC_TEST("PrimitiveBinaryOperation.KeepsTheAnnotatedInitializerRailForLiteralPairs") {
+  // A `let` initializer with an annotation is anchored by the annotation and
+  // keeps producing a primitive call fact; the fold must not claim it.
+  PrimitiveBinaryFixture fixture("fn f() -> i32 { let y: i32 = 40 + 2; return y; }\n"_zc);
+  const auto& facts = fixture.adoptVerifiedFacts();
+
+  ZC_REQUIRE(facts.calls().entries().size() == 1);
+  const auto& call = soleEqualityCall(facts);
+  const auto& selected = call.invocation.selected.variant();
+  ZC_REQUIRE(selected.is<checked::PrimitiveCallable>());
+  ZC_EXPECT(selected.get<checked::PrimitiveCallable>().operation == PrimitiveOperation::Add);
+}
+
 ZC_TEST("PrimitiveBinaryOperation.ReportsMismatchedOperandTypesInsideAMethodBody") {
   // The same refusal inside a method body. A diagnostic needs an owner to build
   // its recovery root, and the owner lookup once admitted only
