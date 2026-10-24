@@ -302,6 +302,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/mut-diamond-overwrite-local-condition-consumer/Zom.toml::mut_diamond_overwrite_local_condition_consumer::mut_diamond_overwrite_local_condition_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-call-passthrough-consumer/Zom.toml::float_call_passthrough_consumer::float_call_passthrough_consumer"
+      --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/float-call-constant-consumer/Zom.toml::float_call_constant_consumer::float_call_constant_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dyn-erase-consumer/Zom.toml::dyn_erase_consumer::dyn_erase_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/enum-value-consumer/Zom.toml::enum_value_consumer::enum_value_consumer"

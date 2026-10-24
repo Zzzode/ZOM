@@ -341,6 +341,21 @@ zc::Maybe<ArithmeticOp> lirArithmeticOpFor(mir::MirArithmeticOperator op) noexce
   return zc::none;
 }
 
+/// \brief Resolves the scalar carrier for a semantic type: integer first, then
+/// float.
+///
+/// A call whose callee returns its single parameter, or its own constant, is
+/// carrier-agnostic: the same LIR functions serve an i32 and an f64 body, and
+/// the LLVM translator already types parameters, `ReturnFloat`, and the call
+/// result from the carrier. Every other type (aggregate, pointer, unit,
+/// existential) has no scalar carrier and fails closed.
+zc::Maybe<ValueType> scalarCarrierFor(identity::SemanticTypeId type,
+                                      const type::SemanticTypeStore& semanticTypes) {
+  auto integer = integerCarrierFor(type, semanticTypes);
+  if (integer != zc::none) { return integer; }
+  return floatCarrierFor(type, semanticTypes);
+}
+
 /// \brief Lowers a MIR operand (integer, boolean, or float constant, or a
 /// parameter/body-local place-use) to a LIR operand of the given carrier.
 /// \return The operand, or none for a constant whose kind does not match the
@@ -5343,13 +5358,13 @@ zc::Maybe<Module> MirToLirLowering::lowerSequentialLocalReturn(
 zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& caller,
                                                     const mir::MirFunction& callee,
                                                     const type::SemanticTypeStore& semanticTypes) {
-  // Callee: the scalar constant-return shape (no locals, one block returning an
-  // integer constant). Build its single-block ReturnInteger LIR function.
+  // Callee: the scalar constant-return shape (no locals, one block returning a
+  // scalar constant). Build its single-block constant-return LIR function.
   if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() != 0 ||
       callee.blocks.size() != 1) {
     return zc::none;
   }
-  auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  auto calleeCarrier = scalarCarrierFor(callee.resultType, semanticTypes);
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const auto& calleeBlock = callee.blocks[0];
@@ -5359,19 +5374,31 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   }
   const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
   if (calleeReturn == zc::none) { return zc::none; }
+  // One scalar constant: ReturnInteger for an integer carrier, ReturnFloat for a
+  // float carrier. The surrounding shape is identical.
   zc::Maybe<IntegerConstant> calleeConstant;
+  zc::Maybe<FloatConstant> calleeFloatConstant;
   ZC_IF_SOME(value, calleeReturn) {
     if (value.kind() != mir::MirOperandKind::Constant ||
         value.constantValue().type != callee.resultType) {
       return zc::none;
     }
-    const auto integer = value.constantValue().value.integerValue();
-    if (integer == zc::none) { return zc::none; }
-    auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
-    if (bits == zc::none) { return zc::none; }
-    calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+    const auto floatValue = value.constantValue().value.floatValue();
+    if (floatValue != zc::none) {
+      if (calleeCarrierValue.kind() != ValueTypeKind::Float) { return zc::none; }
+      calleeFloatConstant = floatConstantFrom(ZC_REQUIRE_NONNULL(floatValue), calleeCarrierValue);
+      if (calleeFloatConstant == zc::none) { return zc::none; }
+    } else {
+      const auto integer = value.constantValue().value.integerValue();
+      if (integer == zc::none || calleeCarrierValue.kind() != ValueTypeKind::Integer) {
+        return zc::none;
+      }
+      auto bits = zeroExtendedBits(ZC_REQUIRE_NONNULL(integer), calleeCarrierValue.integerWidth());
+      if (bits == zc::none) { return zc::none; }
+      calleeConstant = IntegerConstant::from(calleeCarrierValue, ZC_REQUIRE_NONNULL(bits));
+      if (calleeConstant == zc::none) { return zc::none; }
+    }
   }
-  if (calleeConstant == zc::none) { return zc::none; }
 
   // Caller: P leading parameter locals followed by either one result local
   // (initializer shape) or a Temporary + FunctionResult pair (return shape).
@@ -5389,7 +5416,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   const size_t trailingCount = caller.locals.size() - callerParameterCount;
   if (trailingCount != 1 && trailingCount != 2) { return zc::none; }
 
-  auto callerCarrier = integerCarrierFor(caller.resultType, semanticTypes);
+  auto callerCarrier = scalarCarrierFor(caller.resultType, semanticTypes);
   if (callerCarrier == zc::none) { return zc::none; }
   const auto callerCarrierValue = ZC_REQUIRE_NONNULL(callerCarrier);
 
@@ -5517,7 +5544,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
                                 Terminator::returnLocal(callerShape.resultOrdinal)));
     zc::Vector<Local> parameters;
     for (size_t p = 0; p < callerParameterCount; ++p) {
-      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      auto carrier = scalarCarrierFor(caller.locals[p].type, semanticTypes);
       if (carrier == zc::none) { return zc::none; }
       parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
     }
@@ -5526,11 +5553,17 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
                            zc::mv(callerBlocks)));
   }
 
-  // Function 1: the callee, a single block returning the integer constant.
+  // Function 1: the callee, a single block returning its scalar constant.
   {
     zc::Vector<BasicBlock> calleeBlocks;
-    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
-                                Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    if (calleeFloatConstant != zc::none) {
+      calleeBlocks.add(
+          BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                     Terminator::returnFloat(ZC_REQUIRE_NONNULL(calleeFloatConstant))));
+    } else {
+      calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId),
+                                  Terminator::returnInteger(ZC_REQUIRE_NONNULL(calleeConstant))));
+    }
     functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
                            zc::mv(calleeBlocks)));
   }
@@ -5552,7 +5585,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   if (calleeParam.kind != mir::MirLocalKind::Parameter || calleeParam.type != callee.resultType) {
     return zc::none;
   }
-  auto calleeCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  auto calleeCarrier = scalarCarrierFor(callee.resultType, semanticTypes);
   if (calleeCarrier == zc::none) { return zc::none; }
   const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const uint32_t calleeParamOrdinal = calleeParam.id.ordinal();
@@ -5742,7 +5775,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
                                 Terminator::returnLocal(callerShape.resultOrdinal)));
     zc::Vector<Local> parameters;
     for (size_t p = 0; p < callerParameterCount; ++p) {
-      auto carrier = integerCarrierFor(caller.locals[p].type, semanticTypes);
+      auto carrier = scalarCarrierFor(caller.locals[p].type, semanticTypes);
       if (carrier == zc::none) { return zc::none; }
       parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
     }

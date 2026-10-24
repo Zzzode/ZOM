@@ -1,0 +1,10 @@
+// Float cross-call backend-lowering fixture: the callee returns an f64 literal,
+// so it lowers to ReturnFloat rather than ReturnInteger, and the caller stores
+// the call result in a Binary64 slot. Object emission proves the full chain.
+fn answer() -> f64 {
+  return 41.0;
+}
+
+fn entry() -> f64 {
+  return answer();
+}

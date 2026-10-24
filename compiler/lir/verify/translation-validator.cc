@@ -2780,6 +2780,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           if (carrier == zc::none) { carrier = boolCarrier(sourceType, types); }
           if (carrier == zc::none) { carrier = enumCarrier(sourceType, types); }
           if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = floatCarrier(sourceType, types); }
           if (carrier == zc::none ||
               !sameConstant(arguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
             return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);

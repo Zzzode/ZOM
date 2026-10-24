@@ -1,0 +1,12 @@
+// Float cross-call backend-lowering fixture: the callee returns its own f64
+// parameter, so the call chain carries a Binary64 carrier from the argument
+// through the callee slot, the call result slot, and the caller return. This
+// shape lowered only for integer carriers before, so the whole module failed
+// with "no backend slice". Object emission proves the full chain.
+fn identity(x: f64) -> f64 {
+  return x;
+}
+
+fn entry() -> f64 {
+  return identity(41.0);
+}
