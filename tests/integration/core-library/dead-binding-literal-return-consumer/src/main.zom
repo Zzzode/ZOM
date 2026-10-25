@@ -1,0 +1,7 @@
+// Leading bindings that never feed the return stay live locals, while the
+// trailing scalar literal is returned independently.
+fn entry() -> i32 {
+  let b = 7;
+  let c = 8;
+  return 2;
+}

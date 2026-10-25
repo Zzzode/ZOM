@@ -1,0 +1,8 @@
+[package]
+name = "dead_binding_literal_return_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "dead_binding_literal_return_consumer"
+path = "src/main.zom"

@@ -3909,6 +3909,45 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                               ir::IrFailureKind::InvalidFact, module, registries,
                                               index + 1);
         }
+      } else if (source.returnsLiteral) {
+        // A scalar-literal return independent of the leading bindings
+        // (`let b = 7; return 2;`). The value node pools the literal
+        // expression checked for the source return node.
+        zc::Maybe<const HirScalarLiteralExpression&> returnLiteral;
+        for (const auto& expression : candidate.impl->expressions) {
+          if (expression.node != hirId(returnNodeOrdinal + 1)) continue;
+          if (returnLiteral != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          returnLiteral = expression;
+        }
+        auto literalIndex = factIndex(facts.literals(), source.returnValue);
+        if (literalIndex == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t literalSlot = 0;
+        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+        const auto& literalFact = facts.literals().entries()[literalSlot].value;
+        bool literalMatches = false;
+        if (returnLiteral != zc::none) {
+          const auto& literalExpression = ZC_ASSERT_NONNULL(returnLiteral);
+          literalMatches =
+              literalFact.node == source.returnValue && literalFact.type == sequentialType &&
+              literalExpression.type == sequentialType &&
+              literalExpression.category == HirValueCategory::Value &&
+              sameConstant(literalExpression.value, literalFact.literal, module, registries,
+                           semanticTypes) &&
+              sameSpan(literalExpression.sourceSpan, ZC_ASSERT_NONNULL(returnValueSpan));
+        }
+        if (!literalMatches) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
       } else {
         zc::Maybe<const HirParameterReferenceExpression&> returnReference;
         for (const auto& parameterReference : candidate.impl->parameterReferences) {

@@ -886,12 +886,17 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     }
     return;
   }
+  ZC_IF_SOME(literal, sequential.returnLiteral) {
+    ctx.addExpression(HirScalarLiteralExpression{returnValueId, sequential.type, literal.clone(),
+                                                 HirValueCategory::Value,
+                                                 sequential.returnValueSpan.clone()});
+  }
   ZC_IF_SOME(parameter, sequential.returnParameter) {
     ctx.addParameterReference(HirParameterReferenceExpression{
         returnValueId, parameter.clone(), sequential.type, HirValueCategory::Place,
         sequential.returnValueSpan.clone()});
   }
-  if (sequential.returnParameter == zc::none) {
+  if (sequential.returnParameter == zc::none && sequential.returnLiteral == zc::none) {
     ctx.addLocalReference(HirLocalReferenceExpression{
         returnValueId, hirLocalId(static_cast<uint32_t>(sequential.returnLocal + 1)),
         sequential.type, HirValueCategory::Place, sequential.returnValueSpan.clone()});

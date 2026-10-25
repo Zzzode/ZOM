@@ -5252,10 +5252,12 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::InvalidFact, module, registries,
                                                ordinal + 2);
         }
-        // The returned value names a parameter, one of the declared locals, or is
-        // one primitive binary over those bindings and scalar literals.
+        // The returned value names a parameter, one of the declared locals, is
+        // one primitive binary over those bindings and scalar literals, or is a
+        // scalar literal independent of every binding.
         zc::Maybe<identity::CallableParameterKey> returnParameter;
         zc::Maybe<PendingSequentialBinding> returnBinary;
+        zc::Maybe<checker::checked::CanonicalConstValue> returnLiteral;
         size_t returnLocal = 0;
         ZC_IF_SOME(index, sequentialShape.returnsLocal) { returnLocal = index; }
         const bool returnsPrimitiveBinary =
@@ -5508,6 +5510,26 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                        /*matchHasDefaultArm=*/false,
                                        /*declaratorNode=*/ast::NodeId(),
                                        /*initializerNode=*/binaryNode};
+        } else if (sequentialShape.returnsLiteral) {
+          // A scalar-literal return independent of the leading bindings
+          // (`let b = 7; return 2;`). The literal fact carries the returned
+          // constant; the bindings lower but never feed the return.
+          auto literalIndex = factIndex(facts.literals(), sequentialShape.returnValue);
+          if (literalIndex == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (literalFact.node != sequentialShape.returnValue ||
+              literalFact.type != sequentialType) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::InvalidFact, module, registries,
+                                                 ordinal + 2);
+          }
+          returnLiteral = literalFact.literal.clone();
         } else if (sequentialShape.returnsLocal == zc::none) {
           auto parameterHandle =
               resolvedCallableParameter(bound.bindings(), sequentialShape.returnValue);
@@ -5597,6 +5619,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                 zc::mv(returnParameter),
                                                 returnLocal,
                                                 ZC_ASSERT_NONNULL(returnValueSpan).clone(),
+                                                zc::mv(returnLiteral),
                                                 zc::mv(deadBindings)};
         pendingFunctions.add(PendingFunctionDeclaration{
             definition.definition, definition.node, callable.success, zc::mv(parameters), zc::none,

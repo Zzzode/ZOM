@@ -149,6 +149,10 @@ struct SequentialLocalShape final {
   // The zero-based index of the returned local, or none when the return names a
   // parameter.
   zc::Maybe<size_t> returnsLocal;
+  // True when the return value is a scalar literal independent of every
+  // leading binding (`let b = 7; return 2;`). The leading bindings stay in
+  // the lowered body even when the return itself reads none of them.
+  bool returnsLiteral = false;
 };
 
 // K leading scalar-local bindings followed by one conditional tail. Each

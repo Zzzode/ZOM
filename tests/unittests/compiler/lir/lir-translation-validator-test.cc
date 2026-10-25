@@ -627,6 +627,87 @@ ZC_TEST("Translation validator rejects a folded terminator beside a declared sou
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EffectMismatch);
 }
 
+// MIR `fn f() -> i32 { let b = 7; let c = 8; return 2; }`: two user locals,
+// each initialized from a constant, and a terminator returning a direct
+// constant that neither local feeds. The general scalar lowering keeps both
+// body slots (and their assign effects) while carrying the returned constant
+// in the terminator — the materialized correspondence, not the no-slot fold.
+mir::MirFunction deadBindingsLiteralReturnMir(identity::DefId owner, identity::SemanticTypeId i32,
+                                              uint8_t returnedBits) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::UserLocal, i32, mirScope(1),
+                                      span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::UserLocal, i32, mirScope(1),
+                                      span()});
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(mirLocal(1), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(1), i32),
+      mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(7))),
+      mir::MirInitializationKind::Initialize, span()));
+  statements.add(mir::MirStatement::storageLive(mirLocal(2), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(2), i32),
+      mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(8))),
+      mir::MirInitializationKind::Initialize, span()));
+  auto terminator = mir::MirTerminator::returnValue(
+      mir::MirOperand::constant(i32, integerConstant(returnedBits)), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Translation validator accepts materialized dead locals beside a constant return") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(62);
+  zc::Vector<Statement> statements;
+  statements.add(Statement::assign(1, Operand::constant(i32Const(7))));
+  statements.add(Statement::assign(2, Operand::constant(i32Const(8))));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnInteger(i32Const(2))));
+  zc::Vector<Local> locals;
+  locals.add(Local(1, i32Carrier()));
+  locals.add(Local(2, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                         zc::Vector<Local>(), zc::mv(locals), zc::mv(blocks)));
+  ZC_EXPECT(TranslationValidator::validate(deadBindingsLiteralReturnMir(owner, i32, 2),
+                                           Module(zc::mv(functions)),
+                                           types.semanticTypes()) == zc::none);
+}
+
+ZC_TEST("Translation validator rejects a materialized constant return with the wrong constant") {
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(63);
+  zc::Vector<Statement> statements;
+  statements.add(Statement::assign(1, Operand::constant(i32Const(7))));
+  statements.add(Statement::assign(2, Operand::constant(i32Const(8))));
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnInteger(i32Const(3))));
+  zc::Vector<Local> locals;
+  locals.add(Local(1, i32Carrier()));
+  locals.add(Local(2, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                         zc::Vector<Local>(), zc::mv(locals), zc::mv(blocks)));
+  auto finding = TranslationValidator::validate(deadBindingsLiteralReturnMir(owner, i32, 2),
+                                                Module(zc::mv(functions)), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::ConstantMismatch);
+}
+
 ZC_TEST("Translation validator rejects a folded scalar with the wrong constant") {
   TestSemanticTypeContext types;
   const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);

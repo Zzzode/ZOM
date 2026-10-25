@@ -5603,6 +5603,65 @@ ZC_TEST("HIR pipeline lowers a trailing write copying an earlier binding") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers dead leading bindings beside a scalar literal return") {
+  // `let b = 7; let c = 8; return 2;` never reads either binding. The
+  // returned literal is independent of the leading bindings, so the
+  // sequential rail keeps the dead locals but pools the return as its own
+  // scalar literal expression and the native run exits with the returned
+  // constant. The single-binding spelling shares the same route.
+  HirPipelineFixture fixture("fn f() -> i32 { let b = 7; let c = 8; return 2; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  const auto& returned = module.returns()[0];
+  zc::Maybe<const hir::HirScalarLiteralExpression&> returnLiteral;
+  for (const auto& expression : module.expressions()) {
+    if (expression.node != returned.value) continue;
+    returnLiteral = expression;
+  }
+  ZC_REQUIRE(returnLiteral != zc::none);
+  ZC_IF_SOME(literal, returnLiteral) {
+    ZC_EXPECT(literal.type == module.functions()[0].resultType);
+    ZC_EXPECT(literal.category == hir::HirValueCategory::Value);
+  }
+  // No return place reference: the returned value node is the literal alone.
+  for (const auto& reference : module.localReferences()) {
+    ZC_EXPECT(reference.node != returned.value);
+  }
+  for (const auto& reference : module.parameterReferences()) {
+    ZC_EXPECT(reference.node != returned.value);
+  }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  const auto& function = module.functions()[0];
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    const auto& terminator = mirFunction.blocks[0].terminator;
+    ZC_REQUIRE(terminator.kind() == mir::MirTerminatorKind::Return);
+    const auto& operand = ZC_ASSERT_NONNULL(terminator.returnValue().value);
+    ZC_REQUIRE(operand.kind() == mir::MirOperandKind::Constant);
+    const auto integer = operand.constantValue().value.integerValue();
+    ZC_REQUIRE(integer != zc::none);
+    ZC_IF_SOME(value, integer) {
+      ZC_EXPECT(value.sign == checker::signature::IntegerSign::NonNegative);
+      ZC_REQUIRE(value.magnitude.size() == 1);
+      ZC_EXPECT(value.magnitude[0] == 2);
+    }
+  }
+
+  // The one-binding spelling must route the same rail rather than falling
+  // back to a single-local shape that cannot carry a literal return.
+  HirPipelineFixture single("fn g() -> i32 { let b = 7; return 2; }"_zc);
+  ZC_REQUIRE(single.hirModule().locals().size() == 1);
+  ZC_REQUIRE(single.hirModule().expressions().size() == 2);
+}
+
 ZC_TEST("HIR pipeline drains a return binary over a written local as ZOM4099") {
   // `mut s = 1; s = 2; return 3 + s;` combines a prefix write with a binary
   // return. Neither the single-local write arm nor the sequential-local rail
@@ -5615,6 +5674,23 @@ ZC_TEST("HIR pipeline drains a return binary over a written local as ZOM4099") {
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
       session, "fn entry() -> i32 { mut s = 1; s = 2; return 3 + s; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
+ZC_TEST("HIR pipeline drains an unsafe-wrapped literal return as ZOM4099") {
+  // `let b = 7; return unsafe { 2 };` classifies as a literal-return
+  // sequential body, but the sequential MIR strategy declines an unsafe
+  // block. The router leaves the shape unclaimed so the definition drains at
+  // the capability boundary, instead of publishing a HIR body whose MIR
+  // construction surfaces as an ir-phase incident.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry() -> i32 { let b = 7; return unsafe { 2 }; }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getIncidents().empty());

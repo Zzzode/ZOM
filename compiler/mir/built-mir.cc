@@ -1419,6 +1419,7 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
   }
   if (localCount >= 2) return true;
   auto localBinding = localFor(module, block.statements[0]);
+  if (localBinding == zc::none) return false;
   bool binaryInitializer = false;
   ZC_IF_SOME(local, localBinding) {
     ZC_IF_SOME(initializer, local.initializer) {
@@ -1426,7 +1427,19 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
                           conditionalFor(module, initializer) != zc::none;
     }
   }
-  return binaryInitializer;
+  if (binaryInitializer) return true;
+  // A single non-binary local followed by a scalar-literal return
+  // (`let b = 7; return 2;`): the returned constant is independent of the
+  // local, so the body pools one value node beyond the per-function checksum
+  // credit. A local- or parameter-return keeps the ordinary single-local
+  // balance and stays unclassified here.
+  {
+    auto literalReturn = returnFor(module, block.statements[lastIndex]);
+    ZC_IF_SOME(returnStatement, literalReturn) {
+      if (expressionFor(module, returnStatement.value) != zc::none) return true;
+    }
+  }
+  return false;
 }
 
 // Maps the HIR-carried relational operator to its Built MIR comparison operator.
@@ -2473,6 +2486,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       ZC_IF_SOME(returnStatement, sequentialReturn) {
         if (parameterReferenceFor(hirModule, returnStatement.value) != zc::none) ++valueNodes;
+        // A scalar-literal return independent of the leading bindings
+        // (`let b = 7; return 2;`) pools one extra expression beyond the
+        // per-function credit.
+        if (expressionFor(hirModule, returnStatement.value) != zc::none) ++valueNodes;
         // A trailing primitive binary over the leading bindings contributes one
         // pooled binary operation (already credited on the left) and one value
         // node per literal or parameter leaf on the right. A nested operand

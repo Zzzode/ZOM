@@ -1639,11 +1639,13 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     if (!tree.contains(returnValue)) return zc::none;
   }
   // The trailing value is a bare identifier naming one of the leading bindings,
-  // or one primitive binary over those bindings and scalar literals. The binary
-  // form reuses the same leaf-operand rail as a binary binding initializer.
+  // one primitive binary over those bindings and scalar literals, or a scalar
+  // literal independent of every leading binding. The binary form reuses the
+  // same leaf-operand rail as a binary binding initializer.
   const auto returnValueKind = tree.node(returnValue).kind;
+  const bool returnIsScalarLiteral = isScalarLiteral(returnValueKind);
   if (returnValueKind != ast::SyntaxKind::IdentExpr &&
-      returnValueKind != ast::SyntaxKind::BinaryExpr) {
+      returnValueKind != ast::SyntaxKind::BinaryExpr && !returnIsScalarLiteral) {
     return zc::none;
   }
   // Only the primitive operator families ride the trailing-binary rail: the
@@ -1693,10 +1695,18 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       }
     }
   }
+  // When the return names neither a local nor a parameter, a scalar literal is
+  // admitted: the returned constant is independent of every leading binding.
+  if (shape.returnsLocal == zc::none && returnValueKind != ast::SyntaxKind::IdentExpr &&
+      isScalarLiteral(returnValueKind)) {
+    shape.returnsLiteral = true;
+  }
   // A body with a trailing write returns the written local directly. A return
   // binary or a parameter over that shape needs a layout this rail does not
   // model, so it stays on the fail-closed drain.
-  if (shape.localWrites.size() != 0 && shape.returnsLocal == zc::none) { return zc::none; }
+  if (shape.localWrites.size() != 0 && shape.returnsLocal == zc::none && !shape.returnsLiteral) {
+    return zc::none;
+  }
   return shape;
 }
 
@@ -1890,6 +1900,7 @@ SequentialLocalShape filterDeadSequentialBindings(const SequentialLocalShape& sh
   filtered.body = shape.body;
   filtered.returnStatement = shape.returnStatement;
   filtered.returnValue = shape.returnValue;
+  filtered.returnsLiteral = shape.returnsLiteral;
   for (size_t i = 0; i < count; ++i) {
     if (removed[i]) continue;
     SequentialLocalBinding binding = shape.bindings[i];
@@ -4150,19 +4161,25 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     if (sequential != zc::none) {
       bool routeToSequential = false;
       ZC_IF_SOME(shape, sequential) {
+        // The literal-return rail has no unsafe lowering (the sequential MIR
+        // strategy declines an unsafe block), so an unsafe-wrapped literal
+        // stays unclaimed and drains at the capability boundary instead of
+        // publishing a HIR body the MIR builder rejects with an incident.
+        const bool literalTrappedInUnsafe = shape.returnsLiteral && unsafeBlock != zc::none;
         routeToSequential =
-            shape.bindings.size() >= 2 ||
-            (shape.bindings.size() == 1 &&
-             (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat ||
-              shape.bindings[0].initializerKind ==
-                  SequentialInitializerKind::FoldedLiteralArithmetic ||
-              shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedLiteralUnary ||
-              isComparisonReturnSyntax(tree, shape.returnValue) ||
-              isNestedBinaryReturnSyntax(tree, shape.returnValue)));
+            !literalTrappedInUnsafe &&
+            (shape.bindings.size() >= 2 || shape.returnsLiteral ||
+             (shape.bindings.size() == 1 &&
+              (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedStringConcat ||
+               shape.bindings[0].initializerKind ==
+                   SequentialInitializerKind::FoldedLiteralArithmetic ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedLiteralUnary ||
+               isComparisonReturnSyntax(tree, shape.returnValue) ||
+               isNestedBinaryReturnSyntax(tree, shape.returnValue))));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

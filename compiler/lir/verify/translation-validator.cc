@@ -533,6 +533,15 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
       }
     }
   }
+  // A direct constant terminator over a materialized body (the general
+  // scalar lowering of `let b = 7; ...; return 2;`) keeps every body slot and
+  // carries the constant in the terminator. That is the materialized
+  // correspondence, not the no-slot receiver-callee fold: any declared body
+  // local takes the fold out of force. Parameter slots alone still match the
+  // folded literal-method-callee shape.
+  if (fold.kind == FoldKind::DirectConstant && lir.locals().size() != 0) {
+    fold.kind = FoldKind::None;
+  }
 
   const bool folded = fold.kind != FoldKind::None;
 
@@ -2656,12 +2665,22 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                   ZC_ASSERT_NONNULL(receiverFieldArithmetic).resultOrdinal) {
             return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
+        } else if (operand.kind() == mir::MirOperandKind::Constant) {
+          // Materialized correspondence with a direct constant terminator:
+          // every body slot maps one-to-one while the returned constant rides
+          // the terminator. The general scalar lowering folds integer and
+          // boolean returns to ReturnInteger; every other constant kind stays
+          // outside the admitted slice.
+          if (lirTerminator.kind() != TerminatorKind::ReturnInteger ||
+              !sameConstant(Operand::constant(lirTerminator.returnIntegerValue()), operand,
+                            ZC_ASSERT_NONNULL(expectedReturnCarrier))) {
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          }
         } else {
           if (lirTerminator.kind() != TerminatorKind::ReturnLocal) {
             return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
           }
-          if (operand.kind() == mir::MirOperandKind::Constant ||
-              operand.place().projections().size() != 0) {
+          if (operand.place().projections().size() != 0) {
             return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
           }
           if (lirTerminator.returnLocalOrdinal() != operand.place().local().ordinal()) {

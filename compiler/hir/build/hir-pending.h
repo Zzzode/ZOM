@@ -155,6 +155,11 @@ struct PendingSequentialLocalReturn final {
   zc::Maybe<identity::CallableParameterKey> returnParameter;
   size_t returnLocal;
   identity::SourceSpan returnValueSpan;
+  // When set, the function returns this scalar literal directly; every leading
+  // binding and write is lowered but none of them feeds the return. Mutually
+  // exclusive with `returnBinary` and `returnParameter`; in that case
+  // `returnLocal` is left at its default and unused.
+  zc::Maybe<checker::checked::CanonicalConstValue> returnLiteral;
   // Dead-erase slice: bindings skipped by the dead-binding filter. The checker
   // produces facts for every binding, so the count validation must add these
   // back to the expected counts. The HIR lowering only sees `bindings`.
