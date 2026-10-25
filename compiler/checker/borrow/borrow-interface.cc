@@ -676,6 +676,14 @@ BorrowInterfaceBuildResult BorrowInterfaceBuilder::build(const BorrowInterfaceBu
             ordinal++});
         return zc::none;
       }
+    } else if (result == BorrowShape::ParametricRegion) {
+      // A generic result whose region is supplied by the caller through a type
+      // argument: `fn id<T>(x: T) -> T`. The callee neither establishes nor
+      // forwards a region of its own — whatever `T` carries at the call site
+      // constrains the caller, not this signature — so the relation is none.
+      // This keeps the summary expressible in the two-variant relation codec
+      // instead of rejecting a well-formed generic declaration.
+      returnRelation = BorrowReturnRelation::none();
     } else if (result != BorrowShape::NoRegion) {
       sourceFailures.add(BorrowSignatureFailure{
           BorrowSignatureFailureKind::UnexpressibleResult, semanticSignature.definition,

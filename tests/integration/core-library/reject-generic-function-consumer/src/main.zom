@@ -1,5 +1,7 @@
-// Fail-closed fixture: a generic function has no monomorphization path, so the
-// checker rejects the generic definition with ZOM4083 (returned borrow relation
-// requires an explicit region contract) instead of admitting it.
+// Fail-closed fixture: a generic function now publishes its borrow signature
+// (the returned region is parametric, so the callee establishes no relation of
+// its own), but calling it still needs monomorphization, which has no producer
+// yet. The call therefore drains as ZOM4099 instead of being admitted to a
+// lowering that cannot emit an instance.
 fn identity<T>(x: T) -> T { return x; }
 fn entry() -> i32 { return identity(41); }
