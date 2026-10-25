@@ -463,6 +463,12 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     // HIR builder desugars it to `c == true`, reusing the comparison path.
     shape.conditionIsBoolReference = true;
   } else if (tree.contains(condition) &&
+             tree.node(condition).kind == ast::SyntaxKind::BoolLiteral) {
+    // A bare bool literal condition. The builder desugars it to
+    // `<literal> == true`, so `if (true)` takes the then-arm and `if (false)`
+    // the else-arm through the ordinary constant fold.
+    shape.conditionIsBoolLiteral = true;
+  } else if (tree.contains(condition) &&
              tree.node(condition).kind == ast::SyntaxKind::CallExpression) {
     // A direct call condition: the callee is an IdentExpr naming a free
     // function and every argument is a scalar literal or an identifier. The
@@ -492,7 +498,7 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
   // reach that requirement as an invariant failure, so decline here and let the
   // definition drain as the per-definition capability code instead.
   if (!shape.conditionIsEquality && !shape.conditionIsUnary && !shape.conditionIsBoolReference &&
-      !shape.conditionIsCall) {
+      !shape.conditionIsBoolLiteral && !shape.conditionIsCall) {
     return zc::none;
   }
   return shape;
@@ -1892,7 +1898,7 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     if (conditional == zc::none) return zc::none;
     const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
     if (!conditionalValue.conditionIsEquality && !conditionalValue.conditionIsUnary &&
-        !conditionalValue.conditionIsBoolReference) {
+        !conditionalValue.conditionIsBoolReference && !conditionalValue.conditionIsBoolLiteral) {
       return zc::none;
     }
     thenValue = conditionalValue.thenReturnValue;
@@ -2458,6 +2464,13 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           // A sole-if with a nested arithmetic comparison operand is routed
           // through the leading-local conditional path: the builder
           // synthesizes one arithmetic binding, then compares that local.
+          ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
+        }
+        if (conditional != zc::none && ZC_ASSERT_NONNULL(conditional).conditionIsBoolLiteral) {
+          // A sole-if whose condition is a bare bool literal is carried by the
+          // leading-local conditional path too: only that path desugars the
+          // literal to `<literal> == true`, and the plain conditional path
+          // models a condition as a parameter reference.
           ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
         }
         return conditional;

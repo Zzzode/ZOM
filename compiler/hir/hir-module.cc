@@ -5761,6 +5761,26 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             }
             // The HIR materialization desugars `!x` to `x == false`.
             hirOperation = checker::PrimitiveOperation::Eq;
+          } else if (source.conditionIsBoolLiteral) {
+            // A bare bool literal condition desugars to `<literal> == true`.
+            // Re-derive it from syntax: the condition is a BoolLiteral that
+            // carries a checker literal fact, the synthetic true operand has no
+            // AST node, and the desugared operation is equality.
+            leftSpan = bound.parsedModule().spanFor(tree.node(source.condition).range);
+            if (tree.node(source.condition).kind != ast::SyntaxKind::BoolLiteral ||
+                factIndex(facts.literals(), source.condition) == zc::none || leftSpan == zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::MissingRequiredFact, module,
+                                                  registries, index + 1);
+            }
+            {
+              size_t literalSlot = 0;
+              ZC_IF_SOME(value, factIndex(facts.literals(), source.condition)) {
+                literalSlot = value;
+              }
+              operandType = facts.literals().entries()[literalSlot].value.type;
+            }
+            hirOperation = checker::PrimitiveOperation::Eq;
           } else if (source.conditionIsBoolReference) {
             // A bare bool identifier condition desugars to `c == true`. Validate
             // the operand node type; the synthetic true operand has no AST node
@@ -5926,6 +5946,16 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             // to cross-check.
             if (!verifyConditionOperand(source.conditionUnaryOperandIsLiteral,
                                         source.conditionUnaryOperand, leftId,
+                                        ZC_ASSERT_NONNULL(leftSpan))) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::InvalidFact, module,
+                                                  registries, index + 1);
+            }
+          } else if (source.conditionIsBoolLiteral) {
+            // The bool-literal condition has one real operand (the literal);
+            // the synthetic true right operand has no AST node and no HIR
+            // record to cross-check.
+            if (!verifyConditionOperand(true, source.condition, leftId,
                                         ZC_ASSERT_NONNULL(leftSpan))) {
               return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                                   ir::IrFailureKind::InvalidFact, module,
@@ -6636,7 +6666,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         const bool conditionIsEquality = source.conditionIsEquality;
         const bool conditionIsUnary = source.conditionIsUnary;
         const bool conditionHasConjunctiveStride = source.hasMatchGuard;
-        const bool conditionHasEqualityStride = conditionIsEquality || conditionIsUnary;
+        const bool conditionHasEqualityStride =
+            conditionIsEquality || conditionIsUnary || source.conditionIsBoolLiteral;
         // The condition stride fixes the base offset of the then arm. Each
         // binary arm materializes three nodes (left operand, right operand,
         // binary) instead of one, so a binary arm shifts every later offset by

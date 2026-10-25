@@ -314,6 +314,11 @@ struct FunctionReturnShape final {
   // comparison condition path. The condition node is the IdentExpr; the
   // synthetic true operand has no AST node and carries no checker fact.
   bool conditionIsBoolReference = false;
+  // When the condition is a bare bool literal (`if (true)` / `if (false)`), the
+  // builder desugars it to `<literal> == true`, the same path the bool
+  // reference takes. The literal carries a checker literal fact, so the
+  // comparison folds through the ordinary constant path.
+  bool conditionIsBoolLiteral = false;
   // When the condition is a direct call expression (`if (f(args))`), the
   // condition node is a CallExpression and this flag is set. The HIR builder
   // resolves the checked call fact and lowers the call result as the

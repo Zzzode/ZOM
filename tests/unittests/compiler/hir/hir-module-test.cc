@@ -3662,6 +3662,30 @@ ZC_TEST("HIR pipeline lowers a less-than relational conditional condition") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a bool-literal conditional condition") {
+  // `if (true) { return 1; } else { return 2; }` desugars the literal to
+  // `true == true`, the same shape the bool-reference condition takes. It must
+  // reach Built MIR: the plain conditional path models a condition as a
+  // parameter reference, so the shape routes to the leading-local carrier.
+  HirPipelineFixture fixture("fn pick() -> i32 { if (true) { return 1; } else { return 2; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
+  // The desugared comparison is equality against the synthetic `true`.
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Eq);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+}
+
 ZC_TEST("HIR control arm lowers a parameter-condition conditional through exact node strides") {
   HirPipelineFixture fixture(
       "fn choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
@@ -5223,23 +5247,6 @@ ZC_TEST("HIR pipeline folds a literal unary binding and return") {
   ZC_EXPECT(literal.value.integerValue() != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(literal.value.integerValue()).sign ==
             checker::signature::IntegerSign::Negative);
-}
-
-ZC_TEST("HIR pipeline drains a literal bool conditional as ZOM4099") {
-  // A bare `true` / `false` condition has no carrier: the conditional shape
-  // classifies equality, unary, bool-reference, and call conditions only. It
-  // must drain as the per-definition capability code, never reach the builder's
-  // exactly-one-condition-flag requirement as an invariant.
-  identity::SemanticContextFactory contextFactory;
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  bool checked = HirPipelineFixture::prepareCheckedSession(
-      session, "fn pick() -> i32 { if (true) { return 41; } else { return 40; } }"_zc);
-  ZC_EXPECT(!checked);
-  ZC_EXPECT(session.hasDiagnosticErrors());
-  ZC_EXPECT(session.getIncidents().empty());
-  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
 ZC_TEST("HIR pipeline drains a return of a parameter beside a local as ZOM4099") {

@@ -1465,6 +1465,36 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                           0,
                                                           false};
             operation = checker::PrimitiveOperation::Eq;
+          } else if (shape.conditionIsBoolLiteral) {
+            // A bare bool literal condition desugars to `<literal> == true`.
+            // The literal carries a checker literal fact, so both operands are
+            // constants and the comparison folds to the selected arm.
+            auto literalIndex = factIndex(facts.literals(), shape.condition);
+            auto literalSpan = bound.parsedModule().spanFor(tree.node(shape.condition).range);
+            if (leadingRejected || literalIndex == zc::none || literalSpan == zc::none) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  definition.source.clone());
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            operandType = literalFact.type;
+            leftOperand = PendingLeadingConditionOperand{operandType,
+                                                         ZC_ASSERT_NONNULL(literalSpan).clone(),
+                                                         literalFact.literal.clone(),
+                                                         zc::none,
+                                                         0,
+                                                         false,
+                                                         shape.condition};
+            auto syntheticValue = checker::checked::CanonicalConstValue::boolean(true);
+            rightOperand = PendingLeadingConditionOperand{operandType,
+                                                          ZC_ASSERT_NONNULL(conditionSpan).clone(),
+                                                          zc::mv(syntheticValue),
+                                                          zc::none,
+                                                          0,
+                                                          false};
+            operation = checker::PrimitiveOperation::Eq;
           } else if (shape.conditionIsBoolReference) {
             // A bare bool identifier condition desugars to `c == true`. The
             // operand is a leading local or parameter reference; the synthetic
@@ -1819,7 +1849,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               ZC_ASSERT_NONNULL(thenSpan).clone(),
               ZC_ASSERT_NONNULL(elseSpan).clone(),
               returnSpanValue.clone(),
-              shape.conditionIsUnary || shape.conditionIsBoolReference,
+              shape.conditionIsUnary || shape.conditionIsBoolReference ||
+                  shape.conditionIsBoolLiteral,
               shape.conditionIsBoolReference,
               leadingShape.tailStatement};
           pendingFunctions.add(PendingFunctionDeclaration{
