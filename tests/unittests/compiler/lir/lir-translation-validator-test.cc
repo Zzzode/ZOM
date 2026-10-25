@@ -117,6 +117,40 @@ Module scalarLir(identity::DefId owner, uint64_t bits) {
   return Module(zc::mv(functions));
 }
 
+// MIR `fn f(unused: i32) -> i32 { let x = 40; return x; }`: parameter#1 i32,
+// user local#2 i32; block#1: StorageLive(2); 2 = const 40; return copy 2. The
+// unused parameter is what distinguishes this from scalarMir, whose lone local
+// is the module-initializer result.
+mir::MirFunction parameterizedConstantLocalMir(identity::DefId owner,
+                                               identity::SemanticTypeId i32) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  zc::Maybe<mir::MirSourceScopeId> noParent;
+  scopes.add(mir::MirSourceScope{mirScope(1), zc::mv(noParent), span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{mirLocal(1), mir::MirLocalKind::Parameter, i32, mirScope(1),
+                                      span()});
+  locals.add(mir::MirLocalDeclaration{mirLocal(2), mir::MirLocalKind::UserLocal, i32, mirScope(1),
+                                      span()});
+  zc::Vector<mir::MirStatement> statements;
+  statements.add(mir::MirStatement::storageLive(mirLocal(2), span()));
+  statements.add(mir::MirStatement::assign(
+      place(mirLocal(2), i32),
+      mir::MirRvalue::use(mir::MirOperand::constant(i32, integerConstant(40))),
+      mir::MirInitializationKind::Initialize, span()));
+  auto terminator =
+      mir::MirTerminator::returnValue(mir::MirOperand::copy(place(mirLocal(2), i32)), span());
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
 // MIR comparison diamond: param#1 bool, result#2 i32, temp#3 bool; entry
 // computes temp = (const 1 Eq const 2) and switches on it, arms assign i32
 // constants 5 and 7, join returns result.
@@ -522,6 +556,75 @@ ZC_TEST("Translation validator rejects an arithmetic rvalue mapped to an assign 
       arithmeticMir(owner, i32, mir::MirArithmeticOperator::Add), module, types.semanticTypes());
   ZC_REQUIRE(finding != zc::none);
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::OperatorMismatch);
+}
+
+ZC_TEST("Translation validator accepts a parameterized constant-local body both ways") {
+  // One MIR body — an unused parameter plus `let x = 40; return x;` — has two
+  // faithful LIR translations: the fold that elides the source slot and the
+  // materialized one that declares it. The validator must accept both, so the
+  // choice of lowering rail can never turn a valid module into a compiler
+  // incident.
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(60);
+  const auto mir = parameterizedConstantLocalMir(owner, i32);
+
+  // Folded: no body slot, the constant lives in the terminator.
+  {
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(40))));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, i32Carrier()));
+    zc::Vector<Local> locals;
+    zc::Vector<Function> functions;
+    functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    ZC_EXPECT(TranslationValidator::validate(mir, Module(zc::mv(functions)),
+                                             types.semanticTypes()) == zc::none);
+  }
+
+  // Materialized: the local is a declared slot and the block assigns then
+  // returns it.
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::assign(2, Operand::constant(i32Const(40))));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(lirBlock(1), zc::mv(statements), Terminator::returnLocal(2)));
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, i32Carrier()));
+    zc::Vector<Local> locals;
+    locals.add(Local(2, i32Carrier()));
+    zc::Vector<Function> functions;
+    functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(),
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+    ZC_EXPECT(TranslationValidator::validate(mir, Module(zc::mv(functions)),
+                                             types.semanticTypes()) == zc::none);
+  }
+}
+
+ZC_TEST("Translation validator rejects a folded terminator beside a declared source slot") {
+  // Declaring the source slot rejects the fold, so the assignment and the
+  // return must be materialized. A terminator that still carries the constant
+  // while the slot is declared is neither translation and is rejected.
+  TestSemanticTypeContext types;
+  const auto i32 = types.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto owner = testDefinition(61);
+  const auto mir = parameterizedConstantLocalMir(owner, i32);
+  zc::Vector<BasicBlock> blocks;
+  blocks.add(BasicBlock(lirBlock(1), Terminator::returnInteger(i32Const(40))));
+  zc::Vector<Local> parameters;
+  parameters.add(Local(1, i32Carrier()));
+  zc::Vector<Local> locals;
+  locals.add(Local(2, i32Carrier()));
+  zc::Vector<Function> functions;
+  functions.add(Function(owner, zc::heapString("zom.module_init"), i32Carrier(), zc::mv(parameters),
+                         zc::mv(locals), zc::mv(blocks)));
+  auto finding =
+      TranslationValidator::validate(mir, Module(zc::mv(functions)), types.semanticTypes());
+  ZC_REQUIRE(finding != zc::none);
+  // The slot set matches, so the rejection is the missing materialized assign
+  // rather than a slot-count fault.
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == TranslationFaultKind::EffectMismatch);
 }
 
 ZC_TEST("Translation validator rejects a folded scalar with the wrong constant") {

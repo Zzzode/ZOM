@@ -518,6 +518,22 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
     }
   }
 
+  // The scalar-constant fold elides the source slot, and the arithmetic-return
+  // rail instead materializes every local. Both are faithful translations of the
+  // same MIR, so the verifier reads which one the LIR chose from its own slot
+  // set rather than assuming one producer's shape: when the source local is a
+  // declared body slot the materialized correspondence applies and the fold is
+  // not in force. Each interpretation below stays fully checked, and a folded
+  // terminator left beside a declared slot is still rejected.
+  if (fold.kind == FoldKind::ScalarConstant) {
+    for (const auto& slot : lir.locals()) {
+      if (slot.ordinal() == fold.sourceLocal.ordinal()) {
+        fold.kind = FoldKind::None;
+        break;
+      }
+    }
+  }
+
   const bool folded = fold.kind != FoldKind::None;
 
   // A shared- or mutating-receiver method returning this.field has no fold:
