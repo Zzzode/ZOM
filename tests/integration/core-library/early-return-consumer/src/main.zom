@@ -1,0 +1,10 @@
+// An if without an else that returns from its early arm. The trailing return
+// covers only the fall-through path, so it stands in for the missing else arm
+// and the module folds to the reserved no-argument `zom.module_init` entry the
+// runtime `_start` calls. The early arm is taken, so `zomc run` exits 41.
+fn entry() -> i32 {
+  if (1 < 2) {
+    return 41;
+  }
+  return 7;
+}

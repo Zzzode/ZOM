@@ -138,6 +138,9 @@ struct LeadingLocalConditionalShape final {
   ast::NodeId body;
   // The trailing IfStmt or MatchStmt that carries the conditional arms.
   ast::NodeId tailStatement;
+  // An early-return body (`if (c) { return X; } return Y;`) has no else block;
+  // its trailing return value stands in for the missing arm.
+  zc::Maybe<ast::NodeId> elseOverride;
   zc::Vector<SequentialLocalBinding> bindings;
 };
 

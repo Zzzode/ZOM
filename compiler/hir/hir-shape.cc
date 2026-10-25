@@ -321,17 +321,24 @@ zc::Maybe<MethodParameterLayout> methodParameterLayout(const ast::Tree& tree,
 // branches whose tails each return, either over a bare identifier condition or
 // a relational comparison of identifier/scalar-literal operands. Returns none
 // for every other statement.
-zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast::NodeId body,
-                                                      ast::NodeId statement) {
+zc::Maybe<FunctionReturnShape> conditionalReturnShape(
+    const ast::Tree& tree, ast::NodeId body, ast::NodeId statement,
+    zc::Maybe<ast::NodeId> elseOverride = zc::none) {
   if (!tree.contains(statement) || tree.node(statement).kind != ast::SyntaxKind::IfStmt) {
     return zc::none;
   }
   const auto& ifNode = tree.node(statement);
   const ast::NodeId thenStmt(ifNode.payload.words[ast::kIfStmtThenStmtWord]);
   const ast::NodeId elseStmt(ifNode.payload.words[ast::kIfStmtElseStmtWord]);
-  if (!tree.contains(thenStmt) || !tree.contains(elseStmt) ||
-      tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt ||
-      tree.node(elseStmt).kind != ast::SyntaxKind::BlockStmt) {
+  // An if without an else is admitted when the caller supplies the trailing
+  // value: `if (c) { return X; } return Y;` behaves exactly like
+  // `if (c) { return X; } else { return Y; }`, so the trailing value stands in
+  // for the else arm and every downstream carrier sees one shape. An explicit
+  // else block always wins over a supplied override.
+  const bool hasElseBranch =
+      tree.contains(elseStmt) && tree.node(elseStmt).kind == ast::SyntaxKind::BlockStmt;
+  if (!tree.contains(thenStmt) || tree.node(thenStmt).kind != ast::SyntaxKind::BlockStmt ||
+      (!hasElseBranch && elseOverride == zc::none)) {
     return zc::none;
   }
   auto branchReturnValue = [&](ast::NodeId branch) -> zc::Maybe<ast::NodeId> {
@@ -349,7 +356,7 @@ zc::Maybe<FunctionReturnShape> conditionalReturnShape(const ast::Tree& tree, ast
     return returnValue;
   };
   auto thenValue = branchReturnValue(thenStmt);
-  auto elseValue = branchReturnValue(elseStmt);
+  auto elseValue = hasElseBranch ? branchReturnValue(elseStmt) : elseOverride;
   if (thenValue == zc::none || elseValue == zc::none) return zc::none;
   ast::NodeId thenNode;
   ast::NodeId elseNode;
@@ -1815,7 +1822,28 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};
   if (!tree.contains(statements) || statements.size < 1) return zc::none;
-  const size_t bindingCount = statements.size - 1;
+  // The tail is the conditional. An early-return body ends with the trailing
+  // `return <value>;` instead, so the conditional sits one statement earlier
+  // and the leading bindings are everything before it.
+  size_t conditionalIndex = statements.size - 1;
+  {
+    auto tailItemCandidate = statementItem(tree, tree.list(statements)[conditionalIndex]);
+    if (tailItemCandidate != zc::none) {
+      ast::NodeId tailNode;
+      ZC_IF_SOME(value, tailItemCandidate) { tailNode = value; }
+      if (tree.node(tailNode).kind == ast::SyntaxKind::ReturnStmt && conditionalIndex > 0) {
+        auto earlier = statementItem(tree, tree.list(statements)[conditionalIndex - 1]);
+        if (earlier != zc::none) {
+          ast::NodeId earlierNode;
+          ZC_IF_SOME(value, earlier) { earlierNode = value; }
+          if (tree.node(earlierNode).kind == ast::SyntaxKind::IfStmt) {
+            conditionalIndex = conditionalIndex - 1;
+          }
+        }
+      }
+    }
+  }
+  const size_t bindingCount = conditionalIndex;
   LeadingLocalConditionalShape shape{};
   shape.body = body;
   for (size_t index = 0; index < bindingCount; ++index) {
@@ -1881,7 +1909,7 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
                                zc::mv(leftOperand), zc::mv(rightOperand), zc::none, zc::none,
                                ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
   }
-  auto tailItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
+  auto tailItem = statementItem(tree, tree.list(statements)[conditionalIndex]);
   if (tailItem == zc::none) return zc::none;
   ast::NodeId tailStatement;
   ZC_IF_SOME(value, tailItem) { tailStatement = value; }
@@ -1894,8 +1922,24 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
   ast::NodeId thenValue;
   ast::NodeId elseValue;
   if (tree.node(tailStatement).kind == ast::SyntaxKind::IfStmt) {
-    auto conditional = conditionalReturnShape(tree, body, tailStatement);
+    // An early-return body ends with `return <value>;` after the conditional;
+    // that value stands in for the missing else arm.
+    zc::Maybe<ast::NodeId> elseOverride;
+    if (conditionalIndex + 1 < statements.size) {
+      auto trailingItem = statementItem(tree, tree.list(statements)[conditionalIndex + 1]);
+      if (trailingItem != zc::none) {
+        ast::NodeId trailingNode;
+        ZC_IF_SOME(value, trailingItem) { trailingNode = value; }
+        if (tree.node(trailingNode).kind == ast::SyntaxKind::ReturnStmt) {
+          const ast::NodeId trailingValue(
+              tree.node(trailingNode).payload.words[ast::kReturnStmtValueWord]);
+          if (tree.contains(trailingValue)) { elseOverride = trailingValue; }
+        }
+      }
+    }
+    auto conditional = conditionalReturnShape(tree, body, tailStatement, elseOverride);
     if (conditional == zc::none) return zc::none;
+    shape.elseOverride = elseOverride;
     const auto& conditionalValue = ZC_ASSERT_NONNULL(conditional);
     if (!conditionalValue.conditionIsEquality && !conditionalValue.conditionIsUnary &&
         !conditionalValue.conditionIsBoolReference && !conditionalValue.conditionIsBoolLiteral) {
@@ -1909,7 +1953,14 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
     // shift them by the hoisted prefix length.
     const ast::NodeId thenStmt(tree.node(tailStatement).payload.words[ast::kIfStmtThenStmtWord]);
     const ast::NodeId elseStmt(tree.node(tailStatement).payload.words[ast::kIfStmtElseStmtWord]);
-    for (const ast::NodeId branch : {thenStmt, elseStmt}) {
+    // An if without an else has no else block to hoist from; its fall-through
+    // value is the trailing return, which carries no bindings.
+    const bool hasElseBlock =
+        tree.contains(elseStmt) && tree.node(elseStmt).kind == ast::SyntaxKind::BlockStmt;
+    zc::Vector<ast::NodeId> branchNodes;
+    branchNodes.add(thenStmt);
+    if (hasElseBlock) { branchNodes.add(elseStmt); }
+    for (const ast::NodeId branch : branchNodes) {
       auto branchBody = matchArmBody(tree, branch);
       if (branchBody == zc::none) return zc::none;
       const size_t branchStart = shape.bindings.size();
@@ -2495,7 +2546,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     auto leading = leadingLocalConditionalShape(tree, body);
     if (leading != zc::none) {
       ast::NodeId tailStatement;
-      ZC_IF_SOME(value, leading) { tailStatement = value.tailStatement; }
+      zc::Maybe<ast::NodeId> elseOverride;
+      ZC_IF_SOME(value, leading) {
+        tailStatement = value.tailStatement;
+        elseOverride = value.elseOverride;
+      }
       if (tree.node(tailStatement).kind == ast::SyntaxKind::MatchStmt) {
         auto matchShape = matchReturnShape(tree, body, tailStatement);
         if (matchShape != zc::none) {
@@ -2503,7 +2558,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
           return matchShape;
         }
       } else {
-        auto conditional = conditionalReturnShape(tree, body, tailStatement);
+        auto conditional = conditionalReturnShape(tree, body, tailStatement, elseOverride);
         if (conditional != zc::none) {
           ZC_ASSERT_NONNULL(conditional).isLeadingLocalConditional = true;
           return conditional;

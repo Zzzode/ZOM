@@ -1,0 +1,10 @@
+// A leading scalar-local binding ahead of an if whose early arm returns the
+// local; the trailing return is the fall-through value. The condition holds, so
+// `zomc run` exits with the local's value.
+fn entry() -> i32 {
+  let a = 41;
+  if (a > 0) {
+    return a;
+  }
+  return 7;
+}

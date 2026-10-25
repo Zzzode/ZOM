@@ -3686,6 +3686,84 @@ ZC_TEST("HIR pipeline lowers a bool-literal conditional condition") {
   ZC_REQUIRE(lowered != zc::none);
 }
 
+ZC_TEST("HIR pipeline lowers an early-return conditional through the else-arm layout") {
+  // `if (1 < 2) { return 41; } return 7;` has no else block, but the early arm
+  // exits unconditionally, so the trailing return covers exactly the
+  // fall-through path. The trailing value stands in for the missing arm and the
+  // layout is identical to the explicit-else form, node for node.
+  HirPipelineFixture fixture("fn pick() -> i32 { if (1 < 2) { return 41; } return 7; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  // Four scalar literals: both comparison operands and both arm values.
+  ZC_REQUIRE(module.expressions().size() == 4);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returnStatement = module.returns()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
+  const auto& conditional = module.conditionals()[0];
+  // Nine-node source-preorder stride, matching the explicit-else conditional:
+  // function 1, body 2, left 3, right 4, equality 5, then 6, else 7 (the
+  // trailing return value), conditional 8, return 9.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_EXPECT(equality.left.ordinal() == 3);
+  ZC_EXPECT(equality.right.ordinal() == 4);
+  ZC_EXPECT(equality.node.ordinal() == 5);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 6);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 7);
+  ZC_EXPECT(conditional.node.ordinal() == 8);
+  ZC_EXPECT(returnStatement.node.ordinal() == 9);
+  ZC_EXPECT(equality.operation == checker::PrimitiveOperation::Lt);
+  ZC_EXPECT(conditional.condition == equality.node);
+  ZC_EXPECT(returnStatement.value == conditional.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+}
+
+ZC_TEST("HIR pipeline lowers a leading-local early-return conditional") {
+  // `let a = 41; if (a > 0) { return a; } return 7;` hoists the leading binding
+  // ahead of a conditional whose else arm is the trailing return value; the
+  // carrier treats the trailing return as the conditional tail's fallthrough.
+  HirPipelineFixture fixture(
+      "fn pick() -> i32 { let a = 41; if (a > 0) { return a; } return 7; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.conditionals().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& conditional = module.conditionals()[0];
+  const auto& equality = module.primitiveBinaryOperations()[0];
+  // function 1, body 2, local 3, initializer literal 4, condition local-ref 5,
+  // condition literal 6, equality 7, then local-ref 8, else literal 9,
+  // conditional 10, return 11.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(equality.node.ordinal() == 7);
+  ZC_EXPECT(conditional.thenReturnValue.ordinal() == 8);
+  ZC_EXPECT(conditional.elseReturnValue.ordinal() == 9);
+  ZC_EXPECT(conditional.node.ordinal() == 10);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 11);
+  ZC_EXPECT(module.returns()[0].value == conditional.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+}
+
 ZC_TEST("HIR control arm lowers a parameter-condition conditional through exact node strides") {
   HirPipelineFixture fixture(
       "fn choose(c: bool, a: i32, b: i32) -> i32 { if (c) { return a; } else { return b; } }"_zc);
