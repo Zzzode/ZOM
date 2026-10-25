@@ -1,0 +1,8 @@
+[package]
+name = "identity_cast_local_consumer"
+version = "0.1.0"
+edition = "2026"
+
+[[bin]]
+name = "identity_cast_local_consumer"
+path = "src/main.zom"

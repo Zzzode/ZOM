@@ -5327,6 +5327,56 @@ ZC_TEST("HIR pipeline folds a literal unary binding and return") {
             checker::signature::IntegerSign::Negative);
 }
 
+ZC_TEST("HIR pipeline lowers an identity integer cast copying a parameter") {
+  // `a as i32` with an i32 `a` is an identity conversion: the cast binding
+  // pools a parameter copy instead of a cast operation.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry(a: i32) -> i32 { let b = a as i32; return b; }"_zc);
+  ZC_EXPECT(checked);
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
+ZC_TEST("HIR pipeline drains a widening integer cast binding as ZOM4099") {
+  // `a as i32` with an i64 `a` is a widening conversion the LIR slice has no
+  // operation for; it drains as the capability code rather than an incident.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry(a: i64) -> i32 { let b = a as i32; return b; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
+ZC_TEST("HIR pipeline folds a logical-not over a bool literal binding") {
+  // A logical-not over a bool literal folds to a bool literal fact the same way
+  // the integer unary spellings fold, so a leading binding feeding a bool
+  // conditional lowers to the negated bool constant.
+  HirPipelineFixture fixture("fn f() -> i32 { let b = !false; if (b) { return 1; } return 0; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  // The folded binding constant, the synthetic condition constant, and the two
+  // arm constants.
+  ZC_REQUIRE(module.expressions().size() >= 3);
+  bool sawTrueConstant = false;
+  for (const auto& expression : module.expressions()) {
+    ZC_IF_SOME(value, expression.value.booleanValue()) {
+      if (value) sawTrueConstant = true;
+    }
+  }
+  ZC_EXPECT(sawTrueConstant);
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+}
+
 ZC_TEST("HIR pipeline drains a return of a parameter beside a local as ZOM4099") {
   // `let x = 1; return a;` returns a parameter, not the declared local. The
   // return-local shape anchors on `a` while the declarator declares `x`, and the
@@ -5498,18 +5548,94 @@ ZC_TEST("HIR pipeline lowers a leading binding followed by a trailing write") {
   }
 }
 
-ZC_TEST("HIR pipeline drains a trailing write of an earlier binding as ZOM4099") {
-  // A write whose value names an earlier binding needs a local-reference value
-  // node the fixed-id stride does not model yet, so the body stays on the
-  // fail-closed capability drain instead of reaching an invariant.
+ZC_TEST("HIR pipeline lowers a trailing write copying an earlier binding") {
+  // A write whose value names an earlier binding (`s = i`) reads the source
+  // local's slot through a local-reference value and overwrites the target.
+  HirPipelineFixture fixture("fn f() -> i32 { let i = 41; mut s = 0; s = i; return s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.localReferences().size() >= 2);
+  const auto& write = module.localWrites()[0];
+  // The write overwrites the second local.
+  ZC_EXPECT(write.local.ordinal() == 2);
+  ZC_EXPECT(write.kind == hir::HirLocalWriteKind::Overwrite);
+  // The write value is a local reference to the first binding.
+  zc::Maybe<const hir::HirLocalReferenceExpression&> valueReference;
+  for (const auto& reference : module.localReferences()) {
+    if (reference.node != write.value) continue;
+    valueReference = reference;
+  }
+  ZC_REQUIRE(valueReference != zc::none);
+  ZC_IF_SOME(reference, valueReference) {
+    ZC_EXPECT(reference.local.ordinal() == 1);
+    ZC_EXPECT(reference.category == hir::HirValueCategory::Place);
+  }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  const auto& function = module.functions()[0];
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    // The overwrite must read the first binding's slot; without it the program
+    // returns the initializer's value 0.
+    bool sawLocalCopyOverwrite = false;
+    for (const auto& statement : mirFunction.blocks[0].statements) {
+      if (statement.kind() != mir::MirStatementKind::Assign) continue;
+      const auto& assignment = statement.assignmentValue();
+      if (assignment.destination.local().ordinal() == 2 &&
+          assignment.initialization == mir::MirInitializationKind::Overwrite &&
+          assignment.value.kind() == mir::MirRvalueKind::Use) {
+        const auto& operand = assignment.value.useValue().operand;
+        if (operand.kind() == mir::MirOperandKind::Copy ||
+            operand.kind() == mir::MirOperandKind::Move) {
+          sawLocalCopyOverwrite = operand.place().local().ordinal() == 1;
+        }
+      }
+    }
+    ZC_EXPECT(sawLocalCopyOverwrite);
+  }
+}
+
+ZC_TEST("HIR pipeline drains a return binary over a written local as ZOM4099") {
+  // `mut s = 1; s = 2; return 3 + s;` combines a prefix write with a binary
+  // return. Neither the single-local write arm nor the sequential-local rail
+  // has a layout for the combination, so the definition drains as the
+  // capability code instead of building a HIR body the downstream lowering
+  // cannot place (which previously surfaced as an ir-phase incident).
   identity::SemanticContextFactory contextFactory;
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
-      session, "fn entry() -> i32 { let i = 41; mut s = 0; s = i; return s; }"_zc);
+      session, "fn entry() -> i32 { mut s = 1; s = 2; return 3 + s; }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
+ZC_TEST("HIR pipeline accounts trailing write ordinals across two functions") {
+  // A two-binding sequential body with a trailing write allocates two nodes per
+  // write (statement + value). The verifier's per-function ordinal cursor must
+  // advance by that span, or the next function's first node is mistaken for the
+  // write-bearing function's return and rejected at HIR verification.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session,
+      "fn writer() -> i32 { let z = 1; mut s = 0; s = 41; return s; }\n"
+      "fn entry() -> i32 { return 7; }"_zc);
+  ZC_EXPECT(checked);
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
 }
 
 ZC_TEST("HIR pipeline routes a single-binding nested-operand binary to the sequential rail") {

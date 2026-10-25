@@ -119,6 +119,11 @@ struct PendingSequentialBinding final {
   /// the HIR side-table.
   ast::NodeId declaratorNode{};
   ast::NodeId initializerNode{};
+  /// Populated for a Cast binding whose inner expression is an identifier:
+  /// true when it copies an earlier binding, false when it copies a parameter.
+  /// The parameter key rides `parameter` and the local index rides
+  /// `referencedLocal`, both shared with the ordinary reference kinds.
+  bool castInnerIsLocal = false;
 };
 
 /// One plain scalar assignment between a sequential body's bindings and its
@@ -129,6 +134,9 @@ struct PendingSequentialLocalWrite final {
   SequentialInitializerKind valueKind = SequentialInitializerKind::Literal;
   zc::Maybe<checker::checked::CanonicalConstValue> literal;
   zc::Maybe<identity::CallableParameterKey> parameter;
+  // Populated for LocalReference: the zero-based index of the earlier binding
+  // whose slot the write copies. Unused for the other value kinds.
+  size_t referencedBinding = 0;
 };
 
 struct PendingSequentialLocalReturn final {

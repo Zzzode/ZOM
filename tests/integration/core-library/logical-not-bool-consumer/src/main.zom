@@ -1,0 +1,6 @@
+// A logical-not over a bool literal folds to the negated bool constant.
+fn entry() -> i32 {
+  let b = !false;
+  if (b) { return 1; }
+  return 0;
+}

@@ -98,6 +98,11 @@ struct SequentialLocalBinding final {
   // Populated for Cast: the inner expression node of the `as` cast. The cast
   // target type is derived from the initializer's node-type fact.
   ast::NodeId castInnerNode;
+  // Populated for Cast: true when the inner expression is an identifier naming
+  // an earlier binding; `castReferencedLocal` is that binding's zero-based
+  // index. A false identifier inner names a parameter.
+  bool castInnerIsLocal = false;
+  size_t castReferencedLocal = 0;
   // Populated for Ternary: the condition, then-branch, and else-branch AST
   // nodes. The condition is a bool reference or a bool literal; both branches
   // are scalar literals of the same type. `ternaryConditionIsLocal` is true
@@ -118,7 +123,8 @@ struct SequentialLocalBinding final {
 
 // One plain scalar assignment that follows the leading bindings of a
 // sequential-local body: `mut s = 0; s = 41;`. The target is a zero-based index
-// into the body's bindings; the value is a scalar literal or a parameter copy.
+// into the body's bindings; the value is a scalar literal, a parameter copy, or
+// a copy of an earlier binding.
 struct SequentialLocalWrite final {
   ast::NodeId statement;
   size_t targetBinding = 0;
@@ -126,6 +132,9 @@ struct SequentialLocalWrite final {
   // The write's value expression; the builder resolves its literal or parameter
   // payload from the checker facts.
   ast::NodeId value = ast::NodeId();
+  // Populated for LocalReference: the zero-based index of the earlier binding
+  // the value copies. Unused for the other value kinds.
+  size_t referencedBinding = 0;
 };
 
 struct SequentialLocalShape final {

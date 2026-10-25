@@ -191,17 +191,43 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
       zc::Maybe<HirNodeKind> initKind = lookupHirNodeKind(hirModule, initNode);
       if (initKind == zc::none) return zc::none;
 
-      if (ZC_ASSERT_NONNULL(initKind) != HirNodeKind::ScalarLiteral) return zc::none;
-      const auto* literal = findRecord(hirModule.expressions(), initNode);
-      if (literal == nullptr) return zc::none;
-      auto initOperand = lowerScalarLiteral(*literal, binding->type);
-      if (initOperand == zc::none) return zc::none;
+      zc::Maybe<MirOperand> initOperand;
+      identity::SourceSpan initSpan = binding->sourceSpan.clone();
+      if (ZC_ASSERT_NONNULL(initKind) == HirNodeKind::ScalarLiteral) {
+        const auto* literal = findRecord(hirModule.expressions(), initNode);
+        if (literal == nullptr) return zc::none;
+        initOperand = lowerScalarLiteral(*literal, binding->type);
+        if (initOperand == zc::none) return zc::none;
+        initSpan = literal->sourceSpan.clone();
+      } else if (ZC_ASSERT_NONNULL(initKind) == HirNodeKind::ParameterReference) {
+        // A binding that copies a parameter (`let t = i;`).
+        if (copyMarker == zc::none) return zc::none;
+        const auto* paramRef = findRecord(hirModule.parameterReferences(), initNode);
+        if (paramRef == nullptr) return zc::none;
+        initOperand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
+                                              ZC_ASSERT_NONNULL(copyMarker));
+        if (initOperand == zc::none) return zc::none;
+        initSpan = paramRef->sourceSpan.clone();
+      } else if (ZC_ASSERT_NONNULL(initKind) == HirNodeKind::LocalReference) {
+        // A binding that copies an earlier user local (`let t = u;`).
+        if (copyMarker == zc::none) return zc::none;
+        const auto* localRef = findRecord(hirModule.localReferences(), initNode);
+        if (localRef == nullptr) return zc::none;
+        auto source = findUserLocal(localRef->local);
+        if (source == zc::none) return zc::none;
+        initOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), proofs,
+                                          ZC_ASSERT_NONNULL(copyMarker));
+        if (initOperand == zc::none) return zc::none;
+        initSpan = localRef->sourceSpan.clone();
+      } else {
+        return zc::none;
+      }
 
       zc::Vector<MirProjection> destProjections;
       ctx.appendStatement(MirStatement::assign(
           MirPlace(userLocal, binding->type, zc::mv(destProjections), binding->type),
           MirRvalue::use(zc::mv(ZC_ASSERT_NONNULL(initOperand))), MirInitializationKind::Initialize,
-          literal->sourceSpan.clone()));
+          zc::mv(initSpan)));
     } else if (ZC_ASSERT_NONNULL(stmtKind) == HirNodeKind::LocalWrite) {
       // Plain scalar write to a user local: `v = <literal>` or `v = p`. The
       // HIR verifier already bounded the shape (no field projection, scalar
@@ -227,6 +253,14 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
         if (paramRef == nullptr) return zc::none;
         writeOperand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
                                                ZC_ASSERT_NONNULL(copyMarker));
+      } else if (ZC_ASSERT_NONNULL(valueKind) == HirNodeKind::LocalReference) {
+        if (copyMarker == zc::none) return zc::none;
+        const auto* localRef = findRecord(hirModule.localReferences(), write->value);
+        if (localRef == nullptr) return zc::none;
+        auto source = findUserLocal(localRef->local);
+        if (source == zc::none) return zc::none;
+        writeOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), proofs,
+                                           ZC_ASSERT_NONNULL(copyMarker));
       } else {
         return zc::none;
       }

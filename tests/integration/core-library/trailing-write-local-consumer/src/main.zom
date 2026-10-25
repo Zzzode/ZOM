@@ -1,0 +1,7 @@
+// A trailing write copies an earlier binding's slot into the returned local.
+fn entry() -> i32 {
+  let i = 41;
+  mut s = 0;
+  s = i;
+  return s;
+}

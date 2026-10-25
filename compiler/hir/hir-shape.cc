@@ -604,7 +604,7 @@ zc::Maybe<MatchArmBody> matchArmBody(const ast::Tree& tree, ast::NodeId armBody)
     }
     body.bindings.add(SequentialLocalBinding{
         declarator, pattern, initializer, kind, referencedLocal, zc::none, zc::none, zc::none,
-        zc::none, ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
+        zc::none, ast::NodeId(), false, 0, ast::NodeId(), ast::NodeId(), ast::NodeId()});
   }
   auto item = statementItem(tree, tree.list(stmts)[bindingCount]);
   if (item == zc::none) return zc::none;
@@ -1104,14 +1104,15 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       if (isScalarLiteral(tree.node(writeValue).kind)) {
         write.valueKind = SequentialInitializerKind::Literal;
       } else if (tree.node(writeValue).kind == ast::SyntaxKind::IdentExpr) {
-        // Only a parameter copy is admitted here. A write value that names an
-        // earlier binding needs a local-reference value node whose layout the
-        // fixed-id stride and the checksum equation do not yet model; it stays
-        // on the fail-closed drain until that layout exists.
+        // An identifier value copies a parameter or one of the earlier
+        // bindings. A binding reference is recorded against the body's binding
+        // list so the lowerings read the source local's slot.
         write.valueKind = SequentialInitializerKind::ParameterReference;
         for (size_t earlier = 0; earlier < shape.bindings.size(); ++earlier) {
           if (matchesLocalReference(tree, shape.bindings[earlier].pattern, writeValue)) {
-            return zc::none;
+            write.valueKind = SequentialInitializerKind::LocalReference;
+            write.referencedBinding = earlier;
+            break;
           }
         }
       } else {
@@ -1135,6 +1136,8 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     zc::Maybe<checker::PrimitiveOperation> unaryOperation;
     zc::Maybe<SequentialBinaryOperand> unaryOperand;
     ast::NodeId castInnerNode;
+    bool castInnerIsLocal = false;
+    size_t castReferencedLocal = 0;
     ast::NodeId ternaryCondNode;
     ast::NodeId ternaryThenNode;
     ast::NodeId ternaryElseNode;
@@ -1315,6 +1318,13 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
           // type, so the body checker folds the unary to an integer literal
           // fact. The binding lowers to that scalar constant.
           kind = SequentialInitializerKind::FoldedLiteralUnary;
+        } else if (unaryOp == ast::UnaryOperatorKind::LogicalNot &&
+                   tree.contains(unaryOperandNode) &&
+                   tree.node(unaryOperandNode).kind == ast::SyntaxKind::BoolLiteral) {
+          // A logical-not over a bool literal folds to a bool literal fact the
+          // same way the integer spellings fold; the binding lowers to that
+          // bool constant.
+          kind = SequentialInitializerKind::FoldedLiteralUnary;
         } else {
           if (!tree.contains(unaryOperandNode) ||
               tree.node(unaryOperandNode).kind != ast::SyntaxKind::IdentExpr) {
@@ -1380,20 +1390,34 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
         return zc::none;
       }
     } else if (tree.node(initializer).kind == ast::SyntaxKind::CastExpression) {
-      // An integer `as` cast whose inner expression is a scalar literal. The
-      // builder lowers the inner literal with the cast result type; the cast
-      // itself is a no-op for widening or identity conversions.
+      // An integer `as` cast whose inner expression is a scalar literal or an
+      // identifier naming a parameter or an earlier binding. The builder keeps
+      // the identifier spelling only when the cast is an identity conversion
+      // (source and target the same integer type), which lowers to a plain
+      // copy; widening and narrowing casts stay on the drain.
       const ast::NodeId castExpr(
           tree.node(initializer).payload.words[ast::kCastExpressionExprWord]);
-      if (!tree.contains(castExpr) || !isScalarLiteral(tree.node(castExpr).kind)) {
+      if (!tree.contains(castExpr) || (!isScalarLiteral(tree.node(castExpr).kind) &&
+                                       tree.node(castExpr).kind != ast::SyntaxKind::IdentExpr)) {
         return zc::none;
       }
       // Float-to-int casts in let position are folded by the body checker into
       // a Literal fact, but the Cast lowering path expects a Cast fact.  Drain
       // to ZOM4099; return-position float casts have a dedicated shape.
       if (tree.node(castExpr).kind == ast::SyntaxKind::FloatLiteralExpr) { return zc::none; }
+      if (tree.node(castExpr).kind == ast::SyntaxKind::IdentExpr) {
+        castInnerNode = castExpr;
+        for (size_t earlier = 0; earlier < index; ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, castExpr)) {
+            castInnerIsLocal = true;
+            castReferencedLocal = earlier;
+            break;
+          }
+        }
+      } else {
+        castInnerNode = castExpr;
+      }
       kind = SequentialInitializerKind::Cast;
-      castInnerNode = castExpr;
     } else if (tree.node(initializer).kind == ast::SyntaxKind::ConditionalExpr) {
       // A ternary conditional expression `cond ? then : else`. The condition
       // is a bool reference or a bool literal; both branches are scalar
@@ -1580,8 +1604,8 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     shape.bindings.add(SequentialLocalBinding{
         declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
         zc::mv(rightOperand), zc::mv(unaryOperation), zc::mv(unaryOperand), castInnerNode,
-        ternaryCondNode, ternaryThenNode, ternaryElseNode, ternaryConditionIsLocal,
-        ternaryConditionIsLiteral, matchHasDefaultArm});
+        castInnerIsLocal, castReferencedLocal, ternaryCondNode, ternaryThenNode, ternaryElseNode,
+        ternaryConditionIsLocal, ternaryConditionIsLiteral, matchHasDefaultArm});
   }
   auto returnItem = statementItem(tree, tree.list(statements)[statements.size - 1]);
   if (returnItem == zc::none) return zc::none;
@@ -1714,6 +1738,9 @@ void forEachBindingLocalReference(const ast::Tree& tree, const SequentialLocalSh
         visit(value.referencedLocal);
       }
     }
+  } else if (binding.initializerKind == SequentialInitializerKind::Cast &&
+             binding.castInnerIsLocal) {
+    visit(binding.castReferencedLocal);
   } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
     if (binding.ternaryConditionIsLocal) {
       // The shape stores only the flag; the referenced binding is found by
@@ -1834,6 +1861,17 @@ zc::Vector<bool> erasureRelatedDeadBindings(const ast::Tree& tree,
         }
       });
     }
+    // A kept binding that is written from an earlier local keeps that source:
+    // the write stays in the lowered shape, so an erased source it copies
+    // cannot be removed.
+    for (const auto& write : shape.localWrites) {
+      if (write.valueKind != SequentialInitializerKind::LocalReference) continue;
+      if (write.targetBinding >= count || removed[write.targetBinding]) continue;
+      if (write.referencedBinding < count && removed[write.referencedBinding]) {
+        removed[write.referencedBinding] = false;
+        changed = true;
+      }
+    }
   }
   return removed;
 }
@@ -1893,6 +1931,17 @@ SequentialLocalShape filterDeadSequentialBindings(const SequentialLocalShape& sh
     const int mapped = remap[returned];
     ZC_IREQUIRE(mapped >= 0, "returned local must not be removed");
     filtered.returnsLocal = static_cast<size_t>(mapped);
+  }
+  for (auto write : shape.localWrites) {
+    const int mappedTarget = remap[static_cast<int>(write.targetBinding)];
+    ZC_IREQUIRE(mappedTarget >= 0, "written local must not be removed");
+    write.targetBinding = static_cast<size_t>(mappedTarget);
+    if (write.valueKind == SequentialInitializerKind::LocalReference) {
+      const int mappedSource = remap[static_cast<int>(write.referencedBinding)];
+      ZC_IREQUIRE(mappedSource >= 0, "copied local must not be removed");
+      write.referencedBinding = static_cast<size_t>(mappedSource);
+    }
+    filtered.localWrites.add(zc::mv(write));
   }
   return filtered;
 }
@@ -1983,13 +2032,25 @@ zc::Maybe<LeadingLocalConditionalShape> leadingLocalConditionalShape(const ast::
       leftOperand = classifyLeaf(binaryLeft);
       rightOperand = classifyLeaf(binaryRight);
       if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
+    } else if (tree.node(initializer).kind == ast::SyntaxKind::UnaryExpression) {
+      // A logical-not over a bool literal folds to a bool literal fact, the
+      // same fold the sequential-local binding classifier applies.
+      const auto unaryOp = static_cast<ast::UnaryOperatorKind>(
+          tree.node(initializer).payload.words[ast::kUnaryExpressionOpWord]);
+      const ast::NodeId unaryOperand(
+          tree.node(initializer).payload.words[ast::kUnaryExpressionOperandWord]);
+      if (unaryOp != ast::UnaryOperatorKind::LogicalNot || !tree.contains(unaryOperand) ||
+          tree.node(unaryOperand).kind != ast::SyntaxKind::BoolLiteral) {
+        return zc::none;
+      }
+      kind = SequentialInitializerKind::FoldedLiteralUnary;
     } else {
       return zc::none;
     }
-    shape.bindings.add(
-        SequentialLocalBinding{declarator, pattern, initializer, kind, referencedLocal,
-                               zc::mv(leftOperand), zc::mv(rightOperand), zc::none, zc::none,
-                               ast::NodeId(), ast::NodeId(), ast::NodeId(), ast::NodeId()});
+    shape.bindings.add(SequentialLocalBinding{
+        declarator, pattern, initializer, kind, referencedLocal, zc::mv(leftOperand),
+        zc::mv(rightOperand), zc::none, zc::none, ast::NodeId(), false, 0, ast::NodeId(),
+        ast::NodeId(), ast::NodeId()});
   }
   auto tailItem = statementItem(tree, tree.list(statements)[conditionalIndex]);
   if (tailItem == zc::none) return zc::none;
@@ -4526,6 +4587,13 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const bool letLateInit = bindingKind == ast::BindingDeclarationKind::Let &&
                            !tree.contains(initializer) && statements.size == 3;
   if (bindingKind != ast::BindingDeclarationKind::Mut && !letLateInit) { return zc::none; }
+  // A primitive-binary return over a prefix write (`mut s = 0; s = 1;
+  // return s + 2;`) has no carrier in this arm: the binary-return layout
+  // models one binding with no writes, and the sequential-local rail rejects
+  // the same combination. Staying unclaimed drains the definition as the
+  // per-definition capability code (ZOM4099) instead of building a HIR body
+  // whose prefix write the downstream lowering cannot place.
+  if (returnsPrimitiveBinary) { return zc::none; }
   for (size_t index = 1; index + 1 < statements.size; ++index) {
     auto writeStatement = statementItem(tree, tree.list(statements)[index]);
     if (writeStatement == zc::none) return zc::none;

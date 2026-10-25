@@ -3444,12 +3444,46 @@ bool isLiteralUnaryFoldSite(const ast::Tree& tree, ast::NodeId node) {
   const auto& variant = ZC_ASSERT_NONNULL(operation).variant();
   if (!variant.is<PrimitiveOperation>()) return false;
   const auto primitive = variant.get<PrimitiveOperation>();
+  const ast::NodeId operand(unary.payload.words[ast::kUnaryExpressionOperandWord]);
+  if (!tree.contains(operand)) return false;
+  // An integer unary over an integer literal, or a logical-not over a bool
+  // literal. Both fold to the result constant at compile time.
+  if (primitive == PrimitiveOperation::LogicalNot) {
+    return tree.node(operand).kind == ast::SyntaxKind::BoolLiteral;
+  }
   if (primitive != PrimitiveOperation::Neg && primitive != PrimitiveOperation::UnaryPlus &&
       primitive != PrimitiveOperation::BitNot) {
     return false;
   }
-  const ast::NodeId operand(unary.payload.words[ast::kUnaryExpressionOperandWord]);
-  return tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::IntLiteral;
+  return tree.node(operand).kind == ast::SyntaxKind::IntLiteral;
+}
+
+// Returns true when `node` is an IdentifierReference whose binding's
+// initializer is an integer cast expression. The cast's node-type fact is
+// produced in stage 1, so the referencing site must be deferred alongside
+// structured, direct-call, and ternary initializer references.
+bool dependsOnCastLocalInitializer(const BodyCheckingInput& input, ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  zc::Vector<ast::NodeId> visited;
+  ast::NodeId current = node;
+  while (true) {
+    const auto binding = resolvedOwnerLocal(input.boundModule.bindings(), current);
+    if (binding == zc::none) return false;
+    binder::OwnerLocalBindingId bindingValue;
+    ZC_IF_SOME(value, binding) { bindingValue = value; }
+    const auto initializer = ownerLocalInitializer(input.boundModule, bindingValue);
+    if (initializer == zc::none) return false;
+    ast::NodeId initializerNode;
+    ZC_IF_SOME(value, initializer) { initializerNode = value; }
+    if (!tree.contains(initializerNode)) return false;
+    if (tree.node(initializerNode).kind == ast::SyntaxKind::CastExpression) { return true; }
+    if (tree.node(initializerNode).kind != ast::SyntaxKind::IdentExpr) return false;
+    for (const auto seen : visited) {
+      if (seen == initializerNode) return false;
+    }
+    visited.add(initializerNode);
+    current = initializerNode;
+  }
 }
 
 // Whether a cast node is a float-literal-to-integer cast fold candidate: the
@@ -8375,7 +8409,8 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           break;
         case ast::SyntaxKind::CastExpression: {
           // Admit an integer `as` cast whose inner expression is a scalar
-          // literal and whose target type resolves to a closed integer
+          // literal or an integer-typed value reference (a parameter or an
+          // owner local) and whose target type resolves to a closed integer
           // primitive. A float-literal inner folds to an integer literal at
           // compile time (FloatToIntCastFold). Every other cast shape stays
           // unsupported so its existing rejection stands.
@@ -8390,6 +8425,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
               if (isFloatToIntLiteralCastSite(tree, node)) {
                 production = BodyProductionKind::FloatToIntCastFold;
               } else if (isScalarLiteral(tree.node(castExpr).kind)) {
+                production = BodyProductionKind::IntegerCast;
+              } else if (tree.node(castExpr).kind == ast::SyntaxKind::IdentExpr &&
+                         (resolvedCallableParameter(boundModule.bindings(), castExpr) != zc::none ||
+                          resolvedOwnerLocal(boundModule.bindings(), castExpr) != zc::none)) {
+                // An integer-typed reference inner is classified structurally
+                // here; the cast production pass validates its resolved source
+                // type and the conversion kind.
                 production = BodyProductionKind::IntegerCast;
               }
             }
@@ -8982,7 +9024,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       if (site.production == BodyProductionKind::IdentifierReference) {
         deferredLocalReference = dependsOnStructuredLocalInitializer(input, site.node) ||
                                  dependsOnDirectCallLocalInitializer(input, site.node) ||
-                                 dependsOnTernaryLocalInitializer(input, site.node);
+                                 dependsOnTernaryLocalInitializer(input, site.node) ||
+                                 dependsOnCastLocalInitializer(input, site.node);
       }
       const bool structured = site.production == BodyProductionKind::StructLiteral ||
                               site.production == BodyProductionKind::ArrayLiteral ||
@@ -11705,12 +11748,11 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                 target, site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::LiteralUnaryFold) {
-        // A unary operation over one integer literal (`-1`, `+42`, `~5`) folds
-        // to the constant at compile time. The classification precondition
-        // guarantees an integer-literal operand and an integer unary operator,
-        // so the result type is the operand's own type. The folded value is
-        // emitted as an integer literal fact so the HIR builder lowers the unary
-        // to a scalar constant.
+        // A unary operation over one literal folds to the constant at compile
+        // time. The integer spellings (`-1`, `+42`, `~5`) keep the operand's
+        // integer type; a logical-not over a bool literal (`!false`) yields the
+        // negated bool constant. The folded value is emitted as a literal fact
+        // so the HIR builder lowers the unary to a scalar constant.
         const auto& tree = input.boundModule.tree();
         const auto& unaryNode = tree.node(site.node);
         const ast::NodeId operand(unaryNode.payload.words[ast::kUnaryExpressionOperandWord]);
@@ -11719,47 +11761,77 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
-        auto operandValue = scalar_literal::integerLiteralNodeValue(tree, operand);
-        zc::Maybe<identity::SemanticTypeId> operandType;
-        for (const auto& entry : nodeTypes) {
-          if (entry.key == operand) operandType = entry.value;
-        }
-        if (operandValue == zc::none || operandType == zc::none) {
-          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
-        }
-        auto operandKind =
-            integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType));
         auto unaryOperation = OperatorKind::fromUnary(static_cast<ast::UnaryOperatorKind>(
             unaryNode.payload.words[ast::kUnaryExpressionOpWord]));
-        if (operandKind == zc::none || unaryOperation == zc::none ||
+        if (unaryOperation == zc::none ||
             !ZC_ASSERT_NONNULL(unaryOperation).variant().is<PrimitiveOperation>()) {
           return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
                                  site.key.schemaPreorder, zc::none, site.node,
                                  site.key.sourceSpan.clone(), factPath(site.primaryGroup));
         }
-        auto folded =
-            foldIntegerUnary(ZC_ASSERT_NONNULL(unaryOperation).variant().get<PrimitiveOperation>(),
-                             ZC_ASSERT_NONNULL(operandValue), ZC_ASSERT_NONNULL(operandKind));
-        if (folded == zc::none) {
-          // An operation the fold refuses (an unsigned negation) is not a
-          // constant this slice can emit. It stays a capability drain rather
-          // than being folded to a wrong value.
-          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
-            return zc::mv(drained);
+        const auto unaryPrimitive =
+            ZC_ASSERT_NONNULL(unaryOperation).variant().get<PrimitiveOperation>();
+        identity::SemanticTypeId resultType;
+        zc::Maybe<signature::CanonicalConstValue> foldedValue;
+        if (unaryPrimitive == PrimitiveOperation::LogicalNot) {
+          if (tree.node(operand).kind != ast::SyntaxKind::BoolLiteral) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
           }
-          return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
-                                 site.key.schemaPreorder, zc::none, site.node,
-                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          zc::Maybe<identity::SemanticTypeId> operandType;
+          for (const auto& entry : nodeTypes) {
+            if (entry.key == operand) operandType = entry.value;
+          }
+          auto boolType = internPrimitiveKind(input, type::semantic::PrimitiveKind::Bool);
+          if (operandType == zc::none || boolType == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          const bool operandValue =
+              tree.node(operand).payload.words[ast::kBoolLiteralValueWord] != 0;
+          resultType = ZC_ASSERT_NONNULL(boolType);
+          foldedValue = signature::CanonicalConstValue::boolean(!operandValue);
+        } else {
+          auto operandValue = scalar_literal::integerLiteralNodeValue(tree, operand);
+          zc::Maybe<identity::SemanticTypeId> operandType;
+          for (const auto& entry : nodeTypes) {
+            if (entry.key == operand) operandType = entry.value;
+          }
+          if (operandValue == zc::none || operandType == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          auto operandKind =
+              integerPrimitiveKind(input.semanticTypes, ZC_ASSERT_NONNULL(operandType));
+          if (operandKind == zc::none) {
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          auto folded = foldIntegerUnary(unaryPrimitive, ZC_ASSERT_NONNULL(operandValue),
+                                         ZC_ASSERT_NONNULL(operandKind));
+          if (folded == zc::none) {
+            // An operation the fold refuses (an unsigned negation) is not a
+            // constant this slice can emit. It stays a capability drain rather
+            // than being folded to a wrong value.
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
+            return rejectInvariant(signature::CheckerInvariantKind::InvalidFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+          }
+          resultType = ZC_ASSERT_NONNULL(operandType);
+          foldedValue = signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(folded)));
         }
-        producedType = ZC_ASSERT_NONNULL(operandType);
+        producedType = resultType;
         literals.add(checked::LiteralFactMap::Entry{
             site.node,
-            checked::CheckedLiteralFact{
-                site.node,
-                signature::CanonicalConstValue::integer(zc::mv(ZC_ASSERT_NONNULL(folded))),
-                ZC_ASSERT_NONNULL(operandType), site.key.sourceSpan.clone()},
+            checked::CheckedLiteralFact{site.node, zc::mv(ZC_ASSERT_NONNULL(foldedValue)),
+                                        resultType, site.key.sourceSpan.clone()},
             zc::Array<uint8_t>()});
       } else if (site.production == BodyProductionKind::LiteralArithmeticFold) {
         // A binary over two integer literals (`40 + 2`) folds to the constant

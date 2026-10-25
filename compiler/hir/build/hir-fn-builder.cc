@@ -513,6 +513,13 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         }
         break;
       }
+      case SequentialInitializerKind::LocalReference: {
+        ctx.addLocalReference(HirLocalReferenceExpression{
+            trailingWriteValueIds[index],
+            hirLocalId(static_cast<uint32_t>(write.referencedBinding) + 1), writeType,
+            HirValueCategory::Place, targetBinding.initializerSpan.clone()});
+        break;
+      }
       default:
         break;
     }
@@ -717,13 +724,23 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         break;
       }
       case SequentialInitializerKind::Cast:
-        // An integer `as` cast over a scalar literal inner expression. The cast
-        // is a no-op for widening or identity conversions; lower the inner
-        // literal with the cast result type.
+        // An integer `as` cast. A scalar-literal inner folds to its constant;
+        // an identifier inner is an identity conversion that copies the
+        // parameter or earlier binding verbatim and pools no expression record.
         ZC_IF_SOME(literal, binding.literal) {
           ctx.addExpression(HirScalarLiteralExpression{initializerNodeId, binding.type,
                                                        literal.clone(), HirValueCategory::Value,
                                                        binding.initializerSpan.clone()});
+        } else if (binding.castInnerIsLocal) {
+          ctx.addLocalReference(HirLocalReferenceExpression{
+              initializerNodeId, hirLocalId(static_cast<uint32_t>(binding.referencedLocal + 1)),
+              binding.type, HirValueCategory::Place, binding.initializerSpan.clone()});
+        } else {
+          ZC_IF_SOME(parameter, binding.parameter) {
+            ctx.addParameterReference(HirParameterReferenceExpression{
+                initializerNodeId, parameter.clone(), binding.type, HirValueCategory::Place,
+                binding.initializerSpan.clone()});
+          }
         }
         break;
       case SequentialInitializerKind::Ternary: {

@@ -1,0 +1,6 @@
+// An identity integer cast copying an earlier binding is a plain slot copy.
+fn entry() -> i32 {
+  let u = 41;
+  let b = u as i32;
+  return b;
+}

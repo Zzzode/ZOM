@@ -2394,6 +2394,12 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
     }
   }
   int64_t sequentialValueNodeExcess = 0;
+  // A trailing write whose value copies an earlier local pools a localReference
+  // node that the shared equation counts on neither side, while its write
+  // statement subtracts one on the right. Each such write needs one right-hand
+  // credit. Literal and parameter write values balance unaided: the expression
+  // or parameter reference they pool cancels the write statement's subtraction.
+  int64_t sequentialLocalWriteValueCount = 0;
   for (const auto& sequentialFunction : hirModule.functions()) {
     auto sequentialBlock = blockFor(hirModule, sequentialFunction.body);
     ZC_IF_SOME(block, sequentialBlock) {
@@ -2495,6 +2501,14 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         }
       }
       sequentialValueNodeExcess += valueNodes - binaryBindings - 1;
+      for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
+        auto write = localWriteFor(hirModule, block.statements[i]);
+        ZC_IF_SOME(writeValue, write) {
+          if (localReferenceFor(hirModule, writeValue.value) != zc::none) {
+            ++sequentialLocalWriteValueCount;
+          }
+        }
+      }
     }
   }
   // A leading-local conditional function has K leading let bindings and a
@@ -2717,7 +2731,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                            receiverSelfCallValueNodes + voidFunctionCount - voidLetBodyCount -
                            localAliasReborrowCount - hirModule.localWrites().size() -
                            hirModule.parameterFieldWrites().size()) +
-      binaryWriteLocalOperandCount + comparisonLoopBodyReturnCount + localFieldBinaryValueNodes;
+      binaryWriteLocalOperandCount + comparisonLoopBodyReturnCount + localFieldBinaryValueNodes +
+      sequentialLocalWriteValueCount;
   if (!evidence.isResolved() ||
       evidence.evidence().revision().digest() != hirModule.borrowEvidenceRevision().digest() ||
       hirModule.borrowEvidenceLease().key().revision.digest() !=

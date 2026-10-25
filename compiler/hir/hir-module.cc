@@ -498,6 +498,19 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::encodeHex(semanticType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, "\n"_zc);
   }
+  for (const auto& write : impl->localWrites) {
+    auto semanticType = impl->semanticTypes.get(write.type);
+    if (!semanticType.is<type::SemanticTypeLookup>()) return zc::none;
+    append(output, "local-write h"_zc);
+    append(output, zc::str(write.node.ordinal()));
+    append(output, " l"_zc);
+    append(output, zc::str(write.local.ordinal()));
+    append(output, " value=h"_zc);
+    append(output, zc::str(write.value.ordinal()));
+    append(output, " kind="_zc);
+    append(output, write.kind == HirLocalWriteKind::Initialize ? "initialize"_zc : "overwrite"_zc);
+    append(output, "\n"_zc);
+  }
   for (const auto& call : impl->calls) {
     auto callee = impl->identities.definition(call.callee);
     auto calleeType = impl->semanticTypes.get(call.calleeType);
@@ -746,6 +759,41 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       claimedNodes.add(sourceNode);
       if (!tree.contains(sourceNode)) {
         return rejectNode(ir::IrFailureKind::InvalidFact, expression.node.ordinal());
+      }
+      // A literal-inner integer cast *binding* pools the inner literal
+      // constant at the cast node (the binding initializer). That cast node
+      // carries a Cast fact and a node-type fact but no literal fact; the
+      // literal lives on the inner expression. When a Cast fact is present,
+      // validate the cast plus that inner literal instead of the ordinary
+      // literal-on-node contract. A return-position float/int cast fold pools
+      // its folded constant at the cast node with an ordinary literal fact and
+      // no Cast fact, so it falls through to the regular check below.
+      if (tree.node(sourceNode).kind == ast::SyntaxKind::CastExpression &&
+          factIndex(facts.casts(), sourceNode) != zc::none) {
+        const ast::NodeId castInner(
+            tree.node(sourceNode).payload.words[ast::kCastExpressionExprWord]);
+        auto castIndex = factIndex(facts.casts(), sourceNode);
+        auto nodeTypeIndex = factIndex(facts.nodeTypes(), sourceNode);
+        auto innerLiteralIndex = factIndex(facts.literals(), castInner);
+        if (nodeTypeIndex == zc::none || innerLiteralIndex == zc::none) {
+          return rejectNode(ir::IrFailureKind::MissingRequiredFact, expression.node.ordinal());
+        }
+        size_t castSlot = 0;
+        size_t nodeTypeSlot = 0;
+        size_t innerLiteralSlot = 0;
+        ZC_IF_SOME(value, castIndex) { castSlot = value; }
+        ZC_IF_SOME(value, nodeTypeIndex) { nodeTypeSlot = value; }
+        ZC_IF_SOME(value, innerLiteralIndex) { innerLiteralSlot = value; }
+        const auto& castFact = facts.casts().entries()[castSlot].value;
+        const auto& nodeType = facts.nodeTypes().entries()[nodeTypeSlot].value;
+        const auto& innerLiteral = facts.literals().entries()[innerLiteralSlot].value;
+        if (castFact.result != expression.type || nodeType != expression.type ||
+            innerLiteral.type != expression.type ||
+            !sameConstant(innerLiteral.literal, expression.value, module, registries,
+                          semanticTypes)) {
+          return rejectNode(ir::IrFailureKind::InvalidFact, expression.node.ordinal());
+        }
+        continue;
       }
       auto nodeTypeIndex = factIndex(facts.nodeTypes(), sourceNode);
       auto literalFactIndex = factIndex(facts.literals(), sourceNode);
@@ -2958,31 +3006,108 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
             break;
           }
         } else if (binding.initializerKind == SequentialInitializerKind::Cast) {
-          // Cast: the initializer node is a HirScalarLiteralExpression carrying
-          // the inner literal with the cast result type. The cast is a no-op
-          // for widening or identity conversions.
-          zc::Maybe<const HirScalarLiteralExpression&> literal;
-          for (const auto& expression : candidate.impl->expressions) {
-            if (expression.node != hirId(initializerNodeOrdinal)) continue;
-            if (literal != zc::none) bindingsValid = false;
-            literal = expression;
-          }
-          auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
-          if (!bindingsValid || literal == zc::none || literalIndex == zc::none) {
+          // Cast: a scalar-literal inner lowers to its folded constant; an
+          // identifier inner is an identity conversion that copies a parameter
+          // or an earlier binding. Validate the cast fact for all three
+          // spellings, then the inner record matching its source kind.
+          auto castIndex = factIndex(facts.casts(), binding.initializer);
+          if (castIndex == zc::none) {
             bindingsValid = false;
             break;
           }
-          size_t literalSlot = 0;
-          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-          const auto& literalFact = facts.literals().entries()[literalSlot].value;
-          const auto& literalValue = ZC_ASSERT_NONNULL(literal);
-          if (literalValue.type != bindingType ||
-              literalValue.category != HirValueCategory::Value || literalFact.type != bindingType ||
-              !sameConstant(literalValue.value, literalFact.literal, module, registries,
-                            semanticTypes) ||
-              !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+          size_t castSlot = 0;
+          ZC_IF_SOME(value, castIndex) { castSlot = value; }
+          const auto& castFact = facts.casts().entries()[castSlot].value;
+          if (castFact.node != binding.initializer || castFact.result != bindingType ||
+              castFact.target != bindingType || castFact.source != bindingType) {
             bindingsValid = false;
             break;
+          }
+          if (binding.castInnerIsLocal ||
+              tree.node(binding.castInnerNode).kind == ast::SyntaxKind::IdentExpr) {
+            if (castFact.source != castFact.target) {
+              bindingsValid = false;
+              break;
+            }
+            if (binding.castInnerIsLocal) {
+              if (binding.castReferencedLocal >= bindingIndex ||
+                  !matchesLocalReference(tree, source.bindings[binding.castReferencedLocal].pattern,
+                                         binding.castInnerNode)) {
+                bindingsValid = false;
+                break;
+              }
+              zc::Maybe<const HirLocalReferenceExpression&> reference;
+              for (const auto& localReference : candidate.impl->localReferences) {
+                if (localReference.node != hirId(initializerNodeOrdinal)) continue;
+                if (reference != zc::none) bindingsValid = false;
+                reference = localReference;
+              }
+              if (!bindingsValid || reference == zc::none) {
+                bindingsValid = false;
+                break;
+              }
+              const auto& referenceValue = ZC_ASSERT_NONNULL(reference);
+              if (referenceValue.local !=
+                      hirLocalId(static_cast<uint32_t>(binding.castReferencedLocal + 1)) ||
+                  referenceValue.type != bindingType ||
+                  referenceValue.category != HirValueCategory::Place ||
+                  !sameSpan(referenceValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+                bindingsValid = false;
+                break;
+              }
+            } else {
+              auto parameterHandle =
+                  resolvedCallableParameter(bound.bindings(), binding.castInnerNode);
+              zc::Maybe<const HirParameterReferenceExpression&> parameter;
+              for (const auto& reference : candidate.impl->parameterReferences) {
+                if (reference.node != hirId(initializerNodeOrdinal)) continue;
+                if (parameter != zc::none) bindingsValid = false;
+                parameter = reference;
+              }
+              if (!bindingsValid || parameterHandle == zc::none || parameter == zc::none) {
+                bindingsValid = false;
+                break;
+              }
+              zc::Maybe<identity::CallableParameterKey> expectedKey;
+              ZC_IF_SOME(handle, parameterHandle) {
+                auto authority = registries.callableParameter(handle);
+                ZC_IF_SOME(entry, authority) { expectedKey = entry.key().clone(); }
+              }
+              const auto& parameterValue = ZC_ASSERT_NONNULL(parameter);
+              if (expectedKey == zc::none ||
+                  parameterValue.parameter != ZC_ASSERT_NONNULL(expectedKey) ||
+                  parameterValue.type != bindingType ||
+                  parameterValue.category != HirValueCategory::Place ||
+                  !sameSpan(parameterValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+                bindingsValid = false;
+                break;
+              }
+            }
+          } else {
+            zc::Maybe<const HirScalarLiteralExpression&> literal;
+            for (const auto& expression : candidate.impl->expressions) {
+              if (expression.node != hirId(initializerNodeOrdinal)) continue;
+              if (literal != zc::none) bindingsValid = false;
+              literal = expression;
+            }
+            auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
+            if (!bindingsValid || literal == zc::none || literalIndex == zc::none) {
+              bindingsValid = false;
+              break;
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+            const auto& literalFact = facts.literals().entries()[literalSlot].value;
+            const auto& literalValue = ZC_ASSERT_NONNULL(literal);
+            if (literalValue.type != bindingType ||
+                literalValue.category != HirValueCategory::Value ||
+                literalFact.type != bindingType ||
+                !sameConstant(literalValue.value, literalFact.literal, module, registries,
+                              semanticTypes) ||
+                !sameSpan(literalValue.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan))) {
+              bindingsValid = false;
+              break;
+            }
           }
         } else if (binding.initializerKind == SequentialInitializerKind::Ternary) {
           // Ternary: the initializer node is a HirConditionalExpression that
@@ -3361,6 +3486,226 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
+      // Verify each trailing write: its statement and value ordinals, its
+      // target local, and the value content (a scalar literal, a parameter
+      // copy, or a copy of an earlier binding). The materializer reuses the
+      // target binding's pattern/initializer spans for the write and value
+      // spans, so the contract is checked against those same source spans.
+      for (size_t writeIndex = 0; writeIndex < source.localWrites.size(); ++writeIndex) {
+        const auto& sourceWriteRecord = source.localWrites[writeIndex];
+        const uint32_t writeOrdinal =
+            expectedFunction + 2 + bindingNodeSpan + static_cast<uint32_t>(writeIndex) * 2u;
+        const HirNodeId expectedWrite = hirId(writeOrdinal);
+        const HirNodeId expectedValue = hirId(writeOrdinal + 1);
+        const size_t writeStatementIndex = bindingCount + incrementBindingCount + writeIndex;
+        if (writeStatementIndex >= block.statements.size() ||
+            block.statements[writeStatementIndex] != expectedWrite) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const ast::NodeId sourceAssignment(
+            tree.node(sourceWriteRecord.statement)
+                .payload.words[ast::kExpressionStatementExpressionWord]);
+        const ast::NodeId sourceTarget(
+            tree.node(sourceAssignment).payload.words[ast::kAssignmentExprLhsWord]);
+        const ast::NodeId sourceWriteValue(
+            tree.node(sourceAssignment).payload.words[ast::kAssignmentExprRhsWord]);
+        if (!tree.contains(sourceAssignment) ||
+            tree.node(sourceAssignment).kind != ast::SyntaxKind::AssignmentExpr ||
+            static_cast<ast::AssignmentOperatorKind>(
+                tree.node(sourceAssignment).payload.words[ast::kAssignmentExprOpWord]) !=
+                ast::AssignmentOperatorKind::Assign ||
+            !tree.contains(sourceTarget) ||
+            tree.node(sourceTarget).kind != ast::SyntaxKind::IdentExpr ||
+            !tree.contains(sourceWriteValue) || sourceWriteValue != sourceWriteRecord.value) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        const auto& targetBindingRecord = source.bindings[sourceWriteRecord.targetBinding];
+        auto targetPatternSpan =
+            bound.parsedModule().spanFor(tree.node(targetBindingRecord.pattern).range);
+        auto targetInitializerSpan =
+            bound.parsedModule().spanFor(tree.node(targetBindingRecord.initializer).range);
+        auto assignmentType = factIndex(facts.nodeTypes(), sourceAssignment);
+        auto targetType = factIndex(facts.nodeTypes(), sourceTarget);
+        auto valueType = factIndex(facts.nodeTypes(), sourceWriteValue);
+        if (targetPatternSpan == zc::none || targetInitializerSpan == zc::none ||
+            assignmentType == zc::none || targetType == zc::none || valueType == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        size_t assignmentSlot = 0;
+        size_t targetSlot = 0;
+        size_t valueSlot = 0;
+        ZC_IF_SOME(value, assignmentType) { assignmentSlot = value; }
+        ZC_IF_SOME(value, targetType) { targetSlot = value; }
+        ZC_IF_SOME(value, valueType) { valueSlot = value; }
+        const auto assignmentFactType = facts.nodeTypes().entries()[assignmentSlot].value;
+        const auto targetFactType = facts.nodeTypes().entries()[targetSlot].value;
+        const auto valueFactType = facts.nodeTypes().entries()[valueSlot].value;
+        // A write may target a local that is not the returned one, so its type
+        // is the assignment/value fact type rather than the function result.
+        const identity::SemanticTypeId writeType = valueFactType;
+        zc::Maybe<const HirLocalWriteStatement&> write;
+        for (const auto& candidateWrite : candidate.impl->localWrites) {
+          if (candidateWrite.node != expectedWrite) continue;
+          if (write != zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::AdditionalFact, module,
+                                                registries, index + 1);
+          }
+          write = candidateWrite;
+        }
+        if (write == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const auto& writeValueRecord = ZC_ASSERT_NONNULL(write);
+        if (writeValueRecord.local !=
+                hirLocalId(static_cast<uint32_t>(sourceWriteRecord.targetBinding) + 1) ||
+            writeValueRecord.field != zc::none || writeValueRecord.value != expectedValue ||
+            writeValueRecord.kind != HirLocalWriteKind::Overwrite ||
+            writeValueRecord.type != writeType || assignmentFactType != writeType ||
+            targetFactType != writeType ||
+            !sameSpan(writeValueRecord.sourceSpan, ZC_ASSERT_NONNULL(targetPatternSpan)) ||
+            !sameSpan(writeValueRecord.valueSpan, ZC_ASSERT_NONNULL(targetInitializerSpan))) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        // The structural source classification must agree with the shape's
+        // recorded value kind.
+        const bool sourceIsIdent = tree.node(sourceWriteValue).kind == ast::SyntaxKind::IdentExpr;
+        const bool sourceIsLiteral = isScalarLiteral(tree.node(sourceWriteValue).kind);
+        if (sourceWriteRecord.valueKind == SequentialInitializerKind::Literal) {
+          if (!sourceIsLiteral) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          zc::Maybe<const HirScalarLiteralExpression&> literal;
+          for (const auto& expression : candidate.impl->expressions) {
+            if (expression.node != expectedValue) continue;
+            if (literal != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            literal = expression;
+          }
+          auto literalIndex = factIndex(facts.literals(), sourceWriteValue);
+          if (literal == zc::none || literalIndex == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          const auto& literalExpression = ZC_ASSERT_NONNULL(literal);
+          if (literalExpression.type != writeType ||
+              literalExpression.category != HirValueCategory::Value ||
+              literalFact.type != writeType ||
+              !sameConstant(literalExpression.value, literalFact.literal, module, registries,
+                            semanticTypes) ||
+              !sameSpan(literalExpression.sourceSpan, ZC_ASSERT_NONNULL(targetInitializerSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else if (sourceWriteRecord.valueKind == SequentialInitializerKind::ParameterReference) {
+          if (!sourceIsIdent) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          auto parameterHandle = resolvedCallableParameter(bound.bindings(), sourceWriteValue);
+          zc::Maybe<const HirParameterReferenceExpression&> parameter;
+          for (const auto& reference : candidate.impl->parameterReferences) {
+            if (reference.node != expectedValue) continue;
+            if (parameter != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            parameter = reference;
+          }
+          if (parameterHandle == zc::none || parameter == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          zc::Maybe<identity::CallableParameterKey> expectedKey;
+          ZC_IF_SOME(handle, parameterHandle) {
+            auto authority = registries.callableParameter(handle);
+            ZC_IF_SOME(entry, authority) { expectedKey = entry.key().clone(); }
+          }
+          const auto& parameterValue = ZC_ASSERT_NONNULL(parameter);
+          if (expectedKey == zc::none ||
+              parameterValue.parameter != ZC_ASSERT_NONNULL(expectedKey) ||
+              parameterValue.type != writeType ||
+              parameterValue.category != HirValueCategory::Place ||
+              !sameSpan(parameterValue.sourceSpan, ZC_ASSERT_NONNULL(targetInitializerSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else if (sourceWriteRecord.valueKind == SequentialInitializerKind::LocalReference) {
+          if (!sourceIsIdent || sourceWriteRecord.referencedBinding >= source.bindings.size()) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          if (!matchesLocalReference(tree,
+                                     source.bindings[sourceWriteRecord.referencedBinding].pattern,
+                                     sourceWriteValue)) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          auto ownerBinding = resolvedOwnerLocal(bound.bindings(), sourceWriteValue);
+          if (ownerBinding == zc::none ||
+              ZC_ASSERT_NONNULL(ownerBinding) !=
+                  localBindingIds[sourceWriteRecord.referencedBinding]) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+          zc::Maybe<const HirLocalReferenceExpression&> localReference;
+          for (const auto& reference : candidate.impl->localReferences) {
+            if (reference.node != expectedValue) continue;
+            if (localReference != zc::none) {
+              return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                  ir::IrFailureKind::AdditionalFact, module,
+                                                  registries, index + 1);
+            }
+            localReference = reference;
+          }
+          if (localReference == zc::none) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::MissingRequiredFact, module,
+                                                registries, index + 1);
+          }
+          const auto& localReferenceValue = ZC_ASSERT_NONNULL(localReference);
+          if (localReferenceValue.local !=
+                  hirLocalId(static_cast<uint32_t>(sourceWriteRecord.referencedBinding) + 1) ||
+              localReferenceValue.type != sequentialType ||
+              localReferenceValue.category != HirValueCategory::Place ||
+              !sameSpan(localReferenceValue.sourceSpan, ZC_ASSERT_NONNULL(targetInitializerSpan))) {
+            return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                                ir::IrFailureKind::InvalidFact, module, registries,
+                                                index + 1);
+          }
+        } else {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+      }
       // Whole-body shape for a call-initialized sequential body. The per-binding
       // arm above re-derives the fact agreement; the shape itself has exactly
       // one definition, shared with the HIR builder's admission gate and the MIR
@@ -3635,9 +3980,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                                                 index + 1);
           }
         }
-        nextFunction += bindingNodeSpan + 5 + returnTrailingExtra;
+        nextFunction += bindingNodeSpan + trailingWriteSpan + 5 + returnTrailingExtra;
       } else {
-        nextFunction += bindingNodeSpan + 4 + returnTrailingExtra;
+        nextFunction += bindingNodeSpan + trailingWriteSpan + 4 + returnTrailingExtra;
       }
       continue;
     }
@@ -5603,7 +5948,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
                     sameSpan(binary.sourceSpan, ZC_ASSERT_NONNULL(initializerSpan));
               }
             } else if (binding.initializerKind == SequentialInitializerKind::Literal ||
-                       binding.initializerKind == SequentialInitializerKind::EnumVariant) {
+                       binding.initializerKind == SequentialInitializerKind::EnumVariant ||
+                       binding.initializerKind == SequentialInitializerKind::FoldedLiteralUnary) {
               for (const auto& expression : candidate.impl->expressions) {
                 if (expression.node != initializerNodeId) continue;
                 if (initializerRecordOk) {

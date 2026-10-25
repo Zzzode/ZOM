@@ -4112,6 +4112,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         // of reaching the incident rail. Every other `rejected` cause in this
         // loop is a genuine fact mismatch and keeps the incident rail.
         bool unsupportedAggregateInitializer = false;
+        // An identifier-inner integer cast whose source and target integer
+        // types differ is a widening/narrowing conversion the LIR slice has no
+        // operation for; it is valid source the body cannot lower, so it drains
+        // as the per-definition capability code (ZOM4099), not an invariant.
+        bool unsupportedWideningCast = false;
         for (size_t bindingIndex = 0; bindingIndex < sequentialShape.bindings.size();
              ++bindingIndex) {
           const auto& binding = sequentialShape.bindings[bindingIndex];
@@ -4295,11 +4300,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             }
             bindingLiteral = literalFact.literal.clone();
           } else if (binding.initializerKind == SequentialInitializerKind::Cast) {
-            // An integer `as` cast over a scalar literal inner expression. The
-            // cast is a no-op for widening or identity conversions; validate
-            // the cast fact and lower the inner literal with the cast result
-            // type. The inner literal's node-type fact carries the target type
-            // because the checker adopts it as the literal's expected type.
+            // An integer `as` cast. A scalar-literal inner lowers to the folded
+            // constant with the cast result type. An identifier inner is a copy
+            // of a parameter or earlier binding; it is admitted only for an
+            // identity conversion (source and target the same integer type),
+            // since the LIR slice has no widening/narrowing operation.
             auto castIndex = factIndex(facts.casts(), binding.initializer);
             if (castIndex == zc::none) {
               rejected = true;
@@ -4309,23 +4314,64 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             ZC_IF_SOME(index, castIndex) { castSlot = index; }
             const auto& castFact = facts.casts().entries()[castSlot].value;
             if (castFact.node != binding.initializer || castFact.result != bindingType ||
-                castFact.target != bindingType || castFact.source != bindingType) {
+                castFact.target != bindingType) {
               rejected = true;
               break;
             }
-            auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
-            if (literalIndex == zc::none) {
-              rejected = true;
-              break;
+            const bool castInnerIsIdent =
+                binding.castInnerIsLocal ||
+                tree.node(binding.castInnerNode).kind == ast::SyntaxKind::IdentExpr;
+            if (castInnerIsIdent) {
+              // An identifier inner copies an existing value; only an identity
+              // conversion (source == target) has a LIR operation. Widen and
+              // narrow casts are valid source this body cannot lower yet.
+              if (castFact.source != castFact.target) {
+                unsupportedWideningCast = true;
+                rejected = true;
+                break;
+              }
+              if (binding.castInnerIsLocal) {
+                auto referenceBinding = resolvedOwnerLocal(bound.bindings(), binding.castInnerNode);
+                if (referenceBinding == zc::none ||
+                    binding.castReferencedLocal >= localBindingIds.size() ||
+                    ZC_ASSERT_NONNULL(referenceBinding) !=
+                        localBindingIds[binding.castReferencedLocal]) {
+                  rejected = true;
+                  break;
+                }
+              } else {
+                auto parameterHandle =
+                    resolvedCallableParameter(bound.bindings(), binding.castInnerNode);
+                if (parameterHandle == zc::none) {
+                  rejected = true;
+                  break;
+                }
+                zc::Maybe<identity::CallableParameterKey> resolvedKey;
+                ZC_IF_SOME(handle, parameterHandle) {
+                  auto authority = registries.callableParameter(handle);
+                  ZC_IF_SOME(entry, authority) { resolvedKey = entry.key().clone(); }
+                }
+                if (resolvedKey == zc::none) {
+                  rejected = true;
+                  break;
+                }
+                bindingParameter = zc::mv(resolvedKey);
+              }
+            } else {
+              auto literalIndex = factIndex(facts.literals(), binding.castInnerNode);
+              if (literalIndex == zc::none) {
+                rejected = true;
+                break;
+              }
+              size_t literalSlot = 0;
+              ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+              const auto& literalFact = facts.literals().entries()[literalSlot].value;
+              if (literalFact.type != bindingType) {
+                rejected = true;
+                break;
+              }
+              bindingLiteral = literalFact.literal.clone();
             }
-            size_t literalSlot = 0;
-            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
-            const auto& literalFact = facts.literals().entries()[literalSlot].value;
-            if (literalFact.type != bindingType) {
-              rejected = true;
-              break;
-            }
-            bindingLiteral = literalFact.literal.clone();
           } else if (binding.initializerKind == SequentialInitializerKind::Aggregate) {
             auto aggregateIndex = factIndex(facts.aggregates(), binding.initializer);
             if (aggregateIndex == zc::none) {
@@ -5167,7 +5213,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               zc::mv(bindingAggregate),
               zc::mv(bindingCall),
               zc::mv(bindingParameter),
-              binding.referencedLocal,
+              binding.initializerKind == SequentialInitializerKind::Cast
+                  ? binding.castReferencedLocal
+                  : binding.referencedLocal,
               zc::mv(bindingOperation),
               bindingOperandType,
               zc::mv(bindingLeftOperand),
@@ -5187,14 +5235,15 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               tree.node(binding.initializer).kind == ast::SyntaxKind::MatchExpr,
               binding.matchHasDefaultArm,
               binding.declarator,
-              binding.initializer});
+              binding.initializer,
+              binding.castInnerIsLocal});
         }
         if (rejected) {
           // A non-nominal aggregate initializer (array or tuple literal) is a
           // valid binding form with no HIR carrier yet, so it drains as a
           // capability rejection (ZOM4099). Any other cause is a fact the
           // verifier should have established, and stays on the incident rail.
-          if (unsupportedAggregateInitializer) {
+          if (unsupportedAggregateInitializer || unsupportedWideningCast) {
             return rejectHirCapability<HirModuleCandidate>(
                 definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
                 definition.source.clone());
@@ -5522,6 +5571,22 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                    ir::IrFailureKind::InvalidFact, module,
                                                    registries, ordinal + 2);
             }
+          } else if (write.valueKind == SequentialInitializerKind::LocalReference) {
+            // A copy of an earlier binding resolves to that owner local, the
+            // same contract a LocalReference binding initializer applies.
+            if (write.referencedBinding >= localBindingIds.size()) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            auto sourceBinding = resolvedOwnerLocal(bound.bindings(), write.value);
+            if (sourceBinding == zc::none ||
+                ZC_ASSERT_NONNULL(sourceBinding) != localBindingIds[write.referencedBinding]) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+            pendingWrite.referencedBinding = write.referencedBinding;
           }
           pendingWrites.add(zc::mv(pendingWrite));
         }
