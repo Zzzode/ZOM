@@ -1,0 +1,9 @@
+// A single leading local returned through a two-level arithmetic expression.
+// The flat single-binding carrier admits only leaf operands, so this spelling
+// routes to the sequential-local carrier, which evaluates the nested `a + 2`
+// into a temporary and hands the outer binary its place-use. The module folds
+// to the reserved no-argument `zom.module_init` entry, so `zomc run` exits 23.
+fn entry() -> i32 {
+  let a = 20;
+  return a + 2 + 1;
+}

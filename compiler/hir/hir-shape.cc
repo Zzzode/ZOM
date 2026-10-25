@@ -122,6 +122,25 @@ bool isComparisonReturnSyntax(const ast::Tree& tree, ast::NodeId value) {
   return false;
 }
 
+// Whether a single-binding body's trailing value is one primitive binary with a
+// nested binary operand, e.g. `let a = 20; return a + 2 + 1;`. The flat
+// single-binding carrier admits only leaf operands, while the sequential-local
+// carrier already lowers a nested operand by evaluating it into a temporary.
+// Route this spelling to that complete rail instead of widening the flat
+// carrier's own node layout, which the single-operand spelling still uses.
+bool isNestedBinaryReturnSyntax(const ast::Tree& tree, ast::NodeId value) {
+  if (!tree.contains(value) || tree.node(value).kind != ast::SyntaxKind::BinaryExpr) {
+    return false;
+  }
+  for (const auto word : {ast::kBinaryExprLhsWord, ast::kBinaryExprRhsWord}) {
+    const ast::NodeId operand(tree.node(value).payload.words[word]);
+    if (tree.contains(operand) && tree.node(operand).kind == ast::SyntaxKind::BinaryExpr) {
+      return true;
+    }
+  }
+  return false;
+}
+
 // Structurally admits a binary whose result type is the operand type — the
 // arithmetic and bitwise families, plus the logical short-circuit pair. The
 // relational comparisons are excluded because their result is bool: the caller
@@ -4018,7 +4037,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
               shape.bindings[0].initializerKind ==
                   SequentialInitializerKind::FoldedLiteralArithmetic ||
               shape.bindings[0].initializerKind == SequentialInitializerKind::FoldedLiteralUnary ||
-              isComparisonReturnSyntax(tree, shape.returnValue)));
+              isComparisonReturnSyntax(tree, shape.returnValue) ||
+              isNestedBinaryReturnSyntax(tree, shape.returnValue)));
       }
       if (routeToSequential) {
         FunctionReturnShape shape{};

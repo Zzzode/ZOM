@@ -156,6 +156,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/early-return-local-consumer/Zom.toml::early_return_local_consumer::early_return_local_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-binary-consumer/Zom.toml::nested_binary_consumer::nested_binary_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-param-consumer/Zom.toml::definite_assignment_conditional_param_consumer::definite_assignment_conditional_param_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer"
@@ -772,6 +774,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/early-return-consumer/Zom.toml::early_return_consumer::early_return_consumer::41"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/early-return-local-consumer/Zom.toml::early_return_local_consumer::early_return_local_consumer::41"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-binary-consumer/Zom.toml::nested_binary_consumer::nested_binary_consumer::23"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

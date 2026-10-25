@@ -5451,6 +5451,66 @@ ZC_TEST("HIR pipeline lowers a return-position nested-operand binary") {
   }
 }
 
+ZC_TEST("HIR pipeline routes a single-binding nested-operand binary to the sequential rail") {
+  // `let a = 20; return a + 2 + 1;` is the same expression the three-binding
+  // test above covers, written over one binding. The flat single-binding carrier
+  // admits only leaf operands, so this spelling routes to the sequential-local
+  // carrier, which already evaluates a nested operand into a temporary. The
+  // layout is the sequential one: one width-2 binding, then the return and its
+  // two-level binary.
+  HirPipelineFixture fixture("fn f() -> i32 { let a = 20; return a + 2 + 1; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  // The outer `(a + 2) + 1` and the nested `a + 2`.
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 2);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  const auto& returned = module.returns()[0];
+  // Fixed-id layout: F+0 function, F+1 block; one width-2 binding (local,
+  // initializer) at 3 and 4; return at 5, value at 6, the two operand nodes at
+  // 7 and 8, and the nested operand's two leaves at 9 and 10.
+  ZC_EXPECT(function.node.ordinal() == 1);
+  ZC_EXPECT(block.node.ordinal() == 2);
+  ZC_REQUIRE(block.statements.size() == 2);
+  ZC_EXPECT(returned.node.ordinal() == 5);
+  ZC_EXPECT(returned.value.ordinal() == 6);
+  zc::Maybe<const HirPrimitiveBinaryExpression&> outer;
+  zc::Maybe<const HirPrimitiveBinaryExpression&> nested;
+  for (const auto& operation : module.primitiveBinaryOperations()) {
+    if (operation.node == returned.value) outer = operation;
+    if (operation.node.ordinal() == 7) nested = operation;
+  }
+  ZC_REQUIRE(outer != zc::none);
+  ZC_REQUIRE(nested != zc::none);
+  ZC_IF_SOME(outerValue, outer) {
+    ZC_EXPECT(outerValue.type == outerValue.operandType);
+    ZC_EXPECT(outerValue.left.ordinal() == 7);
+    ZC_EXPECT(outerValue.right.ordinal() == 8);
+  }
+  ZC_IF_SOME(nestedValue, nested) {
+    ZC_EXPECT(nestedValue.type == nestedValue.operandType);
+    ZC_EXPECT(nestedValue.left.ordinal() == 9);
+    ZC_EXPECT(nestedValue.right.ordinal() == 10);
+  }
+  // The nested operand lowers to a Temporary, and the outer binary reads it.
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    bool sawNestedTemporary = false;
+    for (const auto& local : mirFunction.locals) {
+      if (local.kind == mir::MirLocalKind::Temporary) sawNestedTemporary = true;
+    }
+    ZC_EXPECT(sawNestedTemporary);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a direct enum construction return") {
   HirPipelineFixture fixture(
       "enum Result { Ok(i32), Err(i32) }\n"
