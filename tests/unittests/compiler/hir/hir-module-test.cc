@@ -5242,6 +5242,24 @@ ZC_TEST("HIR pipeline drains a literal bool conditional as ZOM4099") {
   ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
 }
 
+ZC_TEST("HIR pipeline drains a return of a parameter beside a local as ZOM4099") {
+  // `let x = 1; return a;` returns a parameter, not the declared local. The
+  // return-local shape anchors on `a` while the declarator declares `x`, and the
+  // builder resolves only owner-local bindings, so the definition must drain as
+  // the per-definition capability code instead of reaching a construction
+  // invariant that no local binding can satisfy.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn f(a: i32) -> i32 { let x = 1; return a; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+}
+
 ZC_TEST("HIR pipeline lowers a two-field struct-literal arithmetic return") {
   // `let p = P { x, y }; return p.x + p.y;` is the multi-field struct shape: the
   // binary's operands are the two field projections of the aggregate local, not

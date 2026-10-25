@@ -4213,6 +4213,15 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   if (!tree.contains(pattern) || tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern) {
     return zc::none;
   }
+  // Every carrier except the binary one anchors on the local this declarator
+  // declares, so the anchor must name the same identifier the pattern declares.
+  // A reference to a parameter (`fn f(a: i32) -> i32 { let x = 1; return a; }`)
+  // binds no owner local, and the builder resolves only owner-local bindings,
+  // so the shape drains as the per-definition capability code instead of
+  // reaching a construction invariant.
+  if (!returnsPrimitiveBinary && !matchesLocalReference(tree, pattern, localReference)) {
+    return zc::none;
+  }
   if (!tree.contains(initializer) && statements.size == 2) {
     // An uninitialized local cannot drive a length fold; restore the
     // local-field classification so the builder uses the member-fact path.
