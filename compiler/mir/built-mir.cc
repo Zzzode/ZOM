@@ -2400,7 +2400,10 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       if (!isSequentialLocalReturnBlock(hirModule, block)) continue;
       bool allLeadingLocals = true;
       for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
-        if (localFor(hirModule, block.statements[i]) == zc::none) {
+        // A plain write between the bindings and the return is part of this
+        // shape; the shared equation credits its statement node.
+        if (localFor(hirModule, block.statements[i]) == zc::none &&
+            localWriteFor(hirModule, block.statements[i]) == zc::none) {
           allLeadingLocals = false;
           break;
         }

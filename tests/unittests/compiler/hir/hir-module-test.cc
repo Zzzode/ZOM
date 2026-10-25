@@ -5451,6 +5451,67 @@ ZC_TEST("HIR pipeline lowers a return-position nested-operand binary") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a leading binding followed by a trailing write") {
+  // `let z = 1; mut s = 0; s = 41; return s;` keeps a binding that is never
+  // read, then writes the returned local. The write must reach the HIR: the
+  // returned local would otherwise keep its initializer's value.
+  // Fixed-id layout: F+0 function, F+1 block; binding `z` (local, literal) at 2
+  // and 3; binding `s` (local, literal) at 4 and 5; the write's value literal at
+  // 6; the write statement at 7; return at 8 and its value at 9.
+  HirPipelineFixture fixture("fn f() -> i32 { let z = 1; mut s = 0; s = 41; return s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 2);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  // Two bindings, one write, one return.
+  ZC_REQUIRE(block.statements.size() == 4);
+  const auto& write = module.localWrites()[0];
+  ZC_EXPECT(write.node.ordinal() == 7);
+  ZC_EXPECT(write.value.ordinal() == 8);
+  // The write overwrites the second local.
+  ZC_EXPECT(write.local.ordinal() == 2);
+  ZC_EXPECT(write.kind == hir::HirLocalWriteKind::Overwrite);
+  ZC_EXPECT(module.returns()[0].node.ordinal() == 9);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  // The assignment must reach MIR; without it the program returns 0.
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    bool sawOverwrite = false;
+    for (const auto& statement : mirFunction.blocks[0].statements) {
+      if (statement.kind() != mir::MirStatementKind::Assign) continue;
+      const auto& assignment = statement.assignmentValue();
+      if (assignment.value.kind() == mir::MirRvalueKind::Use &&
+          assignment.value.useValue().operand.kind() == mir::MirOperandKind::Constant) {
+        sawOverwrite = true;
+      }
+    }
+    ZC_EXPECT(sawOverwrite);
+  }
+}
+
+ZC_TEST("HIR pipeline drains a trailing write of an earlier binding as ZOM4099") {
+  // A write whose value names an earlier binding needs a local-reference value
+  // node the fixed-id stride does not model yet, so the body stays on the
+  // fail-closed capability drain instead of reaching an invariant.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry() -> i32 { let i = 41; mut s = 0; s = i; return s; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+}
+
 ZC_TEST("HIR pipeline routes a single-binding nested-operand binary to the sequential rail") {
   // `let a = 20; return a + 2 + 1;` is the same expression the three-binding
   // test above covers, written over one binding. The flat single-binding carrier

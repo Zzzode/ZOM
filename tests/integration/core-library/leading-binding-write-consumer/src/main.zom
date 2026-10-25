@@ -1,0 +1,9 @@
+// A binding that is never read, followed by a mutable local that a trailing
+// assignment initializes before the return. The write must run: dropping it
+// would return the initializer's value instead of 41.
+fn entry() -> i32 {
+  let z = 1;
+  mut s = 0;
+  s = 41;
+  return s;
+}

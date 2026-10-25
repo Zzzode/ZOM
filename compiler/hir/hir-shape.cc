@@ -1061,7 +1061,66 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       continue;
     }
     auto declaratorNode = localDeclarator(tree, tree.list(statements)[index]);
-    if (declaratorNode == zc::none) { return zc::none; }
+    if (declaratorNode == zc::none) {
+      // A non-declaration statement between the bindings and the return is a
+      // plain scalar assignment: `mut s = 0; s = 41;`. Bindings and writes keep
+      // source order, so a binding may not follow a write.
+      if (shape.localWrites.size() != 0 || index + 1 >= statements.size) { return zc::none; }
+      auto writeStatement = statementItem(tree, tree.list(statements)[index]);
+      if (writeStatement == zc::none) { return zc::none; }
+      ast::NodeId statement;
+      ZC_IF_SOME(writeItemValue, writeStatement) { statement = writeItemValue; }
+      if (tree.node(statement).kind != ast::SyntaxKind::ExpressionStatement) { return zc::none; }
+      const ast::NodeId assignment(
+          tree.node(statement).payload.words[ast::kExpressionStatementExpressionWord]);
+      if (!tree.contains(assignment) ||
+          tree.node(assignment).kind != ast::SyntaxKind::AssignmentExpr ||
+          static_cast<ast::AssignmentOperatorKind>(
+              tree.node(assignment).payload.words[ast::kAssignmentExprOpWord]) !=
+              ast::AssignmentOperatorKind::Assign) {
+        return zc::none;
+      }
+      const ast::NodeId target(tree.node(assignment).payload.words[ast::kAssignmentExprLhsWord]);
+      const ast::NodeId writeValue(
+          tree.node(assignment).payload.words[ast::kAssignmentExprRhsWord]);
+      if (!tree.contains(target) || tree.node(target).kind != ast::SyntaxKind::IdentExpr ||
+          !tree.contains(writeValue)) {
+        return zc::none;
+      }
+      size_t targetBinding = 0;
+      bool targetResolved = false;
+      for (size_t binding = 0; binding < shape.bindings.size(); ++binding) {
+        if (matchesLocalReference(tree, shape.bindings[binding].pattern, target)) {
+          targetBinding = binding;
+          targetResolved = true;
+          break;
+        }
+      }
+      if (!targetResolved) { return zc::none; }
+      SequentialLocalWrite write{};
+      write.statement = statement;
+      write.targetBinding = targetBinding;
+      write.value = writeValue;
+      if (isScalarLiteral(tree.node(writeValue).kind)) {
+        write.valueKind = SequentialInitializerKind::Literal;
+      } else if (tree.node(writeValue).kind == ast::SyntaxKind::IdentExpr) {
+        // Only a parameter copy is admitted here. A write value that names an
+        // earlier binding needs a local-reference value node whose layout the
+        // fixed-id stride and the checksum equation do not yet model; it stays
+        // on the fail-closed drain until that layout exists.
+        write.valueKind = SequentialInitializerKind::ParameterReference;
+        for (size_t earlier = 0; earlier < shape.bindings.size(); ++earlier) {
+          if (matchesLocalReference(tree, shape.bindings[earlier].pattern, writeValue)) {
+            return zc::none;
+          }
+        }
+      } else {
+        return zc::none;
+      }
+      shape.localWrites.add(zc::mv(write));
+      continue;
+    }
+    if (shape.localWrites.size() != 0) { return zc::none; }
     ast::NodeId declarator;
     ZC_IF_SOME(value, declaratorNode) { declarator = value; }
     const ast::NodeId pattern(
@@ -1610,6 +1669,10 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       }
     }
   }
+  // A body with a trailing write returns the written local directly. A return
+  // binary or a parameter over that shape needs a layout this rail does not
+  // model, so it stays on the fail-closed drain.
+  if (shape.localWrites.size() != 0 && shape.returnsLocal == zc::none) { return zc::none; }
   return shape;
 }
 

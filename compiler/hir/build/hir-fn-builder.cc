@@ -429,6 +429,14 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     ternaryThenIds.add(zc::mv(ternaryThenId));
     ternaryElseIds.add(zc::mv(ternaryElseId));
   }
+  // A write between the bindings and the return allocates its statement node and
+  // its value node, in source order, before the return.
+  zc::Vector<HirNodeId> trailingWriteIds;
+  zc::Vector<HirNodeId> trailingWriteValueIds;
+  for (size_t index = 0; index < sequential.localWrites.size(); ++index) {
+    trailingWriteIds.add(ctx.allocNode(ast::NodeId()));
+    trailingWriteValueIds.add(ctx.allocNode(ast::NodeId()));
+  }
   const HirNodeId returnId = ctx.allocNode(function.returnNode);
   const HirNodeId returnValueId = ctx.allocNode(function.returnValueNode);
   // A trailing binary return allocates its two operand nodes after the value
@@ -482,6 +490,37 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
     if (sequential.bindings[index].kind == SequentialInitializerKind::PostfixIncrement) {
       ZC_IF_SOME(writeId, incrementWriteIds[index]) { statements.add(writeId); }
     }
+  }
+  for (size_t index = 0; index < sequential.localWrites.size(); ++index) {
+    const auto& write = sequential.localWrites[index];
+    const auto& targetBinding = sequential.bindings[write.targetBinding];
+    const HirLocalId target = hirLocalId(static_cast<uint32_t>(write.targetBinding) + 1);
+    const identity::SemanticTypeId writeType = targetBinding.type;
+    switch (write.valueKind) {
+      case SequentialInitializerKind::Literal: {
+        ZC_IF_SOME(literal, write.literal) {
+          ctx.addExpression(HirScalarLiteralExpression{trailingWriteValueIds[index], writeType,
+                                                       literal.clone(), HirValueCategory::Value,
+                                                       targetBinding.initializerSpan.clone()});
+        }
+        break;
+      }
+      case SequentialInitializerKind::ParameterReference: {
+        ZC_IF_SOME(key, write.parameter) {
+          ctx.addParameterReference(HirParameterReferenceExpression{
+              trailingWriteValueIds[index], key.clone(), writeType, HirValueCategory::Place,
+              targetBinding.initializerSpan.clone()});
+        }
+        break;
+      }
+      default:
+        break;
+    }
+    ctx.addLocalWrite(HirLocalWriteStatement{
+        trailingWriteIds[index], target, zc::none, writeType, trailingWriteValueIds[index],
+        HirLocalWriteKind::Overwrite, targetBinding.patternSpan.clone(),
+        targetBinding.initializerSpan.clone()});
+    statements.add(trailingWriteIds[index]);
   }
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});

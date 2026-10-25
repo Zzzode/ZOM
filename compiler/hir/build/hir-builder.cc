@@ -5490,7 +5490,43 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
+        // Resolve each trailing write's value payload from the checker facts.
+        zc::Vector<PendingSequentialLocalWrite> pendingWrites;
+        for (const auto& write : sequentialShape.localWrites) {
+          PendingSequentialLocalWrite pendingWrite{};
+          pendingWrite.targetBinding = write.targetBinding;
+          pendingWrite.valueKind = write.valueKind;
+          if (write.valueKind == SequentialInitializerKind::Literal) {
+            auto literalIndex = factIndex(facts.literals(), write.value);
+            if (literalIndex == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            size_t literalSlot = 0;
+            ZC_IF_SOME(index, literalIndex) { literalSlot = index; }
+            pendingWrite.literal = facts.literals().entries()[literalSlot].value.literal.clone();
+          } else if (write.valueKind == SequentialInitializerKind::ParameterReference) {
+            auto parameterHandle = resolvedCallableParameter(bound.bindings(), write.value);
+            if (parameterHandle == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
+            }
+            ZC_IF_SOME(handle, parameterHandle) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) { pendingWrite.parameter = entry.key().clone(); }
+            }
+            if (pendingWrite.parameter == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::InvalidFact, module,
+                                                   registries, ordinal + 2);
+            }
+          }
+          pendingWrites.add(zc::mv(pendingWrite));
+        }
         PendingSequentialLocalReturn sequential{zc::mv(pendingBindings),
+                                                zc::mv(pendingWrites),
                                                 zc::mv(returnBinary),
                                                 sequentialType,
                                                 zc::mv(returnParameter),

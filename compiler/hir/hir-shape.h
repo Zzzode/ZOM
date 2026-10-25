@@ -116,11 +116,27 @@ struct SequentialLocalBinding final {
   bool matchHasDefaultArm = false;
 };
 
+// One plain scalar assignment that follows the leading bindings of a
+// sequential-local body: `mut s = 0; s = 41;`. The target is a zero-based index
+// into the body's bindings; the value is a scalar literal or a parameter copy.
+struct SequentialLocalWrite final {
+  ast::NodeId statement;
+  size_t targetBinding = 0;
+  SequentialInitializerKind valueKind = SequentialInitializerKind::Literal;
+  // The write's value expression; the builder resolves its literal or parameter
+  // payload from the checker facts.
+  ast::NodeId value = ast::NodeId();
+};
+
 struct SequentialLocalShape final {
   ast::NodeId body;
   ast::NodeId returnStatement;
   ast::NodeId returnValue;
   zc::Vector<SequentialLocalBinding> bindings;
+  // Plain scalar assignments that follow the bindings and precede the return, in
+  // source order: `let z = 1; mut s = 0; s = 41; return s;`. Each target names
+  // one of the leading bindings. Empty for the plain multi-let shape.
+  zc::Vector<SequentialLocalWrite> localWrites;
   // The zero-based index of the returned local, or none when the return names a
   // parameter.
   zc::Maybe<size_t> returnsLocal;

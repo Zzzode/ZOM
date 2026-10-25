@@ -121,8 +121,21 @@ struct PendingSequentialBinding final {
   ast::NodeId initializerNode{};
 };
 
+/// One plain scalar assignment between a sequential body's bindings and its
+/// return: `mut s = 0; s = 41;`. The target is a zero-based index into the
+/// enclosing body's bindings; exactly one value payload is populated.
+struct PendingSequentialLocalWrite final {
+  size_t targetBinding = 0;
+  SequentialInitializerKind valueKind = SequentialInitializerKind::Literal;
+  zc::Maybe<checker::checked::CanonicalConstValue> literal;
+  zc::Maybe<identity::CallableParameterKey> parameter;
+};
+
 struct PendingSequentialLocalReturn final {
   zc::Vector<PendingSequentialBinding> bindings;
+  /// Plain scalar assignments between the bindings and the return, in source
+  /// order. Each target is a zero-based index into `bindings`.
+  zc::Vector<PendingSequentialLocalWrite> localWrites;
   /// A trailing primitive binary over the leading bindings and scalar literals.
   /// When set, the function's return value is this operation's result rather
   /// than a place. Its operands are resolved against the same leading bindings

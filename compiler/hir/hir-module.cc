@@ -2134,7 +2134,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(bodySpan)) ||
           function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           function.body != block.node || function.parameters.size() != callable.parameters.size() ||
-          block.statements.size() != bindingCount + incrementBindingCount + 1) {
+          block.statements.size() !=
+              bindingCount + incrementBindingCount + source.localWrites.size() + 1) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
@@ -2183,7 +2184,10 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       };
       uint32_t bindingNodeSpan = 0;
       for (const auto& binding : source.bindings) bindingNodeSpan += bindingWidth(binding);
-      const uint32_t returnNodeOrdinal = expectedFunction + 2 + bindingNodeSpan;
+      // A trailing write allocates its statement node and its value node before
+      // the return.
+      const uint32_t trailingWriteSpan = static_cast<uint32_t>(source.localWrites.size()) * 2u;
+      const uint32_t returnNodeOrdinal = expectedFunction + 2 + bindingNodeSpan + trailingWriteSpan;
       // Verify the return statement structure.
       auto returnSpan = bound.parsedModule().spanFor(tree.node(source.returnStatement).range);
       auto returnValueSpan = bound.parsedModule().spanFor(tree.node(source.returnValue).range);
