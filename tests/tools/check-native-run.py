@@ -37,6 +37,7 @@ from pathlib import Path
 
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 LINK_FAILED = "Native linking or publication failed."
+ENTRY_UNAVAILABLE = "no argument-less function lowers to the reserved"
 TARGET_REJECT_TRIPLE = "aarch64-unknown-linux-gnu"
 TARGET_REJECT_TEXT = "Cannot execute target"
 
@@ -93,9 +94,15 @@ def check_run_case(
 
 
 def check_reject_case(zomc: str, manifest: str, package: str, binary: str) -> None:
-    """Assert one object-only program fails closed instead of executing."""
+    """Assert one object-only program fails closed instead of executing.
+
+    An object-only module is rejected either by the pre-link entry check
+    (``ENTRY_UNAVAILABLE``) or, for a shape the ladder never claimed, by a
+    link or publication failure. Both are fail-closed; running is not.
+    """
     exit_code, output = run(zomc, manifest, package, binary)
-    if exit_code == 0 and LINK_FAILED not in output:
+    failed_closed = LINK_FAILED in output or ENTRY_UNAVAILABLE in output
+    if exit_code == 0 and not failed_closed:
         raise RuntimeError(
             "object-only program unexpectedly ran instead of failing closed:"
             f"\nrc={exit_code}\n{output}"

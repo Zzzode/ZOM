@@ -470,8 +470,8 @@ endif()
 # entry-compatible native program end to end. The aggregate field-return fixture
 # folds to the reserved no-argument i32 zom.module_init entry and exits 42; the
 # boolean-conditional diamond fixture keeps a parameterized symbol and is
-# object-only, so run fails closed on it. Gated on the backend so the frontend-only
-# lane never registers a native-run test.
+# object-only, so run rejects it before linking. Gated on the backend so the
+# frontend-only lane never registers a native-run test.
 if(ZOM_ENABLE_LLVM_BACKEND)
   add_test(
     NAME native-run-cli

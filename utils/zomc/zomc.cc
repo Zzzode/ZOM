@@ -1411,8 +1411,15 @@ private:
 
   bool lirVerificationIncident = false;
 
+  // Whether the lowered LIR module declares the reserved `zom.module_init`
+  // entry the runtime `_start` calls. Object emission does not need it, but
+  // `zomc run` cannot link without it, and a linker failure would surface as an
+  // opaque operational error instead of the actual reason.
+  bool moduleInitAbsent = false;
+
   NativeObjectResult buildNativeObject() {
     lirVerificationIncident = false;
+    moduleInitAbsent = false;
     const auto mirModules = session->getOwnershipCheckedMirModules();
     if (mirModules.size() != 1) {
       return NativeObjectResult(zc::str(
@@ -2130,6 +2137,16 @@ private:
     }
     backend::llvm::LlvmTranslator translator;
     ZC_IF_SOME(lirModule, lir) {
+      // Record whether the lowered module declares the reserved entry before
+      // the object is built, so `zomc run` can explain a missing entry instead
+      // of reporting whatever the linker said.
+      moduleInitAbsent = true;
+      for (const auto& function : lirModule.functions()) {
+        if (function.symbolName() == "zom.module_init"_zc) {
+          moduleInitAbsent = false;
+          break;
+        }
+      }
       // Test-only fault injection: when ZOM_FORCE_LIR_VERIFICATION_FAULT is set,
       // force a structural finding through the production fail-closed path so
       // the CLI e2e test can assert incident + non-zero exit + no output file.
@@ -2321,6 +2338,18 @@ private:
         return zc::String();
       }
       return zc::mv(error);
+    }
+    // The runtime `_start` provides the process entry and calls the reserved
+    // `zom.module_init` symbol. A lowered module that declares no such symbol
+    // (the parameterized-body shapes, which keep an index-independent
+    // `zom.arithmetic` symbol and are object-only) cannot be linked into a
+    // runnable program. Report that reason instead of letting the linker fail
+    // and reporting an opaque output-creation failure.
+    if (moduleInitAbsent) {
+      return zc::str(
+          "This program cannot be run: no argument-less function lowers to the "
+          "reserved `zom.module_init` entry the runtime starts. Object emission "
+          "(`zomc compile --emit=binary`) still supports this module.");
     }
     zc::Array<uint8_t> moduleObject = zc::mv(objectResult).get<zc::Array<uint8_t>>();
     auto entryBytesMaybe = readAbsoluteBytes(ZOM_RUNTIME_ENTRY_OBJECT ""_zc);
