@@ -852,7 +852,7 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
       "class RecoveryOwner {}\n"
       "class Holder { fn act() {} }\n"
       "fn helper() {}\n"
-      "fn calculate() { helper(); let holder = Holder {}; holder.act(); let value = 1 + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
+      "fn calculate() { helper(); let holder = Holder {}; holder.act(); let seed = 1; let value = seed + 2; let negated = -value; let indexed = value[0]; let fallback = value ?? 4; value += 3; }\n"_zc);
   auto requirements = body::BodyFactRequirementInventoryBuilder::build(
       {session.boundModule(), session.identityAuthority(), session.semanticTypes()});
   ZC_REQUIRE(requirements.is<body::VerifiedBodyFactRequirementInventory>());
@@ -863,7 +863,9 @@ ZC_TEST("DispatchSiteInventoryBuilder.ProjectsCallAndOperatorRequirements") {
   // A struct literal is not a dispatch site, and a compound assignment desugars
   // to a binary write in the HIR builder, so the six requirements are the free
   // call, the member call, and the four operator forms (binary, unary, index,
-  // null-coalescing).
+  // null-coalescing). The binary operand is identifier-anchored (`seed + 2`):
+  // a literal-vs-literal arithmetic folds to a constant and no longer emits a
+  // dispatch requirement, so it cannot serve as the binary site here.
   ZC_REQUIRE(verified.requirements().size() == 6);
   ZC_REQUIRE(verified.nodeProjections().size() >= 7);
   bool call = false;
