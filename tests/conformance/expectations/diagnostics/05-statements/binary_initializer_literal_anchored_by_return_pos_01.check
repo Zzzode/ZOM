@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check 05-statements/binary_initializer_literal_anchored_by_return_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A literal-vs-literal binary (`2 + 3`) in a local initializer is anchored by
+// the function's i32 return type once the local is returned. The checker
+// infers the binary's operand type from that anchor, folds the arithmetic to
+// its constant, and the body lowers end to end. The compiler exits 0.
+
+// CHECK-NOT: Error
