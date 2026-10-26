@@ -2392,8 +2392,11 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
     auto markerRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedMarker), mirInput);
     ZC_REQUIRE(markerRejected.isIrInvariantRejected());
     ZC_REQUIRE(markerRejected.invariantFailures().facts().size() == 1);
+    // The verifier re-encodes every function and compares it byte-for-byte
+    // against the published canonical bytes, so the altered return operand
+    // surfaces as a canonical codec mismatch before any finer fact check.
     ZC_EXPECT(markerRejected.invariantFailures().facts()[0].kind() ==
-              ir::IrFailureKind::InvalidFact);
+              ir::IrFailureKind::CanonicalCodecMismatch);
     ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
     ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
   }
@@ -2440,9 +2443,9 @@ ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initi
   ZC_IF_SOME(input, overlayInput) {
     const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body};
 
-    // Goto terminator: the target resolves to the only block, but the scalar
-    // initializer contract requires a Return terminator, so the verifier
-    // rejects the candidate as an invalid fact.
+    // Goto terminator: the target resolves to the only block, but the encoded
+    // terminator no longer matches the published canonical bytes, so the
+    // byte-for-byte codec round-trip rejects it as a codec mismatch.
     auto gotoCandidate = mir::BuiltMirBuilder::build(mirInput);
     ZC_REQUIRE(gotoCandidate.isVerified());
     auto corruptedGoto = zc::mv(gotoCandidate).takeVerified();
@@ -2452,11 +2455,12 @@ ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initi
     auto gotoRejected = mir::BuiltMirVerifier::verify(zc::mv(corruptedGoto), mirInput);
     ZC_REQUIRE(gotoRejected.isIrInvariantRejected());
     ZC_REQUIRE(gotoRejected.invariantFailures().facts().size() == 1);
-    ZC_EXPECT(gotoRejected.invariantFailures().facts()[0].kind() == ir::IrFailureKind::InvalidFact);
+    ZC_EXPECT(gotoRejected.invariantFailures().facts()[0].kind() ==
+              ir::IrFailureKind::CanonicalCodecMismatch);
 
     // SwitchInt terminator: arm and default target the only block, but the
-    // scalar initializer contract requires a Return terminator, so the
-    // verifier rejects the candidate as an invalid fact.
+    // encoded terminator no longer matches the published canonical bytes, so
+    // the codec round-trip rejects it as a codec mismatch.
     auto switchCandidate = mir::BuiltMirBuilder::build(mirInput);
     ZC_REQUIRE(switchCandidate.isVerified());
     auto corruptedSwitch = zc::mv(switchCandidate).takeVerified();
@@ -2474,7 +2478,7 @@ ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initi
     ZC_REQUIRE(switchRejected.isIrInvariantRejected());
     ZC_REQUIRE(switchRejected.invariantFailures().facts().size() == 1);
     ZC_EXPECT(switchRejected.invariantFailures().facts()[0].kind() ==
-              ir::IrFailureKind::InvalidFact);
+              ir::IrFailureKind::CanonicalCodecMismatch);
   }
 }
 
@@ -2743,15 +2747,41 @@ ZC_TEST("CompilerSession lowers a conditional return through HIR") {
   ZC_REQUIRE(builtMir.functions().size() == 1);
   const auto& mirFunction = builtMir.functions()[0];
   ZC_REQUIRE(mirFunction.blocks.size() == 4);
-  ZC_EXPECT(mirFunction.blocks[0].statements.size() == 1);
+  // The condition is materialized into an explicit bool temporary rather than
+  // switched on in place: the parameter (local 1), function result (local 2),
+  // and condition temporary (local 3) are all brought live first, then the
+  // entry block copies the parameter into the temporary and switches on it.
+  ZC_REQUIRE(mirFunction.locals.size() == 3);
+  ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+  ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::FunctionResult);
+  ZC_EXPECT(mirFunction.locals[2].kind == mir::MirLocalKind::Temporary);
+  const mir::MirLocalId resultLocal = mirFunction.locals[1].id;
+  const mir::MirLocalId conditionLocal = mirFunction.locals[2].id;
+  ZC_EXPECT(mirFunction.blocks[0].statements.size() == 3);
   ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(mirFunction.blocks[0].statements[0].storageLocal() == resultLocal);
+  ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::StorageLive);
+  ZC_EXPECT(mirFunction.blocks[0].statements[1].storageLocal() == conditionLocal);
+  ZC_EXPECT(mirFunction.blocks[0].statements[2].kind() == mir::MirStatementKind::Assign);
+  const auto& conditionAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+  ZC_EXPECT(conditionAssign.destination.local() == conditionLocal);
+  ZC_EXPECT(conditionAssign.initialization == mir::MirInitializationKind::Initialize);
+  ZC_EXPECT(conditionAssign.value.kind() == mir::MirRvalueKind::Use);
   ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+  ZC_EXPECT(mirFunction.blocks[0].terminator.switchIntValue().discriminant.kind() ==
+            mir::MirOperandKind::Copy);
+  ZC_EXPECT(mirFunction.blocks[0].terminator.switchIntValue().discriminant.place().local() ==
+            conditionLocal);
   ZC_EXPECT(mirFunction.blocks[1].statements.size() == 1);
   ZC_EXPECT(mirFunction.blocks[1].statements[0].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirFunction.blocks[1].statements[0].assignmentValue().destination.local() ==
+            resultLocal);
   ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
   ZC_EXPECT(mirFunction.blocks[1].terminator.gotoValue().target == mirFunction.blocks[3].id);
   ZC_EXPECT(mirFunction.blocks[2].statements.size() == 1);
   ZC_EXPECT(mirFunction.blocks[2].statements[0].kind() == mir::MirStatementKind::Assign);
+  ZC_EXPECT(mirFunction.blocks[2].statements[0].assignmentValue().destination.local() ==
+            resultLocal);
   ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
   ZC_EXPECT(mirFunction.blocks[2].terminator.gotoValue().target == mirFunction.blocks[3].id);
   ZC_EXPECT(mirFunction.blocks[3].statements.size() == 0);
