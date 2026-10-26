@@ -170,6 +170,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/write-binary-return-consumer/Zom.toml::write_binary_return_consumer::write_binary_return_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-block-return-consumer/Zom.toml::nested_block_return_consumer::nested_block_return_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/definite-assignment-conditional-param-consumer/Zom.toml::definite_assignment_conditional_param_consumer::definite_assignment_conditional_param_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/let-late-init-consumer/Zom.toml::let_late_init_consumer::let_late_init_consumer"
@@ -800,6 +802,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/dead-binding-literal-return-consumer/Zom.toml::dead_binding_literal_return_consumer::dead_binding_literal_return_consumer::2"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/write-binary-return-consumer/Zom.toml::write_binary_return_consumer::write_binary_return_consumer::5"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/nested-block-return-consumer/Zom.toml::nested_block_return_consumer::nested_block_return_consumer::41"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/conditional-consumer/Zom.toml::conditional_consumer::conditional_consumer"
       --reject-case

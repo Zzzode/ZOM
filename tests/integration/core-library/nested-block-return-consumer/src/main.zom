@@ -1,0 +1,8 @@
+// A function body whose sole statement is a nested block lowers against the
+// inner block; the wrapper scope has no runtime effect yet.
+fn entry() -> i32 {
+  {
+    let b = 41;
+    return b;
+  }
+}

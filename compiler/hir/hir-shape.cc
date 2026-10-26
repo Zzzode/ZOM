@@ -2199,8 +2199,33 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   const auto bodyWord = isDestructor ? ast::kDestructorDeclBodyWord
                         : isMethod   ? ast::kMethodDeclBodyWord
                                      : ast::kFunctionDeclBodyWord;
-  const ast::NodeId body(function.payload.words[bodyWord]);
+  ast::NodeId body(function.payload.words[bodyWord]);
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
+  // A function body whose sole statement is a nested block is classified
+  // against that nested block (`fn f() -> T { { let b = 1; return 41; } }`).
+  // The language has no per-scope drop execution yet, so the wrapper block
+  // carries no runtime effect; every downstream classifier, builder, and
+  // verifier derives the body from this one FunctionReturnShape, so the
+  // inner block is the single body node the HIR pools. A wrapper that mixes
+  // the nested block with sibling statements keeps the outer body and stays
+  // unclaimed. The unwrap happens before the block references are bound so
+  // every classification below reads the inner block uniformly.
+  {
+    const auto& outerBlock = tree.node(body);
+    const ast::NodeList outerStatements{outerBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+                                        outerBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+    if (tree.contains(outerStatements) && outerStatements.size == 1) {
+      auto soleItem = statementItem(tree, tree.list(outerStatements)[0]);
+      if (soleItem != zc::none) {
+        ast::NodeId soleStatement;
+        ZC_IF_SOME(value, soleItem) { soleStatement = value; }
+        if (tree.contains(soleStatement) &&
+            tree.node(soleStatement).kind == ast::SyntaxKind::BlockStmt) {
+          body = soleStatement;
+        }
+      }
+    }
+  }
   const auto& block = tree.node(body);
   const ast::NodeList statements{block.payload.words[ast::kBlockStmtStmtsFirstWord],
                                  block.payload.words[ast::kBlockStmtStmtsSizeWord]};

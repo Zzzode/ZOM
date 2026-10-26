@@ -5709,6 +5709,48 @@ ZC_TEST("HIR pipeline lowers a flat binary return over a trailing local write") 
   }
 }
 
+ZC_TEST("HIR pipeline lowers a return inside a sole nested block") {
+  // `fn f() -> i32 { { let b = 1; return 41; } }` wraps the whole body in a
+  // nested block. The language has no per-scope drop execution yet, so the
+  // wrapper carries no runtime effect and the shape classifier reads the
+  // inner block as the function body. The HIR function's body is the inner
+  // block node directly, with no pooled wrapper record.
+  HirPipelineFixture fixture("fn f() -> i32 { { let b = 1; return 41; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.blocks().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& block = module.blocks()[0];
+  ZC_EXPECT(function.body == block.node);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) { ZC_EXPECT(mirFunction.blocks.size() == 1); }
+}
+
+ZC_TEST("HIR pipeline drains a nested block beside a sibling statement as ZOM4099") {
+  // `let a = 1; { return 41; }` mixes a nested block with a sibling leading
+  // statement. Only a body whose sole statement is a nested block is
+  // transparently unwrapped; this mixed shape stays unclaimed and drains at
+  // the capability boundary rather than guessing which scope owns the
+  // sibling binding.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry() -> i32 { let a = 1; { return 41; } }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
 ZC_TEST("HIR pipeline drains a nested binary return over a written local as ZOM4099") {
   // `mut s = 1; s = 2; return 1 + 2 + s;` combines a trailing write with a
   // binary whose operand is itself a nested binary. The admitted write-plus-
