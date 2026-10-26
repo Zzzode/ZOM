@@ -4737,7 +4737,15 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       if (!isScalarLiteral(tree.node(writeValue).kind) && !identValue && !binaryValue) {
         return zc::none;
       }
-      if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) continue;
+      if (tree.node(target).kind == ast::SyntaxKind::IdentExpr) {
+        // A write whose value is the target local itself (`x = x`) copies a
+        // place into itself. The write arm copies a parameter or a distinct
+        // earlier local; a self-referential value has no admitted lowering and
+        // would reach an ir-phase incident, so leave it unclaimed to drain at
+        // the capability boundary.
+        if (identValue && matchesLocalReference(tree, pattern, writeValue)) { return zc::none; }
+        continue;
+      }
       if (identValue || binaryValue) return zc::none;
       // A constant-index array element write (`a[0] = <literal>`) is admitted
       // when the return value folds from the same array: the write is dead
