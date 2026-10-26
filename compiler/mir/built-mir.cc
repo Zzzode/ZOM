@@ -1439,6 +1439,24 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
       if (expressionFor(module, returnStatement.value) != zc::none) return true;
     }
   }
+  // A single local with a trailing plain write and a flat primitive-binary
+  // return (`mut s = 0; s = 2; return 3 + s;`): the write subtracts and the
+  // binary adds one pooled operation, both covered by the shared checksum
+  // corrections. A nested binary operand stays outside this slice.
+  for (size_t i = 0; i + 1 < block.statements.size(); ++i) {
+    if (localWriteFor(module, block.statements[i]) == zc::none) continue;
+    auto binaryReturn = returnFor(module, block.statements[lastIndex]);
+    ZC_IF_SOME(returnStatement, binaryReturn) {
+      auto binary = primitiveBinaryFor(module, returnStatement.value);
+      ZC_IF_SOME(operation, binary) {
+        if (primitiveBinaryFor(module, operation.left) == zc::none &&
+            primitiveBinaryFor(module, operation.right) == zc::none) {
+          return true;
+        }
+      }
+    }
+    break;
+  }
   return false;
 }
 

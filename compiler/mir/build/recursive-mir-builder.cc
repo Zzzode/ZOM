@@ -104,6 +104,46 @@ zc::Maybe<MirComparisonOperator> comparisonOperatorFor(
   }
 }
 
+/// Maps a primitive operation to its Built MIR arithmetic operator. The
+/// arithmetic and bitwise operators of same-typed scalars are lowerable, as
+/// are the two logical short-circuit operators (they lower to bitwise
+/// And/Or because the admitted slice accepts only side-effect-free operands).
+zc::Maybe<MirArithmeticOperator> arithmeticOperatorFor(
+    checker::PrimitiveOperation operation) noexcept {
+  switch (operation) {
+    case checker::PrimitiveOperation::Add:
+      return MirArithmeticOperator::Add;
+    case checker::PrimitiveOperation::Sub:
+      return MirArithmeticOperator::Sub;
+    case checker::PrimitiveOperation::Mul:
+      return MirArithmeticOperator::Mul;
+    case checker::PrimitiveOperation::Div:
+      return MirArithmeticOperator::Div;
+    case checker::PrimitiveOperation::Rem:
+      return MirArithmeticOperator::Rem;
+    case checker::PrimitiveOperation::Pow:
+      return MirArithmeticOperator::Pow;
+    case checker::PrimitiveOperation::Shl:
+      return MirArithmeticOperator::Shl;
+    case checker::PrimitiveOperation::Shr:
+      return MirArithmeticOperator::Shr;
+    case checker::PrimitiveOperation::UShr:
+      return MirArithmeticOperator::UShr;
+    case checker::PrimitiveOperation::BitAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::BitOr:
+      return MirArithmeticOperator::BitOr;
+    case checker::PrimitiveOperation::BitXor:
+      return MirArithmeticOperator::BitXor;
+    case checker::PrimitiveOperation::LogicalAnd:
+      return MirArithmeticOperator::BitAnd;
+    case checker::PrimitiveOperation::LogicalOr:
+      return MirArithmeticOperator::BitOr;
+    default:
+      return zc::none;
+  }
+}
+
 }  // namespace
 
 zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule,
@@ -158,6 +198,13 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
   };
   zc::Vector<UserLocalEntry> userLocals;
   bool sawReturn = false;
+  // True when a leading plain local write precedes the return. The flat
+  // binary-return arm is admitted only over such a body: a write-plus-binary
+  // shape has no dedicated strategy. A binding-only or parameter binary
+  // return keeps its existing dedicated lowering (which models a
+  // FunctionResult slot), so this walker declines it and never diverts that
+  // byte-tested path.
+  bool sawLeadingWrite = false;
   const auto findUserLocal = [&](hir::HirLocalId id) -> zc::Maybe<MirLocalId> {
     for (const auto& entry : userLocals) {
       if (entry.hirId == id) return entry.mirId;
@@ -236,6 +283,7 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
       const auto* write = findRecord(hirModule.localWrites(), stmtNode);
       if (write == nullptr) return zc::none;
       if (write->field != zc::none) return zc::none;
+      sawLeadingWrite = true;
       auto target = findUserLocal(write->local);
       if (target == zc::none) return zc::none;
 
@@ -500,6 +548,83 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
                                              ZC_ASSERT_NONNULL(copyMarker));
           if (operand == zc::none) return zc::none;
           returnOperand = zc::mv(ZC_ASSERT_NONNULL(operand));
+          handled = true;
+          break;
+        }
+        case HirNodeKind::PrimitiveBinary: {
+          // A flat primitive binary over scalar leaves after a leading write
+          // (`s = 2; return 3 + s;`): evaluate the two operands into a
+          // temporary and return a copy/move place-use of that temporary.
+          // The leading-write guard keeps this walker off the binding-only
+          // and parameter binary returns that own dedicated strategies, and a
+          // nested binary operand stays on the fail-closed capability drain.
+          if (!sawLeadingWrite || copyMarker == zc::none) return zc::none;
+          const auto* binary = findRecord(hirModule.primitiveBinaryOperations(), valueNode);
+          if (binary == nullptr) return zc::none;
+          auto leftKind = lookupHirNodeKind(hirModule, binary->left);
+          auto rightKind = lookupHirNodeKind(hirModule, binary->right);
+          if (leftKind == zc::none || rightKind == zc::none) return zc::none;
+          if (ZC_ASSERT_NONNULL(leftKind) == HirNodeKind::PrimitiveBinary ||
+              ZC_ASSERT_NONNULL(rightKind) == HirNodeKind::PrimitiveBinary) {
+            return zc::none;
+          }
+          const auto arithmetic = arithmeticOperatorFor(binary->operation);
+          const auto comparison = comparisonOperatorFor(binary->operation);
+          if (arithmetic == zc::none && comparison == zc::none) return zc::none;
+          if (binary->category != hir::HirValueCategory::Value ||
+              binary->type != declaration.resultType) {
+            return zc::none;
+          }
+          if (arithmetic != zc::none && binary->type != binary->operandType) { return zc::none; }
+          auto lowerLeaf = [&](HirNodeId leafNode, HirNodeKind kind) -> zc::Maybe<MirOperand> {
+            if (kind == HirNodeKind::ScalarLiteral) {
+              const auto* literal = findRecord(hirModule.expressions(), leafNode);
+              if (literal == nullptr || literal->type != binary->operandType) return zc::none;
+              return lowerScalarLiteral(*literal, binary->operandType);
+            }
+            if (kind == HirNodeKind::ParameterReference) {
+              const auto* paramRef = findRecord(hirModule.parameterReferences(), leafNode);
+              if (paramRef == nullptr || paramRef->type != binary->operandType) return zc::none;
+              return lowerParameterReference(*paramRef, declaration, isMethod, proofs,
+                                             ZC_ASSERT_NONNULL(copyMarker));
+            }
+            if (kind == HirNodeKind::LocalReference) {
+              const auto* localRef = findRecord(hirModule.localReferences(), leafNode);
+              if (localRef == nullptr || localRef->type != binary->operandType) return zc::none;
+              auto mirLocal = findUserLocal(localRef->local);
+              if (mirLocal == zc::none) return zc::none;
+              return lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(mirLocal), proofs,
+                                         ZC_ASSERT_NONNULL(copyMarker));
+            }
+            return zc::none;
+          };
+          auto left = lowerLeaf(binary->left, ZC_ASSERT_NONNULL(leftKind));
+          auto right = lowerLeaf(binary->right, ZC_ASSERT_NONNULL(rightKind));
+          if (left == zc::none || right == zc::none) return zc::none;
+          const MirLocalId binaryTemp = ctx.declareLocal(MirLocalKind::Temporary, binary->type,
+                                                         scope, binary->sourceSpan.clone());
+          ctx.appendStatement(MirStatement::storageLive(binaryTemp, binary->sourceSpan.clone()));
+          zc::Maybe<MirRvalue> rvalue;
+          if (arithmetic != zc::none) {
+            rvalue = MirRvalue::arithmetic(ZC_ASSERT_NONNULL(arithmetic),
+                                           zc::mv(ZC_ASSERT_NONNULL(left)),
+                                           zc::mv(ZC_ASSERT_NONNULL(right)), binary->type);
+          } else {
+            rvalue = MirRvalue::comparison(ZC_ASSERT_NONNULL(comparison),
+                                           zc::mv(ZC_ASSERT_NONNULL(left)),
+                                           zc::mv(ZC_ASSERT_NONNULL(right)), binary->type);
+          }
+          zc::Vector<MirProjection> tempProjections;
+          ctx.appendStatement(MirStatement::assign(
+              MirPlace(binaryTemp, binary->type, zc::mv(tempProjections), binary->type),
+              zc::mv(ZC_ASSERT_NONNULL(rvalue)), MirInitializationKind::Initialize,
+              binary->sourceSpan.clone()));
+          zc::Vector<MirProjection> resultProjections;
+          auto result =
+              placeUse(proofs, ZC_ASSERT_NONNULL(copyMarker),
+                       MirPlace(binaryTemp, binary->type, zc::mv(resultProjections), binary->type));
+          if (result == zc::none) return zc::none;
+          returnOperand = zc::mv(ZC_ASSERT_NONNULL(result));
           handled = true;
           break;
         }

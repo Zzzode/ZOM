@@ -1644,6 +1644,11 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   // same leaf-operand rail as a binary binding initializer.
   const auto returnValueKind = tree.node(returnValue).kind;
   const bool returnIsScalarLiteral = isScalarLiteral(returnValueKind);
+  // Whether each return-binary operand is itself a nested binary. Hoisted out
+  // of the binary validation block so the trailing-write admission below sees
+  // the same nesting bound.
+  bool returnBinaryLeftIsNested = false;
+  bool returnBinaryRightIsNested = false;
   if (returnValueKind != ast::SyntaxKind::IdentExpr &&
       returnValueKind != ast::SyntaxKind::BinaryExpr && !returnIsScalarLiteral) {
     return zc::none;
@@ -1684,6 +1689,8 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
     const bool leftIsNested = tree.node(returnBinaryLeft).kind == ast::SyntaxKind::BinaryExpr;
     const bool rightIsNested = tree.node(returnBinaryRight).kind == ast::SyntaxKind::BinaryExpr;
     if (leftIsNested && rightIsNested) { return zc::none; }
+    returnBinaryLeftIsNested = leftIsNested;
+    returnBinaryRightIsNested = rightIsNested;
   }
   shape.returnStatement = returnNode;
   shape.returnValue = returnValue;
@@ -1701,11 +1708,16 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
       isScalarLiteral(returnValueKind)) {
     shape.returnsLiteral = true;
   }
-  // A body with a trailing write returns the written local directly. A return
-  // binary or a parameter over that shape needs a layout this rail does not
-  // model, so it stays on the fail-closed drain.
+  // A body with a trailing write returns the written local directly. A flat
+  // primitive binary over the written locals (`s = 2; return 3 + s;`) is also
+  // admitted: the writes dominate the binary and the sequential lowering
+  // emits them in source order. A nested binary operand, a returned
+  // parameter, or any other return shape over writes has no layout here and
+  // stays on the fail-closed drain.
   if (shape.localWrites.size() != 0 && shape.returnsLocal == zc::none && !shape.returnsLiteral) {
-    return zc::none;
+    const bool flatBinaryReturn = returnValueKind == ast::SyntaxKind::BinaryExpr &&
+                                  !returnBinaryLeftIsNested && !returnBinaryRightIsNested;
+    if (!flatBinaryReturn) { return zc::none; }
   }
   return shape;
 }
@@ -4166,9 +4178,28 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         // stays unclaimed and drains at the capability boundary instead of
         // publishing a HIR body the MIR builder rejects with an incident.
         const bool literalTrappedInUnsafe = shape.returnsLiteral && unsafeBlock != zc::none;
+        // A flat primitive-binary return over trailing plain writes
+        // (`mut s = 0; s = 2; return 3 + s;`) rides the sequential rail, which
+        // already lowers writes and a binary return; the single-local write
+        // arm models only a place return. The inner binary's leaves are
+        // scalar literals or locals, so like a trailing local-reference
+        // return an enclosing unsafe block is transparent here: no unsafe
+        // operation is representable in the admitted leaves, and the router
+        // already drops the marker for non-literal multi-statement bodies.
+        bool writtenFlatBinaryReturn = false;
+        if (!shape.localWrites.empty() &&
+            tree.node(shape.returnValue).kind == ast::SyntaxKind::BinaryExpr) {
+          const auto& writtenBinary = tree.node(shape.returnValue);
+          const ast::NodeId writtenBinaryLeft(writtenBinary.payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId writtenBinaryRight(
+              writtenBinary.payload.words[ast::kBinaryExprRhsWord]);
+          writtenFlatBinaryReturn =
+              tree.node(writtenBinaryLeft).kind != ast::SyntaxKind::BinaryExpr &&
+              tree.node(writtenBinaryRight).kind != ast::SyntaxKind::BinaryExpr;
+        }
         routeToSequential =
             !literalTrappedInUnsafe &&
-            (shape.bindings.size() >= 2 || shape.returnsLiteral ||
+            (shape.bindings.size() >= 2 || shape.returnsLiteral || writtenFlatBinaryReturn ||
              (shape.bindings.size() == 1 &&
               (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
                shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||

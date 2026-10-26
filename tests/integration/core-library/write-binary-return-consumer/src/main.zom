@@ -1,0 +1,7 @@
+// A trailing overwrite dominates a flat binary return: the returned value
+// reads the post-write local.
+fn entry() -> i32 {
+  mut s = 1;
+  s = 2;
+  return 3 + s;
+}

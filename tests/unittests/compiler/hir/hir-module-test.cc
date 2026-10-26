@@ -5662,18 +5662,65 @@ ZC_TEST("HIR pipeline lowers dead leading bindings beside a scalar literal retur
   ZC_REQUIRE(single.hirModule().expressions().size() == 2);
 }
 
-ZC_TEST("HIR pipeline drains a return binary over a written local as ZOM4099") {
-  // `mut s = 1; s = 2; return 3 + s;` combines a prefix write with a binary
-  // return. Neither the single-local write arm nor the sequential-local rail
-  // has a layout for the combination, so the definition drains as the
-  // capability code instead of building a HIR body the downstream lowering
-  // cannot place (which previously surfaced as an ir-phase incident).
+ZC_TEST("HIR pipeline lowers a flat binary return over a trailing local write") {
+  // `mut s = 1; s = 2; return 3 + s;` pairs a trailing overwrite with a flat
+  // primitive-binary return. The sequential rail lowers the write in source
+  // order and evaluates the binary over the written local; the native run
+  // exits with the post-write arithmetic result.
+  HirPipelineFixture fixture("fn f() -> i32 { mut s = 1; s = 2; return 3 + s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  const auto& returned = module.returns()[0];
+  const auto& binary = module.primitiveBinaryOperations()[0];
+  ZC_EXPECT(binary.node == returned.value);
+  ZC_EXPECT(binary.type == module.functions()[0].resultType);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  const auto& function = module.functions()[0];
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    bool sawOverwrite = false;
+    bool sawArithmetic = false;
+    for (const auto& statement : mirFunction.blocks[0].statements) {
+      if (statement.kind() != mir::MirStatementKind::Assign) continue;
+      const auto& assignment = statement.assignmentValue();
+      if (assignment.initialization == mir::MirInitializationKind::Overwrite) {
+        sawOverwrite = true;
+      }
+      if (assignment.value.kind() == mir::MirRvalueKind::Arithmetic) { sawArithmetic = true; }
+    }
+    ZC_EXPECT(sawOverwrite);
+    ZC_EXPECT(sawArithmetic);
+    const auto& terminator = mirFunction.blocks[0].terminator;
+    ZC_REQUIRE(terminator.kind() == mir::MirTerminatorKind::Return);
+    // The terminator reads the arithmetic temporary, not the written local
+    // directly: the binary result is what the function returns.
+    const auto& operand = ZC_ASSERT_NONNULL(terminator.returnValue().value);
+    ZC_EXPECT(operand.kind() != mir::MirOperandKind::Constant);
+  }
+}
+
+ZC_TEST("HIR pipeline drains a nested binary return over a written local as ZOM4099") {
+  // `mut s = 1; s = 2; return 1 + 2 + s;` combines a trailing write with a
+  // binary whose operand is itself a nested binary. The admitted write-plus-
+  // binary rail models flat leaf operands only, so the definition drains as
+  // the capability code rather than building a body the lowering cannot
+  // place.
   identity::SemanticContextFactory contextFactory;
   basic::LangOptions languageOptions;
   basic::CompilerOptions compilerOptions;
   driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
   bool checked = HirPipelineFixture::prepareCheckedSession(
-      session, "fn entry() -> i32 { mut s = 1; s = 2; return 3 + s; }"_zc);
+      session, "fn entry() -> i32 { mut s = 1; s = 2; return 1 + 2 + s; }"_zc);
   ZC_EXPECT(!checked);
   ZC_EXPECT(session.hasDiagnosticErrors());
   ZC_EXPECT(session.getIncidents().empty());
