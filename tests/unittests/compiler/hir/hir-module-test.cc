@@ -5402,6 +5402,24 @@ ZC_TEST("HIR pipeline drains a widening integer cast binding as ZOM4099") {
   ZC_EXPECT(session.getIncidents().empty());
 }
 
+ZC_TEST("HIR pipeline drains an integer cast return as ZOM4099") {
+  // A cast in return position (`return 1 as i64`, and likewise `return a as
+  // i32`) has no admitted lowering in the scalar carrier slice. The
+  // return-shape classifier leaves it unclaimed so the per-definition
+  // capability rejection drains the body instead of producing an ir-phase
+  // incident with no user diagnostic. Casts in local-initializer position
+  // keep their separate admitted path.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  bool checked = HirPipelineFixture::prepareCheckedSession(
+      session, "fn entry() -> i64 { return 1 as i64; }"_zc);
+  ZC_EXPECT(!checked);
+  ZC_EXPECT(session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getIncidents().empty());
+}
+
 ZC_TEST("HIR pipeline folds a logical-not over a bool literal binding") {
   // A logical-not over a bool literal folds to a bool literal fact the same way
   // the integer unary spellings fold, so a leading binding feeding a bool

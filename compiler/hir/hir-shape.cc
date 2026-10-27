@@ -4128,6 +4128,16 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
             ast::UnaryOperatorKind::Deref) {
       return zc::none;
     }
+    // A cast return outside the compile-time float-literal fold arm above has
+    // no admitted lowering in the scalar carrier slice: an integer-literal or
+    // reference cast (`return 1 as i32`, `return a as i32`, `return 1 as i64`)
+    // would otherwise ride this generic fallthrough and fail later as an
+    // ir-phase incident with no user diagnostic. Decline here so the
+    // definition drains as a capability gap (ZOM4099); casts in local
+    // initializer position keep their separate admitted lowering.
+    if (tree.contains(value) && tree.node(value).kind == ast::SyntaxKind::CastExpression) {
+      return zc::none;
+    }
     FunctionReturnShape shape{};
     shape.body = body;
     shape.returnStatement = returnNode;
