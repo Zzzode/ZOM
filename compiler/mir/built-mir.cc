@@ -1728,14 +1728,25 @@ static identity::SemanticTypeId rvalueResultType(const MirRvalue& rvalue) {
 
 bool validateInitializationLattice(const MirFunction& function) {
   // RFC 0055 definite-assignment lattice, computed per block over the CFG. A
-  // local is either Uninitialized or Initialized; a block's entry state is the
-  // intersection (AND meet) of its predecessors' exit states, so a local is
+  // place is either Uninitialized or Initialized; a block's entry state is the
+  // intersection (AND meet) of its predecessors' exit states, so a place is
   // initialized at a join only when every reaching path initialized it.
-  // Parameters start initialized on the entry block; all other locals start
-  // uninitialized until an Initialize assign. An Initialize assign requires an
-  // uninitialized entry and an Overwrite assign requires an initialized entry;
-  // reads on an uninitialized local are deliberately NOT rejected here because
-  // they are the error-preserving carrier for the ownership rail's ZOM4093.
+  //
+  // The lattice cells are places, not just locals: in addition to every
+  // local's root cell, each distinct projected destination (`pair.left`,
+  // `*p.x[0]`) is its own cell. Initializing one field therefore leaves the
+  // root and the sibling fields uninitialized, which is the partial
+  // aggregate initialization the ownership move-path and initialization
+  // facts model. A field is also effectively initialized when its root is
+  // initialized (an aggregate initializer or a parameter covers every field),
+  // so the projection lattice is a refinement of the root lattice.
+  //
+  // Parameters start initialized on the entry block's root cell; every other
+  // cell starts uninitialized until an Initialize assign. An Initialize assign
+  // requires an uninitialized cell entry and an Overwrite assign an
+  // initialized one; reads on an uninitialized place are deliberately NOT
+  // rejected here because they are the error-preserving carrier for the
+  // ownership rail's ZOM4093.
   const size_t localCount = function.locals.size();
   const size_t blockCount = function.blocks.size();
   if (localCount == 0 || blockCount == 0) return true;
@@ -1745,14 +1756,11 @@ bool validateInitializationLattice(const MirFunction& function) {
     }
     return zc::none;
   };
-  // The definite-assignment AND-meet is exact on an acyclic CFG, which is the
-  // shape of the conditional-local-write diamond (and straight-line /
-  // branch-return bodies). Cyclic CFGs encode loop induction variables with a
-  // StorageLive + Overwrite reset idiom whose first-visit Overwrite targets a
-  // StorageLive-fresh slot; that established loop encoding stays under the
-  // linear StorageLive check above. Detect any back edge (a terminator edge to
-  // an equal-or-earlier dense block is a back edge in this reducible ordering)
-  // and skip the per-block discipline for cyclic functions.
+  // Detect any back edge (a terminator edge to an equal-or-earlier dense block
+  // is a back edge in this reducible ordering) and skip the per-block
+  // discipline for cyclic functions. Cyclic CFGs encode loop induction
+  // variables with a StorageLive + Overwrite reset idiom whose first-visit
+  // Overwrite targets a StorageLive-fresh slot.
   bool cyclic = false;
   for (size_t b = 0; b < blockCount && !cyclic; ++b) {
     const auto checkEdge = [&](MirBlockId target) {
@@ -1772,6 +1780,108 @@ bool validateInitializationLattice(const MirFunction& function) {
     }
   }
   if (cyclic) return true;
+  // One lattice cell: a disciplined local plus a structural projection path.
+  // The root cell carries an empty path. Projections compare by kind and
+  // payload (field/variant identity, index local, subslice bounds), mirroring
+  // the ownership move-path place identity.
+  struct ProjectionKey {
+    MirProjectionKind kind;
+    identity::DefId definition;
+    MirLocalId index;
+    uint32_t first = 0;
+    uint32_t pastLast = 0;
+  };
+  struct PlaceCell {
+    MirLocalId local;
+    zc::Vector<ProjectionKey> path;
+  };
+  auto projectionKey = [&](const MirProjection& projection) -> ProjectionKey {
+    ProjectionKey key{projection.kind(), identity::DefId(), MirLocalId(), 0, 0};
+    switch (projection.kind()) {
+      case MirProjectionKind::Field:
+        key.definition = projection.fieldValue().field;
+        break;
+      case MirProjectionKind::Index:
+        key.index = projection.indexValue().index;
+        break;
+      case MirProjectionKind::Dereference:
+        break;
+      case MirProjectionKind::Downcast:
+        key.definition = projection.downcastValue().variant;
+        break;
+      case MirProjectionKind::Subslice:
+        key.first = projection.subsliceValue().first;
+        key.pastLast = projection.subsliceValue().pastLast;
+        break;
+    }
+    return key;
+  };
+  auto sameProjectionKey = [](const ProjectionKey& left, const ProjectionKey& right) {
+    if (left.kind != right.kind) return false;
+    switch (left.kind) {
+      case MirProjectionKind::Field:
+      case MirProjectionKind::Downcast:
+        return left.definition == right.definition;
+      case MirProjectionKind::Index:
+        return left.index == right.index;
+      case MirProjectionKind::Dereference:
+        return true;
+      case MirProjectionKind::Subslice:
+        return left.first == right.first && left.pastLast == right.pastLast;
+    }
+    return false;
+  };
+  auto sameCell = [&](const PlaceCell& left, const PlaceCell& right) {
+    if (left.local != right.local || left.path.size() != right.path.size()) return false;
+    for (size_t i = 0; i < left.path.size(); ++i) {
+      if (!sameProjectionKey(left.path[i], right.path[i])) return false;
+    }
+    return true;
+  };
+  auto localIsDisciplined = [&](size_t index) {
+    const auto kind = function.locals[index].kind;
+    return kind == MirLocalKind::UserLocal || kind == MirLocalKind::FunctionResult;
+  };
+  // Collect every disciplined place cell: one root per disciplined local, plus
+  // one cell per distinct projected assignment destination.
+  zc::Vector<PlaceCell> cells;
+  for (size_t i = 0; i < localCount; ++i) {
+    if (!localIsDisciplined(i)) continue;
+    PlaceCell root;
+    root.local = function.locals[i].id;
+    cells.add(zc::mv(root));
+  }
+  for (const auto& block : function.blocks) {
+    for (const auto& statement : block.statements) {
+      if (statement.kind() != MirStatementKind::Assign) continue;
+      const auto& assign = statement.assignmentValue();
+      auto index = localIndex(assign.destination.local());
+      if (index == zc::none || !localIsDisciplined(ZC_ASSERT_NONNULL(index))) continue;
+      PlaceCell cell;
+      cell.local = assign.destination.local();
+      for (const auto& projection : assign.destination.projections()) {
+        cell.path.add(projectionKey(projection));
+      }
+      bool known = false;
+      for (const auto& candidate : cells) {
+        if (sameCell(candidate, cell)) {
+          known = true;
+          break;
+        }
+      }
+      if (!known) cells.add(zc::mv(cell));
+    }
+  }
+  const size_t cellCount = cells.size();
+  auto cellIndex = [&](const MirPlace& place) -> zc::Maybe<size_t> {
+    PlaceCell key;
+    key.local = place.local();
+    for (const auto& projection : place.projections()) { key.path.add(projectionKey(projection)); }
+    for (size_t i = 0; i < cellCount; ++i) {
+      if (sameCell(cells[i], key)) return i;
+    }
+    return zc::none;
+  };
   // Build predecessor lists from terminators.
   zc::Vector<zc::Vector<uint32_t>> predecessors;
   predecessors.resize(blockCount);
@@ -1792,60 +1902,78 @@ bool validateInitializationLattice(const MirFunction& function) {
       ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { addEdge(unwind); }
     }
   }
-  // entry[b][i] is the greatest-fixpoint initialized state at block entry. Seed
-  // with all-initialized (the AND-meet top); the worklist lowers entries when a
-  // predecessor exits uninitialized. The entry block is seeded with parameters
-  // initialized and every other local uninitialized.
+  // A projected cell is effectively initialized when its own cell or any
+  // ancestor prefix cell (its root in particular) is initialized. The owner
+  // local being initialized covers every field.
+  auto isPrefixCell = [&](size_t ancestor, size_t descendant) {
+    if (cells[ancestor].local != cells[descendant].local) return false;
+    if (cells[ancestor].path.size() > cells[descendant].path.size()) return false;
+    for (size_t i = 0; i < cells[ancestor].path.size(); ++i) {
+      if (!sameProjectionKey(cells[ancestor].path[i], cells[descendant].path[i])) return false;
+    }
+    return true;
+  };
+  auto effectiveInitialized = [&](const zc::Vector<bool>& state, size_t cell) -> bool {
+    for (size_t ancestor = 0; ancestor < cellCount; ++ancestor) {
+      if (state[ancestor] && isPrefixCell(ancestor, cell)) return true;
+    }
+    return false;
+  };
+  // entry[b][i] is the greatest-fixpoint initialized state at block entry.
+  // Seed with all-initialized (the AND-meet top); the worklist lowers entries
+  // when a predecessor exits uninitialized. The entry block is seeded with
+  // parameter root cells initialized and every other cell uninitialized.
   zc::Vector<zc::Vector<bool>> entry;
   entry.resize(blockCount);
   for (size_t b = 0; b < blockCount; ++b) {
-    entry[b].resize(localCount);
-    for (size_t i = 0; i < localCount; ++i) { entry[b][i] = true; }
+    entry[b].resize(cellCount);
+    for (size_t i = 0; i < cellCount; ++i) { entry[b][i] = true; }
   }
-  for (size_t i = 0; i < localCount; ++i) {
-    entry[0][i] = function.locals[i].kind == MirLocalKind::Parameter;
+  for (size_t i = 0; i < cellCount; ++i) {
+    if (cells[i].path.size() != 0) {
+      entry[0][i] = false;
+      continue;
+    }
+    auto local = localIndex(cells[i].local);
+    entry[0][i] = local != zc::none &&
+                  function.locals[ZC_ASSERT_NONNULL(local)].kind == MirLocalKind::Parameter;
   }
   // Propagates initialized state through one block without enforcing write-kind
-  // discipline: every assign to a disciplined local leaves it initialized, so
-  // the meet is computable before the fixpoint converges. Temporary scratch
-  // slots are outside the definite-assignment lattice (they are written before
-  // read by construction and re-overwritten on every loop-header visit), so
-  // their assigns neither set state nor are later disciplined. The
-  // Initialize/Overwrite discipline of user and result locals is checked
-  // separately over converged entry states.
-  auto localIsDisciplined = [&](size_t localIndex) {
-    const auto kind = function.locals[localIndex].kind;
-    return kind == MirLocalKind::UserLocal || kind == MirLocalKind::FunctionResult;
-  };
+  // discipline: an assign to a disciplined place cell leaves that cell
+  // initialized. A field assign never closes the root, and a root assign never
+  // closes a sibling field; the meet over distinct cells keeps them apart.
   auto propagateExit = [&](size_t b, const zc::Vector<bool>& entryState) {
     zc::Vector<bool> exitState;
-    exitState.resize(localCount);
-    for (size_t i = 0; i < localCount; ++i) { exitState[i] = entryState[i]; }
+    exitState.resize(cellCount);
+    for (size_t i = 0; i < cellCount; ++i) { exitState[i] = entryState[i]; }
     for (const auto& statement : function.blocks[b].statements) {
       if (statement.kind() != MirStatementKind::Assign) continue;
-      auto index = localIndex(statement.assignmentValue().destination.local());
-      if (index == zc::none) continue;
-      const size_t local = ZC_ASSERT_NONNULL(index);
-      if (localIsDisciplined(local)) exitState[local] = true;
+      auto index = cellIndex(statement.assignmentValue().destination);
+      ZC_IF_SOME(cell, index) { exitState[cell] = true; }
     }
     return exitState;
   };
+  // Enforces the Initialize/Overwrite discipline per place cell over a block's
+  // converged entry state, treating an initialized ancestor as covering its
+  // projected descendants.
   auto admitsAssignKinds = [&](size_t b, const zc::Vector<bool>& entryState) -> bool {
     zc::Vector<bool> state;
-    state.resize(localCount);
-    for (size_t i = 0; i < localCount; ++i) { state[i] = entryState[i]; }
+    state.resize(cellCount);
+    for (size_t i = 0; i < cellCount; ++i) { state[i] = entryState[i]; }
     for (const auto& statement : function.blocks[b].statements) {
       if (statement.kind() != MirStatementKind::Assign) continue;
       const auto& assign = statement.assignmentValue();
-      auto index = localIndex(assign.destination.local());
+      auto index = cellIndex(assign.destination);
       if (index == zc::none) continue;
-      const size_t local = ZC_ASSERT_NONNULL(index);
-      if (!localIsDisciplined(local)) continue;
+      const size_t cell = ZC_ASSERT_NONNULL(index);
+      auto local = localIndex(assign.destination.local());
+      if (local == zc::none || !localIsDisciplined(ZC_ASSERT_NONNULL(local))) continue;
+      const bool initialized = effectiveInitialized(state, cell);
       if (assign.initialization == MirInitializationKind::Initialize) {
-        if (state[local]) return false;
-        state[local] = true;
+        if (initialized) return false;
+        state[cell] = true;
       } else if (assign.initialization == MirInitializationKind::Overwrite) {
-        if (!state[local]) return false;
+        if (!initialized) return false;
       }
     }
     return true;
@@ -1857,20 +1985,26 @@ bool validateInitializationLattice(const MirFunction& function) {
     worklist.removeLast();
     // Recompute the entry meet from current predecessor exits.
     zc::Vector<bool> meet;
-    meet.resize(localCount);
+    meet.resize(cellCount);
     if (b == 0) {
-      for (size_t i = 0; i < localCount; ++i) {
-        meet[i] = function.locals[i].kind == MirLocalKind::Parameter;
+      for (size_t i = 0; i < cellCount; ++i) {
+        if (cells[i].path.size() != 0) {
+          meet[i] = false;
+          continue;
+        }
+        auto local = localIndex(cells[i].local);
+        meet[i] = local != zc::none &&
+                  function.locals[ZC_ASSERT_NONNULL(local)].kind == MirLocalKind::Parameter;
       }
     } else {
-      for (size_t i = 0; i < localCount; ++i) { meet[i] = true; }
+      for (size_t i = 0; i < cellCount; ++i) { meet[i] = true; }
       for (uint32_t pred : predecessors[b]) {
         auto predExit = propagateExit(pred, entry[pred]);
-        for (size_t i = 0; i < localCount; ++i) { meet[i] = meet[i] && predExit[i]; }
+        for (size_t i = 0; i < cellCount; ++i) { meet[i] = meet[i] && predExit[i]; }
       }
     }
     bool changed = false;
-    for (size_t i = 0; i < localCount; ++i) {
+    for (size_t i = 0; i < cellCount; ++i) {
       if (meet[i] != entry[b][i]) {
         // The AND meet only lowers during fixpoint.
         if (entry[b][i] && !meet[i]) {
