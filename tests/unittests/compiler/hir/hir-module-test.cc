@@ -5826,6 +5826,81 @@ ZC_TEST("HIR pipeline lowers a flat binary return over a trailing local write") 
   }
 }
 
+ZC_TEST("HIR pipeline lowers a parameter return inside a sole nested block") {
+  // `fn f(a: i32) -> i32 { { let b = 1; return a; } }` has one benign leading
+  // binding whose trailing return reads a parameter rather than the binding.
+  // This is admitted only through the sole-nested-block unwrap; the flat
+  // `let b = 1; return a;` spelling stays on the capability drain. The
+  // sequential rail materializes the parameter return and the recursive MIR
+  // builder lowers both the binding and the parameter read.
+  HirPipelineFixture fixture("fn f(a: i32) -> i32 { { let b = 1; return a; } }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.locals().size() == 1);
+  ZC_REQUIRE(module.parameterReferences().size() >= 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returned = module.returns()[0];
+  zc::Maybe<const HirParameterReferenceExpression&> returnedParameter;
+  for (const auto& reference : module.parameterReferences()) {
+    if (reference.node != returned.value) continue;
+    returnedParameter = reference;
+  }
+  ZC_EXPECT(returnedParameter != zc::none);
+  ZC_IF_SOME(parameter, returnedParameter) { ZC_EXPECT(parameter.type == function.resultType); }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
+ZC_TEST("HIR pipeline lowers a parameter leaf in a trailing binary over a write") {
+  // `fn f(z: i32) -> i32 { mut s = 1; s = 2; return z + s; }` pairs a trailing
+  // overwrite with a flat binary whose one leaf is a parameter and the other
+  // is the written local. The trailing binary leaf contract accepts a
+  // parameter reference, mirroring the binding-initializer binary rail.
+  HirPipelineFixture fixture("fn f(z: i32) -> i32 { mut s = 1; s = 2; return z + s; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.primitiveBinaryOperations().size() == 1);
+  bool hasParameterLeaf = false;
+  for (const auto& reference : module.parameterReferences()) {
+    if (reference.node == module.primitiveBinaryOperations()[0].left ||
+        reference.node == module.primitiveBinaryOperations()[0].right) {
+      hasParameterLeaf = true;
+    }
+  }
+  ZC_EXPECT(hasParameterLeaf);
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == module.functions()[0].definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    bool sawArithmetic = false;
+    for (const auto& statement : mirFunction.blocks[0].statements) {
+      if (statement.kind() == mir::MirStatementKind::Assign &&
+          statement.assignmentValue().value.kind() == mir::MirRvalueKind::Arithmetic) {
+        sawArithmetic = true;
+      }
+    }
+    ZC_EXPECT(sawArithmetic);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a return inside a sole nested block") {
   // `fn f() -> i32 { { let b = 1; return 41; } }` wraps the whole body in a
   // nested block. The language has no per-scope drop execution yet, so the

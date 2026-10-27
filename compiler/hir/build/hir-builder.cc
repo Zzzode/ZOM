@@ -5436,7 +5436,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                     operandNode};
             }
             if (tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) { return zc::none; }
-            if (localBindingIds.empty()) { return zc::none; }
             size_t referencedLocal = 0;
             bool found = false;
             for (size_t index = 0; index < sequentialShape.bindings.size(); ++index) {
@@ -5447,21 +5446,57 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 break;
               }
             }
-            if (!found) { return zc::none; }
-            zc::Maybe<checker::PrimitiveOperation> noNestedOperation;
-            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
-            zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
-            return PendingSequentialBinaryOperand{
-                SequentialBinaryOperandKind::LocalReference,
-                binaryOperandType,
-                ZC_ASSERT_NONNULL(operandSpan).clone(),
-                zc::Maybe<checker::checked::CanonicalConstValue>(),
-                zc::Maybe<identity::CallableParameterKey>(),
-                referencedLocal,
-                zc::mv(noNestedOperation),
-                zc::mv(noNestedLeft),
-                zc::mv(noNestedRight),
-                operandNode};
+            if (found) {
+              zc::Maybe<checker::PrimitiveOperation> noNestedOperation;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+              return PendingSequentialBinaryOperand{
+                  SequentialBinaryOperandKind::LocalReference,
+                  binaryOperandType,
+                  ZC_ASSERT_NONNULL(operandSpan).clone(),
+                  zc::Maybe<checker::checked::CanonicalConstValue>(),
+                  zc::Maybe<identity::CallableParameterKey>(),
+                  referencedLocal,
+                  zc::mv(noNestedOperation),
+                  zc::mv(noNestedLeft),
+                  zc::mv(noNestedRight),
+                  operandNode};
+            }
+            // A trailing binary leaf may also read a callable parameter, but
+            // only on the write-plus-binary rail (`mut s = 1; s = 2; return
+            // z + s;`): a parameter leaf beside a mere binding and no write
+            // (`let x = 2; return a < x;`) stays on the capability drain.
+            if (sequentialShape.localWrites.empty()) { return zc::none; }
+            auto trailingParameterHandle = resolvedCallableParameter(bound.bindings(), operandNode);
+            if (trailingParameterHandle == zc::none) { return zc::none; }
+            zc::Maybe<identity::CallableParameterKey> trailingParameter;
+            ZC_IF_SOME(handle, trailingParameterHandle) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) {
+                for (const auto& parameter : parameters) {
+                  if (parameter.key == entry.key() && parameter.type == binaryOperandType) {
+                    trailingParameter = entry.key().clone();
+                  }
+                }
+              }
+            }
+            if (trailingParameter == zc::none) { return zc::none; }
+            {
+              zc::Maybe<checker::PrimitiveOperation> noNestedOperation;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedLeft;
+              zc::Maybe<PendingSequentialBinaryLeafOperand> noNestedRight;
+              return PendingSequentialBinaryOperand{
+                  SequentialBinaryOperandKind::ParameterReference,
+                  binaryOperandType,
+                  ZC_ASSERT_NONNULL(operandSpan).clone(),
+                  zc::Maybe<checker::checked::CanonicalConstValue>(),
+                  zc::mv(trailingParameter),
+                  0,
+                  zc::mv(noNestedOperation),
+                  zc::mv(noNestedLeft),
+                  zc::mv(noNestedRight),
+                  operandNode};
+            }
           };
           const ast::NodeId binaryLeft(
               tree.node(binaryNode).payload.words[ast::kBinaryExprLhsWord]);

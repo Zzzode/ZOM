@@ -1431,12 +1431,23 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
   // A single non-binary local followed by a scalar-literal return
   // (`let b = 7; return 2;`): the returned constant is independent of the
   // local, so the body pools one value node beyond the per-function checksum
-  // credit. A local- or parameter-return keeps the ordinary single-local
-  // balance and stays unclassified here.
+  // credit. A local-return keeps the ordinary single-local balance and stays
+  // unclassified here.
   {
     auto literalReturn = returnFor(module, block.statements[lastIndex]);
     ZC_IF_SOME(returnStatement, literalReturn) {
       if (expressionFor(module, returnStatement.value) != zc::none) return true;
+    }
+  }
+  // A single non-binary local followed by a parameter return
+  // (`let b = 1; return a;`, including through a sole nested block): the
+  // binding initializer and the returned parameter each pool a value node,
+  // one more than the per-function credit, so the body joins the sequential
+  // checksum correction the same way the literal-return form does.
+  {
+    auto parameterReturn = returnFor(module, block.statements[lastIndex]);
+    ZC_IF_SOME(returnStatement, parameterReturn) {
+      if (parameterReferenceFor(module, returnStatement.value) != zc::none) return true;
     }
   }
   // A single local with a trailing plain write and a flat primitive-binary

@@ -2210,6 +2210,12 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
   // the nested block with sibling statements keeps the outer body and stays
   // unclaimed. The unwrap happens before the block references are bound so
   // every classification below reads the inner block uniformly.
+  // Set when the function body was a sole nested block and was unwrapped to
+  // its inner block above. A parameter return beside one binding is admitted
+  // only through that unwrapped form; the flat, non-nested spelling
+  // (`let x = 1; return a;`) stays on the capability drain because the
+  // single-local strategies resolve only owner-local bindings.
+  bool bodyUnwrappedFromNestedBlock = false;
   {
     const auto& outerBlock = tree.node(body);
     const ast::NodeList outerStatements{outerBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
@@ -2222,6 +2228,7 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         if (tree.contains(soleStatement) &&
             tree.node(soleStatement).kind == ast::SyntaxKind::BlockStmt) {
           body = soleStatement;
+          bodyUnwrappedFromNestedBlock = true;
         }
       }
     }
@@ -4275,9 +4282,22 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         // boundaries itself (recursiveUnsafeSafe).
         const bool literalTrappedInUnsafe =
             shape.returnsLiteral && unsafeBlock != zc::none && !recursiveUnsafeSafe;
+        // A single benign leading binding whose trailing return reads a
+        // different identifier, admitted only when the body was a sole nested
+        // block unwrapped above (`{ let b = 1; return a; }`): the returned
+        // identifier cannot match the binding's own pattern, so the checker
+        // resolved it to a parameter and sequentialLocalShape leaves
+        // returnsLocal empty. The flat spelling keeps draining, so this is
+        // gated on the nested-block unwrap rather than binding count alone.
+        const bool singleBindingReturnsParameter =
+            bodyUnwrappedFromNestedBlock && shape.bindings.size() == 1 &&
+            benignInitializerKind(shape.bindings[0].initializerKind) &&
+            tree.node(shape.returnValue).kind == ast::SyntaxKind::IdentExpr &&
+            !matchesLocalReference(tree, shape.bindings[0].pattern, shape.returnValue);
         routeToSequential =
             !literalTrappedInUnsafe &&
             (shape.bindings.size() >= 2 || shape.returnsLiteral || writtenFlatBinaryReturn ||
+             singleBindingReturnsParameter ||
              // A benign single-binding body wrapped in an unsafe block routes
              // here so the recursive MIR builder can emit the scope boundaries;
              // the single-local strategy table arm models no unsafe scope.

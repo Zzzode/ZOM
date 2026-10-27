@@ -3816,7 +3816,34 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
               break;
             }
           }
-          if (!foundLocal) return false;
+          if (!foundLocal) {
+            // A trailing binary leaf may read a callable parameter rather
+            // than a leading binding only on the write-plus-binary rail
+            // (`mut s = 1; s = 2; return z + s;`); with no trailing write a
+            // parameter leaf beside a binding stays unlowered, matching the
+            // builder's capability drain.
+            if (source.localWrites.empty()) return false;
+            zc::Maybe<const HirParameterReferenceExpression&> parameterValue;
+            for (const auto& reference : candidate.impl->parameterReferences) {
+              if (reference.node != hirId(leafOrdinal)) continue;
+              if (parameterValue != zc::none) return false;
+              parameterValue = reference;
+            }
+            if (parameterValue == zc::none) return false;
+            auto parameterHandle = resolvedCallableParameter(bound.bindings(), leafNode);
+            if (parameterHandle == zc::none) return false;
+            bool parameterMatches = false;
+            ZC_IF_SOME(handle, parameterHandle) {
+              auto authority = registries.callableParameter(handle);
+              ZC_IF_SOME(entry, authority) {
+                parameterMatches = ZC_ASSERT_NONNULL(parameterValue).parameter == entry.key();
+              }
+            }
+            const auto& parameterReference = ZC_ASSERT_NONNULL(parameterValue);
+            return parameterMatches && parameterReference.type == leafType &&
+                   parameterReference.category == HirValueCategory::Place &&
+                   sameSpan(parameterReference.sourceSpan, ZC_ASSERT_NONNULL(leafSpan));
+          }
           zc::Maybe<const HirLocalReferenceExpression&> localValue;
           for (const auto& reference : candidate.impl->localReferences) {
             if (reference.node != hirId(leafOrdinal)) continue;
