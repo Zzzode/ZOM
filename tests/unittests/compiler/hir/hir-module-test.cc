@@ -3186,6 +3186,39 @@ ZC_TEST("HIR pipeline lowers an unsafe block wrapping a local-alias reborrow") {
   ZC_EXPECT(reborrow.sourceAlias != zc::none);
 }
 
+ZC_TEST("HIR pipeline lowers a benign unsafe block wrapping a trailing local return") {
+  // A multi-statement body whose only unsafe content is the outermost block
+  // around a benign trailing return routes through the recursive MIR builder,
+  // which preserves the unsafe marker and emits balanced Enter/Exit scope
+  // boundaries instead of dropping the marker or lowering a dereference.
+  HirPipelineFixture fixture("fn entry() -> i32 { let local = 42; return unsafe { local }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  const auto& function = module.functions()[0];
+  ZC_EXPECT(function.unsafeBlock != zc::none);
+  ZC_EXPECT(module.unsafeBlocks()[0].node == ZC_ASSERT_NONNULL(function.unsafeBlock));
+  uint32_t enters = 0;
+  uint32_t exits = 0;
+  const auto builtModules = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtModules.size() == 1);
+  for (const auto& mirFunction : builtModules[0].builtMir().functions()) {
+    if (mirFunction.owner != function.definition) continue;
+    for (const auto& block : mirFunction.blocks) {
+      for (const auto& statement : block.statements) {
+        if (statement.kind() != mir::MirStatementKind::UnsafeScopeBoundary) continue;
+        if (statement.unsafeScopeBoundaryValue().kind == mir::MirUnsafeScopeBoundaryKind::Enter) {
+          ++enters;
+        } else {
+          ++exits;
+        }
+      }
+    }
+  }
+  ZC_EXPECT(enters == 1);
+  ZC_EXPECT(exits == 1);
+}
+
 ZC_TEST("HIR borrow arm lowers a bare parameter reborrow through exact node strides") {
   HirPipelineFixture fixture("fn entry(p: &i32) -> &i32 { return &*p; }"_zc);
   const auto& module = fixture.hirModule();
@@ -5833,21 +5866,16 @@ ZC_TEST("HIR pipeline drains a nested binary return over a written local as ZOM4
   ZC_EXPECT(session.getIncidents().empty());
 }
 
-ZC_TEST("HIR pipeline drains an unsafe-wrapped literal return as ZOM4099") {
+ZC_TEST("HIR pipeline lowers a benign unsafe block wrapping a trailing literal return") {
   // `let b = 7; return unsafe { 2 };` classifies as a literal-return
-  // sequential body, but the sequential MIR strategy declines an unsafe
-  // block. The router leaves the shape unclaimed so the definition drains at
-  // the capability boundary, instead of publishing a HIR body whose MIR
-  // construction surfaces as an ir-phase incident.
-  identity::SemanticContextFactory contextFactory;
-  basic::LangOptions languageOptions;
-  basic::CompilerOptions compilerOptions;
-  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
-  bool checked = HirPipelineFixture::prepareCheckedSession(
-      session, "fn entry() -> i32 { let b = 7; return unsafe { 2 }; }"_zc);
-  ZC_EXPECT(!checked);
-  ZC_EXPECT(session.hasDiagnosticErrors());
-  ZC_EXPECT(session.getIncidents().empty());
+  // sequential body. The recursive MIR builder preserves the unsafe marker
+  // and emits the Enter/Exit scope boundaries itself, so the body is
+  // admitted instead of draining at the capability boundary.
+  HirPipelineFixture fixture("fn entry() -> i32 { let b = 7; return unsafe { 2 }; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.unsafeBlocks().size() == 1);
+  ZC_EXPECT(module.functions()[0].unsafeBlock != zc::none);
 }
 
 ZC_TEST("HIR pipeline accounts trailing write ordinals across two functions") {

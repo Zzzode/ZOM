@@ -55,14 +55,20 @@ zc::Maybe<MirOperand> lowerScalarLiteral(const hir::HirScalarLiteralExpression& 
   return MirOperand::constant(resultType, literal.value.clone());
 }
 
-/// Lowers a parameter reference to a copy/move place-use operand.
+/// Lowers a parameter reference to a copy/move place-use operand. The flat
+/// lowerer reads the parameter itself and emits no projection: a projected
+/// read (`unsafe { *ptr }`) pools a parameter reference whose HIR type is the
+/// pointer type while the use site expects the pointee type, so the expected
+/// type comparison declines it and the dedicated raw-deref strategy emits the
+/// Dereference projection.
 zc::Maybe<MirOperand> lowerParameterReference(const hir::HirParameterReferenceExpression& paramRef,
                                               const hir::HirFunctionDeclaration& declaration,
-                                              bool isMethod,
+                                              bool isMethod, identity::SemanticTypeId expectedType,
                                               checker::marker::MarkerProofEngine& proofs,
                                               identity::DefId copyMarker) {
   auto paramIndex = parameterIndexFor(declaration, paramRef.parameter);
   if (paramIndex == zc::none) return zc::none;
+  if (paramRef.type != expectedType) return zc::none;
   const uint32_t localOrdinal =
       static_cast<uint32_t>(ZC_ASSERT_NONNULL(paramIndex) + 1 + (isMethod ? 1 : 0));
   auto localId = MirLocalId::fromOrdinal(localOrdinal);
@@ -73,11 +79,15 @@ zc::Maybe<MirOperand> lowerParameterReference(const hir::HirParameterReferenceEx
       MirPlace(ZC_ASSERT_NONNULL(localId), paramRef.type, zc::mv(projections), paramRef.type));
 }
 
-/// Lowers a local reference to a copy/move place-use operand.
+/// Lowers a local reference to a copy/move place-use operand. The flat lowerer
+/// reads the declared local itself; a projected read carries a different HIR
+/// type and is rejected through the expected use-site type so a dedicated
+/// projection strategy lowers it.
 zc::Maybe<MirOperand> lowerLocalReference(const hir::HirLocalReferenceExpression& localRef,
-                                          MirLocalId localId,
+                                          MirLocalId localId, identity::SemanticTypeId expectedType,
                                           checker::marker::MarkerProofEngine& proofs,
                                           identity::DefId copyMarker) {
+  if (localRef.type != expectedType) return zc::none;
   zc::Vector<MirProjection> projections;
   return placeUse(proofs, copyMarker,
                   MirPlace(localId, localRef.type, zc::mv(projections), localRef.type));
@@ -167,12 +177,14 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
   if (block == nullptr) return zc::none;
   if (block->statements.size() == 0) return zc::none;
   // This builder walks statements structurally and does not model unsafe
-  // scopes: it would lower `return unsafe { *ptr };` as a bare parameter
-  // reference, returning the pointer where the pointee is required. Every
-  // unsafe-wrapped body belongs to a shape strategy that emits the scope
-  // boundaries and the dereference projection, so decline the function.
-  if (declaration.unsafeBlock != zc::none) return zc::none;
-
+  // operations such as a raw-pointer dereference: `return unsafe { *ptr };`
+  // belongs to a shape strategy that emits the dereference projection. A
+  // benign unsafe block wrapping only the trailing scalar return
+  // (`...; return unsafe { local };`) is supported: the block contains no
+  // modeled unsafe operation, and this builder emits the child-scope
+  // Enter/Exit boundaries around the return read below. Any other use keeps
+  // failing closed because the structural walk rejects the unmodeled
+  // expression before this point.
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
 
@@ -251,8 +263,8 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
         if (copyMarker == zc::none) return zc::none;
         const auto* paramRef = findRecord(hirModule.parameterReferences(), initNode);
         if (paramRef == nullptr) return zc::none;
-        initOperand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
-                                              ZC_ASSERT_NONNULL(copyMarker));
+        initOperand = lowerParameterReference(*paramRef, declaration, isMethod, binding->type,
+                                              proofs, ZC_ASSERT_NONNULL(copyMarker));
         if (initOperand == zc::none) return zc::none;
         initSpan = paramRef->sourceSpan.clone();
       } else if (ZC_ASSERT_NONNULL(initKind) == HirNodeKind::LocalReference) {
@@ -262,8 +274,8 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
         if (localRef == nullptr) return zc::none;
         auto source = findUserLocal(localRef->local);
         if (source == zc::none) return zc::none;
-        initOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), proofs,
-                                          ZC_ASSERT_NONNULL(copyMarker));
+        initOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), binding->type,
+                                          proofs, ZC_ASSERT_NONNULL(copyMarker));
         if (initOperand == zc::none) return zc::none;
         initSpan = localRef->sourceSpan.clone();
       } else {
@@ -299,16 +311,16 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
         if (copyMarker == zc::none) return zc::none;
         const auto* paramRef = findRecord(hirModule.parameterReferences(), write->value);
         if (paramRef == nullptr) return zc::none;
-        writeOperand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
-                                               ZC_ASSERT_NONNULL(copyMarker));
+        writeOperand = lowerParameterReference(*paramRef, declaration, isMethod, write->type,
+                                               proofs, ZC_ASSERT_NONNULL(copyMarker));
       } else if (ZC_ASSERT_NONNULL(valueKind) == HirNodeKind::LocalReference) {
         if (copyMarker == zc::none) return zc::none;
         const auto* localRef = findRecord(hirModule.localReferences(), write->value);
         if (localRef == nullptr) return zc::none;
         auto source = findUserLocal(localRef->local);
         if (source == zc::none) return zc::none;
-        writeOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), proofs,
-                                           ZC_ASSERT_NONNULL(copyMarker));
+        writeOperand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(source), write->type,
+                                           proofs, ZC_ASSERT_NONNULL(copyMarker));
       } else {
         return zc::none;
       }
@@ -381,7 +393,7 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           if (copyMarker == zc::none) return zc::none;
           const auto* paramRef = findRecord(hirModule.parameterReferences(), valueNode);
           if (paramRef == nullptr) return zc::none;
-          operand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
+          operand = lowerParameterReference(*paramRef, declaration, isMethod, valueType, proofs,
                                             ZC_ASSERT_NONNULL(copyMarker));
         } else {
           return zc::none;
@@ -405,8 +417,12 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
         if (copyMarker == zc::none) return zc::none;
         const auto* paramRef = findRecord(hirModule.parameterReferences(), diamond->condition);
         if (paramRef == nullptr) return zc::none;
-        discriminant = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
-                                               ZC_ASSERT_NONNULL(copyMarker));
+        // The condition reads a pooled bare bool parameter directly as the
+        // SwitchInt discriminant; the trailing unsafe block wraps the return,
+        // never this condition, so the pooled reference carries the read type
+        // itself and the use site accepts the reference's own type.
+        discriminant = lowerParameterReference(*paramRef, declaration, isMethod, paramRef->type,
+                                               proofs, ZC_ASSERT_NONNULL(copyMarker));
       } else if (ZC_ASSERT_NONNULL(conditionKind) == HirNodeKind::PrimitiveBinary) {
         const auto* comparison =
             findRecord(hirModule.primitiveBinaryOperations(), diamond->condition);
@@ -419,15 +435,16 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
             return lowerScalarLiteral(*leftLiteral, comparison->operandType);
           const auto* leftParam = findRecord(hirModule.parameterReferences(), comparison->left);
           if (leftParam != nullptr && copyMarker != zc::none)
-            return lowerParameterReference(*leftParam, declaration, isMethod, proofs,
+            return lowerParameterReference(*leftParam, declaration, isMethod,
+                                           comparison->operandType, proofs,
                                            ZC_ASSERT_NONNULL(copyMarker));
           // A condition leaf may read the diamond's own target local
           // (`if (s < 20)`), which the arm writes.
           const auto* leftLocal = findRecord(hirModule.localReferences(), comparison->left);
           if (leftLocal == nullptr || copyMarker == zc::none)
             return zc::Maybe<MirOperand>{zc::none};
-          return lowerLocalReference(*leftLocal, ZC_ASSERT_NONNULL(target), proofs,
-                                     ZC_ASSERT_NONNULL(copyMarker));
+          return lowerLocalReference(*leftLocal, ZC_ASSERT_NONNULL(target), comparison->operandType,
+                                     proofs, ZC_ASSERT_NONNULL(copyMarker));
         }();
         auto rightOperand = [&] {
           const auto* rightLiteral = findRecord(hirModule.expressions(), comparison->right);
@@ -435,12 +452,14 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
             return lowerScalarLiteral(*rightLiteral, comparison->operandType);
           const auto* rightParam = findRecord(hirModule.parameterReferences(), comparison->right);
           if (rightParam != nullptr && copyMarker != zc::none)
-            return lowerParameterReference(*rightParam, declaration, isMethod, proofs,
+            return lowerParameterReference(*rightParam, declaration, isMethod,
+                                           comparison->operandType, proofs,
                                            ZC_ASSERT_NONNULL(copyMarker));
           const auto* rightLocal = findRecord(hirModule.localReferences(), comparison->right);
           if (rightLocal == nullptr || copyMarker == zc::none)
             return zc::Maybe<MirOperand>{zc::none};
-          return lowerLocalReference(*rightLocal, ZC_ASSERT_NONNULL(target), proofs,
+          return lowerLocalReference(*rightLocal, ZC_ASSERT_NONNULL(target),
+                                     comparison->operandType, proofs,
                                      ZC_ASSERT_NONNULL(copyMarker));
         }();
         if (leftOperand == zc::none || rightOperand == zc::none) return zc::none;
@@ -530,8 +549,13 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           if (copyMarker == zc::none) return zc::none;
           const auto* paramRef = findRecord(hirModule.parameterReferences(), valueNode);
           if (paramRef == nullptr) return zc::none;
-          auto operand = lowerParameterReference(*paramRef, declaration, isMethod, proofs,
-                                                 ZC_ASSERT_NONNULL(copyMarker));
+          // A projected read (the raw-pointer dereference `return unsafe
+          // { *ptr }`) pools a parameter reference whose type is the pointer,
+          // not the result type. lowerParameterReference declines it so the
+          // dedicated dereference strategy emits the projection.
+          auto operand =
+              lowerParameterReference(*paramRef, declaration, isMethod, declaration.resultType,
+                                      proofs, ZC_ASSERT_NONNULL(copyMarker));
           if (operand == zc::none) return zc::none;
           returnOperand = zc::mv(ZC_ASSERT_NONNULL(operand));
           handled = true;
@@ -541,11 +565,15 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
           if (copyMarker == zc::none) return zc::none;
           const auto* localRef = findRecord(hirModule.localReferences(), valueNode);
           if (localRef == nullptr) return zc::none;
-          // Find the user local for this reference.
+          // A projected read (`unsafe { *ptr_local }`) carries a type other
+          // than the result type and needs a projection this walker omits;
+          // lowerLocalReference declines it and a dedicated strategy lowers
+          // the projection.
           auto mirLocal = findUserLocal(localRef->local);
           if (mirLocal == zc::none) return zc::none;
-          auto operand = lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(mirLocal), proofs,
-                                             ZC_ASSERT_NONNULL(copyMarker));
+          auto operand =
+              lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(mirLocal), declaration.resultType,
+                                  proofs, ZC_ASSERT_NONNULL(copyMarker));
           if (operand == zc::none) return zc::none;
           returnOperand = zc::mv(ZC_ASSERT_NONNULL(operand));
           handled = true;
@@ -585,15 +613,16 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
             if (kind == HirNodeKind::ParameterReference) {
               const auto* paramRef = findRecord(hirModule.parameterReferences(), leafNode);
               if (paramRef == nullptr || paramRef->type != binary->operandType) return zc::none;
-              return lowerParameterReference(*paramRef, declaration, isMethod, proofs,
-                                             ZC_ASSERT_NONNULL(copyMarker));
+              return lowerParameterReference(*paramRef, declaration, isMethod, binary->operandType,
+                                             proofs, ZC_ASSERT_NONNULL(copyMarker));
             }
             if (kind == HirNodeKind::LocalReference) {
               const auto* localRef = findRecord(hirModule.localReferences(), leafNode);
               if (localRef == nullptr || localRef->type != binary->operandType) return zc::none;
               auto mirLocal = findUserLocal(localRef->local);
               if (mirLocal == zc::none) return zc::none;
-              return lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(mirLocal), proofs,
+              return lowerLocalReference(*localRef, ZC_ASSERT_NONNULL(mirLocal),
+                                         binary->operandType, proofs,
                                          ZC_ASSERT_NONNULL(copyMarker));
             }
             return zc::none;
@@ -633,6 +662,26 @@ zc::Maybe<MirFunction> buildRecursiveFunction(const VerifiedHirModule& hirModule
       }
 
       if (!handled) return zc::none;
+
+      // A benign unsafe block wrapping only the trailing return: delimit the
+      // return read with Enter/Exit boundaries on a child source scope. The
+      // pending function pools exactly one HirUnsafeBlockExpression record
+      // keyed by the declaration's unsafe-block node.
+      if (declaration.unsafeBlock != zc::none) {
+        zc::Maybe<const hir::HirUnsafeBlockExpression&> unsafe;
+        for (const auto& candidate : hirModule.unsafeBlocks()) {
+          if (candidate.node != ZC_ASSERT_NONNULL(declaration.unsafeBlock)) continue;
+          if (unsafe != zc::none) return zc::none;
+          unsafe = candidate;
+        }
+        if (unsafe == zc::none) return zc::none;
+        const auto& unsafeBlock = ZC_ASSERT_NONNULL(unsafe);
+        const MirSourceScopeId unsafeScope = ctx.pushScope(scope, unsafeBlock.sourceSpan.clone());
+        ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+            MirUnsafeScopeBoundaryKind::Enter, unsafeScope, unsafeBlock.sourceSpan.clone()));
+        ctx.appendStatement(MirStatement::unsafeScopeBoundary(
+            MirUnsafeScopeBoundaryKind::Exit, unsafeScope, unsafeBlock.sourceSpan.clone()));
+      }
 
       ctx.terminateBlock(
           MirTerminator::returnValue(zc::mv(returnOperand), returnStmt->sourceSpan.clone()));

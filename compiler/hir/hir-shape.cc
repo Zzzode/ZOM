@@ -3795,6 +3795,11 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     }
   }
   zc::Maybe<ast::NodeId> unsafeBlock;
+  // The raw outermost unsafe block, retained even when the default multi-
+  // statement path drops the marker. The sequential-local route restores it:
+  // its recursive MIR builder emits the child-scope Enter/Exit boundaries
+  // around the trailing benign return.
+  zc::Maybe<ast::NodeId> sequentialUnsafeBlock;
   while (tree.node(value).kind == ast::SyntaxKind::UnsafeBlockExpr) {
     const ast::NodeId unsafeBody(tree.node(value).payload.words[ast::kUnsafeBlockExprBodyWord]);
     if (!tree.contains(unsafeBody) || tree.node(unsafeBody).kind != ast::SyntaxKind::BlockStmt) {
@@ -3814,7 +3819,10 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         tree.node(innerStatement).payload.words[ast::kExpressionStatementExpressionWord]);
     if (!tree.contains(innerValue)) return zc::none;
     // Track the outermost unsafe block; inner layers are transparent.
-    if (unsafeBlock == zc::none) unsafeBlock = value;
+    if (unsafeBlock == zc::none) {
+      unsafeBlock = value;
+      sequentialUnsafeBlock = value;
+    }
     value = innerValue;
   }
   // The scalar-return and parameter-reborrow paths lower unsafe blocks for
@@ -4207,12 +4215,15 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
     // separate single-local binary rail.
     if (sequential != zc::none) {
       bool routeToSequential = false;
+      // Set when this sequential body is wrapped in an unsafe block whose only
+      // content is the benign trailing return. The recursive MIR builder
+      // structurally lowers every component and emits the child-scope
+      // Enter/Exit boundaries itself, so the marker can be preserved instead
+      // of dropped. Any component the recursive builder does not model (a cast
+      // or ternary binding, a binary-value write, a fold-only carrier) keeps
+      // the marker dropped and drains as before.
+      bool recursiveUnsafeSafe = false;
       ZC_IF_SOME(shape, sequential) {
-        // The literal-return rail has no unsafe lowering (the sequential MIR
-        // strategy declines an unsafe block), so an unsafe-wrapped literal
-        // stays unclaimed and drains at the capability boundary instead of
-        // publishing a HIR body the MIR builder rejects with an incident.
-        const bool literalTrappedInUnsafe = shape.returnsLiteral && unsafeBlock != zc::none;
         // A flat primitive-binary return over trailing plain writes
         // (`mut s = 0; s = 2; return 3 + s;`) rides the sequential rail, which
         // already lowers writes and a binary return; the single-local write
@@ -4232,11 +4243,47 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
               tree.node(writtenBinaryLeft).kind != ast::SyntaxKind::BinaryExpr &&
               tree.node(writtenBinaryRight).kind != ast::SyntaxKind::BinaryExpr;
         }
+        const auto benignInitializerKind = [](SequentialInitializerKind kind) {
+          return kind == SequentialInitializerKind::Literal ||
+                 kind == SequentialInitializerKind::LocalReference ||
+                 kind == SequentialInitializerKind::ParameterReference ||
+                 kind == SequentialInitializerKind::FoldedLiteralArithmetic ||
+                 kind == SequentialInitializerKind::FoldedLiteralUnary;
+        };
+        bool benignComponents = true;
+        for (const auto& binding : shape.bindings) {
+          if (!benignInitializerKind(binding.initializerKind)) benignComponents = false;
+        }
+        for (const auto& write : shape.localWrites) {
+          if (write.valueKind != SequentialInitializerKind::Literal &&
+              write.valueKind != SequentialInitializerKind::LocalReference &&
+              write.valueKind != SequentialInitializerKind::ParameterReference) {
+            benignComponents = false;
+          }
+        }
+        const bool benignReturnValue =
+            shape.returnsLiteral || isScalarLiteral(tree.node(shape.returnValue).kind) ||
+            tree.node(shape.returnValue).kind == ast::SyntaxKind::IdentExpr ||
+            (writtenFlatBinaryReturn && !shape.localWrites.empty());
+        recursiveUnsafeSafe =
+            sequentialUnsafeBlock != zc::none && benignComponents && benignReturnValue;
+        // The literal-return rail has no unsafe lowering (the shape-table MIR
+        // strategy declines an unsafe block), so an unsafe-wrapped literal
+        // stays unclaimed and drains at the capability boundary instead of
+        // publishing a HIR body the MIR builder rejects with an incident.
+        // The recursive builder rail is the exception: it emits the scope
+        // boundaries itself (recursiveUnsafeSafe).
+        const bool literalTrappedInUnsafe =
+            shape.returnsLiteral && unsafeBlock != zc::none && !recursiveUnsafeSafe;
         routeToSequential =
             !literalTrappedInUnsafe &&
             (shape.bindings.size() >= 2 || shape.returnsLiteral || writtenFlatBinaryReturn ||
+             // A benign single-binding body wrapped in an unsafe block routes
+             // here so the recursive MIR builder can emit the scope boundaries;
+             // the single-local strategy table arm models no unsafe scope.
              (shape.bindings.size() == 1 &&
-              (shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
+              (recursiveUnsafeSafe ||
+               shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveBinary ||
                shape.bindings[0].initializerKind == SequentialInitializerKind::PrimitiveUnary ||
                shape.bindings[0].initializerKind == SequentialInitializerKind::Cast ||
                shape.bindings[0].initializerKind == SequentialInitializerKind::Ternary ||
@@ -4255,7 +4302,8 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         shape.returnsLocal = true;
         shape.localReference = value;
         shape.isSequentialLocalReturn = true;
-        shape.unsafeBlock = zc::mv(unsafeBlock);
+        shape.unsafeBlock =
+            recursiveUnsafeSafe ? zc::mv(sequentialUnsafeBlock) : zc::mv(unsafeBlock);
         return shape;
       }
     }
