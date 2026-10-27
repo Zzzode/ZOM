@@ -54,6 +54,7 @@ CHECKED_MODULE = Path("compiler/hir/checked-module.cc")
 CHECKED_MODULE_HEADER = Path("compiler/hir/checked-module.h")
 MIR = Path("compiler/mir/built-mir.cc")
 MIR_HEADER = Path("compiler/mir/built-mir.h")
+MIR_BUILDER = Path("compiler/mir/build/mir-builder.cc")
 BUILT_MIR_TEST = Path("tests/unittests/compiler/mir/built-mir-test.cc")
 OWNERSHIP_CMAKE = Path("compiler/ownership/CMakeLists.txt")
 SESSION = Path("compiler/driver/session/compiler-session.cc")
@@ -110,6 +111,7 @@ REQUIRED = (
     CHECKED_MODULE_HEADER,
     MIR,
     MIR_HEADER,
+    MIR_BUILDER,
     BUILT_MIR_TEST,
     OWNERSHIP_CMAKE,
     SESSION,
@@ -198,7 +200,7 @@ def check(values: dict[Path, str]) -> list[str]:
 
     admission_source = values.get(ADMISSION_SOURCE, "")
     for marker in (
-        "ast::visitTreePreOrder(",
+        "auto walk = [&](ast::NodeId nodeId, auto&& self) -> void {",
         "ast::SyntaxKind::SpawnExpression",
         "ast::SyntaxKind::SuspendStatement",
         "SurfaceSourceRejected(",
@@ -260,7 +262,8 @@ def check(values: dict[Path, str]) -> list[str]:
     for marker in (
         "InitializationBuilder::build(",
         "InitializationVerifier::verify(",
-        "factsUseFlow(value, flow.functions()[index])",
+        "const auto& flowFunction = flow.functions()[analyzedIndex];",
+        "factsUseFlow(value, flowFunction)",
         "rootKey(",
         "states[index].state != InitializationState::dead()",
         "states[index].state != InitializationState::uninitialized()",
@@ -783,12 +786,20 @@ def check(values: dict[Path, str]) -> list[str]:
 
     mir = values.get(MIR, "")
     for marker in (
-        "bool validLocalAggregateReturnFunction(",
-        "ZC_IF_SOME(reference, localReference)",
-        "valid = validLocalAggregateReturnFunction(",
+        "bool validateStructuralWellFormedness(const MirFunction& function)",
+        "if (!validateStructuralWellFormedness(function)) {",
+        "ZC_IF_SOME(localReference, reference)",
     ):
         if marker not in mir:
             errors.append(f"{MIR}: missing whole-aggregate return lowering contract: {marker}")
+
+    mir_builder = values.get(MIR_BUILDER, "")
+    for marker in (
+        "zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(",
+        "MirNominalAggregateElement{",
+    ):
+        if marker not in mir_builder:
+            errors.append(f"{MIR_BUILDER}: missing aggregate return lowering: {marker}")
 
     test = values.get(TEST, "")
     for marker in (
@@ -1283,9 +1294,9 @@ def main() -> int:
             print("ownership resource-session architecture self-test escaped")
             return 1
         aggregate_move_mutation = dict(values)
-        aggregate_move_mutation[MIR] = aggregate_move_mutation.get(MIR, "").replace(
-            "bool validLocalAggregateReturnFunction(",
-            "bool removedLocalAggregateReturnFunction(",
+        aggregate_move_mutation[MIR_BUILDER] = aggregate_move_mutation.get(MIR_BUILDER, "").replace(
+            "zc::Maybe<RecursiveFunctionProduct> buildAggregateReturn(",
+            "zc::Maybe<RecursiveFunctionProduct> removedAggregateReturn(",
             1,
         )
         if not check(aggregate_move_mutation):
