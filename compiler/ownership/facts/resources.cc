@@ -186,6 +186,7 @@ bool inputsMatch(const VerifiedMovePaths& movePaths, const mir::VerifiedBuiltMir
 
 bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     if (!isAdmittedFlowSubset(function)) return false;
   }
   return true;
@@ -584,6 +585,7 @@ zc::Maybe<zc::Vector<ResourceFunction>> derive(const VerifiedMovePaths& movePath
                                                const VerifiedOwnershipEventOverlay& overlay) {
   zc::Vector<ResourceFunction> functions;
   for (const auto& mirFunction : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(mirFunction)) continue;
     zc::Maybe<const FunctionEventOverlay&> overlayFunction;
     for (const auto& candidate : overlay.functions()) {
       if (candidate.owner == mirFunction.owner) {

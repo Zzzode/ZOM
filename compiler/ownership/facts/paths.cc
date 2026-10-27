@@ -597,6 +597,7 @@ zc::Maybe<zc::Vector<MovePathFunction>> derive(
     const mir::VerifiedBuiltMir& builtMir, const checker::CheckerIdentityAuthority& identities) {
   zc::Vector<MovePathFunction> functions;
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     auto paths = deriveFunction(function, identities);
     if (paths == zc::none) return zc::none;
     ZC_IF_SOME(value, paths) { functions.add(zc::mv(value)); }

@@ -3636,6 +3636,46 @@ ZC_TEST("Ownership facts initialize an uninitialized aggregate field") {
   }
 }
 
+ZC_TEST("Ownership pipeline accepts an aggregate return for a type declaring a deinit") {
+  // A declared deinitializer body is referenced through the drop plan and is
+  // not analyzed as a standalone ownership function. An entry function that
+  // constructs and returns the owning aggregate must therefore check end to
+  // end: excluding the deinitializer function from the overlay and fact
+  // vectors keeps the analyzed subset internally consistent instead of
+  // rejecting the module as an invariant failure.
+  identity::SemanticContextFactory contextFactory;
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  driver::CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = driver::VerifiedPackageSessionInput::from(
+      compilationRequest(registry), verifiedTargetSelection(registry),
+      verifiedTargetSelection(registry),
+      resolution(
+          session.getPackageResolutionMemoryResource(),
+          "struct Managed { value: i32; deinit() {} }\n"
+          "fn entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc),
+      resolvedSnapshots(
+          "struct Managed { value: i32; deinit() {} }\n"
+          "fn entry() -> Managed { let managed = Managed { value: 0 }; return managed; }"_zc));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  driver::core_library_test::installCoreSources(session);
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_EXPECT(session.checkSources());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  ZC_EXPECT(session.getIrCapabilityFailureGroups().size() == 0);
+  ZC_EXPECT(session.getIrIdentityInvariantFailures().size() == 0);
+  ZC_EXPECT(session.getVerifiedHirModules().size() == 1);
+  ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session.getValidatedOwnershipProofs().size() == 1);
+}
+
 ZC_TEST("Ownership facts initialize distinct fields of an uninitialized aggregate") {
   OwnershipPipelineFixture fixture(
       "struct Pair { mut left: i32, mut right: bool, }\n"

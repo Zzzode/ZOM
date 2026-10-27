@@ -151,6 +151,7 @@ bool inputsMatch(const mir::VerifiedBuiltMir& builtMir,
 
 bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     if (!isAdmittedFlowSubset(function)) return false;
   }
   return true;
@@ -405,11 +406,16 @@ struct FlowOutcome final {
 
 FlowOutcome derive(const mir::VerifiedBuiltMir& builtMir,
                    const VerifiedOwnershipEventOverlay& overlay) {
-  if (builtMir.functions().size() != overlay.functions().size()) {
+  size_t analyzedFunctionCount = 0;
+  for (const auto& function : builtMir.functions()) {
+    if (mir::isOwnershipAnalyzedFunction(function)) ++analyzedFunctionCount;
+  }
+  if (analyzedFunctionCount != overlay.functions().size()) {
     return {zc::none, FlowRejection::Proof};
   }
   zc::Vector<FlowFunction> functions;
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (functionOverlay == zc::none) return {zc::none, FlowRejection::Proof};
     ZC_IF_SOME(value, functionOverlay) {

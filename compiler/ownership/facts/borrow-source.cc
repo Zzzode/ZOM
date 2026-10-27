@@ -122,6 +122,7 @@ zc::Maybe<const FunctionEventOverlay&> overlayFor(const VerifiedOwnershipEventOv
 
 bool allFunctionsAdmitted(const mir::VerifiedBuiltMir& builtMir) {
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     if (!isAdmittedFlowSubset(function)) return false;
   }
   return true;
@@ -481,6 +482,7 @@ void borrowConflictFailures(const mir::VerifiedBuiltMir& builtMir,
                             const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
                             zc::Vector<SourceFailure>& failures, uint32_t& traversalOrdinal) {
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (functionOverlay == zc::none) continue;
     ZC_IF_SOME(functionOverlayValue, functionOverlay) {
@@ -541,6 +543,7 @@ void moveOutOfBorrowFailures(const mir::VerifiedBuiltMir& builtMir,
                              const VerifiedMovePaths& movePaths, const VerifiedLoanFacts& loans,
                              zc::Vector<SourceFailure>& failures, uint32_t& traversalOrdinal) {
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     auto functionOverlay = overlayFor(overlay, function.owner);
     if (functionOverlay == zc::none) continue;
     ZC_IF_SOME(functionOverlayValue, functionOverlay) {

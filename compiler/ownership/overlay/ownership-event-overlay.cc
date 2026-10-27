@@ -1958,6 +1958,11 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
   if (!copy.isValid() || !linear.isValid() || copy == linear) return zc::none;
   zc::Vector<FunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
+    // Destructor bodies are not analyzed as standalone overlay functions:
+    // their cleanup is referenced declaratively through the drop plan's
+    // declared deinitializer action and discharged by drop elaboration. An
+    // empty or void-let deinit therefore contributes zero overlay functions.
+    if (function.sourceDefinitionKind == identity::DefinitionKind::Destructor) continue;
     zc::Vector<MirEventSlot> slots;
     zc::Vector<DeferredActivationFact> deferredActivations;
     zc::Vector<MarkerUse> markerUses;
@@ -2373,6 +2378,11 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
   if (!copy.isValid() || !linear.isValid() || copy == linear) return zc::none;
   zc::Vector<FunctionEventOverlay> functions;
   for (const auto& function : builtMir.functions()) {
+    // Destructor bodies are not analyzed as standalone overlay functions:
+    // their cleanup is referenced declaratively through the drop plan's
+    // declared deinitializer action and discharged by drop elaboration. An
+    // empty or void-let deinit therefore contributes zero overlay functions.
+    if (function.sourceDefinitionKind == identity::DefinitionKind::Destructor) continue;
     zc::Vector<MirEventSlot> slots;
     zc::Vector<DeferredActivationFact> deferredActivations;
     zc::Vector<MarkerUse> markerUses;
@@ -2872,12 +2882,18 @@ ir::IrOperationResult<VerifiedOwnershipEventOverlay> EventOverlayVerifier::verif
   const auto& builtMir = input.built;
   const auto identities = builtMir.retainIdentityAuthority();
   const auto module = builtMir.module();
+  // Destructor bodies are referenced via drop plans, not analyzed as overlay
+  // functions; candidate and Built MIR compare on the analyzed subset.
+  size_t analyzedBuiltFunctions = 0;
+  for (const auto& function : builtMir.functions()) {
+    if (mir::isOwnershipAnalyzedFunction(function)) ++analyzedBuiltFunctions;
+  }
   if (!hasExactOverlayInput(input) || candidate.semanticContext != builtMir.semanticContext() ||
       candidate.contextFingerprint.digest() != builtMir.contextFingerprint().digest() ||
       candidate.module != builtMir.module() ||
       candidate.checkedFactsRevision.digest() != builtMir.checkedFactsRevision().digest() ||
       candidate.builtRevision.digest() != builtMir.revision().digest() ||
-      candidate.functions.size() != builtMir.functions().size()) {
+      candidate.functions.size() != analyzedBuiltFunctions) {
     return rejectOwnership<VerifiedOwnershipEventOverlay>(
         ir::IrFailurePhase::ProofValidation, ir::IrFailureKind::InputRevisionMismatch, module,
         firstFunctionDefinition(builtMir), identities, 0);

@@ -666,6 +666,15 @@ struct MirFunction final {
   zc::Vector<MirBasicBlock> blocks;
 };
 
+/// \brief Whether one Built MIR function is a standalone subject of the
+/// ownership fact and event-overlay analysis. Destructor bodies are excluded:
+/// their cleanup is referenced declaratively through each type's drop plan
+/// (the declared deinitializer action) and discharged by drop elaboration,
+/// rather than analyzed as an ordinary function body.
+constexpr bool isOwnershipAnalyzedFunction(const MirFunction& function) noexcept {
+  return function.sourceDefinitionKind != identity::DefinitionKind::Destructor;
+}
+
 /// \brief Validates structural well-formedness of one MIR function independent
 /// of its source shape. Checks dense contiguous ordinals, valid scope/local/
 /// block references, reachable CFG from the entry block, parameter-local

@@ -210,6 +210,7 @@ bool hasValidDeferredActivations(const mir::VerifiedBuiltMir& builtMir,
                                  const VerifiedOwnershipEventOverlay& overlay) {
   size_t expectedFacts = 0;
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     zc::Maybe<const FunctionEventOverlay&> functionOverlay;
     for (const auto& candidate : overlay.functions()) {
       if (candidate.owner != function.owner) continue;
@@ -316,6 +317,7 @@ zc::Maybe<zc::Vector<LoanFact>> derive(const VerifiedMovePaths& movePaths,
   if (!hasValidDeferredActivations(builtMir, overlay)) return zc::none;
   zc::Vector<LoanFact> loans;
   for (const auto& function : builtMir.functions()) {
+    if (!mir::isOwnershipAnalyzedFunction(function)) continue;
     for (const auto& block : function.blocks) {
       for (size_t ordinal = 0; ordinal < block.statements.size(); ++ordinal) {
         const auto& statement = block.statements[ordinal];
