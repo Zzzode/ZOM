@@ -457,6 +457,25 @@ ZC_TEST("HIR pipeline retains the exact canonical scalar const value") {
             checker::signature::CanonicalConstValueTag::Integer);
 }
 
+ZC_TEST("HIR text dump renders the projected field of a local field write") {
+  // A field write (`cell.a = 7`) pools a HirLocalWriteStatement carrying the
+  // projected field definition. The text dump must render it after the write
+  // kind so a field write is distinguishable from a whole-local write instead
+  // of appearing as an unexplained local-write record.
+  HirPipelineFixture fixture(
+      "struct Cell { public mut a: i32, }\n"
+      "fn entry() -> i32 { mut cell: Cell; cell.a = 7; return cell.a; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.localWrites()[0].field != zc::none);
+  auto dump = module.dump();
+  ZC_REQUIRE(dump != zc::none);
+  ZC_IF_SOME(text, dump) {
+    ZC_EXPECT(text.contains("local-write h"_zc));
+    ZC_EXPECT(text.contains(" kind=initialize field="_zc));
+  }
+}
+
 ZC_TEST("HIR pipeline retains verified direct calls separately from literals") {
   HirPipelineFixture fixture(
       "fn helper() -> i32 { return 0; }\n"

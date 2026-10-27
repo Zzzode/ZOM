@@ -509,6 +509,15 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::str(write.value.ordinal()));
     append(output, " kind="_zc);
     append(output, write.kind == HirLocalWriteKind::Initialize ? "initialize"_zc : "overwrite"_zc);
+    // A field write (`cell.a = 7`) carries the projected field definition; a
+    // whole-local write leaves it empty. Print the field key so the dump shows
+    // which projection the write initializes or overwrites.
+    ZC_IF_SOME(fieldDef, write.field) {
+      auto fieldDefinition = impl->identities.definition(fieldDef);
+      if (fieldDefinition == zc::none) return zc::none;
+      append(output, " field="_zc);
+      append(output, zc::encodeHex(ZC_ASSERT_NONNULL(fieldDefinition).key().encode().asPtr()));
+    }
     append(output, "\n"_zc);
   }
   for (const auto& call : impl->calls) {
