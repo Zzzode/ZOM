@@ -224,7 +224,11 @@ ZC_TEST("Semantic context fingerprint canonicalizes mixed user and core order") 
   toolchainInputs.add(coreContextInput());
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
-  expectFingerprint(result, "0ca67b056331e421600aeda686029b084cd7e1c0e1475f1b87193fdc141f07e3"_zc);
+  // Golden digest recomputed after the toolchain input stopped carrying the
+  // core distribution digest (two-phase core bootstrap removal); the codec
+  // fixture pins the current canonical encoding, while order canonicalization
+  // is asserted independently by the permuted input below.
+  expectFingerprint(result, "521fbf9f85f64bb39bd2e8def6bc57adaf83d1fce301ae47cdc2cfb9105e2f47"_zc);
 
   zc::Vector<CompilationUnitIdentity> permutedCompilationUnits;
   permutedCompilationUnits.add(userCompilationUnit("a"_zc));
@@ -243,7 +247,9 @@ ZC_TEST("Semantic context fingerprint passes the core-only codec fixture") {
   toolchainInputs.add(coreContextInput());
   zc::Vector<PackageDependencyEdgeKey> packageEdges;
   auto result = fingerprint(compilationUnits, toolchainInputs, packageEdges);
-  expectFingerprint(result, "f3f4e83d154a5b4b31f9f71a8ba377e899ce4fc21350935505ed3d48f8dcc74a"_zc);
+  // Golden digest recomputed after the toolchain input stopped carrying the
+  // core distribution digest (two-phase core bootstrap removal).
+  expectFingerprint(result, "739715e46d7450963f622b2d0b6f9774c4e6a43574281eec765fcd0a6a1da6d8"_zc);
 }
 
 ZC_TEST("Core semantic context fingerprint binds only the exact projected core crate") {
