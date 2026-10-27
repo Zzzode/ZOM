@@ -5862,6 +5862,47 @@ ZC_TEST("HIR pipeline lowers a parameter return inside a sole nested block") {
   }
 }
 
+ZC_TEST("HIR pipeline lowers a parameter return after a trailing write") {
+  // `fn f(z: i32) -> i32 { mut s = 0; s = 2; return z; }` overwrites one
+  // local and then returns an unrelated parameter. The write stays on the
+  // written local; the return pools a parameter reference. The flat
+  // write-free `let x = 1; return a;` spelling still drains.
+  HirPipelineFixture fixture("fn f(z: i32) -> i32 { mut s = 0; s = 2; return z; }"_zc);
+  const auto& module = fixture.hirModule();
+  ZC_REQUIRE(module.functions().size() == 1);
+  ZC_REQUIRE(module.localWrites().size() == 1);
+  ZC_REQUIRE(module.returns().size() == 1);
+  const auto& function = module.functions()[0];
+  const auto& returned = module.returns()[0];
+  zc::Maybe<const HirParameterReferenceExpression&> returnedParameter;
+  for (const auto& reference : module.parameterReferences()) {
+    if (reference.node != returned.value) continue;
+    returnedParameter = reference;
+  }
+  ZC_EXPECT(returnedParameter != zc::none);
+  ZC_IF_SOME(parameter, returnedParameter) { ZC_EXPECT(parameter.type == function.resultType); }
+
+  const auto builtMir = fixture.compilerSession().getOwnershipCheckedMirModules();
+  ZC_REQUIRE(builtMir.size() == 1);
+  zc::Maybe<const mir::MirFunction&> lowered;
+  for (const auto& mirFunction : builtMir[0].builtMir().functions()) {
+    if (mirFunction.owner == function.definition) lowered = mirFunction;
+  }
+  ZC_REQUIRE(lowered != zc::none);
+  ZC_IF_SOME(mirFunction, lowered) {
+    ZC_REQUIRE(mirFunction.blocks.size() == 1);
+    bool sawOverwrite = false;
+    for (const auto& statement : mirFunction.blocks[0].statements) {
+      if (statement.kind() == mir::MirStatementKind::Assign &&
+          statement.assignmentValue().initialization == mir::MirInitializationKind::Overwrite) {
+        sawOverwrite = true;
+      }
+    }
+    ZC_EXPECT(sawOverwrite);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::Return);
+  }
+}
+
 ZC_TEST("HIR pipeline lowers a parameter leaf in a trailing binary over a write") {
   // `fn f(z: i32) -> i32 { mut s = 1; s = 2; return z + s; }` pairs a trailing
   // overwrite with a flat binary whose one leaf is a parameter and the other

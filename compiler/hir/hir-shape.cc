@@ -1711,13 +1711,16 @@ zc::Maybe<SequentialLocalShape> sequentialLocalShape(const ast::Tree& tree, ast:
   // A body with a trailing write returns the written local directly. A flat
   // primitive binary over the written locals (`s = 2; return 3 + s;`) is also
   // admitted: the writes dominate the binary and the sequential lowering
-  // emits them in source order. A nested binary operand, a returned
-  // parameter, or any other return shape over writes has no layout here and
-  // stays on the fail-closed drain.
+  // emits them in source order. A trailing parameter read (`s = 2; return z`)
+  // is admitted the same way: the writes stay on the written local and the
+  // return value pools a parameter reference. A nested binary operand or any
+  // other return shape over writes has no layout here and stays on the
+  // fail-closed drain.
   if (shape.localWrites.size() != 0 && shape.returnsLocal == zc::none && !shape.returnsLiteral) {
     const bool flatBinaryReturn = returnValueKind == ast::SyntaxKind::BinaryExpr &&
                                   !returnBinaryLeftIsNested && !returnBinaryRightIsNested;
-    if (!flatBinaryReturn) { return zc::none; }
+    const bool parameterReturn = returnValueKind == ast::SyntaxKind::IdentExpr;
+    if (!flatBinaryReturn && !parameterReturn) { return zc::none; }
   }
   return shape;
 }
@@ -4283,17 +4286,19 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
         const bool literalTrappedInUnsafe =
             shape.returnsLiteral && unsafeBlock != zc::none && !recursiveUnsafeSafe;
         // A single benign leading binding whose trailing return reads a
-        // different identifier, admitted only when the body was a sole nested
-        // block unwrapped above (`{ let b = 1; return a; }`): the returned
-        // identifier cannot match the binding's own pattern, so the checker
-        // resolved it to a parameter and sequentialLocalShape leaves
-        // returnsLocal empty. The flat spelling keeps draining, so this is
-        // gated on the nested-block unwrap rather than binding count alone.
+        // different identifier (a parameter, since it cannot match the
+        // binding's own pattern): admitted when the body was a sole nested
+        // block unwrapped above (`{ let b = 1; return a; }`), or when a
+        // trailing plain write precedes the parameter return
+        // (`mut s = 0; s = 2; return z;`). The flat, write-free spelling
+        // (`let x = 1; return a;`) keeps draining, so this is never gated on
+        // binding count alone.
         const bool singleBindingReturnsParameter =
-            bodyUnwrappedFromNestedBlock && shape.bindings.size() == 1 &&
+            shape.bindings.size() == 1 &&
             benignInitializerKind(shape.bindings[0].initializerKind) &&
             tree.node(shape.returnValue).kind == ast::SyntaxKind::IdentExpr &&
-            !matchesLocalReference(tree, shape.bindings[0].pattern, shape.returnValue);
+            !matchesLocalReference(tree, shape.bindings[0].pattern, shape.returnValue) &&
+            (bodyUnwrappedFromNestedBlock || !shape.localWrites.empty());
         routeToSequential =
             !literalTrappedInUnsafe &&
             (shape.bindings.size() >= 2 || shape.returnsLiteral || writtenFlatBinaryReturn ||
