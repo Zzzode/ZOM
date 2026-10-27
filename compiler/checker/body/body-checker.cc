@@ -4032,6 +4032,14 @@ struct BinaryInitializerTypeMismatch final {
 /// arithmetic operation and bool for a comparison, mirroring the shape
 /// validator. Returns none when there is no annotation, when it agrees, or when
 /// either operand type is unresolved, leaving the existing rejection in place.
+zc::Maybe<identity::SemanticTypeId> primitiveBinaryReferenceType(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId operandNode);
+zc::Maybe<identity::SemanticTypeId> internBoolPrimitiveType(type::SemanticTypeStore& semanticTypes);
+zc::Maybe<identity::SemanticTypeId> nestedPrimitiveBinaryResultType(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId operandNode);
+
 zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
@@ -4049,13 +4057,24 @@ zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
-  auto leftType = factEntry(nodeTypes, left);
-  auto rightType = factEntry(nodeTypes, right);
+  // A nested binary operand's node-type fact is produced later in schema
+  // preorder than the outer binary site, so fall back to the same structural
+  // derivation the shape validator uses; an unresolvable operand keeps the
+  // existing fail-closed rejection.
+  auto resolveOperandType = [&](ast::NodeId operand) -> zc::Maybe<identity::SemanticTypeId> {
+    ZC_IF_SOME(entry, factEntry(nodeTypes, operand)) { return entry.value; }
+    if (tree.node(operand).kind == ast::SyntaxKind::BinaryExpr) {
+      return nestedPrimitiveBinaryResultType(input, nodeTypes, operand);
+    }
+    return zc::none;
+  };
+  auto leftType = resolveOperandType(left);
+  auto rightType = resolveOperandType(right);
   if (leftType == zc::none || rightType == zc::none) return zc::none;
   identity::SemanticTypeId leftValue;
   identity::SemanticTypeId rightValue;
-  ZC_IF_SOME(entry, leftType) { leftValue = entry.value; }
-  ZC_IF_SOME(entry, rightType) { rightValue = entry.value; }
+  ZC_IF_SOME(value, leftType) { leftValue = value; }
+  ZC_IF_SOME(value, rightType) { rightValue = value; }
   // Ill-typed operands (different types, a type the operator is not defined
   // for, or a non-primitive) are the other diagnostic's business; only a
   // well-typed operand pair can have a meaningful result type to compare.
@@ -4071,13 +4090,9 @@ zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
   }
   identity::SemanticTypeId resultType = leftValue;
   if (comparison != zc::none) {
-    auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-        type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
-    if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
-    auto interned =
-        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
-    if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-    resultType = interned.get<type::SemanticTypeInterned>().id;
+    auto boolType = internBoolPrimitiveType(input.semanticTypes);
+    if (boolType == zc::none) return zc::none;
+    ZC_IF_SOME(value, boolType) { resultType = value; }
   }
   identity::SemanticTypeId declared;
   ZC_IF_SOME(value, declaredType) { declared = value; }
@@ -4623,6 +4638,98 @@ bool isOwnerLocalFieldRead(const ast::Tree& tree, ast::NodeId node) {
   return tree.contains(object) && tree.node(object).kind == ast::SyntaxKind::IdentExpr;
 }
 
+/// \brief Resolves a value-reference operand's type the way the primitive
+/// binary shape validator does: a callable parameter first, then an owner
+/// local. Returns none for every other operand form.
+zc::Maybe<identity::SemanticTypeId> primitiveBinaryReferenceType(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId operandNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  auto parameter = callableParameterReferenceType(input, operandNode);
+  if (parameter != zc::none) return parameter;
+  return ownerLocalReferenceType(input, operandNode, nodeTypes);
+}
+
+/// \brief Interns the canonical Bool primitive type, or none on store failure.
+zc::Maybe<identity::SemanticTypeId> internBoolPrimitiveType(
+    type::SemanticTypeStore& semanticTypes) {
+  auto canonical = semanticTypes.canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
+  if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
+  auto interned = semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+
+/// \brief Derives the result type of a one-level nested primitive binary
+/// operand (`a + b * c`) structurally.
+///
+/// The inner binary's node-type fact is produced later in schema preorder than
+/// the outer binary's production site, so the result type is derived from a
+/// reference operand, which resolves independent of node-type facts. Each
+/// inner operand must be a reference or a scalar literal with at least one
+/// reference; two-level nesting and unresolvable operands return none. A
+/// comparison or logical operation yields Bool; arithmetic yields the operand
+/// type.
+zc::Maybe<identity::SemanticTypeId> nestedPrimitiveBinaryResultType(
+    const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
+    ast::NodeId operandNode) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::BinaryExpr) {
+    return zc::none;
+  }
+  const auto& inner = tree.node(operandNode);
+  const auto innerOperator =
+      static_cast<ast::BinaryOperatorKind>(inner.payload.words[ast::kBinaryExprOpWord]);
+  const auto innerComparison = scalarComparisonOperation(innerOperator);
+  const auto innerArithmetic = scalarArithmeticOperation(innerOperator);
+  if (innerComparison == zc::none && innerArithmetic == zc::none) return zc::none;
+  const bool innerIsLogical = innerArithmetic == PrimitiveOperation::LogicalAnd ||
+                              innerArithmetic == PrimitiveOperation::LogicalOr;
+  const bool innerIsArithmetic = innerComparison == zc::none && !innerIsLogical;
+  const ast::NodeId innerLeft(inner.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId innerRight(inner.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return zc::none;
+  const bool innerLeftIsReference =
+      tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
+      primitiveBinaryReferenceType(input, nodeTypes, innerLeft) != zc::none;
+  const bool innerRightIsReference =
+      tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr &&
+      primitiveBinaryReferenceType(input, nodeTypes, innerRight) != zc::none;
+  const bool innerLeftIsLiteral = isScalarLiteral(tree.node(innerLeft).kind);
+  const bool innerRightIsLiteral = isScalarLiteral(tree.node(innerRight).kind);
+  // One-level bound: each inner operand is a reference or a scalar literal,
+  // with at least one reference; a nested inner operand keeps two-level
+  // nesting unsupported.
+  if ((!innerLeftIsReference && !innerLeftIsLiteral) ||
+      (!innerRightIsReference && !innerRightIsLiteral) ||
+      (!innerLeftIsReference && !innerRightIsReference)) {
+    return zc::none;
+  }
+  zc::Maybe<identity::SemanticTypeId> innerOperandType;
+  if (innerLeftIsReference) {
+    innerOperandType = primitiveBinaryReferenceType(input, nodeTypes, innerLeft);
+  } else if (innerRightIsReference) {
+    innerOperandType = primitiveBinaryReferenceType(input, nodeTypes, innerRight);
+  }
+  if (innerOperandType == zc::none) return zc::none;
+  identity::SemanticTypeId innerOperand;
+  ZC_IF_SOME(value, innerOperandType) { innerOperand = value; }
+  auto innerOp = innerComparison != zc::none ? innerComparison : innerArithmetic;
+  {
+    auto kind = primitiveKindOf(input.semanticTypes, innerOperand);
+    if (kind == zc::none ||
+        !primitiveBinaryOperationAdmits(ZC_ASSERT_NONNULL(innerOp), ZC_ASSERT_NONNULL(kind))) {
+      return zc::none;
+    }
+  }
+  if (innerIsArithmetic) { return innerOperand; }
+  return internBoolPrimitiveType(input.semanticTypes);
+}
+
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
@@ -4657,12 +4764,7 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   // primitive binary as a local initializer whose operand is an earlier local
   // (e.g. `let y: T = x * b`).
   auto referenceType = [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
-    if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::IdentExpr) {
-      return zc::none;
-    }
-    auto parameter = callableParameterReferenceType(input, operandNode);
-    if (parameter != zc::none) return parameter;
-    return ownerLocalReferenceType(input, operandNode, nodeTypes);
+    return primitiveBinaryReferenceType(input, nodeTypes, operandNode);
   };
   // A field operand is a `this.<field>` projection read inside an inherent
   // method or an owner-local field read (`cell.value`). Its operand type is
@@ -4676,71 +4778,10 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     }
     return zc::none;
   };
-  // A nested operand is itself a one-level primitive binary (`a + b * c`). Its
-  // result type is derived structurally from a reference operand (which resolves
-  // independent of node-type facts) so the outer shape can agree types even
-  // though the inner binary's own node-type fact is produced later in schema
-  // preorder. The inner binary's own production site validates it fully and
-  // fails closed on its own; two-level nesting is rejected because a nested
-  // operand's operands must each be a reference or a scalar literal, never
-  // another binary.
-  auto nestedBinaryResultType =
-      [&](ast::NodeId operandNode) -> zc::Maybe<identity::SemanticTypeId> {
-    if (!tree.contains(operandNode) || tree.node(operandNode).kind != ast::SyntaxKind::BinaryExpr) {
-      return zc::none;
-    }
-    const auto& inner = tree.node(operandNode);
-    const auto innerOperator =
-        static_cast<ast::BinaryOperatorKind>(inner.payload.words[ast::kBinaryExprOpWord]);
-    const auto innerComparison = scalarComparisonOperation(innerOperator);
-    const auto innerArithmetic = scalarArithmeticOperation(innerOperator);
-    const bool innerIsArithmetic = innerComparison == zc::none && innerArithmetic != zc::none;
-    if (innerComparison == zc::none && innerArithmetic == zc::none) return zc::none;
-    const ast::NodeId innerLeft(inner.payload.words[ast::kBinaryExprLhsWord]);
-    const ast::NodeId innerRight(inner.payload.words[ast::kBinaryExprRhsWord]);
-    if (!tree.contains(innerLeft) || !tree.contains(innerRight)) return zc::none;
-    const bool innerLeftIsReference = tree.node(innerLeft).kind == ast::SyntaxKind::IdentExpr &&
-                                      referenceType(innerLeft) != zc::none;
-    const bool innerRightIsReference = tree.node(innerRight).kind == ast::SyntaxKind::IdentExpr &&
-                                       referenceType(innerRight) != zc::none;
-    const bool innerLeftIsLiteral = isScalarLiteral(tree.node(innerLeft).kind);
-    const bool innerRightIsLiteral = isScalarLiteral(tree.node(innerRight).kind);
-    // One-level bound: each inner operand is a reference or a scalar literal, with
-    // at least one reference; a nested inner operand keeps two-level nesting
-    // unsupported.
-    if ((!innerLeftIsReference && !innerLeftIsLiteral) ||
-        (!innerRightIsReference && !innerRightIsLiteral) ||
-        (!innerLeftIsReference && !innerRightIsReference)) {
-      return zc::none;
-    }
-    zc::Maybe<identity::SemanticTypeId> innerOperandType;
-    if (innerLeftIsReference) {
-      innerOperandType = referenceType(innerLeft);
-    } else if (innerRightIsReference) {
-      innerOperandType = referenceType(innerRight);
-    }
-    if (innerOperandType == zc::none) return zc::none;
-    identity::SemanticTypeId innerOperand;
-    ZC_IF_SOME(value, innerOperandType) { innerOperand = value; }
-    auto innerOp = innerComparison != zc::none ? innerComparison : innerArithmetic;
-    {
-      auto kind = primitiveKindOf(input.semanticTypes, innerOperand);
-      if (kind == zc::none ||
-          !primitiveBinaryOperationAdmits(ZC_ASSERT_NONNULL(innerOp), ZC_ASSERT_NONNULL(kind))) {
-        return zc::none;
-      }
-    }
-    if (!innerIsArithmetic) {
-      auto canonical = input.semanticTypes.canonicalizeClosed(type::semantic::TypeData(
-          type::semantic::PrimitiveTypeData{type::semantic::PrimitiveKind::Bool}));
-      if (!canonical.is<type::semantic::CanonicalTypeData>()) return zc::none;
-      auto interned =
-          input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
-      if (!interned.is<type::SemanticTypeInterned>()) return zc::none;
-      return interned.get<type::SemanticTypeInterned>().id;
-    }
-    return innerOperand;
-  };
+  // A nested operand is itself a one-level primitive binary (`a + b * c`).
+  // nestedPrimitiveBinaryResultType derives its result type structurally
+  // because the inner binary node-type fact is produced later in schema
+  // preorder; two-level nesting and unresolvable operands are rejected there.
   const bool leftIsNested = tree.node(left).kind == ast::SyntaxKind::BinaryExpr;
   const bool rightIsNested = tree.node(right).kind == ast::SyntaxKind::BinaryExpr;
   // Exactly one operand may be nested in this slice; both operands nested stays
@@ -4758,8 +4799,10 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const bool rightIsReceiverField =
       (isReceiverFieldRead(tree, right) || isOwnerLocalFieldRead(tree, right)) &&
       receiverFieldType(right) != zc::none;
-  auto leftNestedType = leftIsNested ? nestedBinaryResultType(left) : zc::none;
-  auto rightNestedType = rightIsNested ? nestedBinaryResultType(right) : zc::none;
+  auto leftNestedType =
+      leftIsNested ? nestedPrimitiveBinaryResultType(input, nodeTypes, left) : zc::none;
+  auto rightNestedType =
+      rightIsNested ? nestedPrimitiveBinaryResultType(input, nodeTypes, right) : zc::none;
   if (leftIsNested && leftNestedType == zc::none) { return zc::none; }
   if (rightIsNested && rightNestedType == zc::none) { return zc::none; }
   if ((!leftIsReference && !leftIsLiteral && !leftIsNested && !leftIsReceiverField) ||

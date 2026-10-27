@@ -1186,12 +1186,17 @@ ZC_TEST("PrimitiveBinaryOperation.EmitsLogicalAndWithNestedLogicalOrCallFacts") 
 
 ZC_TEST("PrimitiveBinaryOperation.RejectsTypeMismatchedNestedOperandInitializer") {
   // `let z: bool = a + b * c` declares a bool local but the nested arithmetic
-  // result is i32; the declared type must match the result type, so the body
-  // fails closed.
+  // result is i32. The inner binary's node-type fact is produced later in
+  // schema preorder than the outer binary site, so the declared-vs-result
+  // comparison derives the nested result type structurally and reports ZOM4009,
+  // the same user error as the flat `let x: bool = a + b` form.
   PrimitiveBinaryFixture fixture(
       "fn f(a: i32, b: i32, c: i32) -> i32 { let z: bool = a + b * c; let w: i32 = c; return w; }\n"_zc);
   auto result = fixture.runBodyChecker();
-  ZC_EXPECT(result.is<checked::CheckedFactsInvariantRejected>());
+  ZC_REQUIRE(result.is<checked::CheckedFactsSourceRejected>());
+  const auto& rejection = result.get<checked::CheckedFactsSourceRejected>();
+  ZC_REQUIRE(rejection.failures.size() == 1);
+  ZC_EXPECT(rejection.failures[0].diagnostic == checked::CheckerErrorId::TypeCheckerTypeMismatch());
 }
 
 ZC_TEST("LocalWrite.EmitsParameterReferenceWriteValueFact") {
