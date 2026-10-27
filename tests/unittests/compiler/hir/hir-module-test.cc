@@ -3499,18 +3499,43 @@ ZC_TEST("HIR pipeline lowers a two-arm scalar-literal conditional") {
   ZC_REQUIRE(pick != zc::none);
   ZC_IF_SOME(mirFunction, pick) {
     ZC_REQUIRE(mirFunction.blocks.size() == 4);
-    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    // The condition is materialized into an explicit bool temporary: the c
+    // parameter (local 1), function result (local 2), and condition temporary
+    // (local 3) are brought live first; the entry block copies c into the
+    // temporary and switches on it.
+    ZC_REQUIRE(mirFunction.locals.size() == 3);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::FunctionResult);
+    ZC_EXPECT(mirFunction.locals[2].kind == mir::MirLocalKind::Temporary);
+    const auto resultLocal = mirFunction.locals[1].id;
+    const auto conditionLocal = mirFunction.locals[2].id;
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 3);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].storageLocal() == resultLocal);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].storageLocal() == conditionLocal);
+    ZC_EXPECT(mirFunction.blocks[0].statements[2].kind() == mir::MirStatementKind::Assign);
+    const auto& conditionAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+    ZC_EXPECT(conditionAssign.destination.local() == conditionLocal);
+    ZC_EXPECT(conditionAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(conditionAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(conditionAssign.value.useValue().operand.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
     const auto& switchInt = mirFunction.blocks[0].terminator.switchIntValue();
     ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
-    ZC_EXPECT(switchInt.discriminant.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(switchInt.discriminant.place().local() == conditionLocal);
     // bb2 / bb3: Assign(result = constant, Initialize) ; Goto(bb4)
     ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
     ZC_EXPECT(mirFunction.blocks[1].statements[0].kind() == mir::MirStatementKind::Assign);
+    ZC_EXPECT(mirFunction.blocks[1].statements[0].assignmentValue().destination.local() ==
+              resultLocal);
     ZC_EXPECT(
         mirFunction.blocks[1].statements[0].assignmentValue().value.useValue().operand.kind() ==
         mir::MirOperandKind::Constant);
     ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
     ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
+    ZC_EXPECT(mirFunction.blocks[2].statements[0].assignmentValue().destination.local() ==
+              resultLocal);
     ZC_EXPECT(
         mirFunction.blocks[2].statements[0].assignmentValue().value.useValue().operand.kind() ==
         mir::MirOperandKind::Constant);
@@ -3546,23 +3571,45 @@ ZC_TEST("HIR pipeline lowers a two-arm parameter conditional") {
   }
   ZC_REQUIRE(choose != zc::none);
   ZC_IF_SOME(mirFunction, choose) {
-    // Three parameter locals (c, a, b) plus the function result.
-    ZC_REQUIRE(mirFunction.locals.size() == 4);
+    // Three parameter locals (c, a, b), the function result, and the explicit
+    // bool condition temporary.
+    ZC_REQUIRE(mirFunction.locals.size() == 5);
+    ZC_EXPECT(mirFunction.locals[0].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[1].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[2].kind == mir::MirLocalKind::Parameter);
+    ZC_EXPECT(mirFunction.locals[3].kind == mir::MirLocalKind::FunctionResult);
+    ZC_EXPECT(mirFunction.locals[4].kind == mir::MirLocalKind::Temporary);
+    const auto resultLocal = mirFunction.locals[3].id;
+    const auto conditionLocal = mirFunction.locals[4].id;
     ZC_REQUIRE(mirFunction.blocks.size() == 4);
-    // bb1 header: SwitchInt on the c parameter local (index 0).
-    ZC_REQUIRE(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
+    // bb1 header: bring the result and condition live, copy the c parameter
+    // into the condition temporary, then SwitchInt on the temporary.
+    ZC_REQUIRE(mirFunction.blocks[0].statements.size() == 3);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[0].storageLocal() == resultLocal);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].kind() == mir::MirStatementKind::StorageLive);
+    ZC_EXPECT(mirFunction.blocks[0].statements[1].storageLocal() == conditionLocal);
+    ZC_EXPECT(mirFunction.blocks[0].statements[2].kind() == mir::MirStatementKind::Assign);
+    const auto& conditionAssign = mirFunction.blocks[0].statements[2].assignmentValue();
+    ZC_EXPECT(conditionAssign.destination.local() == conditionLocal);
+    ZC_EXPECT(conditionAssign.value.kind() == mir::MirRvalueKind::Use);
+    ZC_EXPECT(conditionAssign.value.useValue().operand.kind() == mir::MirOperandKind::Copy);
+    ZC_EXPECT(conditionAssign.value.useValue().operand.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(mirFunction.blocks[0].terminator.kind() == mir::MirTerminatorKind::SwitchInt);
     const auto& switchInt = mirFunction.blocks[0].terminator.switchIntValue();
     ZC_EXPECT(switchInt.discriminant.kind() == mir::MirOperandKind::Copy);
-    ZC_EXPECT(switchInt.discriminant.place().local() == mirFunction.locals[0].id);
+    ZC_EXPECT(switchInt.discriminant.place().local() == conditionLocal);
     // bb2: Assign(result = copy/move of the a parameter local) ; Goto(bb4)
     ZC_REQUIRE(mirFunction.blocks[1].statements.size() == 1);
     const auto& thenAssign = mirFunction.blocks[1].statements[0].assignmentValue();
+    ZC_EXPECT(thenAssign.destination.local() == resultLocal);
     ZC_EXPECT(thenAssign.value.useValue().operand.kind() != mir::MirOperandKind::Constant);
     ZC_EXPECT(thenAssign.value.useValue().operand.place().local() == mirFunction.locals[1].id);
     ZC_EXPECT(mirFunction.blocks[1].terminator.kind() == mir::MirTerminatorKind::Goto);
     // bb3: Assign(result = copy/move of the b parameter local) ; Goto(bb4)
     ZC_REQUIRE(mirFunction.blocks[2].statements.size() == 1);
     const auto& elseAssign = mirFunction.blocks[2].statements[0].assignmentValue();
+    ZC_EXPECT(elseAssign.destination.local() == resultLocal);
     ZC_EXPECT(elseAssign.value.useValue().operand.kind() != mir::MirOperandKind::Constant);
     ZC_EXPECT(elseAssign.value.useValue().operand.place().local() == mirFunction.locals[2].id);
     ZC_EXPECT(mirFunction.blocks[2].terminator.kind() == mir::MirTerminatorKind::Goto);
