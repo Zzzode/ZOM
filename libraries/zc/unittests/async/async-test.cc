@@ -959,7 +959,15 @@ TEST(Async, TaskSet) {
 // don't have a version that works on Windows without fibers, so skip the tests there.
 
 inline size_t getSmallStackSize() {
-#if !_WIN32
+#if ZC_HAS_COMPILER_FEATURE(address_sanitizer)
+  // AddressSanitizer inflates stack frames, and its use-after-return mode adds
+  // redzones to them. The exception throw and unwind path exercised by the
+  // task-set destruction tests then overflows the minimum 16 KiB stack inside
+  // the throw machinery itself rather than in the code under test. Use the
+  // upper clamp bound under ASan; the tests' intent (task-set destruction must
+  // not recurse) is unchanged because the task count scales with stack size.
+  return 256 * 1024;
+#elif !_WIN32
   // pthread_attr_setstacksize() requires a stack size of at least PTHREAD_STACK_MIN, which can
   // vary by platform.  We'll clamp that to a reasonable range for stack overflow tests, and skip
   // the pthread-based tests if we can't get it.
