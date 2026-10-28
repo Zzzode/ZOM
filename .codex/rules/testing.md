@@ -20,6 +20,26 @@ existing coverage is already sufficient.
 
 ---
 
+## Test Implementation Policy
+
+- Do not write tests in Python, shell, Node.js, or another scripting
+  language that assert source text, generated text, or logs through pattern
+  matching. Text matching does not exercise the production compiler, runtime,
+  or public behavior and is not accepted as regression coverage.
+- Do not add tests for repository automation, release, CI, or utility scripts
+  unless a concrete behavior and regression risk require coverage. When script
+  coverage is necessary, exercise the actual command contract; do not mirror
+  its implementation in a test or use source-text assertions.
+- Prefer the repository's established, project-language test suites for unit
+  tests and end-to-end tests: `ztest` (C++) for unit tests, and LLVM lit +
+  FileCheck over real `.zom` sources for source-level end-to-end tests. A
+  scripting driver is acceptable only for contracts neither suite can exercise
+  directly (process invocation, exit codes, emitted artifacts, external tool
+  orchestration), and such a driver must be registered under `tests/tools/` and
+  wired into CTest following an existing `check-*.py` pattern.
+
+---
+
 ## Unit Tests (ztest)
 
 ### Naming
