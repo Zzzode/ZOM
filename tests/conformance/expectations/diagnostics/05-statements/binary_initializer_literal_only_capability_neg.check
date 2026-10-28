@@ -1,0 +1,10 @@
+// RUN: cd %corpus && ! %zomc compile --check 05-statements/binary_initializer_literal_only_capability_neg.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A binary initializer made only of literals (`2 + 3`) has no typed operand
+// to anchor the unannotated local type, and the body never reads `a`, so the
+// body slice drains as ZOM4099 instead of reaching a checker invariant.
+// Grammar acceptance is pinned by the matching grammar expectation.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/05-statements/binary_initializer_literal_only_capability_neg.zom:1:1
