@@ -124,6 +124,7 @@ not reused.
 | [RFC 0053](0053-lir-structural-verification-and-translation-validation.md) | LIR Structural Verification And MIR-to-LIR Translation Validation | DRAFT | compiler | compiler | rfc | TBD | TBD |
 | [RFC 0054](0054-core-library-api-specification.md) | Core Library API Specification | DRAFT | language | language | rfc | TBD | TBD |
 | [RFC 0055](0055-definite-assignment-local-bindings.md) | Definite Assignment For Initializer-less Local Bindings | ACCEPTED | language | language | rfc | [Review Tracker](tracking/0055-definite-assignment-review.md) | TBD |
+| [RFC 0056](0056-generic-function-monomorphization.md) | Generic Function Monomorphization | ACCEPTED | compiler | compiler | rfc | [Review Tracker](tracking/0056-generic-function-monomorphization-review.md) | [Tracker](tracking/0056-generic-function-monomorphization-review.md#implementation-tracker) |
 
 ## Status Values
 
