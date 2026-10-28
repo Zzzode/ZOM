@@ -395,7 +395,7 @@ private:
     zc::Maybe<checked::FrozenSubstitutionStore> substitutions;
     zc::Maybe<checked::FrozenWitnessStore> witnesses;
     ZC_IF_SOME(brand, substitutionBrand) {
-      zc::Vector<identity::DefId> noParameters;
+      zc::Vector<identity::GenericParameterKey> noParameters;
       zc::Vector<identity::SemanticTypeId> noArguments;
       zc::Vector<checked::FrozenSubstitutionStore::Record> records;
       records.add(checked::FrozenSubstitutionStore::Record{

@@ -124,7 +124,7 @@ using WitnessArgumentsId = identity::StoreHandle<WitnessArgumentsTag>;
 using TypeErrorId = identity::StoreHandle<TypeErrorTag>;
 
 struct SubstitutionData final {
-  zc::Vector<identity::DefId> parameters;
+  zc::Vector<identity::GenericParameterKey> parameters;
   zc::Vector<identity::SemanticTypeId> arguments;
 };
 

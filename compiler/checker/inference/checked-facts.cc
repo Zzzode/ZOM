@@ -332,6 +332,15 @@ private:
     return false;
   }
 
+  bool encodeGenericParameter(identity::CanonicalEncoder& encoder,
+                              const identity::GenericParameterKey& parameter) const {
+    ZC_IF_SOME(entry, input.identities.genericParameter(parameter)) {
+      entry.key().encode(encoder);
+      return true;
+    }
+    return false;
+  }
+
   bool encodeDefinition(identity::CanonicalEncoder& encoder, identity::DefId definition) const {
     ZC_IF_SOME(entry, input.identities.definition(definition)) {
       entry.key().encode(encoder);
@@ -455,8 +464,8 @@ private:
       }
     }
     encoder.encodeSequenceSize(value.parameters.size());
-    for (const auto parameter : value.parameters) {
-      if (!encodeDefinition(encoder, parameter)) return false;
+    for (const auto& parameter : value.parameters) {
+      if (!encodeGenericParameter(encoder, parameter)) return false;
     }
     encoder.encodeSequenceSize(value.arguments.size());
     for (const auto argument : value.arguments) {
@@ -1806,8 +1815,8 @@ bool validateStoreContents(const CheckedFactsCandidate& candidate,
                            const CheckedFactsVerificationInput& input) {
   for (const auto& record : candidate.substitutionStore.records()) {
     if (record.value.parameters.size() != record.value.arguments.size()) return false;
-    for (const auto parameter : record.value.parameters) {
-      if (!validDefinition(input.identities, parameter)) return false;
+    for (const auto& parameter : record.value.parameters) {
+      if (input.identities.genericParameter(parameter) == zc::none) return false;
     }
     for (const auto argument : record.value.arguments) {
       if (!validType(input.semanticTypes, argument)) return false;

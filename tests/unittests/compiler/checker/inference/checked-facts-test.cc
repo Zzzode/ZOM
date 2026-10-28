@@ -52,6 +52,7 @@ public:
             "interface Behavior { fn act(); }\n"
             "class RecoveryOwner { fn act() {} }\n"
             "impl Behavior for RecoveryOwner {}\n"
+            "fn genericRoot<T>(value: T) -> T { return value; }\n"
             "fn paramRoot(value: i32) {}\n"_zc),
         storeBrands(session.brands()),
         semanticTypes(session.semanticTypes()) {
@@ -143,6 +144,18 @@ public:
     ZC_FAIL_REQUIRE("missing checked-facts fixture definition");
   }
 
+  identity::GenericParameterKey genericParameterKeyFor(zc::StringPtr ownerName) const {
+    const auto owner = definitionNamed(ownerName);
+    ZC_IF_SOME(entry, session.identityAuthority().definition(owner)) {
+      for (const auto& parameter : boundModule().definitions().genericParameters()) {
+        ZC_IF_SOME(parameterOwner, parameter.record.owner().definitionKey()) {
+          if (parameterOwner == entry.key()) { return parameter.key.clone(); }
+        }
+      }
+    }
+    ZC_FAIL_REQUIRE("missing checked-facts fixture generic parameter");
+  }
+
   identity::CallableParameterId callableParameterNamed(zc::StringPtr ownerName) const {
     const auto owner = definitionNamed(ownerName);
     for (const auto& parameter : boundModule().definitions().identities().callableParameters()) {
@@ -221,7 +234,8 @@ public:
     ZC_IF_SOME(brand, substitutionBrand) {
       zc::Vector<FrozenSubstitutionStore::Record> records;
       records.add(FrozenSubstitutionStore::Record{
-          SubstitutionData{zc::Vector<identity::DefId>(), zc::Vector<identity::SemanticTypeId>()},
+          SubstitutionData{zc::Vector<identity::GenericParameterKey>(),
+                           zc::Vector<identity::SemanticTypeId>()},
           zc::mv(substitutionRecord)});
       substitutions = FrozenSubstitutionStore::from(context, brand, zc::mv(records));
     }
@@ -250,8 +264,8 @@ public:
     zc::Maybe<FrozenSubstitutionStore> substitutions;
     zc::Maybe<FrozenWitnessStore> witnesses;
     ZC_IF_SOME(brand, substitutionBrand) {
-      zc::Vector<identity::DefId> parameters;
-      parameters.add(interface);
+      zc::Vector<identity::GenericParameterKey> parameters;
+      parameters.add(genericParameterKeyFor("genericRoot"_zc));
       zc::Vector<identity::SemanticTypeId> arguments;
       arguments.add(ownerType);
       zc::Vector<FrozenSubstitutionStore::Record> records;
