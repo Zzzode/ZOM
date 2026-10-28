@@ -97,6 +97,7 @@ CANONICAL_TYPE_HEADERS = {
     "semantic-type-data.h",
     "semantic-type-key.h",
     "semantic-type-store.h",
+    "type-substitution.h",
 }
 
 RAW_SIGNATURE_VERIFIER_TYPES = (

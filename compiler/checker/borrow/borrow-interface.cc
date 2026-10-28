@@ -5,6 +5,7 @@
 
 #include "compiler/checker/borrow/borrow-interface.h"
 
+#include "compiler/type/type-substitution.h"
 #include "zc/core/string.h"
 
 namespace zomlang::compiler::checker::borrow {
@@ -178,10 +179,20 @@ namespace {
 using ClassifyResult =
     zc::OneOf<BorrowShape, identity::IdentityInvariant, signature::CheckerInvariantFact>;
 
-struct TypeSubstitution final {
-  identity::GenericParameterKey parameter;
-  identity::SemanticTypeId argument;
-};
+using TypeSubstitution = type::semantic::TypeSubstitution;
+
+/// \brief Looks one parameter up in the active nominal environment. Borrow
+/// classification is a read-only analysis (including the const-store
+/// cross-module rebuild), so it resolves parameters lazily here instead of
+/// canonicalizing through type::semantic::substituteType.
+zc::Maybe<identity::SemanticTypeId> mappedParameter(
+    const identity::GenericParameterKey& parameter,
+    zc::ArrayPtr<const TypeSubstitution> substitutions) {
+  for (const auto& candidate : substitutions) {
+    if (candidate.parameter == parameter) { return candidate.argument; }
+  }
+  return zc::none;
+}
 
 zc::Maybe<const signature::SemanticSignature&> findSignature(
     identity::DefId definition, const BorrowInterfaceBuildInput& input) {
@@ -254,14 +265,6 @@ BorrowShape join(BorrowShape left, BorrowShape right) {
   return rank(left) < rank(right) ? right : left;
 }
 
-zc::Maybe<identity::SemanticTypeId> substitute(const identity::GenericParameterKey& parameter,
-                                               zc::ArrayPtr<const TypeSubstitution> substitutions) {
-  for (const auto& candidate : substitutions) {
-    if (candidate.parameter == parameter) { return candidate.argument; }
-  }
-  return zc::none;
-}
-
 ClassifyResult classifyType(identity::SemanticTypeId typeId, const BorrowInterfaceBuildInput& input,
                             zc::ArrayPtr<const TypeSubstitution> substitutions,
                             zc::Vector<identity::DefId>& activeNominals, identity::DefId owner,
@@ -280,7 +283,7 @@ ClassifyResult classifyType(identity::SemanticTypeId typeId, const BorrowInterfa
       return BorrowShape::DirectRootRegion;
     case TypeDataTag::TypeParameter: {
       const auto& parameter = data.get<TypeParameterTypeData>().parameter;
-      ZC_IF_SOME(argument, substitute(parameter, substitutions)) {
+      ZC_IF_SOME(argument, mappedParameter(parameter, substitutions)) {
         return classifyType(argument, input, substitutions, activeNominals, owner, ordinal);
       }
       return BorrowShape::ParametricRegion;

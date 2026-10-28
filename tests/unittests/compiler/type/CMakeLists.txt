@@ -9,3 +9,9 @@ add_ztest_unit_test(
   ${CMAKE_CURRENT_SOURCE_DIR}/semantic-type-store-test.cc
   LIBRARIES type identity lexer
 )
+
+add_ztest_unit_test(
+  type-type-substitution-test
+  ${CMAKE_CURRENT_SOURCE_DIR}/type-substitution-test.cc
+  LIBRARIES type identity lexer
+)
