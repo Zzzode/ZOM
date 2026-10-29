@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_inferred_init_cap_neg_29.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An inferred carrier (i32) is admitted by the checker; the initializer value
+// position drains at the HIR capability gate.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_inferred_init_cap_neg_29.zom:6:13
+// CHECK-LITERAL: 1 error generated.

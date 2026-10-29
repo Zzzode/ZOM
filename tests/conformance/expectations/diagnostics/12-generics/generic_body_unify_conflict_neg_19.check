@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_unify_conflict_neg_19.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Ground inference binds both value arguments to the same parameter; conflicting
+// grounds are a user unification error, not a capability drain.
+
+// CHECK-LITERAL: Error [ZOM4010]: Cannot unify i32 with bool in argument
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_unify_conflict_neg_19.zom:6:12
+// CHECK-LITERAL: 1 error generated.

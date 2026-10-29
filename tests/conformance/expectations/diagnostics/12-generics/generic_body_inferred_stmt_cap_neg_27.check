@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_inferred_stmt_cap_neg_27.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic call in expression-statement position drains through the
+// statement-position rail (ZOM4098) rather than the value rail.
+
+// CHECK-LITERAL: Error [ZOM4098]: this expression statement is not supported yet
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_inferred_stmt_cap_neg_27.zom:6:5
+// CHECK-LITERAL: 1 error generated.

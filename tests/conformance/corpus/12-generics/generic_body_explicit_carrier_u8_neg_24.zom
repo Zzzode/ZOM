@@ -1,0 +1,7 @@
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn f() -> u8 {
+    return identity<u8>(42);
+}

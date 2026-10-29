@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_explicit_literal_range_neg_25.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Literal narrowing precedes the carrier gate: the literal adopts the
+// substituted u8 parameter type and range-checks before ZOM4099.
+
+// CHECK-LITERAL: Error [ZOM4077]: Literal 300 is not representable as u8
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_explicit_literal_range_neg_25.zom:6:25
+// CHECK-LITERAL: 1 error generated.

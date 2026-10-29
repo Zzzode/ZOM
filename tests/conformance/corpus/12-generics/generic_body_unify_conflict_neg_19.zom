@@ -1,0 +1,7 @@
+fn same<T>(a: T, b: T) -> T {
+    return a;
+}
+
+fn f() -> i32 {
+    return same(1, true);
+}

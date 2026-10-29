@@ -16,6 +16,7 @@
 #include "compiler/checker/operator-kind.h"
 #include "compiler/driver/core/marker-authority.h"
 #include "compiler/type/semantic-type-data.h"
+#include "compiler/type/type-substitution.h"
 
 namespace zomlang::compiler::checker::body {
 namespace {
@@ -5169,6 +5170,40 @@ struct DirectCallableShape final {
   zc::Vector<identity::SemanticTypeId> parameters;
 };
 
+/// \brief One resolved generic direct call: the resolved parameter mapping in
+/// canonical generic-parameter order plus the substituted scalar shape.
+/// `carrierAdmitted` records whether every substituted parameter and the
+/// success type belongs to the RFC 0056 first-slice carrier set; the call arm
+/// still runs ordinary argument conformance (literal narrowing, ZOM4009)
+/// before the carrier rejection so user diagnostics win over ZOM4099.
+struct GenericCallAdmission final {
+  identity::DefId callee;
+  zc::Vector<identity::GenericParameterKey> parameterKeys;
+  zc::Vector<identity::SemanticTypeId> arguments;
+  identity::SemanticTypeId calleeType;
+  zc::Vector<identity::SemanticTypeId> parameters;
+  identity::SemanticTypeId success;
+  zc::Maybe<identity::SemanticTypeId> raises;
+  bool carrierAdmitted;
+};
+
+/// \brief Carrier set admitted by the RFC 0056 first monomorphization slice.
+bool isMonoSliceCarrier(const type::semantic::TypeData& data) {
+  if (!data.is<type::semantic::PrimitiveTypeData>()) return false;
+  const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
+  return kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::Bool;
+}
+
+zc::Maybe<const signature::CallableSignature&> sameModuleCallable(const BodyCheckingInput& input,
+                                                                  identity::DefId callee) {
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != callee) continue;
+    if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) return zc::none;
+    return semanticSignature.payload.variant().get<signature::CallableSignature>();
+  }
+  return zc::none;
+}
+
 zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& input,
                                                    ast::NodeId calleeNode) {
   const auto callee = resolvedDefinition(input.boundModule.bindings(), calleeNode);
@@ -5252,6 +5287,244 @@ zc::Maybe<DirectCallableShape> directCallShape(const BodyCheckingInput& input,
   return shape;
 }
 
+zc::Maybe<const type::semantic::TypeData&> lookupTypeData(const BodyCheckingInput& input,
+                                                          identity::SemanticTypeId id) {
+  auto lookup = input.semanticTypes.get(id);
+  if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+  return lookup.get<type::SemanticTypeLookup>().data();
+}
+
+zc::Maybe<identity::SemanticTypeId> internTypeData(const BodyCheckingInput& input,
+                                                   type::semantic::TypeData&& data) {
+  auto canonical = input.semanticTypes.canonicalizeClosed(zc::mv(data));
+  if (!canonical.template is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+  auto interned =
+      input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  if (!interned.template is<type::SemanticTypeInterned>()) { return zc::none; }
+  return interned.get<type::SemanticTypeInterned>().id;
+}
+
+// Reject helpers defined below; forward-declared for the generic-call
+// resolver which precedes them.
+checked::CheckedFactsSourceRejected rejectCallArgumentCount(const BodyProductionSite& site,
+                                                            uint32_t ownerPreorder,
+                                                            uint64_t expectedCount,
+                                                            uint64_t actualCount);
+checked::CheckedFactsSourceRejected rejectExplicitArgumentsRequireGeneric(
+    const BodyProductionSite& site, uint32_t ownerPreorder);
+checked::CheckedFactsSourceRejected rejectExplicitTypeArgumentCount(const BodyProductionSite& site,
+                                                                    uint32_t ownerPreorder,
+                                                                    uint64_t expectedCount,
+                                                                    uint64_t actualCount);
+checked::CheckedFactsSourceRejected rejectCannotInferTypeParameter(
+    const BodyProductionSite& site, uint32_t ownerPreorder, identity::SemanticTypeId parameterType);
+checked::CheckedFactsSourceRejected rejectCannotUnifyTypes(const BodyProductionSite& site,
+                                                           uint32_t ownerPreorder,
+                                                           identity::SemanticTypeId first,
+                                                           identity::SemanticTypeId second);
+zc::Maybe<const BodyProductionSite&> productionSite(zc::ArrayPtr<const BodyProductionSite> sites,
+                                                    ast::NodeId node);
+zc::Maybe<uint32_t> definitionPreorder(
+    const driver::module_graph_query::CheckerBoundModuleView& boundModule,
+    identity::DefId definition);
+
+/// \brief Resolves one call to a generic free function under the RFC 0056
+/// first-slice rules. `zc::none` means the shape stays on the capability
+/// drain (ZOM4099); a rejection is a precise user diagnostic.
+zc::Maybe<zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>>
+resolveGenericDirectCall(const BodyCheckingInput& input, const BodyProductionSite& site,
+                         uint32_t ownerOrdinal,
+                         zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(site.node) || tree.node(site.node).kind != ast::SyntaxKind::CallExpression) {
+    return zc::none;
+  }
+  const auto& call = tree.node(site.node);
+  const ast::NodeId calleeNode(call.payload.words[ast::kCallExpressionCalleeWord]);
+  const ast::NodeList typeArguments{call.payload.words[ast::kCallExpressionTypeArgsFirstWord],
+                                    call.payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+  const ast::NodeList arguments{call.payload.words[ast::kCallExpressionArgsFirstWord],
+                                call.payload.words[ast::kCallExpressionArgsSizeWord]};
+  if (!tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
+      !tree.contains(typeArguments) || !tree.contains(arguments)) {
+    return zc::none;
+  }
+  const auto callee = resolvedDefinition(input.boundModule.bindings(), calleeNode);
+  if (callee == zc::none) { return zc::none; }
+  const auto callablePtr = sameModuleCallable(input, ZC_ASSERT_NONNULL(callee));
+  if (callablePtr == zc::none) { return zc::none; }
+  const auto& callable = ZC_ASSERT_NONNULL(callablePtr);
+
+  const bool isGeneric = callable.genericParameters.size() != 0;
+  if (!isGeneric) {
+    if (typeArguments.empty()) { return zc::none; }
+    return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(
+        rejectExplicitArgumentsRequireGeneric(site, ownerOrdinal));
+  }
+
+  // Slice 1 admits only free, unbounded generic functions with no defaults,
+  // no receiver, no ABI, and no defaulted value parameters.
+  if (callable.receiver != zc::none || callable.abi != zc::none) { return zc::none; }
+  for (const auto& generic : callable.genericParameters) {
+    if (generic.defaultType != zc::none || generic.bounds.size() != 0 ||
+        generic.markerBounds.size() != 0) {
+      return zc::none;
+    }
+  }
+  for (const auto& parameter : callable.parameters) {
+    if (parameter.hasDefault) { return zc::none; }
+  }
+  if (arguments.size != callable.parameters.size()) {
+    return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(
+        rejectCallArgumentCount(site, ownerOrdinal, callable.parameters.size(), arguments.size));
+  }
+
+  // Index the callable's generic parameters by canonical key. Each slot starts
+  // invalid until ground inference or an explicit argument fills it.
+  zc::Vector<identity::SemanticTypeId> binding;
+  binding.reserve(callable.genericParameters.size());
+  for (size_t index = 0; index < callable.genericParameters.size(); ++index) {
+    binding.add(identity::SemanticTypeId{});
+  }
+  auto genericIndex = [&](const identity::GenericParameterKey& key) -> zc::Maybe<size_t> {
+    for (size_t index = 0; index < callable.genericParameters.size(); ++index) {
+      if (callable.genericParameters[index].parameter == key) { return index; }
+    }
+    return zc::none;
+  };
+
+  // Every value parameter must be a bare generic parameter of the callee.
+  zc::Vector<size_t> parameterGenericIndex;
+  parameterGenericIndex.reserve(callable.parameters.size());
+  for (size_t index = 0; index < callable.parameters.size(); ++index) {
+    const auto parameterData = lookupTypeData(input, callable.parameters[index].type);
+    if (parameterData == zc::none) { return zc::none; }
+    const auto& parameterTypeData = ZC_ASSERT_NONNULL(parameterData);
+    if (!parameterTypeData.is<type::semantic::TypeParameterTypeData>()) { return zc::none; }
+    const auto& key = parameterTypeData.get<type::semantic::TypeParameterTypeData>().parameter;
+    const auto generic = genericIndex(key);
+    if (generic == zc::none) { return zc::none; }
+    parameterGenericIndex.add(ZC_ASSERT_NONNULL(generic));
+  }
+
+  const auto argumentNodes = tree.list(arguments);
+  const auto typeArgumentNodes = tree.list(typeArguments);
+  const auto bindGround =
+      [&](size_t generic,
+          identity::SemanticTypeId ground) -> zc::Maybe<checked::CheckedFactsSourceRejected> {
+    if (binding[generic].isValid()) {
+      if (binding[generic] != ground) {
+        return zc::Maybe<checked::CheckedFactsSourceRejected>(
+            rejectCannotUnifyTypes(site, ownerOrdinal, binding[generic], ground));
+      }
+    } else {
+      binding[generic] = ground;
+    }
+    return zc::none;
+  };
+
+  if (!typeArguments.empty()) {
+    if (typeArguments.size != callable.genericParameters.size()) {
+      return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(
+          rejectExplicitTypeArgumentCount(site, ownerOrdinal, callable.genericParameters.size(),
+                                          typeArguments.size));
+    }
+    for (size_t index = 0; index < typeArguments.size; ++index) {
+      const auto resolved = signature::resolveClosedSourceType(
+          input.boundModule, input.identities, input.semanticTypes, typeArgumentNodes[index]);
+      if (resolved == zc::none) { return zc::none; }
+      // Carrier admission happens only after argument conformance in the call
+      // arm, so literal narrowing (ZOM4077) and mismatch (ZOM4009) take
+      // precedence over the ZOM4099 capability drain.
+      binding[index] = ZC_ASSERT_NONNULL(resolved);
+    }
+  } else {
+    for (size_t index = 0; index < argumentNodes.size(); ++index) {
+      const auto produced = [&] -> zc::Maybe<identity::SemanticTypeId> {
+        for (const auto& entry : nodeTypes) {
+          if (entry.key == argumentNodes[index]) { return entry.value; }
+        }
+        // The scalar-literal pre-pass runs before parameter IdentifierReference
+        // sites, so a parameter argument has no node-type fact there. Resolve
+        // its declared type structurally to keep pre-pass inference consistent
+        // with the main loop.
+        if (tree.contains(argumentNodes[index]) &&
+            tree.node(argumentNodes[index]).kind == ast::SyntaxKind::IdentExpr) {
+          return callableParameterReferenceType(input, argumentNodes[index]);
+        }
+        return zc::none;
+      }();
+      if (produced == zc::none) { return zc::none; }
+      ZC_IF_SOME(conflict, bindGround(parameterGenericIndex[index], ZC_ASSERT_NONNULL(produced))) {
+        return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(
+            zc::mv(conflict));
+      }
+    }
+  }
+
+  // Every generic parameter must be determined.
+  for (size_t index = 0; index < binding.size(); ++index) {
+    if (!binding[index].isValid()) {
+      const auto& key = callable.genericParameters[index].parameter;
+      auto parametric = internTypeData(
+          input, type::semantic::TypeData(type::semantic::TypeParameterTypeData{key.clone()}));
+      if (parametric == zc::none) { return zc::none; }
+      return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(
+          rejectCannotInferTypeParameter(site, ownerOrdinal, ZC_ASSERT_NONNULL(parametric)));
+    }
+  }
+
+  zc::Vector<type::semantic::TypeSubstitution> substitutions;
+  zc::Vector<identity::GenericParameterKey> parameterKeys;
+  zc::Vector<identity::SemanticTypeId> resolvedArguments;
+  for (size_t index = 0; index < binding.size(); ++index) {
+    parameterKeys.add(callable.genericParameters[index].parameter.clone());
+    resolvedArguments.add(binding[index]);
+    substitutions.add(type::semantic::TypeSubstitution{
+        callable.genericParameters[index].parameter.clone(), binding[index]});
+  }
+
+  zc::Vector<identity::SemanticTypeId> substitutedParameters;
+  bool carrierAdmitted = true;
+  for (size_t index = 0; index < callable.parameters.size(); ++index) {
+    auto result = type::semantic::substituteType(
+        input.semanticTypes, callable.parameters[index].type, substitutions.asPtr());
+    if (!result.template is<identity::SemanticTypeId>()) { return zc::none; }
+    const auto substituted = result.template get<identity::SemanticTypeId>();
+    const auto substitutedData = lookupTypeData(input, substituted);
+    if (substitutedData == zc::none) { return zc::none; }
+    if (!isMonoSliceCarrier(ZC_ASSERT_NONNULL(substitutedData))) { carrierAdmitted = false; }
+    substitutedParameters.add(substituted);
+  }
+  auto substitutedSuccess =
+      type::semantic::substituteType(input.semanticTypes, callable.success, substitutions.asPtr());
+  if (!substitutedSuccess.template is<identity::SemanticTypeId>()) { return zc::none; }
+  const auto successId = substitutedSuccess.template get<identity::SemanticTypeId>();
+  {
+    const auto successData = lookupTypeData(input, successId);
+    if (successData == zc::none) { return zc::none; }
+    if (!isMonoSliceCarrier(ZC_ASSERT_NONNULL(successData))) { carrierAdmitted = false; }
+  }
+  zc::Maybe<identity::SemanticTypeId> substitutedRaises;
+  ZC_IF_SOME(raisesType, callable.raises) {
+    auto result =
+        type::semantic::substituteType(input.semanticTypes, raisesType, substitutions.asPtr());
+    if (!result.template is<identity::SemanticTypeId>()) { return zc::none; }
+    substitutedRaises = result.template get<identity::SemanticTypeId>();
+  }
+  zc::Vector<identity::SemanticTypeId> calleeParameterTypes;
+  for (const auto& parameter : callable.parameters) { calleeParameterTypes.add(parameter.type); }
+  const auto calleeType =
+      internTypeData(input, type::semantic::TypeData(type::semantic::FunctionTypeData{
+                                zc::mv(calleeParameterTypes), callable.success, callable.raises}));
+  if (calleeType == zc::none) { return zc::none; }
+
+  return zc::OneOf<GenericCallAdmission, checked::CheckedFactsSourceRejected>(GenericCallAdmission{
+      ZC_ASSERT_NONNULL(callee), zc::mv(parameterKeys), zc::mv(resolvedArguments),
+      ZC_ASSERT_NONNULL(calleeType), zc::mv(substitutedParameters), successId,
+      zc::mv(substitutedRaises), carrierAdmitted});
+}
+
 bool isMethodCallCallee(const ast::Tree& tree, ast::NodeId member) {
   bool found = false;
   ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
@@ -5261,6 +5534,31 @@ bool isMethodCallCallee(const ast::Tree& tree, ast::NodeId member) {
     }
   });
   return found;
+}
+
+/// \brief The generic function value type of an identifier that is the callee
+/// of a direct generic call, or none. The callee node carries this
+/// unsubstituted function type as its node fact; the call expression carries
+/// the substitution evidence.
+zc::Maybe<identity::SemanticTypeId> genericDirectCalleeType(const BodyCheckingInput& input,
+                                                            ast::NodeId identifier) {
+  const auto& tree = input.boundModule.tree();
+  zc::Maybe<identity::SemanticTypeId> result;
+  ast::visitTreePreOrder(tree, tree.root(), [&](ast::NodeId node, const ast::Node& syntax) {
+    if (result != zc::none || syntax.kind != ast::SyntaxKind::CallExpression) { return; }
+    if (ast::NodeId(syntax.payload.words[ast::kCallExpressionCalleeWord]) != identifier) { return; }
+    const auto callee = resolvedDefinition(input.boundModule.bindings(), identifier);
+    ZC_IF_SOME(definition, callee) {
+      ZC_IF_SOME(callable, sameModuleCallable(input, definition)) {
+        if (callable.genericParameters.size() == 0 || callable.receiver != zc::none) { return; }
+        zc::Vector<identity::SemanticTypeId> parameters;
+        for (const auto& parameter : callable.parameters) { parameters.add(parameter.type); }
+        result = internTypeData(input, type::semantic::TypeData(type::semantic::FunctionTypeData{
+                                           zc::mv(parameters), callable.success, callable.raises}));
+      }
+    }
+  });
+  return result;
 }
 
 struct ConcreteMethodCallShape final {
@@ -5928,7 +6226,7 @@ zc::Maybe<ConcreteMethodCallShape> dynMethodCallShape(
 zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
     const BodyCheckingInput& input, ast::NodeId literal,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
-    const LocalWriteRegistry& writeRegistry) {
+    const LocalWriteRegistry& writeRegistry, zc::ArrayPtr<const BodyProductionSite> sites) {
   const auto& tree = input.boundModule.tree();
   if (!tree.contains(literal)) return zc::none;
 
@@ -6030,12 +6328,37 @@ zc::Maybe<identity::SemanticTypeId> expectedLiteralType(
               const auto& parameters = ZC_ASSERT_NONNULL(method).parameters;
               if (index < parameters.size()) argumentHint = parameters[index];
             } else {
-              // An enum tuple-variant construction argument adopts the
-              // corresponding payload field type.
-              auto construction = enumVariantConstructionShape(input, node);
-              if (construction != zc::none) {
-                const auto& payload = ZC_ASSERT_NONNULL(construction).payload;
-                if (index < payload.size()) argumentHint = payload[index];
+              // RFC 0056: a generic direct call supplies its substituted
+              // parameter types once type arguments resolve (or parameter
+              // grounds infer), so `identity<u8>(42)` narrows the literal
+              // before the carrier gate drains the call (ZOM4099). Rejections
+              // are ignored here; the main production pass owns them.
+              auto genericSite = productionSite(sites, node);
+              if (genericSite != zc::none) {
+                const auto& callSite = ZC_ASSERT_NONNULL(genericSite);
+                ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, node)) {
+                  ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
+                    auto resolution =
+                        resolveGenericDirectCall(input, callSite, ownerOrdinal, nodeTypes);
+                    if (resolution != zc::none) {
+                      auto& result = ZC_ASSERT_NONNULL(resolution);
+                      if (result.template is<GenericCallAdmission>()) {
+                        const auto& parameters =
+                            result.template get<GenericCallAdmission>().parameters;
+                        if (index < parameters.size()) argumentHint = parameters[index];
+                      }
+                    }
+                  }
+                }
+              }
+              if (argumentHint == zc::none) {
+                // An enum tuple-variant construction argument adopts the
+                // corresponding payload field type.
+                auto construction = enumVariantConstructionShape(input, node);
+                if (construction != zc::none) {
+                  const auto& payload = ZC_ASSERT_NONNULL(construction).payload;
+                  if (index < payload.size()) argumentHint = payload[index];
+                }
               }
             }
           }
@@ -6529,6 +6852,109 @@ checked::CheckedFactsSourceRejected rejectCallArgumentCount(const BodyProduction
       checked::CheckerErrorId::CallArgumentCountMismatch(), checked::CheckerDiagnosticStage::Body,
       site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
       checked::CheckerDiagnosticProducer::Call,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4035: explicit type arguments name a callee that is not generic.
+checked::CheckedFactsSourceRejected rejectExplicitArgumentsRequireGeneric(
+    const BodyProductionSite& site, uint32_t ownerPreorder) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::ExplicitTypeArgumentsRequireGenericCallee(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Call,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::InvalidOperation, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4016: wrong number of explicit type arguments.
+checked::CheckedFactsSourceRejected rejectExplicitTypeArgumentCount(const BodyProductionSite& site,
+                                                                    uint32_t ownerPreorder,
+                                                                    uint64_t expectedCount,
+                                                                    uint64_t actualCount) {
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(checked::CheckerDisplayArgument(checked::CountDisplayArg{expectedCount}));
+  arguments.add(checked::CheckerDisplayArgument(checked::CountDisplayArg{actualCount}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::ExplicitTypeArgumentCountMismatch(),
+      checked::CheckerDiagnosticStage::Body, site.node, site.key.sourceSpan.clone(),
+      zc::mv(arguments), zc::mv(notes), checked::CheckerDiagnosticProducer::Call,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4014: a generic parameter has no inferred type argument. The display
+// argument is the parametric type itself (Kind::Type).
+checked::CheckedFactsSourceRejected rejectCannotInferTypeParameter(
+    const BodyProductionSite& site, uint32_t ownerPreorder,
+    identity::SemanticTypeId parameterType) {
+  zc::Maybe<identity::SemanticIdentifier> noAlias;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{parameterType, zc::mv(noAlias)}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CannotInferTypeParameter(), checked::CheckerDiagnosticStage::Body,
+      site.node, site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Inference,
+      checked::CheckerRecoveryPolicy(
+          checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::FailedInference, false}),
+      checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
+                                     ownerPreorder, site.key.schemaPreorder, 0},
+      zc::mv(noRecovery)});
+  return checked::CheckedFactsSourceRejected{zc::mv(failures),
+                                             zc::Vector<checked::CheckerAdvisoryRef>(),
+                                             zc::Vector<checked::FrozenRecoveryLedger>()};
+}
+
+// ZOM4010: value arguments infer conflicting types for one parameter.
+checked::CheckedFactsSourceRejected rejectCannotUnifyTypes(const BodyProductionSite& site,
+                                                           uint32_t ownerPreorder,
+                                                           identity::SemanticTypeId first,
+                                                           identity::SemanticTypeId second) {
+  zc::Maybe<identity::SemanticIdentifier> noAliasFirst;
+  zc::Maybe<identity::SemanticIdentifier> noAliasSecond;
+  zc::Vector<checked::CheckerDisplayArgument> arguments;
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{first, zc::mv(noAliasFirst)}));
+  arguments.add(
+      checked::CheckerDisplayArgument(checked::TypeDisplayArg{second, zc::mv(noAliasSecond)}));
+  arguments.add(checked::CheckerDisplayArgument(
+      checked::ConstraintContextDisplayArg{checked::ConstraintReasonKind::Argument}));
+  zc::Vector<checked::CheckerNoteRef> notes;
+  zc::Maybe<checked::TypeErrorId> noRecovery;
+  zc::Vector<checked::CheckerFailureRef> failures;
+  failures.add(checked::CheckerFailureRef{
+      checked::CheckerErrorId::CannotUnifyTypes(), checked::CheckerDiagnosticStage::Body, site.node,
+      site.key.sourceSpan.clone(), zc::mv(arguments), zc::mv(notes),
+      checked::CheckerDiagnosticProducer::Inference,
       checked::CheckerRecoveryPolicy(
           checked::CreateRootRecoveryPolicy{checked::CheckerRecoveryClass::TypeMismatch, true}),
       checked::CheckerEmitterOrdinal{static_cast<uint8_t>(checked::CheckerDiagnosticStage::Body),
@@ -8783,6 +9209,15 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
     checked::CoercionSite site;
   };
   zc::Vector<SelectedDynErase> dynErases;
+  // RFC 0056: generic direct calls resolved in this body, awaiting frozen
+  // substitution/witness record ids. The call envelopes are fixup-edited once
+  // the frozen stores are assembled.
+  struct PendingGenericCall final {
+    ast::NodeId node;
+    zc::Vector<identity::GenericParameterKey> parameters;
+    zc::Vector<identity::SemanticTypeId> arguments;
+  };
+  zc::Vector<PendingGenericCall> pendingGenericCalls;
   // Pre-pass: produce NodeType facts on IdentifierPattern nodes inside
   // tuple-variant EnumPattern arms. The main production loop resolves
   // IdentifierReference sites through ownerLocalReferenceType, which reads
@@ -8845,7 +9280,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
           context, module, input.boundModule.tree(), site.node, site.key,
           input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
-          expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry)});
+          expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry,
+                              input.requirements.impl->productionSiteValues.asPtr())});
       if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
         return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
       }
@@ -9417,6 +9853,12 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           }
         }
         if (producedType == zc::none) {
+          // RFC 0056: the callee identifier of a generic direct call carries
+          // the unsubstituted generic function type as its node fact; the
+          // call-expression site carries the substitution evidence.
+          producedType = genericDirectCalleeType(input, site.node);
+        }
+        if (producedType == zc::none) {
           // An unannotated binary-result local referenced inside an inherent
           // method cannot be typed at this stage; surface admission does not
           // gate method bodies, so drain the method as ZOM4125 here instead of
@@ -9709,6 +10151,37 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
         }
       } else if (site.production == BodyProductionKind::DirectCall) {
         auto shape = directCallShape(input, site.node);
+        // RFC 0056: false for a generic call whose substituted carrier set is
+        // outside the first slice. The ordinary argument loop still runs so
+        // narrowing and mismatch diagnostics take precedence; the capability
+        // drain follows conformance.
+        bool genericCarrierAdmitted = true;
+        if (shape == zc::none) {
+          // RFC 0056: try admitting a free, unbounded generic direct call
+          // before falling through to the arity check and capability drain.
+          ZC_IF_SOME(callOwner, enclosingBodyOwner(input.boundModule, site.node)) {
+            ZC_IF_SOME(ownerOrdinal, definitionPreorder(input.boundModule, callOwner)) {
+              auto resolution =
+                  resolveGenericDirectCall(input, site, ownerOrdinal, nodeTypes.asPtr());
+              ZC_IF_SOME(result, resolution) {
+                if (result.template is<checked::CheckedFactsSourceRejected>()) {
+                  return attachRecoveryLedger(
+                      zc::mv(result).template get<checked::CheckedFactsSourceRejected>(), input,
+                      factStoreBrands);
+                }
+                auto admitted = zc::mv(result).template get<GenericCallAdmission>();
+                genericCarrierAdmitted = admitted.carrierAdmitted;
+                shape = zc::Maybe<DirectCallableShape>(
+                    DirectCallableShape{admitted.callee, admitted.calleeType, admitted.success,
+                                        zc::mv(admitted.raises), zc::mv(admitted.parameters)});
+                if (genericCarrierAdmitted) {
+                  pendingGenericCalls.add(PendingGenericCall{
+                      site.node, zc::mv(admitted.parameterKeys), zc::mv(admitted.arguments)});
+                }
+              }
+            }
+          }
+        }
         if (shape == zc::none) {
           // A resolved callee supplied with the wrong number of arguments is a
           // user error (ZOM4036); every other unresolved direct call is legal
@@ -9990,6 +10463,18 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
               checkedArguments.add(checked::CheckedArgumentFact{
                   argument, type.value, value.parameters[index], zc::mv(noAdjustment)});
             }
+          }
+          if (!genericCarrierAdmitted) {
+            // A type-correct generic call whose substituted carrier set is
+            // outside the RFC 0056 first slice (e.g. identity<u8>) reaches
+            // here only after ordinary argument conformance, so narrowing
+            // (ZOM4077) and mismatch (ZOM4009) already took precedence.
+            ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+              return zc::mv(drained);
+            }
+            return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                   site.key.schemaPreorder, zc::none, site.node,
+                                   site.key.sourceSpan.clone(), factPath(site.primaryGroup));
           }
           zc::Maybe<checked::CanonicalSubstitutionId> noSubstitutions;
           zc::Maybe<checked::WitnessArgumentsId> noWitnesses;
@@ -12063,7 +12548,8 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
           auto emitted = scalar_literal::FactEmitter::emit(scalar_literal::FactEmissionInput{
               context, module, input.boundModule.tree(), site.node, site.key,
               input.boundModule.parsedModule().source(), input.identities, input.semanticTypes,
-              expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry)});
+              expectedLiteralType(input, site.node, nodeTypes.asPtr(), writeRegistry,
+                                  input.requirements.impl->productionSiteValues.asPtr())});
           if (emitted.is<checked::CheckedFactsInvariantRejected>()) {
             return zc::mv(emitted).get<checked::CheckedFactsInvariantRejected>();
           }
@@ -12935,6 +13421,34 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
   zc::Maybe<checked::FrozenWitnessStore> witnesses;
   ZC_IF_SOME(brand, substitutionBrand) {
     zc::Vector<checked::FrozenSubstitutionStore::Record> records;
+    // RFC 0056: one record per distinct generic-call substitution, in site
+    // order. Canonical bytes are filled by writeCanonicalRecords below.
+    for (const auto& pending : pendingGenericCalls) {
+      bool duplicate = false;
+      for (const auto& existing : records) {
+        if (existing.value.parameters.size() != pending.parameters.size()) continue;
+        bool same = true;
+        for (size_t index = 0; index < existing.value.parameters.size(); ++index) {
+          if (existing.value.parameters[index] != pending.parameters[index] ||
+              existing.value.arguments[index] != pending.arguments[index]) {
+            same = false;
+            break;
+          }
+        }
+        if (same) {
+          duplicate = true;
+          break;
+        }
+      }
+      if (duplicate) { continue; }
+      zc::Vector<identity::GenericParameterKey> parameters;
+      zc::Vector<identity::SemanticTypeId> arguments;
+      for (const auto& parameter : pending.parameters) { parameters.add(parameter.clone()); }
+      for (const auto argument : pending.arguments) { arguments.add(argument); }
+      records.add(checked::FrozenSubstitutionStore::Record{
+          checked::SubstitutionData{zc::mv(parameters), zc::mv(arguments)},
+          zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
+    }
     substitutions = checked::FrozenSubstitutionStore::from(context, brand, zc::mv(records));
   }
   ZC_IF_SOME(brand, witnessBrand) {
@@ -12977,10 +13491,71 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
       records.add(checked::FrozenWitnessStore::Record{zc::mv(data),
                                                       zc::heapArray<uint8_t>(1, uint8_t{0xa1})});
     }
+    // RFC 0056: generic calls (slice 1) share one canonical empty witness set,
+    // appended after dyn-erase records so it never shifts the erase idAt(0).
+    if (pendingGenericCalls.size() != 0) {
+      records.add(checked::FrozenWitnessStore::Record{
+          checked::WitnessArgumentsData{zc::Vector<checked::WitnessEntry>()},
+          zc::heapArray<uint8_t>(1, uint8_t{0xa0})});
+    }
     witnesses = checked::FrozenWitnessStore::from(context, brand, zc::mv(records));
   }
   if (substitutions == zc::none || witnesses == zc::none) {
     return rejectInvariant(signature::CheckerInvariantKind::InferenceLifecycle, module, 0);
+  }
+
+  // RFC 0056: attach the frozen substitution and empty-witness record ids to
+  // each admitted generic call's checked envelope. Dispatch facts copy these
+  // fields during dispatch-fact construction.
+  zc::Maybe<checked::WitnessArgumentsId> genericWitnessId;
+  if (pendingGenericCalls.size() != 0) {
+    ZC_IF_SOME(substitutionView, substitutions) {
+      ZC_IF_SOME(witnessView, witnesses) {
+        // The generic empty witness record is the last witness record.
+        if (witnessView.records().size() == 0) {
+          return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module,
+                                 0);
+        }
+        genericWitnessId = witnessView.idAt(witnessView.records().size() - 1);
+        if (genericWitnessId == zc::none) {
+          return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch, module,
+                                 0);
+        }
+        auto findSubstitutionId = [&](zc::ArrayPtr<const identity::GenericParameterKey> parameters,
+                                      zc::ArrayPtr<const identity::SemanticTypeId> arguments)
+            -> zc::Maybe<checked::CanonicalSubstitutionId> {
+          const auto& storeRecords = substitutionView.records();
+          for (uint32_t index = 0; index < storeRecords.size(); ++index) {
+            const auto& candidate = storeRecords[index].value;
+            if (candidate.parameters.size() != parameters.size()) continue;
+            bool same = true;
+            for (size_t field = 0; field < parameters.size(); ++field) {
+              if (candidate.parameters[field] != parameters[field] ||
+                  candidate.arguments[field] != arguments[field]) {
+                same = false;
+                break;
+              }
+            }
+            if (same) { return substitutionView.idAt(index); }
+          }
+          return zc::none;
+        };
+        for (auto& callEntry : calls) {
+          for (const auto& pending : pendingGenericCalls) {
+            if (callEntry.key != pending.node) continue;
+            auto substitutionId =
+                findSubstitutionId(pending.parameters.asPtr(), pending.arguments.asPtr());
+            if (substitutionId == zc::none || genericWitnessId == zc::none) {
+              return rejectInvariant(signature::CheckerInvariantKind::CanonicalCodecMismatch,
+                                     module, 0);
+            }
+            callEntry.value.invocation.substitutions = zc::mv(substitutionId);
+            callEntry.value.invocation.witnesses = genericWitnessId;
+            break;
+          }
+        }
+      }
+    }
   }
 
   // Build the concrete-to-dyn coercion facts once the witness store is frozen,

@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_argument_count_neg_23.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Generic callees share the ordinary value-argument arity check; a wrong
+// count is ZOM4036 rather than the capability drain.
+
+// CHECK-LITERAL: Error [ZOM4036]: Expected 1 arguments, got 2
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_argument_count_neg_23.zom:6:12
+// CHECK-LITERAL: 1 error generated.

@@ -10,7 +10,7 @@ The ZOM type system is:
 - **Strong**: No implicit conversions between incompatible types. Only explicitly sanctioned coercions are permitted (see [Subtyping](#subtyping) and [Type Casting and Conversion](#type-casting-and-conversion)).
 - **Nominal**: Named types (classes, structs, enums, interfaces) are distinguished by their declaration identity, not by structure alone. Two structurally identical types declared at different source sites are incompatible.
 - **Generic**: Supports parametric polymorphism via type parameters with declared bounds. Generic functions are type-checked parametrically (once, against declared bounds); concrete instantiations are monomorphized at code-generation time.
-- **Inferred**: Intra-expression and intra-function types are inferred via a constraint-based engine. Equality constraints use first-order unification; directional subtype constraints are solved only at explicit coercion sites. Top-level declarations require explicit type annotations (no global inference).
+- **Inferred**: Intra-expression and intra-function types are inferred via a constraint-based engine. Equality constraints are solved as whole-variable-to-ground-type bindings; structural unification of composite types is reserved. Directional subtype constraints are solved only at explicit coercion sites. Top-level declarations require explicit type annotations (no global inference).
 - **Fail-closed**: Any expression that cannot be typed receives the `Error` type and a diagnostic is emitted. The checker never silently guesses a type.
 
 ## Predefined Types
@@ -711,7 +711,11 @@ parser rejects attempts to declare one.
 
 ## Type Inference
 
-ZOM uses **annotation-directed local inference**: type information flows from declared types (parameters, return types, explicit annotations) inward to expressions, and from sub-expressions outward to their parent. The inference engine collects equality constraints and directional coercion constraints. Equality constraints are solved via first-order unification; coercion constraints are solved by the subtyping rules above.
+ZOM uses **annotation-directed local inference**: type information flows from declared types (parameters, return types, explicit annotations) inward to expressions, and from sub-expressions outward to their parent. The inference engine collects equality constraints and directional coercion constraints. Equality constraints are solved as whole-variable-to-ground-type bindings; structural unification of composite types is reserved. Coercion constraints are solved by the subtyping rules above.
+
+Call-site solving for generic functions is restricted to equality between
+value-argument types and bare type-parameter positions; see
+[Ch.12 Call-Site Type Arguments](12-generics.md#call-site-type-arguments).
 
 ### Local Variable Inference
 
@@ -723,7 +727,15 @@ For `let x = expr` (no type annotation):
 4. After all uses of `x` are processed:
    - If `?X` resolved to a concrete type, `x` has that type.
    - If `?X` is still unbound and is a numeric type variable, it defaults to `i32` (integer) or `f64` (float).
-   - If `?X` is still unbound and non-numeric, the checker reports `ZOM4014: cannot infer type parameter`.
+   - If `?X` is still unbound and non-numeric, an unresolved local inference
+     variable is reserved; it does not yet produce a diagnostic in this
+     revision.
+
+The catalog headline `ZOM4014 Cannot infer type parameter` is produced when a
+generic function parameter of a call cannot be solved from its value arguments
+or explicit type arguments (see
+[Ch.12 Call-Site Type Arguments](12-generics.md#call-site-type-arguments));
+the parameter is rendered as `<type-parameter#ordinal>`.
 
 For `let x: T = expr` (with annotation):
 
@@ -755,7 +767,7 @@ takes_u64(x);       // unifies ?X with u64
 | Identifier | Look up the symbol's type. If the symbol is a generic parameter, return the corresponding type variable. |
 | Binary `op` | Infer both operand types, unify them (for arithmetic/comparison), check `op` validity. Arithmetic result = operand type. Comparison result = `bool`. |
 | Unary `op` | Infer operand type, check `op` validity. `-` result = operand type. `!` result = `bool`. `*` result = dereferenced type. `&` result = reference type. |
-| Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types. Emit a directional coercion constraint from each argument type to the parameter type. A non-raising call has the declared success type. A call with success type `T` and raises type `E` has canonical expression type `T \| E` plus checked success/residual role metadata. |
+| Call `callee(args)` | Infer callee type (must be function type). If generic, infer type args from arg types at bare type-parameter positions only; see [Ch.12 Call-Site Type Arguments](12-generics.md#call-site-type-arguments). Emit a directional coercion constraint from each argument type to the parameter type. A non-raising call has the declared success type. A call with success type `T` and raises type `E` has canonical expression type `T \| E` plus checked success/residual role metadata. |
 | Member `obj.member` | Infer `obj` type. Look up `member` in the type's fields/methods. Result = field/method type. |
 | Index `arr[idx]` | Infer `arr` type (must be `T[]`, `[T]`, or `[T; N]`). Infer `idx` type (must be `usize` or `isize`). Result = `T`. |
 | Conditional `cond ? then : else` | `cond` must unify with `bool`. Infer `then` and `else` types, choose a join type, and emit directional coercions from each arm to the join. Result = join type. |

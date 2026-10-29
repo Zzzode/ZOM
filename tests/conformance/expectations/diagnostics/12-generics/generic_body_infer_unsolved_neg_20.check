@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_infer_unsolved_neg_20.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A generic parameter never observed at a value argument cannot be inferred;
+// the call must name it explicitly.
+
+// CHECK-LITERAL: Error [ZOM4014]: Cannot infer type parameter <type-parameter#0>; provide explicit type arguments
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_infer_unsolved_neg_20.zom:6:12
+// CHECK-LITERAL: 1 error generated.

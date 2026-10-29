@@ -9881,6 +9881,30 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     : zc::Maybe<identity::DefId>()};
           }
         } else {
+          // RFC 0056 stage 2: generic calls are checker-admitted but no HIR
+          // generic-call lowering exists yet. Drain them via the capability
+          // rail (ZOM4099 in a value position) instead of an internal
+          // invariant, whether or not explicit type arguments were written.
+          {
+            auto genericCallIndex = factIndex(facts.calls(), callNode);
+            if (genericCallIndex != zc::none) {
+              const auto& genericInvocation =
+                  facts.calls().entries()[ZC_ASSERT_NONNULL(genericCallIndex)].value.invocation;
+              if (genericInvocation.substitutions != zc::none ||
+                  genericInvocation.witnesses != zc::none) {
+                auto genericSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
+                if (genericSpan == zc::none) {
+                  return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                       ir::IrFailureKind::MissingRequiredFact,
+                                                       module, registries, ordinal + 2);
+                }
+                return rejectHirCapability<HirModuleCandidate>(
+                    definition.definition, registries,
+                    ir::IrFailureKind::UnsupportedSourceConstruct,
+                    ZC_ASSERT_NONNULL(genericSpan).clone());
+              }
+            }
+          }
           if (!tree.contains(calleeNode) ||
               tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
               !tree.contains(typeArguments) || !tree.contains(arguments) ||

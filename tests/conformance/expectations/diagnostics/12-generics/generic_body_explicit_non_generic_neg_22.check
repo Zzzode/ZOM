@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_explicit_non_generic_neg_22.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Explicit type arguments on a non-generic callee are a user error, reported
+// in a function body exactly as at module scope.
+
+// CHECK-LITERAL: Error [ZOM4035]: Explicit type arguments require a generic callee
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_explicit_non_generic_neg_22.zom:6:12
+// CHECK-LITERAL: 1 error generated.

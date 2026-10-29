@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_inferred_condition_cap_neg_33.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// An admitted bool carrier in condition position is legal source the current
+// slice cannot lower; it drains on the capability rail.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_inferred_condition_cap_neg_33.zom:5:1
+// CHECK-LITERAL: 1 error generated.

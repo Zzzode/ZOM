@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1084,
+  "count": 1101,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -1794,6 +1794,10 @@
       "hirSha256": "b2958a49f087f3d408996dceeac33be5c963ecd2fbf71e653fb7ac901c40ac2c",
       "mirSha256": "357271a7f713aa144d287cd32b23a89839be0403934386477516529ec9fe2f6b",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "05-statements/binary_initializer_literal_only_capability_neg.zom": {
+      "exitCode": 1,
+      "sha256": "0ec5b7a2d34b79363ea525778f9199cb449194bccf0e686529b959b5b041677a"
     },
     "05-statements/binary_initializer_unannotated_arith_pos.zom": {
       "exitCode": 0,
@@ -3958,6 +3962,70 @@
     "12-generics/fun_generic_pos_06.zom": {
       "exitCode": 1,
       "sha256": "0996c1ac6d33f89a6fe62c9b434161d6b37a2a8ef45398ed8c0ad39b8475b782"
+    },
+    "12-generics/generic_body_argument_count_neg_23.zom": {
+      "exitCode": 1,
+      "sha256": "909f40b102d32ce6ca964766e795ecac870f70727b7fdc0bf32d4a455a148a8b"
+    },
+    "12-generics/generic_body_explicit_carrier_u8_neg_24.zom": {
+      "exitCode": 1,
+      "sha256": "bf73b60692f5804fc00483b2bda63d87041cec7dbf8df0ee327359b28f3262d3"
+    },
+    "12-generics/generic_body_explicit_condition_cap_neg_34.zom": {
+      "exitCode": 1,
+      "sha256": "5d5b21ab63d4aca98a9eb3e20c8599aadbb7af3208690163bf4d6ca5415a0703"
+    },
+    "12-generics/generic_body_explicit_count_neg_21.zom": {
+      "exitCode": 1,
+      "sha256": "450737f070a1808fd3d7bbd670826f0dff9d95520a0267a8d18e0f5ecb1f6d03"
+    },
+    "12-generics/generic_body_explicit_init_cap_neg_30.zom": {
+      "exitCode": 1,
+      "sha256": "cf775407dfa8cc9f323c0afec5381151be99aad92274a41d936844b7e553af9a"
+    },
+    "12-generics/generic_body_explicit_literal_range_neg_25.zom": {
+      "exitCode": 1,
+      "sha256": "ae3f5b90cb570e868d2e5a867181cded1bf1a5c185cc719f2938c4d2a30b66e3"
+    },
+    "12-generics/generic_body_explicit_mismatch_neg_26.zom": {
+      "exitCode": 1,
+      "sha256": "ec757cba38957ee5a78a8e93d82434aa8f598c20518c830b0ffcbc4266a036f3"
+    },
+    "12-generics/generic_body_explicit_non_generic_neg_22.zom": {
+      "exitCode": 1,
+      "sha256": "a7b825b221ca797e4fd8e34ff63199602576471d04b4da60c42bd0ac62794f5a"
+    },
+    "12-generics/generic_body_explicit_return_cap_neg_32.zom": {
+      "exitCode": 1,
+      "sha256": "ad82f17588a1d2493ee18ffa80d7157e16bc40a11ae2d246e6012b604b2ccc0a"
+    },
+    "12-generics/generic_body_explicit_stmt_cap_neg_28.zom": {
+      "exitCode": 1,
+      "sha256": "b75a7366c789d7e93772321595bac50b8e686e1c8ec6a7e0d1a672c0bc6ee2bc"
+    },
+    "12-generics/generic_body_infer_unsolved_neg_20.zom": {
+      "exitCode": 1,
+      "sha256": "7514a964fbf2dc6177e33bccd917932b5f765e2654fc62fb84363cc2b8eb6933"
+    },
+    "12-generics/generic_body_inferred_condition_cap_neg_33.zom": {
+      "exitCode": 1,
+      "sha256": "17a058e796757b5e6fe67cffbdbb170c20a1f0641919e5f5f738f06da73e3d6c"
+    },
+    "12-generics/generic_body_inferred_init_cap_neg_29.zom": {
+      "exitCode": 1,
+      "sha256": "bb973c918cb856e1e77249aa5454f618ba24a2cd72d19c1079c5288c36f6756f"
+    },
+    "12-generics/generic_body_inferred_return_cap_neg_31.zom": {
+      "exitCode": 1,
+      "sha256": "d8c31293e57a71e2a696756090ab097bbf93d036030bbb824a8bb32e48cf4b01"
+    },
+    "12-generics/generic_body_inferred_stmt_cap_neg_27.zom": {
+      "exitCode": 1,
+      "sha256": "2ca3cdafcd27a78f73afa9b9a066a5440e52118662e2b931366069ef629df2eb"
+    },
+    "12-generics/generic_body_unify_conflict_neg_19.zom": {
+      "exitCode": 1,
+      "sha256": "00ea817cbfe5f0ca916a37ab383747e9d98ae24b68ad5c2f0f0d63dda33af680"
     },
     "12-generics/generic_bound_missing_neg_01.zom": {
       "exitCode": 1,

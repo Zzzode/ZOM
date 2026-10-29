@@ -27,6 +27,46 @@ fn parseValue<T = str>(input: str) -> T? {
 }
 ```
 
+#### Call-Site Type Arguments
+
+Call-site type arguments are solved in this revision only for free, unbounded
+generic functions whose value parameters are bare type parameters declared by
+the callee. This does not cover bounded functions, functions with default
+type parameters, generic classes and enums, generic methods,
+receiver-bearing functions, or tuple, aggregate, or other structural
+type-argument positions; the examples elsewhere in this chapter that use those
+forms are reserved, not accepted.
+
+**Resolution.** A call binds equality constraints between the type of each
+value argument and the bare type-parameter type of the corresponding value
+parameter. Solving is a whole-variable-to-ground binding: no expected type is
+propagated into a generic position and no structural position is unified. A
+parameter observed at several value arguments must bind to equal ground
+types. When type arguments are omitted they are inferred from the value
+arguments; when they are written, each argument name resolves as a
+predefined scalar type name. See
+[Ch.03 Type Inference](03-types.md#type-inference) for the
+equality-constraint vocabulary.
+
+Resolution failures are reported at the call expression:
+
+| Condition | Diagnostic |
+|---|---|
+| Value arguments bind one parameter to different ground types | `ZOM4010` |
+| A parameter receives neither a binding nor an explicit argument | `ZOM4014` |
+| The explicit type-argument count differs from the generic parameter count | `ZOM4016` |
+| Explicit type arguments are written on a non-generic callee | `ZOM4035` |
+
+The value-argument count is checked by the ordinary call rule, so a mismatch
+is `ZOM4036` exactly as for a non-generic callee.
+
+**Acceptance boundary.** In this revision every resolved generic call is
+rejected before instantiation. A call in a value position is rejected with
+`ZOM4099`; a call used as a bare expression statement is rejected with
+`ZOM4098`; a call in a module initializer is rejected with `ZOM4104`.
+Instantiation of free, unbounded functions over admitted scalar carriers is
+reserved; no generic call is accepted end-to-end in this revision.
+
 ### Generic Classes
 
 Generic class and interface instance members explicitly declare `this` in
@@ -170,12 +210,17 @@ where
 
 #### Bound Satisfaction at Call Site
 
-For each call to a generic function `f<T_real>()`, the compiler performs, for every bound declared on each type parameter:
+Bounds are parsed, recorded, and validated at the declaration site: a bound
+that does not name an interface is rejected with `ZOM4129 GenericBoundNotInterface`,
+and a primitive type used as an interface bound is rejected with
+`ZOM4130 PrimitiveTypeBoundUnsupported`. Generic function bodies are checked
+parametrically against the abstract parameter and its declared bounds; the
+body may not assume any property of `T` that is not listed in its bound set.
 
-- **Interface bound** `T: I<...>` → a valid impl block must exist declaring `impl I<...> for T_real`. Failure raises `ZOM4018 CheckerTraitNotImplemented`.
-- **Positive marker bound** `T: M` → the marker bitmap for `T_real` must have bit `M` set. Marker-bound failure diagnostics belong to the marker/coherence diagnostic range and must not reuse the type-mismatch or trait-coherence codes reserved by RFC 0005.
-
-Bound satisfaction is also checked *inside* the generic body (prior to monomorphisation) against the declared bounds alone. The body may not assume any property of `T` that is not listed in its bound set; violations are diagnosed at body-check time via the same ZOM04xx diagnostic codes.
+Call-site satisfaction is not implemented in this revision. Impl lookup
+(`ZOM4018 CheckerTraitNotImplemented`), marker bitmap checks, and witness
+production at the call are reserved and land with witnesses, as does positive
+resolution of members made available by a bound.
 
 ### Variance of Generic Parameters
 

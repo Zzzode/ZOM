@@ -78,11 +78,37 @@ Round 3 revision addressed the round-2 findings:
 - Spec text is staged per producer; Ch.03 is scoped and given an impact row;
   ZOM6010/ZOM6011 get no normative text or source fixtures in this RFC.
 
+## Spec Change Record
+
+### Stage 2 (landed with the checker call-resolution change)
+
+- `docs/spec/chapters/12-generics.md`: new "Call-Site Type Arguments"
+  subsection after Generic Functions (resolution layer, four-condition
+  ZOM4010/ZOM4014/ZOM4016/ZOM4035 table, ZOM4036 arity sentence, acceptance
+  boundary 4099/4098/4104, opening scope sentence); "Bound Satisfaction at
+  Call Site" rewritten to declaration-site validation (ZOM4129/ZOM4130) and
+  parametric body checking, with call-site satisfaction marked reserved.
+- `docs/spec/chapters/03-types.md` touched lines: the overview inference
+  bullet (first-order unification -> whole-variable-to-ground binding), the
+  Type Inference section opening paragraph plus the new Ch.12 pointer
+  sentence, the Local Variable Inference ZOM4014 split (generic-parameter
+  meaning now; unresolved local inference variable reserved), and the Call
+  row of the Expression Type Rules table (bare-`T` cross-reference).
+  Textually unchanged as planned: the Generic overview bullet and the type
+  variables paragraph; their code-generation monomorphization claim becomes
+  true slice-wise only in Stage 4.
+- Position matrix: statement, initializer, return, and condition cells are
+  covered in inferred and explicit forms (8 fixtures). The RFC's block-tail
+  cell has no source position in the current grammar: a block trailing
+  expression without `;` is rejected at parse time with ZOM2025, so no
+  checker/HIR matrix cell exists to pin; it joins with block-tail value
+  positions whenever tail expressions enter the grammar.
+
 ## Implementation Tracker
 
 | Stage | Change | Status | Verification |
 |---|---|---|---|
 | 1 | General `substituteType` over all 16 branches; shared `TypeSubstitution` type adopted by the borrow classifier (read-only lazy walk kept) | Landed 8de13613 — utility + 15 ztests + borrow alias + checker gate allowlist | 15 ztests green; full build green; type/checked-facts/dispatch suites green; zero behavior change |
-| 2 | Substitution codec contract (GenericParameterKey); checker generic-call ground inference, explicit scalar-name resolution, admitted-carrier gate {i32,bool}; ZOM4010/4014/4016/4035 producers; generic callees routed through the existing arity check so wrong count produces ZOM4036 (ZOM4099 on HEAD); literal/coercion precedence identity<u8>(42 narrows then 4099 / 300 -> 4077 / i32 var -> 4009); empty-witness on envelope; checked/dispatch evidence; HIR two fields, stable dump text, position-matrix drain (4099 value/4098 statement) | In progress — codec contract landed (c598be90, inference-checked-facts + facts-dispatch-facts tests green); checker call resolution next | checker ztest, in-body lit diagnostics (4010/4014/4016/4035 + 4036 + 4077/4009/u8-4099 precedence) + HIR position matrix + module-scope 4098/4104 pins, HIR golden regen, two parity snapshots (new fixtures only) |
+| 2 | Substitution codec contract (GenericParameterKey); checker generic-call ground inference, explicit scalar-name resolution, admitted-carrier gate {i32,bool}; ZOM4010/4014/4016/4035 producers; generic callees routed through the existing arity check so wrong count produces ZOM4036 (ZOM4099 on HEAD); literal/coercion precedence identity<u8>(42 narrows then 4099 / 300 -> 4077 / i32 var -> 4009); empty-witness on envelope; checked/dispatch evidence; HIR two fields, stable dump text, position-matrix drain (4099 value/4098 statement) | Landed — codec c598be90; checker call resolution, HIR capability drain, Ch.12/Ch.03 staged spec text, and 16 in-body lit fixtures landed together; carrier gate deferred until after ordinary argument conformance so 4077/4009 win | checker ztest, in-body lit diagnostics (4010/4014/4016/4035/4036 + 4077/4009/u8-4099 precedence) + HIR position matrix + module-scope 4098/4104 pins, HIR golden regen, two parity snapshots (new fixtures only) |
 | 3 | MirCallableIdentity on call edge only (DefId owners); Source-preserving callee wire; record-byte provider, no new revision digest; compiler/mono verified instance-set artifact after 0x09 in checkSources; carrier/triviality/lineage/arity/noActivation predicates; framed identity expansion at 0x0a+ | Not started | mono ztest suite incl three seeded statement-kind rejections and cross-build MirRevisionId/overlay/facts revision determinism ztest, ir-failure/built-mir/session tests, ZOM6011 + ZOM6010 component tests, parity flips exactly body_pos_17/18 |
 | 4 | Instance-aware CLI/LIR pre-ladder branch; joined Source+instance presented type excluding templates; one shared identity-matching helper at all 31 validator sites; instance symbols; MIR instances dump; generic-identity-consumer exit 42 | Not started | lir/llvm ztest, object-emission case, native run tuple 42, twice-built object-byte package determinism ztest, full sanitizer ctest |

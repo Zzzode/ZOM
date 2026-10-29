@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_explicit_mismatch_neg_26.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// A non-literal i32 value cannot narrow to the substituted u8 parameter;
+// ordinary mismatch (ZOM4009) precedes the carrier gate.
+
+// CHECK-LITERAL: Error [ZOM4009]: Type mismatch: expected u8, got i32
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_explicit_mismatch_neg_26.zom:6:12
+// CHECK-LITERAL: 1 error generated.

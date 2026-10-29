@@ -2784,11 +2784,13 @@ bool validArgumentSchema(const CheckerFailureRef& failure) {
     case DiagID::DynDuplicateAssociatedTypeBinding:
       return argumentKinds(arguments, Kind::Definition, Kind::Definition);
     case DiagID::DynStaticMethod:
-    case DiagID::CannotInferTypeParameter:
     case DiagID::MissingStructField:
     case DiagID::ConstantValueOutOfRange:
     case DiagID::ConstantDependencyCycle:
       return argumentKinds(arguments, Kind::Definition);
+    case DiagID::CannotInferTypeParameter:
+      // RFC 0056: the unresolved parameter is named by its parametric type.
+      return argumentKinds(arguments, Kind::Type);
     case DiagID::CannotMutateImmutableVariable:
       // Owner locals have no DefId; the offending binding is named by its
       // source identifier.

@@ -1,0 +1,9 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_body_explicit_stmt_cap_neg_28.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// Explicit type arguments do not change statement-position routing: the call
+// drains as ZOM4098.
+
+// CHECK-LITERAL: Error [ZOM4098]: this expression statement is not supported yet
+// CHECK-LITERAL:   --> conformance/12-generics/generic_body_explicit_stmt_cap_neg_28.zom:6:5
+// CHECK-LITERAL: 1 error generated.

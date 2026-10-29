@@ -1,0 +1,8 @@
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn f() -> i32 {
+    let x = identity(42);
+    return x;
+}
