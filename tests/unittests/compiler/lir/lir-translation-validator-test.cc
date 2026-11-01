@@ -871,9 +871,9 @@ CallPair callPair(identity::DefId callerOwner, identity::DefId calleeOwner,
     statements.add(mir::MirStatement::storageLive(mirLocal(1), span()));
     zc::Vector<mir::MirOperand> arguments;
     auto effect = mir::MirCallEffect::noActivation();
-    auto terminator =
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), zc::mv(effect),
-                                 place(mirLocal(1), i32), mirBlock(2), zc::none, span());
+    auto terminator = mir::MirTerminator::call(
+        mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments), zc::mv(effect),
+        place(mirLocal(1), i32), mirBlock(2), zc::none, span());
     callerBlocks.add(
         mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
   }
@@ -1052,9 +1052,9 @@ ZC_TEST("Translation validator fail-closes on a call argument kind mismatch") {
     zc::Vector<mir::MirOperand> arguments;
     arguments.add(mir::MirOperand::copy(place(mirLocal(2), i32)));
     auto effect = mir::MirCallEffect::noActivation();
-    auto terminator =
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), zc::mv(effect),
-                                 place(mirLocal(1), i32), mirBlock(2), zc::none, span());
+    auto terminator = mir::MirTerminator::call(
+        mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments), zc::mv(effect),
+        place(mirLocal(1), i32), mirBlock(2), zc::none, span());
     blocks.add(mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::Vector<mir::MirStatement>{},
                                   zc::mv(terminator)});
   }
@@ -1255,9 +1255,9 @@ mir::MirFunction voidCallerMir(identity::DefId owner, identity::DefId setterOwne
     arguments.add(mir::MirOperand::copy(place(mirLocal(2), types.mutableReference)));
     arguments.add(mir::MirOperand::constant(types.i32, integerConstant(42)));
     auto effect = mir::MirCallEffect::activateMutableReceiver(mirLocal(2));
-    auto terminator =
-        mir::MirTerminator::call(setterOwner, zc::mv(arguments), zc::mv(effect),
-                                 place(mirLocal(3), types.unit), mirBlock(2), zc::none, span());
+    auto terminator = mir::MirTerminator::call(
+        mir::MirCallableIdentity::source(setterOwner), zc::mv(arguments), zc::mv(effect),
+        place(mirLocal(3), types.unit), mirBlock(2), zc::none, span());
     blocks.add(
         mir::MirBasicBlock{mirBlock(1), mirScope(1), zc::mv(statements), zc::mv(terminator)});
   }
@@ -1271,9 +1271,9 @@ mir::MirFunction voidCallerMir(identity::DefId owner, identity::DefId setterOwne
     zc::Vector<mir::MirOperand> arguments;
     arguments.add(mir::MirOperand::copy(place(mirLocal(4), types.sharedReference)));
     auto effect = mir::MirCallEffect::noActivation();
-    auto terminator =
-        mir::MirTerminator::call(getterOwner, zc::mv(arguments), zc::mv(effect),
-                                 place(mirLocal(5), types.i32), mirBlock(3), zc::none, span());
+    auto terminator = mir::MirTerminator::call(
+        mir::MirCallableIdentity::source(getterOwner), zc::mv(arguments), zc::mv(effect),
+        place(mirLocal(5), types.i32), mirBlock(3), zc::none, span());
     blocks.add(
         mir::MirBasicBlock{mirBlock(2), mirScope(1), zc::mv(statements), zc::mv(terminator)});
   }

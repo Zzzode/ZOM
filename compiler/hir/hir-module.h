@@ -332,12 +332,18 @@ struct HirDirectCallArgument final {
 };
 
 /// \brief One verified direct call expression in semantic HIR.
+///
+/// The substitution/witness handles are present together exactly on a
+/// checker-resolved generic call (RFC 0056); they identify the canonical
+/// monomorphization evidence MIR encodes on the call edge.
 struct HirDirectCallExpression final {
   HirNodeId node;
   identity::DefId callee;
   identity::SemanticTypeId calleeType;
   identity::SemanticTypeId resultType;
   zc::Vector<HirDirectCallArgument> arguments;
+  zc::Maybe<checker::checked::CanonicalSubstitutionId> substitution;
+  zc::Maybe<checker::checked::WitnessArgumentsId> witnesses;
   identity::SourceSpan sourceSpan;
 };
 

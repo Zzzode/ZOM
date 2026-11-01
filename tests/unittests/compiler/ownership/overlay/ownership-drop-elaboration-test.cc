@@ -368,7 +368,7 @@ ir::IrOperationResult<CheckedMir> buildCheckedMir(
     const DropElaborationFixture& fixture,
     const driver::borrow_evidence::BorrowEvidenceRepositoryCapability& capability) {
   auto overlayInput = fixture.overlayInput();
-  const mir::BuiltMirInput mirInput{overlayInput.hir, overlayInput.body};
+  const mir::BuiltMirInput mirInput{overlayInput.hir, overlayInput.body, {}};
   auto mirCandidate = mir::BuiltMirBuilder::build(mirInput);
   ZC_REQUIRE(mirCandidate.isVerified());
   auto verifiedMir = mir::BuiltMirVerifier::verify(zc::mv(mirCandidate).takeVerified(), mirInput);

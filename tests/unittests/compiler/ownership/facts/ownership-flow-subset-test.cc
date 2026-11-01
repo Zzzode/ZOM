@@ -61,8 +61,9 @@ mir::MirTerminator callTerminator(mir::MirBlockId normalTarget,
   zc::Vector<mir::MirOperand> arguments;
   auto effect = mir::MirCallEffect::noActivation();
   auto destination = mir::MirPlace(local, type, zc::mv(projections), type);
-  return mir::MirTerminator::call(callee, zc::mv(arguments), zc::mv(effect), zc::mv(destination),
-                                  normalTarget, zc::mv(unwindTarget), testSpan());
+  return mir::MirTerminator::call(mir::MirCallableIdentity::source(callee), zc::mv(arguments),
+                                  zc::mv(effect), zc::mv(destination), normalTarget,
+                                  zc::mv(unwindTarget), testSpan());
 }
 
 mir::MirTerminator switchIntTerminator(zc::Vector<mir::MirSwitchIntArm>&& arms,

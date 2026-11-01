@@ -62,6 +62,10 @@ namespace zomlang::compiler::mir {
 struct BuiltMirInput final {
   const hir::VerifiedHirModule& hir;
   const checker::body::BodyCheckingInput& body;
+  /// Frozen checked record bytes for encoding Instance call edges. None when
+  /// the module contains no checked evidence lease (tests, pre-RFC-0056 callers);
+  /// Source-only modules encode no Instance edges in that case.
+  zc::Maybe<checker::checked::CheckedFactsRecordView> records;
 };
 
 /// \brief Deterministic one-based identity of a local in one MIR body.
@@ -515,6 +519,52 @@ struct MirActivateMutableReceiverCallEffect final {
   MirLocalId temporary;
 };
 
+enum class MirCallableIdentityKind : uint8_t {
+  Source = 0x01,
+  Instance = 0x02,
+};
+
+struct MirSourceCallableIdentity final {
+  identity::DefId definition;
+};
+
+struct MirInstanceCallableIdentity final {
+  ir::InstanceId instance;
+};
+
+/// \brief Identity carried by a direct-call terminator edge.
+///
+/// A Source edge names a verified Source definition in the module's Built MIR.
+/// An Instance edge names a monomorphized instance produced after executable-MIR
+/// verification. Only the call terminator edge is instance-capable; function
+/// owners stay plain DefIds and ownership keys gain no instance dimension.
+class MirCallableIdentity final {
+public:
+  MirCallableIdentity(MirCallableIdentity&&) noexcept = default;
+  MirCallableIdentity& operator=(MirCallableIdentity&&) noexcept = default;
+  ZC_DISALLOW_COPY(MirCallableIdentity);
+
+  ZC_NODISCARD static MirCallableIdentity source(identity::DefId definition) noexcept;
+  ZC_NODISCARD static MirCallableIdentity instance(ir::InstanceId instance) noexcept;
+  ZC_NODISCARD MirCallableIdentity clone() const noexcept;
+  ZC_NODISCARD MirCallableIdentityKind kind() const noexcept;
+  ZC_NODISCARD identity::DefId sourceValue() const;
+  ZC_NODISCARD ir::InstanceId instanceValue() const;
+  /// \brief Returns true exactly when this is a Source edge naming the given definition.
+  ///
+  /// Single identity-matching predicate used at every MIR/LIR callee comparison;
+  /// Instance edges never match a Source-owner lookup before the instance-aware
+  /// lowering branch lands.
+  ZC_NODISCARD bool isSourceFor(identity::DefId definition) const noexcept;
+  ZC_NODISCARD bool operator==(const MirCallableIdentity& other) const noexcept;
+  ZC_NODISCARD bool operator!=(const MirCallableIdentity& other) const noexcept;
+
+private:
+  explicit MirCallableIdentity(MirSourceCallableIdentity value) noexcept;
+  explicit MirCallableIdentity(MirInstanceCallableIdentity value) noexcept;
+  zc::OneOf<MirSourceCallableIdentity, MirInstanceCallableIdentity> value;
+};
+
 /// \brief Ownership-relevant effect committed only when a call reaches its normal edge.
 class MirCallEffect final {
 public:
@@ -536,7 +586,7 @@ private:
 };
 
 struct MirCallTerminator final {
-  identity::DefId callee;
+  MirCallableIdentity callee;
   zc::Vector<MirOperand> arguments;
   MirCallEffect effect;
   MirPlace destination;
@@ -583,9 +633,9 @@ public:
                                                 identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD static MirTerminator returnVoid(identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD static MirTerminator unreachable(identity::SourceSpan&& sourceSpan) noexcept;
-  ZC_NODISCARD static MirTerminator call(identity::DefId callee, zc::Vector<MirOperand>&& arguments,
-                                         MirCallEffect&& effect, MirPlace&& destination,
-                                         MirBlockId normalTarget,
+  ZC_NODISCARD static MirTerminator call(MirCallableIdentity&& callee,
+                                         zc::Vector<MirOperand>&& arguments, MirCallEffect&& effect,
+                                         MirPlace&& destination, MirBlockId normalTarget,
                                          zc::Maybe<MirBlockId>&& unwindTarget,
                                          identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD static MirTerminator gotoTarget(MirBlockId target,
@@ -684,6 +734,22 @@ constexpr bool isOwnershipAnalyzedFunction(const MirFunction& function) noexcept
 /// RFC 0048 structural verifier that replaces the per-shape
 /// valid*ReturnFunction validators.
 ZC_NODISCARD bool validateStructuralWellFormedness(const MirFunction& function);
+
+/// \brief Canonical encoder for one MirFunction body.
+///
+/// Shares the exact Built MIR function wire encoding between Built MIR
+/// construction and the RFC 0056 monomorphization instance-set artifact, so an
+/// independently re-encoded instance body compares byte-for-byte. Record bytes
+/// are required only when the body carries Instance call edges; verified
+/// instance bodies of the current slice contain Source edges alone.
+class MirFunctionCanonicalCodec final {
+public:
+  ZC_NODISCARD static zc::Maybe<zc::Array<uint8_t>> encode(
+      const MirFunction& function, identity::ModuleId module,
+      const checker::CheckerIdentityAuthority& identities,
+      const type::SemanticTypeStore& semanticTypes,
+      zc::Maybe<checker::checked::CheckedFactsRecordView> records = zc::none);
+};
 
 /// \brief Domain-separated immutable revision of one complete MIR module.
 class MirRevisionId final {

@@ -797,9 +797,10 @@ void lowerSequentialLocalReturnFunction(PendingFunctionDeclaration&& function, H
         // call is the binding's initializer node, so the statement it
         // contributes is exactly the local node emitted after this switch.
         ZC_IF_SOME(call, binding.call) {
-          ctx.addDirectCall(HirDirectCallExpression{initializerNodeId, call.callee, call.calleeType,
-                                                    call.resultType, zc::mv(call.arguments),
-                                                    call.sourceSpan.clone()});
+          ctx.addDirectCall(HirDirectCallExpression{
+              initializerNodeId, call.callee, call.calleeType, call.resultType,
+              zc::mv(call.arguments), zc::Maybe<checker::checked::CanonicalSubstitutionId>(),
+              zc::Maybe<checker::checked::WitnessArgumentsId>(), call.sourceSpan.clone()});
         }
         break;
     }

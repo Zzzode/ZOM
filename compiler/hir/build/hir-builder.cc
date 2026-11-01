@@ -2664,7 +2664,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           pendingCondition.call = PendingCallCondition{
               HirDirectCallExpression{HirNodeId(), ZC_ASSERT_NONNULL(callee), invocation.calleeType,
-                                      conditionType, zc::mv(callArguments),
+                                      conditionType, zc::mv(callArguments), zc::none, zc::none,
                                       ZC_ASSERT_NONNULL(conditionSpan).clone()},
               ZC_ASSERT_NONNULL(conditionSpan).clone(), shape.condition};
         } else {
@@ -4224,10 +4224,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                   definition.source.clone());
             }
             zc::Vector<HirDirectCallArgument> noArguments;
-            bindingCall = HirDirectCallExpression{
-                HirNodeId(),           ZC_ASSERT_NONNULL(callCallee),
-                invocation.calleeType, bindingType,
-                zc::mv(noArguments),   ZC_ASSERT_NONNULL(initializerSpan).clone()};
+            bindingCall = HirDirectCallExpression{HirNodeId(),
+                                                  ZC_ASSERT_NONNULL(callCallee),
+                                                  invocation.calleeType,
+                                                  bindingType,
+                                                  zc::mv(noArguments),
+                                                  zc::none,
+                                                  zc::none,
+                                                  ZC_ASSERT_NONNULL(initializerSpan).clone()};
             // The body-level admission for this definition is decided after every
             // pool is materialized; record the definition so the gate runs the
             // shared whole-body predicate on it.
@@ -6685,6 +6689,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                                       initInvocation.calleeType,
                                                       initializerType,
                                                       zc::mv(noArgs),
+                                                      zc::none,
+                                                      zc::none,
                                                       ZC_ASSERT_NONNULL(initializerSpan).clone()};
           } else if (tree.node(initializer).kind == ast::SyntaxKind::IdentExpr) {
             auto parameter = resolvedCallableParameter(bound.bindings(), initializer);
@@ -9881,35 +9887,52 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     : zc::Maybe<identity::DefId>()};
           }
         } else {
-          // RFC 0056 stage 2: generic calls are checker-admitted but no HIR
-          // generic-call lowering exists yet. Drain them via the capability
-          // rail (ZOM4099 in a value position) instead of an internal
-          // invariant, whether or not explicit type arguments were written.
-          {
-            auto genericCallIndex = factIndex(facts.calls(), callNode);
-            if (genericCallIndex != zc::none) {
-              const auto& genericInvocation =
-                  facts.calls().entries()[ZC_ASSERT_NONNULL(genericCallIndex)].value.invocation;
-              if (genericInvocation.substitutions != zc::none ||
-                  genericInvocation.witnesses != zc::none) {
-                auto genericSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
-                if (genericSpan == zc::none) {
-                  return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
-                                                       ir::IrFailureKind::MissingRequiredFact,
-                                                       module, registries, ordinal + 2);
-                }
-                return rejectHirCapability<HirModuleCandidate>(
-                    definition.definition, registries,
-                    ir::IrFailureKind::UnsupportedSourceConstruct,
-                    ZC_ASSERT_NONNULL(genericSpan).clone());
-              }
+          // RFC 0056 stage 3: a checker-resolved generic call is admitted into
+          // HIR only when it is the function's return value (no enclosing
+          // initializer local) in the scalar monomorphization slice — a free
+          // direct call with identity result transform, no receiver or raises,
+          // and a ground carrier in {i32, bool}. The canonical substitution and
+          // the empty witness ride on the HIR record so MIR can emit an
+          // Instance call edge. Generic calls in initializer, statement,
+          // condition, and error-operator positions keep the stage-2 capability
+          // drain (ZOM4099/ZOM4098).
+          auto genericCallIndex = factIndex(facts.calls(), callNode);
+          bool isGenericCall = false;
+          if (genericCallIndex != zc::none) {
+            const auto& genericInvocation =
+                facts.calls().entries()[ZC_ASSERT_NONNULL(genericCallIndex)].value.invocation;
+            isGenericCall = genericInvocation.substitutions != zc::none;
+          }
+          const bool genericReturnAdmitted = isGenericCall && local == zc::none &&
+                                             !shape.returnsErrorPropagateCall &&
+                                             !shape.returnsErrorUnwrapCall;
+          if (isGenericCall && !genericReturnAdmitted) {
+            auto genericSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
+            if (genericSpan == zc::none) {
+              return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                   ir::IrFailureKind::MissingRequiredFact, module,
+                                                   registries, ordinal + 2);
             }
+            return rejectHirCapability<HirModuleCandidate>(
+                definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                ZC_ASSERT_NONNULL(genericSpan).clone());
           }
           if (!tree.contains(calleeNode) ||
               tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
               !tree.contains(typeArguments) || !tree.contains(arguments) ||
-              !typeArguments.empty() || calleeTypeIndex == zc::none ||
+              (!isGenericCall && !typeArguments.empty()) || calleeTypeIndex == zc::none ||
               checkedCallIndex == zc::none || callKey == zc::none) {
+            if (isGenericCall) {
+              auto genericSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
+              if (genericSpan == zc::none) {
+                return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                     ir::IrFailureKind::MissingRequiredFact, module,
+                                                     registries, ordinal + 2);
+              }
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  ZC_ASSERT_NONNULL(genericSpan).clone());
+            }
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,
                                                  registries, ordinal + 2);
@@ -9938,6 +9961,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           ZC_IF_SOME(owner, dispatch.owner) {
             dispatchOwnerMatches = owner == definition.definition;
           }
+          // Generic evidence must be present on both evidence streams and agree,
+          // carry no raises or error-operator shape, and bind a ground scalar
+          // carrier. The checker applied the same carrier gate first; this is
+          // the HIR-level independent re-check.
+          const bool genericEvidenceConsistent =
+              !isGenericCall ||
+              (invocation.substitutions != zc::none && invocation.witnesses != zc::none &&
+               dispatch.fact.substitutions == invocation.substitutions &&
+               dispatch.fact.witnesses == invocation.witnesses && invocation.raises == zc::none &&
+               dispatch.fact.raises == zc::none && !shape.returnsErrorPropagateCall &&
+               !shape.returnsErrorUnwrapCall &&
+               (isI32SemanticType(checkedModule.semanticTypes(), nodeType.value) ||
+                isBoolSemanticType(checkedModule.semanticTypes(), nodeType.value)));
           if (!selected.is<checker::checked::DirectCallable>() ||
               selected.get<checker::checked::DirectCallable>().callee !=
                   ZC_ASSERT_NONNULL(callee) ||
@@ -9949,7 +9985,8 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
               invocation.receiverAdjustment != zc::none ||
               invocation.arguments.size() != arguments.size ||
-              invocation.substitutions != zc::none || invocation.witnesses != zc::none ||
+              (!isGenericCall &&
+               (invocation.substitutions != zc::none || invocation.witnesses != zc::none)) ||
               (invocation.raises != zc::none && !shape.returnsErrorPropagateCall &&
                !shape.returnsErrorUnwrapCall) ||
               callSpan == zc::none ||
@@ -9962,11 +9999,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
               (dispatch.fact.successType != nodeType.value && !shape.returnsErrorPropagateCall &&
                (!shape.returnsErrorUnwrapCall || dispatch.fact.successType != callable.success)) ||
               (dispatch.fact.resultType != nodeType.value && !shape.returnsErrorUnwrapCall) ||
-              dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+              (!isGenericCall &&
+               (dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none)) ||
               (dispatch.fact.raises != zc::none && !shape.returnsErrorPropagateCall &&
                !shape.returnsErrorUnwrapCall) ||
               !sameSpan(dispatch.fact.sourceSpan, ZC_ASSERT_NONNULL(callSpan)) ||
-              !typeExists(invocation.calleeType, checkedModule.semanticTypes())) {
+              !typeExists(invocation.calleeType, checkedModule.semanticTypes()) ||
+              !genericEvidenceConsistent) {
+            if (isGenericCall) {
+              return rejectHirCapability<HirModuleCandidate>(
+                  definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+                  ZC_ASSERT_NONNULL(callSpan).clone());
+            }
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::InvalidFact, module, registries,
                                                  ordinal + 2);
@@ -10144,8 +10188,18 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           const identity::SemanticTypeId callResultType =
               shape.returnsErrorPropagateCall ? callable.success : invocation.resultType;
           call = HirDirectCallExpression{
-              HirNodeId(),    ZC_ASSERT_NONNULL(callee), invocation.calleeType,
-              callResultType, zc::mv(callArguments),     ZC_ASSERT_NONNULL(callSpan).clone()};
+              HirNodeId(),
+              ZC_ASSERT_NONNULL(callee),
+              invocation.calleeType,
+              callResultType,
+              zc::mv(callArguments),
+              isGenericCall ? zc::Maybe<checker::checked::CanonicalSubstitutionId>(
+                                  ZC_ASSERT_NONNULL(invocation.substitutions))
+                            : zc::Maybe<checker::checked::CanonicalSubstitutionId>(),
+              isGenericCall ? zc::Maybe<checker::checked::WitnessArgumentsId>(
+                                  ZC_ASSERT_NONNULL(invocation.witnesses))
+                            : zc::Maybe<checker::checked::WitnessArgumentsId>(),
+              ZC_ASSERT_NONNULL(callSpan).clone()};
         }
       } else if (!shape.isForLoopAccumulator && !shape.isNestedForLoopAccumulator &&
                  literal == zc::none && aggregate == zc::none && parameterReference == zc::none &&

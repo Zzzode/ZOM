@@ -1767,11 +1767,11 @@ private:
               const auto& callerFn = functions[caller];
               const auto& mutatingCall = callerFn.blocks[0].terminator.callValue();
               const auto& readCall = callerFn.blocks[1].terminator.callValue();
-              auto resolveMethod = [&](identity::DefId owner) -> zc::Maybe<size_t> {
+              auto resolveMethod = [&](const mir::MirCallableIdentity& owner) -> zc::Maybe<size_t> {
                 zc::Maybe<size_t> hit;
                 for (size_t index = 0; index < functions.size(); ++index) {
                   if (index == caller) continue;
-                  if (functions[index].owner == owner &&
+                  if (owner.isSourceFor(functions[index].owner) &&
                       functions[index].kind == mir::MirFunctionKind::Function &&
                       functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
                       functions[index].blocks.size() == 1) {
@@ -1814,7 +1814,7 @@ private:
               const auto& forwardCall = forwarderFn.blocks[0].terminator.callValue();
               for (size_t index = 0; index < functions.size(); ++index) {
                 if (index == forwarder) { continue; }
-                if (functions[index].owner == forwardCall.callee &&
+                if (forwardCall.callee.isSourceFor(functions[index].owner) &&
                     functions[index].kind == mir::MirFunctionKind::Function &&
                     functions[index].sourceDefinitionKind == identity::DefinitionKind::Method &&
                     functions[index].blocks.size() == 1) {
@@ -1857,13 +1857,13 @@ private:
               bool calledByAnother = false;
               for (size_t other = 0; other < functions.size(); ++other) {
                 if (other == index || !isChainLink(functions[other])) { continue; }
-                if (functions[other].blocks[0].terminator.callValue().callee ==
-                    functions[index].owner) {
+                if (functions[other].blocks[0].terminator.callValue().callee.isSourceFor(
+                        functions[index].owner)) {
                   calledByAnother = true;
                   break;
                 }
               }
-              if (!calledByAnother && target != functions[index].owner) {
+              if (!calledByAnother && !target.isSourceFor(functions[index].owner)) {
                 if (outermost != zc::none) {
                   outermost = zc::none;
                   break;
@@ -1873,19 +1873,18 @@ private:
             }
             ZC_IF_SOME(outer, outermost) {
               const auto& outerFn = functions[outer];
-              const auto middleOwner = outerFn.blocks[0].terminator.callValue().callee;
+              const auto& middleOwner = outerFn.blocks[0].terminator.callValue().callee;
               zc::Maybe<size_t> middleIndex;
               for (size_t index = 0; index < functions.size(); ++index) {
-                if (index != outer && functions[index].owner == middleOwner) {
-                  middleIndex = index;
-                }
+                if (middleOwner.isSourceFor(functions[index].owner)) { middleIndex = index; }
               }
               ZC_IF_SOME(middle, middleIndex) {
                 if (isChainLink(functions[middle])) {
-                  const auto leafOwner = functions[middle].blocks[0].terminator.callValue().callee;
+                  const auto& leafOwner = functions[middle].blocks[0].terminator.callValue().callee;
                   zc::Maybe<size_t> leafIndex;
                   for (size_t index = 0; index < functions.size(); ++index) {
-                    if (index != outer && index != middle && functions[index].owner == leafOwner) {
+                    if (index != outer && index != middle &&
+                        leafOwner.isSourceFor(functions[index].owner)) {
                       leafIndex = index;
                     }
                   }
@@ -1937,7 +1936,7 @@ private:
                   const auto& call = callerFn.blocks[0].terminator.callValue();
                   for (size_t index = 0; index < functions.size(); ++index) {
                     if (index == caller) { continue; }
-                    if (functions[index].owner == call.callee) {
+                    if (call.callee.isSourceFor(functions[index].owner)) {
                       if (calleeIndex != zc::none) {
                         calleeAmbiguous = true;
                         break;
@@ -2104,8 +2103,8 @@ private:
                     const auto& callerFn = functions[caller];
                     const auto& initCall = callerFn.blocks[0].terminator.callValue();
                     const auto& returnCall = callerFn.blocks[1].terminator.callValue();
-                    if (initCall.callee == functions[existentialCallee].owner &&
-                        returnCall.callee == functions[indirectCallee].owner) {
+                    if (initCall.callee.isSourceFor(functions[existentialCallee].owner) &&
+                        returnCall.callee.isSourceFor(functions[indirectCallee].owner)) {
                       lir = lir::MirToLirLowering::lowerExistentialCallResultModule(
                           functions[caller], functions[existentialCallee],
                           functions[indirectCallee], functions[leaf], types);

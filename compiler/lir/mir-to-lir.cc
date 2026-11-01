@@ -5450,7 +5450,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 0 || call.destination.projections().size() != 0 ||
       call.normalTarget != continuation->id || call.unwindTarget != zc::none ||
-      !(call.callee == callee.owner)) {
+      !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
 
@@ -5656,7 +5656,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != continuation->id || call.unwindTarget != zc::none ||
-      !(call.callee == callee.owner)) {
+      !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
 
@@ -5855,7 +5855,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeadingLocalCallee(
   const auto& call = callerEntry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != callerContinuation->id || call.unwindTarget != zc::none ||
-      !(call.callee == callee.owner)) {
+      !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   auto calleeResultCarrier = integerCarrierFor(callee.resultType, semanticTypes);
@@ -6280,7 +6280,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithConditionalCallee(
   const size_t expectedArgumentCount = isConjunctiveStride ? 2 : 1;
   if (call.arguments.size() != expectedArgumentCount ||
       call.destination.projections().size() != 0 || call.normalTarget != callerContinuation->id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
 
@@ -6697,7 +6697,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithChainedConditionalCallee(
   const auto& call = callerEntry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != callerContinuation->id || call.unwindTarget != zc::none ||
-      !(call.callee == callee.owner)) {
+      !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
 
@@ -6979,7 +6979,7 @@ zc::Maybe<Module> MirToLirLowering::lowerByValueAggregateCallModule(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
       call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   const auto& callArgument = call.arguments[0];
@@ -7132,7 +7132,7 @@ zc::Maybe<Module> MirToLirLowering::lowerScalarLocalCallModule(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
       call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   const auto& callArgument = call.arguments[0];
@@ -7404,7 +7404,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallThenLocalArithmeticModule(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 0 || call.destination.local() != callLocal.id ||
       call.destination.projections().size() != 0 || call.normalTarget != continuation->id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
 
@@ -7616,7 +7616,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
       call.unwindTarget != zc::none) {
     return zc::none;
   }
-  if (!(call.callee == callee.owner)) { return zc::none; }
+  if (!call.callee.isSourceFor(callee.owner)) { return zc::none; }
 
   // Lower both arguments in order. Each is either an integer constant of the
   // matching callee parameter type or a bare use of a leading parameter slot;
@@ -7858,7 +7858,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     // The callee's parameter count bounds the argument list, not this link's.
     if (call.arguments.size() > kMaxCallArguments || call.destination.projections().size() != 0 ||
         call.destination.local() != temporaryLocal.id || call.normalTarget != continuation->id ||
-        call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+        call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
       return zc::none;
     }
     // Each forwarded argument is a scalar constant or a use of one of this
@@ -8115,7 +8115,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithLeaf(
   }
   // The call's target definition must be the identified callee; the leaf is never
   // a call target, so a caller pointing at the leaf's owner is rejected here.
-  if (!(call.callee == callee.owner)) { return zc::none; }
+  if (!call.callee.isSourceFor(callee.owner)) { return zc::none; }
   if (continuation->statements.size() != 0 ||
       continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
     return zc::none;
@@ -8608,7 +8608,8 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModule(
   const size_t ordinaryParameterCount = ordinaryCarriers.size();
   const auto expectedEffectKind = callerIsMutable ? mir::MirCallEffectKind::ActivateMutableReceiver
                                                   : mir::MirCallEffectKind::NoActivation;
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 + ordinaryParameterCount ||
+  if (!mirCall.callee.isSourceFor(callee.owner) ||
+      mirCall.arguments.size() != 1 + ordinaryParameterCount ||
       mirCall.effect.kind() != expectedEffectKind ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation->id ||
@@ -8925,7 +8926,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallModuleWithLeaf(
   const auto& mirCall = entry.terminator.callValue();
   const auto expectedEffectKind = callerIsMutable ? mir::MirCallEffectKind::ActivateMutableReceiver
                                                   : mir::MirCallEffectKind::NoActivation;
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != expectedEffectKind ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != continuation->id ||
@@ -9235,7 +9236,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverConditionalCallModule(
   }
 
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 2 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 2 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != resultTemporary.id ||
       mirCall.destination.projections().size() != 0 ||
@@ -9399,7 +9400,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
     return zc::none;
   }
   const auto& forwarderCall = forwarderEntry.terminator.callValue();
-  if (forwarderCall.callee != leaf.owner || forwarderCall.arguments.size() != 1 ||
+  if (!forwarderCall.callee.isSourceFor(leaf.owner) || forwarderCall.arguments.size() != 1 ||
       forwarderCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       forwarderCall.destination.local() != forwarderResult.id ||
       forwarderCall.destination.projections().size() != 0 ||
@@ -9533,7 +9534,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverSelfCallModule(
     return zc::none;
   }
   const auto& callerCall = callerEntry.terminator.callValue();
-  if (callerCall.callee != forwarder.owner || callerCall.arguments.size() != 1 ||
+  if (!callerCall.callee.isSourceFor(forwarder.owner) || callerCall.arguments.size() != 1 ||
       callerCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       callerCall.destination.local() != resultTemporary.id ||
       callerCall.destination.projections().size() != 0 ||
@@ -9842,7 +9843,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   // The mutating call targets the setter, activating the mutable borrow and
   // writing its (unread) unit result into the unit temporary.
   const auto& voidCall = entry.terminator.callValue();
-  if (voidCall.callee != voidCallee.owner || voidCall.arguments.size() != 2 ||
+  if (!voidCall.callee.isSourceFor(voidCallee.owner) || voidCall.arguments.size() != 2 ||
       voidCall.effect.kind() != mir::MirCallEffectKind::ActivateMutableReceiver ||
       voidCall.destination.local() != unitTemporary.id ||
       voidCall.destination.projections().size() != 0 || voidCall.normalTarget != continuation->id ||
@@ -9867,7 +9868,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverVoidThenValueCallModule(
   // The shared call targets the getter with the shared borrow as its sole
   // argument and stores the field value into the result temporary.
   const auto& valueCall = continuation->terminator.callValue();
-  if (valueCall.callee != valueCallee.owner || valueCall.arguments.size() != 1 ||
+  if (!valueCall.callee.isSourceFor(valueCallee.owner) || valueCall.arguments.size() != 1 ||
       valueCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       valueCall.destination.local() != resultTemporary.id ||
       valueCall.destination.projections().size() != 0 || valueCall.normalTarget != tail->id ||
@@ -10135,7 +10136,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   // argument, stores its (dead) result into the dead-result temporary, and
   // falls through to the continuation->
   const auto& firstCall = entry.terminator.callValue();
-  if (firstCall.callee != callee.owner || firstCall.arguments.size() != 1 ||
+  if (!firstCall.callee.isSourceFor(callee.owner) || firstCall.arguments.size() != 1 ||
       firstCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       firstCall.destination.local() != deadResultTemporary.id ||
       firstCall.destination.projections().size() != 0 ||
@@ -10150,7 +10151,7 @@ zc::Maybe<Module> MirToLirLowering::lowerReceiverCallTwiceModule(
   // The second call targets the same leaf with the second shared borrow and
   // stores the live result into the result temporary.
   const auto& secondCall = continuation->terminator.callValue();
-  if (secondCall.callee != callee.owner || secondCall.arguments.size() != 1 ||
+  if (!secondCall.callee.isSourceFor(callee.owner) || secondCall.arguments.size() != 1 ||
       secondCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       secondCall.destination.local() != resultTemporary.id ||
       secondCall.destination.projections().size() != 0 || secondCall.normalTarget != tail->id ||
@@ -10353,7 +10354,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErrorUnwrapCallModule(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() > 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != test->id || call.unwindTarget != zc::none ||
-      !(call.callee == callee.owner)) {
+      !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   // The call carries one argument exactly when the callee declares a parameter.
@@ -10698,7 +10699,7 @@ zc::Maybe<Module> MirToLirLowering::lowerIndirectCallModuleWithLeaf(
   auto elementConstant = lirOperandFor(aggregateElement.operand, elementCarrierValue);
   if (elementConstant == zc::none) { return zc::none; }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont->id ||
@@ -11002,7 +11003,7 @@ zc::Maybe<Module> MirToLirLowering::lowerErasedAggregateCallModule(
     return zc::none;
   }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont->id ||
@@ -11365,7 +11366,7 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
     return zc::none;
   }
   const auto& initCall = callerEntry.terminator.callValue();
-  if (initCall.callee != existentialCallee.owner || initCall.arguments.size() != 0 ||
+  if (!initCall.callee.isSourceFor(existentialCallee.owner) || initCall.arguments.size() != 0 ||
       initCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       initCall.destination.local() != callerExistential.id ||
       initCall.destination.projections().size() != 0 || initCall.normalTarget != callerMid->id ||
@@ -11373,7 +11374,7 @@ zc::Maybe<Module> MirToLirLowering::lowerExistentialCallResultModule(
     return zc::none;
   }
   const auto& returnCall = callerMid->terminator.callValue();
-  if (returnCall.callee != indirectCallee.owner || returnCall.arguments.size() != 1 ||
+  if (!returnCall.callee.isSourceFor(indirectCallee.owner) || returnCall.arguments.size() != 1 ||
       returnCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       returnCall.destination.local() != callerResult.id ||
       returnCall.destination.projections().size() != 0 ||
@@ -12459,7 +12460,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallInConditionModule(
     return zc::none;
   }
   const auto& call = entry.terminator.callValue();
-  if (call.callee != callee.owner || call.destination.local() != callerCallResult.id ||
+  if (!call.callee.isSourceFor(callee.owner) || call.destination.local() != callerCallResult.id ||
       call.destination.projections().size() != 0 || call.unwindTarget != zc::none) {
     return zc::none;
   }
@@ -12968,7 +12969,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArithmeticCallee(
   if (callerEntry.terminator.kind() != mir::MirTerminatorKind::Call ||
       call.arguments.size() != calleeParameterCount || call.destination.projections().size() != 0 ||
       call.destination.local() != temporaryLocal.id || call.normalTarget != continuation->id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   if (callerEntry.statements.size() != 1 ||

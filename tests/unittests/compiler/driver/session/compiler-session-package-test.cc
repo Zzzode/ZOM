@@ -2355,7 +2355,7 @@ ZC_TEST("CompilerSession publishes scalar initializer definition and pattern fac
       session.getOwnershipEventOverlayInput(session.getVerifiedHirModules()[0].module());
   ZC_REQUIRE(overlayInput != zc::none);
   ZC_IF_SOME(input, overlayInput) {
-    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body};
+    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body, {}};
     auto codecCandidate = mir::BuiltMirBuilder::build(mirInput);
     ZC_REQUIRE(codecCandidate.isVerified());
     auto corruptedCodec = zc::mv(codecCandidate).takeVerified();
@@ -2441,7 +2441,7 @@ ZC_TEST("CompilerSession rejects goto and switch-int terminators in scalar initi
       session.getOwnershipEventOverlayInput(session.getVerifiedHirModules()[0].module());
   ZC_REQUIRE(overlayInput != zc::none);
   ZC_IF_SOME(input, overlayInput) {
-    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body};
+    const mir::BuiltMirInput mirInput{session.getVerifiedHirModules()[0], input.body, {}};
 
     // Goto terminator: the target resolves to the only block, but the encoded
     // terminator no longer matches the published canonical bytes, so the
@@ -2611,7 +2611,7 @@ ZC_TEST("CompilerSession lowers a sequential local copy through HIR and Built MI
   auto overlayInput = session.getOwnershipEventOverlayInput(hirModule.module());
   ZC_REQUIRE(overlayInput != zc::none);
   ZC_IF_SOME(input, overlayInput) {
-    const mir::BuiltMirInput mirInput{hirModule, input.body};
+    const mir::BuiltMirInput mirInput{hirModule, input.body, {}};
     auto candidate = mir::BuiltMirBuilder::build(mirInput);
     ZC_REQUIRE(candidate.isVerified());
     auto corrupted = zc::mv(candidate).takeVerified();

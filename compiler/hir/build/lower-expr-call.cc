@@ -48,7 +48,8 @@ void lowerDirectCallReturnFunction(PendingFunctionDeclaration&& function, HirFnC
   statements.add(returnId);
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
-                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+                                            zc::mv(call.arguments), call.substitution,
+                                            call.witnesses, call.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
 }
@@ -83,9 +84,9 @@ void lowerDirectCallInitializerFunction(PendingFunctionDeclaration&& function, H
   ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
   ctx.addLocal(HirLocalBinding{localId, hirLocalId(1), localType, initializerId, localSpan.clone(),
                                initializerSpan.clone()});
-  ctx.addDirectCall(HirDirectCallExpression{initializerId, call.callee, call.calleeType,
-                                            call.resultType, zc::mv(call.arguments),
-                                            call.sourceSpan.clone()});
+  ctx.addDirectCall(HirDirectCallExpression{
+      initializerId, call.callee, call.calleeType, call.resultType, zc::mv(call.arguments),
+      call.substitution, call.witnesses, call.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, valueId, function.returnSpan.clone()});
   ctx.addLocalReference(HirLocalReferenceExpression{valueId, hirLocalId(1), placeType,
@@ -129,7 +130,8 @@ void lowerDirectAggregateCallFunction(PendingFunctionDeclaration&& function, Hir
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
   ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
-                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+                                            zc::mv(call.arguments), call.substitution,
+                                            call.witnesses, call.sourceSpan.clone()});
 }
 
 void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
@@ -165,11 +167,13 @@ void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, H
                                initializerSpan.clone()});
   ctx.addDirectCall(HirDirectCallExpression{
       initializerId, initializerCall.callee, initializerCall.calleeType, initializerCall.resultType,
-      zc::mv(initializerCall.arguments), initializerCall.sourceSpan.clone()});
+      zc::mv(initializerCall.arguments), initializerCall.substitution, initializerCall.witnesses,
+      initializerCall.sourceSpan.clone()});
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
   ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
-                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+                                            zc::mv(call.arguments), call.substitution,
+                                            call.witnesses, call.sourceSpan.clone()});
 }
 
 void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
@@ -207,7 +211,8 @@ void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, H
   ctx.addReturn(
       HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
   ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
-                                            zc::mv(call.arguments), call.sourceSpan.clone()});
+                                            zc::mv(call.arguments), call.substitution,
+                                            call.witnesses, call.sourceSpan.clone()});
 }
 
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {

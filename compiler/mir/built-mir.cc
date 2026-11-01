@@ -11,6 +11,8 @@
 #include "compiler/identity/canonical/canonical-encoder.h"
 #include "compiler/identity/crypto/sha256.h"
 #include "compiler/identity/key/definition-key.h"
+#include "compiler/ir/instance-identity.h"
+#include "compiler/mir/build/call-identity.h"
 #include "compiler/mir/build/loop-context.h"
 #include "compiler/mir/build/mir-builder.h"
 #include "compiler/mir/cfg-utils.h"
@@ -518,6 +520,51 @@ MirTerminator MirTerminator::unreachable(identity::SourceSpan&& sourceSpan) noex
   return MirTerminator(MirUnreachableTerminator{}, zc::mv(sourceSpan));
 }
 
+MirCallableIdentity::MirCallableIdentity(MirSourceCallableIdentity value) noexcept : value(value) {}
+
+MirCallableIdentity::MirCallableIdentity(MirInstanceCallableIdentity value) noexcept
+    : value(value) {}
+
+MirCallableIdentity MirCallableIdentity::source(identity::DefId definition) noexcept {
+  return MirCallableIdentity(MirSourceCallableIdentity{definition});
+}
+
+MirCallableIdentity MirCallableIdentity::instance(ir::InstanceId instance) noexcept {
+  return MirCallableIdentity(MirInstanceCallableIdentity{instance});
+}
+
+MirCallableIdentity MirCallableIdentity::clone() const noexcept {
+  if (kind() == MirCallableIdentityKind::Instance) { return instance(instanceValue()); }
+  return source(sourceValue());
+}
+
+MirCallableIdentityKind MirCallableIdentity::kind() const noexcept {
+  return value.is<MirSourceCallableIdentity>() ? MirCallableIdentityKind::Source
+                                               : MirCallableIdentityKind::Instance;
+}
+
+identity::DefId MirCallableIdentity::sourceValue() const {
+  return value.get<MirSourceCallableIdentity>().definition;
+}
+
+ir::InstanceId MirCallableIdentity::instanceValue() const {
+  return value.get<MirInstanceCallableIdentity>().instance;
+}
+
+bool MirCallableIdentity::isSourceFor(identity::DefId definition) const noexcept {
+  return kind() == MirCallableIdentityKind::Source && sourceValue() == definition;
+}
+
+bool MirCallableIdentity::operator==(const MirCallableIdentity& other) const noexcept {
+  if (kind() != other.kind()) return false;
+  if (kind() == MirCallableIdentityKind::Source) return sourceValue() == other.sourceValue();
+  return instanceValue() == other.instanceValue();
+}
+
+bool MirCallableIdentity::operator!=(const MirCallableIdentity& other) const noexcept {
+  return !(*this == other);
+}
+
 MirCallEffect::MirCallEffect(MirNoActivationCallEffect value) noexcept : value(value) {}
 
 MirCallEffect::MirCallEffect(MirActivateMutableReceiverCallEffect value) noexcept : value(value) {}
@@ -549,11 +596,11 @@ zc::Maybe<MirLocalId> MirCallEffect::activatedMutableReceiver() const noexcept {
   return value.get<MirActivateMutableReceiverCallEffect>().temporary;
 }
 
-MirTerminator MirTerminator::call(identity::DefId callee, zc::Vector<MirOperand>&& arguments,
+MirTerminator MirTerminator::call(MirCallableIdentity&& callee, zc::Vector<MirOperand>&& arguments,
                                   MirCallEffect&& effect, MirPlace&& destination,
                                   MirBlockId normalTarget, zc::Maybe<MirBlockId>&& unwindTarget,
                                   identity::SourceSpan&& sourceSpan) noexcept {
-  return MirTerminator(MirCallTerminator{callee, zc::mv(arguments), zc::mv(effect),
+  return MirTerminator(MirCallTerminator{zc::mv(callee), zc::mv(arguments), zc::mv(effect),
                                          zc::mv(destination), normalTarget, zc::mv(unwindTarget)},
                        zc::mv(sourceSpan));
 }
@@ -591,8 +638,9 @@ MirTerminator MirTerminator::clone() const {
     for (const auto& argument : source.arguments) arguments.add(argument.clone());
     zc::Maybe<MirBlockId> unwindTarget;
     ZC_IF_SOME(target, source.unwindTarget) { unwindTarget = target; }
-    return call(source.callee, zc::mv(arguments), source.effect.clone(), source.destination.clone(),
-                source.normalTarget, zc::mv(unwindTarget), sourceSpan().clone());
+    return call(source.callee.clone(), zc::mv(arguments), source.effect.clone(),
+                source.destination.clone(), source.normalTarget, zc::mv(unwindTarget),
+                sourceSpan().clone());
   }
   if (kind() == MirTerminatorKind::IndirectCall) {
     const auto& source = indirectCallValue();
@@ -657,6 +705,14 @@ bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> rig
     if (left[index] != right[index]) return left[index] < right[index];
   }
   return left.size() < right.size();
+}
+
+bool sameByteSlice(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
+  if (left.size() != right.size()) return false;
+  for (size_t index = 0; index < left.size(); ++index) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
 }
 
 identity::IdentityInvariant invalidIdentity(identity::IdentityAllocationPhase phase,
@@ -1006,10 +1062,33 @@ bool encodeStatement(identity::CanonicalEncoder& encoder, const MirStatement& st
   return false;
 }
 
+bool encodeCalleeIdentity(identity::CanonicalEncoder& encoder, const MirCallableIdentity& callee,
+                          const checker::CheckerIdentityAuthority& identities,
+                          zc::Maybe<checker::checked::CheckedFactsRecordView> records) {
+  if (callee.kind() == MirCallableIdentityKind::Source) {
+    return encodeDefinition(encoder, callee.sourceValue(), identities);
+  }
+  const auto instance = callee.instanceValue();
+  auto definition = identities.definition(instance.definition());
+  if (definition == zc::none || records == zc::none) { return false; }
+  auto substitutionBytes = ZC_ASSERT_NONNULL(records).substitutionRecord(instance.substitution());
+  auto witnessBytes = ZC_ASSERT_NONNULL(records).witnessRecord(instance.witnesses());
+  if (substitutionBytes == zc::none || witnessBytes == zc::none) { return false; }
+  auto definitionKey = ZC_ASSERT_NONNULL(definition).key().encode();
+  auto framed = ir::encodeInstanceIdentity(
+      definitionKey.asPtr(), ZC_ASSERT_NONNULL(substitutionBytes), ZC_ASSERT_NONNULL(witnessBytes));
+  if (framed == zc::none) { return false; }
+  // The callee slot stays one length-framed byte string for both framings;
+  // the instance frame already opens with its domain tag.
+  encoder.encodeByteString(ZC_ASSERT_NONNULL(framed).asPtr());
+  return true;
+}
+
 bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& terminator,
                       identity::ModuleId module,
                       const checker::CheckerIdentityAuthority& identities,
-                      const type::SemanticTypeStore& semanticTypes) {
+                      const type::SemanticTypeStore& semanticTypes,
+                      zc::Maybe<checker::checked::CheckedFactsRecordView> records) {
   encoder.encodeUint8(static_cast<uint8_t>(terminator.kind()));
   if (terminator.kind() == MirTerminatorKind::Unreachable) return true;
   if (terminator.kind() == MirTerminatorKind::Goto) {
@@ -1035,7 +1114,7 @@ bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& 
   }
   if (terminator.kind() == MirTerminatorKind::Call) {
     const auto& call = terminator.callValue();
-    if (!encodeDefinition(encoder, call.callee, identities) ||
+    if (!encodeCalleeIdentity(encoder, call.callee, identities, records) ||
         !encodePlace(encoder, call.destination, identities, semanticTypes) ||
         !call.normalTarget.isValid()) {
       return false;
@@ -1095,9 +1174,11 @@ bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& 
   return true;
 }
 
-zc::Maybe<zc::Array<uint8_t>> encodeFunction(const MirFunction& function, identity::ModuleId module,
-                                             const checker::CheckerIdentityAuthority& identities,
-                                             const type::SemanticTypeStore& semanticTypes) {
+zc::Maybe<zc::Array<uint8_t>> encodeFunction(
+    const MirFunction& function, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes,
+    zc::Maybe<checker::checked::CheckedFactsRecordView> records) {
   identity::CanonicalEncoder encoder;
   if (!encodeDefinition(encoder, function.owner, identities)) return zc::none;
   encoder.encodeUint8(static_cast<uint8_t>(function.kind));
@@ -1137,7 +1218,7 @@ zc::Maybe<zc::Array<uint8_t>> encodeFunction(const MirFunction& function, identi
         return zc::none;
       }
     }
-    if (!encodeTerminator(encoder, block.terminator, module, identities, semanticTypes)) {
+    if (!encodeTerminator(encoder, block.terminator, module, identities, semanticTypes, records)) {
       return zc::none;
     }
   }
@@ -2264,6 +2345,14 @@ MirRevisionId MirRevisionId::fromDigest(const identity::Sha256Digest& digest) no
   return MirRevisionId(digest);
 }
 
+zc::Maybe<zc::Array<uint8_t>> MirFunctionCanonicalCodec::encode(
+    const MirFunction& function, identity::ModuleId module,
+    const checker::CheckerIdentityAuthority& identities,
+    const type::SemanticTypeStore& semanticTypes,
+    zc::Maybe<checker::checked::CheckedFactsRecordView> records) {
+  return encodeFunction(function, module, identities, semanticTypes, zc::mv(records));
+}
+
 zc::Maybe<zc::Array<uint8_t>> MirRevisionCodec::encodeBuiltFramed(
     const identity::Sha256Digest& contextFingerprint, zc::ArrayPtr<const uint8_t> expandedModuleKey,
     const identity::Sha256Digest& checkedFactsRevision,
@@ -3274,7 +3363,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                                             ? MirCallEffect::noActivation()
                                             : MirCallEffect::activateMutableReceiver(localId(2));
                   auto callTerminator =
-                      MirTerminator::call(call.callee, zc::mv(arguments), zc::mv(receiverEffect),
+                      MirTerminator::call(MirCallableIdentity::source(call.callee),
+                                          zc::mv(arguments), zc::mv(receiverEffect),
                                           MirPlace(resultLocal, call.resultType,
                                                    zc::mv(resultProjections), call.resultType),
                                           blockId(2), zc::mv(noUnwind), call.sourceSpan.clone());
@@ -8974,7 +9064,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
                 }
                 zc::Maybe<MirBlockId> noUnwind;
                 auto callTerminator = MirTerminator::call(
-                    directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+                    ZC_ASSERT_NONNULL(callIdentityFor(directCall, identities)), zc::mv(arguments),
+                    MirCallEffect::noActivation(),
                     MirPlace(resultLocal, local.type, zc::mv(destinationProjections), local.type),
                     blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
                 zc::Vector<MirStatement> continuationStatements;
@@ -9173,7 +9264,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
         }
         zc::Maybe<MirBlockId> noUnwind;
         auto callTerminator =
-            MirTerminator::call(directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+            MirTerminator::call(ZC_ASSERT_NONNULL(callIdentityFor(directCall, identities)),
+                                zc::mv(arguments), MirCallEffect::noActivation(),
                                 MirPlace(temporaryLocal, directCall.resultType,
                                          zc::mv(destinationProjections), directCall.resultType),
                                 blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
@@ -9333,7 +9425,8 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
       }
       zc::Maybe<MirBlockId> noUnwind;
       auto callTerminator =
-          MirTerminator::call(directCall.callee, zc::mv(arguments), MirCallEffect::noActivation(),
+          MirTerminator::call(ZC_ASSERT_NONNULL(callIdentityFor(directCall, identities)),
+                              zc::mv(arguments), MirCallEffect::noActivation(),
                               MirPlace(temporaryLocal, declaration.resultType,
                                        zc::mv(destinationProjections), declaration.resultType),
                               blockId(2), zc::mv(noUnwind), directCall.sourceSpan.clone());
@@ -9384,7 +9477,7 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   zc::Vector<MirFunction> functions;
   zc::Vector<zc::Array<uint8_t>> canonicalFunctions;
   for (auto& item : pending) {
-    auto encoded = encodeFunction(item.function, module, identities, semanticTypes);
+    auto encoded = encodeFunction(item.function, module, identities, semanticTypes, input.records);
     if (encoded == zc::none) {
       return rejectMir<BuiltMirCandidate>(
           ir::IrFailurePhase::MirConstruction, ir::IrFailureKind::CanonicalCodecMismatch, module,
@@ -9467,6 +9560,57 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
                                          ir::IrFailureKind::InvalidFact, module, function.owner,
                                          identities, static_cast<uint32_t>(index + 1));
     }
+    // Independently validate every direct-call identity slot: a Source edge
+    // must resolve through the authority; an Instance edge must be context-valid
+    // and its frame (re-derived from the frozen records) must round-trip through
+    // the domain-separated decoder with exact component bytes.
+    for (const auto& block : function.blocks) {
+      if (block.terminator.kind() != MirTerminatorKind::Call) { continue; }
+      const auto& callee = block.terminator.callValue().callee;
+      if (callee.kind() == MirCallableIdentityKind::Source) {
+        if (identities.definition(callee.sourceValue()) == zc::none) {
+          return rejectMir<VerifiedBuiltMir>(
+              ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+              module, function.owner, identities, static_cast<uint32_t>(index + 1));
+        }
+        continue;
+      }
+      const auto instance = callee.instanceValue();
+      if (!instance.isValid() || !instance.definition().belongsTo(identities.semanticContext()) ||
+          !instance.substitution().belongsTo(identities.semanticContext()) ||
+          !instance.witnesses().belongsTo(identities.semanticContext()) ||
+          input.records == zc::none) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
+      }
+      const auto& records = ZC_ASSERT_NONNULL(input.records);
+      auto substitutionBytes = records.substitutionRecord(instance.substitution());
+      auto witnessBytes = records.witnessRecord(instance.witnesses());
+      auto definition = identities.definition(instance.definition());
+      if (substitutionBytes == zc::none || witnessBytes == zc::none || definition == zc::none) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
+      }
+      auto definitionKey = ZC_ASSERT_NONNULL(definition).key().encode();
+      auto framed =
+          ir::encodeInstanceIdentity(definitionKey.asPtr(), ZC_ASSERT_NONNULL(substitutionBytes),
+                                     ZC_ASSERT_NONNULL(witnessBytes));
+      auto decoded = framed == zc::none
+                         ? zc::none
+                         : ir::decodeInstanceIdentity(ZC_ASSERT_NONNULL(framed).asPtr());
+      if (decoded == zc::none ||
+          !sameByteSlice(ZC_ASSERT_NONNULL(decoded).definitionKey.asPtr(), definitionKey.asPtr()) ||
+          !sameByteSlice(ZC_ASSERT_NONNULL(decoded).substitutionRecord.asPtr(),
+                         ZC_ASSERT_NONNULL(substitutionBytes)) ||
+          !sameByteSlice(ZC_ASSERT_NONNULL(decoded).witnessRecord.asPtr(),
+                         ZC_ASSERT_NONNULL(witnessBytes))) {
+        return rejectMir<VerifiedBuiltMir>(
+            ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,
+            module, function.owner, identities, static_cast<uint32_t>(index + 1));
+      }
+    }
     zc::Maybe<const hir::HirValueDeclaration&> declaration;
     for (const auto& value : hirModule.declarations()) {
       if (value.definition != function.owner) continue;
@@ -9498,7 +9642,7 @@ ir::IrOperationResult<VerifiedBuiltMir> BuiltMirVerifier::verify(BuiltMirCandida
     // MIR builder constructs each function by destination-driven construction,
     // so per-shape positional matching is no longer required.
     auto owner = identities.definition(function.owner);
-    auto record = encodeFunction(function, module, identities, semanticTypes);
+    auto record = encodeFunction(function, module, identities, semanticTypes, input.records);
     if (owner == zc::none || record == zc::none) {
       return rejectMir<VerifiedBuiltMir>(
           ir::IrFailurePhase::BuiltMirVerification, ir::IrFailureKind::CanonicalCodecMismatch,

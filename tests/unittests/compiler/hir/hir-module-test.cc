@@ -5002,7 +5002,7 @@ ZC_TEST("HIR pipeline lowers a discarded unit receiver call and a parameter-RHS 
     ZC_EXPECT(first.statements[3].borrowCreationValue().kind == mir::MirBorrowKind::Mutable);
     ZC_EXPECT(first.terminator.kind() == mir::MirTerminatorKind::Call);
     const auto& setMirCall = first.terminator.callValue();
-    ZC_EXPECT(setMirCall.callee == set.definition);
+    ZC_EXPECT(setMirCall.callee.isSourceFor(set.definition));
     ZC_EXPECT(setMirCall.effect.kind() == mir::MirCallEffectKind::ActivateMutableReceiver);
     ZC_IF_SOME(activated, setMirCall.effect.activatedMutableReceiver()) {
       ZC_EXPECT(activated == function.locals[1].id);
@@ -5021,7 +5021,7 @@ ZC_TEST("HIR pipeline lowers a discarded unit receiver call and a parameter-RHS 
     ZC_EXPECT(second.statements[1].borrowCreationValue().kind == mir::MirBorrowKind::Shared);
     ZC_EXPECT(second.terminator.kind() == mir::MirTerminatorKind::Call);
     const auto& getMirCall = second.terminator.callValue();
-    ZC_EXPECT(getMirCall.callee == get.definition);
+    ZC_EXPECT(getMirCall.callee.isSourceFor(get.definition));
     ZC_EXPECT(getMirCall.effect.kind() == mir::MirCallEffectKind::NoActivation);
     ZC_REQUIRE(getMirCall.arguments.size() == 1);
     ZC_EXPECT(getMirCall.arguments[0].kind() != mir::MirOperandKind::Constant);
@@ -5173,7 +5173,7 @@ ZC_TEST("HIR pipeline lowers a by-value aggregate call and its parameter field c
     ZC_REQUIRE(function.blocks.size() == 2);
     ZC_EXPECT(function.blocks[0].terminator.kind() == mir::MirTerminatorKind::Call);
     const auto& mirCall = function.blocks[0].terminator.callValue();
-    ZC_EXPECT(mirCall.callee == calleeDecl.definition);
+    ZC_EXPECT(mirCall.callee.isSourceFor(calleeDecl.definition));
     ZC_REQUIRE(mirCall.arguments.size() == 1);
     ZC_EXPECT(mirCall.arguments[0].kind() != mir::MirOperandKind::Constant);
     ZC_EXPECT(mirCall.arguments[0].place().local() == function.locals[0].id);

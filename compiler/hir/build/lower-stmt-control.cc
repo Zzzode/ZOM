@@ -121,7 +121,8 @@ void lowerConditionalReturnFunction(PendingFunctionDeclaration&& function, HirFn
                                      function.returnSpan.clone()});
     ctx.addDirectCall(HirDirectCallExpression{
         callId, callExpression.callee, callExpression.calleeType, callExpression.resultType,
-        zc::mv(callExpression.arguments), callExpression.sourceSpan.clone()});
+        zc::mv(callExpression.arguments), zc::Maybe<checker::checked::CanonicalSubstitutionId>(),
+        zc::Maybe<checker::checked::WitnessArgumentsId>(), callExpression.sourceSpan.clone()});
     ctx.addConditional(HirConditionalExpression{conditionalId, callId, thenValueId, elseValueId,
                                                 function.resultType, HirValueCategory::Value,
                                                 conditional.conditionalSpan.clone()});

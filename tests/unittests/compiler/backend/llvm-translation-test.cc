@@ -962,9 +962,9 @@ mir::MirFunction buildLocalCallCaller(identity::DefId owner, identity::DefId cal
   entryStatements.add(mir::MirStatement::storageLive(localId(1), span()));
   blocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entryStatements),
-      mir::MirTerminator::call(callee, zc::Vector<mir::MirOperand>(),
-                               mir::MirCallEffect::noActivation(), resultPlace(localId(1), i32),
-                               blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(callee),
+                               zc::Vector<mir::MirOperand>(), mir::MirCallEffect::noActivation(),
+                               resultPlace(localId(1), i32), blockId(2), zc::none, span())});
   // Continuation: return the result local.
   zc::Vector<mir::MirStatement> contStatements;
   blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(contStatements),
@@ -1071,8 +1071,9 @@ mir::MirFunction buildArgumentCallCaller(identity::DefId owner, identity::DefId 
   arguments.add(mir::MirOperand::constant(i32, integerConstant(argumentValue)));
   blocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entryStatements),
-      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(1), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(callee), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(1), i32),
+                               blockId(2), zc::none, span())});
   // Continuation: return the result local.
   zc::Vector<mir::MirStatement> contStatements;
   blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(contStatements),
@@ -1193,8 +1194,9 @@ mir::MirFunction buildByValueAggregateCaller(identity::DefId owner, identity::De
   zc::Vector<mir::MirBasicBlock> blocks;
   blocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entryStatements),
-      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(callee), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(2), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> contStatements;
   blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(contStatements),
                                 mir::MirTerminator::returnValue(
@@ -1283,8 +1285,9 @@ mir::MirFunction buildParameterArgumentCallCaller(identity::DefId owner, identit
   arguments.add(mir::MirOperand::copy(resultPlace(localId(1), i32)));
   blocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entryStatements),
-      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(callee), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(2), i32),
+                               blockId(2), zc::none, span())});
   // Continuation: return the result local.
   zc::Vector<mir::MirStatement> contStatements;
   blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(contStatements),
@@ -1372,8 +1375,9 @@ mir::MirFunction buildParameterArgumentReturnCaller(identity::DefId owner, ident
   arguments.add(mir::MirOperand::copy(resultPlace(localId(1), i32)));
   blocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entryStatements),
-      mir::MirTerminator::call(callee, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(callee), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(2), i32),
+                               blockId(2), zc::none, span())});
   // Continuation: materialize the function result from the temporary and return it.
   zc::Vector<mir::MirStatement> continuationStatements;
   continuationStatements.add(mir::MirStatement::storageLive(localId(3), span()));
@@ -2038,8 +2042,9 @@ ZC_TEST("Shared-receiver method call lowers MIR -> LIR -> verified LLVM with a p
     zc::Vector<mir::MirBasicBlock> callerBlocks;
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                                 blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     callerBlocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2147,8 +2152,9 @@ ZC_TEST("Shared-receiver self-call chain lowers MIR -> LIR -> verified LLVM") {
     zc::Vector<mir::MirBasicBlock> blocks;
     blocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(leafOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(2), i32), blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(leafOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(2), i32),
+                                 blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     blocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2207,9 +2213,9 @@ ZC_TEST("Shared-receiver self-call chain lowers MIR -> LIR -> verified LLVM") {
     zc::Vector<mir::MirBasicBlock> callerBlocks;
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(forwarderOwner, zc::mv(arguments),
-                                 mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
-                                 blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(forwarderOwner),
+                                 zc::mv(arguments), mir::MirCallEffect::noActivation(),
+                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     callerBlocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2317,8 +2323,9 @@ ZC_TEST("Shared-receiver field read lowers MIR -> LIR -> verified LLVM through a
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2450,8 +2457,9 @@ ZC_TEST("Shared-receiver method with one integer argument returns the argument")
     zc::Vector<mir::MirBasicBlock> callerBlocks;
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                                 blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     callerBlocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2592,8 +2600,9 @@ ZC_TEST("Shared-receiver method with parameter arithmetic returns the computed r
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2731,8 +2740,9 @@ ZC_TEST("Shared-receiver method with receiver-field arithmetic returns the compu
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -2841,7 +2851,7 @@ ZC_TEST(
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments),
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
                                mir::MirCallEffect::activateMutableReceiver(localId(2)),
                                resultPlace(localId(3), i32), blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
@@ -2947,7 +2957,7 @@ ZC_TEST("Mutating-receiver field write-read lowers StoreField then LoadField") {
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments),
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
                                mir::MirCallEffect::activateMutableReceiver(localId(2)),
                                resultPlace(localId(3), i32), blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
@@ -3098,7 +3108,7 @@ ZC_TEST("Mutating unit receiver call lowers a void call before the field read") 
     arguments.add(mir::MirOperand::constant(i32, integerConstant(42)));
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(setterOwner, zc::mv(arguments),
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(setterOwner), zc::mv(arguments),
                                  mir::MirCallEffect::activateMutableReceiver(localId(2)),
                                  resultPlace(localId(3), unit), blockId(2), zc::none, span())});
   }
@@ -3116,8 +3126,9 @@ ZC_TEST("Mutating unit receiver call lowers a void call before the field read") 
         localId(4), sharedReceiverType, zc::Vector<mir::MirProjection>{}, sharedReceiverType)));
     callerBlocks.add(mir::MirBasicBlock{
         blockId(2), scopeId(1), zc::mv(middle),
-        mir::MirTerminator::call(getterOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(5), i32), blockId(3), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(getterOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(5), i32),
+                                 blockId(3), zc::none, span())});
   }
   callerBlocks.add(
       mir::MirBasicBlock{blockId(3), scopeId(1), zc::Vector<mir::MirStatement>{},
@@ -3228,8 +3239,9 @@ ZC_TEST("Shared-receiver scalar local method folds the callee to a constant retu
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -3338,8 +3350,9 @@ ZC_TEST("Shared-receiver scalar local mismatches fail closed before LIR emission
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -3419,8 +3432,9 @@ ZC_TEST("Shared-receiver method conditional lowers to a verified multi-block cal
   zc::Vector<mir::MirBasicBlock> callerBlocks;
   callerBlocks.add(mir::MirBasicBlock{
       blockId(1), scopeId(1), zc::mv(entry),
-      mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                               resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+      mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                               mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                               blockId(2), zc::none, span())});
   zc::Vector<mir::MirStatement> continuation;
   callerBlocks.add(
       mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -3529,8 +3543,9 @@ ZC_TEST("Mutating-receiver mismatches fail closed before LIR emission") {
     zc::Vector<mir::MirBasicBlock> callerBlocks;
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                                 blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     callerBlocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),
@@ -3596,8 +3611,9 @@ ZC_TEST("Mutating-receiver mismatches fail closed before LIR emission") {
     // The malformed part: mutable borrow, but NoActivation on the call.
     callerBlocks.add(mir::MirBasicBlock{
         blockId(1), scopeId(1), zc::mv(entry),
-        mir::MirTerminator::call(calleeOwner, zc::mv(arguments), mir::MirCallEffect::noActivation(),
-                                 resultPlace(localId(3), i32), blockId(2), zc::none, span())});
+        mir::MirTerminator::call(mir::MirCallableIdentity::source(calleeOwner), zc::mv(arguments),
+                                 mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32),
+                                 blockId(2), zc::none, span())});
     zc::Vector<mir::MirStatement> continuation;
     callerBlocks.add(
         mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuation),

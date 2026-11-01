@@ -1793,7 +1793,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             statements[1].sourceOrdinal() != v.lirOwner ||
             terminator.kind() != TerminatorKind::Call || terminator.hasCallDestination() ||
             terminator.calleeIndex() >= moduleFunctions.size() ||
-            moduleFunctions[terminator.calleeIndex()].owner() != mCall.callee ||
+            !mCall.callee.isSourceFor(moduleFunctions[terminator.calleeIndex()].owner()) ||
             terminator.callArguments().size() != 2 ||
             terminator.callNormalTarget().ordinal() != 2 ||
             terminator.callArguments()[0].isConstant() ||
@@ -1811,7 +1811,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             terminator.kind() != TerminatorKind::Call || !terminator.hasCallDestination() ||
             terminator.callDestinationOrdinal() != v.lirResult ||
             terminator.calleeIndex() >= moduleFunctions.size() ||
-            moduleFunctions[terminator.calleeIndex()].owner() != mCall.callee ||
+            !mCall.callee.isSourceFor(moduleFunctions[terminator.calleeIndex()].owner()) ||
             terminator.callArguments().size() != 1 ||
             terminator.callNormalTarget().ordinal() != 3 ||
             terminator.callArguments()[0].isConstant() ||
@@ -2757,7 +2757,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         if (calleeIndex >= moduleFunctions.size()) {
           return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
         }
-        if (moduleFunctions[calleeIndex].owner() != call.callee) {
+        if (!call.callee.isSourceFor(moduleFunctions[calleeIndex].owner())) {
           return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
         }
         // The destination place maps to the call destination slot.
@@ -2962,7 +2962,7 @@ zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
       call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
-      call.unwindTarget != zc::none || !(call.callee == callee.owner)) {
+      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
     return zc::none;
   }
   const auto& callArgument = call.arguments[0];
@@ -3295,7 +3295,7 @@ zc::Maybe<IndirectCallWithLeafShape> matchIndirectCallWithLeaf(
   if (aggregate.type != callerAggregate.type || aggregate.elements.size() != 1) { return zc::none; }
   if (aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
@@ -3731,7 +3731,7 @@ zc::Maybe<ErasedAggregateCallShape> matchErasedAggregateCall(
     return zc::none;
   }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (mirCall.callee != callee.owner || mirCall.arguments.size() != 1 ||
+  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
@@ -4638,7 +4638,7 @@ zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
     return zc::none;
   }
   const auto& initCall = callerEntry.terminator.callValue();
-  if (initCall.callee != existentialCallee.owner || initCall.arguments.size() != 0 ||
+  if (!initCall.callee.isSourceFor(existentialCallee.owner) || initCall.arguments.size() != 0 ||
       initCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       initCall.destination.local() != callerExistential.id ||
       initCall.destination.projections().size() != 0 || initCall.normalTarget != callerMid.id ||
@@ -4646,7 +4646,7 @@ zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
     return zc::none;
   }
   const auto& returnCall = callerMid.terminator.callValue();
-  if (returnCall.callee != indirectCallee.owner || returnCall.arguments.size() != 1 ||
+  if (!returnCall.callee.isSourceFor(indirectCallee.owner) || returnCall.arguments.size() != 1 ||
       returnCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       returnCall.destination.local() != callerResult.id ||
       returnCall.destination.projections().size() != 0 ||

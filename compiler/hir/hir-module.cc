@@ -538,6 +538,16 @@ zc::Maybe<zc::String> VerifiedHirModule::dump() const {
     append(output, zc::encodeHex(resultType.get<type::SemanticTypeLookup>().key().bytes()));
     append(output, " nargs="_zc);
     append(output, zc::str(call.arguments.size()));
+    // Generic monomorphization evidence is rendered as a presence marker so the
+    // dump text stays independent of per-session handle brands and build order.
+    ZC_IF_SOME(substitution, call.substitution) {
+      (void)substitution;
+      append(output, " generic="_zc);
+    }
+    ZC_IF_SOME(witnesses, call.witnesses) {
+      (void)witnesses;
+      append(output, " witnessed="_zc);
+    }
     for (size_t index = 0; index < call.arguments.size(); ++index) {
       const auto& argument = call.arguments[index];
       auto argumentType = impl->semanticTypes.get(argument.type);
@@ -18022,9 +18032,18 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       auto checkedCallIndex = factIndex(facts.calls(), sourceValueNode);
       auto callKey = checkedNodeKey(tree, bound.parsedModule(), sourceValueNode);
       auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+      // RFC 0056: an explicit type-argument list is legal only on a
+      // checker-resolved generic call; ordinary direct calls still forbid it.
+      bool directCallIsGeneric = false;
+      if (checkedCallIndex != zc::none) {
+        const auto& preInvocation =
+            facts.calls().entries()[ZC_ASSERT_NONNULL(checkedCallIndex)].value.invocation;
+        directCallIsGeneric = preInvocation.substitutions != zc::none;
+      }
       if (sourceCall.kind != ast::SyntaxKind::CallExpression || !tree.contains(calleeNode) ||
           tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr ||
-          !tree.contains(typeArguments) || !tree.contains(arguments) || !typeArguments.empty() ||
+          !tree.contains(typeArguments) || !tree.contains(arguments) ||
+          (!directCallIsGeneric && !typeArguments.empty()) ||
           call.arguments.size() != arguments.size || calleeTypeIndex == zc::none ||
           checkedCallIndex == zc::none || callKey == zc::none || callee == zc::none ||
           call.node != materializedNode ||
@@ -18063,6 +18082,17 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
         hirSpanMatches = sameSpan(call.sourceSpan, value);
       }
       ZC_IF_SOME(owner, dispatch.owner) { dispatchOwnerMatches = owner == function.definition; }
+      // Generic HIR evidence must equal the checked and dispatch evidence and
+      // carry no raises or error-operator shape in this slice.
+      const bool genericDirectEvidence =
+          !directCallIsGeneric ||
+          (call.substitution == invocation.substitutions &&
+           call.witnesses == invocation.witnesses && invocation.substitutions != zc::none &&
+           invocation.witnesses != zc::none &&
+           dispatch.fact.substitutions == invocation.substitutions &&
+           dispatch.fact.witnesses == invocation.witnesses && invocation.raises == zc::none &&
+           dispatch.fact.raises == zc::none && !source.returnsErrorPropagateCall &&
+           !source.returnsErrorUnwrapCall);
       if (call.callee != ZC_ASSERT_NONNULL(callee) ||
           call.calleeType != facts.nodeTypes().entries()[calleeTypeSlot].value ||
           !selected.is<checker::checked::DirectCallable>() ||
@@ -18073,8 +18103,9 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
            !source.returnsErrorUnwrapCall) ||
           invocation.receiver != zc::none || invocation.receiverMode != zc::none ||
           invocation.receiverAdjustment != zc::none ||
-          invocation.arguments.size() != arguments.size || invocation.substitutions != zc::none ||
-          invocation.witnesses != zc::none ||
+          invocation.arguments.size() != arguments.size ||
+          (!directCallIsGeneric &&
+           (invocation.substitutions != zc::none || invocation.witnesses != zc::none)) ||
           (invocation.raises != zc::none && !source.returnsErrorPropagateCall &&
            !source.returnsErrorUnwrapCall) ||
           !callSpanMatches || !dispatchOwnerMatches ||
@@ -18085,10 +18116,11 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
           (dispatch.fact.successType != function.resultType && !source.returnsErrorPropagateCall) ||
           (dispatch.fact.resultType != function.resultType && !source.returnsErrorPropagateCall &&
            !source.returnsErrorUnwrapCall) ||
-          dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none ||
+          (!directCallIsGeneric &&
+           (dispatch.fact.substitutions != zc::none || dispatch.fact.witnesses != zc::none)) ||
           (dispatch.fact.raises != zc::none && !source.returnsErrorPropagateCall &&
            !source.returnsErrorUnwrapCall) ||
-          !dispatchSpanMatches || !hirSpanMatches) {
+          !dispatchSpanMatches || !hirSpanMatches || !genericDirectEvidence) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);

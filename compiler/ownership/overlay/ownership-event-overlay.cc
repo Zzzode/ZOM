@@ -1563,7 +1563,7 @@ zc::Maybe<DeferredActivationFact> projectDeferredActivation(const EventOverlayIn
   if (activated == zc::none) return zc::none;
   zc::Maybe<const hir::HirReceiverCallExpression&> receiverCall;
   for (const auto& candidate : input.hir.receiverCalls()) {
-    if (candidate.callee != call.callee ||
+    if (!call.callee.isSourceFor(candidate.callee) ||
         !sameSpan(candidate.sourceSpan, block.terminator.sourceSpan())) {
       continue;
     }
