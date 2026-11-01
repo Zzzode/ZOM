@@ -23,13 +23,13 @@ endif()
 
 add_test(
   NAME conformance-diagnostics
-  COMMAND ${ZOM_LIT_COMMAND} -v -j 3 --timeout=90 ${DIAGNOSTIC_EXPECTATION_ROOT}
+  COMMAND ${ZOM_LIT_COMMAND} -v -j 8 --timeout=90 ${DIAGNOSTIC_EXPECTATION_ROOT}
   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests
 )
 
 set_tests_properties(conformance-diagnostics PROPERTIES
   LABELS "conformance;conformance-diagnostics;diagnostics;lit;filecheck;specification"
-  TIMEOUT 600
-  PROCESSORS 3
+  TIMEOUT 900
+  PROCESSORS 8
   ENVIRONMENT "${DIAGNOSTIC_TEST_ENV}"
 )

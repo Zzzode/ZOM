@@ -159,24 +159,30 @@ if [ "$need_rebuild" = "1" ]; then
 fi
 
 # ==================================================================
-# ParseTool helper source. The helper is generated and compiled on demand.
+# ParseTool helper source. Rewritten every run so the embedded source and the
+# compiled class never drift; javac runs only when the source is newer.
 # ==================================================================
-if [ ! -f "$BUILD_DIR/ParseTool.class" ] || [ /tmp/ParseTool.java -nt "$BUILD_DIR/ParseTool.class" ]; then
-  if [ -f /tmp/ParseTool.java ]; then
-    cp /tmp/ParseTool.java "$BUILD_DIR/ParseTool.java"
-  else
-    cat > "$BUILD_DIR/ParseTool.java" <<'JEOF'
+cat > "$BUILD_DIR/ParseTool.java" <<'JEOF'
 import org.antlr.v4.runtime.*;
 import org.antlr.v4.runtime.misc.ParseCancellationException;
 import org.antlr.v4.runtime.tree.ParseTree;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.util.List;
 public class ParseTool {
-  public static void main(String[] args) throws Exception {
-    String startRule = args.length > 0 ? args[0] : "sourceFile";
-    StringBuilder sb = new StringBuilder();
-    byte[] buf = new byte[16384]; int n;
-    while ((n = System.in.read(buf)) > 0) sb.append(new String(buf, 0, n));
-    CharStream in = CharStreams.fromString(sb.toString());
+  // Outcome of one independent parse attempt. rejected mirrors the predicate
+  // of the former per-file launcher: nonzero exit OR diagnostics mentioning
+  // error/Exception/a source line.
+  static final class Outcome {
+    boolean rejected;
+    String detail = "";
+  }
+
+  static Outcome parseOne(String startRule, String source) {
+    Outcome out = new Outcome();
+    CharStream in = CharStreams.fromString(source);
     ZomLexer lex = new ZomLexer(in);
     CommonTokenStream ts = new CommonTokenStream(lex);
     ZomParser p = new ZomParser(ts);
@@ -195,27 +201,57 @@ public class ParseTool {
     try {
       Method m = ZomParser.class.getMethod(startRule);
       Object tree = m.invoke(p);
-      boolean hadErrors = (p.getNumberOfSyntaxErrors() > 0 || errs[0] > 0);
-      if (hadErrors) {
-        System.err.print(errBuf);
-        System.exit(1);
-      }
-      if (args.length > 1 && "tree".equals(args[1]))
+      out.rejected = (p.getNumberOfSyntaxErrors() > 0 || errs[0] > 0);
+      if (out.rejected) out.detail = errBuf.toString().trim();
+      if (!out.rejected && Boolean.getBoolean("zom.parse.tree"))
         System.out.println(((ParseTree)tree).toStringTree(p));
-      System.exit(0);
     } catch (ReflectiveOperationException roe) {
       Throwable cause = roe.getCause() != null ? roe.getCause() : roe;
-      String msg = cause.getClass().getSimpleName() + ": " + cause.getMessage();
-      if (errs[0] > 0) System.err.print(errBuf);
-      System.err.println(msg);
-      // exit 2 = semantic predicate fail (PCE); exit 1 = any other uncaught
-      if (cause instanceof ParseCancellationException) System.exit(2);
-      System.exit(1);
+      out.rejected = true;
+      if (errs[0] > 0) out.detail = errBuf.toString().trim() + " | ";
+      out.detail += cause.getClass().getSimpleName() + ": " + cause.getMessage();
+    }
+    return out;
+  }
+
+  static String flatten(String text) {
+    String s = text.replace('\r', ' ').replace('\n', ' ').replace('\t', ' ').trim();
+    return s.length() > 300 ? s.substring(0, 300) : s;
+  }
+
+  public static void main(String[] args) throws Exception {
+    if (args.length >= 2 && "--batch".equals(args[0])) {
+      // One JVM for the whole corpus. The manifest lists one corpus source
+      // path per line in traversal order; output is one verdict per line:
+      //   A\t<path>          accepted cleanly
+      //   R\t<path>\t<why>   rejected
+      List<String> paths = Files.readAllLines(Paths.get(args[1]), StandardCharsets.UTF_8);
+      StringBuilder sb = new StringBuilder();
+      for (String path : paths) {
+        if (path.isEmpty()) continue;
+        String source = new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+        Outcome out = parseOne("sourceFile", source);
+        sb.setLength(0);
+        sb.append(out.rejected ? 'R' : 'A').append('\t').append(path);
+        if (out.rejected) sb.append('\t').append(flatten(out.detail));
+        System.out.println(sb.toString());
+      }
+      System.out.flush();
+      return;
+    }
+    String startRule = args.length > 0 ? args[0] : "sourceFile";
+    StringBuilder sb = new StringBuilder();
+    byte[] buf = new byte[16384]; int n;
+    while ((n = System.in.read(buf)) > 0) sb.append(new String(buf, 0, n));
+    Outcome out = parseOne(startRule, sb.toString());
+    if (out.rejected) {
+      System.err.println(out.detail);
+      System.exit(out.detail.contains("ParseCancellationException") ? 2 : 1);
     }
   }
 }
 JEOF
-  fi
+if [ ! -f "$BUILD_DIR/ParseTool.class" ] || [ "$BUILD_DIR/ParseTool.java" -nt "$BUILD_DIR/ParseTool.class" ]; then
   "$JAVAC_BIN" -cp "$ANTLRJAR:$BUILD_DIR" -d "$BUILD_DIR" "$BUILD_DIR/ParseTool.java" \
     >/dev/null 2>/tmp/zom_parsetool_javac
   rc=$?
@@ -246,12 +282,23 @@ expected_verdict() {
 }
 
 # ==================================================================
-# Traverse fixtures. Process substitution keeps associative arrays in this shell.
+# Traverse fixtures. Pass 1 collects the selected corpus sources plus their
+# expectation metadata; pass 2 parses every source in ONE JVM and joins the
+# verdicts to the metadata. This replaces ~1100 cold JVM launches with one.
 # ==================================================================
 total=0 pass=0 fail=0
 declare -A dir_pass dir_fail dir_total
 fail_files=()
+batch_manifest="$BUILD_DIR/batch-manifest.txt"
+batch_results="$BUILD_DIR/batch-results.txt"
+batch_err="$BUILD_DIR/batch-stderr.txt"
+batch_paths=()
+batch_rels=()
+batch_expects=()
+batch_rules=()
+batch_subdirs=()
 
+: > "$batch_manifest"
 while IFS= read -r -d '' expectation; do
   rel="${expectation#$EXPECTATION_ROOT/}"
   rel="${rel%.yml}.zom"
@@ -280,47 +327,74 @@ while IFS= read -r -d '' expectation; do
   subdir="${rel%%/*}"
   dir_total[$subdir]=$(( ${dir_total[$subdir]:-0} + 1 ))
 
-  "$JAVA_BIN" -Djava.awt.headless=true -cp "$CP" ParseTool sourceFile < "$f" \
-    >/tmp/zom_$$_out 2>/tmp/zom_$$_err
-  rc=$?
-  stdout=$(cat /tmp/zom_$$_out 2>/dev/null)
-  stderr=$(cat /tmp/zom_$$_err 2>/dev/null)
-
-  status=""
-  case "$expect" in
-    ACCEPT)
-      if [ $rc = 0 ] && ! printf '%s' "$stderr" | grep -qE "error|Error|Exception|line [0-9]"; then
-        status="PASS"
-        pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
-      else
-        status="FAIL (rc=$rc)"
-        fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))
-        fail_files+=("$rel  [rc=$rc, stderr: ${stderr//$'\n'/' | '}]")
-      fi
-      ;;
-    REJECT)
-      rejected=0
-      if [ $rc != 0 ]; then rejected=1; fi
-      if printf '%s' "$stderr" | grep -qE "error|Error|Exception|syntax error|line [0-9]"; then rejected=1; fi
-      if [ $rejected = 1 ]; then
-        status="PASS (rejected)"
-        pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
-      else
-        status="FAIL [parser ACCEPTED this REJECT test]"
-        fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))
-        fail_files+=("$rel  [parser wrongly accepted]")
-      fi
-      ;;
-    *)
-      status="FAIL [bad expected verdict (${expect:-empty})]"
-      fail=$((fail+1))
-      fail_files+=("$rel  [bad expectation metadata]")
-      ;;
-  esac
-
-  printf '%-60s  %s\n' "$status" "[$rel  rule=${rule}]"
-  rm -f /tmp/zom_$$_out /tmp/zom_$$_err
+  printf '%s\n' "$f" >> "$batch_manifest"
+  batch_paths+=("$f")
+  batch_rels+=("$rel")
+  batch_expects+=("$expect")
+  batch_rules+=("$rule")
+  batch_subdirs+=("$subdir")
 done < <(find "$EXPECTATION_ROOT" -type f -name '*.yml' -print0 | sort -z)
+
+if [ "$total" -gt 0 ]; then
+  "$JAVA_BIN" -Djava.awt.headless=true -cp "$CP" ParseTool \
+    --batch "$batch_manifest" > "$batch_results" 2> "$batch_err"
+  rc=$?
+  if [ $rc != 0 ]; then
+    echo "[FATAL] batched ParseTool failed (exit $rc):" >&2
+    cat "$batch_err" >&2
+    exit 1
+  fi
+
+  index=0
+  while IFS=$'\t' read -r verdict _path detail; do
+    if [ "$index" -ge "$total" ]; then
+      echo "[FATAL] batch verdict row $index has no matching expectation" >&2
+      exit 2
+    fi
+    rel="${batch_rels[$index]}"
+    expect="${batch_expects[$index]}"
+    rule="${batch_rules[$index]}"
+    subdir="${batch_subdirs[$index]}"
+
+    status=""
+    case "$expect" in
+      ACCEPT)
+        if [ "$verdict" = "A" ]; then
+          status="PASS"
+          pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
+        else
+          status="FAIL (rejected)"
+          fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))
+          fail_files+=("$rel  [rejected: ${detail}]")
+        fi
+        ;;
+      REJECT)
+        if [ "$verdict" = "R" ]; then
+          status="PASS (rejected)"
+          pass=$((pass+1)); dir_pass[$subdir]=$(( ${dir_pass[$subdir]:-0} + 1 ))
+        else
+          status="FAIL [parser ACCEPTED this REJECT test]"
+          fail=$((fail+1)); dir_fail[$subdir]=$(( ${dir_fail[$subdir]:-0} + 1 ))
+          fail_files+=("$rel  [parser wrongly accepted]")
+        fi
+        ;;
+      *)
+        status="FAIL [bad expected verdict (${expect:-empty})]"
+        fail=$((fail+1))
+        fail_files+=("$rel  [bad expectation metadata]")
+        ;;
+    esac
+
+    printf '%-60s  %s\n' "$status" "[$rel  rule=${rule}]"
+    index=$((index+1))
+  done < "$batch_results"
+
+  if [ "$index" != "$total" ]; then
+    echo "[FATAL] batch returned $index verdicts for $total expectations" >&2
+    exit 2
+  fi
+fi
+rm -f "$batch_manifest" "$batch_results" "$batch_err"
 
 # ==================================================================
 # Summary. Directory pass/fail counters are visible because the loop ran in
