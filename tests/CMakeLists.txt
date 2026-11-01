@@ -75,6 +75,32 @@ foreach(case_entry IN LISTS ZOM_QUERY_RUNTIME_NEGATIVE_CASES)
     PROPERTIES LABELS "unittest;query;architecture;compile-fail" TIMEOUT 60)
 endforeach()
 
+set(ZOM_OWNERSHIP_NEGATIVE_CASES
+  lease-clone:VerifiedBorrowEvidenceLease
+  capability-clone:BorrowEvidenceRepositoryCapability
+  repository-lease-lookup:BorrowEvidenceRepository)
+
+foreach(case_entry IN LISTS ZOM_OWNERSHIP_NEGATIVE_CASES)
+  string(REPLACE ":" ";" case_fields "${case_entry}")
+  list(GET case_fields 0 case_name)
+  list(GET case_fields 1 forbidden_symbol)
+  add_test(
+    NAME ownership-negative-compile-${case_name}
+    COMMAND
+      "${CMAKE_COMMAND}"
+      "-S${CMAKE_CURRENT_SOURCE_DIR}/cmake/expect-compile-failure"
+      "-B${CMAKE_CURRENT_BINARY_DIR}/negative-compile/ownership/${case_name}"
+      "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+      "-DZOM_NEGATIVE_SOURCE=${CMAKE_CURRENT_SOURCE_DIR}/compile-fail/ownership/${case_name}.cc"
+      "-DZOM_FORBIDDEN_SYMBOL=${forbidden_symbol}"
+      "-DZOM_SOURCE_ROOT=${CMAKE_SOURCE_DIR}"
+      "-DZOM_BINARY_ROOT=${CMAKE_BINARY_DIR}"
+      "-DZOM_DESCRIPTOR_HEADER=")
+  set_tests_properties(
+    ownership-negative-compile-${case_name}
+    PROPERTIES LABELS "unittest;ownership;architecture;compile-fail" TIMEOUT 60)
+endforeach()
+
 # Conformance runner orchestration
 add_subdirectory(conformance)
 
