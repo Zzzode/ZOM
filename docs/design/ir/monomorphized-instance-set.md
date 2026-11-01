@@ -116,3 +116,41 @@ instance-aware LIR branch before the legacy function-count ladders, derived
 `zom.mono.<definition-key hex>.<digest>` symbols, and the `--dump-mir`
 "instances" section. Generic templates remain visible in the source MIR dump;
 instance symbols never participate in `zom.module_init` entry selection.
+
+## Stage 4 Implementation Map (measured 2026-11-01)
+
+Facts established before starting the LIR/CLI work:
+
+- A cloned instance `MirFunction` keeps the TEMPLATE's `identity::DefId owner`
+  (`instance-cloner.cc` returns `MirFunction{templateFunction.owner, ...}`).
+  Two instances of one template therefore have identical `owner`. Identity
+  discrimination lives ONLY on the terminator edge:
+  `MirCallTerminator.callee` is a full `MirCallableIdentity` (Source DefId or
+  Instance InstanceId). Do NOT widen `MirFunction.owner`; instead resolve
+  callees through an identity-to-index map.
+- The zomc binary-emission ladder in `utils/zomc/zomc.cc::buildNativeObject`
+  currently reads `session->getOwnershipCheckedMirModules()[0].builtMir()`
+  only. It must additionally read
+  `session->getVerifiedMonoInstanceSets()[0].instances()` and build a
+  presented ordered vector of `const MirFunction*`:
+    1. every Source function that is NOT a parameterized template, then
+    2. every instance body, in byte-sorted identity-frame order.
+  Parameterized templates are excluded (their concrete work is already
+  represented by instances).
+- Caller/callee selection inside the ladder matches by
+  `call.callee.isSourceFor(functions[i].owner)` at 10 sites. For instance
+  edges this is always false. Introduce one resolver:
+  `resolveFunctionIndex(MirCallableIdentity) -> Maybe<size_t>` backed by a map
+  built from the presented vector (Source keyed by DefId, Instance keyed by
+  InstanceId), and route the ladder's identity comparisons through it rather
+  than block-count/owner heuristics.
+- `compiler/lir/verify/translation-validator.cc` has 31 callee/owner
+  comparison sites. Route them through the same resolver/helper so an Instance
+  call edge validates against the instance body, not the template.
+- `MirFunctionCanonicalCodec` is shared; instance bodies already encode
+  byte-exactly. LLVM symbol naming derives from
+  `zom.mono.<definition-key hex>.<digest>` using the InstanceId frame.
+- Existing acceptance target: `identity(42)` compiles, links, runs, exits 42.
+  The reject tuple lives at `tests/CMakeLists.txt`
+  (`reject-generic-function-consumer/Zom.toml::...`); remove it and replace
+  with a native-run tuple plus an object-byte determinism ztest.
