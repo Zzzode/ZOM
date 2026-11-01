@@ -1,0 +1,5 @@
+section: "12-generics generic explicit body pos 18"
+covers_rule: "callExpression"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts this source; any rejection is a checker-stage diagnostic, not a parse failure."

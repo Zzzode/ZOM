@@ -1,0 +1,5 @@
+section: "05-statements unannotated local inference"
+covers_rule: "letDeclaration"
+expected: "ACCEPT"
+notes:
+  - "A literal-only binary initializer anchored by a later return parses and binds; the return statement provides the expected type."
