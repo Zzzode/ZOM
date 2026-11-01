@@ -3995,10 +3995,6 @@
       "exitCode": 1,
       "sha256": "a7b825b221ca797e4fd8e34ff63199602576471d04b4da60c42bd0ac62794f5a"
     },
-    "12-generics/generic_body_explicit_return_cap_neg_32.zom": {
-      "exitCode": 1,
-      "sha256": "ad82f17588a1d2493ee18ffa80d7157e16bc40a11ae2d246e6012b604b2ccc0a"
-    },
     "12-generics/generic_body_explicit_stmt_cap_neg_28.zom": {
       "exitCode": 1,
       "sha256": "b75a7366c789d7e93772321595bac50b8e686e1c8ec6a7e0d1a672c0bc6ee2bc"
@@ -4014,10 +4010,6 @@
     "12-generics/generic_body_inferred_init_cap_neg_29.zom": {
       "exitCode": 1,
       "sha256": "bb973c918cb856e1e77249aa5454f618ba24a2cd72d19c1079c5288c36f6756f"
-    },
-    "12-generics/generic_body_inferred_return_cap_neg_31.zom": {
-      "exitCode": 1,
-      "sha256": "d8c31293e57a71e2a696756090ab097bbf93d036030bbb824a8bb32e48cf4b01"
     },
     "12-generics/generic_body_inferred_stmt_cap_neg_27.zom": {
       "exitCode": 1,
@@ -4043,6 +4035,12 @@
       "exitCode": 1,
       "sha256": "ab11e0df60c82f3173ee20d00271caefb1dcf4f3540ca6f9588db043c48b6050"
     },
+    "12-generics/generic_explicit_body_pos_18.zom": {
+      "exitCode": 0,
+      "hirSha256": "f23c4d3fd1cb9370ba54fc29afea3785aacade8338cf4b7f26465e592a98b406",
+      "mirSha256": "fb31864917f7116193ebf827213238f6ef3356abb2560fceeb8978b32ca05633",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
     "12-generics/generic_explicit_count_neg_10.zom": {
       "exitCode": 1,
       "sha256": "8fb0e6c2a43a56795f899018aab8151119b057bc0b4af4d0250714b5662113d0"
@@ -4062,6 +4060,12 @@
     "12-generics/generic_explicit_success_pos_12.zom": {
       "exitCode": 1,
       "sha256": "69f7723fbb85ddb481b09e3688565b2bd35000185269b85ffdbe53b301808fe6"
+    },
+    "12-generics/generic_infer_identity_body_pos_17.zom": {
+      "exitCode": 0,
+      "hirSha256": "eed88785fa3cf39e1858ca6ac0e89ae748b0adae567a4bac79f95af5a38ef24d",
+      "mirSha256": "aa26ad036f0b0681103e1fec488c2e09adc282ca3aee33e683af1cb5aca9620a",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "12-generics/generic_infer_identity_pos_11.zom": {
       "exitCode": 1,

@@ -18,6 +18,7 @@ add_subdirectory(hir)
 add_subdirectory(mir)
 add_subdirectory(lir)
 add_subdirectory(ownership)
+add_subdirectory(mono)
 add_subdirectory(ide)
 add_subdirectory(lsp)
 
@@ -49,6 +50,7 @@ add_library(
   $<TARGET_OBJECTS:lexer>
   $<TARGET_OBJECTS:mir>
   $<TARGET_OBJECTS:lir>
+  $<TARGET_OBJECTS:mono>
   $<TARGET_OBJECTS:lsp>
   $<TARGET_OBJECTS:ownership>
   $<TARGET_OBJECTS:parser>
@@ -82,6 +84,7 @@ set_target_include_directories(
   lexer
   mir
   lir
+  mono
   lsp
   ownership
   parser

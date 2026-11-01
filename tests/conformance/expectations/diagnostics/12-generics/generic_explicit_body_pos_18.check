@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check 12-generics/generic_explicit_body_pos_18.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0056 stage 3: the explicit identity<i32>(42) generic call in a
+// return-value position is admitted through HIR and the monomorphization
+// stage (0x0a). compile --check exits 0.
+
+// CHECK-NOT: Error

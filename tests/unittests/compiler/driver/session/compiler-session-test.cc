@@ -970,14 +970,21 @@ ZC_TEST("CompilerSessionTest.PublishesGenericMutableParameterReborrow") {
   ZC_REQUIRE(inputs.states().states().size() == 5);
 }
 
-ZC_TEST("CompilerSessionTest.RejectsGenericParameterReturnWithoutBorrowContract") {
+ZC_TEST("CompilerSessionTest.PublishesUncalledGenericParameterTemplateWithoutInstances") {
+  // RFC 0056 stage 2/3: an unbounded generic function with no call site is a
+  // valid parametric Source template. The old borrow-surface rejection
+  // (ZOM4061) no longer applies; checkSources publishes the template and an
+  // empty monomorphized instance set because no Instance edge is reachable.
   auto session = packageSession("fn identity<T>(value: T) -> T { return value; }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
-  ZC_EXPECT(!session->checkSources());
-  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::BorrowOutputRegionUnexpressible) == 1);
-  ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 0);
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  const auto monoSets = session->getVerifiedMonoInstanceSets();
+  ZC_REQUIRE(monoSets.size() == 1);
+  ZC_EXPECT(monoSets[0].instances().size() == 0);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesVerifiedOwnershipInputsForParameterInitializedLocalReturn") {

@@ -44,6 +44,7 @@
 #include "compiler/ir/diagnostics/ir-capability-failure-projector.h"
 #include "compiler/ir/target/target-registry.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/mono/instance-set.h"
 #include "compiler/ownership/facts/inputs.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"
 #include "compiler/ownership/overlay/ownership-checked-mir.h"
@@ -245,6 +246,10 @@ public:
   /// getOwnershipCheckedMirModules after VerifiedExecutableMir::takeCheckedMir.
   ZC_NODISCARD zc::ArrayPtr<const ownership::VerifiedExecutableMir>
   getVerifiedExecutableMirModules() const noexcept;
+  /// \brief Returns immutable RFC 0056 verified monomorphized instance sets in
+  /// dependency order, one set per ordinary module (empty when no Instance edges).
+  ZC_NODISCARD zc::ArrayPtr<const mono::VerifiedMonoInstanceSet> getVerifiedMonoInstanceSets()
+      const noexcept;
   /// \brief Returns the exact retained checker-to-MIR handoff for one ownership overlay.
   ZC_NODISCARD zc::Maybe<ownership::EventOverlayInput> getOwnershipEventOverlayInput(
       identity::ModuleId module) const noexcept;

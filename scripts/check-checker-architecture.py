@@ -125,6 +125,8 @@ VERIFIED_SIGNATURE_FACTS_ALLOWED = {
     Path("compiler/mir/built-mir.h"),
     Path("compiler/mir/built-mir.cc"),
     Path("compiler/ownership/overlay/ownership-event-overlay.cc"),
+    Path("compiler/mono/instance-set-builder.h"),
+    Path("compiler/mono/instance-set-builder.cc"),
     Path("compiler/driver/session/compiler-session.h"),
     SESSION_SOURCE,
     MARKER_PROOF_TEST,

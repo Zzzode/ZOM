@@ -314,12 +314,18 @@ ORDINARY_MODULE_PARTITION_MARKERS = (
     "ordinaryModuleInterfaces[ordinaryIndex], ordinaryImportedSignatureViews[ordinaryIndex],",
     "checkedModuleInterfaceSources.asPtr(), ordinaryCheckedEvidence[ordinaryIndex],",
     "*stagedCheckedFactsRepository, ordinaryDispatchFacts[ordinaryIndex],",
-    "const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput};",
+    "const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput, mirRecords};",
     "mir::BuiltMirBuilder::build(mirInput)",
     "stagedHirModules.size() != ordinaryBoundModuleIndices.size()",
     "stagedOwnershipCheckedMir.size() != ordinaryBoundModuleIndices.size()",
+    "stagedMonoInstanceSets.size() != ordinaryBoundModuleIndices.size()",
+    "zc::Vector<mono::VerifiedMonoInstanceSet> stagedMonoInstanceSets;",
+    "mono::MonoInstanceSetBuilder::build(monoInput)",
+    "mono::MonoInstanceSetVerifier::verify(zc::mv(monoCandidate).takeVerified(), monoInput)",
+    "stagedMonoInstanceSets.add(zc::mv(verifiedMono).takeVerified());",
     "ownership::Finalizer::finalizeOwnership(",
     "impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);",
+    "impl->monoInstanceSets = zc::mv(stagedMonoInstanceSets);",
     "for (const auto index : ordinaryBoundModuleIndices)",
     "const auto factIndex = checkerFactIndexByModule[index];",
     "ordinarySignatureFacts.add(zc::mv(stagedSignatureFacts[factIndex]));",
@@ -1211,13 +1217,61 @@ def run_self_test() -> int:
         ),
         "build-plan authority bypasses verified-package-inputs.cc",
     )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "RFC 0056 mono staged vector removed",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "zc::Vector<mono::VerifiedMonoInstanceSet> stagedMonoInstanceSets;", "", 1
+            ),
+        ),
+        "partition marker: zc::Vector<mono::VerifiedMonoInstanceSet> stagedMonoInstanceSets;",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "RFC 0056 mono count invariant removed",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "stagedMonoInstanceSets.size() != ordinaryBoundModuleIndices.size()", "", 1
+            ),
+        ),
+        "partition marker: stagedMonoInstanceSets.size() != ordinaryBoundModuleIndices.size()",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "RFC 0056 mono atomic publication removed",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "impl->monoInstanceSets = zc::mv(stagedMonoInstanceSets);",
+                "",
+                1,
+            ),
+        ),
+        "partition marker: impl->monoInstanceSets",
+    )
+    failures += expect_rejection(
+        baseline, baseline_stripped_sources,
+        "RFC 0056 mono verify transaction removed",
+        lambda files: files.__setitem__(
+            SESSION_SOURCE,
+            files[SESSION_SOURCE].replace(
+                "mono::MonoInstanceSetBuilder::build(monoInput)",
+                "",
+                1,
+            ),
+        ),
+        "partition marker: mono::MonoInstanceSetBuilder::build(monoInput)",
+    )
 
     if failures:
         print("CompilerSession architecture self-test failed:", file=sys.stderr)
         for failure in failures:
             print(f"  - {failure}", file=sys.stderr)
         return 1
-    print("CompilerSession architecture negative fixtures passed (35/35).")
+    print("CompilerSession architecture negative fixtures passed (39/39).")
     return 0
 
 

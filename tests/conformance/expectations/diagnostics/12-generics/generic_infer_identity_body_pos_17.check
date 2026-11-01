@@ -1,0 +1,9 @@
+// RUN: cd %corpus && %zomc compile --check 12-generics/generic_infer_identity_body_pos_17.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0056 stage 3: the inferred-i32 generic call in a return-value position is
+// admitted through HIR with its canonical substitution and empty witness
+// evidence. The monomorphization stage (0x0a) publishes one verified instance
+// per reachable edge; compile --check exits 0.
+
+// CHECK-NOT: Error

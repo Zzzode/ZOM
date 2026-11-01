@@ -2,6 +2,6 @@ fn identity<T>(value: T) -> T {
     return value;
 }
 
-fn f() -> i32 {
+fn entry() -> i32 {
     return identity<i32>(42);
 }

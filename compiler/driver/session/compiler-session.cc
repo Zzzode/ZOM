@@ -68,6 +68,7 @@
 #include "compiler/identity/canonical/identity-interner-set.h"
 #include "compiler/identity/diagnostics/identity-diagnostic-projector.h"
 #include "compiler/ir/diagnostics/ir-diagnostic-projector.h"
+#include "compiler/mono/instance-set-builder.h"
 #include "compiler/ownership/admission/surface-admission.h"
 #include "compiler/ownership/diagnostics/ownership-source-diagnostic-projector.h"
 #include "compiler/ownership/overlay/drop-elaborated-mir.h"
@@ -546,6 +547,7 @@ struct CompilerSession::Impl {
   zc::Vector<hir::VerifiedHirModule> hirModules;
   zc::Vector<ownership::CheckedMir> ownershipCheckedMirModules;
   zc::Vector<ownership::VerifiedExecutableMir> verifiedExecutableMirModules;
+  zc::Vector<mono::VerifiedMonoInstanceSet> monoInstanceSets;
   zc::Vector<ir::IrCapabilityFailureGroup> irCapabilityFailureGroups;
   zc::Vector<identity::IdentityInvariant> irIdentityInvariantFailures;
   basic::BoundedIncidentSet incidents;
@@ -746,6 +748,7 @@ struct CompilerSession::Impl {
   zc::Own<borrow_evidence::BorrowEvidenceRepository> stagedBorrowSourceRejectedBorrowEvidence;
 
   void releaseSessionLeases() noexcept(false) {
+    monoInstanceSets.clear();
     verifiedExecutableMirModules.clear();
     ownershipCheckedMirModules.clear();
     stagedBorrowSourceRejectedBuiltMir.clear();
@@ -2356,6 +2359,11 @@ CompilerSession::getVerifiedExecutableMirModules() const noexcept {
   return impl->verifiedExecutableMirModules;
 }
 
+zc::ArrayPtr<const mono::VerifiedMonoInstanceSet> CompilerSession::getVerifiedMonoInstanceSets()
+    const noexcept {
+  return impl->monoInstanceSets;
+}
+
 zc::Maybe<ownership::EventOverlayInput> CompilerSession::getOwnershipEventOverlayInput(
     identity::ModuleId module) const noexcept {
   if (impl->checkerIdentityAuthority == zc::none || impl->markerPolicies == zc::none ||
@@ -2365,6 +2373,7 @@ zc::Maybe<ownership::EventOverlayInput> CompilerSession::getOwnershipEventOverla
       impl->signatureFacts.size() != impl->bodyRequirements.size() ||
       impl->signatureFacts.size() != impl->hirModules.size() ||
       impl->signatureFacts.size() != impl->ownershipCheckedMirModules.size() ||
+      impl->signatureFacts.size() != impl->monoInstanceSets.size() ||
       impl->signatureFacts.size() != impl->ownershipAdmittedModules.size()) {
     return zc::none;
   }
@@ -2762,7 +2771,7 @@ bool CompilerSession::checkSources() {
       impl->coherenceView != zc::none || impl->checkedFactsRepository.get() != nullptr ||
       !impl->checkedEvidence.empty() || !impl->dispatchFacts.empty() ||
       impl->borrowEvidenceRepository.get() != nullptr || !impl->hirModules.empty() ||
-      !impl->ownershipCheckedMirModules.empty()) {
+      !impl->ownershipCheckedMirModules.empty() || !impl->monoInstanceSets.empty()) {
     return false;
   }
 
@@ -2876,6 +2885,7 @@ bool CompilerSession::checkSources() {
   zc::Vector<ownership::AdmittedBoundModule> stagedOwnershipAdmittedModules;
   zc::Vector<ownership::CheckedMir> stagedOwnershipCheckedMir;
   zc::Vector<ownership::VerifiedExecutableMir> stagedVerifiedExecutableMir;
+  zc::Vector<mono::VerifiedMonoInstanceSet> stagedMonoInstanceSets;
   zc::Vector<size_t> checkerFactModuleIndices;
   zc::Vector<size_t> checkerFactIndexByModule;
   zc::Vector<size_t> ordinaryBoundModuleIndices;
@@ -3652,7 +3662,9 @@ bool CompilerSession::checkSources() {
         ordinarySignatureFacts[ordinaryIndex],   ordinaryImportedSignatureViews[ordinaryIndex],
         ZC_ASSERT_NONNULL(stagedCoherenceView),  *impl->semanticTypeStore,
         ordinaryBodyRequirements[ordinaryIndex], ZC_ASSERT_NONNULL(crate).key().semanticOptions()};
-    const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput};
+    zc::Maybe<checker::checked::CheckedFactsRecordView> mirRecords;
+    mirRecords.emplace(*stagedCheckedFactsRepository, ordinaryCheckedEvidence[ordinaryIndex]);
+    const mir::BuiltMirInput mirInput{stagedHirModules[ordinaryIndex], bodyInput, mirRecords};
     auto mirCandidate = mir::BuiltMirBuilder::build(mirInput);
     if (mirCandidate.isCapabilityRejected()) {
       return rejectIrCapability(mirCandidate.capabilityFailures());
@@ -4163,9 +4175,45 @@ bool CompilerSession::checkSources() {
     stagedOwnershipCheckedMir.add(zc::mv(verified).takeCheckedMir());
     stagedVerifiedExecutableMir.add(zc::mv(verified));
   }
+  // RFC 0056 phase 0x0a: monomorphization runs immediately after executable
+  // MIR verification, still inside checkSources so compile --check observes
+  // ZOM6010/ZOM6011/ZOM4099. Each module's post-elaboration Source templates
+  // and frozen substitution evidence produce one independently verified
+  // instance set (empty for a module with zero Instance edges); rejection is
+  // instance-owned from this stage on.
+  for (size_t index = 0; index < stagedOwnershipCheckedMir.size(); ++index) {
+    zc::Maybe<checker::checked::CheckedFactsRecordView> monoRecords;
+    monoRecords.emplace(*stagedCheckedFactsRepository, ordinaryCheckedEvidence[index]);
+    mono::MonomorphizationInput monoInput{
+        stagedOwnershipCheckedMir[index], ordinarySignatureFacts[index],
+        ZC_ASSERT_NONNULL(monoRecords), retainedCheckerAuthority, *impl->semanticTypeStore};
+    auto monoCandidate = mono::MonoInstanceSetBuilder::build(monoInput);
+    if (monoCandidate.isCapabilityRejected()) {
+      return rejectIrCapability(monoCandidate.capabilityFailures());
+    }
+    if (monoCandidate.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(monoCandidate.identityFailures());
+    }
+    if (monoCandidate.isIrInvariantRejected()) {
+      return rejectIrInvariant(monoCandidate.invariantFailures());
+    }
+    auto verifiedMono =
+        mono::MonoInstanceSetVerifier::verify(zc::mv(monoCandidate).takeVerified(), monoInput);
+    if (verifiedMono.isCapabilityRejected()) {
+      return rejectIrCapability(verifiedMono.capabilityFailures());
+    }
+    if (verifiedMono.isIdentityInvariantRejected()) {
+      return rejectIrIdentity(verifiedMono.identityFailures());
+    }
+    if (verifiedMono.isIrInvariantRejected()) {
+      return rejectIrInvariant(verifiedMono.invariantFailures());
+    }
+    stagedMonoInstanceSets.add(zc::mv(verifiedMono).takeVerified());
+  }
   if (stagedHirModules.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipCheckedMir.size() != ordinaryBoundModuleIndices.size() ||
       stagedVerifiedExecutableMir.size() != ordinaryBoundModuleIndices.size() ||
+      stagedMonoInstanceSets.size() != ordinaryBoundModuleIndices.size() ||
       stagedOwnershipAdmittedModules.size() != ordinaryBoundModuleIndices.size() ||
       impl->diagnosticCollector.hasErrors()) {
     return false;
@@ -4186,6 +4234,7 @@ bool CompilerSession::checkSources() {
   impl->hirModules = zc::mv(stagedHirModules);
   impl->ownershipCheckedMirModules = zc::mv(stagedOwnershipCheckedMir);
   impl->verifiedExecutableMirModules = zc::mv(stagedVerifiedExecutableMir);
+  impl->monoInstanceSets = zc::mv(stagedMonoInstanceSets);
   impl->ownershipAdmittedModules = zc::mv(stagedOwnershipAdmittedModules);
   impl->validatedOwnershipProofs = zc::mv(stagedValidatedOwnershipProofs);
   impl->verifiedCheckedSources = true;

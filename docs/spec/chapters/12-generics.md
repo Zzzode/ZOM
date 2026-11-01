@@ -60,12 +60,17 @@ Resolution failures are reported at the call expression:
 The value-argument count is checked by the ordinary call rule, so a mismatch
 is `ZOM4036` exactly as for a non-generic callee.
 
-**Acceptance boundary.** In this revision every resolved generic call is
-rejected before instantiation. A call in a value position is rejected with
-`ZOM4099`; a call used as a bare expression statement is rejected with
-`ZOM4098`; a call in a module initializer is rejected with `ZOM4104`.
-Instantiation of free, unbounded functions over admitted scalar carriers is
-reserved; no generic call is accepted end-to-end in this revision.
+**Acceptance boundary.** A resolved generic call in a function-body value
+position is accepted through instantiation when every resolved type argument is
+an admitted scalar carrier (`i32` or `bool`): the compiler produces one
+verified instance per canonical substitution, deduplicates instances that share
+a substitution, and orders them canonically before independent verification.
+A generic call still rejected in this revision is: a call whose resolved
+argument is a closed type outside the admitted carrier set, a call in a bare
+expression statement (`ZOM4098`), or a call in a module initializer
+(`ZOM4104`); such a value-position call is rejected with `ZOM4099`. Object and
+binary emission of instantiated functions is not yet available; only
+`compile --check` acceptance is observable in this revision.
 
 ### Generic Classes
 

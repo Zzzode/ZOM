@@ -19,8 +19,10 @@ fingerprints are hashes that vary by run, so they are masked when present.
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import subprocess
@@ -89,28 +91,47 @@ def hash_output(exit_code: int, output: bytes) -> str:
     return digest.hexdigest()
 
 
-def collect(zomc: Path, corpus: Path, sources: list[str], ir_channel: bool) -> dict[str, dict[str, int | str]]:
-    results: dict[str, dict[str, int | str]] = {}
-    for relative in sources:
-        source = corpus / relative
-        if not source.is_file():
-            raise ParityError("missing-input", f"corpus source does not exist: {relative}")
-        exit_code, output = run_once(zomc, source)
-        entry: dict[str, int | str] = {
-            "exitCode": exit_code,
-            "sha256": hash_output(exit_code, output),
-        }
-        # IR channel: for sources that check clean, capture deterministic HIR and
-        # canonical MIR dumps so accepted-program IR byte drift is visible.
-        if ir_channel and exit_code == 0:
-            hir_exit, hir_output = run_once(zomc, source, "dump-hir")
-            mir_exit, mir_output = run_once(zomc, source, "dump-mir")
-            if hir_exit == 0:
-                entry["hirSha256"] = hash_output(hir_exit, hir_output)
-            if mir_exit == 0:
-                entry["mirSha256"] = hash_output(mir_exit, mir_output)
-        results[relative] = entry
-    return results
+def collect_one(zomc: Path, corpus: Path, relative: str, ir_channel: bool) -> tuple[str, dict[str, int | str]]:
+    source = corpus / relative
+    if not source.is_file():
+        raise ParityError("missing-input", f"corpus source does not exist: {relative}")
+    exit_code, output = run_once(zomc, source)
+    entry: dict[str, int | str] = {
+        "exitCode": exit_code,
+        "sha256": hash_output(exit_code, output),
+    }
+    # IR channel: for sources that check clean, capture deterministic HIR and
+    # canonical MIR dumps so accepted-program IR byte drift is visible.
+    if ir_channel and exit_code == 0:
+        hir_exit, hir_output = run_once(zomc, source, "dump-hir")
+        mir_exit, mir_output = run_once(zomc, source, "dump-mir")
+        if hir_exit == 0:
+            entry["hirSha256"] = hash_output(hir_exit, hir_output)
+        if mir_exit == 0:
+            entry["mirSha256"] = hash_output(mir_exit, mir_output)
+    return relative, entry
+
+
+def collect(
+    zomc: Path,
+    corpus: Path,
+    sources: list[str],
+    ir_channel: bool,
+    jobs: int = 1,
+) -> dict[str, dict[str, int | str]]:
+    # Each source compiles in an isolated temporary package, so sources are
+    # independent and safe to fan out across worker subprocesses. Results are
+    # reassembled in sorted source order to keep snapshot bytes deterministic.
+    if jobs <= 1:
+        ordered = [collect_one(zomc, corpus, relative, ir_channel) for relative in sources]
+    else:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+            futures = [
+                executor.submit(collect_one, zomc, corpus, relative, ir_channel)
+                for relative in sources
+            ]
+            ordered = [future.result() for future in futures]
+    return {relative: entry for relative, entry in ordered}
 
 
 def write_file(path: Path, content: str, executable: bool = False) -> Path:
@@ -125,10 +146,10 @@ def make_fake(directory: Path, name: str, body: str) -> Path:
     return write_file(directory / name, body, executable=True)
 
 
-def run_record(zomc: Path, corpus: Path, snapshot: Path, ir_channel: bool) -> int:
+def run_record(zomc: Path, corpus: Path, snapshot: Path, ir_channel: bool, jobs: int = 1) -> int:
     sources = corpus_sources(corpus)
     try:
-        results = collect(zomc, corpus, sources, ir_channel)
+        results = collect(zomc, corpus, sources, ir_channel, jobs)
     except ParityError as error:
         print(f"corpus parity record failed [{error.category}]: {error}", file=sys.stderr)
         return 1
@@ -172,7 +193,9 @@ def diff_snapshots(current: dict[str, dict[str, int | str]],
     return differences[:limit]
 
 
-def run_check(zomc: Path, corpus: Path, snapshot: Path, limit: int, ir_channel: bool) -> int:
+def run_check(
+    zomc: Path, corpus: Path, snapshot: Path, limit: int, ir_channel: bool, jobs: int = 1
+) -> int:
     if not snapshot.is_file():
         print(
             f"corpus parity check failed [no-snapshot]: {snapshot} (record it first)",
@@ -191,7 +214,7 @@ def run_check(zomc: Path, corpus: Path, snapshot: Path, limit: int, ir_channel: 
                 f"snapshot irChannel={value.get('irChannel')} does not match --ir={ir_channel}"
             )
         sources = corpus_sources(corpus)
-        current = collect(zomc, corpus, sources, ir_channel)
+        current = collect(zomc, corpus, sources, ir_channel, jobs)
         differences = diff_snapshots(current, recorded, limit)
     except (ParityError, ValueError, OSError) as error:
         category = getattr(error, "category", "snapshot-error")
@@ -320,16 +343,31 @@ def main() -> int:
         action="store_true",
         help="also capture/diff deterministic --dump-hir/--dump-mir output for clean sources",
     )
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=1,
+        help="parallel package compilations (each source is an isolated temporary package)",
+    )
     arguments = parser.parse_args()
 
     if arguments.self_test:
         return run_self_test()
     if arguments.zomc is None:
         parser.error("--record and --check require --zomc")
+    if arguments.jobs < 1:
+        parser.error("--jobs must be at least 1")
     if arguments.record:
-        return run_record(arguments.zomc, arguments.corpus, arguments.snapshot, arguments.ir)
+        return run_record(
+            arguments.zomc, arguments.corpus, arguments.snapshot, arguments.ir, arguments.jobs
+        )
     return run_check(
-        arguments.zomc, arguments.corpus, arguments.snapshot, arguments.limit, arguments.ir
+        arguments.zomc,
+        arguments.corpus,
+        arguments.snapshot,
+        arguments.limit,
+        arguments.ir,
+        arguments.jobs,
     )
 
 

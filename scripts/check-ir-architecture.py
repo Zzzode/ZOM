@@ -396,6 +396,9 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
     for marker in ("add_subdirectory(mir)", "$<TARGET_OBJECTS:mir>"):
         if marker not in cmake:
             errors.append(f"{COMPILER_CMAKE}: missing direct Built MIR wiring marker {marker}")
+    for marker in ("add_subdirectory(mono)", "$<TARGET_OBJECTS:mono>"):
+        if marker not in cmake:
+            errors.append(f"{COMPILER_CMAKE}: missing RFC 0056 monomorphization wiring marker {marker}")
 
 
 def check_cli_surface(files: dict[Path, str], errors: list[str]) -> None:
@@ -525,6 +528,12 @@ def run_self_test() -> int:
         "Built MIR CMake wiring removed",
         lambda files: remove_once(files, COMPILER_CMAKE, "$<TARGET_OBJECTS:mir>"),
         "missing direct Built MIR wiring marker",
+    )
+    failures += expect_rejection(
+        baseline,
+        "mono CMake wiring removed",
+        lambda files: remove_once(files, COMPILER_CMAKE, "$<TARGET_OBJECTS:mono>"),
+        "missing RFC 0056 monomorphization wiring marker",
     )
     failures += expect_rejection(
         baseline,
