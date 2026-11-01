@@ -2,6 +2,9 @@
 add_ztest_unit_tests_from_directory(
   ${CMAKE_CURRENT_SOURCE_DIR}
   LIBRARIES frontend
+  SHARD_OVERRIDES
+    compiler-session-package-test.cc:4
+    compiler-session-test.cc:4
 )
 
 add_test(
@@ -16,14 +19,15 @@ add_test(
 set_tests_properties(pubgrub-scenarios-oracle
                      PROPERTIES LABELS "unittest;package" TIMEOUT 30)
 
-set_tests_properties(session-compiler-session-package-test
-                     PROPERTIES TIMEOUT 600 RUN_SERIAL TRUE)
-
-# Both suites cost most of their previous cap even on an unloaded host
-# (session-compiler-session-test measures ~197s against 300s), so external load
-# on a shared machine pushed them over. Give each a real margin.
-set_tests_properties(session-compiler-session-test
-                     PROPERTIES TIMEOUT 900)
+# Session suites drive every case through a real CompilerSession under ASan;
+# they are split into shards at configure time so their cases run concurrently
+# with the rest of -j instead of as one serial slot.
+foreach(ZTEST_SHARD_INDEX RANGE 0 3)
+  set_tests_properties(session-compiler-session-package-test-shard${ZTEST_SHARD_INDEX}
+                       PROPERTIES TIMEOUT 600)
+  set_tests_properties(session-compiler-session-test-shard${ZTEST_SHARD_INDEX}
+                       PROPERTIES TIMEOUT 900)
+endforeach()
 
 set_tests_properties(query-binding-active-definition-authority-session-test
                      PROPERTIES TIMEOUT 600)
