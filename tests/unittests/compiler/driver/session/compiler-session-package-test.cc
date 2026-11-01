@@ -3454,4 +3454,112 @@ ZC_TEST("CompilerSession publishes escape facts and region memberships for a par
   ZC_EXPECT(inputOutlivesLoan);
 }
 
+ZC_TEST("CompilerSession phase entries are idempotent after successful checking") {
+  constexpr zc::StringPtr sourceText = "let value = 0;"_zc;
+
+  basic::LangOptions languageOptions;
+  basic::CompilerOptions compilerOptions;
+  identity::SemanticContextFactory contextFactory;
+  CompilerSession session(contextFactory, languageOptions, compilerOptions);
+  auto registry = targetRegistry();
+  auto input = VerifiedPackageSessionInput::from(
+      request(registry), verifiedSelection(registry), verifiedSelection(registry),
+      resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+      resolvedSourceSnapshots("app"_zc, sourceText));
+  ZC_REQUIRE(input != zc::none);
+  ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+  installCore(session);
+
+  const auto roots = session.getFinalizedCompilationRoots();
+  ZC_REQUIRE(roots.size() == 1);
+  ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+  ZC_REQUIRE(session.parseSources());
+  ZC_REQUIRE(session.bindSources());
+  ZC_REQUIRE(session.checkSources());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+
+  const auto hirCount = session.getVerifiedHirModules().size();
+  const auto ownershipCount = session.getOwnershipCheckedMirModules().size();
+  const auto monoCount = session.getVerifiedMonoInstanceSets().size();
+  ZC_REQUIRE(hirCount == 1);
+  ZC_REQUIRE(ownershipCount == 1);
+  ZC_REQUIRE(monoCount == 1);
+
+  // Re-entering completed phases keeps every publication unchanged. check and
+  // bind are safe reentries; parse is one-shot and reports false on a second
+  // call rather than re-running the parse transaction.
+  ZC_EXPECT(session.checkSources());
+  ZC_EXPECT(session.bindSources());
+  ZC_EXPECT(!session.parseSources());
+  ZC_EXPECT(!session.hasDiagnosticErrors());
+  ZC_EXPECT(session.getVerifiedHirModules().size() == hirCount);
+  ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == ownershipCount);
+  ZC_EXPECT(session.getVerifiedMonoInstanceSets().size() == monoCount);
+  ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+}
+
+ZC_TEST("CompilerSession rejects phases invoked out of order and publishes nothing") {
+  constexpr zc::StringPtr sourceText = "let value = 0;"_zc;
+
+  // Session A: binding before parsing records an internal incident and fails
+  // closed; every later phase and every downstream artifact stays absent.
+  {
+    basic::LangOptions languageOptions;
+    basic::CompilerOptions compilerOptions;
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto registry = targetRegistry();
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+        resolvedSourceSnapshots("app"_zc, sourceText));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    installCore(session);
+
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+
+    ZC_EXPECT(!session.bindSources());
+    ZC_EXPECT(!session.checkSources());
+    ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+    ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
+    ZC_EXPECT(session.getVerifiedMonoInstanceSets().size() == 0);
+    ZC_EXPECT(session.getCheckedFactsRepository() == zc::none);
+    // The rejection is an internal fail-closed incident, not a user diagnostic.
+    ZC_EXPECT(!session.hasDiagnosticErrors());
+    ZC_EXPECT(session.getCheckerInvariantFailures().size() == 0);
+  }
+
+  // Session B: on a session that has never parsed, checking fails closed with
+  // no semantic store and every publication absent; binding then fails the
+  // same way. A later phase entry must never fabricate upstream artifacts.
+  {
+    basic::LangOptions languageOptions;
+    basic::CompilerOptions compilerOptions;
+    identity::SemanticContextFactory contextFactory;
+    CompilerSession session(contextFactory, languageOptions, compilerOptions);
+    auto registry = targetRegistry();
+    auto input = VerifiedPackageSessionInput::from(
+        request(registry), verifiedSelection(registry), verifiedSelection(registry),
+        resolution(session.getPackageResolutionMemoryResource(), "app"_zc),
+        resolvedSourceSnapshots("app"_zc, sourceText));
+    ZC_REQUIRE(input != zc::none);
+    ZC_IF_SOME(value, input) { ZC_REQUIRE(session.installVerifiedPackageInput(zc::mv(value))); }
+    installCore(session);
+
+    const auto roots = session.getFinalizedCompilationRoots();
+    ZC_REQUIRE(roots.size() == 1);
+    ZC_REQUIRE(session.addVerifiedPackageRoot(roots[0]) != zc::none);
+
+    ZC_EXPECT(!session.checkSources());
+    ZC_EXPECT(session.getVerifiedHirModules().size() == 0);
+    ZC_EXPECT(session.getOwnershipCheckedMirModules().size() == 0);
+    ZC_EXPECT(session.getVerifiedMonoInstanceSets().size() == 0);
+    ZC_EXPECT(session.getCheckedFactsRepository() == zc::none);
+    ZC_EXPECT(!session.hasDiagnosticErrors());
+  }
+}
+
 }  // namespace zomlang::compiler::driver
