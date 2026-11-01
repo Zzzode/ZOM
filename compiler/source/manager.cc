@@ -17,14 +17,14 @@
 #include <algorithm>
 #include <functional>
 
+#include "compiler/basic/string-pool.h"
+#include "compiler/source/location.h"
 #include "zc/core/common.h"
 #include "zc/core/debug.h"
 #include "zc/core/filesystem.h"
 #include "zc/core/map.h"
 #include "zc/core/memory.h"
 #include "zc/core/string.h"
-#include "compiler/basic/string-pool.h"
-#include "compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -91,6 +91,20 @@ struct Buffer {
   const zc::byte* getBufferEnd() const { return data.end(); }
 
   ZC_NODISCARD size_t getBufferSize() const { return data.size(); }
+
+  /// Returns the byte offset at which each source line starts. Built lazily on
+  /// the first line/column query and reused for every later query, so a file
+  /// with N lines is scanned once rather than re-scanned from the start for
+  /// every location in it.
+  zc::ArrayPtr<const unsigned> getLineStartOffsets() const {
+    if (lineStartOffsets.size() == 0) {
+      lineStartOffsets.add(0);
+      for (size_t offset = 0; offset < data.size(); ++offset) {
+        if (data[offset] == '\n') { lineStartOffsets.add(static_cast<unsigned>(offset + 1)); }
+      }
+    }
+    return lineStartOffsets;
+  }
 };
 
 /// Compare the source location ranges for two impl->buffers, as an ordering to
@@ -195,21 +209,25 @@ LineAndColumn SourceManager::getPresumedLineAndColumnForLoc(SourceLoc loc,
   ZC_IF_SOME(actualBufferId, bufferId.isValid() ? bufferId : findBufferContainingLoc(loc)) {
     const Buffer& buffer = ZC_ASSERT_NONNULL(impl->idToBuffer.find(actualBufferId));
 
-    // Calculate the row number and column number
-    unsigned line = 1;
-    unsigned column = 1;
-    const zc::byte* ptr = buffer.getBufferStart();
-    const zc::byte* locPtr = loc.getOpaqueValue();
+    const unsigned targetOffset = getLocOffsetInBuffer(loc, actualBufferId);
+    const zc::ArrayPtr<const unsigned> lineStarts = buffer.getLineStartOffsets();
 
-    while (ptr < locPtr && ptr < buffer.getBufferEnd()) {
-      if (*ptr == '\n') {
-        ++line;
-        column = 1;
+    // Find the last line start not after the location via upper-bound binary
+    // search. Line/column mapping is monotonic, so this is O(log lines)
+    // instead of an O(offset) re-scan of the buffer per query.
+    size_t low = 0;
+    size_t high = lineStarts.size();
+    while (low < high) {
+      const size_t middle = low + (high - low) / 2;
+      if (lineStarts[middle] <= targetOffset) {
+        low = middle + 1;
       } else {
-        ++column;
+        high = middle;
       }
-      ++ptr;
     }
+    const size_t lineIndex = low == 0 ? 0 : low - 1;
+    const unsigned line = static_cast<unsigned>(lineIndex + 1);
+    const unsigned column = targetOffset - lineStarts[lineIndex] + 1;
 
     ZC_ASSERT(line + lineOffset > 0, "bogus line offset");
 

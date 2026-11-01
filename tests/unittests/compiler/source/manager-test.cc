@@ -14,10 +14,10 @@
 
 #include "compiler/source/manager.h"
 
+#include "compiler/source/location.h"
 #include "zc/core/common.h"
 #include "zc/core/string.h"
 #include "zc/ztest/test.h"
-#include "compiler/source/location.h"
 
 namespace zomlang {
 namespace compiler {
@@ -252,6 +252,44 @@ ZC_TEST("SourceManager: Content Comparison") {
 
   ZC_EXPECT(text1 == text2);  // ArrayPtr direct comparison
   ZC_EXPECT(text1.size() == content1.size());
+}
+
+ZC_TEST("SourceManager: Line Column Binary Mapping Handles Boundaries") {
+  SourceManager manager;
+
+  // Empty last line, consecutive blank lines, a final line with no trailing
+  // newline, and a carriage return that is not itself a line break.
+  zc::StringPtr content = "\nabc\n\nxy"_zc;
+  auto bufferId = manager.addMemBufferCopy(content.asBytes(), "bounds.txt");
+
+  struct Probe {
+    unsigned offset;
+    unsigned line;
+    unsigned column;
+  };
+  const Probe probes[] = {
+      {0, 1, 1},  // empty first line
+      {1, 2, 1},  // start of abc
+      {3, 2, 3},  // last column of abc
+      {4, 2, 4},  // the newline itself belongs to the line it ends
+      {5, 3, 1},  // empty line between two newlines
+      {6, 4, 1},  // start of the unterminated final line
+      {7, 4, 2},  // final column with no trailing newline
+  };
+  for (const Probe& probe : probes) {
+    auto loc = manager.getLocForOffset(bufferId, probe.offset);
+    auto lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
+    ZC_EXPECT(lineCol.line == probe.line);
+    ZC_EXPECT(lineCol.column == probe.column);
+  }
+
+  // Repeated queries reuse the lazily built line table and must agree.
+  for (int repeat = 0; repeat < 4; ++repeat) {
+    auto loc = manager.getLocForOffset(bufferId, 6);
+    auto lineCol = manager.getPresumedLineAndColumnForLoc(loc, bufferId);
+    ZC_EXPECT(lineCol.line == 4);
+    ZC_EXPECT(lineCol.column == 1);
+  }
 }
 
 }  // namespace source
