@@ -5,11 +5,11 @@
 
 #pragma once
 
+#include "compiler/checker/inference/checked-facts.h"
 #include "zc/core/common.h"
 #include "zc/core/memory.h"
 #include "zc/core/one-of.h"
 #include "zc/core/vector.h"
-#include "compiler/checker/inference/checked-facts.h"
 
 namespace zomlang::compiler::checker::checked {
 
@@ -73,10 +73,52 @@ public:
       const CheckedEvidenceLease& lease, CanonicalSubstitutionId id) const noexcept;
   ZC_NODISCARD zc::Maybe<const WitnessArgumentsData&> witnesses(
       const CheckedEvidenceLease& lease, WitnessArgumentsId id) const noexcept;
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> substitutionRecord(
+      const CheckedEvidenceLease& lease, CanonicalSubstitutionId id) const noexcept;
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> witnessRecord(
+      const CheckedEvidenceLease& lease, WitnessArgumentsId id) const noexcept;
 
 private:
   struct Impl;
   zc::Own<Impl> impl;
+};
+
+/// \brief Retaining read-only view over one module's frozen substitution and
+/// witness canonical records.
+///
+/// MIR construction and the monomorphization stage consume canonical record
+/// bytes verbatim through this view; they never re-encode evidence. The view is
+/// non-owning and valid only while the supplied repository and lease stay live
+/// (one checked publication / one lowering call).
+class CheckedFactsRecordView final {
+public:
+  CheckedFactsRecordView(const CheckedFactsRepository& repository,
+                         const CheckedEvidenceLease& lease) noexcept
+      : repository(repository), leaseValue(lease) {}
+  CheckedFactsRecordView(const CheckedFactsRecordView&) = default;
+  CheckedFactsRecordView& operator=(const CheckedFactsRecordView&) = delete;
+
+  ZC_NODISCARD const CheckedEvidenceLease& lease() const noexcept { return leaseValue; }
+  ZC_NODISCARD zc::Maybe<const SubstitutionData&> substitution(
+      CanonicalSubstitutionId id) const noexcept {
+    return repository.substitution(leaseValue, id);
+  }
+  ZC_NODISCARD zc::Maybe<const WitnessArgumentsData&> witnesses(
+      WitnessArgumentsId id) const noexcept {
+    return repository.witnesses(leaseValue, id);
+  }
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> substitutionRecord(
+      CanonicalSubstitutionId id) const noexcept {
+    return repository.substitutionRecord(leaseValue, id);
+  }
+  ZC_NODISCARD zc::Maybe<zc::ArrayPtr<const uint8_t>> witnessRecord(
+      WitnessArgumentsId id) const noexcept {
+    return repository.witnessRecord(leaseValue, id);
+  }
+
+private:
+  const CheckedFactsRepository& repository;
+  const CheckedEvidenceLease& leaseValue;
 };
 
 }  // namespace zomlang::compiler::checker::checked

@@ -114,4 +114,36 @@ zc::Maybe<const WitnessArgumentsData&> CheckedFactsRepository::witnesses(
   return zc::none;
 }
 
+zc::Maybe<zc::ArrayPtr<const uint8_t>> CheckedFactsRepository::substitutionRecord(
+    const CheckedEvidenceLease& lease, CanonicalSubstitutionId id) const noexcept {
+  ZC_IF_SOME(facts, lookup(lease)) {
+    const auto& store = facts.substitutionStore();
+    if (!store.contains(id)) return zc::none;
+    for (uint32_t index = 0; index < store.records().size(); ++index) {
+      auto candidate = store.idAt(index);
+      if (candidate == zc::none) return zc::none;
+      ZC_IF_SOME(value, candidate) {
+        if (value == id) return store.records()[index].canonicalRecord.asPtr();
+      }
+    }
+  }
+  return zc::none;
+}
+
+zc::Maybe<zc::ArrayPtr<const uint8_t>> CheckedFactsRepository::witnessRecord(
+    const CheckedEvidenceLease& lease, WitnessArgumentsId id) const noexcept {
+  ZC_IF_SOME(facts, lookup(lease)) {
+    const auto& store = facts.witnessStore();
+    if (!store.contains(id)) return zc::none;
+    for (uint32_t index = 0; index < store.records().size(); ++index) {
+      auto candidate = store.idAt(index);
+      if (candidate == zc::none) return zc::none;
+      ZC_IF_SOME(value, candidate) {
+        if (value == id) return store.records()[index].canonicalRecord.asPtr();
+      }
+    }
+  }
+  return zc::none;
+}
+
 }  // namespace zomlang::compiler::checker::checked
