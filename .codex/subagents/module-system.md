@@ -84,8 +84,8 @@ memory contract requires a mandatory `runtime-memory` review.
 
 - [ ] `cmake --build --preset sanitizer` passes.
 - [ ] `ctest --preset default` passes.
-- [ ] `python3 scripts/check-incremental-query-architecture.py --check` and
-      `--self-test` pass for query or incremental architecture changes.
+- [ ] `bash scripts/run-repo-lint.sh` passes for query or incremental
+      architecture changes.
 - [ ] A new `examples/` or `tests/conformance/` multi-file test exercises
       cross-TU import / export if any path in that area changed.
 - [ ] `/skill spec-alignment` confirms the owned module/package/visibility

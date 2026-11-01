@@ -2,12 +2,6 @@ add_ztest_unit_test("binding-diagnostic-projector-test" "diagnostics/binding-dia
 add_ztest_unit_test("canonical-definition-header-producer-test" "canonical/canonical-definition-header-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("canonical-header-type-producer-test" "canonical/canonical-header-type-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("canonical-impl-header-producer-test" "canonical/canonical-impl-header-producer-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
-add_test(NAME binder-architecture
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --check)
-set_tests_properties(binder-architecture PROPERTIES LABELS "binding;architecture")
-add_test(NAME binder-architecture-negative
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-binder-architecture.py --self-test)
-set_tests_properties(binder-architecture-negative PROPERTIES LABELS "binding;architecture")
 add_ztest_unit_test("definition-inventory-test" "metadata/definition-inventory-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("identity-pre-admission-test" "identity/identity-pre-admission-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
 add_ztest_unit_test("local-identity-test" "identity/local-identity-test.cc" LIBRARIES binder identity diagnostics lexer ast source basic)
@@ -23,13 +17,3 @@ add_ztest_unit_test("stable-binding-diagnostic-fact-test" "stable/stable-binding
 add_ztest_unit_test("stable-definition-header-producer-test" "stable/definition/header-producer-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-header-verifier-test" "stable/header/verifier-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
 add_ztest_unit_test("stable-implementation-occurrence-header-producer-test" "stable/implementation/header-producer-test.cc" LIBRARIES binder parser trace identity diagnostics lexer ast source basic)
-add_test(NAME stable-binding-schema
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-stable-binding-schema.py --check)
-set_tests_properties(stable-binding-schema PROPERTIES LABELS "binding;architecture")
-add_test(NAME stable-binding-schema-negative
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-stable-binding-schema.py --self-test)
-set_tests_properties(stable-binding-schema-negative PROPERTIES LABELS "binding;architecture")
-add_test(NAME stable-binding-landing-scope-negative
-  COMMAND "${Python3_EXECUTABLE}" ${CMAKE_SOURCE_DIR}/scripts/check-landing-scope.py --self-test)
-set_tests_properties(stable-binding-landing-scope-negative
-  PROPERTIES LABELS "binding;architecture")

@@ -87,8 +87,8 @@ docs/design/tooling/**
       JSON-RPC.
 - [ ] Differential tests prove valid-source IDE facts equal compiler tooling
       projections.
-- [ ] `python3 scripts/check-format.py` and
-      `python3 scripts/check-incremental-query-architecture.py --check` pass.
+- [ ] `python3 scripts/check-format.py` and `bash scripts/run-repo-lint.sh`
+      pass.
 
 ## Block Conditions (auto-escalate to `escalation-to` when hit)
 

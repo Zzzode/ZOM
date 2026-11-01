@@ -311,9 +311,7 @@ Use CMake presets for every build. The package-focused local checks are:
 cmake --preset sanitizer
 cmake --build --preset sanitizer
 ctest --preset default -L package --output-on-failure
-python3 scripts/check-identity-architecture.py
-python3 scripts/check-compiler-session-architecture.py --check
-python3 tests/tools/check-vendored-dependencies.py
+bash scripts/run-repo-lint.sh
 ```
 
 The complete repository matrix remains required before landing a package change:

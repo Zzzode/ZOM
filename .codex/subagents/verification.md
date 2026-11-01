@@ -48,6 +48,7 @@ examples/**
 .github/workflows/**
 README.md
 docs/reports/*coverage*
+scripts/run-repo-lint.sh
 scripts/check-identity-architecture.py
 scripts/check-ir-architecture.py
 scripts/check-incremental-query-architecture.py
@@ -148,13 +149,10 @@ cmake/utils/unittests.cmake
 ## Required Evidence Before Closing
 
 - [ ] `ctest --preset default` passes with zero unexpected failures.
-- [ ] `python3 scripts/check-diagnostic-coverage.py --check` and
-      `python3 scripts/check-diagnostic-coverage.py --self-test` pass.
-- [ ] `python3 scripts/check-english-only.py --check --base-file
-      tests/coverage/implementation-series-base.txt` and
-      `python3 scripts/check-english-only.py --self-test` pass.
-- [ ] `python3 scripts/check-diff-hygiene.py --check` and
-      `python3 scripts/check-diff-hygiene.py --self-test` pass.
+- [ ] `bash scripts/run-repo-lint.sh` passes: build-free source/artifact policy,
+      architecture/drift inventories, spec alignment, generated freshness, and
+      every check's mutation self-test. These are policy checks, not compiler
+      regression evidence.
 - [ ] `python3 scripts/check-ownership-coverage.py --self-test` passes; when
       the coverage preset is built, `python3 scripts/run-ownership-coverage.py`
       followed by `python3 scripts/check-ownership-coverage.py` passes with no
@@ -167,18 +165,8 @@ cmake/utils/unittests.cmake
       (`active-definition-authority-session-test.cc`) and the ownership rail
       revision determinism (`ownership-event-overlay-test.cc`); a CLI
       worker-count control is a compiler change outside this gate.
-- [ ] `python3 scripts/check-spec-alignment.py --check --report
-      <build-local-report>` and
-      `python3 scripts/check-spec-alignment.py --self-test` pass.
-- [ ] `python3 scripts/check-lit-exec-root.py --check` and
-      `python3 scripts/check-lit-exec-root.py --self-test` pass.
-- [ ] `python3 scripts/check-incremental-query-architecture.py --check` and
-      `python3 scripts/check-incremental-query-architecture.py --self-test`
-      pass.
-- [ ] `python3 scripts/check-stable-binding-schema.py --check`,
-      `python3 scripts/check-stable-binding-schema.py --self-test`, and
-      `python3 scripts/check-landing-scope.py --self-test` pass when the
-      RFC 0030 foundation is in scope.
+- [ ] When the RFC 0030 foundation is in scope, the stable-binding schema and
+      landing-scope checks covered by `run-repo-lint.sh` pass.
 - [ ] Coverage report (when the task is coverage-gated) confirms no
       regressions vs. the last baseline.
 - [ ] For bug fixes: regression test fails on `HEAD^`, passes on HEAD.

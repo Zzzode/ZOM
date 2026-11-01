@@ -313,17 +313,9 @@ The merge-ready verification set is:
 - `ctest --preset default --output-on-failure`;
 - `python3 scripts/check-format.py`;
 - `python3 scripts/check-rfc.py`;
-- `python3 scripts/check-binder-architecture.py --check`;
-- `python3 scripts/check-checker-architecture.py --check`;
-- `python3 scripts/check-compiler-session-architecture.py --check`;
-- `python3 scripts/check-incremental-query-architecture.py --check`;
-- `python3 scripts/check-query-descriptor-architecture.py --check`;
 - `python3 scripts/generate-query-descriptor-schema.py --check`;
-- `python3 scripts/check-identity-architecture.py --check`;
-- `python3 scripts/check-ir-architecture.py --check`;
-- `python3 scripts/check-diagnostic-coverage.py --check` and `--self-test`;
-- `python3 scripts/check-package-architecture.py --check`;
-- relevant architecture self-tests and negative fixtures; and
+- `bash scripts/run-repo-lint.sh` (build-free source/artifact policy, spec
+  drift, and generated-file freshness checks, including their self-tests); and
 - `git diff --check`.
 
 Passing this set proves the implemented boundaries named above. Ownership

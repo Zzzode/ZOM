@@ -542,23 +542,6 @@ def check_header_wire_inventory(
 ) -> None:
     schema_text = read_text(HEADER_SYNTAX_SCHEMA, overrides)
     definition_text = read_text(HEADER_SYNTAX_DEFINITION, overrides)
-    cmake_text = read_text(CONFORMANCE_CMAKE, overrides)
-
-    required_cmake_patterns = (
-        (
-            r"NAME canonical-header-syntax-schema\b.*?"
-            r"generate-canonical-header-syntax-schema\.py.*?--check",
-            "canonical header schema check",
-        ),
-        (
-            r"NAME canonical-header-syntax-schema-negative\b.*?"
-            r"generate-canonical-header-syntax-schema\.py.*?--self-test",
-            "canonical header schema self-test",
-        ),
-    )
-    for pattern, description in required_cmake_patterns:
-        if re.search(pattern, cmake_text, re.DOTALL) is None:
-            errors.append(f"{CONFORMANCE_CMAKE}: missing {description} registration")
 
     with tempfile.TemporaryDirectory(prefix="zom-identity-header-schema-") as directory:
         temporary_root = Path(directory)

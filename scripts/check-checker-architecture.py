@@ -1127,10 +1127,6 @@ def check_wiring(files: dict[Path, str], errors: list[str]) -> None:
         (DRIVER_CMAKE, "imported-signature-view-projector.cc"),
         (DRIVER_CMAKE, "module-interface.cc"),
         (DRIVER_CMAKE, "coherence-builder.cc"),
-        (TEST_CMAKE, "NAME checker-architecture"),
-        (TEST_CMAKE, "check-checker-architecture.py --check"),
-        (TEST_CMAKE, "NAME checker-architecture-negative"),
-        (TEST_CMAKE, "check-checker-architecture.py --self-test"),
     )
     for path, marker in required:
         if marker not in files.get(path, ""):
@@ -1848,12 +1844,6 @@ def run_self_test() -> int:
             "impl->dispatchFacts = zc::mv(ordinaryDispatchFacts);",
         ),
         "missing production Checker marker",
-    )
-    failures += expect_rejection(
-        baseline,
-        "negative gate disconnected",
-        lambda files: remove_once(files, TEST_CMAKE, "check-checker-architecture.py --self-test"),
-        "missing Checker architecture wiring marker",
     )
     failures += expect_rejection(
         baseline,

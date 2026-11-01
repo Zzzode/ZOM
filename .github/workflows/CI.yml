@@ -88,7 +88,6 @@ jobs:
 
   check-format:
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format
@@ -110,6 +109,24 @@ jobs:
         run: |
           clang-format --version
           python3 scripts/check-format.py
+
+  # Build-free repository lint: architecture/drift inventories, stay-dead and
+  # naming policies, spec <-> grammar <-> implementation set equality, and
+  # generated-file freshness. These checks assert source/artifact policy, not
+  # compiler behavior, so they live here instead of in ctest (which runs only
+  # ztest, lit, negative-compile, and real-command drivers).
+  repo-lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+
+      - name: Run repository lint
+        run: bash scripts/run-repo-lint.sh
 
   check-unit-tests:
     strategy:
@@ -302,13 +319,12 @@ jobs:
             --gate-module cmake/utils/llvm.cmake \
             --real-llvm-dir "$HOME/toolchains/llvm22/lib/cmake/llvm"
 
-      - name: Run RFC 0010 IR and ownership architecture gates
-        run: |
-          python3 scripts/check-ir-architecture.py --check
-          python3 scripts/check-ownership-architecture.py --check
-          python3 scripts/check-lir-verification-gate.py --check
+      # Marker/architecture gates moved to the build-free repo-lint job; the
+      # fail-closed LIR behavior itself is verified below by the llvm-labeled
+      # object-emission and native-run CLI suite (including the forced-finding
+      # incident case).
 
-      - name: Build backend translation test and zomc
+      # Build backend translation test and zomc
         run: cmake --build build-llvm --target llvm-translation-test zomc
 
       - name: Run backend translation test

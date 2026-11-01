@@ -1628,11 +1628,6 @@ def validate_repository_wiring(text: str, inputs: dict[str, str]) -> list[str]:
     test_cmake = inputs["test-cmake"]
     required_tests = {
         "stable-binding-facts-test": 'add_ztest_unit_test("stable-binding-facts-test"',
-        "stable-binding-schema": "add_test(NAME stable-binding-schema\n",
-        "stable-binding-schema-negative": "add_test(NAME stable-binding-schema-negative\n",
-        "stable-binding-landing-scope-negative": (
-            "add_test(NAME stable-binding-landing-scope-negative\n"
-        ),
     }
     for name, registration in required_tests.items():
         if test_cmake.count(registration) != 1:
@@ -1920,15 +1915,6 @@ def self_test(text: str) -> list[str]:
             inputs["test-cmake"].replace(
                 'add_ztest_unit_test("stable-binding-facts-test"', 'add_ztest_unit_test("removed"',
                 1,
-            ),
-        ),
-    ))
-    wiring_cases.append((
-        "missing schema CTest registration",
-        with_input(
-            "test-cmake",
-            inputs["test-cmake"].replace(
-                "add_test(NAME stable-binding-schema\n", "add_test(NAME removed-schema\n", 1
             ),
         ),
     ))

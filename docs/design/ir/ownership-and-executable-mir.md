@@ -137,10 +137,10 @@ proposal, not an accepted change.
   sources, loop flow, raw provenance, and region membership/outlives;
 - overlay suites cover drop elaboration, the event overlay, lineage mutation
   rejection, private-constructors, and proof validation;
-- `scripts/check-ownership-coverage.py`,
-  `scripts/check-ownership-determinism.py`, and
-  `scripts/check-ownership-architecture.py` (with self-test mutation
-  fixtures) gate coverage, byte determinism, and layering;
+- `scripts/check-ownership-determinism.py` and the ctest ownership suite
+  gate byte determinism; coverage runs in the coverage CI job; layering and
+  its mutation fixtures run in the build-free `repo-lint` job
+  (`scripts/run-repo-lint.sh`);
 - source diagnostics for the live rejections are pinned by lit/FileCheck
   conformance files.
 

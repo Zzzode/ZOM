@@ -510,24 +510,13 @@ emission.
 ## 13. Verification Contract
 
 Changes to these boundaries run the sanitizer configure/build, the relevant
-unit and lit suites, format, RFC, diff-hygiene, and architecture gates. The
-direct architecture gates are:
+unit and lit suites, format, RFC, and diff hygiene. Build-free source/artifact
+policy, spec drift, generated-file freshness, and their mutation self-tests run
+through one entry point, `bash scripts/run-repo-lint.sh` (the `repo-lint` CI
+job); the build-bound `generate-query-descriptor-schema.py` checks remain ctest
+slots.
 
-- `check-parser-coverage.py`;
-- `check-lexer-architecture.py`;
-- `check-impl-source-architecture.py` and its self-test;
-- `check-binder-architecture.py` and its self-test;
-- `check-checker-architecture.py` and its self-test;
-- `check-compiler-session-architecture.py` and its self-test;
-- `check-incremental-query-architecture.py` and its self-test;
-- `check-query-descriptor-architecture.py` and its self-test;
-- `generate-query-descriptor-schema.py` and its self-test;
-- `check-identity-architecture.py` and its self-test;
-- `check-ir-architecture.py` and its self-test;
-- `check-diagnostic-coverage.py` and its self-test;
-- `check-package-architecture.py` and its negative fixtures.
-
-A passing gate proves only its named live boundary. Production readiness for
-ownership analysis, executable MIR, LIR, or a backend requires its verified
-capability, direct consumer, negative fixtures, determinism tests, conformance
-tests, and full-preset evidence in the same change.
+These lint checks assert source and artifact policy, not compiler behavior.
+Production readiness for ownership analysis, executable MIR, LIR, or a backend
+requires its verified capability, direct consumer, negative fixtures,
+determinism and conformance tests, and full-preset evidence in the same change.

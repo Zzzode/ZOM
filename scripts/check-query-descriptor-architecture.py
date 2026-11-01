@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 from importlib.machinery import SourceFileLoader
+from importlib import util as import_util
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,10 +75,13 @@ FINAL_SEAL_GATE_ALLOWED = {
     QUERY_TEST_SPECS,
     QUERY_DATABASE_TEST,
 }
-GENERATOR = SourceFileLoader(
+GENERATOR_LOADER = SourceFileLoader(
     "query_descriptor_generator",
     str(ROOT / "scripts/generate-query-descriptor-schema.py"),
-).load_module()
+)
+GENERATOR_SPEC = import_util.spec_from_loader("query_descriptor_generator", GENERATOR_LOADER)
+GENERATOR = import_util.module_from_spec(GENERATOR_SPEC)
+GENERATOR_SPEC.loader.exec_module(GENERATOR)
 
 OLD_API_PATTERNS = {
     "old query contract API": re.compile(

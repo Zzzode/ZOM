@@ -35,8 +35,11 @@ existing coverage is already sufficient.
   FileCheck over real `.zom` sources for source-level end-to-end tests. A
   scripting driver is acceptable only for contracts neither suite can exercise
   directly (process invocation, exit codes, emitted artifacts, external tool
-  orchestration), and such a driver must be registered under `tests/tools/` and
-  wired into CTest following an existing `check-*.py` pattern.
+  orchestration), and such a driver must be registered under `tests/tools/`
+  and wired directly into CTest with `add_test` (see the existing
+  `tests/CMakeLists.txt` CLI driver cases). Source-text architecture, naming,
+  spec-drift, and coverage-inventory scripts are not CTest tests; they run in
+  the build-free `repo-lint` CI job via `scripts/run-repo-lint.sh`.
 
 ---
 

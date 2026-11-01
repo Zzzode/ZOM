@@ -190,6 +190,7 @@ subagents:
       - ".github/workflows/**"
       - "README.md"
       - "docs/reports/*coverage*"
+      - "scripts/run-repo-lint.sh"
       - "scripts/check-identity-architecture.py"
       - "scripts/check-ir-architecture.py"
       - "scripts/check-incremental-query-architecture.py"

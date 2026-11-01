@@ -507,18 +507,6 @@ def check_generated_oracle_gate(files: dict[Path, str], errors: list[str]) -> No
         "package generated-oracle generator",
         errors,
     )
-    require_markers(
-        files,
-        CONFORMANCE_CMAKE,
-        (
-            "NAME package-generated-oracles\n",
-            "gen_package_oracles.py --check",
-            "NAME package-generated-oracles-negative",
-            "gen_package_oracles.py --self-test",
-        ),
-        "package generated-oracle CTest",
-        errors,
-    )
 
 
 def check_resolver_resource_gate(files: dict[Path, str], errors: list[str]) -> None:
@@ -793,11 +781,6 @@ def run_self_test() -> int:
             "resolver RSS limit removed",
             remove_marker(PERFORMANCE_CMAKE, "--max-rss-bytes 1073741824"),
             "missing resolver performance CTest marker",
-        ),
-        (
-            "generated-oracle CTest removed",
-            remove_marker(CONFORMANCE_CMAKE, "NAME package-generated-oracles\n"),
-            "missing package generated-oracle CTest marker",
         ),
         (
             "resolver local allocation fallback restored",

@@ -79,11 +79,10 @@ produce objects and linked executables internally, but there is no explicit
 
 ## Native Debugging Workflow
 
-Run the narrow architecture checks first:
+Run the build-free repository lint first:
 
 ```bash
-python3 scripts/check-ir-architecture.py --check
-python3 scripts/check-ir-architecture.py --self-test
+bash scripts/run-repo-lint.sh
 ```
 
 Then use the repository-native build and unit suite:

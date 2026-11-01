@@ -283,7 +283,7 @@ the trigger matrix in `.codex/subagents/README.md`.
 | `tooling-lsp` | IDE semantic facade, LSP transport, document versions, cancellation, stale-response suppression | `compiler/ide/**`, `compiler/lsp/**`, `tools/ide/**`, `tools/lsp/**`, `editors/**`, `docs/design/tooling/**` |
 | `spec-audit` | Spec ↔ implementation 1:1 alignment | `docs/spec/**`, `docs/design/**`, `docs/plan/**`, and compiler/spec drift |
 | `runtime-memory` | Ownership, zc types, RAII, memory model, unsafe boundaries | libraries/zc/**, compiler/ownership/**, runtime/**, FFI |
-| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0047 native diagnostics verification, incremental-query gates and benchmarks, English/spec alignment, and identity/IR architecture gates; runs last |
+| `verification` | Build + sanitizer + tests + format, evidence-gating | tests, CI workflows, README build contract, RFC 0047 native diagnostics verification, incremental-query gates and benchmarks, the build-free repo-lint job (English/spec alignment and architecture inventories); runs last |
 
 ---
 

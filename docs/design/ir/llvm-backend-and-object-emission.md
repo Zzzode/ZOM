@@ -118,8 +118,8 @@ reasons to amend the RFC contracts.
 - translator unit tests and the object-emission fixture suite cover accepted
   and fail-closed shapes;
 - `scripts/check-llvm-lock.py` and the provisioning gate pin the LLVM source
-  and discovery; `check-ir-architecture.py` keeps the LLVM include isolation
-  wall.
+  and discovery; LLVM include isolation runs in the build-free `repo-lint`
+  job (`scripts/run-repo-lint.sh`).
 
 ## Known Gaps
 

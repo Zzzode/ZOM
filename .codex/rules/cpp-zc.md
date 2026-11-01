@@ -148,8 +148,9 @@ Rules that hold regardless of size:
   diagnostic projector in `<subsystem>/diagnostics/`.
 - Subdirectories are pure path prefixes. They need no `CMakeLists.txt` and no
   `add_subdirectory` — the parent lists `${CMAKE_CURRENT_SOURCE_DIR}/<subdir>/<file>.cc`.
-- Keep CMake source lists **explicit**. Several architecture gates read these files as text
-  and assert exact paths, so a `GLOB_RECURSE` conversion silently disarms them.
+- Keep CMake source lists **explicit**; do not use `GLOB_RECURSE` for build
+  inputs. A new source file must be added deliberately, and source deletions
+  must fail the link instead of silently dropping a translation unit.
 - Includes are repo-root-relative (`#include "compiler/ir/target/registry.h"`), never
   relative. Moving a file is then a mechanical string rewrite.
 

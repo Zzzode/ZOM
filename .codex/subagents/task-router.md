@@ -53,8 +53,8 @@ owner declared by `manifest.yaml`.
 - [ ] Ownership analysis and `compiler/ownership/**` route to
       `runtime-memory`; checked semantic inputs and Built MIR dependencies keep
       their owning subsystem reviews.
-- [ ] `scripts/check-english-only.py` and `scripts/check-spec-alignment.py`
-      route to `verification`.
+- [ ] Build-free source/artifact policy, English-only, and spec alignment
+      (`scripts/run-repo-lint.sh`) route to `verification`.
 - [ ] Stable Binder schema, fact, and codec implementation routes to
       `binder-checker`; driver contextual-key declarations and caller cutover
       route to `module-system`; diagnostic-fact schemas route to

@@ -302,10 +302,7 @@ The primary native commands are:
 ctest --preset default -R '^query-(database|red-green|capability|concurrency|eviction|observability)-test$' --output-on-failure
 python3 scripts/generate-query-descriptor-schema.py --check
 python3 scripts/generate-query-descriptor-schema.py --self-test
-python3 scripts/check-query-descriptor-architecture.py --check
-python3 scripts/check-query-descriptor-architecture.py --self-test
-python3 scripts/check-incremental-query-architecture.py --check
-python3 scripts/check-incremental-query-architecture.py --self-test
+bash scripts/run-repo-lint.sh
 ```
 
 Use the committed Release benchmark protocol for performance claims. A noisy

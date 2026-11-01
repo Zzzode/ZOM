@@ -863,10 +863,6 @@ def check(values: dict[Path, str]) -> list[str]:
         if marker not in session_test:
             errors.append(f"{SESSION_TEST}: missing ownership admission regression test: {marker}")
 
-    cmake = values.get(TEST_CMAKE, "")
-    for marker in ("ownership-architecture", "ownership-architecture-negative"):
-        if marker not in cmake:
-            errors.append(f"{TEST_CMAKE}: missing ownership architecture gate: {marker}")
     return errors
 
 

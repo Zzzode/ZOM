@@ -11,7 +11,7 @@ Updated: 2026-09-21
 | Governing decisions | [RFC 0010](../../rfc/0010-intermediate-representation-pipeline.md), [RFC 0013](../../rfc/0013-ownership-analysis-integration-boundary.md) |
 | Production integration | [`compiler-session.cc`](../../../compiler/driver/session/compiler-session.cc) |
 | Shared IR contracts | [`compiler/ir`](../../../compiler/ir/) |
-| Architecture gate | [`check-ir-architecture.py`](../../../scripts/check-ir-architecture.py) |
+| Repository lint | [`scripts/run-repo-lint.sh`](../../../scripts/run-repo-lint.sh) (`repo-lint` CI job) |
 
 This document describes the live candidate, verifier, capability, and atomic
 session-publication pattern. It does not define successor stages that are not
@@ -178,17 +178,11 @@ diagnostic timing are not ordering inputs.
 
 ## Enforcement And Native Verification
 
-The direct architecture gate is:
-
-```bash
-python3 scripts/check-ir-architecture.py --check
-python3 scripts/check-ir-architecture.py --self-test
-```
-
-It checks required identity and failure markers, Built MIR wiring, session
-publication, target independence, and selected forbidden duplicate rails. Its
-negative fixtures prove the gate rejects specific architectural mutations; the
-gate does not replace semantic unit and integration tests.
+The build-free repository lint (`bash scripts/run-repo-lint.sh`, the
+`repo-lint` CI job) checks required identity and failure markers, Built MIR
+wiring, session publication, target independence, and selected forbidden
+duplicate rails, including mutation fixtures. It asserts source and artifact
+policy only; it does not replace semantic unit and integration tests.
 
 The native test boundary includes HIR unit tests, Built MIR codec-oracle tests,
 and compiler-session package tests for construction, corruption rejection, and
