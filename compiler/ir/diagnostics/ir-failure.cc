@@ -41,8 +41,13 @@ bool legalKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind kind
         return kind == IrFailureKind::UnsupportedSourceConstruct ||
                kind == IrFailureKind::UnsupportedExpressionStatement;
       case IrFailurePhase::Monomorphization:
+        // RFC 0056: recursive instantiation and exceeded budgets are the mono
+        // stage's own capability failures; an instance body that fails the
+        // carrier-membership or ownership-triviality predicate is an
+        // inadmissible source construct projected to ZOM4099.
         return kind == IrFailureKind::RecursiveInstantiation ||
-               kind == IrFailureKind::InstantiationBudgetExceeded;
+               kind == IrFailureKind::InstantiationBudgetExceeded ||
+               kind == IrFailureKind::UnsupportedSourceConstruct;
       case IrFailurePhase::TargetSelection:
         return kind == IrFailureKind::UnsupportedTargetCapability;
       case IrFailurePhase::ObjectEmission:

@@ -66,7 +66,8 @@ bool expectedKind(IrRejectedBranch branch, IrFailurePhase phase, IrFailureKind k
     }
     if (phase == IrFailurePhase::Monomorphization) {
       return kind == IrFailureKind::RecursiveInstantiation ||
-             kind == IrFailureKind::InstantiationBudgetExceeded;
+             kind == IrFailureKind::InstantiationBudgetExceeded ||
+             kind == IrFailureKind::UnsupportedSourceConstruct;
     }
     if (phase == IrFailurePhase::TargetSelection) {
       return kind == IrFailureKind::UnsupportedTargetCapability;
