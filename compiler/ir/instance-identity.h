@@ -59,4 +59,10 @@ ZC_NODISCARD zc::Maybe<DecodedInstanceIdentity> decodeInstanceIdentity(
 ZC_NODISCARD zc::Maybe<zc::String> deriveMonoInstanceSymbol(
     zc::ArrayPtr<const uint8_t> identityFrame);
 
+/// \brief Reserved domain prefix of every derived mono instance symbol.
+constexpr char kMonoInstanceSymbolPrefix[] = "zom.mono.";
+
+/// \brief Returns true when `symbol` names a derived mono instance function.
+ZC_NODISCARD bool isMonoInstanceSymbol(zc::StringPtr symbol) noexcept;
+
 }  // namespace zomlang::compiler::ir

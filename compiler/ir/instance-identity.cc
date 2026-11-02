@@ -15,7 +15,6 @@ namespace zomlang::compiler::ir {
 namespace {
 
 constexpr char kHexDigits[] = "0123456789abcdef";
-constexpr char kMonoSymbolPrefix[] = "zom.mono.";
 
 zc::String bytesToLowerHex(zc::ArrayPtr<const uint8_t> bytes) {
   auto chars = zc::heapArray<char>(bytes.size() * 2);
@@ -81,8 +80,12 @@ zc::Maybe<zc::String> deriveMonoInstanceSymbol(zc::ArrayPtr<const uint8_t> ident
   }
   auto digest = hasher.finish();
   if (digest == zc::none) { return zc::none; }
-  return zc::str(kMonoSymbolPrefix, bytesToLowerHex(components.definitionKey.asPtr()), ".",
+  return zc::str(kMonoInstanceSymbolPrefix, bytesToLowerHex(components.definitionKey.asPtr()), ".",
                  bytesToLowerHex(ZC_ASSERT_NONNULL(digest).bytes()));
+}
+
+bool isMonoInstanceSymbol(zc::StringPtr symbol) noexcept {
+  return symbol.startsWith(kMonoInstanceSymbolPrefix);
 }
 
 }  // namespace zomlang::compiler::ir

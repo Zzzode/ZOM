@@ -141,7 +141,13 @@ void expectInstanceCallLowersAndValidates(zc::StringPtr program) {
   zc::Vector<mir::MirCallableIdentity> identities;
   identities.add(mir::MirCallableIdentity::source(caller->owner));
   identities.add(mir::MirCallableIdentity::instance(instance.identity));
-  ZC_EXPECT(lir::TranslationValidator::validate(presented.asPtr(), identities.asPtr(), lirModule,
+  // Empty frame for the Source caller, the verified identity frame for the
+  // instance body; the validator re-derives the zom.mono symbol from it.
+  auto frames = zc::heapArray<zc::ArrayPtr<const uint8_t>>(2);
+  frames[0] = {};
+  frames[1] = instance.identityFrame.asPtr();
+  ZC_EXPECT(lir::TranslationValidator::validate(presented.asPtr(), identities.asPtr(),
+                                                frames.asPtr(), lirModule,
                                                 ZC_ASSERT_NONNULL(types)) == zc::none);
 
   // Presenting Source-only identities for the same module must fail closed:

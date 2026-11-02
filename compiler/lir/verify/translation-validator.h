@@ -126,21 +126,30 @@ public:
   /// `Call` index must resolve to the presented function whose identity equals
   /// the MIR call edge: a Source edge matches a Source identity naming the same
   /// definition, and an Instance edge matches the same monomorphized instance.
-  /// This is the slice that lets a source caller with an Instance call edge be
-  /// validated against its substituted instance body (RFC 0056 Stage 4).
+  /// This lets a source caller with an Instance call edge be validated against
+  /// its substituted instance body (RFC 0056 Stage 4) and lets two instances of
+  /// one template coexist: instance bodies keep the template DefId owner, so
+  /// they are distinguished by their derived `zom.mono.<defkey>.<digest>`
+  /// symbol rather than by owner.
   ///
   /// \param mirFunctions The verified MIR functions handed to lowering, in any
-  /// order (matching is by owner, never array position).
+  /// order (matching is by full identity and the derived object symbol, never
+  /// array position).
   /// \param presentedIdentities Identity of each `mirFunctions` entry at the
   /// same index; size must equal `mirFunctions.size()`.
+  /// \param presentedIdentityFrames Length-framed instance identity of each
+  /// entry (empty slice for a Source entry, the verified MonoInstance
+  /// `identityFrame` bytes for an Instance entry); size must equal
+  /// `mirFunctions.size()`. The bytes must outlive the call.
   /// \param lirModule The LIR module the lowering produced.
   /// \param semanticTypes Session-owned store for the MIR semantic types.
   /// \return None when the module preserves every MIR function, else the first
   /// finding in deterministic order.
   ZC_NODISCARD static zc::Maybe<TranslationFinding> validate(
       zc::ArrayPtr<const mir::MirFunction* const> mirFunctions,
-      zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities, const Module& lirModule,
-      const type::SemanticTypeStore& semanticTypes) noexcept;
+      zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities,
+      zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> presentedIdentityFrames,
+      const Module& lirModule, const type::SemanticTypeStore& semanticTypes) noexcept;
 };
 
 }  // namespace zomlang::compiler::lir

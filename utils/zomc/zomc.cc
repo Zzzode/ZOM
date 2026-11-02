@@ -2284,13 +2284,16 @@ private:
       zc::ArrayPtr<const mir::MirFunction* const> presentedMir;
       zc::Array<const mir::MirFunction*> monoPresentedMir;
       zc::Vector<mir::MirCallableIdentity> monoPresentedIdentities;
+      zc::Vector<zc::ArrayPtr<const uint8_t>> monoPresentedFrames;
       if (monomorphicInstanceBody != nullptr) {
         monoPresentedMir = zc::heapArray<const mir::MirFunction*>(2);
         monoPresentedMir[0] = monomorphicCaller;
         monoPresentedMir[1] = monomorphicInstanceBody;
         monoPresentedIdentities.add(mir::MirCallableIdentity::source(monomorphicCaller->owner));
+        monoPresentedFrames.add(zc::ArrayPtr<const uint8_t>{});
         ZC_IF_SOME(calleeInstance, monomorphicCallee) {
           monoPresentedIdentities.add(mir::MirCallableIdentity::instance(calleeInstance));
+          monoPresentedFrames.add(monomorphicInstanceFrame);
         }
         presentedMir = monoPresentedMir.asPtr();
       } else {
@@ -2303,7 +2306,7 @@ private:
         auto translation =
             monomorphicInstanceBody != nullptr
                 ? lir::TranslationValidator::validate(presentedMir, monoPresentedIdentities.asPtr(),
-                                                      lirModule, types)
+                                                      monoPresentedFrames.asPtr(), lirModule, types)
                 : lir::TranslationValidator::validate(presentedMir, lirModule, types);
         if (translation != zc::none) {
           // RFC 0053: route the translation validation finding through the IR

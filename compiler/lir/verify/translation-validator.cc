@@ -15,6 +15,7 @@
 #include "compiler/lir/verify/translation-validator.h"
 
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/ir/instance-identity.h"
 #include "compiler/lir/lir-store.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/type/semantic-type-data.h"
@@ -5528,33 +5529,83 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
     zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities, const Module& lirModule,
-    const type::SemanticTypeStore& types) noexcept {
+    zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities,
+    zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>> presentedIdentityFrames,
+    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
   if (functions.size() != mirFunctions.size() ||
-      (presentedIdentities.size() != 0 && presentedIdentities.size() != mirFunctions.size())) {
+      (presentedIdentities.size() != 0 && presentedIdentities.size() != mirFunctions.size()) ||
+      (presentedIdentityFrames.size() != 0 &&
+       presentedIdentityFrames.size() != mirFunctions.size())) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
   }
-  // Build the owner-derived bijection between presented MIR and LIR before any
-  // shape match, so every matcher and validator resolves roles and edges
-  // through one PresentedSet.
+  // Build the bijection between presented MIR and LIR before any shape match.
+  // With no explicit identities every presented function is a Source function
+  // and the unique key is the definition owner. With explicit identities two
+  // presented functions can share an owner (two instances of one template keep
+  // its DefId owner), so an Instance is keyed by its derived zom.mono symbol
+  // instead; its owner is additionally asserted to pin the template. The
+  // mapping must be bijective in both directions: every presented function and
+  // every LIR function is used exactly once.
   constexpr uint32_t kUnmapped = UINT32_MAX;
   zc::Vector<uint32_t> lirIndexToPresented;
   zc::Vector<uint32_t> presentedToLir;
   for (uint32_t l = 0; l < functions.size(); ++l) { lirIndexToPresented.add(kUnmapped); }
+
+  // True when LIR function `lirIndex` presents the Source function `owner`
+  // (i.e. it is not emitted under a zom.mono instance symbol).
+  auto lirPresentsSourceOwner = [&](uint32_t lirIndex, identity::DefId owner) {
+    if (functions[lirIndex].owner() != owner) { return false; }
+    return !ir::isMonoInstanceSymbol(functions[lirIndex].symbolName());
+  };
+
   for (uint32_t m = 0; m < mirFunctions.size(); ++m) {
     const MirFunction& mirFunction = *mirFunctions[m];
+    const bool hasIdentity = m < presentedIdentities.size();
+    const bool isInstance =
+        hasIdentity && presentedIdentities[m].kind() == mir::MirCallableIdentityKind::Instance;
     zc::Maybe<uint32_t> lirIndex;
-    for (uint32_t l = 0; l < functions.size(); ++l) {
-      if (functions[l].owner() == mirFunction.owner) {
-        if (lirIndex != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, l); }
-        lirIndex = l;
+    if (!isInstance) {
+      // Source function (or the Source-only overload): unique non-instance LIR
+      // function naming the definition owner.
+      for (uint32_t l = 0; l < functions.size(); ++l) {
+        if (lirPresentsSourceOwner(l, mirFunction.owner)) {
+          if (lirIndex != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, l); }
+          lirIndex = l;
+        }
+      }
+    } else {
+      // Instance: unique LIR function under the derived zom.mono symbol, with
+      // the template owner cross-checked. The frame is independently decoded
+      // and re-derived here so the validator shares no producer machinery.
+      if (m >= presentedIdentityFrames.size() || presentedIdentityFrames[m].size() == 0) {
+        return fault(TranslationFaultKind::FunctionSetMismatch, m);
+      }
+      auto expectedSymbol = ir::deriveMonoInstanceSymbol(presentedIdentityFrames[m]);
+      if (expectedSymbol == zc::none) {
+        return fault(TranslationFaultKind::FunctionSetMismatch, m);
+      }
+      for (uint32_t l = 0; l < functions.size(); ++l) {
+        if (functions[l].symbolName() == ZC_ASSERT_NONNULL(expectedSymbol) &&
+            functions[l].owner() == mirFunction.owner) {
+          if (lirIndex != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, l); }
+          lirIndex = l;
+        }
       }
     }
     if (lirIndex == zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, m); }
     const uint32_t resolvedLirIndex = ZC_ASSERT_NONNULL(lirIndex);
+    if (lirIndexToPresented[resolvedLirIndex] != kUnmapped) {
+      return fault(TranslationFaultKind::FunctionSetMismatch, resolvedLirIndex);
+    }
     lirIndexToPresented[resolvedLirIndex] = m;
     presentedToLir.add(resolvedLirIndex);
+  }
+  // Reverse totality: every LIR function slot must be claimed.
+  for (uint32_t l = 0; l < lirIndexToPresented.size(); ++l) {
+    if (lirIndexToPresented[l] == kUnmapped) {
+      return fault(TranslationFaultKind::FunctionSetMismatch, l);
+    }
   }
   const PresentedSet presented{mirFunctions, presentedIdentities, lirIndexToPresented.asPtr(),
                                presentedToLir.asPtr()};
@@ -5634,7 +5685,8 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
     zc::ArrayPtr<const MirFunction* const> mirFunctions, const Module& lirModule,
     const type::SemanticTypeStore& types) noexcept {
-  return validate(mirFunctions, zc::ArrayPtr<const mir::MirCallableIdentity>{}, lirModule, types);
+  return validate(mirFunctions, zc::ArrayPtr<const mir::MirCallableIdentity>{},
+                  zc::ArrayPtr<const zc::ArrayPtr<const uint8_t>>{}, lirModule, types);
 }
 
 }  // namespace zomlang::compiler::lir
