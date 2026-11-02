@@ -238,6 +238,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-i64-consumer/Zom.toml::generic_i64_consumer::generic_i64_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-multi-instance-consumer/Zom.toml::generic_multi_instance_consumer::generic_multi_instance_consumer"
+      --deterministic-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-multi-instance-consumer/Zom.toml::generic_multi_instance_consumer::generic_multi_instance_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer"
@@ -548,6 +552,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-initializer-consumer/Zom.toml::generic_initializer_consumer::generic_initializer_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-i64-consumer/Zom.toml::generic_i64_consumer::generic_i64_consumer::42"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-multi-instance-consumer/Zom.toml::generic_multi_instance_consumer::generic_multi_instance_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer::3"
       --run-case

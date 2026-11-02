@@ -1,0 +1,19 @@
+// RFC 0056 multi-instance native fixture: two parameter-free roots each call a
+// monomorphized identity instance at a distinct scalar type. The joined
+// lowering folds the first root in deterministic MIR order to zom.module_init
+// and emits the second root under zom.standalone_1; the i32 and i64 instance
+// bodies are each emitted once under distinct zom.mono symbols. Both roots
+// return 42 so whichever root the deterministic ordering folds to the entry,
+// the executed process exits 42; the object and deterministic cases assert
+// both instance symbols are present regardless of root order.
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn entry() -> i32 {
+    return identity(42);
+}
+
+fn other() -> i64 {
+    return identity<i64>(42);
+}
