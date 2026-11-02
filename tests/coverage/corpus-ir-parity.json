@@ -4038,7 +4038,7 @@
     "12-generics/generic_explicit_body_pos_18.zom": {
       "exitCode": 0,
       "hirSha256": "f23c4d3fd1cb9370ba54fc29afea3785aacade8338cf4b7f26465e592a98b406",
-      "mirSha256": "fb31864917f7116193ebf827213238f6ef3356abb2560fceeb8978b32ca05633",
+      "mirSha256": "d44558a168ffe97e0940f5a2b361946cc90872c59eabf824e8047fee0902c764",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "12-generics/generic_explicit_count_neg_10.zom": {
@@ -4064,7 +4064,7 @@
     "12-generics/generic_infer_identity_body_pos_17.zom": {
       "exitCode": 0,
       "hirSha256": "eed88785fa3cf39e1858ca6ac0e89ae748b0adae567a4bac79f95af5a38ef24d",
-      "mirSha256": "aa26ad036f0b0681103e1fec488c2e09adc282ca3aee33e683af1cb5aca9620a",
+      "mirSha256": "0b774eec39d9fb38511af1b13eac88e7050991e95a72eb2d27eb254aa065fea7",
       "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
     },
     "12-generics/generic_infer_identity_pos_11.zom": {
