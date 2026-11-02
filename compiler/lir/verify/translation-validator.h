@@ -22,6 +22,7 @@
 
 namespace zomlang::compiler::mir {
 struct MirFunction;
+class MirCallableIdentity;
 }  // namespace zomlang::compiler::mir
 
 namespace zomlang::compiler::type {
@@ -116,6 +117,29 @@ public:
   /// finding in deterministic order.
   ZC_NODISCARD static zc::Maybe<TranslationFinding> validate(
       zc::ArrayPtr<const mir::MirFunction* const> mirFunctions, const Module& lirModule,
+      const type::SemanticTypeStore& semanticTypes) noexcept;
+
+  /// \brief Validates a multi-function lowering with explicit callee identities.
+  ///
+  /// Behaves as the owner-correspondence overload, except that every presented
+  /// MIR function carries the full callable identity it was lowered as. A LIR
+  /// `Call` index must resolve to the presented function whose identity equals
+  /// the MIR call edge: a Source edge matches a Source identity naming the same
+  /// definition, and an Instance edge matches the same monomorphized instance.
+  /// This is the slice that lets a source caller with an Instance call edge be
+  /// validated against its substituted instance body (RFC 0056 Stage 4).
+  ///
+  /// \param mirFunctions The verified MIR functions handed to lowering, in any
+  /// order (matching is by owner, never array position).
+  /// \param presentedIdentities Identity of each `mirFunctions` entry at the
+  /// same index; size must equal `mirFunctions.size()`.
+  /// \param lirModule The LIR module the lowering produced.
+  /// \param semanticTypes Session-owned store for the MIR semantic types.
+  /// \return None when the module preserves every MIR function, else the first
+  /// finding in deterministic order.
+  ZC_NODISCARD static zc::Maybe<TranslationFinding> validate(
+      zc::ArrayPtr<const mir::MirFunction* const> mirFunctions,
+      zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities, const Module& lirModule,
       const type::SemanticTypeStore& semanticTypes) noexcept;
 };
 

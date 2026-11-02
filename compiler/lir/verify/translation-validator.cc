@@ -34,6 +34,57 @@ TranslationFinding fault(TranslationFaultKind kind, uint32_t functionIndex,
   return TranslationFinding{kind, functionIndex, mirBlock, lirBlock, statement};
 }
 
+// The MIR functions presented for one module validation, indexed by presented
+// (MIR) order. `identities` is either empty, meaning every presented function
+// is a Source function named by its owner, or parallels `mirFunctions` with
+// the full callable identity each function was lowered as (Source or a
+// monomorphized Instance). The two index arrays are the owner-derived
+// bijection between presented MIR functions and LIR functions.
+//
+// Every call-edge and owner comparison in this file resolves through ONE of
+// the helpers below, so a module presenting a substituted instance body under
+// the template owner is matched by its Instance identity and the two-instances-
+// of-one-definition ambiguity cannot reappear at an unlisted site.
+struct PresentedSet {
+  zc::ArrayPtr<const MirFunction* const> mirFunctions;
+  zc::ArrayPtr<const mir::MirCallableIdentity> identities;
+  zc::ArrayPtr<const uint32_t> lirIndexToPresented;
+  zc::ArrayPtr<const uint32_t> presentedToLir;
+
+  // Identity of one presented entry: the explicit identity when supplied,
+  // otherwise a Source identity naming its definition owner.
+  bool identityEquals(uint32_t presentedIndex,
+                      const mir::MirCallableIdentity& edge) const noexcept {
+    if (presentedIndex >= mirFunctions.size()) { return false; }
+    if (identities.size() == 0) { return edge.isSourceFor(mirFunctions[presentedIndex]->owner); }
+    return presentedIndex < identities.size() && edge == identities[presentedIndex];
+  }
+
+  // True when the LIR function at `lirIndex` presents the function the MIR
+  // call edge names.
+  bool calleeMatches(const mir::MirCallableIdentity& edge, uint32_t lirIndex) const noexcept {
+    if (lirIndex >= lirIndexToPresented.size()) { return false; }
+    return identityEquals(lirIndexToPresented[lirIndex], edge);
+  }
+
+  // True when the LIR function at `lirIndex` presents the given MIR function.
+  bool lirPresentsMir(uint32_t lirIndex, const MirFunction& target) const noexcept {
+    if (lirIndex >= lirIndexToPresented.size()) { return false; }
+    const uint32_t presentedIndex = lirIndexToPresented[lirIndex];
+    return presentedIndex < mirFunctions.size() && mirFunctions[presentedIndex] == &target;
+  }
+
+  // True when a MIR call edge names the given presented MIR function. Used by
+  // shape matchers that select roles over presented MIR without a LIR module.
+  bool edgeNamesMir(const mir::MirCallableIdentity& edge,
+                    const MirFunction& target) const noexcept {
+    for (uint32_t p = 0; p < mirFunctions.size(); ++p) {
+      if (mirFunctions[p] == &target) { return identityEquals(p, edge); }
+    }
+    return false;
+  }
+};
+
 // Independently derived integer carrier for a MIR semantic type. This
 // duplicates the producer derivation on purpose: the validator must not call
 // any mir-to-lir helper.
@@ -412,12 +463,13 @@ struct ReturnFold final {
 namespace {
 
 // Validates one matched MIR/LIR function pair. `moduleFunctions` is the whole
-// LIR module so a Call terminator's stored callee index can be resolved to the
-// LIR function whose MIR owner must equal the MIR call target.
+// LIR module so a Call terminator's stored callee index can be resolved through
+// the presented-set bijection.
 zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunction& mir,
                                            const Function& lir,
                                            const type::SemanticTypeStore& types,
-                                           zc::ArrayPtr<const Function> moduleFunctions) noexcept {
+                                           zc::ArrayPtr<const Function> moduleFunctions,
+                                           const PresentedSet& presented) noexcept {
   // Block bijection: equal count and dense ordinal order.
   if (mir.blocks.size() != lir.blocks().size()) {
     return fault(TranslationFaultKind::BlockBijectionMismatch, functionIndex);
@@ -1792,8 +1844,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             statements[1].destinationOrdinal() != v.lirBorrowMut ||
             statements[1].sourceOrdinal() != v.lirOwner ||
             terminator.kind() != TerminatorKind::Call || terminator.hasCallDestination() ||
-            terminator.calleeIndex() >= moduleFunctions.size() ||
-            !mCall.callee.isSourceFor(moduleFunctions[terminator.calleeIndex()].owner()) ||
+            !presented.calleeMatches(mCall.callee, terminator.calleeIndex()) ||
             terminator.callArguments().size() != 2 ||
             terminator.callNormalTarget().ordinal() != 2 ||
             terminator.callArguments()[0].isConstant() ||
@@ -1810,8 +1861,7 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
             statements[0].sourceOrdinal() != v.lirOwner ||
             terminator.kind() != TerminatorKind::Call || !terminator.hasCallDestination() ||
             terminator.callDestinationOrdinal() != v.lirResult ||
-            terminator.calleeIndex() >= moduleFunctions.size() ||
-            !mCall.callee.isSourceFor(moduleFunctions[terminator.calleeIndex()].owner()) ||
+            !presented.calleeMatches(mCall.callee, terminator.calleeIndex()) ||
             terminator.callArguments().size() != 1 ||
             terminator.callNormalTarget().ordinal() != 3 ||
             terminator.callArguments()[0].isConstant() ||
@@ -2751,13 +2801,10 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
         if (lirTerminator.kind() != TerminatorKind::Call) {
           return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
         }
-        // The stored callee index must resolve to the LIR function whose MIR
-        // owner is the MIR call's callee owner.
+        // The stored callee index must resolve to the presented MIR function
+        // named by the MIR call edge (Source definition or mono instance).
         const uint32_t calleeIndex = lirTerminator.calleeIndex();
-        if (calleeIndex >= moduleFunctions.size()) {
-          return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
-        }
-        if (!call.callee.isSourceFor(moduleFunctions[calleeIndex].owner())) {
+        if (!presented.calleeMatches(call.callee, calleeIndex)) {
           return fault(TranslationFaultKind::CallCalleeMismatch, functionIndex, b + 1, b + 1);
         }
         // The destination place maps to the call destination slot.
@@ -2897,8 +2944,8 @@ struct ByValueAggregateShape final {
   static constexpr uint32_t kLirResultOrdinal = 1;
 };
 
-zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(const PresentedSet& presented) noexcept {
+  const auto mirFunctions = presented.mirFunctions;
   if (mirFunctions.size() != 2) { return zc::none; }
   size_t callerIndex = 0;
   size_t calleeIndex = 0;
@@ -2962,7 +3009,7 @@ zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.local() != resultLocal.id ||
       call.destination.projections().size() != 0 || call.normalTarget != continuation.id ||
-      call.unwindTarget != zc::none || !call.callee.isSourceFor(callee.owner)) {
+      call.unwindTarget != zc::none || !presented.edgeNamesMir(call.callee, callee)) {
     return zc::none;
   }
   const auto& callArgument = call.arguments[0];
@@ -3032,9 +3079,10 @@ zc::Maybe<ByValueAggregateShape> matchByValueAggregateCall(
 }
 
 zc::Maybe<TranslationFinding> validateByValueAggregateCall(
-    const ByValueAggregateShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+    const ByValueAggregateShape& shape, const PresentedSet& presented, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const auto mirFunctions = presented.mirFunctions;
   if (functions.size() != 2) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   auto carrier = integerCarrier(shape.resultType, types);
   if (carrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
@@ -3047,11 +3095,11 @@ zc::Maybe<TranslationFinding> validateByValueAggregateCall(
   zc::Maybe<uint32_t> lirCaller;
   zc::Maybe<uint32_t> lirCallee;
   for (uint32_t index = 0; index < functions.size(); ++index) {
-    if (functions[index].owner() == caller.owner) {
+    if (presented.lirPresentsMir(index, caller)) {
       if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCaller = index;
     }
-    if (functions[index].owner() == callee.owner) {
+    if (presented.lirPresentsMir(index, callee)) {
       if (lirCallee != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCallee = index;
     }
@@ -3093,8 +3141,8 @@ zc::Maybe<TranslationFinding> validateByValueAggregateCall(
     }
     const auto& entryTerminator = lirEntry.terminator();
     if (entryTerminator.kind() != TerminatorKind::Call || !entryTerminator.hasCallDestination() ||
-        entryTerminator.calleeIndex() >= functions.size() ||
-        functions[entryTerminator.calleeIndex()].owner() != callee.owner ||
+        !presented.calleeMatches(caller.blocks[0].terminator.callValue().callee,
+                                 entryTerminator.calleeIndex()) ||
         entryTerminator.callDestinationOrdinal() != ByValueAggregateShape::kLirResultOrdinal ||
         entryTerminator.callNormalTarget() != lirCont.id() ||
         entryTerminator.callArguments().size() != shape.elements.size()) {
@@ -3166,7 +3214,8 @@ struct IndirectCallWithLeafShape final {
 };
 
 zc::Maybe<IndirectCallWithLeafShape> matchIndirectCallWithLeaf(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+    const PresentedSet& presented) noexcept {
+  const auto mirFunctions = presented.mirFunctions;
   if (mirFunctions.size() != 3) { return zc::none; }
   size_t callerIndex = 0;
   size_t calleeIndex = 0;
@@ -3295,7 +3344,7 @@ zc::Maybe<IndirectCallWithLeafShape> matchIndirectCallWithLeaf(
   if (aggregate.type != callerAggregate.type || aggregate.elements.size() != 1) { return zc::none; }
   if (aggregate.elements[0].operand.kind() != mir::MirOperandKind::Constant) { return zc::none; }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
+  if (!presented.edgeNamesMir(mirCall.callee, callee) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
@@ -3326,9 +3375,10 @@ zc::Maybe<IndirectCallWithLeafShape> matchIndirectCallWithLeaf(
 }
 
 zc::Maybe<TranslationFinding> validateIndirectCallWithLeaf(
-    const IndirectCallWithLeafShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+    const IndirectCallWithLeafShape& shape, const PresentedSet& presented, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const auto mirFunctions = presented.mirFunctions;
   if (functions.size() != 3) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   auto resultCarrier = integerCarrier(shape.resultType, types);
   if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
@@ -3343,15 +3393,15 @@ zc::Maybe<TranslationFinding> validateIndirectCallWithLeaf(
   zc::Maybe<uint32_t> lirCallee;
   zc::Maybe<uint32_t> lirLeaf;
   for (uint32_t index = 0; index < functions.size(); ++index) {
-    if (functions[index].owner() == caller.owner) {
+    if (presented.lirPresentsMir(index, caller)) {
       if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCaller = index;
     }
-    if (functions[index].owner() == callee.owner) {
+    if (presented.lirPresentsMir(index, callee)) {
       if (lirCallee != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCallee = index;
     }
-    if (functions[index].owner() == leaf.owner) {
+    if (presented.lirPresentsMir(index, leaf)) {
       if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirLeaf = index;
     }
@@ -3439,8 +3489,8 @@ zc::Maybe<TranslationFinding> validateIndirectCallWithLeaf(
     // target=cont).
     const auto& term = entry.terminator();
     if (term.kind() != TerminatorKind::Call || !term.hasCallDestination() ||
-        term.calleeIndex() >= functions.size() ||
-        functions[term.calleeIndex()].owner() != callee.owner ||
+        !presented.calleeMatches(caller.blocks[0].terminator.callValue().callee,
+                                 term.calleeIndex()) ||
         term.callDestinationOrdinal() != IndirectCallWithLeafShape::kCallerResultOrdinal ||
         term.callNormalTarget() != cont.id() || term.callArguments().size() != 2 ||
         term.callArguments()[0].isConstant() ||
@@ -3583,7 +3633,8 @@ struct ErasedAggregateCallShape final {
 };
 
 zc::Maybe<ErasedAggregateCallShape> matchErasedAggregateCall(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+    const PresentedSet& presented) noexcept {
+  const auto mirFunctions = presented.mirFunctions;
   if (mirFunctions.size() != 3) { return zc::none; }
   size_t callerIndex = 0;
   size_t calleeIndex = 0;
@@ -3731,7 +3782,7 @@ zc::Maybe<ErasedAggregateCallShape> matchErasedAggregateCall(
     return zc::none;
   }
   const auto& mirCall = callerEntry.terminator.callValue();
-  if (!mirCall.callee.isSourceFor(callee.owner) || mirCall.arguments.size() != 1 ||
+  if (!presented.edgeNamesMir(mirCall.callee, callee) || mirCall.arguments.size() != 1 ||
       mirCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       mirCall.destination.local() != callerResult.id ||
       mirCall.destination.projections().size() != 0 || mirCall.normalTarget != callerCont.id ||
@@ -3763,9 +3814,10 @@ zc::Maybe<ErasedAggregateCallShape> matchErasedAggregateCall(
 }
 
 zc::Maybe<TranslationFinding> validateErasedAggregateCall(
-    const ErasedAggregateCallShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+    const ErasedAggregateCallShape& shape, const PresentedSet& presented, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const auto mirFunctions = presented.mirFunctions;
   if (functions.size() != 3) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   auto resultCarrier = integerCarrier(shape.resultType, types);
   if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
@@ -3780,15 +3832,15 @@ zc::Maybe<TranslationFinding> validateErasedAggregateCall(
   zc::Maybe<uint32_t> lirCallee;
   zc::Maybe<uint32_t> lirLeaf;
   for (uint32_t index = 0; index < functions.size(); ++index) {
-    if (functions[index].owner() == caller.owner) {
+    if (presented.lirPresentsMir(index, caller)) {
       if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCaller = index;
     }
-    if (functions[index].owner() == callee.owner) {
+    if (presented.lirPresentsMir(index, callee)) {
       if (lirCallee != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCallee = index;
     }
-    if (functions[index].owner() == leaf.owner) {
+    if (presented.lirPresentsMir(index, leaf)) {
       if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirLeaf = index;
     }
@@ -3915,8 +3967,8 @@ zc::Maybe<TranslationFinding> validateErasedAggregateCall(
     // target=cont).
     const auto& term = entry.terminator();
     if (term.kind() != TerminatorKind::Call || !term.hasCallDestination() ||
-        term.calleeIndex() >= functions.size() ||
-        functions[term.calleeIndex()].owner() != callee.owner ||
+        !presented.calleeMatches(caller.blocks[0].terminator.callValue().callee,
+                                 term.calleeIndex()) ||
         term.callDestinationOrdinal() != ErasedAggregateCallShape::kCallerResultOrdinal ||
         term.callNormalTarget() != cont.id() || term.callArguments().size() != 2 ||
         term.callArguments()[0].isConstant() ||
@@ -4112,12 +4164,15 @@ zc::Maybe<ExistentialReturnShape> matchExistentialReturn(const MirFunction& func
 }
 
 zc::Maybe<TranslationFinding> validateExistentialReturn(
-    const ExistentialReturnShape& shape, const MirFunction& mir, const Module& lirModule,
+    const ExistentialReturnShape& shape, const PresentedSet& presented, const Module& lirModule,
     const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const MirFunction& mir = *presented.mirFunctions[0];
   if (functions.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   const auto& lir = functions[0];
-  if (lir.owner() != mir.owner) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  if (!presented.lirPresentsMir(0, mir)) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
   const auto vtables = lirModule.vtables();
   if (vtables.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   const auto globals = lirModule.globals();
@@ -4313,12 +4368,15 @@ zc::Maybe<DynFieldAggregateReturnShape> matchDynFieldAggregateReturn(
 }
 
 zc::Maybe<TranslationFinding> validateDynFieldAggregateReturn(
-    const DynFieldAggregateReturnShape& shape, const MirFunction& mir, const Module& lirModule,
-    const type::SemanticTypeStore& types) noexcept {
+    const DynFieldAggregateReturnShape& shape, const PresentedSet& presented,
+    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const MirFunction& mir = *presented.mirFunctions[0];
   if (functions.size() != 1) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   const auto& lir = functions[0];
-  if (lir.owner() != mir.owner) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
+  if (!presented.lirPresentsMir(0, mir)) {
+    return fault(TranslationFaultKind::FunctionSetMismatch, 0);
+  }
   const auto vtables = lirModule.vtables();
   if (vtables.size() != shape.erasedFieldCount) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
@@ -4453,7 +4511,8 @@ struct ExistentialCallResultShape final {
 };
 
 zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+    const PresentedSet& presented) noexcept {
+  const auto mirFunctions = presented.mirFunctions;
   if (mirFunctions.size() != 4) { return zc::none; }
   size_t callerIndex = 0;
   size_t existentialCalleeIndex = 0;
@@ -4638,7 +4697,8 @@ zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
     return zc::none;
   }
   const auto& initCall = callerEntry.terminator.callValue();
-  if (!initCall.callee.isSourceFor(existentialCallee.owner) || initCall.arguments.size() != 0 ||
+  if (!presented.edgeNamesMir(initCall.callee, existentialCallee) ||
+      initCall.arguments.size() != 0 ||
       initCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       initCall.destination.local() != callerExistential.id ||
       initCall.destination.projections().size() != 0 || initCall.normalTarget != callerMid.id ||
@@ -4646,7 +4706,8 @@ zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
     return zc::none;
   }
   const auto& returnCall = callerMid.terminator.callValue();
-  if (!returnCall.callee.isSourceFor(indirectCallee.owner) || returnCall.arguments.size() != 1 ||
+  if (!presented.edgeNamesMir(returnCall.callee, indirectCallee) ||
+      returnCall.arguments.size() != 1 ||
       returnCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
       returnCall.destination.local() != callerResult.id ||
       returnCall.destination.projections().size() != 0 ||
@@ -4679,9 +4740,10 @@ zc::Maybe<ExistentialCallResultShape> matchExistentialCallResult(
 }
 
 zc::Maybe<TranslationFinding> validateExistentialCallResult(
-    const ExistentialCallResultShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+    const ExistentialCallResultShape& shape, const PresentedSet& presented, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const auto mirFunctions = presented.mirFunctions;
   if (functions.size() != 4) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   auto resultCarrier = integerCarrier(shape.resultType, types);
   if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
@@ -4698,23 +4760,23 @@ zc::Maybe<TranslationFinding> validateExistentialCallResult(
   zc::Maybe<uint32_t> lirIndirectCallee;
   zc::Maybe<uint32_t> lirLeaf;
   for (uint32_t index = 0; index < functions.size(); ++index) {
-    if (functions[index].owner() == caller.owner) {
+    if (presented.lirPresentsMir(index, caller)) {
       if (lirCaller != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirCaller = index;
     }
-    if (functions[index].owner() == existentialCallee.owner) {
+    if (presented.lirPresentsMir(index, existentialCallee)) {
       if (lirExistentialCallee != zc::none) {
         return fault(TranslationFaultKind::FunctionSetMismatch, index);
       }
       lirExistentialCallee = index;
     }
-    if (functions[index].owner() == indirectCallee.owner) {
+    if (presented.lirPresentsMir(index, indirectCallee)) {
       if (lirIndirectCallee != zc::none) {
         return fault(TranslationFaultKind::FunctionSetMismatch, index);
       }
       lirIndirectCallee = index;
     }
-    if (functions[index].owner() == leaf.owner) {
+    if (presented.lirPresentsMir(index, leaf)) {
       if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirLeaf = index;
     }
@@ -4797,8 +4859,8 @@ zc::Maybe<TranslationFinding> validateExistentialCallResult(
     // target=mid).
     const auto& entryTerm = entry.terminator();
     if (entryTerm.kind() != TerminatorKind::Call || !entryTerm.hasCallDestination() ||
-        entryTerm.calleeIndex() >= functions.size() ||
-        functions[entryTerm.calleeIndex()].owner() != existentialCallee.owner ||
+        !presented.calleeMatches(caller.blocks[0].terminator.callValue().callee,
+                                 entryTerm.calleeIndex()) ||
         entryTerm.callDestinationOrdinal() !=
             ExistentialCallResultShape::kCallerExistentialOrdinal ||
         entryTerm.callNormalTarget() != mid.id() || entryTerm.callArguments().size() != 0) {
@@ -4820,8 +4882,8 @@ zc::Maybe<TranslationFinding> validateExistentialCallResult(
     // args=[dataPtr, vtablePtr], target=cont).
     const auto& midTerm = mid.terminator();
     if (midTerm.kind() != TerminatorKind::Call || !midTerm.hasCallDestination() ||
-        midTerm.calleeIndex() >= functions.size() ||
-        functions[midTerm.calleeIndex()].owner() != indirectCallee.owner ||
+        !presented.calleeMatches(caller.blocks[1].terminator.callValue().callee,
+                                 midTerm.calleeIndex()) ||
         midTerm.callDestinationOrdinal() != ExistentialCallResultShape::kCallerResultOrdinal ||
         midTerm.callNormalTarget() != cont.id() || midTerm.callArguments().size() != 2 ||
         midTerm.callArguments()[0].isConstant() ||
@@ -5009,7 +5071,8 @@ struct DynFieldAccessReturnShape final {
 };
 
 zc::Maybe<DynFieldAccessReturnShape> matchDynFieldAccessReturn(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions) noexcept {
+    const PresentedSet& presented) noexcept {
+  const auto mirFunctions = presented.mirFunctions;
   if (mirFunctions.size() != 2) { return zc::none; }
   size_t entryIndex = 0;
   size_t leafIndex = 0;
@@ -5185,9 +5248,10 @@ zc::Maybe<DynFieldAccessReturnShape> matchDynFieldAccessReturn(
 }
 
 zc::Maybe<TranslationFinding> validateDynFieldAccessReturn(
-    const DynFieldAccessReturnShape& shape, zc::ArrayPtr<const MirFunction* const> mirFunctions,
-    const Module& lirModule, const type::SemanticTypeStore& types) noexcept {
+    const DynFieldAccessReturnShape& shape, const PresentedSet& presented, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
+  const auto mirFunctions = presented.mirFunctions;
   if (functions.size() != 2) { return fault(TranslationFaultKind::FunctionSetMismatch, 0); }
   auto resultCarrier = integerCarrier(shape.resultType, types);
   if (resultCarrier == zc::none) { return fault(TranslationFaultKind::SlotSetMismatch, 0); }
@@ -5200,11 +5264,11 @@ zc::Maybe<TranslationFinding> validateDynFieldAccessReturn(
   zc::Maybe<uint32_t> lirEntry;
   zc::Maybe<uint32_t> lirLeaf;
   for (uint32_t index = 0; index < functions.size(); ++index) {
-    if (functions[index].owner() == entry.owner) {
+    if (presented.lirPresentsMir(index, entry)) {
       if (lirEntry != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirEntry = index;
     }
-    if (functions[index].owner() == leaf.owner) {
+    if (presented.lirPresentsMir(index, leaf)) {
       if (lirLeaf != zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, index); }
       lirLeaf = index;
     }
@@ -5430,7 +5494,13 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
     const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
   if (functions.size() != 1) return fault(TranslationFaultKind::FunctionSetMismatch, 0);
-  if (functions[0].owner() != mirFunction.owner) {
+  const MirFunction* const singlePresented[1] = {&mirFunction};
+  const uint32_t singleLirMap[1] = {0};
+  const PresentedSet presented{zc::ArrayPtr<const MirFunction* const>{singlePresented, 1},
+                               zc::ArrayPtr<const mir::MirCallableIdentity>{},
+                               zc::ArrayPtr<const uint32_t>{singleLirMap, 1},
+                               zc::ArrayPtr<const uint32_t>{singleLirMap, 1}};
+  if (!presented.lirPresentsMir(0, mirFunction)) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
   }
   // The dyn-field aggregate return is validated as a unit because the per-field
@@ -5439,8 +5509,8 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   {
     auto dynFieldShape = matchDynFieldAggregateReturn(mirFunction);
     if (dynFieldShape != zc::none) {
-      return validateDynFieldAggregateReturn(ZC_ASSERT_NONNULL(dynFieldShape), mirFunction,
-                                             lirModule, types);
+      return validateDynFieldAggregateReturn(ZC_ASSERT_NONNULL(dynFieldShape), presented, lirModule,
+                                             types);
     }
   }
   // The existential return is validated as a unit because the Erase rvalue
@@ -5449,84 +5519,29 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
   {
     auto existentialShape = matchExistentialReturn(mirFunction);
     if (existentialShape != zc::none) {
-      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), mirFunction, lirModule,
+      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), presented, lirModule,
                                        types);
     }
   }
-  return validatePair(0, mirFunction, functions[0], types, functions);
+  return validatePair(0, mirFunction, functions[0], types, functions, presented);
 }
 
 zc::Maybe<TranslationFinding> TranslationValidator::validate(
-    zc::ArrayPtr<const MirFunction* const> mirFunctions, const Module& lirModule,
+    zc::ArrayPtr<const MirFunction* const> mirFunctions,
+    zc::ArrayPtr<const mir::MirCallableIdentity> presentedIdentities, const Module& lirModule,
     const type::SemanticTypeStore& types) noexcept {
   const auto functions = lirModule.functions();
-  if (functions.size() != mirFunctions.size()) {
+  if (functions.size() != mirFunctions.size() ||
+      (presentedIdentities.size() != 0 && presentedIdentities.size() != mirFunctions.size())) {
     return fault(TranslationFaultKind::FunctionSetMismatch, 0);
   }
-  // The by-value aggregate call pair is validated as a unit because the
-  // flattened field slots and the projected-field return only make sense across
-  // the caller/callee pair. Any other module falls through to per-owner pair
-  // validation.
-  {
-    auto byValueShape = matchByValueAggregateCall(mirFunctions);
-    if (byValueShape != zc::none) {
-      return validateByValueAggregateCall(ZC_ASSERT_NONNULL(byValueShape), mirFunctions, lirModule,
-                                          types);
-    }
-  }
-  // The indirect-call-with-leaf triple is validated as a unit because the
-  // split aggregate calling convention adds a vtable pointer parameter and
-  // renumbers the result local, so per-pair ordinal matching does not apply.
-  {
-    auto indirectShape = matchIndirectCallWithLeaf(mirFunctions);
-    if (indirectShape != zc::none) {
-      return validateIndirectCallWithLeaf(ZC_ASSERT_NONNULL(indirectShape), mirFunctions, lirModule,
-                                          types);
-    }
-  }
-  // The stored-erase caller/callee/leaf triple is validated as a unit because
-  // the Erase rvalue lowers to a multi-statement existential construction
-  // sequence that breaks the 1:1 MIR-to-LIR statement correspondence.
-  {
-    auto erasedShape = matchErasedAggregateCall(mirFunctions);
-    if (erasedShape != zc::none) {
-      return validateErasedAggregateCall(ZC_ASSERT_NONNULL(erasedShape), mirFunctions, lirModule,
-                                         types);
-    }
-  }
-  // The existential-call-result four-function module is validated as a unit
-  // because the caller's existential-return call and the split aggregate
-  // calling convention break the 1:1 MIR-to-LIR correspondence.
-  {
-    auto existentialCallShape = matchExistentialCallResult(mirFunctions);
-    if (existentialCallShape != zc::none) {
-      return validateExistentialCallResult(ZC_ASSERT_NONNULL(existentialCallShape), mirFunctions,
-                                           lirModule, types);
-    }
-  }
-  // The dyn-field-access-return two-function module is validated as a unit
-  // because the per-field Erase rvalues lower to GlobalAddr + VtableAddr +
-  // InsertField + InsertField sequences, and the field read + indirect call
-  // add ExtractField + VtableSlotLoad + IndirectCall, all of which break the
-  // 1:1 MIR-to-LIR statement correspondence.
-  {
-    auto dynFieldAccessShape = matchDynFieldAccessReturn(mirFunctions);
-    if (dynFieldAccessShape != zc::none) {
-      return validateDynFieldAccessReturn(ZC_ASSERT_NONNULL(dynFieldAccessShape), mirFunctions,
-                                          lirModule, types);
-    }
-  }
-  // The existential return is validated as a unit because the Erase rvalue
-  // lowers to a GlobalAddr + VtableAddr + InsertField + InsertField sequence
-  // that breaks the 1:1 MIR-to-LIR statement correspondence.
-  if (mirFunctions.size() == 1) {
-    auto existentialShape = matchExistentialReturn(*mirFunctions[0]);
-    if (existentialShape != zc::none) {
-      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), *mirFunctions[0],
-                                       lirModule, types);
-    }
-  }
-  // Every MIR owner matches exactly one LIR owner.
+  // Build the owner-derived bijection between presented MIR and LIR before any
+  // shape match, so every matcher and validator resolves roles and edges
+  // through one PresentedSet.
+  constexpr uint32_t kUnmapped = UINT32_MAX;
+  zc::Vector<uint32_t> lirIndexToPresented;
+  zc::Vector<uint32_t> presentedToLir;
+  for (uint32_t l = 0; l < functions.size(); ++l) { lirIndexToPresented.add(kUnmapped); }
   for (uint32_t m = 0; m < mirFunctions.size(); ++m) {
     const MirFunction& mirFunction = *mirFunctions[m];
     zc::Maybe<uint32_t> lirIndex;
@@ -5537,11 +5552,89 @@ zc::Maybe<TranslationFinding> TranslationValidator::validate(
       }
     }
     if (lirIndex == zc::none) { return fault(TranslationFaultKind::FunctionSetMismatch, m); }
-    auto finding = validatePair(ZC_ASSERT_NONNULL(lirIndex), mirFunction,
-                                functions[ZC_ASSERT_NONNULL(lirIndex)], types, functions);
+    const uint32_t resolvedLirIndex = ZC_ASSERT_NONNULL(lirIndex);
+    lirIndexToPresented[resolvedLirIndex] = m;
+    presentedToLir.add(resolvedLirIndex);
+  }
+  const PresentedSet presented{mirFunctions, presentedIdentities, lirIndexToPresented.asPtr(),
+                               presentedToLir.asPtr()};
+  // The by-value aggregate call pair is validated as a unit because the
+  // flattened field slots and the projected-field return only make sense across
+  // the caller/callee pair. Any other module falls through to per-pair
+  // validation.
+  {
+    auto byValueShape = matchByValueAggregateCall(presented);
+    if (byValueShape != zc::none) {
+      return validateByValueAggregateCall(ZC_ASSERT_NONNULL(byValueShape), presented, lirModule,
+                                          types);
+    }
+  }
+  // The indirect-call-with-leaf triple is validated as a unit because the split
+  // aggregate calling convention adds a vtable pointer parameter and renumbers
+  // the result local, so per-pair ordinal matching does not apply.
+  {
+    auto indirectShape = matchIndirectCallWithLeaf(presented);
+    if (indirectShape != zc::none) {
+      return validateIndirectCallWithLeaf(ZC_ASSERT_NONNULL(indirectShape), presented, lirModule,
+                                          types);
+    }
+  }
+  // The stored-erase caller/callee/leaf triple is validated as a unit because
+  // the Erase rvalue lowers to a multi-statement existential construction
+  // sequence that breaks the 1:1 MIR-to-LIR statement correspondence.
+  {
+    auto erasedShape = matchErasedAggregateCall(presented);
+    if (erasedShape != zc::none) {
+      return validateErasedAggregateCall(ZC_ASSERT_NONNULL(erasedShape), presented, lirModule,
+                                         types);
+    }
+  }
+  // The existential-call-result four-function module is validated as a unit
+  // because the caller's existential-return call and the split aggregate
+  // calling convention break the 1:1 MIR-to-LIR correspondence.
+  {
+    auto existentialCallShape = matchExistentialCallResult(presented);
+    if (existentialCallShape != zc::none) {
+      return validateExistentialCallResult(ZC_ASSERT_NONNULL(existentialCallShape), presented,
+                                           lirModule, types);
+    }
+  }
+  // The dyn-field-access-return two-function module is validated as a unit
+  // because the per-field Erase rvalues lower to GlobalAddr + VtableAddr +
+  // InsertField + InsertField sequences, and the field read + indirect call
+  // add ExtractField + VtableSlotLoad + IndirectCall, all of which break the
+  // 1:1 MIR-to-LIR statement correspondence.
+  {
+    auto dynFieldAccessShape = matchDynFieldAccessReturn(presented);
+    if (dynFieldAccessShape != zc::none) {
+      return validateDynFieldAccessReturn(ZC_ASSERT_NONNULL(dynFieldAccessShape), presented,
+                                          lirModule, types);
+    }
+  }
+  // The existential return is validated as a unit because the Erase rvalue
+  // lowers to a GlobalAddr + VtableAddr + InsertField + InsertField sequence
+  // that breaks the 1:1 MIR-to-LIR statement correspondence.
+  if (mirFunctions.size() == 1) {
+    auto existentialShape = matchExistentialReturn(*mirFunctions[0]);
+    if (existentialShape != zc::none) {
+      return validateExistentialReturn(ZC_ASSERT_NONNULL(existentialShape), presented, lirModule,
+                                       types);
+    }
+  }
+  for (uint32_t m = 0; m < mirFunctions.size(); ++m) {
+    const MirFunction& mirFunction = *mirFunctions[m];
+    const uint32_t lirIndex = presentedToLir[m];
+    auto finding =
+        validatePair(lirIndex, mirFunction, functions[lirIndex], types, functions, presented);
     if (finding != zc::none) return finding;
   }
   return zc::none;
+}
+
+zc::Maybe<TranslationFinding> TranslationValidator::validate(
+    zc::ArrayPtr<const MirFunction* const> mirFunctions, const Module& lirModule,
+    const type::SemanticTypeStore& types) noexcept {
+  return validate(mirFunctions, zc::ArrayPtr<const mir::MirCallableIdentity>{}, lirModule, types);
 }
 
 }  // namespace zomlang::compiler::lir
