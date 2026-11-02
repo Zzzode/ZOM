@@ -2,7 +2,7 @@
 rfc: 57
 title: Closure Representation and Non-Capturing Closures
 type: compiler
-status: PROPOSED
+status: ACCEPTED
 author: ZOM Compiler Team
 review-manager: rfc
 required-owners: [binder-checker, ir-backend, runtime-memory, spec-audit, verification]
