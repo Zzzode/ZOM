@@ -110,6 +110,28 @@ Call-site-local non-escaping closures will never allocate.
 
 ## Detailed Design
 
+### Measured prerequisite map (2026-11-03 survey)
+
+The layer boundaries were verified against the source before slice scoping:
+
+- `signature-facts.cc` hard-excludes `DefinitionKind::Closure` from callable
+  signature publication, and the body checker's `ownsExecutableBody` includes
+  only `Function`, `Method`, `Constructor`, and `Destructor`. A closure is
+  therefore not a callable today: it binds and accumulates capture
+  requirements, but it gets no signature, no body check, no HIR, and no MIR
+  function.
+- Consequently the direct-called slice needs closure signature publication and
+  closure body ownership before any call resolution matters. These are
+  additive, but they are the real floor of the change; they are not a gate
+  tweak.
+- The chosen slice-1 call lowering deliberately adds no new MIR rvalue or
+  terminator: because the admitted closure is non-escaping and callable only
+  in callee position, its local binding resolves to the anonymous closure
+  `DefId` and the call emits the existing `MirCallableIdentity::Source` direct
+  call edge. The function-address value and code-pointer indirect call remain
+  necessary for later slices where the closure is usable as a value, and are
+  documented below so the early slices do not paint them into a corner.
+
 ### Checker
 
 - A `LambdaExpression` with a declared (non-inferred) parameter and return
@@ -138,31 +160,35 @@ Call-site-local non-escaping closures will never allocate.
 
 ### MIR
 
-- New rvalue kind `FunctionAddress`: one `ir::DefId` (the anonymous closure
-  function in the same module) materializing its code address. This is a new
-  canonical codec tag with the usual independent re-decode verifier slot and
-  revision fold.
-- The closure-local assignment stores the function address; the call site
-  becomes an `IndirectCall` whose pointer operand is that local. The existing
-  `MirIndirectCallTerminator` (interface/method/receiver) gains a code-pointer
-  form, or a parallel minimal terminator carries just
-  `{ pointer, arguments, destination, normalTarget }`; the choice is made at
-  implementation to minimize the dyn-dispatch validator surface.
-- The closure's own body is already a normal post-elaboration `MirFunction`
-  (anonymous owner local key); no clone or instance machinery is needed while
-  captures and generics are excluded.
+- For slice 1 no new rvalue or terminator is required: the admitted call site
+  resolves its local binding to the anonymous closure `DefId` and emits a
+  normal `MirCallableIdentity::Source` call edge, exactly as a named-function
+  call does. The closure is an ordinary post-elaboration `MirFunction` keyed by
+  its anonymous owner local key.
+- Slice 1.5 (closure used as a value but still non-escaping, or passed
+  locally) introduces a new rvalue kind `FunctionAddress`: one `ir::DefId`
+  materializing a code address, with a new canonical codec tag, independent
+  re-decode verifier slot, and revision fold. It pairs with a plain
+  code-pointer indirect call: either a minimal form of
+  `MirIndirectCallTerminator` carrying `{ pointer, arguments, destination,
+  normalTarget }` or a parallel terminator chosen to leave the dyn-dispatch
+  validator surface untouched.
+- The closure-local assignment stores the function address only at slice 1.5;
+  at slice 1 the binding exists for name resolution but carries no value slot
+  in the caller.
 
 ### LIR and LLVM
 
-- New statement materializing a function symbol into an integer-pointer slot
-  (the LLVM translator already resolves global symbols; an internal function
-  address is one `getelementptr`/pointer constant plus the existing pointer
-  carrier).
-- The indirect call over a plain pointer reuses the call terminator's
-  argument/destination fields without the dyn receiver/vtable prefix. The
-  structural and translation validators gain the function-address and plain
-  indirect-call matchers, independently re-deriving the callee owner from the
-  presented closure function and the slot carrier.
+- Slice 1 needs neither: the direct `Source` call edge lowers through the
+  existing named-function call path, with the closure function symbol
+  replacing a named callee symbol in the same positional two-function (or
+  joined) module layout.
+- Slice 1.5 adds a statement materializing a function symbol into an
+  integer-pointer slot (an internal function pointer constant using the
+  existing pointer carrier) and a plain indirect call over that slot without
+  the dyn receiver/vtable prefix. The structural and translation validators
+  gain function-address and plain-indirect-call matchers that independently
+  re-derive the closure owner and slot carrier.
 
 ### Scope Boundaries
 
@@ -186,10 +212,10 @@ Rejected (unchanged user-facing behavior, ZOM4099):
 
 - checker ztests for the admitted lambda value/call and each rejection arm;
 - HIR module tests for the two new shapes;
-- MIR codec and verifier tests for the function-address rvalue / code-pointer
-  terminator, including malformed-bytes rejections;
-- LIR translation-validator tests proving the closure local and the indirect
-  call slot/edge correspondence and failing closed on owner mismatch;
+- slice 1 reuses the existing MIR direct-call codec and LIR call path, so the
+  new codec/terminator tests belong to slice 1.5;
+- LIR translation-validator tests proving the direct edge resolves to the
+  anonymous closure function and failing closed on owner mismatch;
 - an LLVM translation test producing and calling the function pointer;
 - a native integration fixture `non-capturing-closure-consumer` exiting 42,
   plus object-emission and deterministic-object cases;
@@ -212,6 +238,6 @@ Rejected (unchanged user-facing behavior, ZOM4099):
 ## Migration And Compatibility
 
 No existing source changes behavior: closures are rejected today. New admitted
-programs are strictly additive. The MIR codec tag is a new tag on the
-extensible rvalue domain with a revision fold, not a reinterpretation of
-existing bytes.
+programs are strictly additive. Slice 1 adds no codec bytes; the function
+address rvalue in slice 1.5 is a new tag on the extensible rvalue domain with a
+revision fold, not a reinterpretation of existing bytes.
