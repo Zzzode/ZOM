@@ -1,0 +1,14 @@
+// RFC 0056 generic-binary native fixture: a free generic function computes one
+// integer arithmetic operation over two parameters that share one type
+// parameter, instantiated at i32 and called from a parameter-free entry. The
+// template body admits the parametric arithmetic shape without naming a
+// concrete carrier; the substituted instance body is re-validated against its
+// concrete carrier before lowering. The instance callee lowers to the one-
+// block arithmetic shape and the entry exits 42.
+fn add<T>(a: T, b: T) -> T {
+    return a + b;
+}
+
+fn entry() -> i32 {
+    return add(40, 2);
+}

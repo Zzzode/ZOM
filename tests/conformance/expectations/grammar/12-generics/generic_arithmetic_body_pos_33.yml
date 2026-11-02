@@ -1,0 +1,5 @@
+section: "12-generics generic arithmetic body pos 33"
+covers_rule: "functionDeclaration, binaryExpression, callExpression"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts a generic function whose body is one arithmetic binary over its parameters; checker admission of the parametric body is a separate stage."

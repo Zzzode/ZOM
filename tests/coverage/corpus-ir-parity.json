@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1101,
+  "count": 1103,
   "irChannel": true,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -3962,6 +3962,16 @@
     "12-generics/fun_generic_pos_06.zom": {
       "exitCode": 1,
       "sha256": "0996c1ac6d33f89a6fe62c9b434161d6b37a2a8ef45398ed8c0ad39b8475b782"
+    },
+    "12-generics/generic_arithmetic_body_pos_33.zom": {
+      "exitCode": 0,
+      "hirSha256": "939904355c62e7ab50cab01e5305ab5fbd298daab989223655700e80bfc97c79",
+      "mirSha256": "238b9e4aa350987fb40aa244c6444cf82de9fabeafe9d01380f8c4ffbb4fe32e",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    "12-generics/generic_arithmetic_bool_carrier_neg_35.zom": {
+      "exitCode": 1,
+      "sha256": "d0a274d95191efc1bec611efd96ef65507ab119dd25a5ed0ade7cecebfd612cb"
     },
     "12-generics/generic_body_argument_count_neg_23.zom": {
       "exitCode": 1,

@@ -1,0 +1,5 @@
+section: "12-generics generic arithmetic bool carrier neg 35"
+covers_rule: "functionDeclaration, binaryExpression, callExpression"
+expected: "ACCEPT"
+notes:
+  - "The grammar accepts this source; the bool-instantiated arithmetic drain is a monomorphization-stage diagnostic (ZOM4099), not a parse failure."

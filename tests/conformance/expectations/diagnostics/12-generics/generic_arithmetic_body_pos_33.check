@@ -1,0 +1,10 @@
+// RUN: cd %corpus && %zomc compile --check 12-generics/generic_arithmetic_body_pos_33.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0056 stage 4 slice D: an arithmetic binary over two parameters sharing
+// one type-parameter key is admitted inside the generic template body. The
+// concrete operator legality is re-validated on the substituted instance, so
+// the i32 instantiation add(40, 2) flows through HIR and the monomorphization
+// stage (0x0a). compile --check exits 0.
+
+// CHECK-NOT: Error

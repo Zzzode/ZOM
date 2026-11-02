@@ -1,0 +1,12 @@
+// RUN: cd %corpus && ! %zomc compile --check 12-generics/generic_arithmetic_bool_carrier_neg_35.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0056 stage 4 slice D: the parametric template admits `a + b` without
+// naming a concrete carrier, but arithmetic on bool is undefined and the
+// substituted instance body is re-validated against its concrete carrier at
+// the monomorphization stage. add<bool> drains there as a capability, never as
+// a checker type error or a compiler invariant.
+
+// CHECK-LITERAL: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
+// CHECK-LITERAL:   --> conformance/12-generics/generic_arithmetic_bool_carrier_neg_35.zom:6:12
+// CHECK-LITERAL: 1 error generated.
