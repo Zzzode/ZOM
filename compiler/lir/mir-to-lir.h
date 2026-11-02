@@ -15,6 +15,7 @@
 #pragma once
 
 #include "compiler/lir/lir-module.h"
+#include "compiler/mir/built-mir.h"
 #include "zc/core/memory.h"
 
 namespace zomlang::compiler::mir {
@@ -31,6 +32,21 @@ class SemanticTypeStore;
 }  // namespace zomlang::compiler::type
 
 namespace zomlang::compiler::lir {
+
+/// \brief One caller/instance pair in a joined monomorphized emission.
+///
+/// `caller` is a concrete (non-parametric) source function whose entry block
+/// terminator is a Call whose edge names `calleeIdentity`; `callee` is the
+/// verified substituted instance body for that Instance edge. `calleeFrame`
+/// carries the length-framed identity used to derive the instance symbol.
+/// `calleeIdentity` must be an Instance identity; a Source unit fails the
+/// whole joined lowering.
+struct MonoCallUnit {
+  const mir::MirFunction* caller;
+  const mir::MirFunction* callee;
+  mir::MirCallableIdentity calleeIdentity;
+  zc::ArrayPtr<const uint8_t> calleeFrame;
+};
 
 /// \brief Minimal fail-closed MIR -> LIR lowering for one scalar module initializer.
 ///
@@ -547,19 +563,21 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
-  /// \brief Lowers the same single-argument call shape for a monomorphized
-  /// callee instance.
+  /// \brief Lowers a joined module of multiple caller/instance units.
   ///
-  /// The caller's Call edge names `calleeInstance` (an Instance identity), and
-  /// `callee` is the verified substituted instance body. The structural
-  /// lowering is identical to the Source variant; only the callee-identity
-  /// match and the callee symbol differ. The callee is emitted under the
-  /// derived `zom.mono.<definition-key hex>.<digest>` symbol from
-  /// `calleeIdentityFrame`. Every shape outside the slice returns `none`.
-  ZC_NODISCARD static zc::Maybe<Module> lowerMonomorphicCallModuleWithArgument(
-      const mir::MirFunction& caller, const mir::MirFunction& callee,
-      const ir::InstanceId& calleeInstance, zc::ArrayPtr<const uint8_t> calleeIdentityFrame,
-      const type::SemanticTypeStore& semanticTypes);
+  /// Generalizes the single-argument instance slice to several concrete source
+  /// callers, each naming one verified instance. Callers are emitted first, in
+  /// `units` order; the first parameter-free caller folds to the reserved
+  /// `zom.module_init` entry and every additional root is emitted under a unique
+  /// `zom.standalone_<N>` symbol (the first parameterized caller alone keeps
+  /// `zom.caller`). Distinct instance bodies are appended once, in first
+  /// reference order, each under its derived `zom.mono` symbol; each unit's
+  /// call edge uses the positional index of its instance in the joined module.
+  /// Two units naming the same instance share one emitted function. Every unit
+  /// must satisfy the single-argument scalar caller/callee shape; otherwise the
+  /// whole module returns `none`.
+  ZC_NODISCARD static zc::Maybe<Module> lowerMonomorphicCallModule(
+      zc::ArrayPtr<const MonoCallUnit> units, const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers a same-module direct call whose callee computes its result.
   ///

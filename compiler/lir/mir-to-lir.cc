@@ -5599,24 +5599,14 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
       caller, callee, mir::MirCallableIdentity::source(callee.owner), "zom.callee", semanticTypes);
 }
 
-zc::Maybe<Module> MirToLirLowering::lowerMonomorphicCallModuleWithArgument(
-    const mir::MirFunction& caller, const mir::MirFunction& callee,
-    const ir::InstanceId& calleeInstance, zc::ArrayPtr<const uint8_t> calleeIdentityFrame,
-    const type::SemanticTypeStore& semanticTypes) {
-  auto symbol = ir::deriveMonoInstanceSymbol(calleeIdentityFrame);
-  if (symbol == zc::none) { return zc::none; }
-  return lowerCallModuleWithArgumentIdentity(caller, callee,
-                                             mir::MirCallableIdentity::instance(calleeInstance),
-                                             ZC_ASSERT_NONNULL(symbol), semanticTypes);
-}
+namespace {
 
-zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
-    const mir::MirFunction& caller, const mir::MirFunction& callee,
-    const mir::MirCallableIdentity& expectedCallee, zc::StringPtr calleeSymbol,
-    const type::SemanticTypeStore& semanticTypes) {
-  // Callee: the single-parameter return shape (one Parameter local, one block
-  // returning a place-use of that parameter). Build a one-parameter LIR function
-  // whose single block returns the parameter slot.
+// Builds the callee LIR function for the single-argument identity shape: one
+// Parameter local and one block returning that parameter slot. Returns none
+// for every other instance body shape.
+zc::Maybe<Function> buildIdentityCalleeFunction(const mir::MirFunction& callee,
+                                                zc::StringPtr calleeSymbol,
+                                                const ValueType& calleeCarrier) {
   if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() != 1 ||
       callee.blocks.size() != 1) {
     return zc::none;
@@ -5625,9 +5615,6 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
   if (calleeParam.kind != mir::MirLocalKind::Parameter || calleeParam.type != callee.resultType) {
     return zc::none;
   }
-  auto calleeCarrier = scalarCarrierFor(callee.resultType, semanticTypes);
-  if (calleeCarrier == zc::none) { return zc::none; }
-  const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
   const uint32_t calleeParamOrdinal = calleeParam.id.ordinal();
   const auto& calleeBlock = callee.blocks[0];
   if (calleeBlock.statements.size() != 0 ||
@@ -5643,22 +5630,35 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
                          value.place().projections().size() == 0;
   }
   if (!calleeReturnsParam) { return zc::none; }
+  zc::Vector<BasicBlock> calleeBlocks;
+  zc::Vector<Statement> noStatements;
+  auto calleeEntry = LirBlockId::fromOrdinal(1);
+  if (calleeEntry == zc::none) { return zc::none; }
+  calleeBlocks.add(BasicBlock(ZC_ASSERT_NONNULL(calleeEntry), zc::mv(noStatements),
+                              Terminator::returnLocal(calleeParamOrdinal)));
+  zc::Vector<Local> parameters;
+  parameters.add(Local(calleeParamOrdinal, calleeCarrier));
+  zc::Vector<Local> locals;
+  return Function(callee.owner, zc::heapString(calleeSymbol), calleeCarrier, zc::mv(parameters),
+                  zc::mv(locals), zc::mv(calleeBlocks));
+}
 
-  // The caller is either of two verified shapes over P leading parameter locals.
-  //
-  //  * initializer shape: one trailing user local R; entry is StorageLive(R) +
-  //    Call(dest=R); the empty continuation returns R.
-  //  * return shape: a trailing Temporary T and FunctionResult R; entry is
-  //    StorageLive(T) + Call(dest=T); the continuation stores R from T
-  //    (StorageLive(R); Assign(R = move T); StorageDead(T)) and returns R.
-  //
-  // In both shapes the single call argument is an integer constant or a place-use
-  // of a leading parameter slot.
+// Builds the caller LIR function for the single-argument identity call shape.
+// The caller has two blocks (entry Call + continuation Return), passes one
+// integer constant or leading-parameter argument, and is either the trailing-
+// one-local initializer shape or the trailing-two-local Temporary/FunctionResult
+// return shape. Its call targets `calleeIndex` and it is emitted under
+// `callerSymbol`. Returns none for every other caller shape.
+zc::Maybe<Function> buildIdentityCallerFunction(const mir::MirFunction& caller,
+                                                const mir::MirFunction& callee,
+                                                const mir::MirCallableIdentity& expectedCallee,
+                                                const ValueType& calleeCarrier,
+                                                const type::SemanticTypeStore& semanticTypes,
+                                                uint32_t calleeIndex, zc::StringPtr callerSymbol) {
   if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 1 ||
       caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
     return zc::none;
   }
-  // Split the leading parameter locals from the trailing call/result locals.
   size_t callerParameterCount = 0;
   while (callerParameterCount < caller.locals.size() &&
          caller.locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
@@ -5680,8 +5680,6 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
     return zc::none;
   }
 
-  // Lower the single argument to a constant operand or a use of a leading
-  // parameter slot. A projected place or a non-parameter place is rejected.
   auto namesLeadingParameter = [&](const mir::MirOperand& operand) -> bool {
     if (operand.kind() == mir::MirOperandKind::Constant ||
         operand.place().projections().size() != 0) {
@@ -5696,14 +5694,13 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
   const auto& argument = call.arguments[0];
   zc::Maybe<Operand> argumentOperand;
   if (argument.kind() == mir::MirOperandKind::Constant) {
-    if (argument.constantValue().type != calleeParam.type) { return zc::none; }
-    argumentOperand = lirOperandFor(argument, calleeCarrierValue);
+    if (argument.constantValue().type != callee.locals[0].type) { return zc::none; }
+    argumentOperand = lirOperandFor(argument, calleeCarrier);
   } else if (namesLeadingParameter(argument)) {
-    argumentOperand = lirOperandFor(argument, calleeCarrierValue);
+    argumentOperand = lirOperandFor(argument, calleeCarrier);
   }
   if (argumentOperand == zc::none) { return zc::none; }
 
-  // Describes how the trailing locals and the two blocks lower for one shape.
   struct CallerShape {
     uint32_t destinationOrdinal;
     uint32_t resultOrdinal;
@@ -5722,7 +5719,6 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
   if (!returnsPlace) { return zc::none; }
 
   if (trailingCount == 1) {
-    // Initializer shape: one trailing user local R.
     const auto& resultLocal = caller.locals[callerParameterCount];
     const auto& returnOperand = ZC_ASSERT_NONNULL(callReturn);
     if (resultLocal.kind != mir::MirLocalKind::UserLocal || resultLocal.type != caller.resultType ||
@@ -5735,11 +5731,10 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
       return zc::none;
     }
     zc::Vector<Local> shapeLocals;
-    shapeLocals.add(Local(resultLocal.id.ordinal(), calleeCarrierValue));
+    shapeLocals.add(Local(resultLocal.id.ordinal(), calleeCarrier));
     shape = CallerShape{
         call.destination.local().ordinal(), resultLocal.id.ordinal(), zc::mv(shapeLocals), {}};
   } else if (trailingCount == 2) {
-    // Return shape: a Temporary T (the call destination) and a FunctionResult R.
     const auto& temporaryLocal = caller.locals[callerParameterCount];
     const auto& resultLocal = caller.locals[callerParameterCount + 1];
     const auto& returnOperand = ZC_ASSERT_NONNULL(callReturn);
@@ -5773,8 +5768,8 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
       return zc::none;
     }
     zc::Vector<Local> shapeLocals;
-    shapeLocals.add(Local(temporaryLocal.id.ordinal(), calleeCarrierValue));
-    shapeLocals.add(Local(resultLocal.id.ordinal(), calleeCarrierValue));
+    shapeLocals.add(Local(temporaryLocal.id.ordinal(), calleeCarrier));
+    shapeLocals.add(Local(resultLocal.id.ordinal(), calleeCarrier));
     zc::Vector<Statement> loweredContinuation;
     loweredContinuation.add(Statement::assign(resultLocal.id.ordinal(),
                                               Operand::localUse(temporaryLocal.id.ordinal())));
@@ -5788,54 +5783,156 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
 
   auto callerEntryId = LirBlockId::fromOrdinal(1);
   auto callerContId = LirBlockId::fromOrdinal(2);
-  auto calleeEntryId = LirBlockId::fromOrdinal(1);
-  if (callerEntryId == zc::none || callerContId == zc::none || calleeEntryId == zc::none) {
-    return zc::none;
+  if (callerEntryId == zc::none || callerContId == zc::none) { return zc::none; }
+
+  zc::Vector<BasicBlock> callerBlocks;
+  zc::Vector<Statement> entryStatements;
+  zc::Vector<Operand> argumentOperands;
+  argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+  auto callTerminator =
+      Terminator::callFunction(calleeIndex, callerShape.destinationOrdinal,
+                               zc::mv(argumentOperands), ZC_REQUIRE_NONNULL(callerContId));
+  if (callTerminator == zc::none) { return zc::none; }
+  callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                              ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
+  callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId),
+                              zc::mv(callerShape.continuationStatements),
+                              Terminator::returnLocal(callerShape.resultOrdinal)));
+  zc::Vector<Local> parameters;
+  for (size_t p = 0; p < callerParameterCount; ++p) {
+    auto carrier = scalarCarrierFor(caller.locals[p].type, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
   }
+  return Function(caller.owner, zc::heapString(callerSymbol), calleeCarrier, zc::mv(parameters),
+                  zc::mv(callerShape.shapeLocals), zc::mv(callerBlocks));
+}
+
+}  // namespace
+
+zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const mir::MirCallableIdentity& expectedCallee, zc::StringPtr calleeSymbol,
+    const type::SemanticTypeStore& semanticTypes) {
+  // Callee: the single-parameter return shape (one Parameter local, one block
+  // returning a place-use of that parameter).
+  auto calleeCarrier = scalarCarrierFor(callee.resultType, semanticTypes);
+  if (calleeCarrier == zc::none) { return zc::none; }
+  const auto calleeCarrierValue = ZC_REQUIRE_NONNULL(calleeCarrier);
+  auto calleeFunction = buildIdentityCalleeFunction(callee, calleeSymbol, calleeCarrierValue);
+  if (calleeFunction == zc::none) { return zc::none; }
+
+  // The caller is either of two verified shapes over P leading parameter
+  // locals (trailing-one-local initializer or trailing-two-local
+  // Temporary/FunctionResult return), each sharing one extracted builder with
+  // the multi-unit monomorphic path. The two-function module places the callee
+  // at positional index 1 and folds the caller to its entry symbol.
+  size_t callerParameterCount = 0;
+  while (callerParameterCount < caller.locals.size() &&
+         caller.locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++callerParameterCount;
+  }
+  auto callerFunction =
+      buildIdentityCallerFunction(caller, callee, expectedCallee, calleeCarrierValue, semanticTypes,
+                                  /*calleeIndex=*/1, moduleEntrySymbol(callerParameterCount));
+  if (callerFunction == zc::none) { return zc::none; }
 
   zc::Vector<Function> functions;
+  functions.add(zc::mv(ZC_ASSERT_NONNULL(callerFunction)));
+  functions.add(zc::mv(ZC_ASSERT_NONNULL(calleeFunction)));
+  return Module(zc::mv(functions));
+}
 
-  // Function 0: the caller. Its call targets function index 1 (the callee),
-  // passes the constant or parameter-slot argument, stores the integer result
-  // into the destination slot, optionally moves a call temporary into the result
-  // slot, and continues to the return.
-  {
-    zc::Vector<BasicBlock> callerBlocks;
-    zc::Vector<Statement> entryStatements;
-    zc::Vector<Operand> argumentOperands;
-    argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
-    auto callTerminator = Terminator::callFunction(
-        /*calleeIndex=*/1, callerShape.destinationOrdinal, zc::mv(argumentOperands),
-        ZC_REQUIRE_NONNULL(callerContId));
-    if (callTerminator == zc::none) { return zc::none; }
-    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
-                                ZC_REQUIRE_NONNULL(zc::mv(callTerminator))));
-    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId),
-                                zc::mv(callerShape.continuationStatements),
-                                Terminator::returnLocal(callerShape.resultOrdinal)));
-    zc::Vector<Local> parameters;
-    for (size_t p = 0; p < callerParameterCount; ++p) {
-      auto carrier = scalarCarrierFor(caller.locals[p].type, semanticTypes);
-      if (carrier == zc::none) { return zc::none; }
-      parameters.add(Local(caller.locals[p].id.ordinal(), ZC_REQUIRE_NONNULL(carrier)));
+zc::Maybe<Module> MirToLirLowering::lowerMonomorphicCallModule(
+    zc::ArrayPtr<const MonoCallUnit> units, const type::SemanticTypeStore& semanticTypes) {
+  if (units.size() == 0) { return zc::none; }
+
+  // One plan per distinct instance, in first-reference order. Two units naming
+  // the same InstanceId share one emitted callee function; the positional index
+  // of each plan is assigned after the caller block (callers are emitted first).
+  struct InstancePlan {
+    const mir::MirFunction* body;
+    ir::InstanceId instance;
+    zc::String symbol;
+  };
+  zc::Vector<InstancePlan> instancePlans;
+  for (const auto& unit : units) {
+    if (unit.caller == nullptr || unit.callee == nullptr ||
+        unit.calleeIdentity.kind() != mir::MirCallableIdentityKind::Instance) {
+      return zc::none;
     }
-    functions.add(Function(caller.owner, moduleEntrySymbol(callerParameterCount),
-                           calleeCarrierValue, zc::mv(parameters), zc::mv(callerShape.shapeLocals),
-                           zc::mv(callerBlocks)));
+    const auto instanceId = unit.calleeIdentity.instanceValue();
+    bool alreadyPlanned = false;
+    for (const auto& plan : instancePlans) {
+      if (plan.instance == instanceId) {
+        if (plan.body != unit.callee) { return zc::none; }
+        alreadyPlanned = true;
+        break;
+      }
+    }
+    if (alreadyPlanned) { continue; }
+    auto symbol = ir::deriveMonoInstanceSymbol(unit.calleeFrame);
+    if (symbol == zc::none) { return zc::none; }
+    instancePlans.add(InstancePlan{unit.callee, instanceId, zc::mv(ZC_ASSERT_NONNULL(symbol))});
   }
 
-  // Function 1: the callee, one parameter, a single block returning the
-  // parameter slot.
-  {
-    zc::Vector<BasicBlock> calleeBlocks;
-    zc::Vector<Statement> none;
-    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
-                                Terminator::returnLocal(calleeParamOrdinal)));
-    zc::Vector<Local> parameters;
-    parameters.add(Local(calleeParamOrdinal, calleeCarrierValue));
-    zc::Vector<Local> locals;
-    functions.add(Function(callee.owner, zc::heapString(calleeSymbol), calleeCarrierValue,
-                           zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
+  // Callers occupy positional indices [0, units.size()). The first parameter-
+  // free caller folds to zom.module_init so the module runs natively; every
+  // other root gets a unique zom.standalone_<N> symbol (the first parameterized
+  // caller alone keeps zom.caller, matching the two-function call slice).
+  zc::Vector<Function> functions;
+  bool moduleInitAssigned = false;
+  bool callerSymbolAssigned = false;
+  for (size_t unitIndex = 0; unitIndex < units.size(); ++unitIndex) {
+    const auto& unit = units[unitIndex];
+    size_t callerParameterCount = 0;
+    while (callerParameterCount < unit.caller->locals.size() &&
+           unit.caller->locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
+      ++callerParameterCount;
+    }
+    zc::String callerSymbol;
+    if (callerParameterCount == 0) {
+      if (!moduleInitAssigned) {
+        callerSymbol = zc::heapString("zom.module_init");
+        moduleInitAssigned = true;
+      } else {
+        callerSymbol = zc::str("zom.standalone_", unitIndex);
+      }
+    } else {
+      if (!callerSymbolAssigned) {
+        callerSymbol = zc::heapString("zom.caller");
+        callerSymbolAssigned = true;
+      } else {
+        callerSymbol = zc::str("zom.standalone_", unitIndex);
+      }
+    }
+
+    size_t planIndex = 0;
+    while (planIndex < instancePlans.size() &&
+           instancePlans[planIndex].instance != unit.calleeIdentity.instanceValue()) {
+      ++planIndex;
+    }
+    if (planIndex == instancePlans.size()) { return zc::none; }
+    const uint32_t calleeIndex = static_cast<uint32_t>(units.size() + planIndex);
+
+    auto calleeCarrier = scalarCarrierFor(unit.callee->resultType, semanticTypes);
+    if (calleeCarrier == zc::none) { return zc::none; }
+    auto callerFunction = buildIdentityCallerFunction(
+        *unit.caller, *unit.callee, unit.calleeIdentity, ZC_REQUIRE_NONNULL(calleeCarrier),
+        semanticTypes, calleeIndex, callerSymbol);
+    if (callerFunction == zc::none) { return zc::none; }
+    functions.add(zc::mv(ZC_ASSERT_NONNULL(callerFunction)));
+  }
+
+  // Distinct instance bodies are appended once, in first-reference order, each
+  // under its derived zom.mono symbol.
+  for (const auto& plan : instancePlans) {
+    auto calleeCarrier = scalarCarrierFor(plan.body->resultType, semanticTypes);
+    if (calleeCarrier == zc::none) { return zc::none; }
+    auto calleeFunction =
+        buildIdentityCalleeFunction(*plan.body, plan.symbol, ZC_REQUIRE_NONNULL(calleeCarrier));
+    if (calleeFunction == zc::none) { return zc::none; }
+    functions.add(zc::mv(ZC_ASSERT_NONNULL(calleeFunction)));
   }
 
   return Module(zc::mv(functions));

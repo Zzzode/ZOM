@@ -1496,13 +1496,10 @@ private:
     // stays fail-closed here, and `zomc run` remains gated on the
     // host-compatibility path regardless.
     zc::Maybe<lir::Module> lir;
-    // Set only by the RFC 0056 Stage 4 monomorphic call slice so translation
-    // validation outside the semantic-types block can present the instance
-    // body with its Instance identity.
-    const mir::MirFunction* monomorphicCaller = nullptr;
-    const mir::MirFunction* monomorphicInstanceBody = nullptr;
-    zc::ArrayPtr<const uint8_t> monomorphicInstanceFrame;
-    zc::Maybe<ir::InstanceId> monomorphicCallee;
+    // Populated by the RFC 0056 monomorphic instance-call slice so translation
+    // validation outside the semantic-types block can present the joined
+    // caller/instance module with its Source and Instance identities.
+    zc::Vector<lir::MonoCallUnit> monomorphicUnits;
     ZC_IF_SOME(types, semanticTypes) {
       // Standalone single-function ladder: tries every single-function
       // lowering shape in order. Shared by the one-function path and the
@@ -1615,47 +1612,49 @@ private:
         return lir::Module(zc::mv(loweredFunctions));
       };
 
-      // Monomorphic call slice: a source caller whose entry Call edge names an
-      // Instance identity is paired with the verified substituted instance
+      // Monomorphic call slice: every source caller whose entry Call edge names
+      // an Instance identity is paired with its verified substituted instance
       // body from the published mono set, not with the parameterized source
-      // template. This is the RFC 0056 Stage 4 first slice (one single-argument
-      // scalar instance call folded to the zom.module_init entry). It runs
-      // before the block-count ladder because an Instance edge never matches a
-      // Source-owner lookup. When lowering succeeds the pair is remembered so
-      // translation validation presents the instance body with its Instance
-      // identity alongside the source caller.
+      // template. All such callers are lowered together as one joined module:
+      // the first parameter-free caller folds to zom.module_init and every
+      // distinct instance is emitted once under its derived zom.mono symbol.
+      // It runs before the block-count ladder because an Instance edge never
+      // matches a Source-owner lookup. An unresolved instance or any caller
+      // outside the admitted single-argument scalar shape abandons the plan and
+      // falls through to the fail-closed block-count ladder.
       if (lir == zc::none) {
+        zc::Vector<lir::MonoCallUnit> units;
+        bool planComplete = true;
         for (const auto& caller : functions) {
           if (caller.blocks.size() < 1 ||
               caller.blocks[0].terminator.kind() != mir::MirTerminatorKind::Call) {
             continue;
           }
           const auto& edge = caller.blocks[0].terminator.callValue();
-          if (edge.callee.kind() == mir::MirCallableIdentityKind::Instance) {
-            monomorphicCaller = &caller;
-            monomorphicCallee = edge.callee.instanceValue();
-            break;
-          }
-        }
-        ZC_IF_SOME(calleeInstance, monomorphicCallee) {
+          if (edge.callee.kind() != mir::MirCallableIdentityKind::Instance) { continue; }
+          const mir::MirFunction* instanceBody = nullptr;
+          zc::ArrayPtr<const uint8_t> instanceFrame;
           for (const auto& monoSet : session->getVerifiedMonoInstanceSets()) {
             for (const auto& instance : monoSet.instances()) {
-              if (instance.identity == calleeInstance) {
-                monomorphicInstanceBody = &instance.body;
-                monomorphicInstanceFrame = instance.identityFrame.asPtr();
+              if (instance.identity == edge.callee.instanceValue()) {
+                instanceBody = &instance.body;
+                instanceFrame = instance.identityFrame.asPtr();
                 break;
               }
             }
-            if (monomorphicInstanceBody != nullptr) { break; }
+            if (instanceBody != nullptr) { break; }
           }
-          if (monomorphicInstanceBody != nullptr) {
-            lir = lir::MirToLirLowering::lowerMonomorphicCallModuleWithArgument(
-                *monomorphicCaller, *monomorphicInstanceBody, calleeInstance,
-                monomorphicInstanceFrame, types);
-            if (lir == zc::none) {
-              monomorphicInstanceBody = nullptr;
-              monomorphicInstanceFrame = {};
-            }
+          if (instanceBody == nullptr) {
+            planComplete = false;
+            break;
+          }
+          units.add(lir::MonoCallUnit{&caller, instanceBody, edge.callee.clone(), instanceFrame});
+        }
+        if (planComplete && units.size() > 0) {
+          auto lowered = lir::MirToLirLowering::lowerMonomorphicCallModule(units.asPtr(), types);
+          if (lowered != zc::none) {
+            lir = zc::mv(ZC_ASSERT_NONNULL(lowered));
+            monomorphicUnits = zc::mv(units);
           }
         }
       }
@@ -2276,25 +2275,52 @@ private:
       for (size_t index = 0; index < functions.size(); ++index) {
         presentedMirAll[index] = &functions[index];
       }
-      // The monomorphic LIR module is the [caller, instance body] pair emitted
-      // by the Stage 4 slice, so translation validation presents that pair in
-      // LIR order with its Source and Instance identities. Every other module
-      // presents the source functions in session order with no identity array,
-      // which restores Source-owner matching.
+      // The monomorphic LIR module lays callers out first (in plan order) and
+      // distinct instance bodies after them (in first-reference order), so
+      // translation validation presents the functions in exactly that order
+      // with their Source and Instance identities. Every other module presents
+      // the source functions in session order with no identity array, which
+      // restores Source-owner matching.
       zc::ArrayPtr<const mir::MirFunction* const> presentedMir;
       zc::Array<const mir::MirFunction*> monoPresentedMir;
       zc::Vector<mir::MirCallableIdentity> monoPresentedIdentities;
       zc::Vector<zc::ArrayPtr<const uint8_t>> monoPresentedFrames;
-      if (monomorphicInstanceBody != nullptr) {
-        monoPresentedMir = zc::heapArray<const mir::MirFunction*>(2);
-        monoPresentedMir[0] = monomorphicCaller;
-        monoPresentedMir[1] = monomorphicInstanceBody;
-        monoPresentedIdentities.add(mir::MirCallableIdentity::source(monomorphicCaller->owner));
-        monoPresentedFrames.add(zc::ArrayPtr<const uint8_t>{});
-        ZC_IF_SOME(calleeInstance, monomorphicCallee) {
-          monoPresentedIdentities.add(mir::MirCallableIdentity::instance(calleeInstance));
-          monoPresentedFrames.add(monomorphicInstanceFrame);
+      if (monomorphicUnits.size() > 0) {
+        struct PresentedInstance {
+          const mir::MirFunction* body;
+          ir::InstanceId identity;
+          zc::ArrayPtr<const uint8_t> frame;
+        };
+        zc::Vector<PresentedInstance> distinctInstances;
+        for (const auto& unit : monomorphicUnits) {
+          const auto identity = unit.calleeIdentity.instanceValue();
+          bool seen = false;
+          for (const auto& presented : distinctInstances) {
+            if (presented.identity == identity) {
+              seen = true;
+              break;
+            }
+          }
+          if (!seen) {
+            distinctInstances.add(PresentedInstance{unit.callee, identity, unit.calleeFrame});
+          }
         }
+        const size_t presentedCount = monomorphicUnits.size() + distinctInstances.size();
+        monoPresentedMir = zc::heapArray<const mir::MirFunction*>(presentedCount);
+        size_t presentedIndex = 0;
+        for (const auto& unit : monomorphicUnits) {
+          monoPresentedMir[presentedIndex] = unit.caller;
+          monoPresentedIdentities.add(mir::MirCallableIdentity::source(unit.caller->owner));
+          monoPresentedFrames.add(zc::ArrayPtr<const uint8_t>{});
+          ++presentedIndex;
+        }
+        for (const auto& instance : distinctInstances) {
+          monoPresentedMir[presentedIndex] = instance.body;
+          monoPresentedIdentities.add(mir::MirCallableIdentity::instance(instance.identity));
+          monoPresentedFrames.add(instance.frame);
+          ++presentedIndex;
+        }
+        ZC_REQUIRE(presentedIndex == presentedCount, "mono presented set must fill the module");
         presentedMir = monoPresentedMir.asPtr();
       } else {
         presentedMir = presentedMirAll.asPtr();
@@ -2304,7 +2330,7 @@ private:
         // scripts/check-lir-verification-gate.py so the MIR-to-LIR translation
         // validator cannot be disabled in production without a gate failure.
         auto translation =
-            monomorphicInstanceBody != nullptr
+            monomorphicUnits.size() > 0
                 ? lir::TranslationValidator::validate(presentedMir, monoPresentedIdentities.asPtr(),
                                                       monoPresentedFrames.asPtr(), lirModule, types)
                 : lir::TranslationValidator::validate(presentedMir, lirModule, types);

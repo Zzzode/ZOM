@@ -35,9 +35,11 @@ REQUIRED_MARKERS = (
     # ... once over the Source-only presented set ...
     "lir::TranslationValidator::validate(presentedMir, lirModule, types)",
     # ... and once with explicit Source/Instance identities and identity
-    # frames on the monomorphic instance-call path (RFC 0056 Stage 4).
+    # frames on the monomorphic instance-call path (RFC 0056 multi-instance
+    # join). clang-format wraps the call, so the marker is the stable first
+    # line of the identity overload.
     "lir::TranslationValidator::validate(",
-    "monoPresentedIdentities.asPtr(), monoPresentedFrames.asPtr(),",
+    "lir::TranslationValidator::validate(presentedMir, monoPresentedIdentities.asPtr(),",
 )
 
 
