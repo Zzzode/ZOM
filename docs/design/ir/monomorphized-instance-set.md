@@ -1,17 +1,17 @@
 # Monomorphized Instance Set
 
-Updated: 2026-11-01
+Updated: 2026-11-03
 
 ## Authority And Status
 
 | Field | Value |
 |---|---|
 | Authority | Non-normative compiler implementation guide |
-| Coverage | RFC 0056 stages 3-4: the verified monomorphization fixpoint and its native single-argument scalar instance-call slice |
+| Coverage | RFC 0056 stages 3-4: the verified monomorphization fixpoint and its native single-argument scalar instance-call slices (one pair and the joined multi-instance module) |
 | Governing decisions | [RFC 0056](../../rfc/0056-generic-function-monomorphization.md) |
 | Production implementation | [`mono/instance-cloner.h`](../../../compiler/mono/instance-cloner.h), [`mono/instance-fixpoint.h`](../../../compiler/mono/instance-fixpoint.h), [`mono/instance-set.h`](../../../compiler/mono/instance-set.h), [`mono/instance-set-builder.h`](../../../compiler/mono/instance-set-builder.h), [`ir/instance-identity.h`](../../../compiler/ir/instance-identity.h) |
 | Session stage | phase `0x0a` inside `CompilerSession::checkSources()`, immediately after executable MIR verification |
-| Native verification | [`tests/unittests/compiler/mono/`](../../../tests/unittests/compiler/mono/), [`tests/unittests/compiler/ir/instance-identity-test.cc`](../../../tests/unittests/compiler/ir/instance-identity-test.cc), `tests/integration/core-library/generic-identity-consumer/` |
+| Native verification | [`tests/unittests/compiler/mono/`](../../../tests/unittests/compiler/mono/), [`tests/unittests/compiler/ir/instance-identity-test.cc`](../../../tests/unittests/compiler/ir/instance-identity-test.cc), `tests/integration/core-library/generic-identity-consumer/`, `tests/integration/core-library/generic-multi-instance-consumer/` |
 
 The monomorphized instance set is the post-executable-MIR artifact that turns
 parametric generic templates into concrete functions. One independently
@@ -111,19 +111,29 @@ zero-edge modules keep their empty-set revision.
 
 The stage 4 production consumer is the zomc native object path
 (`utils/zomc/zomc.cc::buildNativeObject`). Before the function-count lowering
-ladders, an explicit instance-aware branch scans the source Built MIR for a
-caller whose entry terminator carries a `MirCallableIdentity::Instance` edge,
-resolves the matching verified body from the published
-`VerifiedMonoInstanceSet`, and lowers the caller/instance-body pair through
-`lir::MirToLirLowering::lowerMonomorphicCallModuleWithArgument`. The branch
+ladders, an explicit instance-aware branch enumerates every source caller
+whose entry terminator carries a `MirCallableIdentity::Instance` edge, in
+deterministic MIR function order, resolves each edge to its verified body from
+the published `VerifiedMonoInstanceSet`, and lowers the whole caller/instance
+plan through `lir::MirToLirLowering::lowerMonomorphicCallModule`. The branch
 runs before the legacy ladders because an Instance edge never matches a
-Source-owner lookup. When the branch declines, the module falls through to the
-Source-only ladders unchanged.
+Source-owner lookup. An unresolved instance or any caller outside the admitted
+shape abandons the plan and the module falls through to the Source-only
+ladders unchanged.
+
+The joined module lays callers out first, in plan order, and appends each
+distinct instance body once in first-reference order. The first parameter-free
+caller folds to the reserved `zom.module_init` entry; every additional root is
+emitted under a unique `zom.standalone_<N>` symbol (the first parameterized
+caller alone keeps `zom.caller`). Two units naming the same `InstanceId` share
+one emitted instance function, and each call edge carries the positional
+index of its instance in the joined module.
 
 Production-emitted slice (verified end to end):
 
-- one source caller with the two-block call/return shape and zero parameters,
-  folded to the reserved no-argument `zom.module_init` entry;
+- one or more source callers, each with the two-block call/return shape. The
+  first parameter-free caller folds to `zom.module_init`; additional roots get
+  `zom.standalone_<N>` symbols;
 - one single-argument scalar instance call (`identity(42)`), whose instance
   body declares one parameter and returns it;
 - the generic call is admitted in either of two positions: the function's
@@ -148,9 +158,12 @@ The instance callee is emitted under a derived, content-addressed symbol from
 digest is SHA-256 over the length-framed substitution record followed, from
 the first non-empty witness record onward, by the length-framed witness
 record. The domain cannot intersect `zom.module_init`, `zom.caller`,
-`zom.callee`, `zom.leaf`, or `zom.standalone_<N>`. Two objects emitted in
-independent processes are byte-identical (the
-`generic-identity-consumer` deterministic object case).
+`zom.callee`, `zom.leaf`, or `zom.standalone_<N>`. Same-owner co-instances
+have distinct digests, so the translation validator's bijection keys an
+Instance entry by both the derived symbol and the template owner. Objects
+emitted in independent processes are byte-identical (the
+`generic-identity-consumer` and `generic-multi-instance-consumer`
+deterministic object cases).
 
 ### Translation validation
 
@@ -200,3 +213,16 @@ the process exit code, so the fixture returns 42. The inferred literal form
 outside this slice (the literal defaults to i32 and cannot bootstrap from the
 return context, and the monomorphic caller argument matcher admits only
 constants and leading parameters).
+
+`tests/integration/core-library/generic-multi-instance-consumer/` is the
+joined multi-root fixture: two parameter-free roots each call an identity
+instance at a distinct scalar type (`identity(42)` and `identity<i64>(42)`).
+It is registered as a run case (exit 42), an object-emission case, and a
+deterministic-object case; the object carries `zom.module_init`,
+`zom.standalone_1`, and two distinct `zom.mono` symbols, one per instance.
+Both roots return 42 so the run case is independent of which root the
+deterministic MIR ordering folds to the entry. The unit test
+`MonoSession.twoDistinctInstancesJoinOneModuleWithPositionalEdges` additionally
+asserts each call edge targets its instance's positional index, and
+`MonoSession.twoRootsShareOneEmittedInstanceBody` asserts two roots sharing one
+`InstanceId` emit the instance body once and both edges target that one index.
