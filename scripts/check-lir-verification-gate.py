@@ -32,7 +32,11 @@ REQUIRED_MARKERS = (
     "lir::projectLirVerificationIncident",
     # The translation stage runs ...
     "zom.lir-verification.translation-stage",
-    "lir::TranslationValidator::validate(presentedMir.asPtr(), lirModule, types)",
+    # ... once over the Source-only presented set ...
+    "lir::TranslationValidator::validate(presentedMir, lirModule, types)",
+    # ... and once with explicit Source/Instance identities on the
+    # monomorphic instance-call path (RFC 0056 Stage 4).
+    "lir::TranslationValidator::validate(presentedMir, monoPresentedIdentities.asPtr(),",
 )
 
 

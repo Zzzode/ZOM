@@ -19,7 +19,12 @@
 
 namespace zomlang::compiler::mir {
 struct MirFunction;
+class MirCallableIdentity;
 }  // namespace zomlang::compiler::mir
+
+namespace zomlang::compiler::ir {
+class InstanceId;
+}  // namespace zomlang::compiler::ir
 
 namespace zomlang::compiler::type {
 class SemanticTypeStore;
@@ -540,6 +545,20 @@ public:
   /// \return The lowered two-function LIR module, or none when outside the slice.
   ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithArgument(
       const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
+  /// \brief Lowers the same single-argument call shape for a monomorphized
+  /// callee instance.
+  ///
+  /// The caller's Call edge names `calleeInstance` (an Instance identity), and
+  /// `callee` is the verified substituted instance body. The structural
+  /// lowering is identical to the Source variant; only the callee-identity
+  /// match and the callee symbol differ. The callee is emitted under the
+  /// derived `zom.mono.<definition-key hex>.<digest>` symbol from
+  /// `calleeIdentityFrame`. Every shape outside the slice returns `none`.
+  ZC_NODISCARD static zc::Maybe<Module> lowerMonomorphicCallModuleWithArgument(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const ir::InstanceId& calleeInstance, zc::ArrayPtr<const uint8_t> calleeIdentityFrame,
       const type::SemanticTypeStore& semanticTypes);
 
   /// \brief Lowers a same-module direct call whose callee computes its result.
@@ -1069,6 +1088,14 @@ public:
   /// \return The lowered LIR module, or none when the function is outside the slice.
   ZC_NODISCARD static zc::Maybe<Module> lowerGeneralScalarFunction(
       const mir::MirFunction& function, const type::SemanticTypeStore& semanticTypes);
+
+private:
+  /// Shared implementation of the Source and monomorphic single-argument call
+  /// slices; only the expected callee identity and the callee symbol differ.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCallModuleWithArgumentIdentity(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const mir::MirCallableIdentity& expectedCallee, zc::StringPtr calleeSymbol,
+      const type::SemanticTypeStore& semanticTypes);
 };
 
 }  // namespace zomlang::compiler::lir

@@ -1,0 +1,11 @@
+// RFC 0056 Stage 4 native fixture: a generic identity instantiated at i32 is
+// called from a parameter-free entry. The Instance call edge lowers to the
+// verified substituted instance body under its derived zom.mono symbol, folds
+// the caller to zom.module_init, and executes natively with exit code 42.
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn entry() -> i32 {
+    return identity(42);
+}

@@ -3,8 +3,11 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "zc/ztest/test.h"
+#include "compiler/lir/mir-to-lir.h"
+#include "compiler/lir/verify/translation-validator.h"
+#include "compiler/mir/built-mir.h"
 #include "tests/unittests/compiler/mir/mir-pipeline-fixture.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::mono {
 namespace {
@@ -63,6 +66,60 @@ ZC_TEST("MonoSession.publishesOneInstanceForAdmittedGenericIdentityCall") {
   ZC_EXPECT(rebuiltChecked[0].eventOverlayRevision().digest() == overlayDigest);
   ZC_EXPECT(rebuiltChecked[0].factsRevision().digest() == factsDigest);
   ZC_EXPECT(rebuiltMono[0].revision().digest() == monoDigest);
+}
+
+ZC_TEST("MonoSession.instanceCallLowersAndValidatesUnderInstanceIdentity") {
+  mir::MirPipelineFixture fixture(kIdentityProgram);
+  const auto& session = fixture.sessionRef();
+  const auto types = session.getSemanticTypeStore();
+  ZC_REQUIRE(types != zc::none);
+
+  const auto functions = fixture.builtMir().functions();
+  const mir::MirFunction* caller = nullptr;
+  zc::Maybe<ir::InstanceId> calleeInstance;
+  for (const auto& function : functions) {
+    if (function.blocks.size() == 0 ||
+        function.blocks[0].terminator.kind() != mir::MirTerminatorKind::Call) {
+      continue;
+    }
+    const auto& edge = function.blocks[0].terminator.callValue();
+    if (edge.callee.kind() == mir::MirCallableIdentityKind::Instance) {
+      caller = &function;
+      calleeInstance = edge.callee.instanceValue();
+      break;
+    }
+  }
+  ZC_REQUIRE(caller != nullptr);
+  ZC_REQUIRE(calleeInstance != zc::none);
+
+  const auto monoSets = session.getVerifiedMonoInstanceSets();
+  ZC_REQUIRE(monoSets.size() == 1 && monoSets[0].instances().size() == 1);
+  const auto& instance = monoSets[0].instances()[0];
+  ZC_EXPECT(instance.identity == ZC_ASSERT_NONNULL(calleeInstance));
+
+  auto module = lir::MirToLirLowering::lowerMonomorphicCallModuleWithArgument(
+      *caller, instance.body, instance.identity, instance.identityFrame.asPtr(),
+      ZC_ASSERT_NONNULL(types));
+  ZC_REQUIRE(module != zc::none);
+  const auto lirModule = zc::mv(ZC_ASSERT_NONNULL(module));
+  ZC_EXPECT(lirModule.functions().size() == 2);
+  ZC_EXPECT(lirModule.functions()[1].symbolName().startsWith("zom.mono."));
+
+  // Present [caller, instance body] with [Source, Instance] identities in LIR
+  // order; the Instance call edge must validate against the instance body.
+  auto presented = zc::heapArray<const mir::MirFunction*>(2);
+  presented[0] = caller;
+  presented[1] = &instance.body;
+  zc::Vector<mir::MirCallableIdentity> identities;
+  identities.add(mir::MirCallableIdentity::source(caller->owner));
+  identities.add(mir::MirCallableIdentity::instance(instance.identity));
+  ZC_EXPECT(lir::TranslationValidator::validate(presented.asPtr(), identities.asPtr(), lirModule,
+                                                ZC_ASSERT_NONNULL(types)) == zc::none);
+
+  // Presenting Source-only identities for the same module must fail closed:
+  // the Instance edge can never match a Source owner.
+  ZC_EXPECT(lir::TranslationValidator::validate(presented.asPtr(), lirModule,
+                                                ZC_ASSERT_NONNULL(types)) != zc::none);
 }
 
 }  // namespace zomlang::compiler::mono

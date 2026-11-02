@@ -73,11 +73,13 @@
 // backend is built. These headers stay behind the flag so the frontend-only
 // build never references the isolation-wall shim or LIR lowering.
 #include "compiler/backend/llvm/llvm-translator.h"
+#include "compiler/ir/instance-identity.h"
 #include "compiler/lir/mir-to-lir.h"
 #include "compiler/lir/verify/lir-verification-failure.h"
 #include "compiler/lir/verify/lir-verifier.h"
 #include "compiler/lir/verify/translation-validator.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/mono/instance-set.h"
 #endif
 
 #ifndef VERSION
@@ -1244,6 +1246,37 @@ public:
           stream->write("\n"_zcb);
         }
       }
+      // RFC 0056: the monomorphized instances are post-MIR artifacts, so they
+      // render in their own deterministic section in byte-sorted identity
+      // order: the derived object symbol, the length-framed identity, and the
+      // canonical substituted body. A module with zero instances prints
+      // nothing (the empty-set revision is covered by the mono session
+      // ztests), so generic-parametric-only and instance-free sources keep
+      // their source-only dump. Generic templates stay in the source function
+      // section above; instances never replace them there.
+      const auto monoSets = session->getVerifiedMonoInstanceSets();
+      for (size_t moduleIndex = 0; moduleIndex < monoSets.size(); ++moduleIndex) {
+        const auto& instances = monoSets[moduleIndex].instances();
+        if (instances.size() == 0) { continue; }
+        stream->write(
+            zc::str("=== module ", moduleIndex, " instances ", instances.size(), " revision ",
+                    zc::encodeHex(monoSets[moduleIndex].revision().digest().bytes()), " ===\n")
+                .asBytes());
+        for (size_t instanceIndex = 0; instanceIndex < instances.size(); ++instanceIndex) {
+          const auto& instance = instances[instanceIndex];
+          auto symbol = ir::deriveMonoInstanceSymbol(instance.identityFrame.asPtr());
+          if (symbol == zc::none) { return "Mono instance identity frame is malformed."; }
+          stream->write(zc::str("--- instance ", instanceIndex, " symbol ",
+                                ZC_ASSERT_NONNULL(symbol), " identity ",
+                                instance.identityFrame.size(), " bytes body ",
+                                instance.canonicalBody.size(), " bytes ---\n")
+                            .asBytes());
+          stream->write(zc::encodeHex(instance.identityFrame.asPtr()).asBytes());
+          stream->write("\n"_zcb);
+          stream->write(zc::encodeHex(instance.canonicalBody.asPtr()).asBytes());
+          stream->write("\n"_zcb);
+        }
+      }
       return true;
     }
     return "Failed to create output stream.";
@@ -1463,6 +1496,13 @@ private:
     // stays fail-closed here, and `zomc run` remains gated on the
     // host-compatibility path regardless.
     zc::Maybe<lir::Module> lir;
+    // Set only by the RFC 0056 Stage 4 monomorphic call slice so translation
+    // validation outside the semantic-types block can present the instance
+    // body with its Instance identity.
+    const mir::MirFunction* monomorphicCaller = nullptr;
+    const mir::MirFunction* monomorphicInstanceBody = nullptr;
+    zc::ArrayPtr<const uint8_t> monomorphicInstanceFrame;
+    zc::Maybe<ir::InstanceId> monomorphicCallee;
     ZC_IF_SOME(types, semanticTypes) {
       // Standalone single-function ladder: tries every single-function
       // lowering shape in order. Shared by the one-function path and the
@@ -1574,7 +1614,55 @@ private:
         if (loweredFunctions.size() != fns.size()) { return zc::none; }
         return lir::Module(zc::mv(loweredFunctions));
       };
-      if (functions.size() == 1) {
+
+      // Monomorphic call slice: a source caller whose entry Call edge names an
+      // Instance identity is paired with the verified substituted instance
+      // body from the published mono set, not with the parameterized source
+      // template. This is the RFC 0056 Stage 4 first slice (one single-argument
+      // scalar instance call folded to the zom.module_init entry). It runs
+      // before the block-count ladder because an Instance edge never matches a
+      // Source-owner lookup. When lowering succeeds the pair is remembered so
+      // translation validation presents the instance body with its Instance
+      // identity alongside the source caller.
+      if (lir == zc::none) {
+        for (const auto& caller : functions) {
+          if (caller.blocks.size() < 1 ||
+              caller.blocks[0].terminator.kind() != mir::MirTerminatorKind::Call) {
+            continue;
+          }
+          const auto& edge = caller.blocks[0].terminator.callValue();
+          if (edge.callee.kind() == mir::MirCallableIdentityKind::Instance) {
+            monomorphicCaller = &caller;
+            monomorphicCallee = edge.callee.instanceValue();
+            break;
+          }
+        }
+        ZC_IF_SOME(calleeInstance, monomorphicCallee) {
+          for (const auto& monoSet : session->getVerifiedMonoInstanceSets()) {
+            for (const auto& instance : monoSet.instances()) {
+              if (instance.identity == calleeInstance) {
+                monomorphicInstanceBody = &instance.body;
+                monomorphicInstanceFrame = instance.identityFrame.asPtr();
+                break;
+              }
+            }
+            if (monomorphicInstanceBody != nullptr) { break; }
+          }
+          if (monomorphicInstanceBody != nullptr) {
+            lir = lir::MirToLirLowering::lowerMonomorphicCallModuleWithArgument(
+                *monomorphicCaller, *monomorphicInstanceBody, calleeInstance,
+                monomorphicInstanceFrame, types);
+            if (lir == zc::none) {
+              monomorphicInstanceBody = nullptr;
+              monomorphicInstanceFrame = {};
+            }
+          }
+        }
+      }
+
+      if (lir != zc::none) {
+        // Monomorphic instance call already lowered above.
+      } else if (functions.size() == 1) {
         lir = lowerStandaloneFunction(functions[0]);
       } else if (functions.size() == 2) {
         // Two functions: identify the unique direct-call caller/callee pair by
@@ -2183,16 +2271,40 @@ private:
         lirVerificationIncident = true;
         return NativeObjectResult(zc::str("__zom_lir_verification_incident__"));
       }
-      auto presentedMir = zc::heapArray<const mir::MirFunction*>(functions.size());
+      // Source-order presented MIR for every non-monomorphic module.
+      auto presentedMirAll = zc::heapArray<const mir::MirFunction*>(functions.size());
       for (size_t index = 0; index < functions.size(); ++index) {
-        presentedMir[index] = &functions[index];
+        presentedMirAll[index] = &functions[index];
+      }
+      // The monomorphic LIR module is the [caller, instance body] pair emitted
+      // by the Stage 4 slice, so translation validation presents that pair in
+      // LIR order with its Source and Instance identities. Every other module
+      // presents the source functions in session order with no identity array,
+      // which restores Source-owner matching.
+      zc::ArrayPtr<const mir::MirFunction* const> presentedMir;
+      zc::Array<const mir::MirFunction*> monoPresentedMir;
+      zc::Vector<mir::MirCallableIdentity> monoPresentedIdentities;
+      if (monomorphicInstanceBody != nullptr) {
+        monoPresentedMir = zc::heapArray<const mir::MirFunction*>(2);
+        monoPresentedMir[0] = monomorphicCaller;
+        monoPresentedMir[1] = monomorphicInstanceBody;
+        monoPresentedIdentities.add(mir::MirCallableIdentity::source(monomorphicCaller->owner));
+        ZC_IF_SOME(calleeInstance, monomorphicCallee) {
+          monoPresentedIdentities.add(mir::MirCallableIdentity::instance(calleeInstance));
+        }
+        presentedMir = monoPresentedMir.asPtr();
+      } else {
+        presentedMir = presentedMirAll.asPtr();
       }
       ZC_IF_SOME(types, semanticTypes) {
         // zom.lir-verification.translation-stage: asserted by
         // scripts/check-lir-verification-gate.py so the MIR-to-LIR translation
         // validator cannot be disabled in production without a gate failure.
         auto translation =
-            lir::TranslationValidator::validate(presentedMir.asPtr(), lirModule, types);
+            monomorphicInstanceBody != nullptr
+                ? lir::TranslationValidator::validate(presentedMir, monoPresentedIdentities.asPtr(),
+                                                      lirModule, types)
+                : lir::TranslationValidator::validate(presentedMir, lirModule, types);
         if (translation != zc::none) {
           // RFC 0053: route the translation validation finding through the IR
           // failure algebra at IrFailurePhase::LirVerification to the incident

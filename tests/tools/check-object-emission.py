@@ -92,6 +92,54 @@ def emit_case(zomc: str, manifest: str, package: str, binary: str) -> None:
             raise RuntimeError(f"emitted object for {package} is not ELF: first bytes {data[:4]!r}")
 
 
+def deterministic_case(zomc: str, manifest: str, package: str, binary: str) -> None:
+    """Emit the object twice in independent processes and compare the bytes.
+
+    Mono instance symbols and every canonical identity input are content
+    derived, so two emissions from the same sources into different working
+    directories must be byte-identical.
+    """
+    resolved_manifest = str(Path(manifest).resolve(strict=True))
+    emitted = []
+    for slot in range(2):
+        with tempfile.TemporaryDirectory(prefix=f"zom-object-emission-det{slot}-") as temporary:
+            output = Path(temporary) / "out.o"
+            result = subprocess.run(
+                [
+                    zomc,
+                    "compile",
+                    "--manifest-path",
+                    resolved_manifest,
+                    "--package",
+                    package,
+                    "--bin",
+                    binary,
+                    "--emit",
+                    "binary",
+                    "-o",
+                    str(output),
+                ],
+                cwd=Path(temporary),
+                env=dict(os.environ),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                check=False,
+            )
+            if result.returncode != 0:
+                raise RuntimeError(
+                    f"deterministic emission {slot} failed for {package}: "
+                    f"rc={result.returncode}\n{result.stdout}"
+                )
+            if not output.exists():
+                raise RuntimeError(f"deterministic emission {slot} for {package} wrote no file")
+            emitted.append(output.read_bytes())
+    if emitted[0] != emitted[1]:
+        raise RuntimeError(f"object bytes for {package} differ across two emissions")
+    if len(emitted[0]) == 0 or emitted[0][:4] != ELF_MAGIC:
+        raise RuntimeError(f"deterministic object for {package} is empty or not ELF")
+
+
 def string_case(zomc: str, manifest: str, package: str, binary: str, expected: str) -> None:
     """Emit an object and assert its .rodata contains the expected UTF-8 + NUL."""
     resolved_manifest = str(Path(manifest).resolve(strict=True))
@@ -280,6 +328,9 @@ def main() -> int:
     # Each string-case is "manifest::package::bin::expected"; the emitted
     # object's .rodata must contain the expected UTF-8 bytes + NUL.
     parser.add_argument("--string-case", action="append", default=[])
+    # Each deterministic-case is "manifest::package::bin"; the object emitted
+    # in two independent processes must be byte-identical.
+    parser.add_argument("--deterministic-case", action="append", default=[])
     parser.add_argument(
         "--jobs",
         type=int,
@@ -324,6 +375,18 @@ def main() -> int:
         manifest, package, binary, expected = parts
         tasks.append(
             (f"string {package}", partial(string_case, zomc, manifest, package, binary, expected))
+        )
+
+    for case in arguments.deterministic_case:
+        parts = case.split("::")
+        if len(parts) != 3:
+            raise RuntimeError(
+                f"malformed --deterministic-case (want manifest::package::bin): {case}"
+            )
+        manifest, package, binary = parts
+        tasks.append(
+            (f"deterministic {package}",
+             partial(deterministic_case, zomc, manifest, package, binary))
         )
 
     _run_parallel(arguments.jobs, tasks)

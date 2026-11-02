@@ -230,6 +230,10 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer"
       --case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-identity-consumer/Zom.toml::generic_identity_consumer::generic_identity_consumer"
+      --deterministic-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-identity-consumer/Zom.toml::generic_identity_consumer::generic_identity_consumer"
+      --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer"
       --case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-leaf-consumer/Zom.toml::call_leaf_consumer::call_leaf_consumer"
@@ -494,8 +498,6 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-closure-consumer/Zom.toml::reject_closure_consumer::reject_closure_consumer"
       --reject-case
-      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-generic-function-consumer/Zom.toml::reject_generic_function_consumer::reject_generic_function_consumer"
-      --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-ffi-extern-consumer/Zom.toml::reject_ffi_extern_consumer::reject_ffi_extern_consumer"
       --reject-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/reject-spawn-consumer/Zom.toml::reject_spawn_consumer::reject_spawn_consumer"
@@ -536,6 +538,8 @@ if(ZOM_ENABLE_LLVM_BACKEND)
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call-consumer/Zom.toml::call_consumer::call_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/callarg-consumer/Zom.toml::callarg_consumer::callarg_consumer::7"
+      --run-case
+      "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/generic-identity-consumer/Zom.toml::generic_identity_consumer::generic_identity_consumer::42"
       --run-case
       "${CMAKE_CURRENT_SOURCE_DIR}/integration/core-library/call2arg-consumer/Zom.toml::call2arg_consumer::call2arg_consumer::3"
       --run-case

@@ -15,6 +15,7 @@
 #include "compiler/lir/mir-to-lir.h"
 
 #include "compiler/checker/facts/signature-facts.h"
+#include "compiler/ir/instance-identity.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/mir/cfg-utils.h"
 #include "compiler/type/semantic-type-data.h"
@@ -5594,6 +5595,25 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModule(const mir::MirFunction& call
 zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     const mir::MirFunction& caller, const mir::MirFunction& callee,
     const type::SemanticTypeStore& semanticTypes) {
+  return lowerCallModuleWithArgumentIdentity(
+      caller, callee, mir::MirCallableIdentity::source(callee.owner), "zom.callee", semanticTypes);
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerMonomorphicCallModuleWithArgument(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const ir::InstanceId& calleeInstance, zc::ArrayPtr<const uint8_t> calleeIdentityFrame,
+    const type::SemanticTypeStore& semanticTypes) {
+  auto symbol = ir::deriveMonoInstanceSymbol(calleeIdentityFrame);
+  if (symbol == zc::none) { return zc::none; }
+  return lowerCallModuleWithArgumentIdentity(caller, callee,
+                                             mir::MirCallableIdentity::instance(calleeInstance),
+                                             ZC_ASSERT_NONNULL(symbol), semanticTypes);
+}
+
+zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgumentIdentity(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const mir::MirCallableIdentity& expectedCallee, zc::StringPtr calleeSymbol,
+    const type::SemanticTypeStore& semanticTypes) {
   // Callee: the single-parameter return shape (one Parameter local, one block
   // returning a place-use of that parameter). Build a one-parameter LIR function
   // whose single block returns the parameter slot.
@@ -5656,7 +5676,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
   const auto& call = entry.terminator.callValue();
   if (call.arguments.size() != 1 || call.destination.projections().size() != 0 ||
       call.normalTarget != continuation->id || call.unwindTarget != zc::none ||
-      !call.callee.isSourceFor(callee.owner)) {
+      call.callee != expectedCallee) {
     return zc::none;
   }
 
@@ -5814,7 +5834,7 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArgument(
     zc::Vector<Local> parameters;
     parameters.add(Local(calleeParamOrdinal, calleeCarrierValue));
     zc::Vector<Local> locals;
-    functions.add(Function(callee.owner, zc::heapString("zom.callee"), calleeCarrierValue,
+    functions.add(Function(callee.owner, zc::heapString(calleeSymbol), calleeCarrierValue,
                            zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks)));
   }
 
