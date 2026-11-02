@@ -9887,15 +9887,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                     : zc::Maybe<identity::DefId>()};
           }
         } else {
-          // RFC 0056 stage 3: a checker-resolved generic call is admitted into
-          // HIR only when it is the function's return value (no enclosing
-          // initializer local) in the scalar monomorphization slice — a free
-          // direct call with identity result transform, no receiver or raises,
-          // and a ground carrier in {i32, bool}. The canonical substitution and
-          // the empty witness ride on the HIR record so MIR can emit an
-          // Instance call edge. Generic calls in initializer, statement,
-          // condition, and error-operator positions keep the stage-2 capability
-          // drain (ZOM4099/ZOM4098).
+          // RFC 0056 stage 4: a checker-resolved generic call is admitted into
+          // HIR in two scalar monomorphization positions: the function's direct
+          // return value (no enclosing initializer local), or the initializer
+          // of the single local that is then returned (a free direct call with
+          // identity result transform, no receiver or raises, and a ground
+          // carrier). The initializer position is gated narrowly on this call
+          // being exactly that local's initializer with every other direct-call
+          // classification clear; generic calls in statement, condition,
+          // error-operator, receiver, and projected positions keep the stage-2
+          // capability drain (ZOM4099/ZOM4098).
           auto genericCallIndex = factIndex(facts.calls(), callNode);
           bool isGenericCall = false;
           if (genericCallIndex != zc::none) {
@@ -9903,9 +9904,19 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                 facts.calls().entries()[ZC_ASSERT_NONNULL(genericCallIndex)].value.invocation;
             isGenericCall = genericInvocation.substitutions != zc::none;
           }
-          const bool genericReturnAdmitted = isGenericCall && local == zc::none &&
-                                             !shape.returnsErrorPropagateCall &&
-                                             !shape.returnsErrorUnwrapCall;
+          const bool genericDirectReturnAdmitted = isGenericCall && local == zc::none &&
+                                                   !shape.returnsErrorPropagateCall &&
+                                                   !shape.returnsErrorUnwrapCall;
+          const bool genericInitializerReturnAdmitted =
+              isGenericCall && local != zc::none && shape.localInitializer != zc::none &&
+              callNode == shape.localInitializer && !shape.returnsDirectScalarLocalCall &&
+              !shape.returnsDirectAggregateCall && !shape.returnsDirectExistentialCall &&
+              !shape.returnsReceiverCall && !shape.returnsReceiverSelfCall &&
+              !shape.returnsLocalField && !shape.returnsLocalReborrow &&
+              !shape.returnsLocalBorrow && !shape.returnsErrorPropagateCall &&
+              !shape.returnsErrorUnwrapCall;
+          const bool genericReturnAdmitted =
+              genericDirectReturnAdmitted || genericInitializerReturnAdmitted;
           if (isGenericCall && !genericReturnAdmitted) {
             auto genericSpan = bound.parsedModule().spanFor(tree.node(callNode).range);
             if (genericSpan == zc::none) {

@@ -1,4 +1,4 @@
-section: "12-generics generic body explicit init cap neg 30"
+section: "12-generics generic explicit initializer pos 32"
 covers_rule: "letDeclaration, callExpression"
 expected: "ACCEPT"
 notes:

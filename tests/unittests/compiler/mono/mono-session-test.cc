@@ -20,6 +20,17 @@ constexpr char kIdentityProgram[] =
     "    return identity(42);\n"
     "}\n";
 
+// Initializer position: the monomorphized instance call writes the local that
+// is then returned (the LIR trailing-count-one initializer shape).
+constexpr char kIdentityInitializerProgram[] =
+    "fn identity<T>(value: T) -> T {\n"
+    "    return value;\n"
+    "}\n"
+    "fn entry() -> i32 {\n"
+    "    let y = identity(42);\n"
+    "    return y;\n"
+    "}\n";
+
 }  // namespace
 
 ZC_TEST("MonoSession.publishesEmptyVerifiedInstanceSetForModuleWithNoInstanceEdges") {
@@ -68,8 +79,14 @@ ZC_TEST("MonoSession.publishesOneInstanceForAdmittedGenericIdentityCall") {
   ZC_EXPECT(rebuiltMono[0].revision().digest() == monoDigest);
 }
 
-ZC_TEST("MonoSession.instanceCallLowersAndValidatesUnderInstanceIdentity") {
-  mir::MirPipelineFixture fixture(kIdentityProgram);
+namespace {
+
+// Exercises the full instance-call lowering + presented-identity validation
+// for one program: resolves the source caller with the entry Instance edge,
+// pairs it with the verified instance body, lowers the monomorphic module, and
+// proves it validates with explicit identities but fails closed Source-only.
+void expectInstanceCallLowersAndValidates(zc::StringPtr program) {
+  mir::MirPipelineFixture fixture(program);
   const auto& session = fixture.sessionRef();
   const auto types = session.getSemanticTypeStore();
   ZC_REQUIRE(types != zc::none);
@@ -120,6 +137,16 @@ ZC_TEST("MonoSession.instanceCallLowersAndValidatesUnderInstanceIdentity") {
   // the Instance edge can never match a Source owner.
   ZC_EXPECT(lir::TranslationValidator::validate(presented.asPtr(), lirModule,
                                                 ZC_ASSERT_NONNULL(types)) != zc::none);
+}
+
+}  // namespace
+
+ZC_TEST("MonoSession.instanceCallLowersAndValidatesUnderInstanceIdentity") {
+  expectInstanceCallLowersAndValidates(kIdentityProgram);
+}
+
+ZC_TEST("MonoSession.initializerInstanceCallLowersAndValidatesUnderInstanceIdentity") {
+  expectInstanceCallLowersAndValidates(kIdentityInitializerProgram);
 }
 
 }  // namespace zomlang::compiler::mono

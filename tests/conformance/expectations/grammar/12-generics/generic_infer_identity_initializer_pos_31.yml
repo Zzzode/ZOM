@@ -1,4 +1,4 @@
-section: "12-generics generic body inferred init cap neg 29"
+section: "12-generics generic inferred identity initializer pos 31"
 covers_rule: "letDeclaration, callExpression"
 expected: "ACCEPT"
 notes:

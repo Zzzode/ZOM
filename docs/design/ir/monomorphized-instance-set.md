@@ -126,6 +126,14 @@ Production-emitted slice (verified end to end):
   folded to the reserved no-argument `zom.module_init` entry;
 - one single-argument scalar instance call (`identity(42)`), whose instance
   body declares one parameter and returns it;
+- the generic call is admitted in either of two positions: the function's
+  direct return value (`return identity(42)`, a trailing Temporary plus
+  FunctionResult), or the initializer of the single local that is then
+  returned (`let y = identity(42); return y;`, one trailing UserLocal). The
+  HIR gate (`hir-builder.cc`, `genericInitializerReturnAdmitted`) admits the
+  initializer position only when the call is exactly that local's
+  initializer with every other direct-call classification clear; statement,
+  condition, receiver, projected, and error-operator positions keep draining;
 - MIR -> LIR -> verified LLVM IR -> ELF object -> host link -> `zomc run`,
   exiting with the returned value.
 
@@ -170,8 +178,14 @@ symbols never participate in `zom.module_init` entry selection.
 
 ### Native acceptance
 
-`tests/integration/core-library/generic-identity-consumer/` is the native
-fixture: `fn identity<T>(value: T) -> T { return value; }` called as
-`identity(42)` from a parameter-free entry. It is registered as a
+`tests/integration/core-library/generic-identity-consumer/` is the direct-
+return native fixture: `fn identity<T>(value: T) -> T { return value; }`
+called as `identity(42)` from a parameter-free entry. It is registered as a
 `native-run-cli` run case (exit 42) and as both an object-emission case and a
 cross-process deterministic-object case in `object-emission-cli`.
+
+`tests/integration/core-library/generic-initializer-consumer/` is the
+initializer-position fixture (`let y = identity(42); return y;`), registered as
+a run case (exit 42) and an object-emission case. The two positions share the
+single-argument instance LIR slice's trailing-count-two (direct return) and
+trailing-count-one (initializer) arms.

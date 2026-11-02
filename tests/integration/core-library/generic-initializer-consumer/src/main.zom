@@ -1,0 +1,11 @@
+// RFC 0056 stage 4 initializer-position fixture: the monomorphized instance
+// call initializes the local that is then returned. The caller folds to
+// zom.module_init (the trailing-count-one initializer shape) and exits 42.
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn entry() -> i32 {
+    let y = identity(42);
+    return y;
+}
