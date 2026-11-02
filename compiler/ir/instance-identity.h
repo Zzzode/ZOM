@@ -9,6 +9,7 @@
 
 #include "zc/core/array.h"
 #include "zc/core/common.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler::ir {
 
@@ -45,5 +46,17 @@ ZC_NODISCARD zc::Maybe<zc::Array<uint8_t>> encodeInstanceIdentity(
 /// trailing bytes remain.
 ZC_NODISCARD zc::Maybe<DecodedInstanceIdentity> decodeInstanceIdentity(
     zc::ArrayPtr<const uint8_t> bytes);
+
+/// \brief Derives the canonical object symbol for one monomorphized instance.
+///
+/// The symbol is `zom.mono.<definition-key hex>.<digest>`, where the digest is
+/// the SHA-256 over the length-framed substitution record followed, from the
+/// first non-empty witness record onward, by the length-framed witness record.
+/// The domain cannot intersect the reserved `zom.module_init`, `zom.caller`,
+/// `zom.callee`, `zom.leaf`, or `zom.standalone_<N>` symbols.
+/// \param identityFrame Frame produced by encodeInstanceIdentity.
+/// \return The ASCII symbol, or none when the frame is malformed or hashing fails.
+ZC_NODISCARD zc::Maybe<zc::String> deriveMonoInstanceSymbol(
+    zc::ArrayPtr<const uint8_t> identityFrame);
 
 }  // namespace zomlang::compiler::ir
