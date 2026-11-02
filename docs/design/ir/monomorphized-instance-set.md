@@ -7,7 +7,7 @@ Updated: 2026-11-03
 | Field | Value |
 |---|---|
 | Authority | Non-normative compiler implementation guide |
-| Coverage | RFC 0056 stages 3-4: the verified monomorphization fixpoint and its native single-argument scalar instance-call slices (one pair and the joined multi-instance module) |
+| Coverage | RFC 0056 stages 3-4: the verified monomorphization fixpoint and its native scalar instance-call slices (identity, joined multi-instance, and generic integer binary) |
 | Governing decisions | [RFC 0056](../../rfc/0056-generic-function-monomorphization.md) |
 | Production implementation | [`mono/instance-cloner.h`](../../../compiler/mono/instance-cloner.h), [`mono/instance-fixpoint.h`](../../../compiler/mono/instance-fixpoint.h), [`mono/instance-set.h`](../../../compiler/mono/instance-set.h), [`mono/instance-set-builder.h`](../../../compiler/mono/instance-set-builder.h), [`ir/instance-identity.h`](../../../compiler/ir/instance-identity.h) |
 | Session stage | phase `0x0a` inside `CompilerSession::checkSources()`, immediately after executable MIR verification |
@@ -74,7 +74,13 @@ when every RFC 0056 predicate holds:
 5. edge keys and arity: each Instance edge's substitution parameter keys and
    count equal the callee's ordered generic parameters and resolve to a member
    instance (edge closure);
-6. identity frame ordering and the fixed instance/node budgets.
+6. identity frame ordering and the fixed instance/node budgets;
+7. parametric arithmetic legality: an arithmetic rvalue admitted by a generic
+   template body is re-validated on the substituted body. Its operator must be
+   one of the integer arithmetic, shift, or bitwise operations the LIR
+   arithmetic slice emits (exponentiation stays excluded) and its substituted
+   result type must be `i32` or `i64`; arithmetic instantiated at `bool` or
+   any other carrier rejects with `UnsupportedSourceConstruct` (ZOM4099).
 
 ## Representable-But-Not-Source-Emitted Guards
 
@@ -226,3 +232,31 @@ deterministic MIR ordering folds to the entry. The unit test
 asserts each call edge targets its instance's positional index, and
 `MonoSession.twoRootsShareOneEmittedInstanceBody` asserts two roots sharing one
 `InstanceId` emit the instance body once and both edges target that one index.
+
+### Generic integer binary instances
+
+A free generic function whose body is one arithmetic binary over two
+parameters sharing one type-parameter key (`fn add<T>(a: T, b: T) -> T {
+return a + b; }`) is admitted by the body checker's parametric arithmetic
+predicate. The template body cannot name a concrete machine carrier, so the
+checker proves only the parametric shape (two callable parameters, one shared
+type-parameter key owned by the enclosing generic, an arithmetic operator);
+operator legality is deferred to predicate 7 above and decided independently
+on every substituted instance.
+
+The MIR builder emits the substituted body as the same one-block
+`StorageLive(r); r = <leaf> <op> <leaf>; Return(r)` shape the Source
+arithmetic-callee slice already lowers, so the multi-unit lowering emits each
+such instance with the arithmetic-callee builder (the identity-return builder
+is tried first and declines), and the N-argument mono caller passes the call's
+constant or leading-parameter operands through. The translation validator
+needs no shape-specific matcher: its generic lockstep already understands
+arithmetic rvalues and resolves the callee through the identity bijection.
+
+`tests/integration/core-library/generic-binary-consumer/` is the native fixture
+(`add(40, 2)` exits 42), registered as a run case and an object-emission case.
+`generic_arithmetic_body_pos_33.zom` pins the clean template/instance path and
+`generic_arithmetic_bool_carrier_neg_35.zom` pins the `add<bool>` drain as
+ZOM4099 at the call site. Arithmetic over a type-parameter/local mix, two
+different keys, nested binary operands, and exponentiation stay outside this
+slice.
