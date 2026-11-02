@@ -3,14 +3,10 @@
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 
-#include "compiler/mono/instance-cloner.h"
 #include "compiler/mono/instance-fixpoint.h"
-#include "compiler/mono/instance-set.h"
 
 #include <cstdint>
 
-#include "zc/core/memory.h"
-#include "zc/ztest/test.h"
 #include "compiler/checker/inference/checked-facts.h"
 #include "compiler/identity/brand.h"
 #include "compiler/identity/canonical/identity-interner-set.h"
@@ -18,8 +14,12 @@
 #include "compiler/identity/key/definition-key.h"
 #include "compiler/identity/source/source-snapshot.h"
 #include "compiler/mir/built-mir.h"
+#include "compiler/mono/instance-cloner.h"
+#include "compiler/mono/instance-set.h"
 #include "compiler/type/semantic-type-data.h"
 #include "tests/unittests/compiler/test-semantic-identities.h"
+#include "zc/core/memory.h"
+#include "zc/ztest/test.h"
 
 namespace zomlang::compiler::mono {
 namespace {
@@ -49,8 +49,8 @@ using ir::InstanceId;
 using mir::MirBasicBlock;
 using mir::MirBlockId;
 using mir::MirBorrowKind;
-using mir::MirCallEffect;
 using mir::MirCallableIdentity;
+using mir::MirCallEffect;
 using mir::MirFunction;
 using mir::MirFunctionKind;
 using mir::MirInitializationKind;
@@ -87,7 +87,8 @@ SourceSpan span() {
 
 CanonicalConstValue integerConst(uint8_t value) {
   auto magnitude = zc::heapArray<uint8_t>(1, value);
-  return CanonicalConstValue::integer(CanonicalInteger{IntegerSign::NonNegative, zc::mv(magnitude)});
+  return CanonicalConstValue::integer(
+      CanonicalInteger{IntegerSign::NonNegative, zc::mv(magnitude)});
 }
 
 MirPlace placeOf(MirLocalId local, identity::SemanticTypeId type) {
@@ -143,8 +144,7 @@ public:
     brandIssuer = zc::mv(ZC_ASSERT_NONNULL(issuedBrandIssuer));
     auto issuedToken = factory.issueSemanticTypeStoreConstructionToken(context);
     ZC_REQUIRE(issuedToken != zc::none);
-    semanticTypes =
-        zc::heap<SemanticTypeStore>(zc::mv(ZC_ASSERT_NONNULL(issuedToken)), *interners);
+    semanticTypes = zc::heap<SemanticTypeStore>(zc::mv(ZC_ASSERT_NONNULL(issuedToken)), *interners);
   }
 
   SemanticContextBrand brand() const noexcept { return context; }
@@ -204,11 +204,10 @@ public:
     auto substitutionBrand = ZC_ASSERT_NONNULL(brandIssuer).issue();
     auto witnessBrand = ZC_ASSERT_NONNULL(brandIssuer).issue();
     ZC_REQUIRE(substitutionBrand != zc::none && witnessBrand != zc::none);
-    auto substitutions =
-        FrozenSubstitutionStore::from(context, ZC_ASSERT_NONNULL(substitutionBrand),
-                                      zc::mv(substitutionRecords));
-    auto witnesses = FrozenWitnessStore::from(context, ZC_ASSERT_NONNULL(witnessBrand),
-                                              zc::mv(witnessRecords));
+    auto substitutions = FrozenSubstitutionStore::from(
+        context, ZC_ASSERT_NONNULL(substitutionBrand), zc::mv(substitutionRecords));
+    auto witnesses =
+        FrozenWitnessStore::from(context, ZC_ASSERT_NONNULL(witnessBrand), zc::mv(witnessRecords));
     ZC_REQUIRE(substitutions != zc::none && witnesses != zc::none);
     substitutionStore = zc::mv(ZC_ASSERT_NONNULL(substitutions));
     witnessStore = zc::mv(ZC_ASSERT_NONNULL(witnesses));
@@ -267,8 +266,7 @@ public:
 
   void setTemplate(DefId definition, MirFunction&& function,
                    zc::Vector<GenericParameterKey>&& keys) {
-    templates.add(TemplateEntry{definition, zc::heap<MirFunction>(zc::mv(function)),
-                                zc::mv(keys)});
+    templates.add(TemplateEntry{definition, zc::heap<MirFunction>(zc::mv(function)), zc::mv(keys)});
   }
 
   void addSubstitution(GenericParameterKey parameter, identity::SemanticTypeId argument) {
@@ -276,15 +274,14 @@ public:
     parameters.add(zc::mv(parameter));
     zc::Vector<identity::SemanticTypeId> arguments;
     arguments.add(argument);
-    auto bytes = zc::heapArray<uint8_t>(
-        1, static_cast<uint8_t>(0xa0 + pendingSubstitutions.size()));
+    auto bytes =
+        zc::heapArray<uint8_t>(1, static_cast<uint8_t>(0xa0 + pendingSubstitutions.size()));
     pendingSubstitutions.add(PendingSubstitution{
         SubstitutionData{zc::mv(parameters), zc::mv(arguments)}, zc::mv(bytes)});
   }
 
   void addEmptyWitness() {
-    auto bytes = zc::heapArray<uint8_t>(
-        1, static_cast<uint8_t>(0xb0 + pendingWitnesses.size()));
+    auto bytes = zc::heapArray<uint8_t>(1, static_cast<uint8_t>(0xb0 + pendingWitnesses.size()));
     pendingWitnesses.add(zc::mv(bytes));
   }
 
@@ -297,9 +294,9 @@ public:
       for (const auto& parameter : pending.data.parameters) { parameters.add(parameter.clone()); }
       zc::Vector<identity::SemanticTypeId> arguments;
       for (const auto argument : pending.data.arguments) { arguments.add(argument); }
-      substitutionRecords.add(FrozenSubstitutionStore::Record{
-          SubstitutionData{zc::mv(parameters), zc::mv(arguments)},
-          zc::heapArray(pending.bytes.asPtr())});
+      substitutionRecords.add(
+          FrozenSubstitutionStore::Record{SubstitutionData{zc::mv(parameters), zc::mv(arguments)},
+                                          zc::heapArray(pending.bytes.asPtr())});
     }
     for (const auto& pending : pendingWitnesses) {
       witnessRecords.add(FrozenWitnessStore::Record{
@@ -307,9 +304,9 @@ public:
     }
     fixture.freezeStores(zc::mv(substitutionRecords), zc::mv(witnessRecords));
     for (uint32_t index = 0; index < pendingSubstitutions.size(); ++index) {
-      liveSubstitutions.add(LiveSubstitution{
-          fixture.substitutionId(index), zc::mv(pendingSubstitutions[index].data),
-          zc::mv(pendingSubstitutions[index].bytes)});
+      liveSubstitutions.add(LiveSubstitution{fixture.substitutionId(index),
+                                             zc::mv(pendingSubstitutions[index].data),
+                                             zc::mv(pendingSubstitutions[index].bytes)});
     }
     for (uint32_t index = 0; index < pendingWitnesses.size(); ++index) {
       liveWitnesses.add(LiveWitness{fixture.witnessId(index), zc::mv(pendingWitnesses[index])});
@@ -328,8 +325,7 @@ public:
     return zc::none;
   }
 
-  zc::Maybe<zc::Vector<GenericParameterKey>> genericParameterKeys(DefId definition)
-      const override {
+  zc::Maybe<zc::Vector<GenericParameterKey>> genericParameterKeys(DefId definition) const override {
     ZC_IF_SOME(index, indexOf(definition)) {
       zc::Vector<GenericParameterKey> keys;
       for (const auto& key : templates[index].keys) { keys.add(key.clone()); }
@@ -344,8 +340,8 @@ public:
     }
     return zc::none;
   }
-  zc::Maybe<zc::ArrayPtr<const uint8_t>> substitutionRecord(CanonicalSubstitutionId id)
-      const override {
+  zc::Maybe<zc::ArrayPtr<const uint8_t>> substitutionRecord(
+      CanonicalSubstitutionId id) const override {
     for (const auto& live : liveSubstitutions) {
       if (live.id == id) { return live.bytes.asPtr(); }
     }
@@ -393,8 +389,8 @@ MirFunction callingRoot(DefId root, identity::SemanticTypeId scalar, MirCallable
 }
 
 /// \brief Root issuing two Instance calls before returning.
-MirFunction twoCallRoot(DefId root, identity::SemanticTypeId scalar,
-                        MirCallableIdentity&& first, MirCallableIdentity&& second) {
+MirFunction twoCallRoot(DefId root, identity::SemanticTypeId scalar, MirCallableIdentity&& first,
+                        MirCallableIdentity&& second) {
   zc::Vector<MirBasicBlock> blocks;
   blocks.add(MirBasicBlock{blockId(1), scopeId(1), zc::Vector<MirStatement>(),
                            callTerminator(first.clone(), scalar, localId(1), blockId(2))});
@@ -602,8 +598,8 @@ ZC_TEST("MonoInstanceBody.rejectsNonScalarCarrierType") {
 ZC_TEST("MonoInstanceBody.rejectsReferenceCarrierType") {
   MonoCoreFixture fixture;
   const auto i32 = fixture.primitive(tpsem::PrimitiveKind::I32);
-  auto canonical = fixture.store().canonicalizeClosed(tpsem::TypeData(tpsem::ReferenceTypeData{
-      tpsem::Mutability::Const, i32}));
+  auto canonical = fixture.store().canonicalizeClosed(
+      tpsem::TypeData(tpsem::ReferenceTypeData{tpsem::Mutability::Const, i32}));
   ZC_REQUIRE(canonical.is<tpsem::CanonicalTypeData>());
   auto interned = fixture.store().intern(zc::mv(canonical).get<tpsem::CanonicalTypeData>());
   ZC_REQUIRE(interned.is<type::SemanticTypeInterned>());
@@ -617,13 +613,12 @@ ZC_TEST("MonoInstanceBody.rejectsReferenceCarrierType") {
   ZC_EXPECT(ZC_ASSERT_NONNULL(rejection).kind == MonoBodyRejectionKind::ReferenceCarrier);
 }
 
-MirFunction statementBody(DefId owner, identity::SemanticTypeId scalar,
-                          MirStatement&& statement) {
+MirFunction statementBody(DefId owner, identity::SemanticTypeId scalar, MirStatement&& statement) {
   zc::Vector<MirStatement> statements;
   statements.add(zc::mv(statement));
   zc::Vector<MirBasicBlock> blocks;
-  blocks.add(MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
-                           MirTerminator::returnVoid(span())});
+  blocks.add(
+      MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), MirTerminator::returnVoid(span())});
   return functionWithBlocks(owner, scalar, zc::mv(blocks));
 }
 
@@ -631,24 +626,22 @@ ZC_TEST("MonoInstanceBody.rejectsBorrowCreationStatement") {
   MonoCoreFixture fixture;
   const auto i32 = fixture.primitive(tpsem::PrimitiveKind::I32);
   const auto genericDef = fixture.functionDefinition("borrow_body"_zc);
-  auto statement = MirStatement::borrowCreation(placeOf(localId(1), i32),
-                                                MirBorrowKind::Shared,
+  auto statement = MirStatement::borrowCreation(placeOf(localId(1), i32), MirBorrowKind::Shared,
                                                 placeOf(localId(1), i32), span());
   auto body = statementBody(genericDef, i32, zc::mv(statement));
   zc::Vector<GenericParameterKey> noKeys;
 
   auto rejection = validateInstanceBody(body, noKeys.asPtr(), fixture.store());
   ZC_REQUIRE(rejection != zc::none);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(rejection).kind ==
-            MonoBodyRejectionKind::BorrowCreationStatement);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(rejection).kind == MonoBodyRejectionKind::BorrowCreationStatement);
 }
 
 ZC_TEST("MonoInstanceBody.rejectsUnsafeScopeBoundaryStatement") {
   MonoCoreFixture fixture;
   const auto i32 = fixture.primitive(tpsem::PrimitiveKind::I32);
   const auto genericDef = fixture.functionDefinition("unsafe_body"_zc);
-  auto statement = MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter, scopeId(1),
-                                                     span());
+  auto statement =
+      MirStatement::unsafeScopeBoundary(MirUnsafeScopeBoundaryKind::Enter, scopeId(1), span());
   auto body = statementBody(genericDef, i32, zc::mv(statement));
   zc::Vector<GenericParameterKey> noKeys;
 
@@ -668,8 +661,7 @@ ZC_TEST("MonoInstanceBody.rejectsDeinitializeStatement") {
 
   auto rejection = validateInstanceBody(body, noKeys.asPtr(), fixture.store());
   ZC_REQUIRE(rejection != zc::none);
-  ZC_EXPECT(ZC_ASSERT_NONNULL(rejection).kind ==
-            MonoBodyRejectionKind::DeinitializeStatement);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(rejection).kind == MonoBodyRejectionKind::DeinitializeStatement);
 }
 
 ZC_TEST("MonoInstanceBody.acceptsAdmittedScalarBodyWithNoActivationCalls") {
@@ -677,6 +669,16 @@ ZC_TEST("MonoInstanceBody.acceptsAdmittedScalarBodyWithNoActivationCalls") {
   const auto i32 = fixture.primitive(tpsem::PrimitiveKind::I32);
   const auto genericDef = fixture.functionDefinition("plain_body"_zc);
   auto body = voidFunction(genericDef, i32);
+  zc::Vector<GenericParameterKey> noKeys;
+
+  ZC_EXPECT(validateInstanceBody(body, noKeys.asPtr(), fixture.store()) == zc::none);
+}
+
+ZC_TEST("MonoInstanceBody.acceptsI64ScalarCarrier") {
+  MonoCoreFixture fixture;
+  const auto i64 = fixture.primitive(tpsem::PrimitiveKind::I64);
+  const auto genericDef = fixture.functionDefinition("plain_i64_body"_zc);
+  auto body = voidFunction(genericDef, i64);
   zc::Vector<GenericParameterKey> noKeys;
 
   ZC_EXPECT(validateInstanceBody(body, noKeys.asPtr(), fixture.store()) == zc::none);
@@ -758,10 +760,10 @@ ZC_TEST("MonoTypeWalk.visitsEverySemanticTypeSlotFamily") {
   const auto parameter = fixture.typeParameter(key);
   // Result (1) and one local (1).
   zc::Vector<MirLocalDeclaration> locals;
-  locals.add(MirLocalDeclaration{localId(1), MirLocalKind::FunctionResult, parameter, scopeId(1),
-                                 span()});
-  locals.add(MirLocalDeclaration{localId(2), MirLocalKind::UserLocal, parameter, scopeId(1),
-                                 span()});
+  locals.add(
+      MirLocalDeclaration{localId(1), MirLocalKind::FunctionResult, parameter, scopeId(1), span()});
+  locals.add(
+      MirLocalDeclaration{localId(2), MirLocalKind::UserLocal, parameter, scopeId(1), span()});
   // Place with one field projection: root + result + projection input + result (4).
   zc::Vector<MirProjection> projections;
   projections.add(MirProjection::field(fieldDef, parameter, parameter));
@@ -774,8 +776,8 @@ ZC_TEST("MonoTypeWalk.visitsEverySemanticTypeSlotFamily") {
   statements.add(MirStatement::assign(zc::mv(destination), zc::mv(comparison),
                                       MirInitializationKind::Initialize, span()));
   zc::Vector<MirBasicBlock> blocks;
-  blocks.add(MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
-                           MirTerminator::returnVoid(span())});
+  blocks.add(
+      MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements), MirTerminator::returnVoid(span())});
   zc::Vector<MirSourceScope> scopes;
   scopes.add(MirSourceScope{scopeId(1), zc::none, span()});
   MirFunction body{genericDef,

@@ -5187,11 +5187,16 @@ struct GenericCallAdmission final {
   bool carrierAdmitted;
 };
 
-/// \brief Carrier set admitted by the RFC 0056 first monomorphization slice.
+/// \brief Carrier set admitted by the RFC 0056 monomorphization slices.
+///
+/// i32 and bool are the stage-4 direct-return/initializer scalar carriers;
+/// i64 joins for the same emitted shapes because the LIR and LLVM rails derive
+/// every integer width from the semantic carrier.
 bool isMonoSliceCarrier(const type::semantic::TypeData& data) {
   if (!data.is<type::semantic::PrimitiveTypeData>()) return false;
   const auto kind = data.get<type::semantic::PrimitiveTypeData>().kind;
-  return kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::Bool;
+  return kind == type::semantic::PrimitiveKind::I32 || kind == type::semantic::PrimitiveKind::I64 ||
+         kind == type::semantic::PrimitiveKind::Bool;
 }
 
 zc::Maybe<const signature::CallableSignature&> sameModuleCallable(const BodyCheckingInput& input,

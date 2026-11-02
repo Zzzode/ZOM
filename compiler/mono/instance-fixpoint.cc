@@ -5,11 +5,11 @@
 
 #include "compiler/mono/instance-fixpoint.h"
 
-#include "zc/core/debug.h"
 #include "compiler/ir/instance-identity.h"
 #include "compiler/mono/instance-cloner.h"
 #include "compiler/type/semantic-type-data.h"
 #include "compiler/type/type-substitution.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::mono {
 namespace {
@@ -21,12 +21,12 @@ using identity::DefId;
 using identity::SourceSpan;
 using ir::InstanceId;
 using mir::MirFunction;
+using type::SemanticTypeLookup;
+using type::SemanticTypeStore;
 using type::semantic::PrimitiveKind;
 using type::semantic::TypeDataTag;
 using type::semantic::TypeParameterTypeData;
 using type::semantic::TypeSubstitution;
-using type::SemanticTypeLookup;
-using type::SemanticTypeStore;
 
 bool lessBytes(zc::ArrayPtr<const uint8_t> left, zc::ArrayPtr<const uint8_t> right) noexcept {
   const size_t shared = left.size() < right.size() ? left.size() : right.size();
@@ -66,9 +66,7 @@ struct FixpointState final {
         instanceBudget(instanceBudget),
         substitutionNodeBudget(substitutionNodeBudget) {}
 
-  bool seen(const InstanceId& instance) const noexcept {
-    return indexOf(instance) != zc::none;
-  }
+  bool seen(const InstanceId& instance) const noexcept { return indexOf(instance) != zc::none; }
 
   zc::Maybe<size_t> indexOf(const InstanceId& instance) const noexcept {
     for (size_t index = 0; index < collected.size(); ++index) {
@@ -105,8 +103,7 @@ struct FixpointState final {
       return zc::none;
     }
     return ir::encodeInstanceIdentity(ZC_ASSERT_NONNULL(definitionKey).asPtr(),
-                                      ZC_ASSERT_NONNULL(substitution),
-                                      ZC_ASSERT_NONNULL(witness));
+                                      ZC_ASSERT_NONNULL(substitution), ZC_ASSERT_NONNULL(witness));
   }
 };
 
@@ -150,18 +147,21 @@ DemandOutcome demand(PendingDemand&& demand, FixpointState& state,
       errorChain.add(demand.chain[index]);
     }
     errorChain.add(demand.instance);
-    outcome.cycle = MonoCycleError{demand.chain[chainPosition], zc::mv(errorChain),
-                                   zc::mv(demand.span)};
+    outcome.cycle =
+        MonoCycleError{demand.chain[chainPosition], zc::mv(errorChain), zc::mv(demand.span)};
     return outcome;
   }
   if (state.collected.size() + 1 > state.instanceBudget) {
     zc::Vector<InstanceId> chain;
     for (const auto& item : demand.chain) { chain.add(item); }
     chain.add(demand.instance);
-    outcome.budget = MonoBudgetError{
-        demand.instance, zc::mv(chain), state.collected.size() + 1,
-        state.substitutedNodeCount, state.instanceBudget, state.substitutionNodeBudget,
-        zc::mv(demand.span)};
+    outcome.budget = MonoBudgetError{demand.instance,
+                                     zc::mv(chain),
+                                     state.collected.size() + 1,
+                                     state.substitutedNodeCount,
+                                     state.instanceBudget,
+                                     state.substitutionNodeBudget,
+                                     zc::mv(demand.span)};
     return outcome;
   }
   auto templateFunction = state.provider.templateFor(demand.instance.definition());
@@ -186,9 +186,13 @@ DemandOutcome demand(PendingDemand&& demand, FixpointState& state,
     zc::Vector<InstanceId> chain;
     for (const auto& item : demand.chain) { chain.add(item); }
     chain.add(demand.instance);
-    outcome.budget = MonoBudgetError{
-        demand.instance, zc::mv(chain), state.collected.size() + 1, state.substitutedNodeCount,
-        state.instanceBudget, state.substitutionNodeBudget, zc::mv(demand.span)};
+    outcome.budget = MonoBudgetError{demand.instance,
+                                     zc::mv(chain),
+                                     state.collected.size() + 1,
+                                     state.substitutedNodeCount,
+                                     state.instanceBudget,
+                                     state.substitutionNodeBudget,
+                                     zc::mv(demand.span)};
     return outcome;
   }
   state.collected.add(MonoRawInstance{demand.instance, zc::mv(body),
@@ -210,23 +214,15 @@ MonoFixpointResult collectInstances(zc::ArrayPtr<const MirFunction* const> roots
   FixpointState state(provider, semanticTypes, instanceBudget, substitutionNodeBudget);
   zc::Vector<PendingDemand> queue;
   zc::ArrayPtr<const InstanceId> emptyChain;
-  for (const auto* root : roots) {
-    collectEdges(*root, queue, emptyChain);
-  }
+  for (const auto* root : roots) { collectEdges(*root, queue, emptyChain); }
   size_t head = 0;
   while (head < queue.size()) {
     auto pending = zc::mv(queue[head]);
     ++head;
     auto outcome = demand(zc::mv(pending), state, queue);
-    ZC_IF_SOME(cycle, outcome.cycle) {
-      return zc::mv(cycle);
-    }
-    ZC_IF_SOME(budget, outcome.budget) {
-      return zc::mv(budget);
-    }
-    ZC_IF_SOME(unresolved, outcome.unresolved) {
-      return zc::mv(unresolved);
-    }
+    ZC_IF_SOME(cycle, outcome.cycle) { return zc::mv(cycle); }
+    ZC_IF_SOME(budget, outcome.budget) { return zc::mv(budget); }
+    ZC_IF_SOME(unresolved, outcome.unresolved) { return zc::mv(unresolved); }
   }
   return zc::mv(state.collected);
 }
@@ -237,9 +233,8 @@ void sortInstancesByIdentity(zc::Vector<MonoRawInstance>& instances) noexcept {
   for (size_t index = 1; index < instances.size(); ++index) {
     auto current = zc::mv(instances[index]);
     size_t insertion = index;
-    while (insertion != 0 &&
-           lessBytes(current.identityFrame.asPtr(),
-                     instances[insertion - 1].identityFrame.asPtr())) {
+    while (insertion != 0 && lessBytes(current.identityFrame.asPtr(),
+                                       instances[insertion - 1].identityFrame.asPtr())) {
       instances[insertion] = zc::mv(instances[insertion - 1]);
       --insertion;
     }
@@ -288,9 +283,9 @@ public:
       }
     }
     auto primitive = data.primitiveKind();
-    if (primitive == zc::none ||
-        (ZC_ASSERT_NONNULL(primitive) != PrimitiveKind::I32 &&
-         ZC_ASSERT_NONNULL(primitive) != PrimitiveKind::Bool)) {
+    if (primitive == zc::none || (ZC_ASSERT_NONNULL(primitive) != PrimitiveKind::I32 &&
+                                  ZC_ASSERT_NONNULL(primitive) != PrimitiveKind::I64 &&
+                                  ZC_ASSERT_NONNULL(primitive) != PrimitiveKind::Bool)) {
       failure = MonoBodyRejectionKind::NonScalarCarrier;
       return false;
     }
@@ -334,8 +329,8 @@ zc::Maybe<MonoBodyRejection> validateInstanceBody(
     if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
       const auto& call = block.terminator.callValue();
       if (call.effect.kind() != mir::MirCallEffectKind::NoActivation) {
-        return MonoBodyRejection{MonoBodyRejectionKind::ReceiverActivationEffect,
-                                 blockIndex + 1, 0};
+        return MonoBodyRejection{MonoBodyRejectionKind::ReceiverActivationEffect, blockIndex + 1,
+                                 0};
       }
     }
   }

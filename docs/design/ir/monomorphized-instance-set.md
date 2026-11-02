@@ -64,8 +64,8 @@ without forging a sealed session artifact.
 when every RFC 0056 predicate holds:
 
 1. no residual carrier references any of the callee's generic parameter keys;
-2. every carrier type is an admitted scalar (`i32`, `bool`), independently
-   re-checking the checker's carrier gate;
+2. every carrier type is an admitted scalar (`i32`, `i64`, `bool`),
+   independently re-checking the checker's carrier gate;
 3. ownership triviality: no Reference or RawPointer carrier, zero
    BorrowCreation / UnsafeScopeBoundary / Deinitialize statements, and every
    call edge carries `MirCallEffect::noActivation()`;
@@ -189,3 +189,14 @@ initializer-position fixture (`let y = identity(42); return y;`), registered as
 a run case (exit 42) and an object-emission case. The two positions share the
 single-argument instance LIR slice's trailing-count-two (direct return) and
 trailing-count-one (initializer) arms.
+
+`tests/integration/core-library/generic-i64-consumer/` is the i64 carrier
+fixture (`identity<i64>(42)` in direct-return position), registered as a run
+case (exit 42) and an object-emission case. i64 joins the admitted scalar set
+{i32, i64, bool}; the LIR and LLVM rails already derive 64-bit width from the
+semantic carrier. The runtime entry shim still passes only the low 32 bits as
+the process exit code, so the fixture returns 42. The inferred literal form
+(`identity(42)` under an i64 entry) and an owner-local i64 argument remain
+outside this slice (the literal defaults to i32 and cannot bootstrap from the
+return context, and the monomorphic caller argument matcher admits only
+constants and leading parameters).

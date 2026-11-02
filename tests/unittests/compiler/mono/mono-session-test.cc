@@ -31,6 +31,17 @@ constexpr char kIdentityInitializerProgram[] =
     "    return y;\n"
     "}\n";
 
+// Explicit i64 instantiation in direct-return position. The inferred literal
+// form stays rejected (the literal defaults to i32 and cannot bootstrap from
+// the return context); only the explicit type argument admits i64.
+constexpr char kIdentityI64Program[] =
+    "fn identity<T>(value: T) -> T {\n"
+    "    return value;\n"
+    "}\n"
+    "fn entry() -> i64 {\n"
+    "    return identity<i64>(42);\n"
+    "}\n";
+
 }  // namespace
 
 ZC_TEST("MonoSession.publishesEmptyVerifiedInstanceSetForModuleWithNoInstanceEdges") {
@@ -147,6 +158,10 @@ ZC_TEST("MonoSession.instanceCallLowersAndValidatesUnderInstanceIdentity") {
 
 ZC_TEST("MonoSession.initializerInstanceCallLowersAndValidatesUnderInstanceIdentity") {
   expectInstanceCallLowersAndValidates(kIdentityInitializerProgram);
+}
+
+ZC_TEST("MonoSession.i64InstanceCallLowersAndValidatesUnderInstanceIdentity") {
+  expectInstanceCallLowersAndValidates(kIdentityI64Program);
 }
 
 }  // namespace zomlang::compiler::mono

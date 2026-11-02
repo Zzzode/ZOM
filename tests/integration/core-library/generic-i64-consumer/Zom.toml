@@ -1,0 +1,8 @@
+[package]
+name = "generic_i64_consumer"
+version = "1.0.0"
+edition = "2026"
+
+[[bin]]
+name = "generic_i64_consumer"
+path = "src/main.zom"

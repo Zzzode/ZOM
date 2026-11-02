@@ -9984,6 +9984,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                dispatch.fact.raises == zc::none && !shape.returnsErrorPropagateCall &&
                !shape.returnsErrorUnwrapCall &&
                (isI32SemanticType(checkedModule.semanticTypes(), nodeType.value) ||
+                isI64SemanticType(checkedModule.semanticTypes(), nodeType.value) ||
                 isBoolSemanticType(checkedModule.semanticTypes(), nodeType.value)));
           if (!selected.is<checker::checked::DirectCallable>() ||
               selected.get<checker::checked::DirectCallable>().callee !=

@@ -1,0 +1,10 @@
+// RFC 0056 i64 carrier slice: an explicit identity<i64> instantiation in
+// direct-return position lowers through the 64-bit integer carrier and folds
+// to zom.module_init. Exit 42 fits the low-32-bit exit shim.
+fn identity<T>(value: T) -> T {
+    return value;
+}
+
+fn entry() -> i64 {
+    return identity<i64>(42);
+}

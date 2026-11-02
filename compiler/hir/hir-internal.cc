@@ -821,5 +821,15 @@ bool isI32SemanticType(const type::SemanticTypeStore& store, identity::SemanticT
                  .kind == type::semantic::PrimitiveKind::I32;
 }
 
+bool isI64SemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id) {
+  auto lookup = store.get(id);
+  return lookup.is<type::SemanticTypeLookup>() &&
+         lookup.get<type::SemanticTypeLookup>().data().is<type::semantic::PrimitiveTypeData>() &&
+         lookup.get<type::SemanticTypeLookup>()
+                 .data()
+                 .get<type::semantic::PrimitiveTypeData>()
+                 .kind == type::semantic::PrimitiveKind::I64;
+}
+
 }  // namespace detail
 }  // namespace zomlang::compiler::hir

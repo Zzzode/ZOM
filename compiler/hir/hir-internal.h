@@ -336,6 +336,9 @@ bool isBoolSemanticType(const type::SemanticTypeStore& store, identity::Semantic
 /// \brief Returns true when the semantic type is the primitive i32 type.
 bool isI32SemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id);
 
+/// \brief Returns true when the semantic type is the primitive i64 type.
+bool isI64SemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id);
+
 zc::Maybe<checker::checked::CheckedNodeKey> checkedNodeKey(
     const ast::Tree& tree, const binder::CanonicalParsedModule& parsedModule, ast::NodeId target);
 
