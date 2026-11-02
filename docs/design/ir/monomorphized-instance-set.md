@@ -1,17 +1,17 @@
 # Monomorphized Instance Set
 
-Updated: 2026-10-31
+Updated: 2026-11-01
 
 ## Authority And Status
 
 | Field | Value |
 |---|---|
 | Authority | Non-normative compiler implementation guide |
-| Coverage | RFC 0056 stage 3 monomorphization (free, unbounded generic functions over admitted scalar carriers) |
+| Coverage | RFC 0056 stages 3-4: the verified monomorphization fixpoint and its native single-argument scalar instance-call slice |
 | Governing decisions | [RFC 0056](../../rfc/0056-generic-function-monomorphization.md) |
-| Production implementation | [`mono/instance-cloner.h`](../../../compiler/mono/instance-cloner.h), [`mono/instance-fixpoint.h`](../../../compiler/mono/instance-fixpoint.h), [`mono/instance-set.h`](../../../compiler/mono/instance-set.h), [`mono/instance-set-builder.h`](../../../compiler/mono/instance-set-builder.h) |
+| Production implementation | [`mono/instance-cloner.h`](../../../compiler/mono/instance-cloner.h), [`mono/instance-fixpoint.h`](../../../compiler/mono/instance-fixpoint.h), [`mono/instance-set.h`](../../../compiler/mono/instance-set.h), [`mono/instance-set-builder.h`](../../../compiler/mono/instance-set-builder.h), [`ir/instance-identity.h`](../../../compiler/ir/instance-identity.h) |
 | Session stage | phase `0x0a` inside `CompilerSession::checkSources()`, immediately after executable MIR verification |
-| Native verification | [`tests/unittests/compiler/mono/`](../../../tests/unittests/compiler/mono/) |
+| Native verification | [`tests/unittests/compiler/mono/`](../../../tests/unittests/compiler/mono/), [`tests/unittests/compiler/ir/instance-identity-test.cc`](../../../tests/unittests/compiler/ir/instance-identity-test.cc), `tests/integration/core-library/generic-identity-consumer/` |
 
 The monomorphized instance set is the post-executable-MIR artifact that turns
 parametric generic templates into concrete functions. One independently
@@ -109,48 +109,69 @@ zero-edge modules keep their empty-set revision.
 
 ## Consumers And Dump Surface
 
-In stage 3 no production consumer lowers instances: the CLI still rejects
-object emission through the existing path, and `compile --check` observes the
-0x0a result. Stage 4 adds the joined Source+instance presentation, the
-instance-aware LIR branch before the legacy function-count ladders, derived
-`zom.mono.<definition-key hex>.<digest>` symbols, and the `--dump-mir`
-"instances" section. Generic templates remain visible in the source MIR dump;
-instance symbols never participate in `zom.module_init` entry selection.
+The stage 4 production consumer is the zomc native object path
+(`utils/zomc/zomc.cc::buildNativeObject`). Before the function-count lowering
+ladders, an explicit instance-aware branch scans the source Built MIR for a
+caller whose entry terminator carries a `MirCallableIdentity::Instance` edge,
+resolves the matching verified body from the published
+`VerifiedMonoInstanceSet`, and lowers the caller/instance-body pair through
+`lir::MirToLirLowering::lowerMonomorphicCallModuleWithArgument`. The branch
+runs before the legacy ladders because an Instance edge never matches a
+Source-owner lookup. When the branch declines, the module falls through to the
+Source-only ladders unchanged.
 
-## Stage 4 Implementation Map (measured 2026-11-01)
+Production-emitted slice (verified end to end):
 
-Facts established before starting the LIR/CLI work:
+- one source caller with the two-block call/return shape and zero parameters,
+  folded to the reserved no-argument `zom.module_init` entry;
+- one single-argument scalar instance call (`identity(42)`), whose instance
+  body declares one parameter and returns it;
+- MIR -> LIR -> verified LLVM IR -> ELF object -> host link -> `zomc run`,
+  exiting with the returned value.
 
-- A cloned instance `MirFunction` keeps the TEMPLATE's `identity::DefId owner`
-  (`instance-cloner.cc` returns `MirFunction{templateFunction.owner, ...}`).
-  Two instances of one template therefore have identical `owner`. Identity
-  discrimination lives ONLY on the terminator edge:
-  `MirCallTerminator.callee` is a full `MirCallableIdentity` (Source DefId or
-  Instance InstanceId). Do NOT widen `MirFunction.owner`; instead resolve
-  callees through an identity-to-index map.
-- The zomc binary-emission ladder in `utils/zomc/zomc.cc::buildNativeObject`
-  currently reads `session->getOwnershipCheckedMirModules()[0].builtMir()`
-  only. It must additionally read
-  `session->getVerifiedMonoInstanceSets()[0].instances()` and build a
-  presented ordered vector of `const MirFunction*`:
-    1. every Source function that is NOT a parameterized template, then
-    2. every instance body, in byte-sorted identity-frame order.
-  Parameterized templates are excluded (their concrete work is already
-  represented by instances).
-- Caller/callee selection inside the ladder matches by
-  `call.callee.isSourceFor(functions[i].owner)` at 10 sites. For instance
-  edges this is always false. Introduce one resolver:
-  `resolveFunctionIndex(MirCallableIdentity) -> Maybe<size_t>` backed by a map
-  built from the presented vector (Source keyed by DefId, Instance keyed by
-  InstanceId), and route the ladder's identity comparisons through it rather
-  than block-count/owner heuristics.
-- `compiler/lir/verify/translation-validator.cc` has 31 callee/owner
-  comparison sites. Route them through the same resolver/helper so an Instance
-  call edge validates against the instance body, not the template.
-- `MirFunctionCanonicalCodec` is shared; instance bodies already encode
-  byte-exactly. LLVM symbol naming derives from
-  `zom.mono.<definition-key hex>.<digest>` using the InstanceId frame.
-- Existing acceptance target: `identity(42)` compiles, links, runs, exits 42.
-  The reject tuple lives at `tests/CMakeLists.txt`
-  (`reject-generic-function-consumer/Zom.toml::...`); remove it and replace
-  with a native-run tuple plus an object-byte determinism ztest.
+Other instance shapes are represented in the verified instance set and its
+dump but are not selected by the production lowering branch; they stay on the
+existing fail-closed diagnostics.
+
+### Instance symbols
+
+The instance callee is emitted under a derived, content-addressed symbol from
+`ir::deriveMonoInstanceSymbol`: `zom.mono.<definition-key hex>.<digest>`. The
+digest is SHA-256 over the length-framed substitution record followed, from
+the first non-empty witness record onward, by the length-framed witness
+record. The domain cannot intersect `zom.module_init`, `zom.caller`,
+`zom.callee`, `zom.leaf`, or `zom.standalone_<N>`. Two objects emitted in
+independent processes are byte-identical (the
+`generic-identity-consumer` deterministic object case).
+
+### Translation validation
+
+`lir::TranslationValidator::validate` accepts a presented-identities array
+parallel to the presented MIR functions. Identity resolution is centralized
+in one file-local `PresentedSet` whose owner-derived bijection maps both
+presented-to-LIR and LIR-to-presented indices. Every callee-edge and owner
+comparison in the validator resolves through one of its predicates:
+`calleeMatches` (MIR edge vs LIR function index), `lirPresentsMir`,
+`lirIndexOfMir`, or `edgeNamesMir` (MIR edge vs presented MIR role inside
+shape matchers). A Source edge names the presented definition owner; an
+Instance edge equals the presented instance identity. There is no per-site
+allowlist, so two instances of one template cannot be misresolved at an
+unlisted comparison. The Source-only `validate` overloads present no identity
+array and keep Source-owner matching.
+
+### MIR dump
+
+`zomc compile --dump-mir` renders, after the per-module source function
+records, one deterministic instances section per module: the instance-set
+revision and, for each instance in byte-sorted identity order, the derived
+symbol, the length-framed identity, and the canonical substituted body.
+Generic parametric templates stay in the source function section; instance
+symbols never participate in `zom.module_init` entry selection.
+
+### Native acceptance
+
+`tests/integration/core-library/generic-identity-consumer/` is the native
+fixture: `fn identity<T>(value: T) -> T { return value; }` called as
+`identity(42)` from a parameter-free entry. It is registered as a
+`native-run-cli` run case (exit 42) and as both an object-emission case and a
+cross-process deterministic-object case in `object-emission-cli`.
