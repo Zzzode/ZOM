@@ -4040,6 +4040,8 @@ zc::Maybe<identity::SemanticTypeId> internBoolPrimitiveType(type::SemanticTypeSt
 zc::Maybe<identity::SemanticTypeId> nestedPrimitiveBinaryResultType(
     const BodyCheckingInput& input, zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
     ast::NodeId operandNode);
+zc::Maybe<const signature::CallableSignature&> sameModuleCallable(const BodyCheckingInput& input,
+                                                                  identity::DefId callee);
 
 zc::Maybe<BinaryInitializerTypeMismatch> binaryInitializerTypeMismatch(
     const BodyCheckingInput& input, ast::NodeId node,
@@ -4731,6 +4733,61 @@ zc::Maybe<identity::SemanticTypeId> nestedPrimitiveBinaryResultType(
   return internBoolPrimitiveType(input.semanticTypes);
 }
 
+/// \brief Classifies an arithmetic binary whose operands are both parameters
+/// of the enclosing generic callable, typed with one shared type-parameter
+/// key (`fn add<T>(a: T, b: T) -> T { return a + b; }`).
+///
+/// The template body cannot name a concrete machine carrier, so operator
+/// legality against the instantiated type is deliberately not decided here; it
+/// is re-validated on every substituted instance body. This only proves the
+/// shape is parametrically sound: both operands are callable parameters, both
+/// resolve to type-parameter data, the keys are equal, and that key is one of
+/// the enclosing callable's own generic parameters. A type-parameter operand
+/// paired with a concrete operand, two different keys, an owner-local operand,
+/// and a parameter belonging to some other generic owner all return none.
+zc::Maybe<identity::SemanticTypeId> parametricArithmeticBinary(
+    const BodyCheckingInput& input, ast::NodeId node,
+    zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::BinaryExpr) {
+    return zc::none;
+  }
+  const auto& syntax = tree.node(node);
+  const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
+  const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
+  if (!tree.contains(left) || !tree.contains(right) ||
+      tree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+      tree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  (void)nodeTypes;
+  const auto leftType = callableParameterReferenceType(input, left);
+  const auto rightType = callableParameterReferenceType(input, right);
+  if (leftType == zc::none || rightType == zc::none) { return zc::none; }
+  const auto resolveKey =
+      [&](identity::SemanticTypeId type) -> zc::Maybe<identity::GenericParameterKey> {
+    auto lookup = input.semanticTypes.get(type);
+    if (!lookup.is<type::SemanticTypeLookup>()) { return zc::none; }
+    const auto& data = lookup.get<type::SemanticTypeLookup>().data();
+    if (!data.is<type::semantic::TypeParameterTypeData>()) { return zc::none; }
+    return data.get<type::semantic::TypeParameterTypeData>().parameter.clone();
+  };
+  auto leftKey = resolveKey(ZC_ASSERT_NONNULL(leftType));
+  auto rightKey = resolveKey(ZC_ASSERT_NONNULL(rightType));
+  if (leftKey == zc::none || rightKey == zc::none) { return zc::none; }
+  if (ZC_ASSERT_NONNULL(leftKey) != ZC_ASSERT_NONNULL(rightKey)) { return zc::none; }
+  const auto owner = enclosingBodyOwner(input.boundModule, node);
+  if (owner == zc::none) { return zc::none; }
+  auto callable = sameModuleCallable(input, ZC_ASSERT_NONNULL(owner));
+  if (callable == zc::none || ZC_ASSERT_NONNULL(callable).genericParameters.size() == 0) {
+    return zc::none;
+  }
+  for (const auto& generic : ZC_ASSERT_NONNULL(callable).genericParameters) {
+    if (generic.parameter == ZC_ASSERT_NONNULL(leftKey)) { return ZC_ASSERT_NONNULL(leftType); }
+  }
+  return zc::none;
+}
+
 zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
     const BodyCheckingInput& input, ast::NodeId node,
     zc::ArrayPtr<const checked::NodeTypeMap::Entry> nodeTypes,
@@ -4756,6 +4813,21 @@ zc::Maybe<PrimitiveBinaryOperationShape> primitiveBinaryOperationShape(
   const ast::NodeId left(syntax.payload.words[ast::kBinaryExprLhsWord]);
   const ast::NodeId right(syntax.payload.words[ast::kBinaryExprRhsWord]);
   if (!tree.contains(left) || !tree.contains(right)) return zc::none;
+  // Parametric template body: an arithmetic binary over two parameters of the
+  // enclosing generic callable that share one type-parameter key (`a + b` in
+  // `fn add<T>(a: T, b: T) -> T`). The concrete operator legality is not
+  // decidable in the template; it is re-validated on every substituted
+  // instance, so only arithmetic over two same-key generic parameters is
+  // admitted here. Comparisons, mixed parameter/local operands, and literals
+  // keep the concrete scalar path below.
+  if (isArithmetic) {
+    auto parametric = parametricArithmeticBinary(input, node, nodeTypes);
+    if (parametric != zc::none) {
+      return PrimitiveBinaryOperationShape{left, right, ZC_ASSERT_NONNULL(parametric),
+                                           ZC_ASSERT_NONNULL(parametric),
+                                           ZC_ASSERT_NONNULL(arithmetic)};
+    }
+  }
   // Each operand is either a value reference (an IdentExpr resolving to a
   // callable parameter or an owner local) or a scalar literal. A
   // literal-vs-literal operation is admitted only as a comparison in a

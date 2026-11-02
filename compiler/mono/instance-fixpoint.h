@@ -7,16 +7,16 @@
 
 #include <cstdint>
 
-#include "zc/core/array.h"
-#include "zc/core/common.h"
-#include "zc/core/function.h"
-#include "zc/core/one-of.h"
-#include "zc/core/vector.h"
 #include "compiler/checker/inference/checked-facts.h"
 #include "compiler/identity/handle.h"
 #include "compiler/ir/ir-identity.h"
 #include "compiler/mir/built-mir.h"
 #include "compiler/type/semantic-type-store.h"
+#include "zc/core/array.h"
+#include "zc/core/common.h"
+#include "zc/core/function.h"
+#include "zc/core/one-of.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::mono {
 
@@ -83,8 +83,8 @@ struct MonoUnresolvedEdgeError final {
   identity::SourceSpan span;
 };
 
-using MonoFixpointResult =
-    zc::OneOf<zc::Vector<MonoRawInstance>, MonoCycleError, MonoBudgetError, MonoUnresolvedEdgeError>;
+using MonoFixpointResult = zc::OneOf<zc::Vector<MonoRawInstance>, MonoCycleError, MonoBudgetError,
+                                     MonoUnresolvedEdgeError>;
 
 /// \brief Runs the deterministic instance fixpoint over source roots.
 ///
@@ -94,10 +94,11 @@ using MonoFixpointResult =
 /// the expansion chain selects the cycle error; the fixed instance and node
 /// budgets select the budget error. Output is in first-sight order; callers
 /// byte-sort identity frames for the final artifact.
-ZC_NODISCARD MonoFixpointResult collectInstances(
-    zc::ArrayPtr<const mir::MirFunction* const> roots, const MonoEvidenceProvider& provider,
-    type::SemanticTypeStore& semanticTypes, uint64_t instanceBudget,
-    uint64_t substitutionNodeBudget);
+ZC_NODISCARD MonoFixpointResult collectInstances(zc::ArrayPtr<const mir::MirFunction* const> roots,
+                                                 const MonoEvidenceProvider& provider,
+                                                 type::SemanticTypeStore& semanticTypes,
+                                                 uint64_t instanceBudget,
+                                                 uint64_t substitutionNodeBudget);
 
 /// \brief Sorts raw instances by their length-framed identity bytes.
 void sortInstancesByIdentity(zc::Vector<MonoRawInstance>& instances) noexcept;
@@ -111,6 +112,7 @@ enum class MonoBodyRejectionKind : uint8_t {
   UnsafeScopeBoundaryStatement = 0x05,
   DeinitializeStatement = 0x06,
   ReceiverActivationEffect = 0x07,
+  UnsupportedArithmeticOperation = 0x08,
 };
 
 /// \brief One located RFC 0056 instance-body predicate failure.
@@ -129,8 +131,7 @@ struct MonoBodyRejection final {
 /// UnsafeScopeBoundary, and zero Deinitialize statements; every call edge must
 /// carry the no-activation effect.
 ZC_NODISCARD zc::Maybe<MonoBodyRejection> validateInstanceBody(
-    const mir::MirFunction& body,
-    zc::ArrayPtr<const identity::GenericParameterKey> calleeKeys,
+    const mir::MirFunction& body, zc::ArrayPtr<const identity::GenericParameterKey> calleeKeys,
     const type::SemanticTypeStore& semanticTypes) noexcept;
 
 /// \brief Edge predicate failure kinds.
@@ -158,7 +159,6 @@ ZC_NODISCARD zc::Maybe<MonoEdgeRejection> validateCallEdges(
     zc::FunctionParam<bool(ir::InstanceId)> isMember) noexcept;
 
 /// \brief Returns whether instances are ordered by ascending identity bytes.
-ZC_NODISCARD bool instancesAreFrameSorted(
-    zc::ArrayPtr<const MonoRawInstance> instances) noexcept;
+ZC_NODISCARD bool instancesAreFrameSorted(zc::ArrayPtr<const MonoRawInstance> instances) noexcept;
 
 }  // namespace zomlang::compiler::mono

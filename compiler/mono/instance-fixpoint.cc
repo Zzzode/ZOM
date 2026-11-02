@@ -314,17 +314,58 @@ zc::Maybe<MonoBodyRejection> validateInstanceBody(
     const auto& block = body.blocks[blockIndex];
     for (uint32_t statementIndex = 0; statementIndex < block.statements.size(); ++statementIndex) {
       const auto kind = block.statements[statementIndex].kind();
-      MonoBodyRejectionKind statementFailure{};
       if (kind == mir::MirStatementKind::BorrowCreation) {
-        statementFailure = MonoBodyRejectionKind::BorrowCreationStatement;
-      } else if (kind == mir::MirStatementKind::UnsafeScopeBoundary) {
-        statementFailure = MonoBodyRejectionKind::UnsafeScopeBoundaryStatement;
-      } else if (kind == mir::MirStatementKind::Deinitialize) {
-        statementFailure = MonoBodyRejectionKind::DeinitializeStatement;
-      } else {
-        continue;
+        return MonoBodyRejection{MonoBodyRejectionKind::BorrowCreationStatement, blockIndex + 1,
+                                 statementIndex + 1};
       }
-      return MonoBodyRejection{statementFailure, blockIndex + 1, statementIndex + 1};
+      if (kind == mir::MirStatementKind::UnsafeScopeBoundary) {
+        return MonoBodyRejection{MonoBodyRejectionKind::UnsafeScopeBoundaryStatement,
+                                 blockIndex + 1, statementIndex + 1};
+      }
+      if (kind == mir::MirStatementKind::Deinitialize) {
+        return MonoBodyRejection{MonoBodyRejectionKind::DeinitializeStatement, blockIndex + 1,
+                                 statementIndex + 1};
+      }
+      if (kind == mir::MirStatementKind::Assign) {
+        // A parametric template defers arithmetic legality to its concrete
+        // instantiations. Re-validate each arithmetic rvalue against its
+        // substituted result type: the admitted set is exactly the integer
+        // operations the LIR arithmetic slice emits (no exponentiation, no
+        // arithmetic over bool or any non-integer carrier).
+        const auto& assign = block.statements[statementIndex].assignmentValue();
+        if (assign.value.kind() == mir::MirRvalueKind::Arithmetic) {
+          const auto& arithmetic = assign.value.arithmeticValue();
+          bool operationAdmitted = false;
+          switch (arithmetic.op) {
+            case mir::MirArithmeticOperator::Add:
+            case mir::MirArithmeticOperator::Sub:
+            case mir::MirArithmeticOperator::Mul:
+            case mir::MirArithmeticOperator::Div:
+            case mir::MirArithmeticOperator::Rem:
+            case mir::MirArithmeticOperator::Shl:
+            case mir::MirArithmeticOperator::Shr:
+            case mir::MirArithmeticOperator::UShr:
+            case mir::MirArithmeticOperator::BitAnd:
+            case mir::MirArithmeticOperator::BitOr:
+            case mir::MirArithmeticOperator::BitXor: {
+              auto lookup = semanticTypes.get(arithmetic.resultType);
+              if (lookup.is<SemanticTypeLookup>()) {
+                auto primitive = lookup.get<SemanticTypeLookup>().data().primitiveKind();
+                operationAdmitted =
+                    primitive != zc::none && (ZC_ASSERT_NONNULL(primitive) == PrimitiveKind::I32 ||
+                                              ZC_ASSERT_NONNULL(primitive) == PrimitiveKind::I64);
+              }
+              break;
+            }
+            case mir::MirArithmeticOperator::Pow:
+              break;
+          }
+          if (!operationAdmitted) {
+            return MonoBodyRejection{MonoBodyRejectionKind::UnsupportedArithmeticOperation,
+                                     blockIndex + 1, statementIndex + 1};
+          }
+        }
+      }
     }
     if (block.terminator.kind() == mir::MirTerminatorKind::Call) {
       const auto& call = block.terminator.callValue();

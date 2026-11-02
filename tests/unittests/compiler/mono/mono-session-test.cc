@@ -56,6 +56,17 @@ constexpr char kTwoDistinctInstancesProgram[] =
     "    return identity<i64>(7);\n"
     "}\n";
 
+// Generic integer binary: the template body is one arithmetic rvalue over two
+// same-key type-parameter parameters. Its substituted i32 instance body lowers
+// to the one-block arithmetic callee shape with two parameters.
+constexpr char kAddProgram[] =
+    "fn add<T>(a: T, b: T) -> T {\n"
+    "    return a + b;\n"
+    "}\n"
+    "fn entry() -> i32 {\n"
+    "    return add(40, 2);\n"
+    "}\n";
+
 // Two parameter-free roots instantiate identity at the same type, so both call
 // edges name one shared InstanceId and the joined module emits the instance
 // body exactly once.
@@ -257,6 +268,10 @@ ZC_TEST("MonoSession.initializerInstanceCallLowersAndValidatesUnderInstanceIdent
 
 ZC_TEST("MonoSession.i64InstanceCallLowersAndValidatesUnderInstanceIdentity") {
   expectInstanceCallLowersAndValidates(kIdentityI64Program);
+}
+
+ZC_TEST("MonoSession.genericArithmeticInstanceLowersAndValidatesUnderInstanceIdentity") {
+  expectInstanceCallLowersAndValidates(kAddProgram);
 }
 
 namespace {
