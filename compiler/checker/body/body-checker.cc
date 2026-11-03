@@ -67,6 +67,7 @@ enum class BodyProductionKind : uint8_t {
   ArrayElementWrite = 0x2a,
   LiteralArithmeticFold = 0x2b,
   LiteralUnaryFold = 0x2c,
+  ClosureValue = 0x2d,
   Unsupported = 0x17
 };
 
@@ -5282,6 +5283,82 @@ zc::Maybe<const signature::CallableSignature&> sameModuleCallable(const BodyChec
   return zc::none;
 }
 
+/// \brief Resolved closure value: the anonymous closure definition and its
+/// structural function type.
+struct ClosureValueShape final {
+  identity::DefId closure;
+  identity::SemanticTypeId functionType;
+};
+
+/// \brief Resolves a non-capturing closure literal to its anonymous closure
+/// definition and structural function type.
+///
+/// RFC 0057 slice 1 admits a lambda only when it is fully annotated, has no
+/// `raises` clause and no generic parameters, and captures nothing: the body
+/// inventory lists no capture requirement for the closure key the binder
+/// attached at this lambda node. The anonymous-entity inventory maps the
+/// lambda node to that key, and the definition inventory maps the node to the
+/// closure DefId whose published signature supplies the function type.
+zc::Maybe<ClosureValueShape> closureValueShape(const BodyCheckingInput& input, ast::NodeId node) {
+  const auto& tree = input.boundModule.tree();
+  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::LambdaExpression) {
+    return zc::none;
+  }
+  const auto& lambda = tree.node(node);
+  if (tree.contains(ast::NodeId(lambda.payload.words[ast::kLambdaExpressionRaisesTyWord]))) {
+    return zc::none;
+  }
+  zc::Maybe<identity::DefId> closure;
+  for (const auto& definition : input.boundModule.definitions().definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Closure) { continue; }
+    const auto& siteValue = definition.site.value();
+    if (!siteValue.is<binder::DeclarationDefinitionSite>() ||
+        siteValue.get<binder::DeclarationDefinitionSite>().node != node) {
+      continue;
+    }
+    if (closure != zc::none) { return zc::none; }
+    closure = definition.definition;
+  }
+  zc::Maybe<binder::AnonymousOwnerLocalKey> closureKey;
+  for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
+    if (entity.node != node) { continue; }
+    if (closureKey != zc::none) { return zc::none; }
+    closureKey = entity.key.clone();
+  }
+  if (closure == zc::none || closureKey == zc::none) { return zc::none; }
+  for (const auto& requirement : input.requirements.captureRequirements()) {
+    if (requirement.key.closure == ZC_ASSERT_NONNULL(closureKey)) { return zc::none; }
+  }
+  // Read the published callable signature: non-generic, no receiver/ABI, no
+  // raises, no defaulted parameters.
+  const auto closureId = ZC_ASSERT_NONNULL(closure);
+  for (const auto& semanticSignature : input.signatureFacts.signatures()) {
+    if (semanticSignature.definition != closureId) { continue; }
+    if (!semanticSignature.payload.variant().is<signature::CallableSignature>()) {
+      return zc::none;
+    }
+    const auto& callable = semanticSignature.payload.variant().get<signature::CallableSignature>();
+    if (callable.genericParameters.size() != 0 || callable.receiver != zc::none ||
+        callable.abi != zc::none || callable.raises != zc::none) {
+      return zc::none;
+    }
+    for (const auto& parameter : callable.parameters) {
+      if (parameter.hasDefault) { return zc::none; }
+    }
+    zc::Vector<identity::SemanticTypeId> parameterTypes;
+    for (const auto& parameter : callable.parameters) { parameterTypes.add(parameter.type); }
+    auto canonical = input.semanticTypes.canonicalizeClosed(
+        type::semantic::TypeData(type::semantic::FunctionTypeData{
+            zc::mv(parameterTypes), callable.success, zc::Maybe<identity::SemanticTypeId>{}}));
+    if (!canonical.is<type::semantic::CanonicalTypeData>()) { return zc::none; }
+    auto interned =
+        input.semanticTypes.intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+    if (!interned.is<type::SemanticTypeInterned>()) { return zc::none; }
+    return ClosureValueShape{closureId, interned.get<type::SemanticTypeInterned>().id};
+  }
+  return zc::none;
+}
+
 zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& input,
                                                    ast::NodeId calleeNode) {
   const auto callee = resolvedDefinition(input.boundModule.bindings(), calleeNode);
@@ -9092,6 +9169,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           }
           break;
         }
+        case ast::SyntaxKind::LambdaExpression:
+          // RFC 0057 slice 1: a fully annotated, non-raising, non-generic,
+          // zero-capture closure literal produces its structural function
+          // type. The shape validator rejects every other lambda so it keeps
+          // the existing capability drain at the literal.
+          production = BodyProductionKind::ClosureValue;
+          break;
         default:
           break;
       }
@@ -12612,6 +12696,20 @@ BodyCheckingResult BodyChecker::check(const BodyCheckingInput& input,
                   value.enumType, zc::mv(elements), site.key.sourceSpan.clone()},
               zc::Array<uint8_t>()});
         }
+      } else if (site.production == BodyProductionKind::ClosureValue) {
+        // RFC 0057 slice 1: a non-capturing annotated closure literal produces
+        // its structural function type. A generic/raising/capturing lambda
+        // fails the shape and drains as a capability.
+        auto shape = closureValueShape(input, site.node);
+        if (shape == zc::none) {
+          ZC_IF_SOME(drained, drainUnsupportedBodyConstruct(site, input, factStoreBrands)) {
+            return zc::mv(drained);
+          }
+          return rejectInvariant(signature::CheckerInvariantKind::MissingRequiredFact, module,
+                                 site.key.schemaPreorder, zc::none, site.node,
+                                 site.key.sourceSpan.clone(), factPath(site.primaryGroup));
+        }
+        ZC_IF_SOME(value, shape) { producedType = value.functionType; }
       } else {
         // Scalar literals inside struct-literal fields are produced by the
         // pre-pass so their types are available when buildStructLiteral runs.
