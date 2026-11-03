@@ -85,7 +85,37 @@ captures, escaping closures, callable traits, and generic closures deferred.
 | A1 | Intern one closure DefId per StableClosureFact in `VerifyBoundModule::provide` (fetch `identityInterners` via `semanticContextResources`); synthetic name from `AnonymousOwnerLocalKey.path()` (`__closure_0_3`); owner chain cloned from the owner definition record for Definition owners, empty for Module owners | Landed (0bf04b77) | key-definition-key-test; new `VerifiedModuleInternsOneDefIdPerClosure` (3 closures, Module+Definition owners, both spellings, sibling divergence, point lookups); existing capturing-lambda module binds+verifies end to end |
 | A2 | Project closure DefIds on a separate frozen `closureDefinitions()` rail of `ImmutableDefinitionInventory` (not appended to the skeleton `definitions()` vector, which over 40 checker/HIR walks treat as the complete skeleton-definition set); `closureDefinition(DefId)` / `closureDefinitionAt(node)` point lookups; count + node/handle/key uniqueness + Closure/Value/header-less record validation; `verify` independently re-interns and requires identity equality | Landed (0bf04b77) | definition-inventory-test, materialized-module-skeleton-test, active-definition-authority query/session tests; full sanitizer build green |
 | A3 | Verify the new closure definition rail leaves emitted output unchanged | Landed (0bf04b77) | full sanitizer `ctest --preset default -j16` 322/322 (820s), including lit IR/process parity conformance; no snapshot re-record needed since no closure program lowers yet (empty rail without closures) |
-| B | Flagged unboxed code/environment pair for Copy scalar capture; HIR/MIR/LIR environment lowering; native exit fixture | Proposed - not started | checker/HIR/MIR/LIR ztests, capturing-closure-consumer, conformance pos/neg, parity |
+| B0 | Zero-capture closure native execution (the prerequisite slice the RFC folds into Part B): point the checker closure-DefId resolution at the new Part A rail; then widen HIR/MIR/LIR one closure function per non-escaping direct-call module | Next | `let f = fn() -> i32 { return 42; }; return f();` native `zomc run` exits 42; both spellings; neg matrix (reference/move/escape/generic/raising) still drain |
+| B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
+| B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
 | Later | Escaping/boxed closures | Blocked | allocator ABI |
 | Later | Callable traits, generic closures | Not scheduled | trait dispatch; RFC 0056 instances |
+
+### Part B baseline measured 2026-11-03 (sanitizer build at 0bf04b77)
+
+`zomc compile --check` already drains ZOM4099 for every closure form, so the
+wall is checker-to-HIR, not backend; a named function with the same body
+checks fine. Probe matrix:
+
+| Form | Result at `--check` |
+|---|---|
+| `let f = fn() -> i32 { return 42; }; return f();` (zero capture) | ZOM4099 |
+| `let f = () -> i32 => 42; return f();` (zero capture) | ZOM4099 |
+| `return (fn() -> i32 { return 42; })();` (direct IIFE) | ZOM4099 |
+| `let f = fn() -> i32 { return 42; }; return 0;` (defined, never called) | ZOM4099 |
+| `fn fortytwo() -> i32 { return 42; } return fortytwo();` | check OK |
+
+Root wall: `closureValueShape` (compiler/checker/body/body-checker.cc:5326)
+scans `input.boundModule.bindings().definitions()` (the `DefinitionFact` list,
+skeleton declarations only) for `DefinitionKind::Closure`. Closures are never
+in that list; after Part A they live on
+`input.boundModule.definitions().closureDefinitions()`. So the resolved
+closure DefId is always none and the shape returns none, and every closure
+value drains ZOM4099 whether called or not. B0 step 1 is to resolve the DefId
+from the Part A rail (`closureDefinitionAt(node)`). `directCallableShape`
+derives the callee through `closureValueShape`, so it reopens with the same
+one-point fix. The HIR `returnsClosureAliasCall` groundwork already carries
+the alias mapping; MIR/LIR then need the closure `MirFunction` (owner is now a
+real DefId) enumerated on the Source edge for one non-escaping direct call.
+

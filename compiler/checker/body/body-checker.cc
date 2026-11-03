@@ -5323,16 +5323,11 @@ zc::Maybe<ClosureValueShape> closureValueShape(const BodyCheckingInput& input, a
                                                : ast::kLambdaExpressionRaisesTyWord;
   if (tree.contains(ast::NodeId(closureExpr.payload.words[raisesWord]))) { return zc::none; }
   zc::Maybe<identity::DefId> closure;
-  for (const auto& definition : input.boundModule.bindings().definitions()) {
-    if (definition.kind != identity::DefinitionKind::Closure) { continue; }
-    const auto& siteValue = definition.site.value();
-    if (!siteValue.is<binder::DeclarationDefinitionSite>() ||
-        siteValue.get<binder::DeclarationDefinitionSite>().node != node) {
-      continue;
-    }
-    if (closure != zc::none) { return zc::none; }
-    closure = definition.identity;
-  }
+  // RFC 0058 Part A: a closure is not a skeleton definition, so it has no row
+  // in bindings().definitions(). Its content-addressed DefId lives on the
+  // separate frozen closure-definition rail keyed at the closure expression
+  // node.
+  closure = input.boundModule.definitions().closureDefinitionAt(node);
   zc::Maybe<binder::AnonymousOwnerLocalKey> closureKey;
   for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
     if (entity.node != node) { continue; }
