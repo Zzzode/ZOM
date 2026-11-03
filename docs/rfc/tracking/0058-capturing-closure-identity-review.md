@@ -24,42 +24,42 @@ Key measured input carried over from RFC 0057 slice 1:
 The DRAFT proposes Part A (closure DefId identity) plus Part B (flagged
 unboxed code/environment pair for `Copy` scalar capture).
 
-### Part A timing constraint (measured)
+### Part A placement (measured and built)
 
-Closure DefIds cannot be interned at skeleton identity materialization:
-`MaterializedModuleSkeletonIdentities::from` sees only module-level
-`skeleton.declarations()` and the `bodyOwners()` keys, while the
-`StableClosureFact`s live inside each owner body's `BoundOwnerBody`, which is
-materialized after the skeleton it depends on. Interning happens in
-`VerifyBoundModule::provide` (fetch interner via
-`context.semanticContextResources<ModuleGraphIdentityMaterializationResources>()`),
-which enumerates every materialized owner body; the DefIds thread into
-`VerifiedBoundModule::from` and then `ImmutableDefinitionInventory::from`.
-The owner-body capability witness encodes only stable evidence, so no
-capability schema change is required: `VerifyBoundModule::verify` re-derives
-the same closure DefIds deterministically and compares.
+Closure DefIds are interned in `VerifyBoundModule::provide`: it fetches the
+interner via
+`context.semanticContextResources<ModuleGraphIdentityMaterializationResources>()`
+and enumerates every materialized owner body. `MaterializedOwnerBody` itself
+cannot intern because its capability witness encodes only stable evidence and
+is produced before the full owner-body set is known.
 
-Implementation shape (function level):
+The closure identities are projected on a **separate frozen rail**
+(`ImmutableDefinitionInventory::closureDefinitions()`), not appended to the
+skeleton `definitions()` vector. `definitions()` is treated by more than forty
+checker/HIR walks as the complete skeleton-definition set, and skeleton
+`identities().definitions()` cannot contain later-phase rows; merging closures
+into it would blur the phase boundary without making `definition(DefId)`
+resolve them. Point lookups cross the rail instead.
+
+Built shape:
 
 1. `closureSyntheticName(path)` builds
-   `"__closure_" + underscore-joined decimal path components` and wraps it in
-   `DeclaredDefinitionName::fromSource`.
-2. For each owner body and each `stableWitness.closures().values()`, read
-   `closure.closure()` (AnonymousOwnerLocalKey). Owners chain: for a Definition
-   owner clone the owner definition record's `record().owners()` and append
-   `EnclosingStableOwnerKey::definition(owner)`; for a Module owner use an empty
-   chain. Build `DefinitionIdentityRecord::from(module, owners, Closure, Value,
-   syntheticName, none)` and `interners.internDefinition`; reject on
-   none/duplicate.
-3. Thread the ordered list (owner-body order then stable closure order) as a
-   new parameter of `VerifiedBoundModule::from` and
-   `ImmutableDefinitionInventory::from`; append one
-   `MaterializedDefinitionInventoryEntry` per closure DefId at the closure
-   expression node (DeclarationDefinitionSite) and extend the
-   `definitions.size() == identities.definitions().size()` gate (~line 175) to
-   `+ closureDefIds.size()`, preserving `definitionNodes` uniqueness.
-4. `VerifyBoundModule::verify` independently rebuilds and requires identity
-   equality. The anonymous key mapping is unchanged for capture facts.
+   `"__closure_" + underscore-joined decimal path components` and validates it
+   as a `DeclaredDefinitionName`.
+2. For each owner body and each stable closure, the owner chain for a
+   Definition owner is cloned from the owner definition record's owners and
+   appended with that owner key; Module owners use an empty chain. The
+   `DefinitionIdentityRecord(Closure, Value, none)` is interned and
+   reverse-validated.
+3. The ordered rows (owner-body order then stable closure order) pass into
+   `VerifiedBoundModule::from` and `ImmutableDefinitionInventory::from` as a
+   dedicated argument. The inventory validates exact count against the sum of
+   `boundOwnerBody.closures()`, node/handle/key uniqueness, that each row is a
+   Closure/Value/header-less record whose key recomputes, and that its node is
+   the `Closure`-role anonymous entity node.
+4. `VerifyBoundModule::verify` independently re-interns and requires identity
+   equality, so the rail is fail-closed. The anonymous-key mapping for capture
+   facts is unchanged.
 
 ## Owner Reviews
 
@@ -82,9 +82,9 @@ captures, escaping closures, callable traits, and generic closures deferred.
 | Part | Change | Status | Verification |
 |---|---|---|---|
 | A0 | Closure Value-namespace header-less identity record admission | Landed (a3a06714) | key-definition-key-test 15; behavior-preserving (no producer yet) |
-| A1 | Intern one closure DefId per StableClosureFact in the owner-body provider (`MaterializeOwnerBody::provide`, fetch `identityInterners` via `semanticContextResources`); synthetic name from `AnonymousOwnerLocalKey.path()` (e.g. `__closure_0_3`); owner chain from `key.owner()` | Next | identity interning ztests (same-source convergence, sibling divergence, duplicate/missing rejection) |
-| A2 | Thread closure DefIds from `VerifyBoundModule::provide` through `VerifiedBoundModule::from` into `ImmutableDefinitionInventory::from`; append Closure `MaterializedDefinitionInventoryEntry` rows at the closure node; extend the ~line 175 size gate by the closure count and keep node uniqueness; verify independently re-derives | Next | materialized-module-skeleton/identity-membership tests, inventory count and node-uniqueness tests |
-| A3 | Re-record corpus IR/process parity and full sanitizer ctest over the new closure definition surface | Next | byte-parity both channels, lit + unittest |
+| A1 | Intern one closure DefId per StableClosureFact in `VerifyBoundModule::provide` (fetch `identityInterners` via `semanticContextResources`); synthetic name from `AnonymousOwnerLocalKey.path()` (`__closure_0_3`); owner chain cloned from the owner definition record for Definition owners, empty for Module owners | Landed (uncommitted) | key-definition-key-test; new `VerifiedModuleInternsOneDefIdPerClosure` (3 closures, Module+Definition owners, both spellings, sibling divergence, point lookups); existing capturing-lambda module binds+verifies end to end |
+| A2 | Project closure DefIds on a separate frozen `closureDefinitions()` rail of `ImmutableDefinitionInventory` (not appended to the skeleton `definitions()` vector, which over 40 checker/HIR walks treat as the complete skeleton-definition set); `closureDefinition(DefId)` / `closureDefinitionAt(node)` point lookups; count + node/handle/key uniqueness + Closure/Value/header-less record validation; `verify` independently re-interns and requires identity equality | Landed (uncommitted) | definition-inventory-test, materialized-module-skeleton-test, active-definition-authority query/session tests; full sanitizer build green |
+| A3 | Re-record corpus IR/process parity and run full sanitizer ctest over the new closure definition rail | In progress | byte-parity both channels, lit + unittest full ctest |
 | B | Flagged unboxed code/environment pair for Copy scalar capture; HIR/MIR/LIR environment lowering; native exit fixture | Proposed - not started | checker/HIR/MIR/LIR ztests, capturing-closure-consumer, conformance pos/neg, parity |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
 | Later | Escaping/boxed closures | Blocked | allocator ABI |

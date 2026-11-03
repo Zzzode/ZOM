@@ -396,7 +396,10 @@ public:
                                                           SkeletonLease&& skeleton,
                                                           identity::SourceFileKey&& source,
                                                           ParsedSourceLease&& parsedSource,
-                                                          zc::Vector<OwnerBodyLease>&& ownerBodies);
+                                                          zc::Vector<OwnerBodyLease>&& ownerBodies,
+                                                          zc::Vector<
+                                                              binder::MaterializedClosureDefinitionEntry>&&
+                                                              closureDefinitions);
   ZC_NODISCARD const incremental_binding_query::CompilationRootSetQueryKey& contextRoots()
       const noexcept;
   ZC_NODISCARD const identity::ModuleKey& module() const noexcept;

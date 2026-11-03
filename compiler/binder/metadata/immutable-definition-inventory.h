@@ -66,6 +66,21 @@ struct MaterializedAnonymousEntityEntry final {
   identity::SourceSpan source;
 };
 
+/// \brief Content-addressed definition identity interned for one anonymous closure.
+///
+/// Closures are not skeleton declarations: their stable facts are visible only after owner
+/// bodies materialize, so their `DefId`s are interned in a later query phase and projected on
+/// this separate, frozen rail rather than appended to the skeleton `definitions()` surface.
+struct MaterializedClosureDefinitionEntry final {
+  ast::NodeId node;
+  DefinitionSite site;
+  identity::DefId definition;
+  identity::DefinitionKey key;
+  identity::DefinitionIdentityRecord record;
+  AnonymousOwnerLocalKey closureKey;
+  identity::SourceSpan source;
+};
+
 /// \brief Materialized authority for one implementation identity.
 struct MaterializedImplAuthorityInventoryEntry final {
   identity::ImplId implementation;
@@ -97,7 +112,8 @@ public:
       zc::ArrayPtr<const CallableParameterFact> callableParameters,
       zc::ArrayPtr<const ImplBindingFact> implementations,
       zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings,
-      zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities);
+      zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities,
+      zc::ArrayPtr<const MaterializedClosureDefinitionEntry> closureDefinitions);
   ZC_NODISCARD ImmutableDefinitionInventory clone() const;
   ZC_NODISCARD identity::SemanticContextBrand semanticContext() const noexcept;
   ZC_NODISCARD query::DatabaseRevision revision() const noexcept;
@@ -132,6 +148,11 @@ public:
   ZC_NODISCARD zc::Maybe<OwnerLocalBindingId> ownerLocalBindingAt(ast::NodeId node) const noexcept;
   ZC_NODISCARD zc::Maybe<const MaterializedAnonymousEntityEntry&> anonymousEntityAt(
       ast::NodeId node, AnonymousOwnerLocalRole role) const noexcept;
+  ZC_NODISCARD zc::ArrayPtr<const MaterializedClosureDefinitionEntry> closureDefinitions()
+      const noexcept;
+  ZC_NODISCARD zc::Maybe<const MaterializedClosureDefinitionEntry&> closureDefinition(
+      identity::DefId handle) const noexcept;
+  ZC_NODISCARD zc::Maybe<identity::DefId> closureDefinitionAt(ast::NodeId node) const noexcept;
   ZC_NODISCARD zc::Maybe<ImplOccurrenceId> implementationAt(ast::NodeId node) const noexcept;
   ZC_NODISCARD zc::Maybe<identity::ImplId> implementationAuthority(
       ImplOccurrenceId occurrence) const noexcept;
@@ -144,7 +165,9 @@ public:
                             zc::ArrayPtr<const CallableParameterFact> callableParameters,
                             zc::ArrayPtr<const ImplBindingFact> implementations,
                             zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings,
-                            zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities) const;
+                            zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities,
+                            zc::ArrayPtr<const MaterializedClosureDefinitionEntry>
+                                closureDefinitions) const;
 
 private:
   struct Impl;

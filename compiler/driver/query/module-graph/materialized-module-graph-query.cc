@@ -22,6 +22,7 @@
 #include "compiler/identity/source/source-snapshot.h"
 #include "compiler/parser/query/parse-source-query.h"
 #include "compiler/source/core-distribution.h"
+#include "zc/core/string.h"
 
 namespace zomlang::compiler {
 namespace {
@@ -7860,6 +7861,91 @@ bool sameBoundModuleLeaseLineage(
   return true;
 }
 
+zc::Maybe<identity::DeclaredDefinitionName> closureSyntheticName(
+    const binder::LocalSyntaxPath& path) {
+  auto text = zc::str("__closure_");
+  const auto components = path.components();
+  for (size_t index = 0; index < components.size(); ++index) {
+    text = zc::str(text.asPtr(), index == 0 ? "" : "_", components[index]);
+  }
+  return identity::DeclaredDefinitionName::fromSource(text.asPtr());
+}
+
+zc::Maybe<binder::MaterializedClosureDefinitionEntry> materializeClosureDefinition(
+    const MaterializedModuleSkeleton& skeleton, identity::IdentityInternerSet& interners,
+    const binder::StableClosureFact& fact, const binder::AnonymousEntityFact& materialized) {
+  const auto context = skeleton.identities().context();
+  zc::Vector<identity::EnclosingStableOwnerKey> owners;
+  const auto& bodyOwner = fact.owner().owner();
+  if (bodyOwner.kind() == binder::StableBodyOwnerKind::Definition) {
+    const auto ownerDefinitionKey = bodyOwner.definitionKey();
+    if (ownerDefinitionKey == zc::none) { return zc::none; }
+    bool foundOwner = false;
+    for (const auto& entry : skeleton.identities().definitions()) {
+      if (entry.key() != ZC_ASSERT_NONNULL(ownerDefinitionKey)) { continue; }
+      foundOwner = true;
+      for (const auto& enclosing : entry.record().owners()) { owners.add(enclosing.clone()); }
+      break;
+    }
+    if (!foundOwner) { return zc::none; }
+    owners.add(identity::EnclosingStableOwnerKey::definition(
+        ZC_ASSERT_NONNULL(ownerDefinitionKey).clone()));
+  }
+  auto name = closureSyntheticName(fact.closure().path());
+  if (name == zc::none) { return zc::none; }
+  auto record = identity::DefinitionIdentityRecord::from(
+      skeleton.identities().stableWitness().module().clone(), zc::mv(owners),
+      identity::DefinitionKind::Closure, identity::DefinitionNamespace::Value,
+      ZC_ASSERT_NONNULL(name).clone(), zc::none);
+  if (record == zc::none) { return zc::none; }
+  const auto key = identity::DefinitionKey::compute(ZC_ASSERT_NONNULL(record));
+  auto interned = interners.internDefinition(context, key, ZC_ASSERT_NONNULL(record));
+  if (!interned.is<identity::DefId>()) { return zc::none; }
+  const auto handle = interned.get<identity::DefId>();
+  const auto reverse = interners.definition(handle);
+  if (reverse == zc::none || !handle.belongsTo(context) ||
+      ZC_ASSERT_NONNULL(reverse).handle() != handle ||
+      ZC_ASSERT_NONNULL(reverse).key() != key ||
+      ZC_ASSERT_NONNULL(reverse).record().encode().asPtr() !=
+          ZC_ASSERT_NONNULL(record).encode().asPtr()) {
+    return zc::none;
+  }
+  return binder::MaterializedClosureDefinitionEntry{
+      materialized.node,
+      materialized.site.clone(),
+      handle,
+      key.clone(),
+      zc::mv(ZC_ASSERT_NONNULL(record)),
+      fact.closure().clone(),
+      materialized.source.clone()};
+}
+
+zc::Maybe<zc::Vector<binder::MaterializedClosureDefinitionEntry>>
+materializeClosureDefinitions(
+    const MaterializedModuleSkeleton& skeleton, identity::IdentityInternerSet& interners,
+    zc::ArrayPtr<const VerifiedBoundModule::OwnerBodyLease> ownerBodies) {
+  zc::Vector<binder::MaterializedClosureDefinitionEntry> result;
+  for (const auto& lease : ownerBodies) {
+    const auto& body = lease.capability();
+    for (const auto& closure : body.stableWitness().closures().values()) {
+      zc::Maybe<const binder::AnonymousEntityFact&> materialized;
+      for (const auto& anonymous : body.materializedAnonymousEntities()) {
+        if (anonymous.key.role() == binder::AnonymousOwnerLocalRole::Closure &&
+            anonymous.key == closure.closure()) {
+          if (materialized != zc::none) { return zc::none; }
+          materialized = anonymous;
+        }
+      }
+      if (materialized == zc::none) { return zc::none; }
+      auto entry = materializeClosureDefinition(
+          skeleton, interners, closure, ZC_ASSERT_NONNULL(materialized));
+      if (entry == zc::none) { return zc::none; }
+      result.add(zc::mv(ZC_ASSERT_NONNULL(entry)));
+    }
+  }
+  return result;
+}
+
 }  // namespace
 
 struct VerifiedBoundModule::Impl final {
@@ -7898,7 +7984,10 @@ zc::Maybe<VerifiedBoundModule> VerifiedBoundModule::from(GraphLease&& graph,
                                                          SkeletonLease&& skeleton,
                                                          identity::SourceFileKey&& source,
                                                          ParsedSourceLease&& parsedSource,
-                                                         zc::Vector<OwnerBodyLease>&& ownerBodies) {
+                                                         zc::Vector<OwnerBodyLease>&& ownerBodies,
+                                                         zc::Vector<
+                                                             binder::MaterializedClosureDefinitionEntry>&&
+                                                             closureDefinitions) {
   if (graph.revision() != graph.capability().revision() ||
       skeleton.revision() != skeleton.capability().revision() ||
       !validBoundModuleLeaseLineage(graph.capability(), skeleton.capability(), source, parsedSource,
@@ -7931,7 +8020,7 @@ zc::Maybe<VerifiedBoundModule> VerifiedBoundModule::from(GraphLease&& graph,
       skeleton.capability().materializedGenericParameters(),
       skeleton.capability().materializedCallableParameters(),
       skeleton.capability().materializedImplementations(), ownerLocalBindings.asPtr(),
-      anonymousEntities.asPtr());
+      anonymousEntities.asPtr(), closureDefinitions.asPtr());
   if (definitions == zc::none) { return zc::none; }
   auto materializedFacts =
       aggregateMaterializedBindingFacts(skeleton.capability(), ownerBodies.asPtr());
@@ -8206,9 +8295,25 @@ query::CapabilityProviderResult<VerifyBoundModule> VerifyBoundModule::provide(
     }
     ownerBodies.add(zc::mv(body).takeLease());
   }
+  auto resources =
+      context.template semanticContextResources<ModuleGraphIdentityMaterializationResources>();
+  if (resources == zc::none ||
+      ZC_ASSERT_NONNULL(resources).semanticContext() !=
+          skeleton.lease().capability().context()) {
+    return BoundModuleProviderResult::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
+  auto closureDefinitions = materializeClosureDefinitions(
+      skeleton.lease().capability(), ZC_ASSERT_NONNULL(resources).identityInterners(),
+      ownerBodies.asPtr());
+  if (closureDefinitions == zc::none) {
+    return BoundModuleProviderResult::runtimeRejected(
+        query::QueryRuntimeFailure::InvariantViolation);
+  }
   auto candidate = VerifiedBoundModule::from(zc::mv(graph).takeLease(),
                                              zc::mv(skeleton).takeLease(), zc::mv(selectedSource),
-                                             zc::mv(parsed).takeLease(), zc::mv(ownerBodies));
+                                             zc::mv(parsed).takeLease(), zc::mv(ownerBodies),
+                                             zc::mv(ZC_ASSERT_NONNULL(closureDefinitions)));
   if (candidate == zc::none) {
     return BoundModuleProviderResult::runtimeRejected(
         query::QueryRuntimeFailure::InvariantViolation);
@@ -8266,13 +8371,25 @@ zc::Maybe<zc::Array<uint8_t>> VerifyBoundModule::verify(
     appendAnonymousEntityFacts(anonymousEntities,
                                ownerBody.capability().materializedAnonymousEntities());
   }
+  auto verifyResources =
+      context.template semanticContextResources<ModuleGraphIdentityMaterializationResources>();
+  if (verifyResources == zc::none ||
+      ZC_ASSERT_NONNULL(verifyResources).semanticContext() !=
+          skeleton.lease().capability().context()) {
+    return zc::none;
+  }
+  auto rederivedClosureDefinitions = materializeClosureDefinitions(
+      skeleton.lease().capability(), ZC_ASSERT_NONNULL(verifyResources).identityInterners(),
+      ownerBodies.asPtr());
+  if (rederivedClosureDefinitions == zc::none) { return zc::none; }
   if (!candidate.definitions().matches(
           skeleton.lease().capability().identities(), stableOwnerBodies.asPtr(),
           skeleton.lease().capability().materializedDefinitions(),
           skeleton.lease().capability().materializedGenericParameters(),
           skeleton.lease().capability().materializedCallableParameters(),
           skeleton.lease().capability().materializedImplementations(), ownerLocalBindings.asPtr(),
-          anonymousEntities.asPtr())) {
+          anonymousEntities.asPtr(),
+          ZC_ASSERT_NONNULL(rederivedClosureDefinitions).asPtr())) {
     return zc::none;
   }
   auto materializedFacts =

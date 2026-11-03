@@ -150,17 +150,26 @@ canonical-scalar-valid synthetic identifier derived from
 `AnonymousOwnerLocalKey.path()` components (for example `__closure_0_3`),
 lowercase/underscore/digit only. It is identity-bearing, never user-facing.
 
-Interning runs during owner-body materialization
-(`MaterializedOwnerBody::from` / `ImmutableDefinitionInventory::from`), which
-already holds the identity interner and the `StableClosureFact`s. One closure
-`DefId` is interned per `StableClosureFact` and merged into the module's
-materialized definition inventory as a `Closure` entry at the closure
-expression node (`DeclarationDefinitionSite`). The dense
-`AnonymousOwnerLocalId` mapping is retained: capture and free-variable facts
-continue to key on the anonymous key, while definition ownership and call
-edges use the `DefId`. The materialized-inventory size assertion is relaxed
-to include closure `DefId`s in deterministic order (owner then
-anonymous-local order).
+Interning runs in `VerifyBoundModule::provide`, the first query phase that
+enumerates every materialized owner body and holds the identity interner.
+`MaterializedOwnerBody` cannot intern: its capability witness encodes only
+stable evidence and is produced before the full owner-body set is known. One
+closure `DefId` is interned per `StableClosureFact`.
+
+The closure `DefId`s are projected on a **separate frozen rail**,
+`ImmutableDefinitionInventory::closureDefinitions()`, rather than appended to
+the skeleton `definitions()` surface. Closures are not skeleton declarations
+(their facts exist only after owner bodies materialize), and `definitions()`
+is iterated as the complete skeleton-definition set by more than forty checker
+and HIR walks; folding later-phase rows into that vector would both blur the
+phase boundary and perturb those consumers. Point resolution
+(`closureDefinition(DefId)`, `closureDefinitionAt(node)`) is served from the
+rail on the same frozen inventory. The dense `AnonymousOwnerLocalId` mapping is
+retained: capture and free-variable facts continue to key on the anonymous
+key, while definition ownership and call edges use the `DefId`. The rail is
+validated in deterministic owner-body then closure order, and
+`VerifyBoundModule::verify` independently re-interns and requires identity
+equality, so the closure identity surface is fail-closed.
 
 ### Part B: non-escaping by-value scalar capture
 
@@ -194,8 +203,9 @@ a symbol, as for the non-capturing slice.
 
 1. Identity determinism: identical closure source interns the same `DefId`;
    distinct sibling sites intern distinct `DefId`s.
-2. Exactly one `DefId` per closure expression; duplicate or missing
-   interning rejects the owner-body capability.
+2. Exactly one `DefId` per closure expression; a duplicate, missing, or
+   non-re-derivable closure identity fails closed: the module does not publish
+   a `VerifiedBoundModule`.
 3. Capture-set agreement across checker facts, closure value, and
    environment layout (canonical field order).
 4. Mode gate: only `Copy` scalar carriers lower; `Move`/`MutableReference`/
@@ -210,7 +220,7 @@ a symbol, as for the non-capturing slice.
 | Area | Paths | Owner |
 |---|---|---|
 | Identity | `compiler/identity/key/definition-key.cc` (admit Closure in Value namespace, header-less), identity interner and canonical codec round-trip coverage | `binder-checker` |
-| Binder/driver materialization | `compiler/binder/metadata/definition-inventory.cc`, `binder/graph/materialized-module-skeleton.cc`, `driver/query/module-graph/materialized-module-graph-query.cc` (intern closure DefIds from owner bodies, merge into definition inventory, relax size assertion, deterministic order) | `binder-checker` |
+| Binder/driver materialization | `compiler/binder/metadata/immutable-definition-inventory.{h,cc}` (separate frozen `closureDefinitions()` rail, accessors, count and uniqueness validation), `driver/query/module-graph/materialized-module-graph-query.{h,cc}` (intern one closure DefId per stable closure in `VerifyBoundModule::provide`, deterministic owner/closure order, independent re-derivation in `verify`) | `binder-checker` |
 | Checker | `compiler/checker/body/body-checker.cc` (capture mode gate, capture-set production), `compiler/checker/inference/checked-facts.h` capture fact consumption, `compiler/checker/facts/signature-facts.cc` | `binder-checker` |
 | Feature boundary | compiler-session feature flag plumbing, default-off capturing-closure gate | `ir-backend` |
 | HIR | `compiler/hir/build/hir-shape.cc`, `hir-builder.cc`, `hir-module.cc`, `build/` (environment parameter, field projection, implicit context argument, independent verification) | `ir-backend` |
@@ -228,17 +238,18 @@ exists, and every layer independently verifies the capture set, so a
 mismatch cannot silently read the wrong slot. The environment pointer is
 always frame-relative in this slice and never escapes, eliminating dangling
 environment risk by construction; escape is rejected rather than promoted.
-Implementing identity interning wrong could merge two closure sites and
-mislink a call, which is why Part A requires deterministic synthetic names,
-one-DefId-per-site checks, and canonical codec round-trip tests. No raw
-pointer FFI, concurrency, or sandbox boundary changes.
+No raw pointer FFI, concurrency, or sandbox boundary changes.
 
 ## Drawbacks And Risks
 
-- Extending the stable definition domain changes identity materialization
-  counts and canonical encodings; a mistake in synthetic-name derivation or
-  ordering can invalidate stable witnesses. Mitigated by content-addressed
-  syntax-path names, deterministic ordering, and codec/count tests.
+- Extending the stable definition domain with a later-phase identity rail can
+  merge two closure sites and mislink a call if synthetic-name derivation or
+  ordering is wrong. Because closure `DefId`s are interned in
+  `VerifyBoundModule::provide` on a separate rail, the skeleton identity
+  counts and stable witnesses are unchanged; divergence is contained by
+  content-addressed syntax-path names, deterministic owner/closure order,
+  one-DefId-per-site validation, independent re-internment in `verify`, and
+  codec round-trip tests.
 - Splitting identity between the anonymous key and the new `DefId` adds a
   mapping every capture consumer must respect. Mitigated by keeping capture
   facts on the anonymous key and reserving the `DefId` for ownership/calls.
@@ -308,9 +319,12 @@ without changing default behavior.
 
 ## Implementation Plan
 
-1. Part A identity: namespace/record admission; synthetic name helper;
-   owner-body interning and inventory merge; size/order assertion updates;
-   identity and stable-witness tests.
+1. Part A identity: namespace/record admission (landed, a3a06714); synthetic
+   name helper (`__closure_` plus underscore-joined syntax-path components);
+   one closure `DefId` per stable closure interned in
+   `VerifyBoundModule::provide`; separate frozen `closureDefinitions()` rail
+   with count, node/handle/key uniqueness and record validation; independent
+   re-internment in `verify`; identity, inventory, and bound-module tests.
 2. Part B capture producer: checker mode gate and capture-set production
    behind the flag; capture-set agreement facts.
 3. Part B lowering: HIR environment parameter and projection; MIR closure
@@ -351,8 +365,10 @@ without changing default behavior.
 - Whether the environment pair gets a dedicated structural type tag now or
   only when slice 1.5 materializes it as a value, decided to minimize the new
   rvalue surface.
-- Synthetic-name format final spelling (path join convention), fixed before
-  Part A identity fixtures are recorded.
+
+The synthetic-name spelling is fixed: `__closure_` followed by the
+underscore-joined decimal syntax-path components (for example
+`__closure_0_3`).
 
 ## Status History
 

@@ -119,6 +119,7 @@ struct ImmutableDefinitionInventory::Impl final {
        zc::Vector<MaterializedCallableParameterInventoryEntry>&& callableParameters,
        zc::Vector<MaterializedOwnerLocalBindingInventoryEntry>&& ownerLocalBindings,
        zc::Vector<MaterializedAnonymousEntityEntry>&& anonymousEntities,
+       zc::Vector<MaterializedClosureDefinitionEntry>&& closureDefinitions,
        zc::Vector<MaterializedImplAuthorityInventoryEntry>&& implAuthorities,
        zc::Vector<MaterializedImplOccurrenceInventoryEntry>&& impls,
        zc::Vector<ImplementationOccurrenceEntry>&& implementations) noexcept
@@ -133,6 +134,7 @@ struct ImmutableDefinitionInventory::Impl final {
         callableParameters(zc::mv(callableParameters)),
         ownerLocalBindings(zc::mv(ownerLocalBindings)),
         anonymousEntities(zc::mv(anonymousEntities)),
+        closureDefinitions(zc::mv(closureDefinitions)),
         implAuthorities(zc::mv(implAuthorities)),
         impls(zc::mv(impls)),
         implementations(zc::mv(implementations)) {}
@@ -148,6 +150,7 @@ struct ImmutableDefinitionInventory::Impl final {
   zc::Vector<MaterializedCallableParameterInventoryEntry> callableParameters;
   zc::Vector<MaterializedOwnerLocalBindingInventoryEntry> ownerLocalBindings;
   zc::Vector<MaterializedAnonymousEntityEntry> anonymousEntities;
+  zc::Vector<MaterializedClosureDefinitionEntry> closureDefinitions;
   zc::Vector<MaterializedImplAuthorityInventoryEntry> implAuthorities;
   zc::Vector<MaterializedImplOccurrenceInventoryEntry> impls;
   zc::Vector<ImplementationOccurrenceEntry> implementations;
@@ -168,7 +171,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
     zc::ArrayPtr<const CallableParameterFact> callableParameters,
     zc::ArrayPtr<const ImplBindingFact> implementations,
     zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings,
-    zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities) {
+    zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities,
+    zc::ArrayPtr<const MaterializedClosureDefinitionEntry> closureDefinitions) {
   if (!identities.context().isValid() || identities.revision().value() == 0 ||
       !identities.module().belongsTo(identities.context()) ||
       !exactOwnerCoverage(identities, ownerBodies.asPtr()) ||
@@ -303,6 +307,52 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
         fact.node, fact.site.clone(), fact.identity, fact.key.clone(), fact.source.clone()});
   }
 
+  size_t expectedClosureDefinitions = 0;
+  for (const auto& body : ownerBodies) {
+    expectedClosureDefinitions += body.closures().values().size();
+  }
+  if (closureDefinitions.size() != expectedClosureDefinitions) { return zc::none; }
+  zc::Vector<MaterializedClosureDefinitionEntry> closureEntries(closureDefinitions.size());
+  size_t closureIndex = 0;
+  for (const auto& body : ownerBodies) {
+    for (const auto& stable : body.closures().values()) {
+      if (closureIndex >= closureDefinitions.size()) { return zc::none; }
+      const auto& supplied = closureDefinitions[closureIndex++];
+      if (supplied.closureKey != stable.closure() || !supplied.definition.isValid() ||
+          !supplied.definition.belongsTo(identities.context()) ||
+          supplied.record.kind() != identity::DefinitionKind::Closure ||
+          supplied.record.nameSpace() != identity::DefinitionNamespace::Value ||
+          supplied.record.overloadHeader() != zc::none ||
+          !(identity::DefinitionKey::compute(supplied.record) == supplied.key)) {
+        return zc::none;
+      }
+      zc::Maybe<ast::NodeId> closureNode;
+      for (const auto& anonymous : anonymousEntries) {
+        if (anonymous.key.role() == AnonymousOwnerLocalRole::Closure &&
+            anonymous.key == supplied.closureKey) {
+          if (closureNode != zc::none) { return zc::none; }
+          closureNode = anonymous.node;
+        }
+      }
+      const auto declaredNode = declarationNode(supplied.site);
+      if (closureNode == zc::none || declaredNode == zc::none ||
+          ZC_ASSERT_NONNULL(closureNode) != supplied.node ||
+          ZC_ASSERT_NONNULL(declaredNode) != supplied.node) {
+        return zc::none;
+      }
+      for (const auto& accepted : closureEntries) {
+        if (accepted.node == supplied.node || accepted.definition == supplied.definition ||
+            accepted.key == supplied.key) {
+          return zc::none;
+        }
+      }
+      closureEntries.add(MaterializedClosureDefinitionEntry{
+          supplied.node, supplied.site.clone(), supplied.definition, supplied.key.clone(),
+          supplied.record.clone(), supplied.closureKey.clone(), supplied.source.clone()});
+    }
+  }
+  if (closureIndex != closureDefinitions.size()) { return zc::none; }
+
   zc::Vector<ImplementationOccurrenceEntry> implementationEntries(implementations.size());
   zc::Vector<MaterializedImplAuthorityInventoryEntry> implAuthorityEntries(
       identities.implementations().size());
@@ -336,8 +386,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
       zc::mv(identities), zc::mv(ownerBodies), zc::mv(definitionNodes),
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
       zc::mv(definitionEntries), zc::mv(genericParameterEntries), zc::mv(callableParameterEntries),
-      zc::mv(ownerLocalEntries), zc::mv(anonymousEntries), zc::mv(implAuthorityEntries),
-      zc::mv(implEntries), zc::mv(implementationEntries)));
+      zc::mv(ownerLocalEntries), zc::mv(anonymousEntries), zc::mv(closureEntries),
+      zc::mv(implAuthorityEntries), zc::mv(implEntries), zc::mv(implementationEntries)));
 }
 
 ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
@@ -375,6 +425,12 @@ ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
     anonymousEntities.add(MaterializedAnonymousEntityEntry{
         entry.node, entry.site.clone(), entry.entity, entry.key.clone(), entry.source.clone()});
   }
+  zc::Vector<MaterializedClosureDefinitionEntry> closureDefinitions;
+  for (const auto& entry : impl->closureDefinitions) {
+    closureDefinitions.add(MaterializedClosureDefinitionEntry{
+        entry.node, entry.site.clone(), entry.definition, entry.key.clone(), entry.record.clone(),
+        entry.closureKey.clone(), entry.source.clone()});
+  }
   zc::Vector<MaterializedImplAuthorityInventoryEntry> implAuthorities;
   for (const auto& entry : impl->implAuthorities) {
     implAuthorities.add(MaterializedImplAuthorityInventoryEntry{
@@ -394,8 +450,8 @@ ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
       impl->identities.clone(), zc::mv(ownerBodies), zc::mv(definitionNodes),
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
       zc::mv(definitions), zc::mv(genericParameters), zc::mv(callableParameters),
-      zc::mv(ownerLocalBindings), zc::mv(anonymousEntities), zc::mv(implAuthorities), zc::mv(impls),
-      zc::mv(implementations)));
+      zc::mv(ownerLocalBindings), zc::mv(anonymousEntities), zc::mv(closureDefinitions),
+      zc::mv(implAuthorities), zc::mv(impls), zc::mv(implementations)));
 }
 
 identity::SemanticContextBrand ImmutableDefinitionInventory::semanticContext() const noexcept {
@@ -524,6 +580,27 @@ ImmutableDefinitionInventory::anonymousEntities() const noexcept {
   return impl->anonymousEntities.asPtr();
 }
 
+zc::ArrayPtr<const MaterializedClosureDefinitionEntry>
+ImmutableDefinitionInventory::closureDefinitions() const noexcept {
+  return impl->closureDefinitions.asPtr();
+}
+
+zc::Maybe<const MaterializedClosureDefinitionEntry&>
+ImmutableDefinitionInventory::closureDefinition(identity::DefId handle) const noexcept {
+  for (const auto& entry : impl->closureDefinitions) {
+    if (entry.definition == handle) { return entry; }
+  }
+  return zc::none;
+}
+
+zc::Maybe<identity::DefId> ImmutableDefinitionInventory::closureDefinitionAt(
+    ast::NodeId node) const noexcept {
+  for (const auto& entry : impl->closureDefinitions) {
+    if (entry.node == node) { return entry.definition; }
+  }
+  return zc::none;
+}
+
 bool ImmutableDefinitionInventory::matches(
     const MaterializedModuleSkeletonIdentities& source,
     zc::ArrayPtr<const BoundOwnerBody> sourceOwnerBodies,
@@ -532,7 +609,8 @@ bool ImmutableDefinitionInventory::matches(
     zc::ArrayPtr<const CallableParameterFact> callableParameters,
     zc::ArrayPtr<const ImplBindingFact> implementations,
     zc::ArrayPtr<const OwnerLocalBindingFact> ownerLocalBindings,
-    zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities) const {
+    zc::ArrayPtr<const AnonymousEntityFact> anonymousEntities,
+    zc::ArrayPtr<const MaterializedClosureDefinitionEntry> closureDefinitions) const {
   if (semanticContext() != source.context() || revision() != source.revision() ||
       fingerprint().digest() != source.fingerprint().digest() || module() != source.module() ||
       !sameEntries(identities().definitions(), source.definitions()) ||
@@ -545,6 +623,7 @@ bool ImmutableDefinitionInventory::matches(
       impl->callableParameterNodes.size() != callableParameters.size() ||
       impl->ownerLocalBindingNodes.size() != ownerLocalBindings.size() ||
       impl->anonymousEntities.size() != anonymousEntities.size() ||
+      impl->closureDefinitions.size() != closureDefinitions.size() ||
       impl->implementations.size() != implementations.size()) {
     return false;
   }
@@ -578,6 +657,17 @@ bool ImmutableDefinitionInventory::matches(
         ZC_ASSERT_NONNULL(entry).key != fact.key ||
         !sameDefinitionSite(ZC_ASSERT_NONNULL(entry).site, fact.site) ||
         !sameSourceSpan(ZC_ASSERT_NONNULL(entry).source, fact.source)) {
+      return false;
+    }
+  }
+  for (size_t index = 0; index < closureDefinitions.size(); ++index) {
+    const auto& stored = impl->closureDefinitions[index];
+    const auto& rederived = closureDefinitions[index];
+    if (stored.definition != rederived.definition || stored.node != rederived.node ||
+        stored.key != rederived.key || stored.closureKey != rederived.closureKey ||
+        stored.record.encode().asPtr() != rederived.record.encode().asPtr() ||
+        !sameDefinitionSite(stored.site, rederived.site) ||
+        !sameSourceSpan(stored.source, rederived.source)) {
       return false;
     }
   }

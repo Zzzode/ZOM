@@ -1671,6 +1671,53 @@ ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyMaterializesFunctionExpressi
   ZC_EXPECT(runtime.variables[0].referenceSites.size() == 1);
 }
 
+ZC_TEST("MaterializedBindingCapabilityTest.VerifiedModuleInternsOneDefIdPerClosure") {
+  auto database = queryDatabase(scheduler());
+  ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
+  ContextualIdentityAuthorityInputLedger state;
+  auto roots = packageRoots();
+  stageBaseInputs(state, database,
+                  "module root;\n"
+                  "let first = () => 1;\n"
+                  "let second = fn () { 2; };\n"
+                  "fn host() -> i32 { let nested = () => 4; return 0; }\n"_zc);
+  ZC_REQUIRE(commitAuthority(state, database, roots));
+  auto sealed = sealDatabase(database, roots);
+  auto key = ContextualModuleKey::from(roots.clone(), semanticModule());
+  auto verified = sealed.getCapability<graph_query::VerifyBoundModule>(zc::mv(key));
+  ZC_REQUIRE(verified.isPublished());
+  const auto& inventory = verified.lease().capability().definitions();
+  const auto closures = inventory.closureDefinitions();
+  ZC_REQUIRE(closures.size() == 3);
+
+  size_t moduleOwned = 0;
+  size_t definitionOwned = 0;
+  for (const auto& entry : closures) {
+    ZC_EXPECT(entry.definition.isValid());
+    ZC_EXPECT(entry.definition.belongsTo(inventory.semanticContext()));
+    ZC_EXPECT(entry.record.kind() == identity::DefinitionKind::Closure);
+    ZC_EXPECT(entry.record.nameSpace() == identity::DefinitionNamespace::Value);
+    ZC_EXPECT(entry.record.overloadHeader() == zc::none);
+    ZC_EXPECT(entry.record.name().size() >= 10);
+    ZC_EXPECT(entry.record.name().asBytes().slice(0, 10) == "__closure_"_zc.asBytes());
+    ZC_EXPECT(inventory.closureDefinition(entry.definition) != zc::none);
+    ZC_EXPECT(inventory.closureDefinitionAt(entry.node) == entry.definition);
+    ZC_EXPECT(entry.closureKey.role() == binder::AnonymousOwnerLocalRole::Closure);
+    if (entry.record.owners().size() == 0) {
+      ++moduleOwned;
+    } else {
+      ++definitionOwned;
+    }
+  }
+  ZC_EXPECT(moduleOwned == 2);
+  ZC_EXPECT(definitionOwned == 1);
+
+  // Sibling closures at distinct paths intern distinct content-addressed DefIds.
+  ZC_EXPECT(closures[0].definition != closures[1].definition);
+  ZC_EXPECT(closures[0].key != closures[1].key);
+  ZC_EXPECT(closures[0].closureKey != closures[1].closureKey);
+}
+
 ZC_TEST("MaterializedBindingCapabilityTest.OwnerBodyProjectsExplicitClosureCaptures") {
   auto database = queryDatabase(scheduler());
   ZC_REQUIRE(registerIncrementalBindingQueryAdapter(database));
@@ -2422,13 +2469,15 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
   zc::Vector<binder::BoundOwnerBody> missingDefinitionBodies;
   zc::Vector<binder::OwnerLocalBindingFact> missingOwnerLocalBindings;
   zc::Vector<binder::AnonymousEntityFact> missingAnonymousEntities;
+  zc::ArrayPtr<const binder::MaterializedClosureDefinitionEntry> missingClosureDefinitions;
   auto incompleteDefinitions = binder::ImmutableDefinitionInventory::from(
       capability.definitions().identities().clone(), zc::mv(missingDefinitionBodies),
       capability.skeletonLease().capability().materializedDefinitions(),
       capability.skeletonLease().capability().materializedGenericParameters(),
       capability.skeletonLease().capability().materializedCallableParameters(),
       capability.skeletonLease().capability().materializedImplementations(),
-      missingOwnerLocalBindings.asPtr(), missingAnonymousEntities.asPtr());
+      missingOwnerLocalBindings.asPtr(), missingAnonymousEntities.asPtr(),
+      missingClosureDefinitions);
   ZC_EXPECT(incompleteDefinitions == zc::none);
   zc::Vector<binder::BoundOwnerBody> missingBindingBodies;
   const binder::MaterializedBindingFacts emptyBindingFacts{};
@@ -2438,9 +2487,11 @@ ZC_TEST("VerifiedBoundModuleCapabilityTest.RejectsChildFailureAndLeaseLineageMut
   ZC_EXPECT(incompleteBindings == zc::none);
 
   zc::Vector<graph_query::VerifiedBoundModule::OwnerBodyLease> missingOwners;
+  zc::Vector<binder::MaterializedClosureDefinitionEntry> missingClosureDefinitionEntries;
   auto invalidCandidate = graph_query::VerifiedBoundModule::from(
       capability.graphLease().retain(), capability.skeletonLease().retain(),
-      capability.source().clone(), capability.parsedSourceLease().retain(), zc::mv(missingOwners));
+      capability.source().clone(), capability.parsedSourceLease().retain(), zc::mv(missingOwners),
+      zc::mv(missingClosureDefinitionEntries));
   ZC_EXPECT(invalidCandidate == zc::none);
 
   auto foreignKey = ContextualModuleKey::from(roots.clone(), namedSemanticModule("foreign"_zc));
