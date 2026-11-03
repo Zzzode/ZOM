@@ -24,6 +24,19 @@ Key measured input carried over from RFC 0057 slice 1:
 The DRAFT proposes Part A (closure DefId identity) plus Part B (flagged
 unboxed code/environment pair for `Copy` scalar capture).
 
+### Part A timing constraint (measured)
+
+Closure DefIds cannot be interned at skeleton identity materialization:
+`MaterializedModuleSkeletonIdentities::from` sees only module-level
+`skeleton.declarations()` and the `bodyOwners()` keys, while the
+`StableClosureFact`s live inside each owner body's `BoundOwnerBody`, which is
+materialized after the skeleton it depends on. Interning therefore happens in
+`MaterializeOwnerBody::provide` / `MaterializedOwnerBody::from` (which can
+fetch `identityInterners` through
+`context.semanticContextResources<ModuleGraphIdentityMaterializationResources>()`,
+the same pattern as the skeleton provider), and the resulting DefIds flow into
+the module inventory at `VerifiedBoundModule::from`.
+
 ## Owner Reviews
 
 | Owner | Decision | Date |
@@ -44,7 +57,10 @@ captures, escaping closures, callable traits, and generic closures deferred.
 
 | Part | Change | Status | Verification |
 |---|---|---|---|
-| A | Closure content-addressed DefId (namespace/record admission, owner-body interning, inventory merge) | Proposed - not started | identity ztests, stable-witness codec, schema counts, full sanitizer ctest |
+| A0 | Closure Value-namespace header-less identity record admission | Landed (a3a06714) | key-definition-key-test 15; behavior-preserving (no producer yet) |
+| A1 | Intern one closure DefId per StableClosureFact in the owner-body provider (`MaterializeOwnerBody::provide`, fetch `identityInterners` via `semanticContextResources`); synthetic name from `AnonymousOwnerLocalKey.path()` (e.g. `__closure_0_3`); owner chain from `key.owner()` | Next | identity interning ztests (same-source convergence, sibling divergence, duplicate/missing rejection) |
+| A2 | Carry closure DefIds on the MaterializedOwnerBody capability (canonical schema), merge into `ImmutableDefinitionInventory` Closure entries at `VerifiedBoundModule::from`; relax/extend the definitions size and order assertions (owner then anonymous-local order); retain AnonymousOwnerLocalId mapping for capture facts | Next | stable-witness codec, materialized-module-skeleton/identity-membership tests, schema counts |
+| A3 | Re-record corpus IR/process parity and full sanitizer ctest over the new closure definition surface | Next | byte-parity both channels, lit + unittest |
 | B | Flagged unboxed code/environment pair for Copy scalar capture; HIR/MIR/LIR environment lowering; native exit fixture | Proposed - not started | checker/HIR/MIR/LIR ztests, capturing-closure-consumer, conformance pos/neg, parity |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
 | Later | Escaping/boxed closures | Blocked | allocator ABI |
