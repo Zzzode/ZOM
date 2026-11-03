@@ -819,7 +819,11 @@ bool isSignatureBearingDefinition(identity::DefinitionKind kind) {
     case identity::DefinitionKind::Local:
     case identity::DefinitionKind::PatternBinding:
     case identity::DefinitionKind::Closure:
-      return false;
+      // RFC 0057 slice 1: a non-capturing annotated closure publishes the same
+      // callable signature as a function from its lambda parameters and return
+      // type. The zero-capture admission gate stays in the body checker; a
+      // capturing closure is still rejected there regardless of its signature.
+      return true;
   }
   ZC_UNREACHABLE
 }
@@ -1010,6 +1014,13 @@ bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
       raisesType = ast::NodeId(syntax.payload.words[ast::kDestructorDeclRaisesTyWord]);
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
+  } else if (definitionKind == identity::DefinitionKind::Closure &&
+             syntax.kind == ast::SyntaxKind::LambdaExpression) {
+    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRaisesTyWord]))) {
+      raisesType = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRaisesTyWord]);
+    }
+    parameters = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionParamsIdWord]);
+    returnType = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRetTyWord]);
   } else {
     return false;
   }

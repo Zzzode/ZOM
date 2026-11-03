@@ -273,6 +273,7 @@ bool ownsExecutableBody(identity::DefinitionKind kind) noexcept {
     case identity::DefinitionKind::Method:
     case identity::DefinitionKind::Constructor:
     case identity::DefinitionKind::Destructor:
+    case identity::DefinitionKind::Closure:
       return true;
     default:
       return false;
