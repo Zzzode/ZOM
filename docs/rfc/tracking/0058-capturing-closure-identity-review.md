@@ -188,6 +188,58 @@ producer change was required for the block-body slice; `zomc run` exits 42.
 Expression-body lambdas, IIFE, defined-but-uncalled closures, parameters,
 captures, and generics keep the ZOM4099 capability drain.
 
+### Part B0-3 step 3 design — expression-body lambda closure (AWAITING APPROVAL)
+
+Scope: admit the zero-capture paren-arrow lambda whose body is a single
+scalar-literal expression, `let f = () -> i32 => 42; return f();`, so it runs
+natively and exits with the literal value. The step-2 block-body
+function-expression path is unchanged; block-body lambdas
+(`() -> i32 => { return 42; }`), IIFE, defined-but-uncalled closures,
+parameters, captures, and generics stay on the ZOM4099 drain.
+
+Problem: an expression-body lambda anchors no source BlockStmt or ReturnStmt;
+its body is the single expression at `kLambdaExpressionBodyWord` (grammar:
+`LambdaExpression ::= OrdinaryParameterClause ReturnType? '=>'
+(AssignmentExpression | BlockStatement)`). `functionReturnShape` requires a
+block body, so the step-2 pass rejects the spelling. The checker already
+publishes its zero-capture CallableSignature (B0-2) and a literal fact for the
+body expression; only the HIR shape is missing.
+
+Producer shape: the same dedicated closure pass gains a LambdaExpression arm
+alongside the FunctionExpression arm. It reads the body word directly, admits
+it only when the body node is a scalar literal, and appends a
+ScalarLiteralReturn pending declaration whose block/return anchors are
+sentinel `ast::NodeId()` (the materializer and per-node correspondence
+validator already support source-less HIR nodes; destructors use the same
+convention) and whose value anchor is the body expression. HIR layout stays
+four nodes (function F, block F+1, return F+2, literal F+3), so MIR and LIR
+need no change, as in step 2. Span convention: the synthetic block and return
+spans use the closure source span; the value span is the body-expression span
+and is checked against the literal fact. The verifier closure branch gains the
+mirror arm: LambdaExpression accepted as a function source node, body word
+required to be a scalar literal, and the two source-less anchors allowed with
+the closure-source span convention. The alias-call side is unchanged (the
+closure-alias shape and `resolveClosureAliasCallee` already accept both
+spellings).
+
+Invariants:
+1. Exactly one HIR function per admitted lambda DefId; any spelling the arm
+   excludes produces zero functions and keeps the capability drain.
+2. Admission predicate is strict: zero parameters, annotated return, no
+   raises/generics/capture (the B0-2 signature gate), and a body that is
+   itself one scalar literal (`=> 40 + 2`, calls, references, blocks drain).
+3. Call-target to function-set reconciliation stays fail-closed; programs
+   without expression-body lambdas are unchanged.
+
+Tests: replace the step-2 lambda drain ztest with a positive
+HIR/MIR/native test for both spellings (two functions, one direct call, zero
+locals); keep one negative ztest for a non-admitted lambda (one-parameter
+`(x: i32) -> i32 => x`) asserting ZOM4099 and zero incidents; native `zomc
+run` exit 42 for the lambda; full sanitizer ctest.
+
+Rollback: one local commit deleting the lambda arm restores the step-2 state
+(lambda ZOM4099) with no effect on the function-expression slice.
+
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
 | B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
