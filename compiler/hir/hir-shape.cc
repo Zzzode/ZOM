@@ -2196,12 +2196,17 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                                                    const ast::Node& function) {
   const bool isMethod = function.kind == ast::SyntaxKind::MethodDecl;
   const bool isDestructor = function.kind == ast::SyntaxKind::DestructorDecl;
-  if (function.kind != ast::SyntaxKind::FunctionDecl && !isMethod && !isDestructor) {
+  const bool isLambdaClosure = function.kind == ast::SyntaxKind::LambdaExpression;
+  const bool isFunctionExpressionClosure = function.kind == ast::SyntaxKind::FunctionExpression;
+  const bool isClosure = isLambdaClosure || isFunctionExpressionClosure;
+  if (function.kind != ast::SyntaxKind::FunctionDecl && !isMethod && !isDestructor && !isClosure) {
     return zc::none;
   }
-  const auto bodyWord = isDestructor ? ast::kDestructorDeclBodyWord
-                        : isMethod   ? ast::kMethodDeclBodyWord
-                                     : ast::kFunctionDeclBodyWord;
+  const auto bodyWord = isDestructor                  ? ast::kDestructorDeclBodyWord
+                        : isMethod                    ? ast::kMethodDeclBodyWord
+                        : isLambdaClosure             ? ast::kLambdaExpressionBodyWord
+                        : isFunctionExpressionClosure ? ast::kFunctionExpressionBodyWord
+                                                      : ast::kFunctionDeclBodyWord;
   ast::NodeId body(function.payload.words[bodyWord]);
   if (!tree.contains(body) || tree.node(body).kind != ast::SyntaxKind::BlockStmt) return zc::none;
   // A function body whose sole statement is a nested block is classified
@@ -2930,6 +2935,58 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
                 }
               }
             }
+          }
+        }
+      }
+    }
+  }
+  // Closure-alias call shape: a leading `let f = fn(..) { .. };` (or
+  // paren-arrow lambda) alias for a zero-capture closure followed by
+  // `return f(args);`. The alias is read-only name resolution: it has no HIR
+  // slot and no initializer node, so the lowered body is just a direct call to
+  // the anonymous closure definition. Structural shape only; the checker gates
+  // the zero-capture requirement, the full annotation, the argument types, and
+  // the admitted carrier set.
+  if (statements.size == 2) {
+    auto aliasItem = statementItem(tree, tree.list(statements)[0]);
+    if (aliasItem != zc::none) {
+      ast::NodeId aliasLet;
+      ZC_IF_SOME(item, aliasItem) { aliasLet = item; }
+      auto aliasDeclarator = localDeclarator(tree, aliasLet);
+      if (aliasDeclarator != zc::none && tree.node(aliasLet).kind == ast::SyntaxKind::LetStmt &&
+          static_cast<ast::BindingDeclarationKind>(
+              tree.node(aliasLet).payload.words[ast::kLetStmtKindWord]) ==
+              ast::BindingDeclarationKind::Let) {
+        ast::NodeId declarator;
+        ZC_IF_SOME(item, aliasDeclarator) { declarator = item; }
+        const ast::NodeId aliasPattern(
+            tree.node(declarator).payload.words[ast::kVariableDeclaratorPatternWord]);
+        const ast::NodeId aliasInitializer(
+            tree.node(declarator).payload.words[ast::kVariableDeclaratorInitWord]);
+        if (tree.contains(aliasPattern) &&
+            tree.node(aliasPattern).kind == ast::SyntaxKind::IdentifierPattern &&
+            tree.contains(aliasInitializer) &&
+            (tree.node(aliasInitializer).kind == ast::SyntaxKind::FunctionExpression ||
+             tree.node(aliasInitializer).kind == ast::SyntaxKind::LambdaExpression) &&
+            tree.node(value).kind == ast::SyntaxKind::CallExpression) {
+          const ast::NodeId callCallee(
+              tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+          const ast::NodeList callTypeArguments{
+              tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+              tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+          if (tree.contains(callCallee) &&
+              tree.node(callCallee).kind == ast::SyntaxKind::IdentExpr &&
+              tree.contains(callTypeArguments) && callTypeArguments.empty() &&
+              matchesLocalReference(tree, aliasPattern, callCallee)) {
+            FunctionReturnShape shape{};
+            shape.body = body;
+            shape.returnStatement = returnNode;
+            shape.value = value;
+            shape.returnsClosureAliasCall = true;
+            shape.closureAliasLet = aliasLet;
+            shape.closureAliasPattern = aliasPattern;
+            shape.closureAliasInitializer = aliasInitializer;
+            return shape;
           }
         }
       }

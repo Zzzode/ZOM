@@ -5301,23 +5301,37 @@ struct ClosureValueShape final {
 /// closure DefId whose published signature supplies the function type.
 zc::Maybe<ClosureValueShape> closureValueShape(const BodyCheckingInput& input, ast::NodeId node) {
   const auto& tree = input.boundModule.tree();
-  if (!tree.contains(node) || tree.node(node).kind != ast::SyntaxKind::LambdaExpression) {
+  if (!tree.contains(node) || (tree.node(node).kind != ast::SyntaxKind::LambdaExpression &&
+                               tree.node(node).kind != ast::SyntaxKind::FunctionExpression)) {
     return zc::none;
   }
-  const auto& lambda = tree.node(node);
-  if (tree.contains(ast::NodeId(lambda.payload.words[ast::kLambdaExpressionRaisesTyWord]))) {
+  const auto& closureExpr = tree.node(node);
+  const bool isFunctionExpression = closureExpr.kind == ast::SyntaxKind::FunctionExpression;
+  // A `fn` function expression may carry generic parameters or an explicit
+  // capture clause, both outside slice 1. The paren-arrow lambda has neither
+  // slot. Generic parameters also arrive through the published signature
+  // below; rejecting present slots here keeps the later check a defense in
+  // depth rather than the only gate.
+  if (isFunctionExpression &&
+      (tree.contains(
+           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
+       tree.contains(
+           ast::NodeId(closureExpr.payload.words[ast::kFunctionExpressionCapturesIdWord])))) {
     return zc::none;
   }
+  const auto raisesWord = isFunctionExpression ? ast::kFunctionExpressionRaisesTyWord
+                                               : ast::kLambdaExpressionRaisesTyWord;
+  if (tree.contains(ast::NodeId(closureExpr.payload.words[raisesWord]))) { return zc::none; }
   zc::Maybe<identity::DefId> closure;
-  for (const auto& definition : input.boundModule.definitions().definitions()) {
-    if (definition.record.kind() != identity::DefinitionKind::Closure) { continue; }
+  for (const auto& definition : input.boundModule.bindings().definitions()) {
+    if (definition.kind != identity::DefinitionKind::Closure) { continue; }
     const auto& siteValue = definition.site.value();
     if (!siteValue.is<binder::DeclarationDefinitionSite>() ||
         siteValue.get<binder::DeclarationDefinitionSite>().node != node) {
       continue;
     }
     if (closure != zc::none) { return zc::none; }
-    closure = definition.definition;
+    closure = definition.identity;
   }
   zc::Maybe<binder::AnonymousOwnerLocalKey> closureKey;
   for (const auto& entity : input.boundModule.definitions().anonymousEntities()) {
@@ -5359,10 +5373,49 @@ zc::Maybe<ClosureValueShape> closureValueShape(const BodyCheckingInput& input, a
   return zc::none;
 }
 
+zc::Maybe<const type::semantic::TypeData&> lookupTypeData(const BodyCheckingInput& input,
+                                                          identity::SemanticTypeId id);
+
 zc::Maybe<DirectCallableShape> directCallableShape(const BodyCheckingInput& input,
                                                    ast::NodeId calleeNode) {
   const auto callee = resolvedDefinition(input.boundModule.bindings(), calleeNode);
-  if (callee == zc::none) return zc::none;
+  if (callee == zc::none) {
+    // RFC 0057 slice 1: a callee identifier that names no definition may name
+    // an owner local initialized by an admitted non-capturing closure literal.
+    // The local is an alias for reading; the call targets the anonymous
+    // closure definition directly, so the ordinary direct-call emission path
+    // applies unchanged. Function-typed *parameters* stay rejected: their
+    // initializer is not a closure literal and the call would need the
+    // indirect-call ABI from a later slice.
+    if (input.boundModule.tree().contains(calleeNode) &&
+        input.boundModule.tree().node(calleeNode).kind == ast::SyntaxKind::IdentExpr) {
+      const auto local = resolvedOwnerLocal(input.boundModule.bindings(), calleeNode);
+      if (local != zc::none) {
+        const auto initializer = ownerLocalInitializer(input.boundModule, ZC_ASSERT_NONNULL(local));
+        if (initializer != zc::none) {
+          auto closureShape = closureValueShape(input, ZC_ASSERT_NONNULL(initializer));
+          if (closureShape != zc::none) {
+            auto data = lookupTypeData(input, ZC_ASSERT_NONNULL(closureShape).functionType);
+            if (data != zc::none) {
+              const auto& typeData = ZC_ASSERT_NONNULL(data);
+              if (typeData.is<type::semantic::FunctionTypeData>()) {
+                const auto& function = typeData.get<type::semantic::FunctionTypeData>();
+                if (function.raises == zc::none) {
+                  zc::Vector<identity::SemanticTypeId> parameters;
+                  for (const auto parameter : function.parameters) { parameters.add(parameter); }
+                  return DirectCallableShape{
+                      ZC_ASSERT_NONNULL(closureShape).closure,
+                      ZC_ASSERT_NONNULL(closureShape).functionType, function.success,
+                      zc::Maybe<identity::SemanticTypeId>{}, zc::mv(parameters)};
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return zc::none;
+  }
 
   zc::Maybe<identity::SemanticTypeId> success;
   zc::Maybe<identity::SemanticTypeId> raises;
@@ -9170,10 +9223,13 @@ BodyFactRequirementInventoryBuildResult BodyFactRequirementInventoryBuilder::bui
           break;
         }
         case ast::SyntaxKind::LambdaExpression:
+        case ast::SyntaxKind::FunctionExpression:
           // RFC 0057 slice 1: a fully annotated, non-raising, non-generic,
           // zero-capture closure literal produces its structural function
-          // type. The shape validator rejects every other lambda so it keeps
-          // the existing capability drain at the literal.
+          // type. Both closure spellings (the paren-arrow lambda and the
+          // `fn` function expression) bind as DefinitionKind::Closure. The
+          // shape validator rejects every other closure so it keeps the
+          // existing capability drain at the literal.
           production = BodyProductionKind::ClosureValue;
           break;
         default:

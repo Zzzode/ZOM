@@ -1015,12 +1015,24 @@ bool isCallableDeclaration(const ast::Tree& tree, ast::NodeId declaration,
     }
     parameters = ast::NodeId(syntax.payload.words[ast::kDestructorDeclParamsIdWord]);
   } else if (definitionKind == identity::DefinitionKind::Closure &&
-             syntax.kind == ast::SyntaxKind::LambdaExpression) {
-    if (tree.contains(ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRaisesTyWord]))) {
-      raisesType = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRaisesTyWord]);
+             (syntax.kind == ast::SyntaxKind::LambdaExpression ||
+              syntax.kind == ast::SyntaxKind::FunctionExpression)) {
+    // Both closure spellings bind as DefinitionKind::Closure: the paren-arrow
+    // lambda and the `fn` function expression. The function expression also
+    // carries type-parameter and capture-clause slots; those are read through
+    // their own inventories, not through the parameter/return mapping here.
+    const bool isFunctionExpression = syntax.kind == ast::SyntaxKind::FunctionExpression;
+    const auto raisesWord = isFunctionExpression ? ast::kFunctionExpressionRaisesTyWord
+                                                 : ast::kLambdaExpressionRaisesTyWord;
+    const auto paramsWord = isFunctionExpression ? ast::kFunctionExpressionParamsIdWord
+                                                 : ast::kLambdaExpressionParamsIdWord;
+    const auto returnWord =
+        isFunctionExpression ? ast::kFunctionExpressionRetTyWord : ast::kLambdaExpressionRetTyWord;
+    if (tree.contains(ast::NodeId(syntax.payload.words[raisesWord]))) {
+      raisesType = ast::NodeId(syntax.payload.words[raisesWord]);
     }
-    parameters = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionParamsIdWord]);
-    returnType = ast::NodeId(syntax.payload.words[ast::kLambdaExpressionRetTyWord]);
+    parameters = ast::NodeId(syntax.payload.words[paramsWord]);
+    returnType = ast::NodeId(syntax.payload.words[returnWord]);
   } else {
     return false;
   }

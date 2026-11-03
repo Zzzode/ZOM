@@ -732,6 +732,53 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
   return result;
 }
 
+zc::Maybe<identity::DefId> resolveClosureAliasCallee(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    const binder::ImmutableBindingMetadata& bindings, ast::NodeId calleeNode) {
+  if (!tree.contains(calleeNode) || tree.node(calleeNode).kind != ast::SyntaxKind::IdentExpr) {
+    return zc::none;
+  }
+  const auto local = resolvedOwnerLocal(bindings, calleeNode);
+  if (local == zc::none) { return zc::none; }
+  ast::NodeId initializer;
+  bool found = false;
+  for (const auto& candidate : definitions.ownerLocalBindings()) {
+    if (candidate.binding != ZC_ASSERT_NONNULL(local) ||
+        !candidate.site.value().is<binder::PatternBindingSite>()) {
+      continue;
+    }
+    const auto& site = candidate.site.value().get<binder::PatternBindingSite>();
+    if (!tree.contains(site.introducer) ||
+        tree.node(site.introducer).kind != ast::SyntaxKind::VariableDeclarator) {
+      return zc::none;
+    }
+    const ast::NodeId candidateInitializer(
+        tree.node(site.introducer).payload.words[ast::kVariableDeclaratorInitWord]);
+    if (!tree.contains(candidateInitializer)) { return zc::none; }
+    if (found) { return zc::none; }
+    initializer = candidateInitializer;
+    found = true;
+  }
+  if (!found) { return zc::none; }
+  const auto initializerKind = tree.node(initializer).kind;
+  if (initializerKind != ast::SyntaxKind::FunctionExpression &&
+      initializerKind != ast::SyntaxKind::LambdaExpression) {
+    return zc::none;
+  }
+  zc::Maybe<identity::DefId> closure;
+  for (const auto& definition : definitions.definitions()) {
+    if (definition.record.kind() != identity::DefinitionKind::Closure) { continue; }
+    const auto& siteValue = definition.site.value();
+    if (!siteValue.is<binder::DeclarationDefinitionSite>() ||
+        siteValue.get<binder::DeclarationDefinitionSite>().node != initializer) {
+      continue;
+    }
+    if (closure != zc::none) { return zc::none; }
+    closure = definition.definition;
+  }
+  return closure;
+}
+
 zc::Maybe<checker::checked::CheckedNodeKey> checkedNodeKey(
     const ast::Tree& tree, const binder::CanonicalParsedModule& parsedModule, ast::NodeId target) {
   zc::Maybe<checker::checked::CheckedNodeKey> result;

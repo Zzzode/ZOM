@@ -519,6 +519,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         definition.record.kind() != identity::DefinitionKind::Method &&
         definition.record.kind() != identity::DefinitionKind::Static &&
         definition.record.kind() != identity::DefinitionKind::Constant &&
+        definition.record.kind() != identity::DefinitionKind::Closure &&
         definition.record.kind() != identity::DefinitionKind::Destructor) {
       continue;
     }
@@ -9951,6 +9952,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           auto dispatchIndex =
               dispatchFactIndex(checkedModule.dispatchFacts().facts(), ZC_ASSERT_NONNULL(callKey));
           auto callee = resolvedDefinition(bound.bindings(), calleeNode);
+          // RFC 0057 slice 1: a callee naming an owner local initialized by a
+          // zero-capture closure literal resolves directly to that anonymous
+          // closure definition; the alias carries no slot.
+          if (callee == zc::none && shape.returnsClosureAliasCall) {
+            callee =
+                resolveClosureAliasCallee(tree, bound.definitions(), bound.bindings(), calleeNode);
+          }
           if (dispatchIndex == zc::none || callee == zc::none) {
             return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                  ir::IrFailureKind::MissingRequiredFact, module,

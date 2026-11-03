@@ -330,6 +330,17 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
     const binder::ImmutableDefinitionInventory& definitions, ast::NodeId pattern,
     const ast::Tree& tree);
 
+/// \brief Resolves a call callee identifier that names an owner local whose
+/// initializer is a closure literal to the anonymous closure definition.
+///
+/// RFC 0057 slice 1: the local is a read-only alias for the closure, and the
+/// call emits a normal direct edge to the returned definition. Returns none
+/// when the local is absent, its initializer is not a closure expression, or
+/// the binder inventory maps the initializer node to no unique closure.
+zc::Maybe<identity::DefId> resolveClosureAliasCallee(
+    const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
+    const binder::ImmutableBindingMetadata& bindings, ast::NodeId calleeNode);
+
 /// \brief Returns true when the semantic type is the primitive bool type.
 bool isBoolSemanticType(const type::SemanticTypeStore& store, identity::SemanticTypeId id);
 

@@ -299,6 +299,15 @@ struct FunctionReturnShape final {
   // an integer literal passed as the sole argument of a returned direct
   // free-function call: `let a: i32 = 21; return f(a);`.
   bool returnsDirectScalarLocalCall = false;
+  // Two-statement closure-alias call shape: a leading `let f = fn(..) { .. };`
+  // alias for a zero-capture closure followed by `return f(args);`. The alias
+  // exists only for name resolution and carries no HIR slot or value; the
+  // returned call targets the anonymous closure definition directly through
+  // the ordinary direct-call edge.
+  bool returnsClosureAliasCall = false;
+  ast::NodeId closureAliasLet{};
+  ast::NodeId closureAliasPattern{};
+  ast::NodeId closureAliasInitializer{};
   // Two-statement existential-call shape: a leading existential-initialized
   // local whose initializer is a direct call returning the existential type,
   // passed as the sole argument of a returned direct free-function call:
