@@ -813,17 +813,19 @@ bool isSignatureBearingDefinition(identity::DefinitionKind kind) {
     case identity::DefinitionKind::Constant:
     case identity::DefinitionKind::Static:
       return true;
+    // An annotated zero-capture closure publishes the same callable signature
+    // as a function from its parameter list and return type. Its admission gate
+    // stays in the body checker; a capturing closure is rejected there
+    // regardless of its signature. Closure must NOT share a fall-through group
+    // with the kinds below: those stay non-signature-bearing.
+    case identity::DefinitionKind::Closure:
+      return true;
     case identity::DefinitionKind::ModuleAlias:
     case identity::DefinitionKind::Parameter:
     case identity::DefinitionKind::TypeParameter:
     case identity::DefinitionKind::Local:
     case identity::DefinitionKind::PatternBinding:
-    case identity::DefinitionKind::Closure:
-      // RFC 0057 slice 1: a non-capturing annotated closure publishes the same
-      // callable signature as a function from its lambda parameters and return
-      // type. The zero-capture admission gate stays in the body checker; a
-      // capturing closure is still rejected there regardless of its signature.
-      return true;
+      return false;
   }
   ZC_UNREACHABLE
 }
