@@ -128,6 +128,59 @@ Rollback: each numbered step is its own local commit reverting cleanly. If a
 step cannot be reached with the minimal shape, stop and report rather than
 widen the admission surface.
 
+### Part B0-3 step 2 design — HIR closure function body (AWAITING APPROVAL)
+
+Measured wall after step 1 (48bdc2e6): IR phase HirVerification (0x03)
+MissingRequiredFact. HIR now builds `entry` and its closure-alias call names
+the closure DefId, but no HIR function node exists for that DefId, so the
+verifier's call-to-function reconciliation fails.
+
+Producer location: a dedicated closure pass in hir-builder.cc, run AFTER the
+existing skeleton-definition loop (line ~514) and BEFORE the candidate is
+sealed. It iterates `bound.definitions().closureDefinitions()` (the Part A
+rail) and, for each admitted zero-capture closure (the SAME predicate as B0-2:
+both spellings, annotated return, no raises/generics/capture, zero params),
+appends one HIR function to the same `impl->functions` pool. It does NOT widen
+the existing loop: the rail entry has a different type
+(MaterializedClosureDefinitionEntry), so a separate small loop keeps the
+change local and independently revertible.
+
+What it reuses, unchanged:
+- `functionReturnShape` already recognizes a closure body (isClosure handles
+  both spellings + body words), returning the literal-return shape.
+- The existing scalar-literal return HIR builder that the Function branch
+  uses (fact lookups, return pool append). The closure needs no parameters,
+  no locals, no receiver, so the reused path is the parameterless literal
+  return.
+- The call site already lowers to a Source call named by the DefId after
+  step 1; nothing changes there.
+
+Per-closure mapping the new pass supplies: the DefId (rail), the AST body
+node/span (rail node), and the function type/signature (looked up via
+lookupSignature, which B0-2 populated). No signature root is required for a
+closure (it is not a module-scope root), mirroring how impl methods skip the
+root check.
+
+Invariants:
+1. Exactly one HIR function per admitted closure DefId; zero for any closure
+   the B0-2 predicate excludes (those keep the body-stage drain).
+2. Every closure call target resolves to exactly one produced HIR function
+   (the verifier stays fail-closed; an extra or missing function rejects).
+3. No environment parameter or locals exist yet; the function is a closed
+   parameterless literal-return. Behavior for programs without closures is
+   byte-identical (the added pass sees an empty rail).
+
+Migration/rollback: one commit adding the closure pass and its verifier
+expectation; reverted by deleting the pass (closures then fail HIR verification
+again, exactly the current state). MIR MirFunction and LIR Source
+enumeration remain separate later steps, also independently revertible.
+
+Open question for approval: whether the closure HIR function should carry an
+explicit "closure origin" marker now or be indistinguishable from a
+parameterless named function. Proposed: indistinguishable for B0-3 (the
+identity is already the closure DefId; a marker is added only if the
+environment work in B1 needs it), minimizing new surface.
+
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
 | B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
