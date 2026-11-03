@@ -91,6 +91,15 @@ zc::Maybe<size_t> definitionIndex(const binder::ImmutableDefinitionInventory& de
   return zc::none;
 }
 
+zc::Maybe<size_t> closureDefinitionIndex(const binder::ImmutableDefinitionInventory& definitions,
+                                         identity::DefId definition) {
+  const auto entries = definitions.closureDefinitions();
+  for (size_t index = 0; index < entries.size(); ++index) {
+    if (entries[index].definition == definition) return index;
+  }
+  return zc::none;
+}
+
 zc::Maybe<const binder::PatternBindingSite&> patternBindingSite(
     const binder::DefinitionInventory& inventory,
     const binder::MaterializedDefinitionInventoryEntry& definition) {

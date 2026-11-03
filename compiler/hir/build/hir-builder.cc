@@ -12971,6 +12971,112 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         patternNode, initializer});
   }
 
+  // RFC 0058 B0-3: closure function-body pass. Closures are not skeleton
+  // definitions; they live on the binder's separate closureDefinitions() rail,
+  // so the loop above never visits them. This pass appends one parameterless
+  // scalar-literal-return HIR function per admitted zero-capture closure and
+  // lets the existing ScalarLiteralReturn materializer emit it unchanged. The
+  // pass is additive: a program without closures has an empty rail and its HIR
+  // output is unchanged.
+  {
+    const auto& closureTree = bound.tree();
+    for (const auto& closure : bound.definitions().closureDefinitions()) {
+      const auto rejectClosureCapability = [&]() {
+        return rejectHirCapability<HirModuleCandidate>(
+            closure.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
+            closure.source.clone());
+      };
+      if (!closureTree.contains(closure.node)) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             closure.node.value + 2);
+      }
+      // B0-3 lowers the block-body function-expression spelling. An
+      // expression-body lambda anchors no source block or return node, so it
+      // keeps the capability drain until a later slice.
+      if (closureTree.node(closure.node).kind != ast::SyntaxKind::FunctionExpression) {
+        return rejectClosureCapability();
+      }
+      const auto* closureSignature = lookupSignature(closure.definition);
+      if (closureSignature == nullptr) {
+        // No signature means the checker never admitted the closure; the body
+        // stage owns the drain. No HIR function is produced.
+        continue;
+      }
+      if (closureSignature->definitionKind != identity::DefinitionKind::Closure ||
+          !closureSignature->payload.variant().is<checker::signature::CallableSignature>()) {
+        return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                             ir::IrFailureKind::InvalidFact, module, registries,
+                                             closure.node.value + 2);
+      }
+      const auto& closureCallable =
+          closureSignature->payload.variant().get<checker::signature::CallableSignature>();
+      if (closureCallable.parameters.size() != 0 || closureCallable.receiver != zc::none ||
+          closureCallable.raises != zc::none || closureCallable.abi != zc::none) {
+        return rejectClosureCapability();
+      }
+      auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
+      if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
+      const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
+      const auto& closureBlock = closureTree.node(closureShape.body);
+      const ast::NodeList closureStatements{
+          closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+          closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+      const ast::NodeId declaredReturnValue(
+          closureTree.node(closureShape.returnStatement).payload.words[ast::kReturnStmtValueWord]);
+      if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
+          !closureTree.contains(closureShape.returnStatement) ||
+          !closureTree.contains(closureShape.value) ||
+          closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
+          declaredReturnValue != closureShape.value ||
+          !isScalarLiteral(closureTree.node(closureShape.value).kind)) {
+        return rejectClosureCapability();
+      }
+      auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
+      if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
+        return rejectClosureCapability();
+      }
+      auto closureLiteralIndex = factIndex(facts.literals(), closureShape.value);
+      auto closureBodySpan =
+          bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
+      auto closureReturnSpan =
+          bound.parsedModule().spanFor(closureTree.node(closureShape.returnStatement).range);
+      auto closureValueSpan =
+          bound.parsedModule().spanFor(closureTree.node(closureShape.value).range);
+      if (closureLiteralIndex == zc::none || closureBodySpan == zc::none ||
+          closureReturnSpan == zc::none || closureValueSpan == zc::none) {
+        return rejectClosureCapability();
+      }
+      size_t closureLiteralSlot = 0;
+      ZC_IF_SOME(index, closureLiteralIndex) { closureLiteralSlot = index; }
+      const auto& closureLiteralFact = facts.literals().entries()[closureLiteralSlot].value;
+      if (closureLiteralFact.node != closureShape.value ||
+          closureLiteralFact.type != closureCallable.success ||
+          !sameSpan(closureLiteralFact.sourceSpan, ZC_ASSERT_NONNULL(closureValueSpan))) {
+        return rejectClosureCapability();
+      }
+      zc::Array<uint8_t> closureOrderingKey = closure.key.encode();
+      pendingFunctions.add(
+          PendingFunctionDeclaration{closure.definition,
+                                     closure.node,
+                                     closureCallable.success,
+                                     {},
+                                     zc::none,
+                                     HirVisibility::module(module),
+                                     HirLinkage::Internal,
+                                     closure.source.clone(),
+                                     ZC_ASSERT_NONNULL(closureBodySpan).clone(),
+                                     ZC_ASSERT_NONNULL(closureReturnSpan).clone(),
+                                     ZC_ASSERT_NONNULL(closureValueSpan).clone(),
+                                     zc::mv(closureOrderingKey),
+                                     closureShape.body,
+                                     closureShape.returnStatement,
+                                     closureShape.value,
+                                     zc::none,
+                                     ScalarLiteralReturn{closureLiteralFact.literal.clone()}});
+    }
+  }
+
   sortPendingDeclarations(pending);
   sortPendingFunctions(pendingFunctions);
   zc::Vector<HirValueDeclaration> declarations;

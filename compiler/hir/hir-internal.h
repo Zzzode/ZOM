@@ -183,6 +183,12 @@ zc::Maybe<checker::PrimitiveOperation> compoundAssignmentBinaryOperation(
 zc::Maybe<size_t> definitionIndex(const binder::ImmutableDefinitionInventory& definitions,
                                   identity::DefId definition);
 
+/// \brief Finds a closure definition's slot on the separate closureDefinitions
+/// rail. Closures are not skeleton definitions, so definitionIndex never sees
+/// them.
+zc::Maybe<size_t> closureDefinitionIndex(const binder::ImmutableDefinitionInventory& definitions,
+                                         identity::DefId definition);
+
 zc::Maybe<const binder::PatternBindingSite&> patternBindingSite(
     const binder::DefinitionInventory& inventory,
     const binder::MaterializedDefinitionInventoryEntry& definition);

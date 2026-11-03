@@ -88,7 +88,9 @@ captures, escaping closures, callable traits, and generic closures deferred.
 | B0 | Zero-capture closure native execution (the prerequisite slice the RFC folds into Part B): point the checker closure-DefId resolution at the new Part A rail; publish the closure CallableSignature; then widen HIR/MIR/LIR one closure function per non-escaping direct-call module | In progress: B0-1/B0-2 landed; B0-3 HIR/MIR/LIR next | checker ztest green for both spellings; full ctest 322/322; `zomc run` exit 42 is B0-3 |
 | B0-1 | `closureValueShape` reads the closure DefId from `closureDefinitionAt(node)` instead of the skeleton DefinitionFact list | Landed (e8cf1aac) | behavior preserving until B0-2 |
 | B0-2 | Publish the zero-parameter, annotated, non-generic, non-raising CallableSignature for both closure spellings on the closure rail; admit Closure in isCallableDefinition, cross-rail `definition(DefId)`, header-less header match, and signature census | Landed (756be8db) | session ztest `PublishesZeroCaptureClosureSignature` (no Checker/Signature incident, both spellings); full sanitizer ctest 322/322 |
-| B0-3 | HIR closure-alias call node, MIR closure MirFunction owned by the DefId, LIR Source-edge enumeration so `zomc run` exits 42 for a zero-capture closure | In progress | native consumer fixture exit 42 |
+| B0-3 | HIR closure-alias call node, MIR closure MirFunction owned by the DefId, LIR Source-edge enumeration so `zomc run` exits 42 for a zero-capture closure | In progress: step 1/2 landed; MIR works through the generic builder; LIR Source enumeration pending verification | native consumer fixture exit 42 |
+| B0-3 s1 | HIR closure-alias callee resolution reads `closureDefinitionAt(initializer)` from the closure rail instead of scanning skeleton definitions | Landed (48bdc2e6) | hir-module/session tests green; wall moved to HirVerification MissingRequiredFact (no HIR function for the closure DefId) |
+| B0-3 s2 | Dedicated closure pass in hir-builder.cc after the skeleton loop, before candidate sealing: appends one parameterless ScalarLiteralReturn HIR function per admitted block-body function-expression closure on the closureDefinitions rail; verifier gains a four-node closure branch keyed by a cross-rail `closureDefinitionIndex`, accepts FunctionExpression as a function source node, and resolves the alias-call callee with the same `resolveClosureAliasCallee` fallback as the builder. Block-body `fn() -> T { return lit; }` only; expression-body lambda keeps ZOM4099 | Landed (local) | new `LowersZeroCaptureClosureAliasCallToHirAndMir` (2 HIR/MIR functions, zero locals, one direct call) and `ExpressionBodyLambdaClosureKeepsCapabilityDrain` ztests green; `zomc run` exits 42 |
 
 ### Part B0-3 design (zero-capture closure native execution)
 
@@ -128,7 +130,7 @@ Rollback: each numbered step is its own local commit reverting cleanly. If a
 step cannot be reached with the minimal shape, stop and report rather than
 widen the admission surface.
 
-### Part B0-3 step 2 design — HIR closure function body (AWAITING APPROVAL)
+### Part B0-3 step 2 design — HIR closure function body (APPROVED D-036, LANDED)
 
 Measured wall after step 1 (48bdc2e6): IR phase HirVerification (0x03)
 MissingRequiredFact. HIR now builds `entry` and its closure-alias call names
@@ -175,11 +177,16 @@ expectation; reverted by deleting the pass (closures then fail HIR verification
 again, exactly the current state). MIR MirFunction and LIR Source
 enumeration remain separate later steps, also independently revertible.
 
-Open question for approval: whether the closure HIR function should carry an
-explicit "closure origin" marker now or be indistinguishable from a
-parameterless named function. Proposed: indistinguishable for B0-3 (the
-identity is already the closure DefId; a marker is added only if the
-environment work in B1 needs it), minimizing new surface.
+Decision under D-036: the closure HIR function is indistinguishable from a
+parameterless named function. The identity is already the closure DefId; a
+closure-origin marker is added only if the environment work in B1 needs it.
+
+Measured scope after landing: the MIR generic builder already emits one
+MirFunction per HIR function (owned by the closure DefId), and the existing
+multi-function call ladder enumerates the Source-edge symbol, so no MIR or LIR
+producer change was required for the block-body slice; `zomc run` exits 42.
+Expression-body lambdas, IIFE, defined-but-uncalled closures, parameters,
+captures, and generics keep the ZOM4099 capability drain.
 
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
