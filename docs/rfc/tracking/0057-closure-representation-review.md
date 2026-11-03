@@ -83,3 +83,56 @@ so slice 1 changes semantic admission (checker/backend), not grammar.
 | 3 | Shared/mutable-reference and move captures | Not scheduled | blocked on RFC 0007 ownership completion |
 | 4 | Escaping closures and function-typed parameters | Not scheduled | blocked on allocator ABI / backend general lowering |
 | 5 | Generic closures through RFC 0056 instances; callable traits | Not scheduled | |
+
+## Layer 0 prerequisite: closure DefId identity (measured 2026-11-03)
+
+Implementing slice 1 after narrowing it to the reused Source edge exposed a
+false premise in the measured prerequisite map above. A closure does NOT
+today carry a `DefId`:
+
+- `DefinitionKind::Closure` (0x15) is a non-stable kind:
+  `definitionNamespaceFor` returns none in identity/key/definition-key.cc, so
+  `DefinitionIdentityRecord::from` rejects it and no definition key/handle is
+  ever interned.
+- binder `addByDomain` (binder/metadata/definition-inventory.cc) routes
+  Closure into `anonymousEntities`, whose handle is a dense per-owner
+  `AnonymousOwnerLocalId`, never a `DefId`. A probe module with
+  `fn entry(){ let f = fn..; return f(42); }` materializes exactly one
+  definition (entry); the closure appears only in owner-body
+  `closures()` / `anonymousEntities()`.
+- `MirFunction.owner` and `MirCallableIdentity::Source` are hard-typed to
+  `identity::DefId`; neither has an anonymous-local-key variant. So the reused
+  Source direct edge cannot name a closure until closures hold DefIds.
+- `HirBuilder::build` receives only CheckedModule + SemanticTypeStore (no
+  interner), so the DefId must already exist in
+  `boundModule.definitions().definitions()` at binder/driver materialization;
+  it cannot be session-interned at HIR/MIR time.
+
+Required layer-0 change (before the checker/HIR/MIR/LIR slice-1 wiring is
+reachable):
+
+1. identity: give Closure a stable content-addressed record. Map
+   `definitionNamespaceFor(Closure)` to Value; construct the record WITHOUT an
+   overload header (extend the `callable` test in DefinitionIdentityRecord::from
+   so Closure is a Value-namespace non-callable). Synthesize a deterministic,
+   canonical-scalar-valid name from the AnonymousOwnerLocalKey path
+   components (e.g. `__closure_<underscore-joined path>`) under the enclosing
+   stable body owner (module or definition), so identical source interns an
+   identical DefId.
+2. binder/driver: intern one DefId per StableClosureFact and merge it into the
+   module's MaterializedDefinitionInventory as a Closure definition at the
+   closure expression node (DeclarationDefinitionSite). Injection point is the
+   owner-body materialization / ImmutableDefinitionInventory::from path, which
+   already sees both interners and anonymousEntities; relax the
+   `definitions.size() == identities.definitions().size()` assertion there to
+   include the interned closure DefIds and keep AnonymousOwnerLocalId mapping
+   alongside (capture facts still key on the anonymous key).
+3. Re-validate canonical codec round-trips, stable-witness schema counts, and
+   re-record corpus IR/process parity; run full sanitizer ctest.
+
+Groundwork already landed (commit b8bfff63, behavior-preserving, tests green):
+both closure spellings (`fn` FunctionExpression and paren-arrow LambdaExpression)
+recognized by signature publication, ClosureValue shape, and the production
+switch; HIR `returnsClosureAliasCall` shape and `resolveClosureAliasCallee`
+helper added but unreachable until this layer lands. body-body-checker 24,
+facts-signature-facts 48, hir-module 153.
