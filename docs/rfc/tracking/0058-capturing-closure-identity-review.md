@@ -106,7 +106,54 @@ checks fine. Probe matrix:
 | `let f = fn() -> i32 { return 42; }; return 0;` (defined, never called) | ZOM4099 |
 | `fn fortytwo() -> i32 { return 42; } return fortytwo();` | check OK |
 
-Root wall: `closureValueShape` (compiler/checker/body/body-checker.cc:5326)
+### Part B0-2 design (closure signature publication)
+
+Measured blockers in `SignatureFactsBuilder::build`:
+- The signature loop (signature-facts.cc:7792) walks only skeleton
+  `definitions().definitions()`; closures are on the Part A rail and have no
+  `DefinitionFact`, so no `CallableSignature` is ever published for them
+  (probe showed `sigCount=1` for a module whose only named function is
+  `entry`).
+- `signatureScope` keys off a `DefinitionFact` and its declaring scope.
+- `buildCallableParameters` keys off skeleton-materialized
+  `CallableParameterKey` identities owned by the skeleton definition. Closure
+  parameters are owner-local and have no such materialized identities, so the
+  existing parameter builder returns none for a closure owner.
+
+Design (internal checker contract only; no CLI / persisted format / public
+type change):
+1. Add a second, closure-only signature loop over
+   `input.boundModule.definitions().closureDefinitions()`, in the same
+   deterministic owner/closure order as the rail (which matches the canonical
+   census ordering). Only zero-capture, non-generic, non-raising, both-spelling
+   closures are admitted; anything else contributes no signature and keeps the
+   existing body-stage drain.
+2. Scope: Module-owned closure -> `ModuleDefinitionSignatureScope`;
+   Definition-owned -> `EnclosedSignatureScope{owner DefId}`, matching the
+   Part A owner chain. No `DefinitionFact` is consulted.
+3. Parameters: a dedicated closure path builds `ParameterSignature` values by
+   position directly from the closure parameter-list syntax via
+   `SourceTypeBuilder` (no skeleton `CallableParameterKey`); the
+   `CallableParameterKey` field of the parameter signature is derived from the
+   closure DefId + position if the codec requires one, else left empty. The
+   first slice targets the zero-parameter form (`fn() -> i32`), so parameter
+   identity construction is exercised minimally and extended with capture work.
+4. Return type: reuse `SourceTypeBuilder.build(returnType)` exactly as the
+   named-function path; raises must be absent; receiver/abi/generics empty.
+5. The emitted `SemanticSignature{closureDefId, Closure, scope, [], [],
+   CallableSignature{...}}` joins the same `built` vector, so canonical encoding
+   and the strict byte-order sort are reused unchanged.
+
+Verifier impact: `SignatureFactsVerifier::verify` only requires each signature
+DefId to exist in the global identity authority and re-encodes the candidate;
+it does not re-derive the signature set. Part A already interns the closure
+DefId globally, so verify accepts the new signatures with no verifier change;
+the closure DefId rail itself is independently re-derived by
+`VerifyBoundModule::verify` (fail-closed). Shared-contract surface touched:
+none beyond appending closure rows to the internal signature list.
+
+Root wall (fixed in B0-1, e8cf1aac): `closureValueShape`
+(compiler/checker/body/body-checker.cc:5326)
 scans `input.boundModule.bindings().definitions()` (the `DefinitionFact` list,
 skeleton declarations only) for `DefinitionKind::Closure`. Closures are never
 in that list; after Part A they live on

@@ -120,6 +120,7 @@ struct ImmutableDefinitionInventory::Impl final {
        zc::Vector<MaterializedOwnerLocalBindingInventoryEntry>&& ownerLocalBindings,
        zc::Vector<MaterializedAnonymousEntityEntry>&& anonymousEntities,
        zc::Vector<MaterializedClosureDefinitionEntry>&& closureDefinitions,
+       zc::Vector<MaterializedDefinitionIdentityEntry>&& closureDefinitionIdentities,
        zc::Vector<MaterializedImplAuthorityInventoryEntry>&& implAuthorities,
        zc::Vector<MaterializedImplOccurrenceInventoryEntry>&& impls,
        zc::Vector<ImplementationOccurrenceEntry>&& implementations) noexcept
@@ -135,6 +136,7 @@ struct ImmutableDefinitionInventory::Impl final {
         ownerLocalBindings(zc::mv(ownerLocalBindings)),
         anonymousEntities(zc::mv(anonymousEntities)),
         closureDefinitions(zc::mv(closureDefinitions)),
+        closureDefinitionIdentities(zc::mv(closureDefinitionIdentities)),
         implAuthorities(zc::mv(implAuthorities)),
         impls(zc::mv(impls)),
         implementations(zc::mv(implementations)) {}
@@ -151,6 +153,7 @@ struct ImmutableDefinitionInventory::Impl final {
   zc::Vector<MaterializedOwnerLocalBindingInventoryEntry> ownerLocalBindings;
   zc::Vector<MaterializedAnonymousEntityEntry> anonymousEntities;
   zc::Vector<MaterializedClosureDefinitionEntry> closureDefinitions;
+  zc::Vector<MaterializedDefinitionIdentityEntry> closureDefinitionIdentities;
   zc::Vector<MaterializedImplAuthorityInventoryEntry> implAuthorities;
   zc::Vector<MaterializedImplOccurrenceInventoryEntry> impls;
   zc::Vector<ImplementationOccurrenceEntry> implementations;
@@ -313,6 +316,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
   }
   if (closureDefinitions.size() != expectedClosureDefinitions) { return zc::none; }
   zc::Vector<MaterializedClosureDefinitionEntry> closureEntries(closureDefinitions.size());
+  zc::Vector<MaterializedDefinitionIdentityEntry> closureIdentityEntries(
+      closureDefinitions.size());
   size_t closureIndex = 0;
   for (const auto& body : ownerBodies) {
     for (const auto& stable : body.closures().values()) {
@@ -349,6 +354,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
       closureEntries.add(MaterializedClosureDefinitionEntry{
           supplied.node, supplied.site.clone(), supplied.definition, supplied.key.clone(),
           supplied.record.clone(), supplied.closureKey.clone(), supplied.source.clone()});
+      closureIdentityEntries.add(MaterializedDefinitionIdentityEntry::fromVerified(
+          supplied.key.clone(), supplied.record.clone(), supplied.definition));
     }
   }
   if (closureIndex != closureDefinitions.size()) { return zc::none; }
@@ -387,7 +394,8 @@ zc::Maybe<ImmutableDefinitionInventory> ImmutableDefinitionInventory::from(
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
       zc::mv(definitionEntries), zc::mv(genericParameterEntries), zc::mv(callableParameterEntries),
       zc::mv(ownerLocalEntries), zc::mv(anonymousEntries), zc::mv(closureEntries),
-      zc::mv(implAuthorityEntries), zc::mv(implEntries), zc::mv(implementationEntries)));
+      zc::mv(closureIdentityEntries), zc::mv(implAuthorityEntries),
+      zc::mv(implEntries), zc::mv(implementationEntries)));
 }
 
 ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
@@ -431,6 +439,10 @@ ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
         entry.node, entry.site.clone(), entry.definition, entry.key.clone(), entry.record.clone(),
         entry.closureKey.clone(), entry.source.clone()});
   }
+  zc::Vector<MaterializedDefinitionIdentityEntry> closureDefinitionIdentities;
+  for (const auto& entry : impl->closureDefinitionIdentities) {
+    closureDefinitionIdentities.add(entry.clone());
+  }
   zc::Vector<MaterializedImplAuthorityInventoryEntry> implAuthorities;
   for (const auto& entry : impl->implAuthorities) {
     implAuthorities.add(MaterializedImplAuthorityInventoryEntry{
@@ -451,7 +463,8 @@ ImmutableDefinitionInventory ImmutableDefinitionInventory::clone() const {
       zc::mv(genericParameterNodes), zc::mv(callableParameterNodes), zc::mv(ownerLocalBindingNodes),
       zc::mv(definitions), zc::mv(genericParameters), zc::mv(callableParameters),
       zc::mv(ownerLocalBindings), zc::mv(anonymousEntities), zc::mv(closureDefinitions),
-      zc::mv(implAuthorities), zc::mv(impls), zc::mv(implementations)));
+      zc::mv(closureDefinitionIdentities), zc::mv(implAuthorities), zc::mv(impls),
+      zc::mv(implementations)));
 }
 
 identity::SemanticContextBrand ImmutableDefinitionInventory::semanticContext() const noexcept {
@@ -512,7 +525,11 @@ zc::ArrayPtr<const MaterializedImplOccurrenceInventoryEntry> ImmutableDefinition
 
 zc::Maybe<const MaterializedDefinitionIdentityEntry&> ImmutableDefinitionInventory::definition(
     identity::DefId handle) const noexcept {
-  return findByHandle(identities().definitions(), handle);
+  auto skeleton = findByHandle(identities().definitions(), handle);
+  if (skeleton != zc::none) { return skeleton; }
+  // Closure DefIds are interned in the later owner-body phase and live on the
+  // separate closure rail, so the skeleton identity set cannot hold them.
+  return findByHandle(impl->closureDefinitionIdentities.asPtr(), handle);
 }
 
 zc::Maybe<const MaterializedImplementationIdentityEntry&>

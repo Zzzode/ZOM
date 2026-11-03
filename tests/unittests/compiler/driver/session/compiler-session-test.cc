@@ -606,6 +606,32 @@ ZC_TEST("CompilerSessionTest.PublishesGenericFunctionSignature") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules().size() == 1);
 }
 
+ZC_TEST("CompilerSessionTest.PublishesZeroCaptureClosureSignature") {
+  // RFC 0058 Part B0-2: the checker must accept an admitted zero-capture
+  // closure at the signature stage for both the `fn` function-expression and
+  // paren-arrow lambda spellings. HIR/MIR/LIR lowering of the closure body is
+  // a later slice, so checkSources still rejects at the IR stage; the contract
+  // here is that no Checker-domain Signature-stage incident is produced, i.e.
+  // the closure is no longer drained at signature checking (the pre-B0-2
+  // behavior was a Checker/Signature CanonicalCodecMismatch incident).
+  const auto expectSignatureStageAccepts = [](zc::StringPtr source) {
+    auto session = packageSession(source);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    session->checkSources();
+    for (const auto& incident : session->getIncidents().descriptors()) {
+      const bool checkerSignatureFailure =
+          incident.domain() == basic::CompilerIncidentDomain::Checker &&
+          incident.phase().tag() ==
+              static_cast<uint32_t>(checker::signature::CheckerInvariantStage::Signature);
+      ZC_EXPECT(!checkerSignatureFailure);
+    }
+  };
+  expectSignatureStageAccepts(
+      "fn entry() -> i32 { let f = fn() -> i32 { return 42; }; return f(); }\n"_zc);
+  expectSignatureStageAccepts("fn entry() -> i32 { let f = () -> i32 => 42; return f(); }\n"_zc);
+}
+
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
   auto session = packageSession("fn borrow<T>(value: &T) -> &T { return value; }\n"_zc);
 

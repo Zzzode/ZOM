@@ -578,6 +578,9 @@ bool isCallableDefinition(identity::DefinitionKind kind) {
     case identity::DefinitionKind::Method:
     case identity::DefinitionKind::Constructor:
     case identity::DefinitionKind::Destructor:
+    // RFC 0058: a closure publishes a CallableSignature on the
+    // closure-definition rail.
+    case identity::DefinitionKind::Closure:
       return true;
     default:
       return false;
@@ -4864,6 +4867,21 @@ private:
   }
 
   bool callableHeaderMatches(identity::DefId definition, const CallableSignature& signature) const {
+    {
+      // RFC 0058: a closure is interned in the later owner-body phase, so it has
+      // no skeleton identity-admission entry and therefore no overload-header
+      // authority. The admitted zero-capture slice is exactly the canonical
+      // header-less callable shape: no generics, receiver, or parameters.
+      auto closureEntry = identities.definition(definition);
+      bool isClosure = false;
+      ZC_IF_SOME(entry, closureEntry) {
+        isClosure = entry.record().kind() == identity::DefinitionKind::Closure;
+      }
+      if (isClosure) {
+        return signature.genericParameters.size() == 0 && signature.receiver == zc::none &&
+               signature.parameters.size() == 0;
+      }
+    }
     auto definitionAuthority = identities.definitionAuthority(definition);
     if (definitionAuthority == zc::none) { return false; }
     ZC_IF_SOME(authority, definitionAuthority) {
@@ -9124,6 +9142,121 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
       }
     }
   }
+
+  // RFC 0058 Part B0-2: publish the callable signature for each admitted
+  // zero-capture closure on the separate closure-definition rail. Closures are
+  // not skeleton declarations, so they have no DefinitionFact and no
+  // materialized callable-parameter identities; the first slice admits only the
+  // annotated, non-generic, non-raising, zero-parameter form. Anything else
+  // publishes no signature here and keeps the existing body-stage drain.
+  zc::Vector<BuiltSignatureCensusEntry> closureCensus;
+  for (const auto& closure : input.boundModule.definitions().closureDefinitions()) {
+    if (!tree.contains(closure.node)) {
+      return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
+                                          closure.node.value));
+    }
+    const auto& closureSyntax = tree.node(closure.node);
+    const bool isFunctionExpression =
+        closureSyntax.kind == ast::SyntaxKind::FunctionExpression;
+    if (closureSyntax.kind != ast::SyntaxKind::LambdaExpression && !isFunctionExpression) {
+      continue;
+    }
+    if (isFunctionExpression &&
+        (tree.contains(ast::NodeId(
+             closureSyntax.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
+         tree.contains(
+             ast::NodeId(closureSyntax.payload.words[ast::kFunctionExpressionCapturesIdWord])))) {
+      continue;
+    }
+    const auto raisesWord = isFunctionExpression
+                                ? ast::kFunctionExpressionRaisesTyWord
+                                : ast::kLambdaExpressionRaisesTyWord;
+    const auto paramsWord = isFunctionExpression
+                                ? ast::kFunctionExpressionParamsIdWord
+                                : ast::kLambdaExpressionParamsIdWord;
+    const auto returnWord = isFunctionExpression
+                                ? ast::kFunctionExpressionRetTyWord
+                                : ast::kLambdaExpressionRetTyWord;
+    if (tree.contains(ast::NodeId(closureSyntax.payload.words[raisesWord]))) { continue; }
+    const ast::NodeId parameterList(closureSyntax.payload.words[paramsWord]);
+    if (!tree.contains(parameterList) ||
+        tree.node(parameterList).kind != ast::SyntaxKind::FunctionParameterList) {
+      continue;
+    }
+    const ast::NodeList parameterNodes{
+        tree.node(parameterList).payload.words[ast::kFunctionParameterListParamsFirstWord],
+        tree.node(parameterList).payload.words[ast::kFunctionParameterListParamsSizeWord]};
+    if (!tree.contains(parameterNodes) || parameterNodes.size != 0) { continue; }
+    const ast::NodeId returnType(closureSyntax.payload.words[returnWord]);
+    if (!tree.contains(returnType)) { continue; }
+    SourceTypeBuilder closureTypeBuilder(input.boundModule, input.identities, input.semanticTypes,
+                                          zc::ArrayPtr<const identity::GenericParameterId>{},
+                                          sourceFailures, zc::none);
+    auto closureReturn = closureTypeBuilder.build(returnType);
+    if (closureReturn == zc::none) {
+      if (sourceFailures.empty()) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                            returnType.value));
+      }
+      continue;
+    }
+    zc::Maybe<identity::SemanticTypeId> closureReturnType;
+    ZC_IF_SOME(builtReturnType, closureReturn) { closureReturnType = builtReturnType.type; }
+    if (closureReturnType == zc::none) {
+      return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
+                                          returnType.value));
+    }
+    SignatureScope closureScope(ModuleDefinitionSignatureScope{});
+    if (closure.record.owners().size() != 0) {
+      const auto& enclosing = closure.record.owners()[closure.record.owners().size() - 1];
+      if (enclosing.kind() != identity::EnclosingStableOwnerKind::Definition ||
+          enclosing.definitionKey() == zc::none) {
+        continue;
+      }
+      auto ownerEntry = input.identities.definition(
+          ZC_ASSERT_NONNULL(enclosing.definitionKey()));
+      if (ownerEntry == zc::none) {
+        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
+                                            closure.node.value));
+      }
+      closureScope = SignatureScope(
+          EnclosedSignatureScope{ZC_ASSERT_NONNULL(ownerEntry).handle()});
+    }
+    zc::Maybe<ExternAbi> noAbi;
+    built.add(BuiltSignature{
+        SemanticSignature{
+            closure.definition, identity::DefinitionKind::Closure, zc::mv(closureScope),
+            zc::Vector<SignatureModifier>(), zc::Vector<NormalizedAttributeFact>(),
+            SemanticSignaturePayload(CallableSignature{
+                zc::Vector<GenericParameterSignature>(), zc::Maybe<ReceiverSignature>{},
+                zc::Vector<ParameterSignature>(), ZC_ASSERT_NONNULL(closureReturnType),
+                zc::Maybe<identity::SemanticTypeId>{}, zc::mv(noAbi)}),
+            closure.source.clone()},
+        SignatureDefinitionRequirement{closure.definition, identity::DefinitionKind::Closure,
+                                       zc::Array<uint8_t>()},
+        closure.key.encode()});
+    closureCensus.add(BuiltSignatureCensusEntry{
+        SignatureDefinitionCensusEntry{closure.definition, identity::DefinitionKind::Closure},
+        closure.key.encode()});
+  }
+
+  // Fold admitted closures into the signature census so the verifier's
+  // published-vs-expected signature-set comparison accounts for the closure
+  // rows appended on the closure rail. Both census and signature rows are
+  // content-addressed and are sorted by key below.
+  for (auto& entry : closureCensus) { builtSignatureCensus.add(zc::mv(entry)); }
+  for (size_t index = 1; index < builtSignatureCensus.size(); ++index) {
+    auto current = zc::mv(builtSignatureCensus[index]);
+    size_t insertion = index;
+    while (insertion > 0 &&
+           lessBytes(current.key.asPtr(), builtSignatureCensus[insertion - 1].key.asPtr())) {
+      builtSignatureCensus[insertion] = zc::mv(builtSignatureCensus[insertion - 1]);
+      --insertion;
+    }
+    builtSignatureCensus[insertion] = zc::mv(current);
+  }
+  sourceSignatureCensus = zc::Vector<SignatureDefinitionCensusEntry>(builtSignatureCensus.size());
+  for (auto& value : builtSignatureCensus) { sourceSignatureCensus.add(zc::mv(value.entry)); }
 
   for (size_t index = 1; index < built.size(); ++index) {
     auto current = zc::mv(built[index]);
