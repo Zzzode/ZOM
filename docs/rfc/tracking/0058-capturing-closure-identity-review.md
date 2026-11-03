@@ -90,7 +90,8 @@ captures, escaping closures, callable traits, and generic closures deferred.
 | B0-2 | Publish the zero-parameter, annotated, non-generic, non-raising CallableSignature for both closure spellings on the closure rail; admit Closure in isCallableDefinition, cross-rail `definition(DefId)`, header-less header match, and signature census | Landed (756be8db) | session ztest `PublishesZeroCaptureClosureSignature` (no Checker/Signature incident, both spellings); full sanitizer ctest 322/322 |
 | B0-3 | HIR closure-alias call node, MIR closure MirFunction owned by the DefId, LIR Source-edge enumeration so `zomc run` exits 42 for a zero-capture closure | In progress: step 1/2 landed; MIR works through the generic builder; LIR Source enumeration pending verification | native consumer fixture exit 42 |
 | B0-3 s1 | HIR closure-alias callee resolution reads `closureDefinitionAt(initializer)` from the closure rail instead of scanning skeleton definitions | Landed (48bdc2e6) | hir-module/session tests green; wall moved to HirVerification MissingRequiredFact (no HIR function for the closure DefId) |
-| B0-3 s2 | Dedicated closure pass in hir-builder.cc after the skeleton loop, before candidate sealing: appends one parameterless ScalarLiteralReturn HIR function per admitted block-body function-expression closure on the closureDefinitions rail; verifier gains a four-node closure branch keyed by a cross-rail `closureDefinitionIndex`, accepts FunctionExpression as a function source node, and resolves the alias-call callee with the same `resolveClosureAliasCallee` fallback as the builder. Block-body `fn() -> T { return lit; }` only; expression-body lambda keeps ZOM4099 | Landed (local) | new `LowersZeroCaptureClosureAliasCallToHirAndMir` (2 HIR/MIR functions, zero locals, one direct call) and `ExpressionBodyLambdaClosureKeepsCapabilityDrain` ztests green; `zomc run` exits 42 |
+| B0-3 s2 | Dedicated closure pass in hir-builder.cc after the skeleton loop, before candidate sealing: appends one parameterless ScalarLiteralReturn HIR function per admitted block-body function-expression closure on the closureDefinitions rail; verifier gains a four-node closure branch keyed by a cross-rail `closureDefinitionIndex`, accepts FunctionExpression as a function source node, and resolves the alias-call callee with the same `resolveClosureAliasCallee` fallback as the builder. Block-body `fn() -> T { return lit; }` only; expression-body lambda keeps ZOM4099 | Landed (21a86852) | new `LowersZeroCaptureClosureAliasCallToHirAndMir` (2 HIR/MIR functions, zero locals, one direct call) and `ExpressionBodyLambdaClosureKeepsCapabilityDrain` ztests green; `zomc run` exits 42 |
+| B0-3 s3 | Same closure pass and verifier branch gain an expression-body LambdaExpression arm: the body is the `kLambdaExpressionExprBodyWord` scalar literal, block/return HIR anchors are sentinel with closure-source spans, value anchors the expression node. MIR/LIR unchanged. Both spellings now lower; parameter/block-body-lambda/IIFE/uncalled forms keep ZOM4099 | Landed (local) | ztest covers both spellings (2 HIR/MIR functions each) plus a one-parameter lambda negative case; `zomc run` exits 42 for `() -> i32 => 42` |
 
 ### Part B0-3 design (zero-capture closure native execution)
 
@@ -188,7 +189,7 @@ producer change was required for the block-body slice; `zomc run` exits 42.
 Expression-body lambdas, IIFE, defined-but-uncalled closures, parameters,
 captures, and generics keep the ZOM4099 capability drain.
 
-### Part B0-3 step 3 design — expression-body lambda closure (AWAITING APPROVAL)
+### Part B0-3 step 3 design — expression-body lambda closure (APPROVED, LANDED)
 
 Scope: admit the zero-capture paren-arrow lambda whose body is a single
 scalar-literal expression, `let f = () -> i32 => 42; return f();`, so it runs
@@ -239,6 +240,12 @@ run` exit 42 for the lambda; full sanitizer ctest.
 
 Rollback: one local commit deleting the lambda arm restores the step-2 state
 (lambda ZOM4099) with no effect on the function-expression slice.
+
+Implementation note measured while landing: a LambdaExpression payload has two
+mutually exclusive body words, `kLambdaExpressionBodyWord` for a block body and
+`kLambdaExpressionExprBodyWord` for an expression body. The admitted
+expression-body form has no block word set and its literal is the
+ExprBodyWord node, which is the anchor the builder and verifier use.
 
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |

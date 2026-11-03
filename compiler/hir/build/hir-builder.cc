@@ -12991,10 +12991,16 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                              ir::IrFailureKind::InvalidFact, module, registries,
                                              closure.node.value + 2);
       }
-      // B0-3 lowers the block-body function-expression spelling. An
-      // expression-body lambda anchors no source block or return node, so it
-      // keeps the capability drain until a later slice.
-      if (closureTree.node(closure.node).kind != ast::SyntaxKind::FunctionExpression) {
+      // Both admitted spellings lower here: the block-body function
+      // expression (source block and return anchors) and the
+      // expression-body paren-arrow lambda whose body is one scalar literal
+      // (no source block or return; synthetic anchors). A block-body lambda
+      // and any other expression body keep the capability drain.
+      const auto closureSyntaxKind = closureTree.node(closure.node).kind;
+      const bool closureIsFunctionExpression =
+          closureSyntaxKind == ast::SyntaxKind::FunctionExpression;
+      const bool closureIsExpressionLambda = closureSyntaxKind == ast::SyntaxKind::LambdaExpression;
+      if (!closureIsFunctionExpression && !closureIsExpressionLambda) {
         return rejectClosureCapability();
       }
       const auto* closureSignature = lookupSignature(closure.definition);
@@ -13015,44 +13021,80 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           closureCallable.raises != zc::none || closureCallable.abi != zc::none) {
         return rejectClosureCapability();
       }
-      auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
-      if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
-      const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
-      const auto& closureBlock = closureTree.node(closureShape.body);
-      const ast::NodeList closureStatements{
-          closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
-          closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
-      const ast::NodeId declaredReturnValue(
-          closureTree.node(closureShape.returnStatement).payload.words[ast::kReturnStmtValueWord]);
-      if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
-          !closureTree.contains(closureShape.returnStatement) ||
-          !closureTree.contains(closureShape.value) ||
-          closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
-          declaredReturnValue != closureShape.value ||
-          !isScalarLiteral(closureTree.node(closureShape.value).kind)) {
-        return rejectClosureCapability();
+      // Source anchors and spans. The lambda spelling has no source block or
+      // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
+      // reuse the closure source span, while the value anchors the body
+      // expression. The function-expression spelling anchors the real block
+      // and return derived by functionReturnShape.
+      ast::NodeId hirBodyAnchor;
+      ast::NodeId hirReturnAnchor;
+      ast::NodeId closureValue;
+      identity::SourceSpan closureBodySpan = closure.source.clone();
+      identity::SourceSpan closureReturnSpan = closure.source.clone();
+      identity::SourceSpan closureValueSpan = closure.source.clone();
+      if (closureIsFunctionExpression) {
+        auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
+        if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
+        const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
+        const auto& closureBlock = closureTree.node(closureShape.body);
+        const ast::NodeList closureStatements{
+            closureBlock.payload.words[ast::kBlockStmtStmtsFirstWord],
+            closureBlock.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        const ast::NodeId declaredReturnValue(closureTree.node(closureShape.returnStatement)
+                                                  .payload.words[ast::kReturnStmtValueWord]);
+        if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
+            !closureTree.contains(closureShape.returnStatement) ||
+            !closureTree.contains(closureShape.value) ||
+            closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
+            declaredReturnValue != closureShape.value ||
+            !isScalarLiteral(closureTree.node(closureShape.value).kind)) {
+          return rejectClosureCapability();
+        }
+        auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
+        if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
+          return rejectClosureCapability();
+        }
+        auto bodySpan = bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
+        auto returnSpan =
+            bound.parsedModule().spanFor(closureTree.node(closureShape.returnStatement).range);
+        auto valueSpan = bound.parsedModule().spanFor(closureTree.node(closureShape.value).range);
+        if (bodySpan == zc::none || returnSpan == zc::none || valueSpan == zc::none) {
+          return rejectClosureCapability();
+        }
+        hirBodyAnchor = closureShape.body;
+        hirReturnAnchor = closureShape.returnStatement;
+        closureValue = closureShape.value;
+        closureBodySpan = ZC_ASSERT_NONNULL(bodySpan).clone();
+        closureReturnSpan = ZC_ASSERT_NONNULL(returnSpan).clone();
+        closureValueSpan = ZC_ASSERT_NONNULL(valueSpan).clone();
+      } else {
+        // A LambdaExpression carries two mutually exclusive body words:
+        // BodyWord for a block body and ExprBodyWord for an expression body.
+        // The admitted expression-body form has no block and its value is the
+        // ExprBodyWord expression.
+        const ast::NodeId lambdaBlock(
+            closureTree.node(closure.node).payload.words[ast::kLambdaExpressionBodyWord]);
+        const ast::NodeId lambdaBody(
+            closureTree.node(closure.node).payload.words[ast::kLambdaExpressionExprBodyWord]);
+        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
+            !isScalarLiteral(closureTree.node(lambdaBody).kind)) {
+          return rejectClosureCapability();
+        }
+        auto valueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
+        if (valueSpan == zc::none) { return rejectClosureCapability(); }
+        hirBodyAnchor = ast::NodeId();
+        hirReturnAnchor = ast::NodeId();
+        closureValue = lambdaBody;
+        closureValueSpan = ZC_ASSERT_NONNULL(valueSpan).clone();
       }
-      auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
-      if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
-        return rejectClosureCapability();
-      }
-      auto closureLiteralIndex = factIndex(facts.literals(), closureShape.value);
-      auto closureBodySpan =
-          bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
-      auto closureReturnSpan =
-          bound.parsedModule().spanFor(closureTree.node(closureShape.returnStatement).range);
-      auto closureValueSpan =
-          bound.parsedModule().spanFor(closureTree.node(closureShape.value).range);
-      if (closureLiteralIndex == zc::none || closureBodySpan == zc::none ||
-          closureReturnSpan == zc::none || closureValueSpan == zc::none) {
-        return rejectClosureCapability();
-      }
+      auto closureLiteralIndex = factIndex(facts.literals(), closureValue);
+      if (closureLiteralIndex == zc::none) { return rejectClosureCapability(); }
       size_t closureLiteralSlot = 0;
       ZC_IF_SOME(index, closureLiteralIndex) { closureLiteralSlot = index; }
       const auto& closureLiteralFact = facts.literals().entries()[closureLiteralSlot].value;
-      if (closureLiteralFact.node != closureShape.value ||
+      if (closureLiteralFact.node != closureValue ||
           closureLiteralFact.type != closureCallable.success ||
-          !sameSpan(closureLiteralFact.sourceSpan, ZC_ASSERT_NONNULL(closureValueSpan))) {
+          !sameSpan(closureLiteralFact.sourceSpan, closureValueSpan)) {
         return rejectClosureCapability();
       }
       zc::Array<uint8_t> closureOrderingKey = closure.key.encode();
@@ -13065,13 +13107,13 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      HirVisibility::module(module),
                                      HirLinkage::Internal,
                                      closure.source.clone(),
-                                     ZC_ASSERT_NONNULL(closureBodySpan).clone(),
-                                     ZC_ASSERT_NONNULL(closureReturnSpan).clone(),
-                                     ZC_ASSERT_NONNULL(closureValueSpan).clone(),
+                                     closureBodySpan.clone(),
+                                     closureReturnSpan.clone(),
+                                     closureValueSpan.clone(),
                                      zc::mv(closureOrderingKey),
-                                     closureShape.body,
-                                     closureShape.returnStatement,
-                                     closureShape.value,
+                                     hirBodyAnchor,
+                                     hirReturnAnchor,
+                                     closureValue,
                                      zc::none,
                                      ScalarLiteralReturn{closureLiteralFact.literal.clone()}});
     }

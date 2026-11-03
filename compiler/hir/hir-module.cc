@@ -842,7 +842,8 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (sourceNodeData.kind != ast::SyntaxKind::FunctionDecl &&
           sourceNodeData.kind != ast::SyntaxKind::MethodDecl &&
           sourceNodeData.kind != ast::SyntaxKind::DestructorDecl &&
-          sourceNodeData.kind != ast::SyntaxKind::FunctionExpression) {
+          sourceNodeData.kind != ast::SyntaxKind::FunctionExpression &&
+          sourceNodeData.kind != ast::SyntaxKind::LambdaExpression) {
         return rejectNode(ir::IrFailureKind::InvalidFact, function.node.ordinal());
       }
     }
@@ -1099,20 +1100,20 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       ZC_IF_SOME(value, closureIndexMaybe) { closureSlot = value; }
       const auto& closureDefinition = definitions.closureDefinitions()[closureSlot];
       const auto& closureTree = bound.tree();
-      if (!closureTree.contains(closureDefinition.node) ||
-          closureTree.node(closureDefinition.node).kind != ast::SyntaxKind::FunctionExpression) {
+      if (!closureTree.contains(closureDefinition.node)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      auto closureShapeMaybe =
-          functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
-      if (closureShapeMaybe == zc::none) {
+      const auto closureSyntaxKind = closureTree.node(closureDefinition.node).kind;
+      const bool closureIsFunctionExpression =
+          closureSyntaxKind == ast::SyntaxKind::FunctionExpression;
+      const bool closureIsExpressionLambda = closureSyntaxKind == ast::SyntaxKind::LambdaExpression;
+      if (!closureIsFunctionExpression && !closureIsExpressionLambda) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                            ir::IrFailureKind::MissingRequiredFact, module,
-                                            registries, index + 1);
+                                            ir::IrFailureKind::InvalidFact, module, registries,
+                                            index + 1);
       }
-      const FunctionReturnShape& closureSource = ZC_ASSERT_NONNULL(closureShapeMaybe);
       if (function.node != hirId(expectedFunction) || block.node != hirId(expectedFunction + 1) ||
           function.body != block.node || block.statements.size() != 1 ||
           block.statements[0] != hirId(expectedFunction + 2) || function.parameters.size() != 0 ||
@@ -1154,39 +1155,84 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       }
       const auto& returnRecord = ZC_ASSERT_NONNULL(closureReturn);
       const auto& literalRecord = ZC_ASSERT_NONNULL(closureLiteral);
-      const auto& closureBlockNode = closureTree.node(closureSource.body);
-      const ast::NodeList closureStatements{
-          closureBlockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
-          closureBlockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
-      const ast::NodeId closureDeclaredValue(
-          closureTree.node(closureSource.returnStatement).payload.words[ast::kReturnStmtValueWord]);
-      if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
-          !closureTree.contains(closureSource.returnStatement) ||
-          closureTree.node(closureSource.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
-          closureDeclaredValue != closureSource.value ||
-          !closureTree.contains(closureSource.value) ||
-          !isScalarLiteral(closureTree.node(closureSource.value).kind)) {
-        return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
-                                            ir::IrFailureKind::InvalidFact, module, registries,
-                                            index + 1);
+      // Derive the source value node and expected spans per spelling. The
+      // expression-body lambda anchors no source block or return, so the HIR
+      // block/return spans reuse the closure source span; the function
+      // expression anchors its real block and return.
+      ast::NodeId closureValue;
+      identity::SourceSpan expectedBlockSpan = closureDefinition.source.clone();
+      identity::SourceSpan expectedReturnSpan = closureDefinition.source.clone();
+      identity::SourceSpan expectedValueSpan = closureDefinition.source.clone();
+      if (closureIsFunctionExpression) {
+        auto closureShapeMaybe =
+            functionReturnShape(closureTree, closureTree.node(closureDefinition.node));
+        if (closureShapeMaybe == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::MissingRequiredFact, module,
+                                              registries, index + 1);
+        }
+        const FunctionReturnShape& closureSource = ZC_ASSERT_NONNULL(closureShapeMaybe);
+        const auto& closureBlockNode = closureTree.node(closureSource.body);
+        const ast::NodeList closureStatements{
+            closureBlockNode.payload.words[ast::kBlockStmtStmtsFirstWord],
+            closureBlockNode.payload.words[ast::kBlockStmtStmtsSizeWord]};
+        const ast::NodeId closureDeclaredValue(closureTree.node(closureSource.returnStatement)
+                                                   .payload.words[ast::kReturnStmtValueWord]);
+        if (!closureTree.contains(closureStatements) || closureStatements.size != 1 ||
+            !closureTree.contains(closureSource.returnStatement) ||
+            closureTree.node(closureSource.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
+            closureDeclaredValue != closureSource.value ||
+            !closureTree.contains(closureSource.value) ||
+            !isScalarLiteral(closureTree.node(closureSource.value).kind)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto closureBodySpan =
+            bound.parsedModule().spanFor(closureTree.node(closureSource.body).range);
+        auto closureReturnSpan =
+            bound.parsedModule().spanFor(closureTree.node(closureSource.returnStatement).range);
+        auto closureValueSpan =
+            bound.parsedModule().spanFor(closureTree.node(closureSource.value).range);
+        if (closureBodySpan == zc::none || closureReturnSpan == zc::none ||
+            closureValueSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        closureValue = closureSource.value;
+        expectedBlockSpan = ZC_ASSERT_NONNULL(closureBodySpan).clone();
+        expectedReturnSpan = ZC_ASSERT_NONNULL(closureReturnSpan).clone();
+        expectedValueSpan = ZC_ASSERT_NONNULL(closureValueSpan).clone();
+      } else {
+        const ast::NodeId lambdaBlock(
+            closureTree.node(closureDefinition.node).payload.words[ast::kLambdaExpressionBodyWord]);
+        const ast::NodeId lambdaBody(closureTree.node(closureDefinition.node)
+                                         .payload.words[ast::kLambdaExpressionExprBodyWord]);
+        if (closureTree.contains(lambdaBlock) || !closureTree.contains(lambdaBody) ||
+            !isScalarLiteral(closureTree.node(lambdaBody).kind)) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        auto lambdaValueSpan = bound.parsedModule().spanFor(closureTree.node(lambdaBody).range);
+        if (lambdaValueSpan == zc::none) {
+          return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
+                                              ir::IrFailureKind::InvalidFact, module, registries,
+                                              index + 1);
+        }
+        closureValue = lambdaBody;
+        expectedValueSpan = ZC_ASSERT_NONNULL(lambdaValueSpan).clone();
       }
-      auto closureBodySpan =
-          bound.parsedModule().spanFor(closureTree.node(closureSource.body).range);
-      auto closureReturnSpan =
-          bound.parsedModule().spanFor(closureTree.node(closureSource.returnStatement).range);
-      auto closureValueSpan =
-          bound.parsedModule().spanFor(closureTree.node(closureSource.value).range);
-      if (closureBodySpan == zc::none || closureReturnSpan == zc::none ||
-          closureValueSpan == zc::none ||
-          !sameSpan(block.sourceSpan, ZC_ASSERT_NONNULL(closureBodySpan)) ||
-          !sameSpan(returnRecord.sourceSpan, ZC_ASSERT_NONNULL(closureReturnSpan)) ||
-          !sameSpan(literalRecord.sourceSpan, ZC_ASSERT_NONNULL(closureValueSpan)) ||
+      if (!sameSpan(block.sourceSpan, expectedBlockSpan) ||
+          !sameSpan(returnRecord.sourceSpan, expectedReturnSpan) ||
+          !sameSpan(literalRecord.sourceSpan, expectedValueSpan) ||
           !sameSpan(function.sourceSpan, closureDefinition.source)) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::InvalidFact, module, registries,
                                             index + 1);
       }
-      auto closureLiteralIndex = factIndex(facts.literals(), closureSource.value);
+      auto closureLiteralIndex = factIndex(facts.literals(), closureValue);
       if (closureLiteralIndex == zc::none) {
         return rejectHir<VerifiedHirModule>(ir::IrFailurePhase::HirVerification,
                                             ir::IrFailureKind::MissingRequiredFact, module,
@@ -1198,7 +1244,7 @@ ir::IrOperationResult<VerifiedHirModule> HirVerifier::verify(HirModuleCandidate&
       if (returnRecord.resultType != function.resultType ||
           returnRecord.value != literalRecord.node || literalRecord.type != function.resultType ||
           literalRecord.category != HirValueCategory::Value ||
-          closureLiteralFact.node != closureSource.value ||
+          closureLiteralFact.node != closureValue ||
           closureLiteralFact.type != function.resultType ||
           !sameConstant(literalRecord.value, closureLiteralFact.literal, module, registries,
                         semanticTypes) ||

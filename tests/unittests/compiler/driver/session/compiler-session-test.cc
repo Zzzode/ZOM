@@ -633,37 +633,41 @@ ZC_TEST("CompilerSessionTest.PublishesZeroCaptureClosureSignature") {
 }
 
 ZC_TEST("CompilerSessionTest.LowersZeroCaptureClosureAliasCallToHirAndMir") {
-  // RFC 0058 Part B0-3 step 2: the admitted block-body function-expression
-  // closure lowers as one parameterless scalar-literal-return HIR function
-  // owned by the closure DefId, and the enclosing function's alias call stays a
-  // direct Source edge to it. checkSources must succeed end to end (HIR, MIR)
-  // with exactly two functions in both stages and no incident.
-  auto session =
-      packageSession("fn entry() -> i32 { let f = fn() -> i32 { return 42; }; return f(); }\n"_zc);
-
-  ZC_REQUIRE(session->parseSources());
-  ZC_REQUIRE(session->bindSources());
-  ZC_EXPECT(session->checkSources());
-  ZC_EXPECT(!session->hasDiagnosticErrors());
-  ZC_EXPECT(session->getIncidents().empty());
-  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
-  const auto& hir = session->getVerifiedHirModules()[0];
-  ZC_EXPECT(hir.functions().size() == 2);
-  ZC_EXPECT(hir.blocks().size() == 2);
-  ZC_EXPECT(hir.returns().size() == 2);
-  ZC_EXPECT(hir.expressions().size() == 1);
-  ZC_EXPECT(hir.calls().size() == 1);
-  ZC_EXPECT(hir.locals().size() == 0);
-  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
-  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+  // RFC 0058 Part B0-3: both admitted spellings lower as one parameterless
+  // scalar-literal-return HIR function owned by the closure DefId, and the
+  // enclosing function's alias call stays a direct Source edge to it.
+  // checkSources must succeed end to end (HIR, MIR) with exactly two functions
+  // in both stages and no incident. The block-body function expression anchors
+  // a real block and return; the expression-body lambda anchors only the value
+  // expression with synthetic block and return nodes.
+  const auto expectLowered = [](zc::StringPtr source) {
+    auto session = packageSession(source);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(session->checkSources());
+    ZC_EXPECT(!session->hasDiagnosticErrors());
+    ZC_EXPECT(session->getIncidents().empty());
+    ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+    const auto& hir = session->getVerifiedHirModules()[0];
+    ZC_EXPECT(hir.functions().size() == 2);
+    ZC_EXPECT(hir.blocks().size() == 2);
+    ZC_EXPECT(hir.returns().size() == 2);
+    ZC_EXPECT(hir.expressions().size() == 1);
+    ZC_EXPECT(hir.calls().size() == 1);
+    ZC_EXPECT(hir.locals().size() == 0);
+    ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+    ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
+  };
+  expectLowered("fn entry() -> i32 { let f = fn() -> i32 { return 42; }; return f(); }\n"_zc);
+  expectLowered("fn entry() -> i32 { let f = () -> i32 => 42; return f(); }\n"_zc);
 }
 
-ZC_TEST("CompilerSessionTest.ExpressionBodyLambdaClosureKeepsCapabilityDrain") {
-  // RFC 0058 Part B0-3 step 2 lowers only the block-body function-expression
-  // spelling. An expression-body paren-arrow lambda anchors no block or return
-  // node, so it keeps the per-definition capability drain (ZOM4099) and must
-  // produce no incident.
-  auto session = packageSession("fn entry() -> i32 { let f = () -> i32 => 42; return f(); }\n"_zc);
+ZC_TEST("CompilerSessionTest.ParameterizedLambdaClosureKeepsCapabilityDrain") {
+  // RFC 0058 Part B0-3 lowers only the zero-parameter form. A one-parameter
+  // expression-body lambda publishes no closure signature, so it keeps the
+  // per-definition capability drain (ZOM4099) and must produce no incident.
+  auto session =
+      packageSession("fn entry() -> i32 { let f = (x: i32) -> i32 => x; return f(1); }\n"_zc);
 
   ZC_REQUIRE(session->parseSources());
   ZC_REQUIRE(session->bindSources());
