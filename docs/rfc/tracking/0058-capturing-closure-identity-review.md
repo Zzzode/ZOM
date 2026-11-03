@@ -30,12 +30,36 @@ Closure DefIds cannot be interned at skeleton identity materialization:
 `MaterializedModuleSkeletonIdentities::from` sees only module-level
 `skeleton.declarations()` and the `bodyOwners()` keys, while the
 `StableClosureFact`s live inside each owner body's `BoundOwnerBody`, which is
-materialized after the skeleton it depends on. Interning therefore happens in
-`MaterializeOwnerBody::provide` / `MaterializedOwnerBody::from` (which can
-fetch `identityInterners` through
-`context.semanticContextResources<ModuleGraphIdentityMaterializationResources>()`,
-the same pattern as the skeleton provider), and the resulting DefIds flow into
-the module inventory at `VerifiedBoundModule::from`.
+materialized after the skeleton it depends on. Interning happens in
+`VerifyBoundModule::provide` (fetch interner via
+`context.semanticContextResources<ModuleGraphIdentityMaterializationResources>()`),
+which enumerates every materialized owner body; the DefIds thread into
+`VerifiedBoundModule::from` and then `ImmutableDefinitionInventory::from`.
+The owner-body capability witness encodes only stable evidence, so no
+capability schema change is required: `VerifyBoundModule::verify` re-derives
+the same closure DefIds deterministically and compares.
+
+Implementation shape (function level):
+
+1. `closureSyntheticName(path)` builds
+   `"__closure_" + underscore-joined decimal path components` and wraps it in
+   `DeclaredDefinitionName::fromSource`.
+2. For each owner body and each `stableWitness.closures().values()`, read
+   `closure.closure()` (AnonymousOwnerLocalKey). Owners chain: for a Definition
+   owner clone the owner definition record's `record().owners()` and append
+   `EnclosingStableOwnerKey::definition(owner)`; for a Module owner use an empty
+   chain. Build `DefinitionIdentityRecord::from(module, owners, Closure, Value,
+   syntheticName, none)` and `interners.internDefinition`; reject on
+   none/duplicate.
+3. Thread the ordered list (owner-body order then stable closure order) as a
+   new parameter of `VerifiedBoundModule::from` and
+   `ImmutableDefinitionInventory::from`; append one
+   `MaterializedDefinitionInventoryEntry` per closure DefId at the closure
+   expression node (DeclarationDefinitionSite) and extend the
+   `definitions.size() == identities.definitions().size()` gate (~line 175) to
+   `+ closureDefIds.size()`, preserving `definitionNodes` uniqueness.
+4. `VerifyBoundModule::verify` independently rebuilds and requires identity
+   equality. The anonymous key mapping is unchanged for capture facts.
 
 ## Owner Reviews
 
@@ -59,7 +83,7 @@ captures, escaping closures, callable traits, and generic closures deferred.
 |---|---|---|---|
 | A0 | Closure Value-namespace header-less identity record admission | Landed (a3a06714) | key-definition-key-test 15; behavior-preserving (no producer yet) |
 | A1 | Intern one closure DefId per StableClosureFact in the owner-body provider (`MaterializeOwnerBody::provide`, fetch `identityInterners` via `semanticContextResources`); synthetic name from `AnonymousOwnerLocalKey.path()` (e.g. `__closure_0_3`); owner chain from `key.owner()` | Next | identity interning ztests (same-source convergence, sibling divergence, duplicate/missing rejection) |
-| A2 | Carry closure DefIds on the MaterializedOwnerBody capability (canonical schema), merge into `ImmutableDefinitionInventory` Closure entries at `VerifiedBoundModule::from`; relax/extend the definitions size and order assertions (owner then anonymous-local order); retain AnonymousOwnerLocalId mapping for capture facts | Next | stable-witness codec, materialized-module-skeleton/identity-membership tests, schema counts |
+| A2 | Thread closure DefIds from `VerifyBoundModule::provide` through `VerifiedBoundModule::from` into `ImmutableDefinitionInventory::from`; append Closure `MaterializedDefinitionInventoryEntry` rows at the closure node; extend the ~line 175 size gate by the closure count and keep node uniqueness; verify independently re-derives | Next | materialized-module-skeleton/identity-membership tests, inventory count and node-uniqueness tests |
 | A3 | Re-record corpus IR/process parity and full sanitizer ctest over the new closure definition surface | Next | byte-parity both channels, lit + unittest |
 | B | Flagged unboxed code/environment pair for Copy scalar capture; HIR/MIR/LIR environment lowering; native exit fixture | Proposed - not started | checker/HIR/MIR/LIR ztests, capturing-closure-consumer, conformance pos/neg, parity |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
