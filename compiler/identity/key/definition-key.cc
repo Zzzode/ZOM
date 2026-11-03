@@ -5,10 +5,10 @@
 
 #include "compiler/identity/key/definition-key.h"
 
-#include "zc/core/debug.h"
-#include "zc/core/vector.h"
 #include "compiler/identity/canonical/canonical-decoder.h"
 #include "compiler/identity/canonical/canonical-encoder.h"
+#include "zc/core/debug.h"
+#include "zc/core/vector.h"
 
 namespace zomlang::compiler::identity {
 namespace {
@@ -160,8 +160,13 @@ zc::Maybe<DefinitionNamespace> definitionNamespaceFor(DefinitionKind value) noex
     case DefinitionKind::TypeParameter:
     case DefinitionKind::Local:
     case DefinitionKind::PatternBinding:
-    case DefinitionKind::Closure:
       return zc::none;
+    case DefinitionKind::Closure:
+      // RFC 0058: a closure is a content-addressed value definition interned
+      // under its enclosing body owner. It carries no overload header because
+      // it is never named in an overload set; its synthetic name is derived
+      // deterministically from the anonymous-owner-local syntax path.
+      return DefinitionNamespace::Value;
   }
   return zc::none;
 }
@@ -274,7 +279,10 @@ zc::Maybe<DefinitionIdentityRecord> DefinitionIdentityRecord::from(
   if (expectedNamespace == zc::none || expectedNamespace != nameSpace) { return zc::none; }
   const bool callable = kind == DefinitionKind::Function || kind == DefinitionKind::Method ||
                         kind == DefinitionKind::Constructor;
-  if (callable != (overloadHeader != zc::none)) { return zc::none; }
+  // A closure is a value-namespace definition but is never named in an
+  // overload set, so it is the one Value kind that carries no overload header.
+  const bool overloadHeaderKind = callable;
+  if (overloadHeaderKind != (overloadHeader != zc::none)) { return zc::none; }
   return DefinitionIdentityRecord(
       zc::heap<definition_identity_detail::DefinitionIdentityRecordData>(
           definition_identity_detail::DefinitionIdentityRecordData{zc::mv(module), zc::mv(owners),

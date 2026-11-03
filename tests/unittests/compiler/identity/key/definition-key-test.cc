@@ -146,9 +146,9 @@ CanonicalTraitReference trait(zc::StringPtr text) {
 ImplHeader implHeader(zc::StringPtr traitName = "Trait"_zc) {
   zc::Vector<CanonicalGenericParameter> generics;
   zc::Vector<CanonicalBoundObligation> obligations;
-  auto value = ImplHeader::from(zc::mv(generics), ImplPolarity::Positive, ImplSafety::Safe,
-                                         trait(traitName), predefined(PredefinedTypeKind::I32),
-                                         zc::mv(obligations));
+  auto value =
+      ImplHeader::from(zc::mv(generics), ImplPolarity::Positive, ImplSafety::Safe, trait(traitName),
+                       predefined(PredefinedTypeKind::I32), zc::mv(obligations));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid canonical implementation header was rejected");
 }
@@ -163,9 +163,9 @@ OverloadHeader overloadHeader(CallableHeaderKind kind, zc::StringPtr text) {
                                                         : CanonicalCallableResult::unit();
   zc::Maybe<zc::Vector<CanonicalHeaderTypeSyntax>> raises;
   zc::Maybe<ExternalAbi> externalAbi;
-  auto value = OverloadHeader::from(
-      kind, declaredName(text), zc::mv(receiver), zc::mv(generics), zc::mv(obligations),
-      zc::mv(parameters), zc::mv(result), zc::mv(raises), zc::mv(externalAbi));
+  auto value = OverloadHeader::from(kind, declaredName(text), zc::mv(receiver), zc::mv(generics),
+                                    zc::mv(obligations), zc::mv(parameters), zc::mv(result),
+                                    zc::mv(raises), zc::mv(externalAbi));
   ZC_IF_SOME(admitted, value) { return zc::mv(admitted); }
   ZC_FAIL_REQUIRE("valid canonical overload header was rejected");
 }
@@ -239,6 +239,8 @@ ZC_TEST("Definition kinds retain the closed stable namespace partition") {
       {DefinitionKind::EnumVariant, DefinitionNamespace::Value},
       {DefinitionKind::Constant, DefinitionNamespace::Value},
       {DefinitionKind::Static, DefinitionNamespace::Value},
+      // RFC 0058: a closure is a content-addressed value definition.
+      {DefinitionKind::Closure, DefinitionNamespace::Value},
   };
   for (const auto& entry : stable) {
     ZC_EXPECT(isDefinitionKindValue(entry.kind));
@@ -247,8 +249,10 @@ ZC_TEST("Definition kinds retain the closed stable namespace partition") {
   }
 
   DefinitionKind subordinateOrLocal[] = {
-      DefinitionKind::Parameter,      DefinitionKind::TypeParameter, DefinitionKind::Local,
-      DefinitionKind::PatternBinding, DefinitionKind::Closure,
+      DefinitionKind::Parameter,
+      DefinitionKind::TypeParameter,
+      DefinitionKind::Local,
+      DefinitionKind::PatternBinding,
   };
   for (auto kind : subordinateOrLocal) {
     ZC_EXPECT(isDefinitionKindValue(kind));
@@ -258,6 +262,35 @@ ZC_TEST("Definition kinds retain the closed stable namespace partition") {
   ZC_EXPECT(!isDefinitionKindValue(static_cast<DefinitionKind>(0x00)));
   ZC_EXPECT(!isDefinitionKindValue(static_cast<DefinitionKind>(0xff)));
   ZC_EXPECT(!isStableDefinitionKind(static_cast<DefinitionKind>(0xff)));
+}
+
+ZC_TEST("A closure record is value-namespaced and rejects an overload header") {
+  zc::Vector<EnclosingStableOwnerKey> owners;
+  owners.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x11)));
+  // Synthetic closure name derived from its anonymous-owner-local path.
+  auto admitted = DefinitionIdentityRecord::from(
+      module(), zc::mv(owners), DefinitionKind::Closure, DefinitionNamespace::Value,
+      ZC_REQUIRE_NONNULL(DeclaredDefinitionName::fromSource("__closure_0"_zc)), zc::none);
+  ZC_EXPECT(admitted != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(admitted).overloadHeader() == zc::none);
+  auto encoded = ZC_REQUIRE_NONNULL(admitted).encode();
+  auto decoded = DefinitionIdentityRecord::decodeCanonical(encoded.asPtr());
+  ZC_REQUIRE(decoded != zc::none);
+  ZC_EXPECT(ZC_REQUIRE_NONNULL(decoded).kind() == DefinitionKind::Closure);
+  ZC_EXPECT(DefinitionKey::compute(ZC_REQUIRE_NONNULL(decoded)) ==
+            DefinitionKey::compute(ZC_REQUIRE_NONNULL(admitted)));
+
+  // A closure must never carry an overload header.
+  auto headerAuthority =
+      OverloadHeaderAuthority::from(overloadHeader(CallableHeaderKind::Function, "f"_zc));
+  zc::Maybe<OverloadHeaderDigest> rejectedDigest = headerAuthority.digest().clone();
+  zc::Vector<EnclosingStableOwnerKey> ownersWithHeader;
+  ownersWithHeader.add(EnclosingStableOwnerKey::definition(rawDefinitionKey(0x11)));
+  auto withHeader = DefinitionIdentityRecord::from(
+      module(), zc::mv(ownersWithHeader), DefinitionKind::Closure, DefinitionNamespace::Value,
+      ZC_REQUIRE_NONNULL(DeclaredDefinitionName::fromSource("__closure_1"_zc)),
+      zc::mv(rejectedDigest));
+  ZC_EXPECT(withHeader == zc::none);
 }
 
 ZC_TEST("DefinitionIdentityRecord passes the complete owner and named-item vectors") {
@@ -381,9 +414,9 @@ ZC_TEST("ImplIdentityRecord rejects normalized duplicate and unsorted obligation
   zc::Vector<CanonicalBoundObligation> obligations;
   obligations.add(CanonicalBoundObligation::from(predefined(PredefinedTypeKind::I8),
                                                  predefined(PredefinedTypeKind::I16)));
-  auto header = ImplHeader::from(zc::mv(generics), ImplPolarity::Positive,
-                                          ImplSafety::Safe, trait("Trait"_zc),
-                                          predefined(PredefinedTypeKind::I32), zc::mv(obligations));
+  auto header =
+      ImplHeader::from(zc::mv(generics), ImplPolarity::Positive, ImplSafety::Safe,
+                       trait("Trait"_zc), predefined(PredefinedTypeKind::I32), zc::mv(obligations));
   ZC_REQUIRE(header != zc::none);
   zc::Vector<EnclosingStableOwnerKey> owners;
   auto record =
@@ -445,8 +478,10 @@ ZC_TEST("DefinitionIdentityRecord rejects unstable kinds namespace drift and ove
                                            zc::mv(noOverload)) == zc::none);
 
   DefinitionKind unstable[] = {
-      DefinitionKind::Parameter,      DefinitionKind::TypeParameter, DefinitionKind::Local,
-      DefinitionKind::PatternBinding, DefinitionKind::Closure,
+      DefinitionKind::Parameter,
+      DefinitionKind::TypeParameter,
+      DefinitionKind::Local,
+      DefinitionKind::PatternBinding,
   };
   for (auto kind : unstable) {
     zc::Vector<EnclosingStableOwnerKey> owners;
