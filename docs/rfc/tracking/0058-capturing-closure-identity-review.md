@@ -247,6 +247,79 @@ mutually exclusive body words, `kLambdaExpressionBodyWord` for a block body and
 expression-body form has no block word set and its literal is the
 ExprBodyWord node, which is the anchor the builder and verifier use.
 
+### Part B1 design — flagged one-Copy-scalar capture (AWAITING APPROVAL)
+
+Scope: behind a new default-off CLI flag, admit exactly one non-escaping
+by-value Copy scalar capture:
+
+```
+fn entry() -> i32 {
+  let x: i32 = 42;
+  let f = fn() -> i32 { return x; };
+  return f();   // exits 42
+}
+```
+
+The captured local is an initialized scalar on the existing carrier set
+(i32/bool), read-only after capture; the closure is block-body (fn-expr first;
+the lambda arm follows the same path), has zero user parameters, and its body
+is the single `return <captured ident>;`; it is used only as a directly called
+alias. Flag off is byte-identical with today (every capture drains ZOM4099 at
+the existing body-checker gate). Multi-capture, Move/reference captures,
+mutated or escaping closures, captures of parameters, IIFE, and uncalled
+closures keep ZOM4099 even with the flag on.
+
+Flag: `--experimental-captures`, a bool option added through the existing
+compilation-policy option channel (precedent: `allow-dollar-identifiers`),
+threaded on the package compilation request into the session and read by the
+checker/HIR admission gates. It is not persisted in any artifact and no test
+invocation sets it by default.
+
+Representation decision (deviation from the RFC text, recommended): for one
+Copy scalar the implicit environment is the scalar value itself, passed by
+value as one implicit leading argument — not a pointer to an env struct. The
+closure then lowers to the existing one-parameter parameter-reference-return
+shape and the caller to the existing one-scalar-argument direct-call ladder
+(both already native), so no env struct, frame pointer, or ABI change is
+needed. The `{code,env}` carrier and pointer environment enter with
+multi-capture (B2) / references (RFC 0007), where they are actually required.
+
+Layer changes, in three independently revertible commits:
+
+1. Checker (flag-gated): produce one `CheckedCaptureFact{closure, target=x,
+   Copy, Inferred, i32}` for the admitted free variable instead of draining at
+   body-checker.cc:9330; add the fail-closed capture-fact verifier and census
+   the pool currently lacks (missing/additional/non-canonical rejects); gate
+   mode (Copy only), type (scalar carrier), count (one), and non-escape.
+2. HIR: the closure function gains one synthetic environment parameter
+   (CallableParameterKey derived from the closure DefId plus position, the
+   construction B0-2 deferred) and lowers as ParameterReferenceReturn; the
+   alias call gains one implicit scalar argument carrying the captured local.
+   A new verifier reconciliation accepts the source call's zero source
+   arguments only when exactly one matching Copy capture fact exists; the
+   argument type/span/key must equal the captured place.
+3. MIR/LIR: route through the existing one-scalar-argument call ladder; the
+   closure is enumerated by DefId as in B0-3. Native exit 42 is the gate.
+
+Invariants:
+
+1. Flag off: capture fact pool empty, output unchanged for every program.
+2. Flag on admitted: exactly one Copy capture fact; one synthetic parameter;
+   one implicit argument; fact, closure signature, HIR, and MIR agree
+   (fail-closed per layer).
+3. Everything outside the slice drains ZOM4099 with zero incidents.
+
+Tests: flag-off ztest locking the ZOM4099 drain and the empty capture pool;
+flag-on positive ztest (fact fields, HIR/MIR function and parameter counts)
+plus native exit 42; flag-on negative ztests (two captures, mutation,
+reference, escape) asserting ZOM4099 and no incident; full sanitizer ctest and
+the default parity corpus untouched.
+
+Rollback: three local commits; deleting them restores the B0-3 drain. The flag
+is never flipped on by default. Main open risks: the capture-fact verifier and
+census are new code, and the zero-source-argument to one-implicit-argument
+reconciliation is a new HIR check rather than a reuse.
+
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
 | B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
