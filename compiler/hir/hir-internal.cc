@@ -765,18 +765,10 @@ zc::Maybe<identity::DefId> resolveClosureAliasCallee(
       initializerKind != ast::SyntaxKind::LambdaExpression) {
     return zc::none;
   }
-  zc::Maybe<identity::DefId> closure;
-  for (const auto& definition : definitions.definitions()) {
-    if (definition.record.kind() != identity::DefinitionKind::Closure) { continue; }
-    const auto& siteValue = definition.site.value();
-    if (!siteValue.is<binder::DeclarationDefinitionSite>() ||
-        siteValue.get<binder::DeclarationDefinitionSite>().node != initializer) {
-      continue;
-    }
-    if (closure != zc::none) { return zc::none; }
-    closure = definition.definition;
-  }
-  return closure;
+  // RFC 0058: the closure is not a skeleton definition; its content-addressed
+  // DefId is on the separate closure-definition rail keyed at its expression
+  // node (the local's initializer).
+  return definitions.closureDefinitionAt(initializer);
 }
 
 zc::Maybe<checker::checked::CheckedNodeKey> checkedNodeKey(

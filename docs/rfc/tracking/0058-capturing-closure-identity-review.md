@@ -88,7 +88,47 @@ captures, escaping closures, callable traits, and generic closures deferred.
 | B0 | Zero-capture closure native execution (the prerequisite slice the RFC folds into Part B): point the checker closure-DefId resolution at the new Part A rail; publish the closure CallableSignature; then widen HIR/MIR/LIR one closure function per non-escaping direct-call module | In progress: B0-1/B0-2 landed; B0-3 HIR/MIR/LIR next | checker ztest green for both spellings; full ctest 322/322; `zomc run` exit 42 is B0-3 |
 | B0-1 | `closureValueShape` reads the closure DefId from `closureDefinitionAt(node)` instead of the skeleton DefinitionFact list | Landed (e8cf1aac) | behavior preserving until B0-2 |
 | B0-2 | Publish the zero-parameter, annotated, non-generic, non-raising CallableSignature for both closure spellings on the closure rail; admit Closure in isCallableDefinition, cross-rail `definition(DefId)`, header-less header match, and signature census | Landed (756be8db) | session ztest `PublishesZeroCaptureClosureSignature` (no Checker/Signature incident, both spellings); full sanitizer ctest 322/322 |
-| B0-3 | HIR closure-alias call node, MIR closure MirFunction owned by the DefId, LIR Source-edge enumeration so `zomc run` exits 42 for a zero-capture closure | Next | native consumer fixture exit 42 |
+| B0-3 | HIR closure-alias call node, MIR closure MirFunction owned by the DefId, LIR Source-edge enumeration so `zomc run` exits 42 for a zero-capture closure | In progress | native consumer fixture exit 42 |
+
+### Part B0-3 design (zero-capture closure native execution)
+
+Problem: after B0-2 the checker accepts the closure at the signature stage,
+but checkSources fails at IR phase HirConstruction (0x02) MissingRequiredFact
+because the closure-alias call cannot name a callee and no HIR/MIR producer
+emits the closure body. Goal of this minimal vertical slice:
+`fn entry()->i32 { let f = fn()->i32 { return 42; }; return f(); }` runs
+natively and exits 42. Zero captures, zero parameters; no environment and no
+ABI change.
+
+Identity model: unchanged from Part A. The closure is one content-addressed
+DefId on the closureDefinitions rail. The call stays a direct Source edge
+named by that DefId — there is no indirect call, no function-address rvalue,
+and no environment slot. The `let f` binding is a pure alias with no lowered
+slot (the returnsClosureAliasCall HIR shape already encodes this).
+
+Migration, in the smallest independently-revertible order:
+1. HIR callee resolution: `resolveClosureAliasCallee` reads
+   `closureDefinitionAt(initializer)` instead of scanning skeleton
+   definitions. The checker must also publish a direct dispatch fact for the
+   closure call so `dispatchFactIndex` resolves.
+2. HIR body production for the closure function itself (the closure body is a
+   parameterless function returning a literal; reuse the existing
+   functionReturnShape/DirectCallReturn machinery).
+3. MIR: build the closure as an ordinary MirFunction owned by its DefId; the
+   entry module's call targets it on the Source edge.
+4. LIR/CLI: enumerate the closure DefId on the Source ladder and derive a
+   symbol exactly as for a second named function; link and run.
+
+Invariants: one lowered function per closure DefId; the call target set
+matches the published dispatch/definition set (fail-closed verifier); no
+change for programs without closures; reference/move/generic/raising closures
+and any escaping use keep draining at their existing gates.
+
+Rollback: each numbered step is its own local commit reverting cleanly. If a
+step cannot be reached with the minimal shape, stop and report rather than
+widen the admission surface.
+
+
 | B1 | Flagged one-Copy-scalar capture on top of B0: unboxed `{code,env}` carrier, HIR leading environment parameter + field projection, implicit context argument, MIR leading env local + frame-relative operand, LIR leading pointer parameter | Proposed | capturing-closure-consumer native exit, checker/HIR/MIR/LIR ztests, conformance pos/neg, parity |
 | B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
