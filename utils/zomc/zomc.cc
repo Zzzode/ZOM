@@ -1763,6 +1763,10 @@ private:
                                                                         functions[callee], types);
             }
             if (lir == zc::none) {
+              lir = lir::MirToLirLowering::lowerCodePointerCallModule(functions[caller],
+                                                                      functions[callee], types);
+            }
+            if (lir == zc::none) {
               lir = lir::MirToLirLowering::lowerByValueAggregateCallModule(
                   functions[caller], functions[callee], types);
             }

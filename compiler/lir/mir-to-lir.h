@@ -681,6 +681,27 @@ public:
       const mir::MirFunction& caller, const mir::MirFunction& callee,
       const type::SemanticTypeStore& semanticTypes);
 
+  /// \brief Lowers a non-capturing closure call through a stored function
+  /// address to a two-function LIR module (RFC 0057 slice 1b).
+  ///
+  /// Admits the verified pair: a callee with P integer parameter locals
+  /// (1 <= P <= kMaxCallArguments) and one block returning one parameter, and
+  /// a caller with two trailing locals (one pointer slot, one scalar result),
+  /// whose entry block is `StorageLive(ptr); ptr = FunctionAddress(callee);
+  /// StorageLive(result)` followed by a CodePointerCall through the pointer
+  /// slot with P integer constant arguments, and whose continuation block
+  /// returns the result. The address lowers to a FunctionSymbolAddr statement
+  /// and the call to the generic LIR IndirectCall terminator. Every other
+  /// shape returns `none`.
+  ///
+  /// \param caller Verified code-pointer-call caller MIR function.
+  /// \param callee Verified non-capturing closure callee MIR function.
+  /// \param semanticTypes Session-owned type store that owns the function types.
+  /// \return The lowered two-function LIR module, or none when outside the slice.
+  ZC_NODISCARD static zc::Maybe<Module> lowerCodePointerCallModule(
+      const mir::MirFunction& caller, const mir::MirFunction& callee,
+      const type::SemanticTypeStore& semanticTypes);
+
   /// \brief Lowers a by-value aggregate call to a two-function LIR module.
   ///
   /// Admits the verified pair: a caller

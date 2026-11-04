@@ -7981,6 +7981,272 @@ zc::Maybe<Module> MirToLirLowering::lowerCallModuleWithArguments(
   return Module(zc::mv(functions));
 }
 
+zc::Maybe<Module> MirToLirLowering::lowerCodePointerCallModule(
+    const mir::MirFunction& caller, const mir::MirFunction& callee,
+    const type::SemanticTypeStore& semanticTypes) {
+  // RFC 0057 slice 1b: a non-capturing closure called through its stored
+  // function-address value. The callee is a P-parameter function (P in
+  // 1..kMaxCallArguments) with one block returning one parameter. The caller
+  // materializes the callee's address into one pointer local, calls through
+  // that slot with P integer constant arguments, stores the scalar result, and
+  // returns it. The callee lowers to function ordinal 2; the caller folds to
+  // the parameter-free zom.module_init entry.
+  if (callee.kind != mir::MirFunctionKind::Function || callee.locals.size() < 1 ||
+      callee.locals.size() > lir::kMaxCallArguments || callee.blocks.size() != 1) {
+    return zc::none;
+  }
+  const size_t parameterCount = callee.locals.size();
+  zc::Vector<ValueType> parameterCarriers;
+  for (size_t p = 0; p < parameterCount; ++p) {
+    const auto& local = callee.locals[p];
+    if (local.kind != mir::MirLocalKind::Parameter) { return zc::none; }
+    auto carrier = integerCarrierFor(local.type, semanticTypes);
+    if (carrier == zc::none) { return zc::none; }
+    parameterCarriers.add(ZC_REQUIRE_NONNULL(carrier));
+  }
+  auto resultCarrier = integerCarrierFor(callee.resultType, semanticTypes);
+  if (resultCarrier == zc::none) { return zc::none; }
+  const ValueType resultCarrierValue = ZC_REQUIRE_NONNULL(resultCarrier);
+  const auto& calleeBlock = callee.blocks[0];
+  if (calleeBlock.statements.size() != 0 ||
+      calleeBlock.terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& calleeReturn = calleeBlock.terminator.returnValue().value;
+  if (calleeReturn == zc::none) { return zc::none; }
+  uint32_t returnedParameterOrdinal = 0;
+  ZC_IF_SOME(value, calleeReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().projections().size() != 0) {
+      return zc::none;
+    }
+    for (const auto& parameter : callee.locals) {
+      if (parameter.id == value.place().local()) {
+        returnedParameterOrdinal = parameter.id.ordinal();
+        break;
+      }
+    }
+  }
+  if (returnedParameterOrdinal == 0) { return zc::none; }
+
+  // Caller: zero parameters, two blocks (entry address/copies + indirect call,
+  // continuation return). The pointer operand may be the FunctionAddress local
+  // itself or the end of a bounded chain of whole-local copies starting there
+  // (`let f = fn ...; let g = f; ... g(42)`). The trailing local is the scalar
+  // call result.
+  if (caller.kind != mir::MirFunctionKind::Function || caller.locals.size() < 2 ||
+      caller.blocks.size() != 2 || caller.resultType != callee.resultType) {
+    return zc::none;
+  }
+  size_t callerParameterCount = 0;
+  while (callerParameterCount < caller.locals.size() &&
+         caller.locals[callerParameterCount].kind == mir::MirLocalKind::Parameter) {
+    ++callerParameterCount;
+  }
+  if (callerParameterCount != 0) { return zc::none; }
+
+  const auto& entry = caller.blocks[0];
+  const auto* continuation = mir::findCallContinuation(caller, entry);
+  if (continuation == nullptr) { return zc::none; }
+  if (entry.terminator.kind() != mir::MirTerminatorKind::CodePointerCall) { return zc::none; }
+  const auto& pointerCall = entry.terminator.codePointerCallValue();
+  if (pointerCall.function.kind() == mir::MirOperandKind::Constant ||
+      pointerCall.function.place().projections().size() != 0 ||
+      pointerCall.arguments.size() != parameterCount ||
+      pointerCall.effect.kind() != mir::MirCallEffectKind::NoActivation ||
+      pointerCall.destination.projections().size() != 0 ||
+      pointerCall.normalTarget != continuation->id || pointerCall.unwindTarget != zc::none) {
+    return zc::none;
+  }
+  const auto pointerId = pointerCall.function.place().local();
+  const auto resultId = pointerCall.destination.local();
+  if (!pointerId.isValid() || !resultId.isValid() || pointerId == resultId) { return zc::none; }
+
+  auto localIndex = [&](mir::MirLocalId id) -> zc::Maybe<size_t> {
+    for (size_t index = 0; index < caller.locals.size(); ++index) {
+      if (caller.locals[index].id == id) { return index; }
+    }
+    return zc::none;
+  };
+  const auto resultIndex = localIndex(resultId);
+  if (resultIndex == zc::none) { return zc::none; }
+  const auto& resultLocal = caller.locals[ZC_ASSERT_NONNULL(resultIndex)];
+  if (resultLocal.type != caller.resultType) { return zc::none; }
+  const uint32_t pointerOrdinal = pointerId.ordinal();
+  const uint32_t resultOrdinal = resultId.ordinal();
+
+  // Resolve the pointer copy chain from the entry-block Initialize assigns.
+  // Each chain local is initialized exactly once, either from FunctionAddress
+  // (the origin) or from a whole-local copy of the previous chain local.
+  zc::Vector<mir::MirLocalId> reverseChain;
+  zc::Maybe<mir::MirLocalId> originId;
+  {
+    mir::MirLocalId current = pointerId;
+    for (uint32_t steps = 0; steps <= caller.locals.size(); ++steps) {
+      const mir::MirRvalue* initializer = nullptr;
+      for (const auto& statement : entry.statements) {
+        if (statement.kind() != mir::MirStatementKind::Assign) { continue; }
+        const auto& assignment = statement.assignmentValue();
+        if (assignment.destination.projections().size() != 0 ||
+            assignment.destination.local() != current) {
+          continue;
+        }
+        if (initializer != nullptr) { return zc::none; }
+        if (assignment.initialization != mir::MirInitializationKind::Initialize) {
+          return zc::none;
+        }
+        initializer = &assignment.value;
+      }
+      if (initializer == nullptr) { return zc::none; }
+      if (initializer->kind() == mir::MirRvalueKind::FunctionAddress) {
+        if (initializer->functionAddressValue().function != callee.owner) { return zc::none; }
+        originId = current;
+        break;
+      }
+      if (initializer->kind() != mir::MirRvalueKind::Use) { return zc::none; }
+      const auto& operand = initializer->useValue().operand;
+      if (operand.kind() == mir::MirOperandKind::Constant ||
+          operand.place().projections().size() != 0) {
+        return zc::none;
+      }
+      const auto previous = operand.place().local();
+      for (const auto& link : reverseChain) {
+        if (link == current) { return zc::none; }
+      }
+      // Record the current alias local (not the predecessor): the vector walks
+      // from the call-site pointer back to the origin, so reconstruction reads
+      // it in reverse to obtain origin-first order.
+      reverseChain.add(current);
+      current = previous;
+    }
+    if (originId == zc::none) { return zc::none; }
+  }
+
+  // Every entry statement must be a StorageLive/StorageDead of a chain or
+  // result local or one of the chain Initialize assigns, in source order.
+  zc::Vector<mir::MirLocalId> chainOrder;
+  chainOrder.add(ZC_ASSERT_NONNULL(originId));
+  for (size_t index = reverseChain.size(); index > 0; --index) {
+    chainOrder.add(reverseChain[index - 1]);
+  }
+  auto namesChainOrResult = [&](mir::MirLocalId id) -> bool {
+    if (id == resultId) { return true; }
+    for (const auto& link : chainOrder) {
+      if (link == id) { return true; }
+    }
+    return false;
+  };
+  size_t chainAssignPosition = 0;
+  for (const auto& statement : entry.statements) {
+    if (statement.kind() == mir::MirStatementKind::StorageLive ||
+        statement.kind() == mir::MirStatementKind::StorageDead) {
+      if (!namesChainOrResult(statement.storageLocal())) { return zc::none; }
+      continue;
+    }
+    if (statement.kind() != mir::MirStatementKind::Assign) { return zc::none; }
+    const auto& assignment = statement.assignmentValue();
+    if (assignment.destination.projections().size() != 0 ||
+        assignment.destination.local() != chainOrder[chainAssignPosition]) {
+      return zc::none;
+    }
+    ++chainAssignPosition;
+  }
+  if (chainAssignPosition != chainOrder.size()) { return zc::none; }
+
+  // The declared local set must be exactly the chain locals plus the result
+  // local; their ordinals are dense starting at one.
+  if (caller.locals.size() != chainOrder.size() + 1) { return zc::none; }
+  for (size_t index = 0; index < caller.locals.size(); ++index) {
+    if (caller.locals[index].id.ordinal() != index + 1) { return zc::none; }
+  }
+
+  zc::Vector<Operand> argumentOperands;
+  for (size_t index = 0; index < parameterCount; ++index) {
+    const auto& argument = pointerCall.arguments[index];
+    if (argument.kind() != mir::MirOperandKind::Constant ||
+        argument.constantValue().type != callee.locals[index].type) {
+      return zc::none;
+    }
+    auto lowered = lirOperandFor(argument, parameterCarriers[index]);
+    if (lowered == zc::none) { return zc::none; }
+    argumentOperands.add(zc::mv(ZC_ASSERT_NONNULL(lowered)));
+  }
+
+  if (continuation->statements.size() != 0 ||
+      continuation->terminator.kind() != mir::MirTerminatorKind::Return) {
+    return zc::none;
+  }
+  const auto& continuationReturn = continuation->terminator.returnValue().value;
+  if (continuationReturn == zc::none) { return zc::none; }
+  ZC_IF_SOME(value, continuationReturn) {
+    if (value.kind() == mir::MirOperandKind::Constant || value.place().projections().size() != 0 ||
+        value.place().local() != resultId) {
+      return zc::none;
+    }
+  }
+
+  auto callerEntryId = LirBlockId::fromOrdinal(1);
+  auto callerContId = LirBlockId::fromOrdinal(2);
+  auto calleeEntryId = LirBlockId::fromOrdinal(1);
+  if (callerEntryId == zc::none || callerContId == zc::none || calleeEntryId == zc::none) {
+    return zc::none;
+  }
+
+  zc::Vector<Function> functions;
+
+  // Function 1: the callee. Built first so the parameter carriers stay
+  // available for the caller's indirect-call terminator, but appended after
+  // the caller to keep the callee at function ordinal 2.
+  Function calleeFunction = [&] {
+    zc::Vector<BasicBlock> calleeBlocks;
+    zc::Vector<Statement> none;
+    calleeBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(calleeEntryId), zc::mv(none),
+                                Terminator::returnLocal(returnedParameterOrdinal)));
+    zc::Vector<Local> parameters;
+    for (size_t p = 0; p < parameterCount; ++p) {
+      parameters.add(Local(callee.locals[p].id.ordinal(), parameterCarriers[p]));
+    }
+    zc::Vector<Local> locals;
+    return Function(callee.owner, zc::heapString("zom.callee"), resultCarrierValue,
+                    zc::mv(parameters), zc::mv(locals), zc::mv(calleeBlocks));
+  }();
+
+  // Function 0: the caller. Its entry materializes the callee address into the
+  // chain origin, copies it through each alias local, then calls through the
+  // final pointer slot with the constant arguments, stores the scalar result,
+  // and continues to the return.
+  {
+    zc::Vector<Statement> entryStatements;
+    // The callee is the second function of this module, hence ordinal 2.
+    entryStatements.add(
+        Statement::functionSymbolAddr(chainOrder[0].ordinal(), /*functionOrdinal=*/2));
+    for (size_t index = 1; index < chainOrder.size(); ++index) {
+      entryStatements.add(Statement::assign(chainOrder[index].ordinal(),
+                                            Operand::localUse(chainOrder[index - 1].ordinal())));
+    }
+    auto indirectCall = Terminator::indirectCall(
+        pointerOrdinal, resultOrdinal, zc::mv(argumentOperands), resultCarrierValue,
+        zc::mv(parameterCarriers), ZC_REQUIRE_NONNULL(callerContId));
+    if (indirectCall == zc::none) { return zc::none; }
+    zc::Vector<BasicBlock> callerBlocks;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerEntryId), zc::mv(entryStatements),
+                                ZC_ASSERT_NONNULL(zc::mv(indirectCall))));
+    zc::Vector<Statement> contStatements;
+    callerBlocks.add(BasicBlock(ZC_REQUIRE_NONNULL(callerContId), zc::mv(contStatements),
+                                Terminator::returnLocal(resultOrdinal)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    for (const auto& link : chainOrder) {
+      locals.add(Local(link.ordinal(), ValueType::pointer(0)));
+    }
+    locals.add(Local(resultOrdinal, resultCarrierValue));
+    functions.add(Function(caller.owner, zc::heapString("zom.module_init"), resultCarrierValue,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(callerBlocks)));
+  }
+  functions.add(zc::mv(calleeFunction));
+
+  return Module(zc::mv(functions));
+}
+
 zc::Maybe<Module> MirToLirLowering::lowerCallChainModule(
     const mir::MirFunction& entry, const mir::MirFunction& middle, const mir::MirFunction& leaf,
     const type::SemanticTypeStore& semanticTypes) {

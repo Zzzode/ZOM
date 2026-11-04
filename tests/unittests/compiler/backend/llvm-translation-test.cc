@@ -3981,5 +3981,294 @@ ZC_TEST("Function symbol address fails closed on an ordinal outside the module r
   ZC_EXPECT(!result.verified());
 }
 
+// RFC 0057 slice 1b MIR -> LIR code-pointer call: a non-capturing closure value
+// materialized with FunctionAddress and invoked through a CodePointerCall
+// terminator. The callee has P i32 parameters and one block returning
+// parameter 0; the caller stores the callee address in a pointer local, passes
+// P i32 constants through the pointer, and returns the result.
+mir::MirFunction buildParameterReturnCalleeP(identity::DefId owner, identity::SemanticTypeId i32,
+                                             uint32_t parameterCount) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  for (uint32_t index = 1; index <= parameterCount; ++index) {
+    locals.add(mir::MirLocalDeclaration{localId(index), mir::MirLocalKind::Parameter, i32,
+                                        scopeId(1), span()});
+  }
+  zc::Vector<mir::MirStatement> statements;
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{blockId(1), scopeId(1), zc::mv(statements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(1), i32)), span())});
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+// Interns the structural function type `fn(i32) -> i32` (with one parameter)
+// or `fn(i32, i32) -> i32` for the two-argument shape; the closure value carrier
+// lowers to an opaque pointer.
+static identity::SemanticTypeId internI32FunctionType(tests::TestSemanticTypeContext& context,
+                                                      uint32_t parameterCount) {
+  const auto i32 = context.internPrimitive(type::semantic::PrimitiveKind::I32);
+  zc::Vector<identity::SemanticTypeId> parameters;
+  for (uint32_t index = 0; index < parameterCount; ++index) { parameters.add(i32); }
+  zc::Maybe<identity::SemanticTypeId> noRaises;
+  auto canonical = context.semanticTypes().canonicalizeClosed(type::semantic::TypeData(
+      type::semantic::FunctionTypeData{zc::mv(parameters), i32, zc::mv(noRaises)}));
+  ZC_REQUIRE(canonical.is<type::semantic::CanonicalTypeData>());
+  auto result =
+      context.semanticTypes().intern(zc::mv(canonical).get<type::semantic::CanonicalTypeData>());
+  ZC_REQUIRE(result.is<type::SemanticTypeInterned>());
+  return result.get<type::SemanticTypeInterned>().id;
+}
+
+mir::MirFunction buildCodePointerCallCaller(identity::DefId owner, identity::DefId calleeOwner,
+                                            identity::SemanticTypeId i32,
+                                            identity::SemanticTypeId functionType,
+                                            zc::Vector<uint8_t>&& argumentValues) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  // The pointer slot carries the closure's structural function type, which
+  // lowers to the opaque pointer carrier.
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Temporary, functionType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(1), span()));
+  entryStatements.add(
+      mir::MirStatement::assign(resultPlace(localId(1), functionType),
+                                mir::MirRvalue::functionAddress(calleeOwner, functionType),
+                                mir::MirInitializationKind::Initialize, span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+
+  zc::Vector<mir::MirOperand> arguments;
+  for (const uint8_t value : argumentValues) {
+    arguments.add(mir::MirOperand::constant(i32, integerConstant(value)));
+  }
+  zc::Maybe<mir::MirBlockId> unwindTarget;
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::codePointerCall(
+          mir::MirOperand::copy(resultPlace(localId(1), functionType)), zc::mv(arguments),
+          mir::MirCallEffect::noActivation(), resultPlace(localId(2), i32), blockId(2),
+          zc::mv(unwindTarget), span())});
+  zc::Vector<mir::MirStatement> continuationStatements;
+  blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuationStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(2), i32)), span())});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Code pointer call through a function address lowers to a verified LLVM module") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+
+  auto callee = buildParameterReturnCalleeP(calleeOwner, i32, /*parameterCount=*/1);
+  const auto functionType = internI32FunctionType(typeContext, 1);
+  zc::Vector<uint8_t> arguments;
+  arguments.add(42);
+  auto caller =
+      buildCodePointerCallCaller(callerOwner, calleeOwner, i32, functionType, zc::mv(arguments));
+
+  auto lir = lir::MirToLirLowering::lowerCodePointerCallModule(caller, callee,
+                                                               typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("store ptr @zom.callee"_zc));
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(!ir.contains("call i32 @"_zc));
+  ZC_EXPECT(ir.contains("i32 42"_zc));
+  ZC_EXPECT(ir.contains("zom.module_init"_zc));
+
+  const auto object = result.objectCode();
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
+ZC_TEST("Code pointer call with two arguments lowers to a verified LLVM module") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+
+  auto callee = buildParameterReturnCalleeP(calleeOwner, i32, /*parameterCount=*/2);
+  const auto functionType = internI32FunctionType(typeContext, 2);
+  zc::Vector<uint8_t> arguments;
+  arguments.add(40);
+  arguments.add(2);
+  auto caller =
+      buildCodePointerCallCaller(callerOwner, calleeOwner, i32, functionType, zc::mv(arguments));
+
+  auto lir = lir::MirToLirLowering::lowerCodePointerCallModule(caller, callee,
+                                                               typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("store ptr @zom.callee"_zc));
+  ZC_EXPECT(ir.contains("i32 40"_zc));
+  ZC_EXPECT(ir.contains("i32 2"_zc));
+}
+
+// Code-pointer call through one whole-local copy of the closure value:
+//   let f = fn(n) { return n; }; let g = f; return g(42);
+// The entry materializes the address into local 1, copies it to local 2,
+// stores the result in local 3, and calls through local 2.
+mir::MirFunction buildCopiedCodePointerCallCaller(identity::DefId owner,
+                                                  identity::DefId calleeOwner,
+                                                  identity::SemanticTypeId i32,
+                                                  identity::SemanticTypeId functionType) {
+  zc::Vector<mir::MirSourceScope> scopes;
+  scopes.add(mir::MirSourceScope{scopeId(1), zc::none, span()});
+  zc::Vector<mir::MirLocalDeclaration> locals;
+  locals.add(mir::MirLocalDeclaration{localId(1), mir::MirLocalKind::Temporary, functionType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(2), mir::MirLocalKind::UserLocal, functionType,
+                                      scopeId(1), span()});
+  locals.add(mir::MirLocalDeclaration{localId(3), mir::MirLocalKind::FunctionResult, i32,
+                                      scopeId(1), span()});
+
+  zc::Vector<mir::MirStatement> entryStatements;
+  entryStatements.add(mir::MirStatement::storageLive(localId(1), span()));
+  entryStatements.add(
+      mir::MirStatement::assign(resultPlace(localId(1), functionType),
+                                mir::MirRvalue::functionAddress(calleeOwner, functionType),
+                                mir::MirInitializationKind::Initialize, span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(2), span()));
+  entryStatements.add(mir::MirStatement::assign(
+      resultPlace(localId(2), functionType),
+      mir::MirRvalue::use(mir::MirOperand::copy(resultPlace(localId(1), functionType))),
+      mir::MirInitializationKind::Initialize, span()));
+  entryStatements.add(mir::MirStatement::storageLive(localId(3), span()));
+
+  zc::Vector<mir::MirOperand> arguments;
+  arguments.add(mir::MirOperand::constant(i32, integerConstant(42)));
+  zc::Maybe<mir::MirBlockId> unwindTarget;
+  zc::Vector<mir::MirBasicBlock> blocks;
+  blocks.add(mir::MirBasicBlock{
+      blockId(1), scopeId(1), zc::mv(entryStatements),
+      mir::MirTerminator::codePointerCall(
+          mir::MirOperand::copy(resultPlace(localId(2), functionType)), zc::mv(arguments),
+          mir::MirCallEffect::noActivation(), resultPlace(localId(3), i32), blockId(2),
+          zc::mv(unwindTarget), span())});
+  zc::Vector<mir::MirStatement> continuationStatements;
+  blocks.add(mir::MirBasicBlock{blockId(2), scopeId(1), zc::mv(continuationStatements),
+                                mir::MirTerminator::returnValue(
+                                    mir::MirOperand::move(resultPlace(localId(3), i32)), span())});
+
+  return mir::MirFunction{owner,
+                          mir::MirFunctionKind::Function,
+                          identity::DefinitionKind::Function,
+                          i32,
+                          span(),
+                          zc::mv(scopes),
+                          zc::mv(locals),
+                          zc::mv(blocks)};
+}
+
+ZC_TEST("Code pointer call through a copied pointer local lowers to a verified LLVM module") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+
+  auto callee = buildParameterReturnCalleeP(calleeOwner, i32, /*parameterCount=*/1);
+  const auto functionType = internI32FunctionType(typeContext, 1);
+  auto caller = buildCopiedCodePointerCallCaller(callerOwner, calleeOwner, i32, functionType);
+
+  auto lir = lir::MirToLirLowering::lowerCodePointerCallModule(caller, callee,
+                                                               typeContext.semanticTypes());
+  ZC_REQUIRE(lir != zc::none);
+  const auto& lirModule = ZC_REQUIRE_NONNULL(lir);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(lirModule) == zc::none);
+  {
+    auto functions = zc::heapArray<const mir::MirFunction*>(2);
+    functions[0] = &caller;
+    functions[1] = &callee;
+    ZC_EXPECT(lir::TranslationValidator::validate(functions.asPtr(), lirModule,
+                                                  typeContext.semanticTypes()) == zc::none);
+  }
+
+  LlvmTranslator translator;
+  auto result = translator.translate(lirModule);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  ZC_EXPECT(ir.contains("store ptr @zom.callee"_zc));
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(!ir.contains("call i32 @"_zc));
+  ZC_EXPECT(ir.contains("i32 42"_zc));
+}
+
+ZC_TEST("Code pointer call lowering fails closed when the address names another function") {
+  tests::TestSemanticTypeContext typeContext;
+  const auto i32 = typeContext.internPrimitive(type::semantic::PrimitiveKind::I32);
+  const auto callerOwner = tests::testDefinition(0);
+  const auto calleeOwner = tests::testDefinition(1);
+  const auto otherOwner = tests::testDefinition(2);
+
+  auto callee = buildParameterReturnCalleeP(calleeOwner, i32, /*parameterCount=*/1);
+  const auto functionType = internI32FunctionType(typeContext, 1);
+  zc::Vector<uint8_t> arguments;
+  arguments.add(42);
+  auto caller =
+      buildCodePointerCallCaller(callerOwner, otherOwner, i32, functionType, zc::mv(arguments));
+
+  ZC_EXPECT(lir::MirToLirLowering::lowerCodePointerCallModule(
+                caller, callee, typeContext.semanticTypes()) == zc::none);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm

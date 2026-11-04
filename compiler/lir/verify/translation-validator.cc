@@ -160,8 +160,11 @@ zc::Maybe<ValueType> pointerCarrier(identity::SemanticTypeId type,
   // Both shared and mutable references lower to the opaque pointer carrier;
   // mutability is enforced by borrow-mode facts rather than the LIR carrier.
   // Raw pointers (*const T / *mut T) share the same physical carrier.
+  // A non-capturing closure's structural function type is a bare code pointer
+  // in the admitted slice (RFC 0057 slice 1b).
   if (!data.is<type::semantic::ReferenceTypeData>() &&
-      !data.is<type::semantic::RawPointerTypeData>()) {
+      !data.is<type::semantic::RawPointerTypeData>() &&
+      !data.is<type::semantic::FunctionTypeData>()) {
     return zc::none;
   }
   return ValueType::pointer(0);
@@ -2460,6 +2463,22 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
                 }
                 break;
               }
+              case mir::MirRvalueKind::FunctionAddress: {
+                const auto& address = assignment.value.functionAddressValue();
+                const uint32_t targetOrdinal = actual.functionSymbolOrdinal();
+                if (actual.kind() != StatementKind::FunctionSymbolAddr || targetOrdinal == 0 ||
+                    targetOrdinal > moduleFunctions.size()) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                // The materialized symbol must be the LIR function owned by the
+                // exact definition the FunctionAddress names.
+                if (moduleFunctions[targetOrdinal - 1].owner() != address.function) {
+                  return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1,
+                               statementIndex);
+                }
+                break;
+              }
             }
             ++lirStatement;
             break;
@@ -2909,6 +2928,51 @@ zc::Maybe<TranslationFinding> validatePair(uint32_t functionIndex, const MirFunc
           if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
           if (carrier == zc::none ||
               !sameConstant(lirArguments[a + 1], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
+            return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
+          }
+        }
+        break;
+      }
+      case mir::MirTerminatorKind::CodePointerCall: {
+        // A non-capturing closure call lowers to the generic LIR IndirectCall
+        // terminator, but unlike the dyn-dispatch shape the LIR argument bundle
+        // is exactly the MIR arguments (no existential receiver prefix) and the
+        // function-pointer slot is the code pointer produced by a
+        // FunctionAddress assign.
+        const auto& pointerCall = mirBlock.terminator.codePointerCallValue();
+        if (lirTerminator.kind() != TerminatorKind::IndirectCall) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        if (pointerCall.function.kind() == mir::MirOperandKind::Constant ||
+            pointerCall.function.place().projections().size() != 0 ||
+            lirTerminator.indirectCallPointerOrdinal() !=
+                pointerCall.function.place().local().ordinal()) {
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+        }
+        if (pointerCall.destination.projections().size() != 0 ||
+            lirTerminator.callDestinationOrdinal() != pointerCall.destination.local().ordinal()) {
+          return fault(TranslationFaultKind::PlaceMappingMismatch, functionIndex, b + 1, b + 1);
+        }
+        if (lirTerminator.callNormalTarget().ordinal() != pointerCall.normalTarget.ordinal()) {
+          return fault(TranslationFaultKind::EdgeTargetMismatch, functionIndex, b + 1, b + 1);
+        }
+        const auto lirArguments = lirTerminator.callArguments();
+        if (lirArguments.size() != pointerCall.arguments.size()) {
+          return fault(TranslationFaultKind::EffectMismatch, functionIndex, b + 1, b + 1);
+        }
+        for (uint32_t a = 0; a < lirArguments.size(); ++a) {
+          const mir::MirOperand& sourceArgument = pointerCall.arguments[a];
+          const identity::SemanticTypeId sourceType =
+              sourceArgument.kind() == mir::MirOperandKind::Constant
+                  ? sourceArgument.constantValue().type
+                  : sourceArgument.place().resultType();
+          auto carrier = integerCarrier(sourceType, types);
+          if (carrier == zc::none) { carrier = boolCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = enumCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = pointerCarrier(sourceType, types); }
+          if (carrier == zc::none) { carrier = floatCarrier(sourceType, types); }
+          if (carrier == zc::none ||
+              !sameConstant(lirArguments[a], sourceArgument, ZC_ASSERT_NONNULL(carrier))) {
             return fault(TranslationFaultKind::ConstantMismatch, functionIndex, b + 1, b + 1);
           }
         }
