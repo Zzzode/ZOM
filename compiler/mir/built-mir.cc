@@ -253,6 +253,8 @@ MirRvalue::MirRvalue(MirErrorUnionRvalue&& value) noexcept : value(zc::mv(value)
 
 MirRvalue::MirRvalue(MirExtractFieldRvalue&& value) noexcept : value(zc::mv(value)) {}
 
+MirRvalue::MirRvalue(MirFunctionAddressRvalue&& value) noexcept : value(zc::mv(value)) {}
+
 MirRvalue MirRvalue::use(MirOperand&& operand) noexcept {
   return MirRvalue(MirUseRvalue{zc::mv(operand)});
 }
@@ -289,6 +291,11 @@ MirRvalue MirRvalue::extractField(MirOperand&& source, uint32_t fieldIndex,
   return MirRvalue(MirExtractFieldRvalue{zc::mv(source), fieldIndex, resultType});
 }
 
+MirRvalue MirRvalue::functionAddress(identity::DefId function,
+                                     identity::SemanticTypeId resultType) noexcept {
+  return MirRvalue(MirFunctionAddressRvalue{zc::mv(function), resultType});
+}
+
 MirRvalue MirRvalue::clone() const {
   if (value.is<MirUseRvalue>()) return use(value.get<MirUseRvalue>().operand.clone());
   if (value.is<MirComparisonRvalue>()) {
@@ -315,6 +322,10 @@ MirRvalue MirRvalue::clone() const {
     const auto& extract = value.get<MirExtractFieldRvalue>();
     return MirRvalue::extractField(extract.source.clone(), extract.fieldIndex, extract.resultType);
   }
+  if (value.is<MirFunctionAddressRvalue>()) {
+    const auto& address = value.get<MirFunctionAddressRvalue>();
+    return MirRvalue::functionAddress(address.function, address.resultType);
+  }
   const auto& aggregate = value.get<MirNominalAggregateRvalue>();
   zc::Vector<MirNominalAggregateElement> elements;
   for (const auto& element : aggregate.elements) {
@@ -330,6 +341,7 @@ MirRvalueKind MirRvalue::kind() const noexcept {
   if (value.is<MirEraseRvalue>()) return MirRvalueKind::Erase;
   if (value.is<MirErrorUnionRvalue>()) return MirRvalueKind::ErrorUnion;
   if (value.is<MirExtractFieldRvalue>()) return MirRvalueKind::ExtractField;
+  if (value.is<MirFunctionAddressRvalue>()) return MirRvalueKind::FunctionAddress;
   return MirRvalueKind::NominalAggregate;
 }
 
@@ -355,6 +367,10 @@ const MirErrorUnionRvalue& MirRvalue::errorUnionValue() const {
 
 const MirExtractFieldRvalue& MirRvalue::extractFieldValue() const {
   return value.get<MirExtractFieldRvalue>();
+}
+
+const MirFunctionAddressRvalue& MirRvalue::functionAddressValue() const {
+  return value.get<MirFunctionAddressRvalue>();
 }
 
 MirStatement::MirStatement(MirAssignmentStatement&& value,
@@ -504,6 +520,9 @@ MirTerminator::MirTerminator(MirSwitchIntTerminator&& value,
 MirTerminator::MirTerminator(MirIndirectCallTerminator&& value,
                              identity::SourceSpan&& sourceSpan) noexcept
     : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
+MirTerminator::MirTerminator(MirCodePointerCallTerminator&& value,
+                             identity::SourceSpan&& sourceSpan) noexcept
+    : value(zc::mv(value)), sourceSpanValue(zc::mv(sourceSpan)) {}
 
 MirTerminator MirTerminator::returnValue(MirOperand&& value,
                                          identity::SourceSpan&& sourceSpan) noexcept {
@@ -630,6 +649,18 @@ MirTerminator MirTerminator::indirectCall(identity::DefId interface, identity::D
       zc::mv(sourceSpan));
 }
 
+MirTerminator MirTerminator::codePointerCall(MirOperand&& function,
+                                             zc::Vector<MirOperand>&& arguments,
+                                             MirCallEffect&& effect, MirPlace&& destination,
+                                             MirBlockId normalTarget,
+                                             zc::Maybe<MirBlockId>&& unwindTarget,
+                                             identity::SourceSpan&& sourceSpan) noexcept {
+  return MirTerminator(
+      MirCodePointerCallTerminator{zc::mv(function), zc::mv(arguments), zc::mv(effect),
+                                   zc::mv(destination), normalTarget, zc::mv(unwindTarget)},
+      zc::mv(sourceSpan));
+}
+
 MirTerminator MirTerminator::clone() const {
   if (kind() == MirTerminatorKind::Unreachable) return unreachable(sourceSpan().clone());
   if (kind() == MirTerminatorKind::Call) {
@@ -651,6 +682,16 @@ MirTerminator MirTerminator::clone() const {
     return indirectCall(source.interface, source.method, source.receiver.clone(), zc::mv(arguments),
                         source.effect.clone(), source.destination.clone(), source.normalTarget,
                         zc::mv(unwindTarget), sourceSpan().clone());
+  }
+  if (kind() == MirTerminatorKind::CodePointerCall) {
+    const auto& source = codePointerCallValue();
+    zc::Vector<MirOperand> arguments;
+    for (const auto& argument : source.arguments) arguments.add(argument.clone());
+    zc::Maybe<MirBlockId> unwindTarget;
+    ZC_IF_SOME(target, source.unwindTarget) { unwindTarget = target; }
+    return codePointerCall(source.function.clone(), zc::mv(arguments), source.effect.clone(),
+                           source.destination.clone(), source.normalTarget, zc::mv(unwindTarget),
+                           sourceSpan().clone());
   }
   if (kind() == MirTerminatorKind::Goto) {
     return gotoTarget(gotoValue().target, sourceSpan().clone());
@@ -676,6 +717,7 @@ MirTerminatorKind MirTerminator::kind() const noexcept {
   if (value.is<MirCallTerminator>()) return MirTerminatorKind::Call;
   if (value.is<MirGotoTerminator>()) return MirTerminatorKind::Goto;
   if (value.is<MirIndirectCallTerminator>()) return MirTerminatorKind::IndirectCall;
+  if (value.is<MirCodePointerCallTerminator>()) return MirTerminatorKind::CodePointerCall;
   return MirTerminatorKind::SwitchInt;
 }
 
@@ -695,6 +737,10 @@ const MirSwitchIntTerminator& MirTerminator::switchIntValue() const {
 
 const MirIndirectCallTerminator& MirTerminator::indirectCallValue() const {
   return value.get<MirIndirectCallTerminator>();
+}
+
+const MirCodePointerCallTerminator& MirTerminator::codePointerCallValue() const {
+  return value.get<MirCodePointerCallTerminator>();
 }
 
 namespace {
@@ -1005,6 +1051,11 @@ bool encodeRvalue(identity::CanonicalEncoder& encoder, const MirRvalue& value,
     return encodeOperand(encoder, extract.source, module, identities, semanticTypes) &&
            encodeType(encoder, extract.resultType, semanticTypes);
   }
+  if (value.kind() == MirRvalueKind::FunctionAddress) {
+    const auto& address = value.functionAddressValue();
+    return encodeDefinition(encoder, address.function, identities) &&
+           encodeType(encoder, address.resultType, semanticTypes);
+  }
   const auto& aggregate = value.nominalAggregateValue();
   if (!encodeDefinition(encoder, aggregate.definition, identities) ||
       !encodeType(encoder, aggregate.type, semanticTypes)) {
@@ -1158,6 +1209,32 @@ bool encodeTerminator(identity::CanonicalEncoder& encoder, const MirTerminator& 
     }
     encoder.encodeUint32(indirect.normalTarget.ordinal());
     ZC_IF_SOME(target, indirect.unwindTarget) {
+      if (!target.isValid()) return false;
+      encoder.encodeSome();
+      encoder.encodeUint32(target.ordinal());
+    } else {
+      encoder.encodeNone();
+    }
+    return true;
+  }
+  if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+    const auto& pointerCall = terminator.codePointerCallValue();
+    if (!encodeOperand(encoder, pointerCall.function, module, identities, semanticTypes) ||
+        !encodePlace(encoder, pointerCall.destination, identities, semanticTypes) ||
+        !pointerCall.normalTarget.isValid()) {
+      return false;
+    }
+    encoder.encodeUint8(static_cast<uint8_t>(pointerCall.effect.kind()));
+    ZC_IF_SOME(temporary, pointerCall.effect.activatedMutableReceiver()) {
+      if (!temporary.isValid()) return false;
+      encoder.encodeUint32(temporary.ordinal());
+    }
+    encoder.encodeSequenceSize(pointerCall.arguments.size());
+    for (const auto& argument : pointerCall.arguments) {
+      if (!encodeOperand(encoder, argument, module, identities, semanticTypes)) return false;
+    }
+    encoder.encodeUint32(pointerCall.normalTarget.ordinal());
+    ZC_IF_SOME(target, pointerCall.unwindTarget) {
       if (!target.isValid()) return false;
       encoder.encodeSome();
       encoder.encodeUint32(target.ordinal());
@@ -1783,6 +1860,14 @@ bool validateTerminatorTargets(const MirFunction& function) {
       ZC_IF_SOME(unwind, call.unwindTarget) {
         if (!unwind.isValid() || !blockExists(function, unwind)) return false;
       }
+    } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+      const auto& pointerCall = terminator.codePointerCallValue();
+      if (!pointerCall.normalTarget.isValid() || !blockExists(function, pointerCall.normalTarget)) {
+        return false;
+      }
+      ZC_IF_SOME(unwind, pointerCall.unwindTarget) {
+        if (!unwind.isValid() || !blockExists(function, unwind)) return false;
+      }
     } else if (terminator.kind() == MirTerminatorKind::Goto) {
       const auto& gotoTerminator = terminator.gotoValue();
       if (!gotoTerminator.target.isValid() || !blockExists(function, gotoTerminator.target)) {
@@ -1826,6 +1911,8 @@ static identity::SemanticTypeId rvalueResultType(const MirRvalue& rvalue) {
       return rvalue.errorUnionValue().unionType;
     case MirRvalueKind::ExtractField:
       return rvalue.extractFieldValue().resultType;
+    case MirRvalueKind::FunctionAddress:
+      return rvalue.functionAddressValue().resultType;
   }
   ZC_UNREACHABLE
 }
@@ -1881,6 +1968,9 @@ bool validateInitializationLattice(const MirFunction& function) {
     } else if (terminator.kind() == MirTerminatorKind::Call) {
       checkEdge(terminator.callValue().normalTarget);
       ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { checkEdge(unwind); }
+    } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+      checkEdge(terminator.codePointerCallValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.codePointerCallValue().unwindTarget) { checkEdge(unwind); }
     }
   }
   if (cyclic) return true;
@@ -2004,6 +2094,9 @@ bool validateInitializationLattice(const MirFunction& function) {
     } else if (terminator.kind() == MirTerminatorKind::Call) {
       addEdge(terminator.callValue().normalTarget);
       ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { addEdge(unwind); }
+    } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+      addEdge(terminator.codePointerCallValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.codePointerCallValue().unwindTarget) { addEdge(unwind); }
     }
   }
   // A projected cell is effectively initialized when its own cell or any
@@ -2134,6 +2227,11 @@ bool validateInitializationLattice(const MirFunction& function) {
       } else if (terminator.kind() == MirTerminatorKind::Call) {
         enqueueTarget(terminator.callValue().normalTarget);
         ZC_IF_SOME(unwind, terminator.callValue().unwindTarget) { enqueueTarget(unwind); }
+      } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+        enqueueTarget(terminator.codePointerCallValue().normalTarget);
+        ZC_IF_SOME(unwind, terminator.codePointerCallValue().unwindTarget) {
+          enqueueTarget(unwind);
+        }
       }
     }
   }
@@ -2228,6 +2326,9 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
       // unreachable and fails the whole function.
       addTarget(terminator.indirectCallValue().normalTarget);
       ZC_IF_SOME(unwind, terminator.indirectCallValue().unwindTarget) { addTarget(unwind); }
+    } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+      addTarget(terminator.codePointerCallValue().normalTarget);
+      ZC_IF_SOME(unwind, terminator.codePointerCallValue().unwindTarget) { addTarget(unwind); }
     } else if (terminator.kind() == MirTerminatorKind::Goto) {
       addTarget(terminator.gotoValue().target);
     } else if (terminator.kind() == MirTerminatorKind::SwitchInt) {
@@ -2284,6 +2385,8 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
         return checkOperand(rvalue.errorUnionValue().payload);
       case MirRvalueKind::ExtractField:
         return checkOperand(rvalue.extractFieldValue().source);
+      case MirRvalueKind::FunctionAddress:
+        return true;
     }
     ZC_UNREACHABLE
   };
@@ -2344,6 +2447,13 @@ bool validateStructuralWellFormedness(const MirFunction& function) {
     } else if (terminator.kind() == MirTerminatorKind::IndirectCall) {
       const auto& call = terminator.indirectCallValue();
       if (!checkOperand(call.receiver)) return false;
+      for (const auto& argument : call.arguments) {
+        if (!checkOperand(argument)) return false;
+      }
+      if (!checkPlace(call.destination)) return false;
+    } else if (terminator.kind() == MirTerminatorKind::CodePointerCall) {
+      const auto& call = terminator.codePointerCallValue();
+      if (!checkOperand(call.function)) return false;
       for (const auto& argument : call.arguments) {
         if (!checkOperand(argument)) return false;
       }

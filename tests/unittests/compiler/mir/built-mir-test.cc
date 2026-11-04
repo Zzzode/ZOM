@@ -329,6 +329,54 @@ ZC_TEST("Built MIR value algebras clone every supported projection statement and
   ZC_EXPECT(clonedSwitchInt.sourceSpan().byteStart() == 1);
 }
 
+ZC_TEST("Built MIR function address rvalue and code pointer call terminator retain their fields") {
+  const auto functionId = tests::testDefinition(2);
+  const auto functionType = tests::testSemanticType(7);
+  const auto resultType = tests::testSemanticType();
+  const auto pointerLocal = local(5);
+  const auto resultLocal = local(6);
+
+  zc::Vector<MirProjection> noProjections;
+  auto pointerPlace = MirPlace(pointerLocal, functionType, zc::mv(noProjections), functionType);
+  zc::Vector<MirProjection> noResultProjections;
+  auto resultPlace = MirPlace(resultLocal, resultType, zc::mv(noResultProjections), resultType);
+
+  auto address = MirRvalue::functionAddress(functionId, functionType);
+  ZC_EXPECT(address.kind() == MirRvalueKind::FunctionAddress);
+  ZC_EXPECT(address.functionAddressValue().function == functionId);
+  ZC_EXPECT(address.functionAddressValue().resultType == functionType);
+  auto clonedAddress = address.clone();
+  ZC_EXPECT(clonedAddress.kind() == MirRvalueKind::FunctionAddress);
+  ZC_EXPECT(clonedAddress.functionAddressValue().function == functionId);
+  ZC_EXPECT(clonedAddress.functionAddressValue().resultType == functionType);
+
+  zc::Vector<MirOperand> arguments;
+  arguments.add(
+      MirOperand::constant(resultType, checker::checked::CanonicalConstValue::boolean(true)));
+  zc::Maybe<MirBlockId> unwindTarget;
+  auto pointerCall = MirTerminator::codePointerCall(
+      MirOperand::copy(zc::mv(pointerPlace)), zc::mv(arguments), MirCallEffect::noActivation(),
+      zc::mv(resultPlace), ZC_REQUIRE_NONNULL(MirBlockId::fromOrdinal(2)), zc::mv(unwindTarget),
+      sourceSpan());
+  ZC_EXPECT(pointerCall.kind() == MirTerminatorKind::CodePointerCall);
+  const auto& pointerCallValue = pointerCall.codePointerCallValue();
+  ZC_EXPECT(pointerCallValue.function.kind() == MirOperandKind::Copy);
+  ZC_REQUIRE(pointerCallValue.arguments.size() == 1);
+  ZC_EXPECT(pointerCallValue.arguments[0].kind() == MirOperandKind::Constant);
+  ZC_EXPECT(pointerCallValue.effect.kind() == MirCallEffectKind::NoActivation);
+  ZC_EXPECT(pointerCallValue.destination.local() == resultLocal);
+  ZC_EXPECT(pointerCallValue.normalTarget.ordinal() == 2);
+  ZC_EXPECT(pointerCallValue.unwindTarget == zc::none);
+  auto clonedPointerCall = pointerCall.clone();
+  ZC_EXPECT(clonedPointerCall.kind() == MirTerminatorKind::CodePointerCall);
+  const auto& clonedPointerCallValue = clonedPointerCall.codePointerCallValue();
+  ZC_EXPECT(clonedPointerCallValue.function.kind() == MirOperandKind::Copy);
+  ZC_REQUIRE(clonedPointerCallValue.arguments.size() == 1);
+  ZC_EXPECT(clonedPointerCallValue.destination.local() == resultLocal);
+  ZC_EXPECT(clonedPointerCallValue.normalTarget.ordinal() == 2);
+  ZC_EXPECT(clonedPointerCall.sourceSpan().byteStart() == 1);
+}
+
 ZC_TEST("Built MIR call effects commit mutable receiver activation only on normal edges") {
   const auto type = tests::testSemanticType();
   const auto receiverTemporary = local(3);

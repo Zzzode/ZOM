@@ -5,9 +5,9 @@
 
 #include "compiler/mono/instance-cloner.h"
 
-#include "zc/core/debug.h"
 #include "compiler/type/semantic-type-store.h"
 #include "compiler/type/type-substitution.h"
+#include "zc/core/debug.h"
 
 namespace zomlang::compiler::mono {
 namespace {
@@ -25,8 +25,8 @@ using mir::MirSourceScope;
 using mir::MirStatement;
 using mir::MirSwitchIntArm;
 using mir::MirTerminator;
-using type::semantic::TypeSubstitution;
 using type::SemanticTypeStore;
+using type::semantic::TypeSubstitution;
 
 /// \brief Mutable walk state carrying the canonical mapping and interning store.
 struct SubstitutionWalk final {
@@ -49,7 +49,7 @@ struct SubstitutionWalk final {
 };
 
 zc::Maybe<MirProjection> substituteProjection(const MirProjection& projection,
-                                               SubstitutionWalk& walk) {
+                                              SubstitutionWalk& walk) {
   auto mappedInput = projection.inputType();
   auto mappedResult = projection.resultType();
   if (!walk.mapType(mappedInput) || !walk.mapType(mappedResult)) { return zc::none; }
@@ -61,8 +61,7 @@ zc::Maybe<MirProjection> substituteProjection(const MirProjection& projection,
     case mir::MirProjectionKind::Dereference:
       return MirProjection::dereference(mappedInput, mappedResult);
     case mir::MirProjectionKind::Downcast:
-      return MirProjection::downcast(projection.downcastValue().variant, mappedInput,
-                                     mappedResult);
+      return MirProjection::downcast(projection.downcastValue().variant, mappedInput, mappedResult);
     case mir::MirProjectionKind::Subslice: {
       const auto& value = projection.subsliceValue();
       return MirProjection::subslice(value.first, value.pastLast, mappedInput, mappedResult);
@@ -166,12 +165,19 @@ zc::Maybe<MirRvalue> substituteRvalue(const MirRvalue& rvalue, SubstitutionWalk&
       if (source == zc::none || !walk.mapType(result)) { return zc::none; }
       return MirRvalue::extractField(zc::mv(ZC_ASSERT_NONNULL(source)), extract.fieldIndex, result);
     }
+    case mir::MirRvalueKind::FunctionAddress: {
+      const auto& address = rvalue.functionAddressValue();
+      auto result = address.resultType;
+      if (!walk.mapType(result)) { return zc::none; }
+      // A non-generic non-capturing closure names a concrete definition; the
+      // cloner keeps the identity and maps only the function type.
+      return MirRvalue::functionAddress(address.function, result);
+    }
   }
   return zc::none;
 }
 
-zc::Maybe<MirStatement> substituteStatement(const MirStatement& statement,
-                                            SubstitutionWalk& walk) {
+zc::Maybe<MirStatement> substituteStatement(const MirStatement& statement, SubstitutionWalk& walk) {
   auto span = statement.sourceSpan().clone();
   switch (statement.kind()) {
     case mir::MirStatementKind::Assign: {
@@ -274,6 +280,24 @@ zc::Maybe<MirTerminator> substituteTerminator(const MirTerminator& terminator,
           zc::mv(arguments), indirect.effect.clone(), zc::mv(ZC_ASSERT_NONNULL(destination)),
           indirect.normalTarget, zc::mv(unwindTarget), zc::mv(span));
     }
+    case mir::MirTerminatorKind::CodePointerCall: {
+      const auto& pointerCall = terminator.codePointerCallValue();
+      auto function = substituteOperand(pointerCall.function, walk);
+      if (function == zc::none) { return zc::none; }
+      zc::Vector<MirOperand> arguments;
+      for (const auto& argument : pointerCall.arguments) {
+        auto mapped = substituteOperand(argument, walk);
+        if (mapped == zc::none) { return zc::none; }
+        arguments.add(zc::mv(ZC_ASSERT_NONNULL(mapped)));
+      }
+      auto destination = substitutePlace(pointerCall.destination, walk);
+      if (destination == zc::none) { return zc::none; }
+      zc::Maybe<mir::MirBlockId> unwindTarget = pointerCall.unwindTarget;
+      return MirTerminator::codePointerCall(
+          zc::mv(ZC_ASSERT_NONNULL(function)), zc::mv(arguments), pointerCall.effect.clone(),
+          zc::mv(ZC_ASSERT_NONNULL(destination)), pointerCall.normalTarget, zc::mv(unwindTarget),
+          zc::mv(span));
+    }
   }
   return zc::none;
 }
@@ -351,6 +375,9 @@ void forEachRvalueTypeSlot(const MirRvalue& rvalue,
       callback(extract.resultType);
       return;
     }
+    case mir::MirRvalueKind::FunctionAddress:
+      callback(rvalue.functionAddressValue().resultType);
+      return;
   }
 }
 
@@ -396,9 +423,7 @@ void forEachTerminatorTypeSlot(const MirTerminator& terminator,
       return;
     case mir::MirTerminatorKind::Call: {
       const auto& call = terminator.callValue();
-      for (const auto& argument : call.arguments) {
-        forEachOperandTypeSlot(argument, callback);
-      }
+      for (const auto& argument : call.arguments) { forEachOperandTypeSlot(argument, callback); }
       forEachPlaceTypeSlot(call.destination, callback);
       return;
     }
@@ -414,6 +439,15 @@ void forEachTerminatorTypeSlot(const MirTerminator& terminator,
         forEachOperandTypeSlot(argument, callback);
       }
       forEachPlaceTypeSlot(indirect.destination, callback);
+      return;
+    }
+    case mir::MirTerminatorKind::CodePointerCall: {
+      const auto& pointerCall = terminator.codePointerCallValue();
+      forEachOperandTypeSlot(pointerCall.function, callback);
+      for (const auto& argument : pointerCall.arguments) {
+        forEachOperandTypeSlot(argument, callback);
+      }
+      forEachPlaceTypeSlot(pointerCall.destination, callback);
       return;
     }
   }
@@ -434,11 +468,9 @@ MirFunction cloneTemplateFunction(const MirFunction& templateFunction) {
   zc::Vector<MirBasicBlock> blocks;
   for (const auto& block : templateFunction.blocks) {
     zc::Vector<MirStatement> statements;
-    for (const auto& statement : block.statements) {
-      statements.add(statement.clone());
-    }
-    blocks.add(MirBasicBlock{block.id, block.sourceScope, zc::mv(statements),
-                             block.terminator.clone()});
+    for (const auto& statement : block.statements) { statements.add(statement.clone()); }
+    blocks.add(
+        MirBasicBlock{block.id, block.sourceScope, zc::mv(statements), block.terminator.clone()});
   }
   return MirFunction{templateFunction.owner,
                      templateFunction.kind,
@@ -478,9 +510,7 @@ zc::Maybe<IdentityInvariant> substituteFunctionTypes(
 void forEachFunctionTypeSlot(const MirFunction& function,
                              zc::FunctionParam<void(identity::SemanticTypeId)> callback) noexcept {
   callback(function.resultType);
-  for (const auto& local : function.locals) {
-    callback(local.type);
-  }
+  for (const auto& local : function.locals) { callback(local.type); }
   for (const auto& block : function.blocks) {
     for (const auto& statement : block.statements) {
       forEachStatementTypeSlot(statement, callback);

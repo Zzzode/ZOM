@@ -377,6 +377,22 @@ zc::Maybe<MirEventKey> lastUseOfDestination(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      const auto& call = block.terminator.codePointerCallValue();
+      if ((call.function.kind() == mir::MirOperandKind::Copy ||
+           call.function.kind() == mir::MirOperandKind::Move) &&
+          call.function.place().local() == destination.local()) {
+        consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, 0});
+      }
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& arg = call.arguments[argIndex];
+        if ((arg.kind() == mir::MirOperandKind::Copy || arg.kind() == mir::MirOperandKind::Move) &&
+            arg.place().local() == destination.local()) {
+          consider(MirEventKey{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                               argIndex + 1});
+        }
+      }
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
       const auto& discriminant = block.terminator.switchIntValue().discriminant;
       if ((discriminant.kind() == mir::MirOperandKind::Copy ||

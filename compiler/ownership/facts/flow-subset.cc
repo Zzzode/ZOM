@@ -53,6 +53,12 @@ bool isAdmittedFlowSubset(const mir::MirFunction& function) {
       if (blockIndex(function, call.normalTarget) == zc::none) return false;
       continue;
     }
+    if (kind == mir::MirTerminatorKind::CodePointerCall) {
+      const auto& call = block.terminator.codePointerCallValue();
+      if (call.unwindTarget != zc::none) return false;
+      if (blockIndex(function, call.normalTarget) == zc::none) return false;
+      continue;
+    }
     if (kind == mir::MirTerminatorKind::Goto) {
       if (blockIndex(function, block.terminator.gotoValue().target) == zc::none) return false;
       continue;
@@ -86,6 +92,8 @@ bool isAdmittedFlowSubset(const mir::MirFunction& function) {
       addTarget(terminator.callValue().normalTarget);
     } else if (terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
       addTarget(terminator.indirectCallValue().normalTarget);
+    } else if (terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      addTarget(terminator.codePointerCallValue().normalTarget);
     } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
       addTarget(terminator.gotoValue().target);
     } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {

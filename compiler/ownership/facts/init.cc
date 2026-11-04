@@ -334,7 +334,8 @@ bool hasCompleteInitializationPlans(const mir::MirFunction& function,
       if (rvalueKind != mir::MirRvalueKind::Use &&
           rvalueKind != mir::MirRvalueKind::NominalAggregate &&
           rvalueKind != mir::MirRvalueKind::Comparison &&
-          rvalueKind != mir::MirRvalueKind::Arithmetic) {
+          rvalueKind != mir::MirRvalueKind::Arithmetic &&
+          rvalueKind != mir::MirRvalueKind::FunctionAddress) {
         continue;
       }
       ++expectedPlans;
@@ -354,6 +355,12 @@ bool hasCompleteInitializationPlans(const mir::MirFunction& function,
     } else if (block.terminator.kind() == mir::MirTerminatorKind::IndirectCall) {
       ++expectedPlans;
       const auto& call = block.terminator.indirectCallValue();
+      const MirEventKey initialization{
+          MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
+      if (!hasInitializationPlan(overlay, initialization, call.destination)) return false;
+    } else if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      ++expectedPlans;
+      const auto& call = block.terminator.codePointerCallValue();
       const MirEventKey initialization{
           MirLocation{function.owner, MirPoint::edge(block.id, 0, call.normalTarget)}, 0};
       if (!hasInitializationPlan(overlay, initialization, call.destination)) return false;
@@ -433,6 +440,11 @@ bool applyRvalue(const mir::MirFunction& function, const MovePathFunction& paths
   }
   if (rvalue.kind() == mir::MirRvalueKind::ErrorUnion) {
     return applyOperand(function, paths, rvalue.errorUnionValue().payload, zc::mv(event), states);
+  }
+  if (rvalue.kind() == mir::MirRvalueKind::FunctionAddress) {
+    // A code pointer reads no owner local; only the destination becomes
+    // initialized through the assign event.
+    return true;
   }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
@@ -656,6 +668,10 @@ zc::Vector<mir::MirBlockId> terminatorSuccessors(const mir::MirTerminator& termi
     successors.add(terminator.indirectCallValue().normalTarget);
     return successors;
   }
+  if (terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+    successors.add(terminator.codePointerCallValue().normalTarget);
+    return successors;
+  }
   if (terminator.kind() == mir::MirTerminatorKind::Goto) {
     successors.add(terminator.gotoValue().target);
     return successors;
@@ -813,6 +829,27 @@ bool transferBlock(const mir::MirFunction& function, const MovePathFunction& pat
     const auto& call = block.terminator.indirectCallValue();
     if (call.unwindTarget != zc::none) { return false; }
     if (!applyOperand(function, paths, call.receiver,
+                      eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0), states)) {
+      return false;
+    }
+    for (uint32_t ordinal = 0; ordinal < call.arguments.size(); ++ordinal) {
+      if (!applyOperand(function, paths, call.arguments[ordinal],
+                        eventAt(function.owner, MirPoint::beforeTerminator(block.id), ordinal + 1),
+                        states)) {
+        return false;
+      }
+    }
+    if (!initialize(function, paths, call.destination, states, false)) { return false; }
+    if (facts != nullptr && !appendFacts(*facts, MirPoint::edge(block.id, 0, call.normalTarget),
+                                         function, paths, states.asPtr())) {
+      return false;
+    }
+    return true;
+  }
+  if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+    const auto& call = block.terminator.codePointerCallValue();
+    if (call.unwindTarget != zc::none) { return false; }
+    if (!applyOperand(function, paths, call.function,
                       eventAt(function.owner, MirPoint::beforeTerminator(block.id), 0), states)) {
       return false;
     }
@@ -1427,6 +1464,23 @@ zc::Maybe<zc::Vector<SourceFailure>> sourceFailures(
         const auto& call = block.terminator.indirectCallValue();
         if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
                                  ZC_ASSERT_NONNULL(facts), point, call.receiver,
+                                 block.terminator.sourceSpan(), 0, traversalOrdinal, failures,
+                                 linearPlaces)) {
+          return zc::none;
+        }
+        uint32_t argumentOrdinal = 1;
+        for (const auto& argument : call.arguments) {
+          if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
+                                   ZC_ASSERT_NONNULL(facts), point, argument,
+                                   block.terminator.sourceSpan(), argumentOrdinal++,
+                                   traversalOrdinal, failures, linearPlaces)) {
+            return zc::none;
+          }
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+        const auto& call = block.terminator.codePointerCallValue();
+        if (!appendSourceFailure(function, ZC_ASSERT_NONNULL(functionOverlay),
+                                 ZC_ASSERT_NONNULL(facts), point, call.function,
                                  block.terminator.sourceSpan(), 0, traversalOrdinal, failures,
                                  linearPlaces)) {
           return zc::none;

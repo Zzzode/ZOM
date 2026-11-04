@@ -226,6 +226,13 @@ bool hasValidDeferredActivations(const mir::VerifiedBuiltMir& builtMir,
         if (borrowActivationCount(overlay, function.owner, activationPoint) != 0) return false;
         continue;
       }
+      if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+        const auto& call = block.terminator.codePointerCallValue();
+        if (call.effect.kind() != mir::MirCallEffectKind::NoActivation) return false;
+        const auto activationPoint = MirPoint::edge(block.id, 0, call.normalTarget);
+        if (borrowActivationCount(overlay, function.owner, activationPoint) != 0) return false;
+        continue;
+      }
       if (block.terminator.kind() != mir::MirTerminatorKind::Call) continue;
       const auto& call = block.terminator.callValue();
       const auto activationPoint = MirPoint::edge(block.id, 0, call.normalTarget);

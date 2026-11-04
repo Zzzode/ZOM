@@ -172,6 +172,8 @@ const MirBasicBlock* findCallContinuation(const MirFunction& function, const Mir
     target = entry.terminator.callValue().normalTarget;
   } else if (entry.terminator.kind() == MirTerminatorKind::IndirectCall) {
     target = entry.terminator.indirectCallValue().normalTarget;
+  } else if (entry.terminator.kind() == MirTerminatorKind::CodePointerCall) {
+    target = entry.terminator.codePointerCallValue().normalTarget;
   } else {
     return nullptr;
   }

@@ -238,7 +238,8 @@ enum class MirRvalueKind : uint8_t {
   Arithmetic = 0x04,
   Erase = 0x05,
   ErrorUnion = 0x06,
-  ExtractField = 0x07
+  ExtractField = 0x07,
+  FunctionAddress = 0x08
 };
 
 /// \brief Closed comparison operator produced by primitive comparison lowering.
@@ -355,6 +356,19 @@ struct MirExtractFieldRvalue final {
   identity::SemanticTypeId resultType;
 };
 
+/// \brief Function-address rvalue for a non-capturing closure value (RFC 0057
+/// slice 1b).
+///
+/// Materializes the address of a module-local function definition as a bare
+/// code pointer. The result type is the closure's structural function type; it
+/// lowers to an opaque pointer carrier. The pointed-to function takes no
+/// hidden environment parameter, so only non-capturing closures may name it.
+/// These bytes flow through `encodeRvalue`; changing a field is a codec change.
+struct MirFunctionAddressRvalue final {
+  identity::DefId function;
+  identity::SemanticTypeId resultType;
+};
+
 /// \brief Canonical target-independent assignment value for the Built MIR boundary.
 class MirRvalue final {
 public:
@@ -380,6 +394,8 @@ public:
                                            MirOperand&& payload) noexcept;
   ZC_NODISCARD static MirRvalue extractField(MirOperand&& source, uint32_t fieldIndex,
                                              identity::SemanticTypeId resultType) noexcept;
+  ZC_NODISCARD static MirRvalue functionAddress(identity::DefId function,
+                                                identity::SemanticTypeId resultType) noexcept;
   ZC_NODISCARD MirRvalue clone() const;
   ZC_NODISCARD MirRvalueKind kind() const noexcept;
   ZC_NODISCARD const MirUseRvalue& useValue() const;
@@ -389,6 +405,7 @@ public:
   ZC_NODISCARD const MirEraseRvalue& eraseValue() const;
   ZC_NODISCARD const MirErrorUnionRvalue& errorUnionValue() const;
   ZC_NODISCARD const MirExtractFieldRvalue& extractFieldValue() const;
+  ZC_NODISCARD const MirFunctionAddressRvalue& functionAddressValue() const;
 
 private:
   explicit MirRvalue(MirUseRvalue&& value) noexcept;
@@ -398,8 +415,9 @@ private:
   explicit MirRvalue(MirEraseRvalue&& value) noexcept;
   explicit MirRvalue(MirErrorUnionRvalue&& value) noexcept;
   explicit MirRvalue(MirExtractFieldRvalue&& value) noexcept;
+  explicit MirRvalue(MirFunctionAddressRvalue&& value) noexcept;
   zc::OneOf<MirUseRvalue, MirNominalAggregateRvalue, MirComparisonRvalue, MirArithmeticRvalue,
-            MirEraseRvalue, MirErrorUnionRvalue, MirExtractFieldRvalue>
+            MirEraseRvalue, MirErrorUnionRvalue, MirExtractFieldRvalue, MirFunctionAddressRvalue>
       value;
 };
 
@@ -502,6 +520,7 @@ enum class MirTerminatorKind : uint8_t {
   Goto = 0x04,
   SwitchInt = 0x05,
   IndirectCall = 0x06,
+  CodePointerCall = 0x07,
 };
 
 struct MirReturnTerminator final {
@@ -622,6 +641,23 @@ struct MirIndirectCallTerminator final {
   zc::Maybe<MirBlockId> unwindTarget;
 };
 
+/// \brief One call through a bare code-pointer operand (RFC 0057 slice 1b).
+///
+/// The function operand holds the address produced by a FunctionAddress
+/// rvalue (a non-capturing closure value); unlike the dyn-dispatch
+/// IndirectCall terminator it carries no interface, method, or existential
+/// receiver. The callee signature is the structural function type of the
+/// pointer's origin, so argument and destination carriers are validated
+/// against that type rather than a vtable slot.
+struct MirCodePointerCallTerminator final {
+  MirOperand function;
+  zc::Vector<MirOperand> arguments;
+  MirCallEffect effect;
+  MirPlace destination;
+  MirBlockId normalTarget;
+  zc::Maybe<MirBlockId> unwindTarget;
+};
+
 /// \brief Closed terminator algebra for the currently supported Built MIR subset.
 class MirTerminator final {
 public:
@@ -651,6 +687,12 @@ public:
                                                  MirBlockId normalTarget,
                                                  zc::Maybe<MirBlockId>&& unwindTarget,
                                                  identity::SourceSpan&& sourceSpan) noexcept;
+  ZC_NODISCARD static MirTerminator codePointerCall(MirOperand&& function,
+                                                    zc::Vector<MirOperand>&& arguments,
+                                                    MirCallEffect&& effect, MirPlace&& destination,
+                                                    MirBlockId normalTarget,
+                                                    zc::Maybe<MirBlockId>&& unwindTarget,
+                                                    identity::SourceSpan&& sourceSpan) noexcept;
   ZC_NODISCARD MirTerminator clone() const;
   ZC_NODISCARD MirTerminatorKind kind() const noexcept;
   /// \brief Returns presentation-only source ownership for this MIR terminator.
@@ -660,6 +702,7 @@ public:
   ZC_NODISCARD const MirGotoTerminator& gotoValue() const;
   ZC_NODISCARD const MirSwitchIntTerminator& switchIntValue() const;
   ZC_NODISCARD const MirIndirectCallTerminator& indirectCallValue() const;
+  ZC_NODISCARD const MirCodePointerCallTerminator& codePointerCallValue() const;
 
 private:
   MirTerminator(MirReturnTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
@@ -668,8 +711,9 @@ private:
   MirTerminator(MirGotoTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirSwitchIntTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   MirTerminator(MirIndirectCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
+  MirTerminator(MirCodePointerCallTerminator&& value, identity::SourceSpan&& sourceSpan) noexcept;
   zc::OneOf<MirReturnTerminator, MirUnreachableTerminator, MirCallTerminator, MirGotoTerminator,
-            MirSwitchIntTerminator, MirIndirectCallTerminator>
+            MirSwitchIntTerminator, MirIndirectCallTerminator, MirCodePointerCallTerminator>
       value;
   identity::SourceSpan sourceSpanValue;
 };

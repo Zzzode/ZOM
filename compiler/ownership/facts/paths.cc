@@ -163,6 +163,12 @@ bool validRvalue(const mir::MirFunction& function, const mir::MirRvalue& rvalue)
     const auto& extract = rvalue.extractFieldValue();
     return extract.resultType.isValid() && validOperand(function, extract.source);
   }
+  if (rvalue.kind() == mir::MirRvalueKind::FunctionAddress) {
+    // A code pointer references no owned local; only the target identity and
+    // result type must be valid.
+    return rvalue.functionAddressValue().function.isValid() &&
+           rvalue.functionAddressValue().resultType.isValid();
+  }
   const auto& aggregate = rvalue.nominalAggregateValue();
   if (!aggregate.definition.isValid() || !aggregate.type.isValid()) return false;
   for (const auto& element : aggregate.elements) {
@@ -482,6 +488,20 @@ zc::Maybe<MovePathFunction> deriveFunction(const mir::MirFunction& function,
         }
       }
     }
+    if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      const auto& call = block.terminator.codePointerCallValue();
+      if (!appendPlace(paths, call.destination)) return zc::none;
+      if (call.function.kind() != mir::MirOperandKind::Constant &&
+          !appendPlace(paths, call.function.place())) {
+        return zc::none;
+      }
+      for (const auto& argument : call.arguments) {
+        if (argument.kind() != mir::MirOperandKind::Constant &&
+            !appendPlace(paths, argument.place())) {
+          return zc::none;
+        }
+      }
+    }
     if (block.terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
       const auto& discriminant = block.terminator.switchIntValue().discriminant;
       if (discriminant.kind() != mir::MirOperandKind::Constant &&
@@ -582,6 +602,14 @@ bool validateFunction(const mir::MirFunction& function) {
       const auto& call = block.terminator.indirectCallValue();
       if (!matchesPlace(function, call.destination)) return false;
       if (!validOperand(function, call.receiver)) return false;
+      for (const auto& argument : call.arguments) {
+        if (!validOperand(function, argument)) return false;
+      }
+    }
+    if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      const auto& call = block.terminator.codePointerCallValue();
+      if (!matchesPlace(function, call.destination)) return false;
+      if (!validOperand(function, call.function)) return false;
       for (const auto& argument : call.arguments) {
         if (!validOperand(function, argument)) return false;
       }

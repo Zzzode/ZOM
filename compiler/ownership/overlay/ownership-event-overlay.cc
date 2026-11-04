@@ -1865,6 +1865,8 @@ bool rvalueHasRawPointerDereference(const mir::MirRvalue& rvalue,
       return operandHasRawPointerDereference(rvalue.errorUnionValue().payload, semanticTypes);
     case mir::MirRvalueKind::ExtractField:
       return operandHasRawPointerDereference(rvalue.extractFieldValue().source, semanticTypes);
+    case mir::MirRvalueKind::FunctionAddress:
+      return false;
   }
   return false;
 }
@@ -1918,6 +1920,15 @@ bool terminatorHasRawPointerDereference(const mir::MirTerminator& terminator,
       const auto& call = terminator.indirectCallValue();
       if (placeHasRawPointerDereference(call.destination, semanticTypes)) return true;
       if (operandHasRawPointerDereference(call.receiver, semanticTypes)) return true;
+      for (const auto& argument : call.arguments) {
+        if (operandHasRawPointerDereference(argument, semanticTypes)) return true;
+      }
+      return false;
+    }
+    case mir::MirTerminatorKind::CodePointerCall: {
+      const auto& call = terminator.codePointerCallValue();
+      if (placeHasRawPointerDereference(call.destination, semanticTypes)) return true;
+      if (operandHasRawPointerDereference(call.function, semanticTypes)) return true;
       for (const auto& argument : call.arguments) {
         if (operandHasRawPointerDereference(argument, semanticTypes)) return true;
       }
@@ -2044,7 +2055,8 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
             if (rvalue.kind() == mir::MirRvalueKind::Use ||
                 rvalue.kind() == mir::MirRvalueKind::NominalAggregate ||
                 rvalue.kind() == mir::MirRvalueKind::Comparison ||
-                rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
+                rvalue.kind() == mir::MirRvalueKind::Arithmetic ||
+                rvalue.kind() == mir::MirRvalueKind::FunctionAddress) {
               if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
                                    statement.assignmentValue().destination.resultType()) ||
                   !appendMarkerUse(markerUses, proofs, input, initialization, linear,
@@ -2240,6 +2252,81 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> projectCandidateFunctions(
         if (markerUses.size() < 2 ||
             !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
                                    call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
+          return zc::none;
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+        const auto& pointerCall = block.terminator.codePointerCallValue();
+        if (pointerCall.unwindTarget != zc::none) return zc::none;
+        if (pointerCall.effect.kind() != mir::MirCallEffectKind::NoActivation) return zc::none;
+        // Function pointer operand at ordinal 0.
+        {
+          zc::Vector<EventRole> pointerRoles;
+          switch (pointerCall.function.kind()) {
+            case mir::MirOperandKind::Copy:
+              pointerRoles.add(EventRole::OperandRead);
+              pointerRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              pointerRoles.add(EventRole::OperandRead);
+              pointerRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              pointerRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(pointerRoles)});
+          if (pointerCall.function.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               pointerCall.function.place().resultType())) {
+            return zc::none;
+          }
+        }
+        // Arguments at ordinal 1+.
+        for (const auto& argument : pointerCall.arguments) {
+          zc::Vector<EventRole> argumentRoles;
+          switch (argument.kind()) {
+            case mir::MirOperandKind::Copy:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              argumentRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
+          if (argument.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               argument.place().resultType())) {
+            return zc::none;
+          }
+        }
+        zc::Vector<EventRole> commitRoles;
+        commitRoles.add(EventRole::DestinationWrite);
+        slots.add(MirEventSlot{
+            MirEventKey{
+                MirLocation{function.owner, MirPoint::edge(block.id, 0, pointerCall.normalTarget)},
+                0},
+            EventStage::Commit, zc::mv(commitRoles)});
+        const MirEventKey initialization{
+            MirLocation{function.owner, MirPoint::edge(block.id, 0, pointerCall.normalTarget)}, 0};
+        if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
+                             pointerCall.destination.resultType()) ||
+            !appendMarkerUse(markerUses, proofs, input, initialization, linear,
+                             pointerCall.destination.resultType())) {
+          return zc::none;
+        }
+        if (markerUses.size() < 2 ||
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   pointerCall.destination, markerUses[markerUses.size() - 2],
                                    markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }
@@ -2463,7 +2550,8 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
             if (rvalue.kind() == mir::MirRvalueKind::Use ||
                 rvalue.kind() == mir::MirRvalueKind::NominalAggregate ||
                 rvalue.kind() == mir::MirRvalueKind::Comparison ||
-                rvalue.kind() == mir::MirRvalueKind::Arithmetic) {
+                rvalue.kind() == mir::MirRvalueKind::Arithmetic ||
+                rvalue.kind() == mir::MirRvalueKind::FunctionAddress) {
               if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
                                    statement.assignmentValue().destination.resultType()) ||
                   !appendMarkerUse(markerUses, proofs, input, initialization, linear,
@@ -2659,6 +2747,81 @@ zc::Maybe<zc::Vector<FunctionEventOverlay>> reconstructExpectedFunctions(
         if (markerUses.size() < 2 ||
             !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
                                    call.destination, markerUses[markerUses.size() - 2],
+                                   markerUses[markerUses.size() - 1], copy, linear)) {
+          return zc::none;
+        }
+      } else if (block.terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+        const auto& pointerCall = block.terminator.codePointerCallValue();
+        if (pointerCall.unwindTarget != zc::none) return zc::none;
+        if (pointerCall.effect.kind() != mir::MirCallEffectKind::NoActivation) return zc::none;
+        // Function pointer operand at ordinal 0.
+        {
+          zc::Vector<EventRole> pointerRoles;
+          switch (pointerCall.function.kind()) {
+            case mir::MirOperandKind::Copy:
+              pointerRoles.add(EventRole::OperandRead);
+              pointerRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              pointerRoles.add(EventRole::OperandRead);
+              pointerRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              pointerRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(pointerRoles)});
+          if (pointerCall.function.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               pointerCall.function.place().resultType())) {
+            return zc::none;
+          }
+        }
+        // Arguments at ordinal 1+.
+        for (const auto& argument : pointerCall.arguments) {
+          zc::Vector<EventRole> argumentRoles;
+          switch (argument.kind()) {
+            case mir::MirOperandKind::Copy:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandCopy);
+              break;
+            case mir::MirOperandKind::Move:
+              argumentRoles.add(EventRole::OperandRead);
+              argumentRoles.add(EventRole::OperandMove);
+              break;
+            case mir::MirOperandKind::Constant:
+              argumentRoles.add(EventRole::ConstantOperand);
+              break;
+          }
+          const MirEventKey event{MirLocation{function.owner, MirPoint::beforeTerminator(block.id)},
+                                  terminatorOrdinal++};
+          slots.add(MirEventSlot{event, EventStage::Source, zc::mv(argumentRoles)});
+          if (argument.kind() == mir::MirOperandKind::Copy &&
+              !appendMarkerUse(markerUses, proofs, input, event, copy,
+                               argument.place().resultType())) {
+            return zc::none;
+          }
+        }
+        zc::Vector<EventRole> commitRoles;
+        commitRoles.add(EventRole::DestinationWrite);
+        slots.add(MirEventSlot{
+            MirEventKey{
+                MirLocation{function.owner, MirPoint::edge(block.id, 0, pointerCall.normalTarget)},
+                0},
+            EventStage::Commit, zc::mv(commitRoles)});
+        const MirEventKey initialization{
+            MirLocation{function.owner, MirPoint::edge(block.id, 0, pointerCall.normalTarget)}, 0};
+        if (!appendMarkerUse(markerUses, proofs, input, initialization, copy,
+                             pointerCall.destination.resultType()) ||
+            !appendMarkerUse(markerUses, proofs, input, initialization, linear,
+                             pointerCall.destination.resultType())) {
+          return zc::none;
+        }
+        if (markerUses.size() < 2 ||
+            !appendLogicalDropPlan(logicalDropPlans, markerUses, proofs, input, initialization,
+                                   pointerCall.destination, markerUses[markerUses.size() - 2],
                                    markerUses[markerUses.size() - 1], copy, linear)) {
           return zc::none;
         }

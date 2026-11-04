@@ -525,6 +525,21 @@ zc::Maybe<LinearDerivation> deriveLinear(const mir::MirFunction& function,
               zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
         }
       }
+    } else if (terminator.kind() == mir::MirTerminatorKind::CodePointerCall) {
+      const auto& call = terminator.codePointerCallValue();
+      for (uint32_t argIndex = 0; argIndex < call.arguments.size(); ++argIndex) {
+        const auto& operand = call.arguments[argIndex];
+        if (operand.kind() != mir::MirOperandKind::Move) continue;
+        auto place = MovePathKey{function.owner, operand.place().clone()};
+        auto obligationIndex = linearObligationAt(states, place);
+        if (obligationIndex == zc::none) continue;
+        ZC_IF_SOME(obligationOrdinal, obligationIndex) {
+          auto event = MirEventKey{
+              MirLocation{function.owner, MirPoint::beforeTerminator(block.id)}, argIndex + 1};
+          states[obligationOrdinal].consumptions.add(LinearConsumption{
+              zc::mv(place), zc::mv(event), LinearConsumptionKind::ConsumingCall});
+        }
+      }
     } else if (terminator.kind() == mir::MirTerminatorKind::Goto) {
       // Goto carries no operands and no linear consumptions.
     } else if (terminator.kind() == mir::MirTerminatorKind::SwitchInt) {
