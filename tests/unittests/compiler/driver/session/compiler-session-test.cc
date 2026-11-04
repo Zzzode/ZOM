@@ -729,8 +729,10 @@ ZC_TEST("CompilerSessionTest.FlagOnSingleScalarCaptureLowersToHirAndMir") {
 
 ZC_TEST("CompilerSessionTest.FlagOnRejectedCaptureShapesKeepCapabilityDrain") {
   // RFC 0058 Part B1/B2 negatives even with the gate on: a captured parameter,
-  // an explicit by-value `use []` clause, and three captured locals all keep
-  // ZOM4099 with zero incidents.
+  // an explicit by-value `use []` clause, three captured locals, a binary
+  // operand that is not captured (a literal leaf), and a two-capture source
+  // whose binary return mixes a third local all keep ZOM4099 with zero
+  // incidents.
   const auto drains = [](zc::StringPtr source) {
     auto session = packageSession(source, zc::StringPtr{}, true, true);
     ZC_REQUIRE(session->parseSources());
@@ -747,30 +749,79 @@ ZC_TEST("CompilerSessionTest.FlagOnRejectedCaptureShapesKeepCapabilityDrain") {
   drains(
       "fn entry() -> i32 { let a: i32 = 1; let b: i32 = 2; let c: i32 = 3; "
       "let f = fn() -> i32 { return a + b + c; }; return f(); }\n"_zc);
-}
-
-ZC_TEST("CompilerSessionTest.FlagOnTwoScalarCapturePassesChecker") {
-  // RFC 0058 Part B2 commit 1 (checker): with the gate on, a closure reading
-  // two initialized Copy i32 locals and combining them in one integer
-  // arithmetic binary publishes two Copy capture facts and produces no
-  // Checker-domain incident. HIR lowering is a later commit, so checkSources
-  // may still reject at the IR stage; the contract here is checker acceptance
-  // and zero incidents, not a fully lowered module.
-  const auto checkerAccepts = [](zc::StringPtr source) {
-    auto session = packageSession(source, zc::StringPtr{}, true, true);
-    ZC_REQUIRE(session->parseSources());
-    ZC_REQUIRE(session->bindSources());
-    session->checkSources();
-    for (const auto& incident : session->getIncidents().descriptors()) {
-      ZC_EXPECT(incident.domain() != basic::CompilerIncidentDomain::Checker);
-    }
-  };
-  checkerAccepts(
+  // An arithmetic leaf that is not a captured identifier (a scalar literal):
+  // the two-capture body classifier admits only two captured identifier
+  // leaves, so the closure keeps the capability drain.
+  drains(
       "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
-      "let f = fn() -> i32 { return a + b; }; return f(); }\n"_zc);
-  checkerAccepts(
+      "let f = fn() -> i32 { return a + 1; }; return f(); }\n"_zc);
+  // The scope declares two candidate locals while the binary body names only
+  // one of them: the checker publishes exactly the one body-derived capture
+  // and the HIR caller shape requires every leading local to be captured, so
+  // the dead-local caller keeps the capability drain. Widening the caller to
+  // carry an uncaptured leading local is outside the B2 slice.
+  drains(
+      "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; let c: i32 = 3; "
+      "let f = fn() -> i32 { return a + c; }; return f(); }\n"_zc);
+  // Same boundary for the bare-return body with a second uncaptured local in
+  // scope: one body-derived capture, two leading locals, ZOM4099 with zero
+  // incidents.
+  drains(
       "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
       "let f = fn() -> i32 { return a; }; return f(); }\n"_zc);
+  // Flag off: the admitted two-capture source keeps the byte-identical
+  // ZOM4099 drain with zero incidents.
+  {
+    auto session = packageSession(
+        "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
+        "let f = fn() -> i32 { return a + b; }; return f(); }\n"_zc,
+        zc::StringPtr{}, true, false);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(!session->checkSources());
+    ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) ==
+              1);
+    ZC_EXPECT(session->getIncidents().empty());
+  }
+}
+
+ZC_TEST("CompilerSessionTest.FlagOnTwoScalarCaptureLowersToHirAndMir") {
+  // RFC 0058 Part B2 with --experimental-captures: two initialized Copy i32
+  // locals captured by a block-body zero-parameter function-expression
+  // closure lower end to end. The closure is a two-parameter function whose
+  // body returns one integer arithmetic binary over its synthetic environment
+  // parameters; the caller has two literal-initialized locals and passes them
+  // as the call's two implicit arguments in owner-local declaration order.
+  auto session = packageSession(
+      "fn entry() -> i32 { let a: i32 = 40; let b: i32 = 2; "
+      "let f = fn() -> i32 { return a + b; }; return f(); }\n"_zc,
+      zc::StringPtr{}, true, true);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(session->checkSources());
+  ZC_EXPECT(!session->hasDiagnosticErrors());
+  ZC_EXPECT(session->getIncidents().empty());
+  ZC_REQUIRE(session->getVerifiedHirModules().size() == 1);
+  const auto& hir = session->getVerifiedHirModules()[0];
+  // The entry and the closure.
+  ZC_EXPECT(hir.functions().size() == 2);
+  // The two captured locals; the closure alias stays slotless.
+  ZC_EXPECT(hir.locals().size() == 2);
+  ZC_EXPECT(hir.calls().size() == 1);
+  // The single call carries the two implicit by-value arguments.
+  ZC_EXPECT(hir.calls()[0].arguments.size() == 2);
+  ZC_EXPECT(hir.calls()[0].arguments[0].local == hir::HirLocalId::fromOrdinal(1));
+  ZC_EXPECT(hir.calls()[0].arguments[1].local == hir::HirLocalId::fromOrdinal(2));
+  // The closure carries exactly two synthetic parameters; entry carries
+  // none.
+  size_t closureParameterTotal = 0;
+  for (const auto& function : hir.functions()) {
+    closureParameterTotal += function.parameters.size();
+  }
+  ZC_EXPECT(closureParameterTotal == 2);
+  ZC_REQUIRE(session->getOwnershipCheckedMirModules().size() == 1);
+  ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
