@@ -4850,8 +4850,38 @@ private:
                                   const zc::Maybe<uint32_t>& positionOrdinal,
                                   bool requireExactOrdinal) {
     auto ownerKey = lookupDefinitionKey(owner);
+    if (ownerKey == zc::none) return false;
+    // RFC 0057 slice 1b: a closure is not a skeleton definition, so its
+    // ordinary parameters have no materialized callable-parameter inventory
+    // record. Their keys are synthesized content-addressed from the closure
+    // DefinitionKey at each ordinary position; re-derive the expected key and
+    // compare rather than resolving the inventory. Receivers stay impossible
+    // for closures (the header match above already rejects them).
+    bool ownerIsClosure = false;
+    {
+      auto ownerEntry = identities.definition(owner);
+      ZC_IF_SOME(entry, ownerEntry) {
+        ownerIsClosure = entry.record().kind() == identity::DefinitionKind::Closure;
+      }
+    }
+    if (ownerIsClosure) {
+      if (positionKind != identity::CallableParameterPositionKind::Ordinary ||
+          positionOrdinal == zc::none) {
+        return false;
+      }
+      uint32_t positionOrdinalValue = 0;
+      ZC_IF_SOME(value, positionOrdinal) { positionOrdinalValue = value; }
+      auto expectedRecord = identity::CallableParameterIdentityRecord::from(
+          ZC_ASSERT_NONNULL(ownerKey).clone(),
+          identity::CallableParameterPosition::ordinary(positionOrdinalValue));
+      identity::CallableParameterKey expectedKey =
+          identity::CallableParameterKey::compute(expectedRecord);
+      if (key != expectedKey) { return false; }
+      key.encode(encoder);
+      return true;
+    }
     auto parameter = identities.callableParameter(key);
-    if (ownerKey == zc::none || parameter == zc::none) return false;
+    if (parameter == zc::none) return false;
     ZC_IF_SOME(value, parameter) {
       if (value.record().position().kind() != positionKind) { return false; }
       ZC_IF_SOME(expected, ownerKey) {
@@ -4870,16 +4900,19 @@ private:
     {
       // RFC 0058: a closure is interned in the later owner-body phase, so it has
       // no skeleton identity-admission entry and therefore no overload-header
-      // authority. The admitted zero-capture slice is exactly the canonical
-      // header-less callable shape: no generics, receiver, or parameters.
+      // authority. The admitted shape is header-less: no generics and no
+      // receiver. RFC 0058 B0/B1/B2 closures publish zero user parameters
+      // (their environment is synthetic HIR-only); RFC 0057 slice 1b closures
+      // publish one or more ordinary scalar value parameters whose keys are
+      // synthesized from the closure key, so any ordinary parameter count is
+      // accepted here (each key is re-derived during parameter encoding).
       auto closureEntry = identities.definition(definition);
       bool isClosure = false;
       ZC_IF_SOME(entry, closureEntry) {
         isClosure = entry.record().kind() == identity::DefinitionKind::Closure;
       }
       if (isClosure) {
-        return signature.genericParameters.size() == 0 && signature.receiver == zc::none &&
-               signature.parameters.size() == 0;
+        return signature.genericParameters.size() == 0 && signature.receiver == zc::none;
       }
     }
     auto definitionAuthority = identities.definitionAuthority(definition);
@@ -9144,67 +9177,132 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
   }
 
   // RFC 0058 Part B0-2: publish the callable signature for each admitted
-  // zero-capture closure on the separate closure-definition rail. Closures are
-  // not skeleton declarations, so they have no DefinitionFact and no
-  // materialized callable-parameter identities; the first slice admits only the
-  // annotated, non-generic, non-raising, zero-parameter form. Anything else
-  // publishes no signature here and keeps the existing body-stage drain.
+  // closure on the separate closure-definition rail. Closures are not
+  // skeleton declarations, so they have no DefinitionFact and no
+  // materialized callable-parameter identities; parameter keys are
+  // synthesized from the closure DefinitionKey (RFC 0057 slice 1b). The
+  // admitted forms are annotated, non-generic, non-raising, and take only
+  // scalar value parameters. Anything else publishes no signature here and
+  // keeps the existing body-stage drain.
   zc::Vector<BuiltSignatureCensusEntry> closureCensus;
   for (const auto& closure : input.boundModule.definitions().closureDefinitions()) {
     if (!tree.contains(closure.node)) {
-      return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
-                                          closure.node.value));
+      return buildReject(
+          checkerInvariant(CheckerInvariantKind::InvalidFact, module, closure.node.value));
     }
     const auto& closureSyntax = tree.node(closure.node);
-    const bool isFunctionExpression =
-        closureSyntax.kind == ast::SyntaxKind::FunctionExpression;
+    const bool isFunctionExpression = closureSyntax.kind == ast::SyntaxKind::FunctionExpression;
     if (closureSyntax.kind != ast::SyntaxKind::LambdaExpression && !isFunctionExpression) {
       continue;
     }
     if (isFunctionExpression &&
-        (tree.contains(ast::NodeId(
-             closureSyntax.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
+        (tree.contains(
+             ast::NodeId(closureSyntax.payload.words[ast::kFunctionExpressionTypeParamsIdWord])) ||
          tree.contains(
              ast::NodeId(closureSyntax.payload.words[ast::kFunctionExpressionCapturesIdWord])))) {
       continue;
     }
-    const auto raisesWord = isFunctionExpression
-                                ? ast::kFunctionExpressionRaisesTyWord
-                                : ast::kLambdaExpressionRaisesTyWord;
-    const auto paramsWord = isFunctionExpression
-                                ? ast::kFunctionExpressionParamsIdWord
-                                : ast::kLambdaExpressionParamsIdWord;
-    const auto returnWord = isFunctionExpression
-                                ? ast::kFunctionExpressionRetTyWord
-                                : ast::kLambdaExpressionRetTyWord;
+    const auto raisesWord = isFunctionExpression ? ast::kFunctionExpressionRaisesTyWord
+                                                 : ast::kLambdaExpressionRaisesTyWord;
+    const auto paramsWord = isFunctionExpression ? ast::kFunctionExpressionParamsIdWord
+                                                 : ast::kLambdaExpressionParamsIdWord;
+    const auto returnWord =
+        isFunctionExpression ? ast::kFunctionExpressionRetTyWord : ast::kLambdaExpressionRetTyWord;
     if (tree.contains(ast::NodeId(closureSyntax.payload.words[raisesWord]))) { continue; }
     const ast::NodeId parameterList(closureSyntax.payload.words[paramsWord]);
     if (!tree.contains(parameterList) ||
         tree.node(parameterList).kind != ast::SyntaxKind::FunctionParameterList) {
       continue;
     }
+    // RFC 0058/0057: a closure has no skeleton callable parameters, so its
+    // ordinary parameter identities are synthesized content-addressed from
+    // the closure DefinitionKey at each ordinary position. Zero parameters is
+    // the B0-3 form; one or more scalar value parameters is the RFC 0057
+    // slice-1b function-pointer-value form. Reference/mode parameters and
+    // defaults stay outside the slice and publish nothing here.
     const ast::NodeList parameterNodes{
         tree.node(parameterList).payload.words[ast::kFunctionParameterListParamsFirstWord],
         tree.node(parameterList).payload.words[ast::kFunctionParameterListParamsSizeWord]};
-    if (!tree.contains(parameterNodes) || parameterNodes.size != 0) { continue; }
+    if (!tree.contains(parameterNodes)) { continue; }
+    zc::Vector<ParameterSignature> closureParameters;
+    bool closureParametersAdmitted = true;
+    for (size_t parameterIndex = 0; parameterIndex < parameterNodes.size; ++parameterIndex) {
+      const ast::NodeId parameterNode = tree.list(parameterNodes)[parameterIndex];
+      if (!tree.contains(parameterNode) ||
+          tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      const auto& parameterSyntax = tree.node(parameterNode);
+      if (tree.contains(
+              ast::NodeId(parameterSyntax.payload.words[ast::kFunctionParameterDeclDefaultWord]))) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      auto label = identity::SemanticIdentifier::fromCanonical(tree.ident(
+          ast::IdentId(parameterSyntax.payload.words[ast::kFunctionParameterDeclNameWord])));
+      SourceTypeBuilder parameterTypeBuilder(
+          input.boundModule, input.identities, input.semanticTypes,
+          zc::ArrayPtr<const identity::GenericParameterId>{}, sourceFailures, zc::none);
+      auto builtParameterType = parameterTypeBuilder.build(
+          ast::NodeId(parameterSyntax.payload.words[ast::kFunctionParameterDeclTyWord]));
+      if (label == zc::none || builtParameterType == zc::none) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      const auto parameterType = ZC_ASSERT_NONNULL(builtParameterType).type;
+      auto parameterTypeLookup = input.semanticTypes.get(parameterType);
+      if (!parameterTypeLookup.is<type::SemanticTypeLookup>()) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      ParameterMode parameterMode = ParameterMode::Value;
+      const auto& parameterTypeData = parameterTypeLookup.get<type::SemanticTypeLookup>().data();
+      // Slice 1b rides the scalar integer call ladder (the same I8..Usize
+      // carrier set the body checker admits for scalar locals): only value-
+      // mode integer-primitive parameters are admitted. References need the
+      // reference-call ABI, and floats/bool/aggregate/function-typed
+      // parameters need their own carrier slices; keeping those closures
+      // unpublished makes them drain cleanly at the body stage with no
+      // checker/HIR admission gap.
+      if (parameterTypeData.is<type::semantic::ReferenceTypeData>() ||
+          !parameterTypeData.is<type::semantic::PrimitiveTypeData>()) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      const auto parameterKind = parameterTypeData.get<type::semantic::PrimitiveTypeData>().kind;
+      if (parameterKind < type::semantic::PrimitiveKind::I8 ||
+          parameterKind > type::semantic::PrimitiveKind::Usize) {
+        closureParametersAdmitted = false;
+        break;
+      }
+      auto parameterRecord = identity::CallableParameterIdentityRecord::from(
+          closure.key.clone(), identity::CallableParameterPosition::ordinary(parameterIndex));
+      identity::CallableParameterKey parameterKey =
+          identity::CallableParameterKey::compute(parameterRecord);
+      closureParameters.add(ParameterSignature{zc::mv(parameterKey),
+                                               zc::mv(ZC_ASSERT_NONNULL(label)), parameterType,
+                                               parameterMode, false});
+    }
+    if (!closureParametersAdmitted) { continue; }
     const ast::NodeId returnType(closureSyntax.payload.words[returnWord]);
     if (!tree.contains(returnType)) { continue; }
     SourceTypeBuilder closureTypeBuilder(input.boundModule, input.identities, input.semanticTypes,
-                                          zc::ArrayPtr<const identity::GenericParameterId>{},
-                                          sourceFailures, zc::none);
+                                         zc::ArrayPtr<const identity::GenericParameterId>{},
+                                         sourceFailures, zc::none);
     auto closureReturn = closureTypeBuilder.build(returnType);
     if (closureReturn == zc::none) {
       if (sourceFailures.empty()) {
-        return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
-                                            returnType.value));
+        return buildReject(
+            checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module, returnType.value));
       }
       continue;
     }
     zc::Maybe<identity::SemanticTypeId> closureReturnType;
     ZC_IF_SOME(builtReturnType, closureReturn) { closureReturnType = builtReturnType.type; }
     if (closureReturnType == zc::none) {
-      return buildReject(checkerInvariant(CheckerInvariantKind::InvalidFact, module,
-                                          returnType.value));
+      return buildReject(
+          checkerInvariant(CheckerInvariantKind::InvalidFact, module, returnType.value));
     }
     SignatureScope closureScope(ModuleDefinitionSignatureScope{});
     if (closure.record.owners().size() != 0) {
@@ -9213,14 +9311,12 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
           enclosing.definitionKey() == zc::none) {
         continue;
       }
-      auto ownerEntry = input.identities.definition(
-          ZC_ASSERT_NONNULL(enclosing.definitionKey()));
+      auto ownerEntry = input.identities.definition(ZC_ASSERT_NONNULL(enclosing.definitionKey()));
       if (ownerEntry == zc::none) {
         return buildReject(checkerInvariant(CheckerInvariantKind::MissingRequiredFact, module,
                                             closure.node.value));
       }
-      closureScope = SignatureScope(
-          EnclosedSignatureScope{ZC_ASSERT_NONNULL(ownerEntry).handle()});
+      closureScope = SignatureScope(EnclosedSignatureScope{ZC_ASSERT_NONNULL(ownerEntry).handle()});
     }
     zc::Maybe<ExternAbi> noAbi;
     built.add(BuiltSignature{
@@ -9229,7 +9325,7 @@ SignatureFactsBuildResult SignatureFactsBuilder::build(const SignatureFactsBuild
             zc::Vector<SignatureModifier>(), zc::Vector<NormalizedAttributeFact>(),
             SemanticSignaturePayload(CallableSignature{
                 zc::Vector<GenericParameterSignature>(), zc::Maybe<ReceiverSignature>{},
-                zc::Vector<ParameterSignature>(), ZC_ASSERT_NONNULL(closureReturnType),
+                zc::mv(closureParameters), ZC_ASSERT_NONNULL(closureReturnType),
                 zc::Maybe<identity::SemanticTypeId>{}, zc::mv(noAbi)}),
             closure.source.clone()},
         SignatureDefinitionRequirement{closure.definition, identity::DefinitionKind::Closure,

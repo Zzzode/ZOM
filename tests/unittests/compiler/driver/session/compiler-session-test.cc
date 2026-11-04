@@ -824,6 +824,73 @@ ZC_TEST("CompilerSessionTest.FlagOnTwoScalarCaptureLowersToHirAndMir") {
   ZC_EXPECT(session->getOwnershipCheckedMirModules()[0].builtMir().functions().size() == 2);
 }
 
+ZC_TEST("CompilerSessionTest.ParameterizedNonCapturingClosurePassesCheckerAndDrainsAtHir") {
+  // RFC 0057 slice 1b checker layer: a non-capturing closure with ordinary
+  // scalar value parameters publishes its parameterized callable signature
+  // and its body type-checks (the parameter is i32, not the closure's
+  // function type). Before this layer the body read produced ZOM4009 because
+  // the closure parameter was mis-materialized as an initialized local.
+  // HIR lowering of the parameterized closure is a later slice, so the source
+  // keeps exactly one ZOM4099 capability drain projected at HIR, with zero
+  // type errors, zero published HIR modules, and zero incidents.
+  const auto drainsAtHir = [](zc::StringPtr source) {
+    auto session = packageSession(source);
+    ZC_REQUIRE(session->parseSources());
+    ZC_REQUIRE(session->bindSources());
+    ZC_EXPECT(!session->checkSources());
+    ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::TypeCheckerTypeMismatch) == 0);
+    ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) ==
+              1);
+    ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+    ZC_EXPECT(session->getIncidents().empty());
+  };
+  drainsAtHir(
+      "fn entry() -> i32 { let f = fn(n: i32) -> i32 { return n; }; "
+      "return f(42); }\n"_zc);
+  drainsAtHir(
+      "fn entry() -> i32 { let f = fn(a: i32, b: i32) -> i32 { return a; }; "
+      "return f(40, 2); }\n"_zc);
+  // The paren-arrow lambda spelling takes the same checker path.
+  drainsAtHir(
+      "fn entry() -> i32 { let f = (n: i32) -> i32 => n; "
+      "return f(42); }\n"_zc);
+}
+
+ZC_TEST("CompilerSessionTest.ReferenceParameterClosureKeepsCheckerCapabilityDrain") {
+  // RFC 0057 slice 1b boundary: a reference-typed closure parameter needs the
+  // reference-call ABI of a later slice. The closure publishes no signature,
+  // so the body checker drains it at the closure literal as an ordinary
+  // capability rejection (no HIR failure group, zero incidents).
+  auto session = packageSession(
+      "fn entry() -> i32 { let f = fn(n: &i32) -> i32 { return *n; }; "
+      "return f(42); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getIrCapabilityFailureGroups().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
+ZC_TEST("CompilerSessionTest.NonIntegerScalarClosureParameterKeepsCheckerCapabilityDrain") {
+  // RFC 0057 slice 1b boundary: the slice rides the integer scalar call
+  // ladder, so a float closure parameter has no carrier yet. The closure
+  // publishes no signature and the body checker drains it at the closure
+  // literal with zero type errors, zero HIR modules, and zero incidents.
+  auto session = packageSession(
+      "fn entry() -> f32 { let f = fn(n: f32) -> f32 { return n; }; "
+      "return f(1.0); }\n"_zc);
+
+  ZC_REQUIRE(session->parseSources());
+  ZC_REQUIRE(session->bindSources());
+  ZC_EXPECT(!session->checkSources());
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::TypeCheckerTypeMismatch) == 0);
+  ZC_EXPECT(diagnosticCount(*session, diagnostics::DiagID::FunctionBodySemanticsUnavailable) == 1);
+  ZC_EXPECT(session->getVerifiedHirModules().size() == 0);
+  ZC_EXPECT(session->getIncidents().empty());
+}
+
 ZC_TEST("CompilerSessionTest.PublishesGenericDirectBorrowSignature") {
   auto session = packageSession("fn borrow<T>(value: &T) -> &T { return value; }\n"_zc);
 

@@ -681,6 +681,25 @@ zc::Maybe<identity::SemanticTypeId> ownerLocalReferenceType(
       }
       return zc::none;
     }
+    // RFC 0057 slice 1b: a closure parameter has no initializer; the binder
+    // materializes it on the owner-local rail with a DeclarationDefinitionSite
+    // at the FunctionParameterDecl. Its reference type is the parameter's
+    // closed source annotation.
+    for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
+      if (local.binding != value || !local.site.value().is<binder::DeclarationDefinitionSite>()) {
+        continue;
+      }
+      const auto parameterNode = local.site.value().get<binder::DeclarationDefinitionSite>().node;
+      if (!tree.contains(parameterNode) ||
+          tree.node(parameterNode).kind != ast::SyntaxKind::FunctionParameterDecl) {
+        continue;
+      }
+      const ast::NodeId annotation(
+          tree.node(parameterNode).payload.words[ast::kFunctionParameterDeclTyWord]);
+      if (!tree.contains(annotation)) return zc::none;
+      return signature::resolveClosedSourceType(input.boundModule, input.identities,
+                                                input.semanticTypes, annotation);
+    }
     for (const auto& local : input.boundModule.definitions().ownerLocalBindings()) {
       if (local.binding != value || !local.site.value().is<binder::PatternBindingSite>()) {
         continue;

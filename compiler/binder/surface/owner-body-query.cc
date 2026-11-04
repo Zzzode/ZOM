@@ -536,6 +536,13 @@ OwnerLocalBindingKind bindingKindForIntroducer(BindingIntroducer introducer) noe
   if (introducer == BindingIntroducer::MatchArm || introducer == BindingIntroducer::ForIn) {
     return OwnerLocalBindingKind::PatternBinding;
   }
+  // A closure parameter is a value-scope parameter of its anonymous closure
+  // owner, not a variable-declarator local: it has no initializer and its type
+  // comes from the parameter annotation. The CallableParameter kind carries the
+  // DeclarationDefinitionSite whose node is the FunctionParameterDecl.
+  if (introducer == BindingIntroducer::ClosureParameter) {
+    return OwnerLocalBindingKind::CallableParameter;
+  }
   return OwnerLocalBindingKind::Local;
 }
 

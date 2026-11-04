@@ -5,11 +5,15 @@
 // bound, every reference to one reported ZOM3001 "Undefined identifier". The
 // body here uses both parameters and re-declares an enclosing local of the same
 // name, so a correct result means the parameters resolved and the inner
-// declaration still shadows the outer one. The closure body itself is outside
-// the admitted lowering slice, which is the only error that remains.
+// declaration still shadows the outer one. RFC 0057 slice 1b makes the checker
+// accept the parameterized closure (the ZOM4009-era type mismatch on the
+// parameter read is gone); the remaining ZOM4099 is the HIR lowering drain,
+// which is currently function-scoped. That span moves onto the closure once
+// the slice-1b HIR form lands.
 
 // CHECK: Error [ZOM4099]: this function body uses a construct the compiler cannot generate code for yet
-// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom:3:13
+// CHECK-LITERAL:   --> conformance/06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom:1:1
 
 // CHECK-NOT: ZOM3001
+// CHECK-NOT: ZOM4009
 // CHECK-NOT: internal compiler error

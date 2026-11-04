@@ -2195,4 +2195,63 @@ ZC_TEST("SignatureFactsBuilder source-rejects an impl generic associated type as
             SignatureSourceDiagnostic::ImplGenericAssociatedTypeUnsupported);
 }
 
+// RFC 0057 slice 1b: a non-capturing closure with ordinary scalar value
+// parameters publishes a parameterized callable signature on the closure
+// definition rail. The parameter keys are synthesized content-addressed from
+// the closure DefinitionKey at each ordinary position, so the canonical codec
+// must accept the signature without a skeleton callable-parameter inventory
+// record. VerifiedSignatureFacts means both publication and canonical
+// verification passed.
+ZC_TEST("SignatureFactsBuilder publishes a parameterized non-capturing closure signature") {
+  constexpr zc::StringPtr source = R"zom(class RecoveryOwner {}
+fn entry() -> i32 {
+  let f = fn(n: i32) -> i32 { return n; };
+  return f(42);
+}
+)zom"_zc;
+  auto result = buildSignatures(source);
+  ZC_REQUIRE(result.is<VerifiedSignatureFacts>());
+  const auto& facts = result.get<VerifiedSignatureFacts>();
+  size_t closureSignatures = 0;
+  for (const auto& signature : facts.signatures()) {
+    if (signature.definitionKind != identity::DefinitionKind::Closure) { continue; }
+    ++closureSignatures;
+    ZC_REQUIRE(signature.payload.variant().is<CallableSignature>());
+    const auto& callable = signature.payload.variant().get<CallableSignature>();
+    ZC_EXPECT(callable.genericParameters.size() == 0);
+    ZC_EXPECT(callable.receiver == zc::none);
+    ZC_EXPECT(callable.raises == zc::none);
+    ZC_REQUIRE(callable.parameters.size() == 1);
+    ZC_EXPECT(callable.parameters[0].mode == ParameterMode::Value);
+    ZC_EXPECT(!callable.parameters[0].hasDefault);
+  }
+  ZC_EXPECT(closureSignatures == 1);
+}
+
+// A two-parameter closure publishes two synthesized keys at ordinary positions
+// zero and one.
+ZC_TEST("SignatureFactsBuilder publishes a two-parameter non-capturing closure signature") {
+  constexpr zc::StringPtr source = R"zom(class RecoveryOwner {}
+fn entry() -> i32 {
+  let f = fn(a: i32, b: i32) -> i32 { return a; };
+  return f(40, 2);
+}
+)zom"_zc;
+  auto result = buildSignatures(source);
+  ZC_REQUIRE(result.is<VerifiedSignatureFacts>());
+  const auto& facts = result.get<VerifiedSignatureFacts>();
+  size_t closureSignatures = 0;
+  for (const auto& signature : facts.signatures()) {
+    if (signature.definitionKind != identity::DefinitionKind::Closure) { continue; }
+    ++closureSignatures;
+    const auto& callable = signature.payload.variant().get<CallableSignature>();
+    ZC_EXPECT(callable.parameters.size() == 2);
+    for (const auto& parameter : callable.parameters) {
+      ZC_EXPECT(parameter.mode == ParameterMode::Value);
+      ZC_EXPECT(!parameter.hasDefault);
+    }
+  }
+  ZC_EXPECT(closureSignatures == 1);
+}
+
 }  // namespace zomlang::compiler::checker::signature
