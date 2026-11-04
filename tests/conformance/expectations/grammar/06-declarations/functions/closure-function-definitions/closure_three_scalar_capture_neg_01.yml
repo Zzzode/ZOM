@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression inferred capture"
+covers_rule: "functionExpression, functionBody, returnStatement, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "RFC 0058 Part B2: three inferred scalar captures parse legally; the bounded two-capture limit is enforced semantically (ZOM4099 behind the flag), not by the grammar."

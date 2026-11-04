@@ -1,0 +1,5 @@
+section: "§4 FunctionExpression inferred capture"
+covers_rule: "functionExpression, functionBody, returnStatement, binaryExpression"
+expected: "ACCEPT"
+notes:
+  - "RFC 0058 Part B2: two inferred by-value scalar captures are syntactically legal; capture admission is a checker decision behind --experimental-captures, never a grammar one."
