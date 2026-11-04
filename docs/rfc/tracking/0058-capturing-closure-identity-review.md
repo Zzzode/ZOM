@@ -247,7 +247,79 @@ mutually exclusive body words, `kLambdaExpressionBodyWord` for a block body and
 expression-body form has no block word set and its literal is the
 ExprBodyWord node, which is the anchor the builder and verifier use.
 
-### Part B1 design — flagged one-Copy-scalar capture (AWAITING APPROVAL)
+### Part B2 design — bounded two-Copy-scalar capture (AWAITING APPROVAL)
+
+Scope: behind the same default-off `--experimental-captures` flag, widen the
+B1 slice from one to a bounded set of two by-value Copy scalar captures, and
+allow the closure body to combine them:
+
+```
+let a: i32 = 40;
+let b: i32 = 2;
+let f = fn() -> i32 { return a + b; };
+return f();   // exits 42
+```
+
+Bound is two because `lir::kMaxCallArguments` is 2 and the existing two-
+argument arithmetic-callee builder is the ceiling the backend supports; three
+or more captures keep ZOM4099. Admitted closure bodies are (a) one primitive
+arithmetic whose two leaves are the two captured locals (`a + b`), and (b) a
+bare return of either captured local (`return a;`). Both captives follow the
+B1 rules individually: block-body fn-expr, zero user parameters, no
+typeparams/captures-slot/raises, each is an initialized read-only explicitly
+annotated i32/bool owner local; mixed arithmetic on bool drains as today.
+Every other closure (one-capture B1 cases, parameters, mutation, lambda,
+`use []`, escape, three captures, nested/local operands) keeps ZOM4099 even
+with the flag on; flag off is unchanged.
+
+Environment order (canonical): capture fields are ordered by enclosing
+owner-local declaration preorder (the same order the binder free-variable
+scan sees), deduplicated per binding. The checker publishes one
+`CheckedCaptureFact{Copy, Inferred}` per capture in that order; the HIR
+synthetic parameters are `CallableParameterIdentityRecord::from(closure.key,
+ordinary(i))` for i in 0..N; the implicit call arguments pass the captured
+locals in the same order. Checker, HIR signature, and MIR parameter order
+must agree exactly (fail-closed), which also establishes the field order B2
+later env structs will reuse.
+
+Layer changes (three independently revertible commits):
+
+1. Checker: generalize the B1 single-capture predicate to an ordered vector,
+   admit 1..2 distinct Copy scalars whose declared types match the closure
+   success type and whose body leaves classify as admitted (bare ident of one
+   capture, or primitive binary with both leaves captured locals); publish N
+   facts through the existing exact-set verifier (2 facts required, not one).
+2. HIR: the closure lowers to the existing parameter-reference-return (one
+   parameter) or primitive-binary-parameter-return (two parameters) shape;
+   the caller gains a two-local closure-alias shape passing two implicit
+   scalar arguments. New verifier arms re-derive the capture set from the
+   facts and reconcile parameter/argument count, order, type, and span.
+3. LIR: generalize the B1 scalar-local call module from exactly one user
+   local to one or two (caller locals 1..2 + result temporary), reusing the
+   existing identity and two-parameter arithmetic callee builders; MIR is
+   unchanged. Native exit 42 is the gate.
+
+Invariants:
+
+1. Flag off unchanged; 3+ captures, references, mutation, parameters, and
+   escape drain ZOM4099 with zero incidents.
+2. Deterministic canonical field order across facts, parameters, and
+   arguments; any disagreement is a per-layer InvalidFact rejection.
+3. Exactly N facts / N synthetic parameters / N implicit arguments for N in
+   1..2; the two-capture arithmetic closure has zero user-visible slots of
+   its own.
+
+Tests (directed during the iteration per D-051; one full sanitizer ctest at
+close): flag-off drain; flag-on `a + b` native exit 42 with 2 facts / 2
+closure parameters / 2 implicit arguments / 3 MIR functions; flag-on bare
+`return a;` with two captures in scope; negative ztests for three captures,
+a bare literal/uncaptured operand in the binary, mismatched declared types,
+and one-capture regression (B1 still native 42); full sanitizer ctest once.
+
+Rollback: three local commits; deletion restores the B1 behavior (only one
+capture admitted) with no flag or B0 change.
+
+### Part B1 design — flagged one-Copy-scalar capture (APPROVED, LANDED 4af11649)
 
 Scope: behind a new default-off CLI flag, admit exactly one non-escaping
 by-value Copy scalar capture:
