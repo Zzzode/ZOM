@@ -2569,7 +2569,7 @@
     },
     "06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom": {
       "exitCode": 1,
-      "sha256": "d6d7d2e8ec7207d05aa50e0edab353b3304aad9ee85a05520338a809a3b2229f"
+      "sha256": "32a6557d6d8a8f82fe5f44f24ff348d2f3510ab371fd9b15792c83056902edb5"
     },
     "06-declarations/functions/closure-function-definitions/closure_three_scalar_capture_neg_01.zom": {
       "exitCode": 1,
