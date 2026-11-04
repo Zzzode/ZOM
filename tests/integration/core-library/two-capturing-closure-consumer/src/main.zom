@@ -1,0 +1,15 @@
+// RFC 0058 Part B2: a non-escaping closure captures two initialized Copy
+// scalar locals by value and combines them in one integer arithmetic
+// operation. The closure lowers to a two-parameter function whose body is one
+// arithmetic over its synthetic environment parameters; the caller passes the
+// two captured locals as two implicit by-value arguments in owner-local
+// declaration order. Admitted only behind the default-off
+// --experimental-captures gate; exits 42 natively.
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let b: i32 = 2;
+  let f = fn() -> i32 {
+    return a + b;
+  };
+  return f();
+}

@@ -336,6 +336,17 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
     const binder::ImmutableDefinitionInventory& definitions, ast::NodeId pattern,
     const ast::Tree& tree);
 
+/// \brief Collects the verified capture facts of one closure in canonical
+/// environment order (enclosing owner-local declaration preorder).
+///
+/// RFC 0058 B1/B2: returns pointers to every capture fact whose closure key
+/// matches, sorted by owner-local binding index. Facts naming a non-owner-local
+/// target are excluded so callers fail closed. The slice bounds the result to
+/// one or two entries.
+zc::Vector<const checker::checked::CheckedCaptureFact*> sortedClosureCaptureFacts(
+    const checker::checked::CaptureFactMap& captures,
+    const binder::AnonymousOwnerLocalKey& closureKey);
+
 /// \brief Resolves a call callee identifier that names an owner local whose
 /// initializer is a closure literal to the anonymous closure definition.
 ///

@@ -1498,7 +1498,19 @@ bool isSequentialLocalReturnBlock(const hir::VerifiedHirModule& module,
       if (conditionalFor(module, statement.value) != zc::none) return false;
     }
   }
-  if (localCount >= 2) return true;
+  // A trailing direct call with two or more leading locals is the
+  // RFC 0058 B2 two-local capturing-caller shape (the call value node is
+  // counted on the checksum's right and each by-value local argument is
+  // credited via directAggregateCallValueNodes), not a sequential local
+  // return whose trailing read is an uncounted local reference.
+  if (localCount >= 2) {
+    auto trailingCallReturn = returnFor(module, block.statements[lastIndex]);
+    bool trailingIsDirectCall = false;
+    ZC_IF_SOME(statement, trailingCallReturn) {
+      if (callFor(module, statement.value) != zc::none) trailingIsDirectCall = true;
+    }
+    if (!trailingIsDirectCall) return true;
+  }
   auto localBinding = localFor(module, block.statements[0]);
   if (localBinding == zc::none) return false;
   bool binaryInitializer = false;
@@ -2601,14 +2613,23 @@ ir::IrOperationResult<BuiltMirCandidate> BuiltMirBuilder::build(const BuiltMirIn
   for (const auto& call : hirModule.receiverCalls()) {
     if (call.receiver == hir::HirNodeId()) ++receiverSelfCallValueNodes;
   }
-  // A by-value aggregate call function owns both a direct-call value node and
-  // an aggregate-initializer value node while it is still one function, so the
-  // value-node checksum counts an extra node per such function.
+  // A by-value scalar/aggregate call function owns the direct-call value node
+  // plus one initializer value node per caller-local call argument (a literal,
+  // an aggregate, or an initializing call), while it is still one function on
+  // the equation's left. Each such by-value local argument therefore
+  // contributes one excess right-side node; summing the local-argument count
+  // generalizes the former one-argument credit to the RFC 0058 B2 two-local
+  // capturing caller. This term pairs with the direct-call exclusion in
+  // isSequentialLocalReturnBlock: both key off the invariant that the only
+  // multi-local-argument direct-call producers are literal-initialized
+  // capturing-alias callers.
   int64_t directAggregateCallValueNodes = 0;
   for (const auto& call : hirModule.calls()) {
-    if (call.arguments.size() == 1 && call.arguments[0].value == zc::none &&
-        call.arguments[0].parameter == zc::none && call.arguments[0].local != zc::none) {
-      ++directAggregateCallValueNodes;
+    for (const auto& argument : call.arguments) {
+      if (argument.value == zc::none && argument.parameter == zc::none &&
+          argument.local != zc::none) {
+        ++directAggregateCallValueNodes;
+      }
     }
   }
   // A raw-pointer write-read function (`unsafe { *ptr = <lit>; }; return unsafe

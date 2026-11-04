@@ -215,6 +215,59 @@ void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, H
                                             call.witnesses, call.sourceSpan.clone()});
 }
 
+void lowerCapturingClosureAliasCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
+  auto& shape = function.shape.get<CapturingClosureAliasCallReturn>();
+  HirDirectCallExpression call = zc::mv(shape.call);
+  const size_t captureCount = shape.locals.size();
+
+  // Fixed source-preorder stride: function F, body F+1, then per capture one
+  // local and one scalar-literal initializer (local F+2+2i, initializer
+  // F+3+2i), then return F+2+2N and direct call F+3+2N. The call is the return
+  // value; its N arguments reference locals 1..N inline and allocate no extra
+  // nodes.
+  const HirNodeId functionId = ctx.allocNode(function.sourceNode);
+  const HirNodeId bodyId = ctx.allocNode(function.bodyNode);
+  struct AllocatedCapture {
+    HirNodeId localId;
+    HirNodeId initializerId;
+  };
+  zc::Vector<AllocatedCapture> allocated;
+  zc::Vector<HirNodeId> statements;
+  for (size_t index = 0; index < captureCount; ++index) {
+    const HirNodeId localId = ctx.allocNode(ast::NodeId());
+    const HirNodeId initializerId = ctx.allocNode(ast::NodeId());
+    allocated.add(AllocatedCapture{localId, initializerId});
+    statements.add(localId);
+  }
+  const HirNodeId returnId = ctx.allocNode(function.returnNode);
+  const HirNodeId callId = ctx.allocNode(function.returnValueNode);
+  statements.add(returnId);
+
+  ctx.addFunction(HirFunctionDeclaration{functionId, function.definition, function.resultType,
+                                         zc::mv(function.parameters), zc::none,
+                                         function.visibility.clone(), function.linkage,
+                                         function.declarationSpan.clone(), bodyId, zc::none});
+  ctx.addBlock(HirBlockStatement{bodyId, zc::mv(statements), function.bodySpan.clone()});
+  for (size_t index = 0; index < captureCount; ++index) {
+    const auto& captured = shape.locals[index];
+    const identity::SemanticTypeId localType = captured.binding.type;
+    const identity::SourceSpan localSpan = captured.binding.sourceSpan.clone();
+    const identity::SourceSpan initializerSpan =
+        ZC_ASSERT_NONNULL(captured.binding.initializerSpan).clone();
+    ctx.addLocal(HirLocalBinding{allocated[index].localId, hirLocalId(index + 1), localType,
+                                 allocated[index].initializerId, localSpan.clone(),
+                                 initializerSpan.clone()});
+    ctx.addExpression(HirScalarLiteralExpression{allocated[index].initializerId, localType,
+                                                 captured.literal.clone(), HirValueCategory::Value,
+                                                 initializerSpan.clone()});
+  }
+  ctx.addReturn(
+      HirReturnStatement{returnId, function.resultType, callId, function.returnSpan.clone()});
+  ctx.addDirectCall(HirDirectCallExpression{callId, call.callee, call.calleeType, call.resultType,
+                                            zc::mv(call.arguments), call.substitution,
+                                            call.witnesses, call.sourceSpan.clone()});
+}
+
 void lowerReceiverCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx) {
   auto& shape = function.shape.get<ReceiverCallReturn>();
   HirReceiverCallExpression call = zc::mv(shape.receiverCall);

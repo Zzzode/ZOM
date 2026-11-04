@@ -707,19 +707,20 @@ public:
 
   /// \brief Lowers a scalar-local direct call to a two-function LIR module.
   ///
-  /// Admits the verified pair: a caller
-  /// `fn entry() -> i32 { let a: i32 = <integer constant>; return f(a); }`
-  /// (one scalar `UserLocal` initialized from a constant, one result
-  /// `Temporary`, entry `StorageLive; a = Use(constant); StorageLive;
-  /// Call(f, copy a) -> result`, continuation `return result`) and a callee
-  /// `fn f(x: i32) -> i32` whose single block either returns its parameter
-  /// directly or computes one admitted arithmetic/use body over it. The
-  /// by-value scalar argument lowers to one integer call argument; the caller
-  /// folds to the reserved no-argument `zom.module_init` entry. Every other
-  /// shape returns `none`.
+  /// Admits the verified pair: a caller with one or two scalar `UserLocal`s
+  /// initialized from constants (`let a: i32 = <constant>; ...; return f(a,
+  /// b);`), one result `Temporary`, an entry of per-local
+  /// `StorageLive; local = Use(constant)` followed by
+  /// `StorageLive; Call(f, copy locals...) -> result`, and a continuation
+  /// `return result`. The callee has one or two matching parameters and either
+  /// returns one parameter directly (the RFC 0058 B1 identity capture) or
+  /// computes one admitted arithmetic/use body over them (the B2 two-capture
+  /// arithmetic closure). The by-value scalar arguments lower to integer call
+  /// arguments and the caller folds to the reserved no-argument
+  /// `zom.module_init` entry. Every other shape returns `none`.
   ///
   /// \param caller Verified scalar-local-caller MIR function.
-  /// \param callee Verified one-parameter callee MIR function.
+  /// \param callee Verified one- or two-parameter callee MIR function.
   /// \param semanticTypes Session-owned type store that owns the function types.
   /// \return The lowered two-function LIR module, or none when outside the slice.
   ZC_NODISCARD static zc::Maybe<Module> lowerScalarLocalCallModule(

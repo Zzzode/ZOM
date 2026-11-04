@@ -46,6 +46,16 @@ void lowerDirectExistentialCallFunction(PendingFunctionDeclaration&& function, H
 /// that i32 local copied by value, is the return value.
 void lowerDirectScalarLocalCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
 
+/// \brief Lowers one RFC 0058 B1/B2 capturing-closure-alias caller through the
+/// recursive driver: one or two `let a: T = <literal>;` leading locals followed
+/// by `return f();` against the slotless closure alias. Node stride for N
+/// captures: function, body, then per capture a local and its scalar-literal
+/// initializer, then return and direct call (4 + 2N nodes). Each literal lowers
+/// into its local's initializer destination; the direct call passes the N
+/// locals by value as the implicit environment arguments and is the return
+/// value.
+void lowerCapturingClosureAliasCallFunction(PendingFunctionDeclaration&& function, HirFnCtx& ctx);
+
 /// \brief Lowers one mutable-receiver call body through the recursive driver:
 /// `mut cell = T { .. }; return cell.method(<args>);`. Node stride: function,
 /// body, local, aggregate initializer, return, receiver reference, receiver

@@ -3448,56 +3448,87 @@ zc::Maybe<RecursiveFunctionProduct> buildScalarLocalCallReturn(const LoweringCon
   auto& proofs = lctx.proofs;
   auto copyMarker = lctx.copyMarker;
 
+  // RFC 0058 B1/B2: one or two leading literal-initialized scalar locals
+  // followed by a direct call that takes each local by value. The one-local
+  // form is also the ordinary `let a: T = <lit>; return f(a);` caller.
   if (declaration.receiver != zc::none || declaration.unsafeBlock != zc::none) { return zc::none; }
-  if (block.statements.size() != 2 || declaration.parameters.size() != 0) { return zc::none; }
-  auto sourceReturn = returnFor(hirModule, block.statements[1]);
-  auto sourceLocal = localFor(hirModule, block.statements[0]);
-  if (sourceReturn == zc::none || sourceLocal == zc::none) { return zc::none; }
-  const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
-  if (binding.local.ordinal() != 1 || binding.initializer == zc::none) { return zc::none; }
-  hir::HirNodeId initializerNode;
-  ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
-  auto literal = expressionFor(hirModule, initializerNode);
-  auto call = callFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
-  if (literal == zc::none || call == zc::none) { return zc::none; }
-  const auto& sourceLiteral = ZC_ASSERT_NONNULL(literal);
-  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
-  if (sourceLiteral.type != binding.type || sourceCall.resultType != declaration.resultType ||
-      sourceCall.arguments.size() != 1 || sourceCall.arguments[0].value != zc::none ||
-      sourceCall.arguments[0].parameter != zc::none ||
-      sourceCall.arguments[0].local != binding.local ||
-      sourceCall.arguments[0].type != binding.type) {
+  if (declaration.parameters.size() != 0 || block.statements.size() < 2 ||
+      block.statements.size() > 3) {
     return zc::none;
+  }
+  const size_t localCount = block.statements.size() - 1;
+  auto sourceReturn = returnFor(hirModule, block.statements[localCount]);
+  if (sourceReturn == zc::none) { return zc::none; }
+  for (size_t index = 0; index < localCount; ++index) {
+    auto sourceLocal = localFor(hirModule, block.statements[index]);
+    if (sourceLocal == zc::none) { return zc::none; }
+    const auto& binding = ZC_ASSERT_NONNULL(sourceLocal);
+    if (binding.local.ordinal() != index + 1 || binding.initializer == zc::none) {
+      return zc::none;
+    }
+    hir::HirNodeId initializerNode;
+    ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+    auto literal = expressionFor(hirModule, initializerNode);
+    if (literal == zc::none || ZC_ASSERT_NONNULL(literal).type != binding.type) { return zc::none; }
+  }
+  auto call = callFor(hirModule, ZC_ASSERT_NONNULL(sourceReturn).value);
+  if (call == zc::none) { return zc::none; }
+  const auto& sourceCall = ZC_ASSERT_NONNULL(call);
+  if (sourceCall.resultType != declaration.resultType ||
+      sourceCall.arguments.size() != localCount) {
+    return zc::none;
+  }
+  for (size_t index = 0; index < localCount; ++index) {
+    const auto& binding = ZC_ASSERT_NONNULL(localFor(hirModule, block.statements[index]));
+    const auto& argument = sourceCall.arguments[index];
+    if (argument.value != zc::none || argument.parameter != zc::none ||
+        argument.local != binding.local || argument.type != binding.type) {
+      return zc::none;
+    }
   }
   auto definition = identities.definition(declaration.definition);
   if (definition == zc::none) { return zc::none; }
 
   detail::MirFnCtx ctx;
   const MirSourceScopeId scope = ctx.pushRootScope(declaration.sourceSpan.clone());
-  const MirLocalId userLocal =
-      ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
-  if (userLocal.ordinal() != 1) { return zc::none; }
+  zc::Vector<MirLocalId> userLocals;
+  for (size_t index = 0; index < localCount; ++index) {
+    const auto& binding = ZC_ASSERT_NONNULL(localFor(hirModule, block.statements[index]));
+    const MirLocalId userLocal =
+        ctx.declareLocal(MirLocalKind::UserLocal, binding.type, scope, binding.sourceSpan.clone());
+    if (userLocal.ordinal() != userLocals.size() + 1) { return zc::none; }
+    userLocals.add(userLocal);
+  }
   const MirLocalId resultLocal = ctx.declareLocal(MirLocalKind::Temporary, sourceCall.resultType,
                                                   scope, sourceCall.sourceSpan.clone());
-  if (resultLocal.ordinal() != 2) { return zc::none; }
+  if (resultLocal.ordinal() != localCount + 1) { return zc::none; }
 
-  // Block 1: initialize the scalar local from a constant, copy it as the
-  // by-value call argument, and call into block 2.
+  // Block 1: initialize each scalar local from a constant, copy the locals as
+  // by-value call arguments in order, and call into block 2.
   (void)ctx.beginBlock(scope);
-  ctx.appendStatement(MirStatement::storageLive(userLocal, binding.sourceSpan.clone()));
-  zc::Vector<MirProjection> destinationProjections;
-  ctx.appendStatement(MirStatement::assign(
-      MirPlace(userLocal, binding.type, zc::mv(destinationProjections), binding.type),
-      MirRvalue::use(MirOperand::constant(binding.type, sourceLiteral.value.clone())),
-      MirInitializationKind::Initialize, sourceLiteral.sourceSpan.clone()));
+  for (size_t index = 0; index < localCount; ++index) {
+    const auto& binding = ZC_ASSERT_NONNULL(localFor(hirModule, block.statements[index]));
+    hir::HirNodeId initializerNode;
+    ZC_IF_SOME(initializer, binding.initializer) { initializerNode = initializer; }
+    const auto& literal = ZC_ASSERT_NONNULL(expressionFor(hirModule, initializerNode));
+    ctx.appendStatement(MirStatement::storageLive(userLocals[index], binding.sourceSpan.clone()));
+    zc::Vector<MirProjection> destinationProjections;
+    ctx.appendStatement(MirStatement::assign(
+        MirPlace(userLocals[index], binding.type, zc::mv(destinationProjections), binding.type),
+        MirRvalue::use(MirOperand::constant(binding.type, literal.value.clone())),
+        MirInitializationKind::Initialize, literal.sourceSpan.clone()));
+  }
   ctx.appendStatement(MirStatement::storageLive(resultLocal, sourceCall.sourceSpan.clone()));
-  zc::Vector<MirProjection> argumentProjections;
-  auto argumentOperand =
-      placeUse(proofs, copyMarker,
-               MirPlace(userLocal, binding.type, zc::mv(argumentProjections), binding.type));
-  if (argumentOperand == zc::none) { return zc::none; }
   zc::Vector<MirOperand> arguments;
-  arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+  for (size_t index = 0; index < localCount; ++index) {
+    const auto& binding = ZC_ASSERT_NONNULL(localFor(hirModule, block.statements[index]));
+    zc::Vector<MirProjection> argumentProjections;
+    auto argumentOperand = placeUse(
+        proofs, copyMarker,
+        MirPlace(userLocals[index], binding.type, zc::mv(argumentProjections), binding.type));
+    if (argumentOperand == zc::none) { return zc::none; }
+    arguments.add(zc::mv(ZC_ASSERT_NONNULL(argumentOperand)));
+  }
   zc::Maybe<MirBlockId> noUnwind;
   zc::Vector<MirProjection> resultProjections;
   ctx.terminateBlock(MirTerminator::call(ZC_ASSERT_NONNULL(callIdentityFor(sourceCall, identities)),
@@ -5794,10 +5825,14 @@ zc::Maybe<RecursiveFunctionProduct> strategyDirectExistentialCall(const Lowering
   return buildDirectExistentialCallReturn(lctx);
 }
 
-/// Scalar-local direct-call caller.
+/// Scalar-local direct-call caller: one or two leading literal-initialized
+/// scalar locals passed by value to the returned direct call.
 zc::Maybe<RecursiveFunctionProduct> strategyScalarLocalCall(const LoweringContext& lctx) {
   if (!lctx.hasTrailingReturn) return zc::none;
-  if (lctx.statementCount != 2 || lctx.hasReceiver || lctx.hasUnsafeBlock) return zc::none;
+  if ((lctx.statementCount != 2 && lctx.statementCount != 3) || lctx.hasReceiver ||
+      lctx.hasUnsafeBlock) {
+    return zc::none;
+  }
   return buildScalarLocalCallReturn(lctx);
 }
 

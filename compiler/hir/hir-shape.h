@@ -308,15 +308,22 @@ struct FunctionReturnShape final {
   ast::NodeId closureAliasLet{};
   ast::NodeId closureAliasPattern{};
   ast::NodeId closureAliasInitializer{};
-  // RFC 0058 B1 three-statement capturing-closure-alias shape:
-  // `let x: T = <scalar-literal>; let f = fn() -> T { return x; }; return f();`.
-  // The closure captures the leading scalar local by value; the lowered caller
-  // is one literal-initialized local passed as a single implicit argument of
-  // the closure's direct Source call. The alias statement itself stays slotless.
+  // RFC 0058 B1/B2 capturing-closure-alias shape: one or two leading
+  // scalar-literal-initialized lets, a slotless `let f = fn() -> T { .. };`
+  // alias for the closure, and a trailing zero-source-argument `return f();`:
+  // `let x: T = <lit>; let f = fn() -> T { return x; }; return f();` or
+  // `let a: T = <lit>; let b: T = <lit>; let f = fn() -> T { return a + b; };
+  // return f();`. Each leading local is captured by value and lowered to one
+  // implicit closure argument; `capturedLocals` follows owner-local declaration
+  // order, the canonical environment field order. The alias statement itself
+  // stays slotless.
   bool returnsCapturingClosureAliasCall = false;
-  ast::NodeId capturedLocalLet{};
-  ast::NodeId capturedLocalPattern{};
-  ast::NodeId capturedLocalInitializer{};
+  struct CapturedScalarLocal final {
+    ast::NodeId let{};
+    ast::NodeId pattern{};
+    ast::NodeId initializer{};
+  };
+  zc::Vector<CapturedScalarLocal> capturedLocals;
   // Two-statement existential-call shape: a leading existential-initialized
   // local whose initializer is a direct call returning the existential type,
   // passed as the sole argument of a returned direct free-function call:

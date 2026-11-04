@@ -744,6 +744,31 @@ zc::Maybe<binder::OwnerLocalBindingId> ownerLocalBindingForPattern(
   return result;
 }
 
+zc::Vector<const checker::checked::CheckedCaptureFact*> sortedClosureCaptureFacts(
+    const checker::checked::CaptureFactMap& captures,
+    const binder::AnonymousOwnerLocalKey& closureKey) {
+  zc::Vector<const checker::checked::CheckedCaptureFact*> result;
+  for (const auto& entry : captures.entries()) {
+    if (entry.value.closure != closureKey) { continue; }
+    if (!entry.value.target.value().is<binder::OwnerLocalBindingTarget>()) { continue; }
+    result.add(&entry.value);
+  }
+  for (size_t i = 1; i < result.size(); ++i) {
+    for (size_t j = 0; j < i; ++j) {
+      const auto later =
+          result[i]->target.value().get<binder::OwnerLocalBindingTarget>().binding.index();
+      const auto earlier =
+          result[j]->target.value().get<binder::OwnerLocalBindingTarget>().binding.index();
+      if (later < earlier) {
+        auto* temporary = result[j];
+        result[j] = result[i];
+        result[i] = temporary;
+      }
+    }
+  }
+  return result;
+}
+
 zc::Maybe<identity::DefId> resolveClosureAliasCallee(
     const ast::Tree& tree, const binder::ImmutableDefinitionInventory& definitions,
     const binder::ImmutableBindingMetadata& bindings, ast::NodeId calleeNode) {

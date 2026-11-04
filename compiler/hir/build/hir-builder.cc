@@ -706,12 +706,14 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       FunctionReturnShape shape = zc::mv(bodyShape).orDefault(FunctionReturnShape{});
       ZC_IF_SOME(index, rootPosition) { rootSlot = index; }
       if (shape.returnsCapturingClosureAliasCall) {
-        // RFC 0058 B1: `let x: T = <lit>; let f = fn() -> T { return x; };
-        // return f();`. The caller lowers identically to the scalar-local call
-        // family (one literal-initialized local, one direct call passing local
-        // 1), except the callee is the closure DefId and the single argument is
-        // implicit: the source call and checker call fact both carry zero
-        // arguments. The verified capture fact is the sole admission gate.
+        // RFC 0058 B1/B2: one or two leading `let x: T = <lit>;` locals, then
+        // `let f = fn() -> T { .. }; return f();`. The caller lowers like the
+        // scalar-local call family (N literal-initialized locals, one direct
+        // call passing locals 1..N), except the callee is the closure DefId and
+        // every argument is implicit: the source call and checker call fact
+        // both carry zero arguments. The verified capture facts are the sole
+        // admission gate; their canonical order (owner-local declaration
+        // preorder) fixes both local and implicit-argument order.
         const auto rejectCapturing = [&]() {
           return rejectHirCapability<HirModuleCandidate>(
               definition.definition, registries, ir::IrFailureKind::UnsupportedSourceConstruct,
@@ -764,30 +766,84 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             closureDefId) {
           return rejectCapturing();
         }
-        // Exactly one verified Copy capture for this closure.
-        const checker::checked::CheckedCaptureFact* captureFact = nullptr;
-        for (const auto& captureEntry : facts.captures().entries()) {
-          if (captureEntry.value.closure != closureRow->closureKey) { continue; }
-          if (captureFact != nullptr) { return rejectCapturing(); }
-          captureFact = &captureEntry.value;
-        }
-        if (captureFact == nullptr || captureFact->mode != checker::checked::CaptureMode::Copy ||
-            captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
-            captureFact->capturedType != callable.success) {
+        // One or two verified Copy captures for this closure, in canonical
+        // environment order (owner-local declaration preorder).
+        auto orderedFacts = sortedClosureCaptureFacts(facts.captures(), closureRow->closureKey);
+        if (orderedFacts.size() < 1 || orderedFacts.size() > 2 ||
+            orderedFacts.size() != shape.capturedLocals.size()) {
           return rejectCapturing();
         }
-        // The leading local is the captured place and its initializer is a
-        // scalar literal of the captured scalar type.
-        auto capturedBinding =
-            ownerLocalBindingForPattern(bound.definitions(), shape.capturedLocalPattern, tree);
-        auto literalIndex = factIndex(facts.literals(), shape.capturedLocalInitializer);
-        if (capturedBinding == zc::none || literalIndex == zc::none) { return rejectCapturing(); }
-        size_t literalSlot = 0;
-        ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
-        const auto& literalFact = facts.literals().entries()[literalSlot].value;
-        if (literalFact.node != shape.capturedLocalInitializer ||
-            literalFact.type != captureFact->capturedType) {
-          return rejectCapturing();
+        for (const auto* captureFact : orderedFacts) {
+          if (captureFact->mode != checker::checked::CaptureMode::Copy ||
+              captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+              captureFact->capturedType != callable.success) {
+            return rejectCapturing();
+          }
+        }
+        // Exact-set reconciliation: each capture fact names one distinct
+        // leading local, and every leading local is named exactly once. The
+        // fact's canonical order then fixes local ordinal and implicit
+        // argument order.
+        zc::Vector<binder::OwnerLocalBindingId> leadingBindings;
+        for (const auto& capturedLocal : shape.capturedLocals) {
+          auto capturedBinding =
+              ownerLocalBindingForPattern(bound.definitions(), capturedLocal.pattern, tree);
+          if (capturedBinding == zc::none) { return rejectCapturing(); }
+          leadingBindings.add(ZC_ASSERT_NONNULL(capturedBinding));
+        }
+        zc::Vector<size_t> factLocalSlots;
+        for (const auto* captureFact : orderedFacts) {
+          const auto factBinding =
+              captureFact->target.value().get<binder::OwnerLocalBindingTarget>().binding;
+          zc::Maybe<size_t> matchedSlot;
+          for (size_t index = 0; index < leadingBindings.size(); ++index) {
+            if (leadingBindings[index] != factBinding) { continue; }
+            if (matchedSlot != zc::none) { return rejectCapturing(); }
+            matchedSlot = index;
+          }
+          if (matchedSlot == zc::none) { return rejectCapturing(); }
+          size_t slot = 0;
+          ZC_IF_SOME(value, matchedSlot) { slot = value; }
+          for (const auto existing : factLocalSlots) {
+            if (existing == slot) { return rejectCapturing(); }
+          }
+          factLocalSlots.add(slot);
+        }
+        // Each leading local's initializer is a scalar literal fact of the
+        // matching capture's scalar type.
+        struct ResolvedCapturedLocal {
+          ast::NodeId pattern;
+          ast::NodeId initializer;
+          identity::SemanticTypeId type;
+          checker::checked::CanonicalConstValue literal;
+          identity::SourceSpan patternSpan;
+          identity::SourceSpan initializerSpan;
+        };
+        zc::Vector<ResolvedCapturedLocal> resolvedLocals;
+        for (const auto* captureFact : orderedFacts) {
+          const size_t slot = factLocalSlots[resolvedLocals.size()];
+          const auto& capturedLocal = shape.capturedLocals[slot];
+          auto literalIndex = factIndex(facts.literals(), capturedLocal.initializer);
+          if (literalIndex == zc::none) { return rejectCapturing(); }
+          size_t literalSlot = 0;
+          ZC_IF_SOME(value, literalIndex) { literalSlot = value; }
+          const auto& literalFact = facts.literals().entries()[literalSlot].value;
+          if (literalFact.node != capturedLocal.initializer ||
+              literalFact.type != captureFact->capturedType) {
+            return rejectCapturing();
+          }
+          auto patternSpan = bound.parsedModule().spanFor(tree.node(capturedLocal.pattern).range);
+          auto initializerSpan =
+              bound.parsedModule().spanFor(tree.node(capturedLocal.initializer).range);
+          if (patternSpan == zc::none || initializerSpan == zc::none) {
+            return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
+                                                 ir::IrFailureKind::MissingRequiredFact, module,
+                                                 registries, ordinal + 2);
+          }
+          resolvedLocals.add(ResolvedCapturedLocal{
+              capturedLocal.pattern, capturedLocal.initializer, captureFact->capturedType,
+              literalFact.literal.clone(), ZC_ASSERT_NONNULL(patternSpan).clone(),
+              ZC_ASSERT_NONNULL(initializerSpan).clone()});
         }
         // The checker call fact targets the closure directly and carries no
         // source arguments.
@@ -808,24 +864,30 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         auto bodySpan = bound.parsedModule().spanFor(tree.node(shape.body).range);
         auto returnSpan = bound.parsedModule().spanFor(tree.node(shape.returnStatement).range);
         auto callSpan = bound.parsedModule().spanFor(tree.node(shape.value).range);
-        auto localSpan = bound.parsedModule().spanFor(tree.node(shape.capturedLocalPattern).range);
-        auto initializerSpan =
-            bound.parsedModule().spanFor(tree.node(shape.capturedLocalInitializer).range);
-        if (bodySpan == zc::none || returnSpan == zc::none || callSpan == zc::none ||
-            localSpan == zc::none || initializerSpan == zc::none) {
+        if (bodySpan == zc::none || returnSpan == zc::none || callSpan == zc::none) {
           return rejectHir<HirModuleCandidate>(ir::IrFailurePhase::HirConstruction,
                                                ir::IrFailureKind::MissingRequiredFact, module,
                                                registries, ordinal + 2);
         }
-        zc::Maybe<checker::checked::CanonicalConstValue> noValue;
-        zc::Maybe<identity::CallableParameterKey> noParameter;
-        zc::Maybe<HirLocalId> argumentLocal = hirLocalId(1);
-        zc::Maybe<identity::DefId> noField;
-        zc::Maybe<checker::PrimitiveOperation> noComparison;
+        // One implicit by-value argument per captured local, passing caller
+        // local 1..N in canonical environment order.
         zc::Vector<HirDirectCallArgument> callArguments;
-        callArguments.add(HirDirectCallArgument{
-            captureFact->capturedType, zc::mv(noValue), zc::mv(noParameter), zc::mv(argumentLocal),
-            zc::mv(noField), zc::mv(noComparison), ZC_ASSERT_NONNULL(localSpan).clone()});
+        zc::Vector<CapturingClosureAliasCallReturn::CapturedLocal> pendingLocals;
+        for (size_t index = 0; index < resolvedLocals.size(); ++index) {
+          const auto& resolved = resolvedLocals[index];
+          zc::Maybe<checker::checked::CanonicalConstValue> noValue;
+          zc::Maybe<identity::CallableParameterKey> noParameter;
+          zc::Maybe<HirLocalId> argumentLocal = hirLocalId(index + 1);
+          zc::Maybe<identity::DefId> noField;
+          zc::Maybe<checker::PrimitiveOperation> noComparison;
+          callArguments.add(HirDirectCallArgument{
+              resolved.type, zc::mv(noValue), zc::mv(noParameter), zc::mv(argumentLocal),
+              zc::mv(noField), zc::mv(noComparison), resolved.patternSpan.clone()});
+          pendingLocals.add(CapturingClosureAliasCallReturn::CapturedLocal{
+              HirLocalBinding{HirNodeId(), hirLocalId(index + 1), resolved.type, HirNodeId(),
+                              resolved.patternSpan.clone(), resolved.initializerSpan.clone()},
+              resolved.literal.clone()});
+        }
         HirDirectCallExpression call{HirNodeId(),
                                      closureDefId,
                                      invocation.calleeType,
@@ -834,12 +896,6 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
                                      zc::none,
                                      zc::none,
                                      ZC_ASSERT_NONNULL(callSpan).clone()};
-        HirLocalBinding local{HirNodeId(),
-                              hirLocalId(1),
-                              captureFact->capturedType,
-                              HirNodeId(),
-                              ZC_ASSERT_NONNULL(localSpan).clone(),
-                              ZC_ASSERT_NONNULL(initializerSpan).clone()};
         zc::Array<uint8_t> orderingKey = definition.key.encode();
         pendingFunctions.add(PendingFunctionDeclaration{
             definition.definition,
@@ -858,7 +914,7 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             shape.returnStatement,
             shape.value,
             zc::none,
-            DirectScalarLocalCallReturn{zc::mv(call), literalFact.literal.clone(), zc::mv(local)}});
+            CapturingClosureAliasCallReturn{zc::mv(call), zc::mv(pendingLocals)}});
         continue;
       }
       if (shape.isConditional) {
@@ -13177,23 +13233,32 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           closureCallable.raises != zc::none || closureCallable.abi != zc::none) {
         return rejectClosureCapability();
       }
-      // RFC 0058 B1: a block-body function expression with exactly one verified
-      // Copy scalar capture lowers to a one-parameter function that returns its
-      // synthetic environment parameter. The capture fact is the only gate; the
-      // experimental flag never reaches HIR. The checker signature keeps zero
-      // user parameters because the environment parameter is synthetic.
-      const checker::checked::CheckedCaptureFact* captureFact = nullptr;
-      for (const auto& captureEntry : facts.captures().entries()) {
-        if (captureEntry.value.closure != closure.closureKey) { continue; }
-        if (captureFact != nullptr) { return rejectClosureCapability(); }
-        captureFact = &captureEntry.value;
+      // RFC 0058 B1/B2: a block-body function expression with one or two
+      // verified Copy scalar captures lowers to a function with one synthetic
+      // by-value environment parameter per capture. One capture returns its
+      // environment parameter directly; two captures return one integer
+      // arithmetic binary over the two parameters. The capture facts are the
+      // only gate; the experimental flag never reaches HIR. The checker
+      // signature keeps zero user parameters because the environment
+      // parameters are synthetic.
+      auto orderedCaptureFacts = sortedClosureCaptureFacts(facts.captures(), closure.closureKey);
+      const bool isCapturingClosure = orderedCaptureFacts.size() != 0;
+      if (orderedCaptureFacts.size() > 2) { return rejectClosureCapability(); }
+      for (const auto* captureFact : orderedCaptureFacts) {
+        if (captureFact->mode != checker::checked::CaptureMode::Copy ||
+            captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
+            captureFact->capturedType != closureCallable.success || !closureIsFunctionExpression) {
+          return rejectClosureCapability();
+        }
       }
-      const bool isCapturingClosure = captureFact != nullptr;
-      if (isCapturingClosure && (captureFact->mode != checker::checked::CaptureMode::Copy ||
-                                 captureFact->origin != checker::checked::CaptureOrigin::Inferred ||
-                                 !closureIsFunctionExpression)) {
-        return rejectClosureCapability();
-      }
+      // For a capturing closure, the body leaves in source return order, each
+      // tagged with its canonical capture slot. One capture has one ident leaf;
+      // two captures have the binary's two ident leaves.
+      struct CapturingLeaf {
+        ast::NodeId node;
+        size_t factSlot;
+      };
+      zc::Vector<CapturingLeaf> capturingLeaves;
       // Source anchors and spans. The lambda spelling has no source block or
       // return: hirBodyAnchor/hirReturnAnchor stay sentinel and their spans
       // reuse the closure source span, while the value anchors the body
@@ -13206,8 +13271,10 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
       identity::SourceSpan closureReturnSpan = closure.source.clone();
       identity::SourceSpan closureValueSpan = closure.source.clone();
       if (isCapturingClosure) {
-        // Capturing form: a block-body `fn` whose sole statement returns the
-        // captured owner-local identifier (the same node as the fact's place).
+        // Capturing form: a block-body `fn` whose sole statement returns either
+        // the captured owner-local identifier (one capture) or one integer
+        // arithmetic binary whose two leaves are the captured identifiers (two
+        // captures). Each leaf is the corresponding fact's place node.
         auto closureBodyShape = functionReturnShape(closureTree, closureTree.node(closure.node));
         if (closureBodyShape == zc::none) { return rejectClosureCapability(); }
         const FunctionReturnShape& closureShape = ZC_ASSERT_NONNULL(closureBodyShape);
@@ -13221,13 +13288,53 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
             !closureTree.contains(closureShape.returnStatement) ||
             !closureTree.contains(closureShape.value) ||
             closureTree.node(closureShape.returnStatement).kind != ast::SyntaxKind::ReturnStmt ||
-            declaredReturnValue != closureShape.value ||
-            closureTree.node(closureShape.value).kind != ast::SyntaxKind::IdentExpr ||
-            closureShape.value != captureFact->place.node) {
+            declaredReturnValue != closureShape.value) {
           return rejectClosureCapability();
         }
         auto soleItem = statementItem(closureTree, closureTree.list(closureStatements)[0]);
         if (soleItem == zc::none || ZC_ASSERT_NONNULL(soleItem) != closureShape.returnStatement) {
+          return rejectClosureCapability();
+        }
+        // Reconcile the body leaves with the canonical capture facts: every
+        // leaf names one fact's place node, and every fact is named once.
+        zc::Vector<ast::NodeId> leafNodes;
+        if (orderedCaptureFacts.size() == 1 &&
+            closureTree.node(closureShape.value).kind == ast::SyntaxKind::IdentExpr) {
+          leafNodes.add(closureShape.value);
+        } else if (orderedCaptureFacts.size() == 2 &&
+                   closureTree.node(closureShape.value).kind == ast::SyntaxKind::BinaryExpr) {
+          const ast::NodeId left(
+              closureTree.node(closureShape.value).payload.words[ast::kBinaryExprLhsWord]);
+          const ast::NodeId right(
+              closureTree.node(closureShape.value).payload.words[ast::kBinaryExprRhsWord]);
+          if (!closureTree.contains(left) ||
+              closureTree.node(left).kind != ast::SyntaxKind::IdentExpr ||
+              !closureTree.contains(right) ||
+              closureTree.node(right).kind != ast::SyntaxKind::IdentExpr) {
+            return rejectClosureCapability();
+          }
+          leafNodes.add(left);
+          leafNodes.add(right);
+        } else {
+          return rejectClosureCapability();
+        }
+        for (const auto leaf : leafNodes) {
+          zc::Maybe<size_t> leafSlot;
+          for (size_t factSlot = 0; factSlot < orderedCaptureFacts.size(); ++factSlot) {
+            if (orderedCaptureFacts[factSlot]->place.node == leaf) {
+              if (leafSlot != zc::none) { return rejectClosureCapability(); }
+              leafSlot = factSlot;
+            }
+          }
+          if (leafSlot == zc::none) { return rejectClosureCapability(); }
+          size_t slot = 0;
+          ZC_IF_SOME(value, leafSlot) { slot = value; }
+          for (const auto& existing : capturingLeaves) {
+            if (existing.factSlot == slot) { return rejectClosureCapability(); }
+          }
+          capturingLeaves.add(CapturingLeaf{leaf, slot});
+        }
+        if (capturingLeaves.size() != orderedCaptureFacts.size()) {
           return rejectClosureCapability();
         }
         auto bodySpan = bound.parsedModule().spanFor(closureTree.node(closureShape.body).range);
@@ -13299,9 +13406,9 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
         closureValueSpan = ZC_ASSERT_NONNULL(valueSpan).clone();
       }
       // Build the parameter list and body shape. A capturing closure carries
-      // one synthetic by-value environment parameter keyed from its own
-      // DefinitionKey plus position zero; a non-capturing closure carries
-      // none.
+      // one synthetic by-value environment parameter per capture, keyed from
+      // its own DefinitionKey at ordinary positions 0..N-1 in canonical
+      // capture order; a non-capturing closure carries none.
       zc::Vector<HirParameter> closureParameters;
       zc::Maybe<PendingFunctionShape> closureBodyShapeVariant =
           [&]() -> zc::Maybe<PendingFunctionShape> {
@@ -13318,17 +13425,70 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
           }
           return PendingFunctionShape{ScalarLiteralReturn{closureLiteralFact.literal.clone()}};
         }
-        const auto& captured = ZC_ASSERT_NONNULL(captureFact);
-        if (captured.capturedType != closureCallable.success) { return zc::none; }
-        auto environmentRecord = identity::CallableParameterIdentityRecord::from(
-            closure.key.clone(), identity::CallableParameterPosition::ordinary(0));
-        identity::CallableParameterKey environmentKey =
-            identity::CallableParameterKey::compute(environmentRecord);
-        closureParameters.add(
-            HirParameter{environmentKey.clone(), captured.capturedType, closure.source.clone()});
-        return PendingFunctionShape{ParameterReferenceReturn{HirParameterReferenceExpression{
-            HirNodeId(), environmentKey.clone(), captured.capturedType, HirValueCategory::Place,
-            closureValueSpan.clone()}}};
+        // One synthetic by-value environment parameter per capture, keyed from
+        // the closure DefinitionKey at ordinary positions 0..N-1 in canonical
+        // capture order.
+        zc::Vector<identity::CallableParameterKey> environmentKeys;
+        for (size_t position = 0; position < orderedCaptureFacts.size(); ++position) {
+          auto environmentRecord = identity::CallableParameterIdentityRecord::from(
+              closure.key.clone(), identity::CallableParameterPosition::ordinary(position));
+          identity::CallableParameterKey environmentKey =
+              identity::CallableParameterKey::compute(environmentRecord);
+          closureParameters.add(HirParameter{environmentKey.clone(),
+                                             orderedCaptureFacts[position]->capturedType,
+                                             closure.source.clone()});
+          environmentKeys.add(zc::mv(environmentKey));
+        }
+        if (orderedCaptureFacts.size() == 1) {
+          const ast::NodeId leafNode = capturingLeaves[0].node;
+          auto leafSpan = bound.parsedModule().spanFor(closureTree.node(leafNode).range);
+          if (leafSpan == zc::none) { return zc::none; }
+          return PendingFunctionShape{ParameterReferenceReturn{HirParameterReferenceExpression{
+              HirNodeId(), environmentKeys[0].clone(), closureCallable.success,
+              HirValueCategory::Place, ZC_ASSERT_NONNULL(leafSpan).clone()}}};
+        }
+        // Two captures: one integer arithmetic binary over the two synthetic
+        // environment parameters, riding the parameter-binary comparison shape.
+        auto binaryCallIndex = factIndex(facts.calls(), closureValue);
+        if (binaryCallIndex == zc::none) { return zc::none; }
+        size_t binaryCallSlot = 0;
+        ZC_IF_SOME(value, binaryCallIndex) { binaryCallSlot = value; }
+        const auto& binaryInvocation = facts.calls().entries()[binaryCallSlot].value.invocation;
+        if (!binaryInvocation.selected.variant().is<checker::checked::PrimitiveCallable>() ||
+            binaryInvocation.arguments.size() != 2 ||
+            binaryInvocation.arguments[0].sourceNode != capturingLeaves[0].node ||
+            binaryInvocation.arguments[1].sourceNode != capturingLeaves[1].node ||
+            binaryInvocation.receiver != zc::none || binaryInvocation.substitutions != zc::none ||
+            binaryInvocation.witnesses != zc::none || binaryInvocation.raises != zc::none ||
+            binaryInvocation.successType != closureCallable.success ||
+            binaryInvocation.resultType != closureCallable.success) {
+          return zc::none;
+        }
+        const auto binaryOperation = binaryInvocation.selected.variant()
+                                         .get<checker::checked::PrimitiveCallable>()
+                                         .operation;
+        if (!isScalarArithmeticOperation(binaryOperation)) { return zc::none; }
+        auto buildArm = [&](const CapturingLeaf& leaf) -> zc::Maybe<PendingConditionalArm> {
+          auto leafSpan = bound.parsedModule().spanFor(closureTree.node(leaf.node).range);
+          if (leafSpan == zc::none) { return zc::none; }
+          auto reference = HirParameterReferenceExpression{
+              HirNodeId(), environmentKeys[leaf.factSlot].clone(), closureCallable.success,
+              HirValueCategory::Place, ZC_ASSERT_NONNULL(leafSpan).clone()};
+          return PendingConditionalArm{zc::none,
+                                       zc::mv(reference),
+                                       zc::none,
+                                       closureCallable.success,
+                                       ZC_ASSERT_NONNULL(leafSpan).clone(),
+                                       zc::none,
+                                       leaf.node};
+        };
+        auto leftArm = buildArm(capturingLeaves[0]);
+        auto rightArm = buildArm(capturingLeaves[1]);
+        if (leftArm == zc::none || rightArm == zc::none) { return zc::none; }
+        return PendingFunctionShape{ComparisonReturn{PendingEqualityCondition{
+            zc::mv(ZC_ASSERT_NONNULL(leftArm)), zc::mv(ZC_ASSERT_NONNULL(rightArm)),
+            closureCallable.success, closureCallable.success, binaryOperation,
+            closureValueSpan.clone(), false, closureValue}}};
       }();
       if (closureBodyShapeVariant == zc::none) { return rejectClosureCapability(); }
       zc::Array<uint8_t> closureOrderingKey = closure.key.encode();
@@ -13520,6 +13680,11 @@ ir::IrOperationResult<HirModuleCandidate> HirBuilder::build(
     if (value.shape.is<DirectScalarLocalCallReturn>()) {
       auto fnCtx = makeFnCtx();
       lowerDirectScalarLocalCallFunction(zc::mv(value), fnCtx);
+      continue;
+    }
+    if (value.shape.is<CapturingClosureAliasCallReturn>()) {
+      auto fnCtx = makeFnCtx();
+      lowerCapturingClosureAliasCallFunction(zc::mv(value), fnCtx);
       continue;
     }
     if (value.shape.is<DirectAggregateCallReturn>()) {

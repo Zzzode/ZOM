@@ -2992,77 +2992,90 @@ zc::Maybe<FunctionReturnShape> functionReturnShape(const ast::Tree& tree,
       }
     }
   }
-  // RFC 0058 B1 capturing-closure-alias shape (three statements):
-  // `let x: T = <scalar-literal>; let f = fn() -> T { return x; }; return f();`.
-  // Structural only: the checker capture fact gates admission and the builder
-  // reconciles the captured local, the zero source arguments, and the one
-  // implicit by-value argument. The closure alias stays slotless.
-  if (statements.size == 3) {
-    auto capturedItem = statementItem(tree, tree.list(statements)[0]);
-    auto capturingAliasItem = statementItem(tree, tree.list(statements)[1]);
-    if (capturedItem != zc::none && capturingAliasItem != zc::none) {
-      ast::NodeId capturedLet;
-      ast::NodeId aliasLet;
-      ZC_IF_SOME(item, capturedItem) { capturedLet = item; }
-      ZC_IF_SOME(item, capturingAliasItem) { aliasLet = item; }
-      auto capturedDeclarator = localDeclarator(tree, capturedLet);
-      auto aliasDeclarator = localDeclarator(tree, aliasLet);
-      if (capturedDeclarator != zc::none && aliasDeclarator != zc::none &&
-          tree.node(capturedLet).kind == ast::SyntaxKind::LetStmt &&
-          tree.node(aliasLet).kind == ast::SyntaxKind::LetStmt &&
+  // RFC 0058 B1/B2 capturing-closure-alias shape: one or two leading
+  // scalar-literal-initialized lets, a slotless `let f = fn() -> T { .. };`
+  // alias for the closure, and a trailing zero-source-argument `return f();`:
+  // `let x: T = <lit>; let f = fn() -> T { return x; }; return f();` or
+  // `let a: T = <lit>; let b: T = <lit>; let f = fn() -> T { return a + b; };
+  // return f();`. Structural only: the checker capture facts gate admission and
+  // the builder reconciles each captured local, the zero source arguments, and
+  // the one implicit by-value argument per capture. The closure alias stays
+  // slotless.
+  if (statements.size == 3 || statements.size == 4) {
+    const size_t captureCount = statements.size - 2;
+    const size_t aliasStatementIndex = captureCount;
+    bool structureMatches = true;
+    zc::Vector<FunctionReturnShape::CapturedScalarLocal> capturedLocalShapes;
+    ast::NodeId aliasLet;
+    ast::NodeId aliasPattern;
+    ast::NodeId aliasInitializer;
+    for (size_t index = 0; index <= aliasStatementIndex; ++index) {
+      auto item = statementItem(tree, tree.list(statements)[index]);
+      if (item == zc::none) {
+        structureMatches = false;
+        break;
+      }
+      ast::NodeId letNode;
+      ZC_IF_SOME(value, item) { letNode = value; }
+      auto declarator = localDeclarator(tree, letNode);
+      if (declarator == zc::none || tree.node(letNode).kind != ast::SyntaxKind::LetStmt ||
           static_cast<ast::BindingDeclarationKind>(
-              tree.node(capturedLet).payload.words[ast::kLetStmtKindWord]) ==
-              ast::BindingDeclarationKind::Let &&
-          static_cast<ast::BindingDeclarationKind>(
-              tree.node(aliasLet).payload.words[ast::kLetStmtKindWord]) ==
+              tree.node(letNode).payload.words[ast::kLetStmtKindWord]) !=
               ast::BindingDeclarationKind::Let) {
-        ast::NodeId capturedDeclaratorNode;
-        ast::NodeId aliasDeclaratorNode;
-        ZC_IF_SOME(item, capturedDeclarator) { capturedDeclaratorNode = item; }
-        ZC_IF_SOME(item, aliasDeclarator) { aliasDeclaratorNode = item; }
-        const ast::NodeId capturedPattern(
-            tree.node(capturedDeclaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
-        const ast::NodeId capturedInitializer(
-            tree.node(capturedDeclaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
-        const ast::NodeId aliasPattern(
-            tree.node(aliasDeclaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
-        const ast::NodeId aliasInitializer(
-            tree.node(aliasDeclaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
-        if (tree.contains(capturedPattern) &&
-            tree.node(capturedPattern).kind == ast::SyntaxKind::IdentifierPattern &&
-            tree.contains(capturedInitializer) &&
-            isScalarLiteral(tree.node(capturedInitializer).kind) && tree.contains(aliasPattern) &&
-            tree.node(aliasPattern).kind == ast::SyntaxKind::IdentifierPattern &&
-            tree.contains(aliasInitializer) &&
-            tree.node(aliasInitializer).kind == ast::SyntaxKind::FunctionExpression &&
-            tree.node(value).kind == ast::SyntaxKind::CallExpression) {
-          const ast::NodeId callCallee(
-              tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
-          const ast::NodeList callTypeArguments{
-              tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
-              tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
-          const ast::NodeList callArguments{
-              tree.node(value).payload.words[ast::kCallExpressionArgsFirstWord],
-              tree.node(value).payload.words[ast::kCallExpressionArgsSizeWord]};
-          if (tree.contains(callCallee) &&
-              tree.node(callCallee).kind == ast::SyntaxKind::IdentExpr &&
-              tree.contains(callTypeArguments) && callTypeArguments.empty() &&
-              tree.contains(callArguments) && callArguments.empty() &&
-              matchesLocalReference(tree, aliasPattern, callCallee)) {
-            FunctionReturnShape captureShape{};
-            captureShape.body = body;
-            captureShape.returnStatement = returnNode;
-            captureShape.value = value;
-            captureShape.returnsCapturingClosureAliasCall = true;
-            captureShape.capturedLocalLet = capturedLet;
-            captureShape.capturedLocalPattern = capturedPattern;
-            captureShape.capturedLocalInitializer = capturedInitializer;
-            captureShape.closureAliasLet = aliasLet;
-            captureShape.closureAliasPattern = aliasPattern;
-            captureShape.closureAliasInitializer = aliasInitializer;
-            return captureShape;
-          }
+        structureMatches = false;
+        break;
+      }
+      ast::NodeId declaratorNode;
+      ZC_IF_SOME(value, declarator) { declaratorNode = value; }
+      const ast::NodeId pattern(
+          tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorPatternWord]);
+      const ast::NodeId initializer(
+          tree.node(declaratorNode).payload.words[ast::kVariableDeclaratorInitWord]);
+      if (!tree.contains(pattern) ||
+          tree.node(pattern).kind != ast::SyntaxKind::IdentifierPattern ||
+          !tree.contains(initializer)) {
+        structureMatches = false;
+        break;
+      }
+      if (index < aliasStatementIndex) {
+        if (!isScalarLiteral(tree.node(initializer).kind)) {
+          structureMatches = false;
+          break;
         }
+        capturedLocalShapes.add(
+            FunctionReturnShape::CapturedScalarLocal{letNode, pattern, initializer});
+      } else {
+        if (tree.node(initializer).kind != ast::SyntaxKind::FunctionExpression) {
+          structureMatches = false;
+          break;
+        }
+        aliasLet = letNode;
+        aliasPattern = pattern;
+        aliasInitializer = initializer;
+      }
+    }
+    if (structureMatches && tree.node(value).kind == ast::SyntaxKind::CallExpression) {
+      const ast::NodeId callCallee(tree.node(value).payload.words[ast::kCallExpressionCalleeWord]);
+      const ast::NodeList callTypeArguments{
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsFirstWord],
+          tree.node(value).payload.words[ast::kCallExpressionTypeArgsSizeWord]};
+      const ast::NodeList callArguments{
+          tree.node(value).payload.words[ast::kCallExpressionArgsFirstWord],
+          tree.node(value).payload.words[ast::kCallExpressionArgsSizeWord]};
+      if (tree.contains(callCallee) && tree.node(callCallee).kind == ast::SyntaxKind::IdentExpr &&
+          tree.contains(callTypeArguments) && callTypeArguments.empty() &&
+          tree.contains(callArguments) && callArguments.empty() &&
+          matchesLocalReference(tree, aliasPattern, callCallee)) {
+        FunctionReturnShape captureShape{};
+        captureShape.body = body;
+        captureShape.returnStatement = returnNode;
+        captureShape.value = value;
+        captureShape.returnsCapturingClosureAliasCall = true;
+        captureShape.capturedLocals = zc::mv(capturedLocalShapes);
+        captureShape.closureAliasLet = aliasLet;
+        captureShape.closureAliasPattern = aliasPattern;
+        captureShape.closureAliasInitializer = aliasInitializer;
+        return captureShape;
       }
     }
   }
