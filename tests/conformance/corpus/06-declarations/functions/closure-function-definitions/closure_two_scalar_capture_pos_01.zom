@@ -1,0 +1,11 @@
+// RFC 0058 Part B2: a non-escaping block-body closure captures two
+// initialized read-only i32 locals by value and combines them in one integer
+// arithmetic operation. Admitted only behind the default-off
+// --experimental-captures gate; without the flag this source keeps the
+// ZOM4099 capability drain (see the matching neg check).
+fn entry() -> i32 {
+  let a: i32 = 40;
+  let b: i32 = 2;
+  let f = fn () -> i32 { return a + b; };
+  return f();
+}

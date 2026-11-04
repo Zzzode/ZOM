@@ -1,0 +1,12 @@
+// RFC 0058 Part B2 negative: three captured locals combined in the closure
+// body stay outside the bounded two-capture slice even with
+// --experimental-captures on. The checker admits at most two distinct
+// captures, so the owning function keeps its single ZOM4099 capability
+// diagnostic with zero incidents.
+fn entry() -> i32 {
+  let a: i32 = 1;
+  let b: i32 = 2;
+  let c: i32 = 3;
+  let f = fn () -> i32 { return a + b + c; };
+  return f();
+}

@@ -247,7 +247,7 @@ mutually exclusive body words, `kLambdaExpressionBodyWord` for a block body and
 expression-body form has no block word set and its literal is the
 ExprBodyWord node, which is the anchor the builder and verifier use.
 
-### Part B2 design — bounded two-Copy-scalar capture (AWAITING APPROVAL)
+### Part B2 design — bounded two-Copy-scalar capture (APPROVED, LANDED 1fa01bf2, 8e43639f, abb9808f)
 
 Scope: behind the same default-off `--experimental-captures` flag, widen the
 B1 slice from one to a bounded set of two by-value Copy scalar captures, and
@@ -429,9 +429,73 @@ parameter, explicit `use []`); the `capturing-closure-consumer` package is a
 grew an optional fifth spec segment forwarding one experimental gate). No
 default test invocation sets the flag and the default corpus is unchanged.
 
+### Part B2 landed (2026-11-04, flagged)
+
+The flagged bounded two-Copy-scalar slice is implemented behind the same
+default-off `--experimental-captures` gate in three local commits
+(`1fa01bf2` checker, `8e43639f` HIR/MIR/LIR plus the native fixture,
+`abb9808f` ztests). Scope realized exactly as approved: a block-body
+zero-user-parameter `fn` expression combining one or two initialized
+read-only annotated i32 owner locals; one capture returns the bare
+identifier (the B1 shape), two captures require one primitive integer
+arithmetic binary (`isIntegerArithmeticBinarySyntax`) whose two leaves are
+the captured identifiers. Captures stay ordered by owner-local binding
+declaration preorder (the canonical environment field order), deduplicated
+per binding (`a + a` is one capture, so the two-capture binary drains),
+and every capture type must equal the closure success type.
+
+Layer shape realized:
+
+1. Checker: the B1 single-capture predicate generalized to an ordered
+   vector of one or two `AdmittedScalarCapture`s; the checker publishes one
+   `CheckedCaptureFact{Copy, Inferred}` per entry in declaration preorder,
+   so the existing capture exact-set verifier is reused unchanged.
+2. HIR: the caller capture-alias shape generalizes from three to three or
+   four statements (one or two leading scalar-initialized lets, the
+   slotless alias, the zero-source-argument call) through a new
+   `CapturingClosureAliasCallReturn` pending variant carrying N locals and N
+   implicit by-value arguments. A shared `sortedClosureCaptureFacts` helper
+   derives canonical order for both builder arms. The closure gains one
+   synthetic environment parameter per capture keyed
+   `CallableParameterIdentityRecord::from(closure DefKey, ordinary(i))`;
+   the two-capture body reuses the parameter-binary `ComparisonReturn`
+   materializer (function F, body F+1, left F+2, right F+3, binary F+4,
+   return F+5), not a new local variant. Both verifier arms reconcile the
+   exact fact/local/parameter/argument sets, types, positions, spans, and
+   the primitive call fact.
+3. MIR (a deviation from the design note that predicted "MIR unchanged",
+   confirmed by an independent adversarial review): the scalar-local caller
+   strategy generalizes from one to two UserLocals/arguments; the built-MIR
+   node checksum takes two paired corrections (by-value-local-argument
+   credits sum over all local arguments; a trailing direct call with two
+   leading locals stops classifying as a sequential local-return block).
+4. LIR: `lowerScalarLocalCallModule` generalizes from one to two constant
+   caller UserLocals and one or two callee parameters, accepting both the
+   identity callee (one capture) and the arithmetic-callee body (two
+   captures) it already modeled for the one-parameter slice.
+
+Recorded boundary (deliberate fail-closed, not a defect): an owner scope
+with two locals whose closure body reads only one (`let a; let b;
+fn(){return a}`) still drains ZOM4099. The checker publishes only
+body-derived captures (one here), and threading a dead, uncaptured leading
+local through the caller shape, checksum, and LIR is outside this slice.
+`a + 1` (literal leaf), three captures, nested/non-identifier operands,
+parameter captures, `use []`, and bool arithmetic all keep ZOM4099 with
+zero incidents.
+
+Tests: `FlagOnTwoScalarCaptureLowersToHirAndMir` (2 locals, 2 implicit
+local-1/local-2 arguments, 2 synthetic closure parameters, 2 MIR
+functions), the extended `FlagOnRejectedCaptureShapesKeepCapabilityDrain`
+(literal leaf, third local, partial capture, flag-off), three
+diagnostics-conformance cases
+(`closure_two_scalar_capture_pos_01` with the gate,
+`closure_three_scalar_capture_neg_01` and
+`closure_two_scalar_capture_flagoff_neg_01` without), and the
+`two-capturing-closure-consumer` native-run case exiting 42. Full
+sanitizer ctest 349/349.
 
 | B1 | Flagged one-Copy-scalar capture on top of B0: the flagged closure becomes a one-parameter function returning its by-value scalar environment parameter; the caller passes the captured local as one implicit scalar argument. Rides the existing `ParameterReferenceReturn` + `lowerScalarLocalCallModule` native ladder (no MIR/LIR change); the flag is session-scoped only and never enters a canonical codec or crate identity | Landed (local) | capturing-closure-consumer native exit 42, flag-off/on session ztests + negatives, full sanitizer ctest |
-| B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Proposed | multi-capture consumer |
+| B2 | Bounded multi-Copy-scalar capture set (canonical syntax-path field order) | Landed (local) | two-capturing-closure-consumer native exit 42, flag-on/off conformance pos/neg, session ztests, full sanitizer ctest 349 |
 | Later | Reference/move captures | Blocked | RFC 0007 ownership completion |
 | Later | Escaping/boxed closures | Blocked | allocator ABI |
 | Later | Callable traits, generic closures | Not scheduled | trait dispatch; RFC 0056 instances |

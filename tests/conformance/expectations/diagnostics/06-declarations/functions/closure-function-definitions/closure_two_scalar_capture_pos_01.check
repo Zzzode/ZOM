@@ -1,0 +1,8 @@
+// RUN: cd %corpus && %zomc compile --check --experimental-captures 06-declarations/functions/closure-function-definitions/closure_two_scalar_capture_pos_01.zom > %t 2>&1
+// RUN: %FileCheck %s --input-file %t
+
+// RFC 0058 Part B2 positive: with --experimental-captures the two by-value
+// Copy scalar captures are admitted and the source lowers through the full
+// checker/HIR/MIR/LIR pipeline. The compiler exits 0 and emits no diagnostic.
+
+// CHECK-NOT: Error
