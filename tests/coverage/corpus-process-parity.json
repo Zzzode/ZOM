@@ -1,6 +1,6 @@
 {
   "corpusRoot": "tests/conformance/corpus",
-  "count": 1103,
+  "count": 1105,
   "irChannel": false,
   "outputs": {
     "02-lexical/bigint_suffix_neg_01.zom": {
@@ -2570,6 +2570,14 @@
     "06-declarations/functions/closure-function-definitions/closure_parameter_capability_neg_01.zom": {
       "exitCode": 1,
       "sha256": "d6d7d2e8ec7207d05aa50e0edab353b3304aad9ee85a05520338a809a3b2229f"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_three_scalar_capture_neg_01.zom": {
+      "exitCode": 1,
+      "sha256": "4003fb880b81badac8fa5cd15923a5deb1fb4d1ee4e2effb1c49e05ea644172a"
+    },
+    "06-declarations/functions/closure-function-definitions/closure_two_scalar_capture_pos_01.zom": {
+      "exitCode": 1,
+      "sha256": "df112dbf8c54c2a4d1172aaee4e27ec7c6ec3b15376ec77942db6cf34e2df0d8"
     },
     "06-declarations/functions/closure-function-definitions/generic.zom": {
       "exitCode": 1,
