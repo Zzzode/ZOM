@@ -889,5 +889,78 @@ ZC_TEST("LIR structural verifier rejects arithmetic into a one-bit destination")
   ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
 }
 
+// Builds a two-function indirect-call module: the leaf (function ordinal 2) is
+// a one-parameter function returning its i32 parameter; the entry materializes
+// the leaf address into slot 1, calls through the pointer, and returns the
+// result. `targetFunctionOrdinal` selects the FunctionSymbolAddr ordinal and
+// `pointerDestination` selects whether slot 1 carries an opaque pointer
+// (well-formed) or an i32 (carrier mutation).
+Module functionSymbolAddrModule(uint32_t targetFunctionOrdinal, bool pointerDestination) {
+  const ValueType i32 = carrier(IntegerBitWidth::Bit32);
+  const ValueType pointerCarrier = ValueType::pointer(0);
+  const uint32_t pointerSlot = pointerDestination ? 1 : 2;
+  const uint32_t resultSlot = pointerDestination ? 2 : 3;
+
+  zc::Vector<Function> functions;
+  {
+    zc::Vector<Statement> statements;
+    statements.add(Statement::functionSymbolAddr(/*destinationOrdinal=*/1, targetFunctionOrdinal));
+    zc::Vector<Operand> arguments;
+    arguments.add(Operand::constant(constant(i32, 42)));
+    zc::Vector<ValueType> parameterCarriers;
+    parameterCarriers.add(i32);
+    auto indirect = Terminator::indirectCall(pointerSlot, resultSlot, zc::mv(arguments), i32,
+                                             zc::mv(parameterCarriers), blockId(2));
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(blockId(1), zc::mv(statements), ZC_ASSERT_NONNULL(zc::mv(indirect))));
+    blocks.add(BasicBlock(blockId(2), Terminator::returnLocal(resultSlot)));
+    zc::Vector<Local> parameters;
+    zc::Vector<Local> locals;
+    if (pointerDestination) {
+      locals.add(Local(1, pointerCarrier));
+      locals.add(Local(2, i32));
+    } else {
+      locals.add(Local(1, i32));
+      locals.add(Local(2, pointerCarrier));
+      locals.add(Local(3, i32));
+    }
+    functions.add(Function(tests::testDefinition(0), zc::heapString("zom.module_init"), i32,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    zc::Vector<Local> parameters;
+    parameters.add(Local(1, i32));
+    zc::Vector<Local> locals;
+    zc::Vector<BasicBlock> blocks;
+    blocks.add(BasicBlock(blockId(1), Terminator::returnLocal(1)));
+    functions.add(Function(tests::testDefinition(1), zc::heapString("zom.closure_callee"), i32,
+                           zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  return Module(zc::mv(functions));
+}
+
+ZC_TEST("LIR structural verifier accepts a function symbol address fed to an indirect call") {
+  Module module = functionSymbolAddrModule(/*targetFunctionOrdinal=*/2,
+                                           /*pointerDestination=*/true);
+  ZC_EXPECT(LirStructuralVerifier::verify(module) == zc::none);
+}
+
+ZC_TEST("LIR structural verifier rejects a function symbol ordinal outside the module range") {
+  Module module = functionSymbolAddrModule(/*targetFunctionOrdinal=*/3,
+                                           /*pointerDestination=*/true);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault ==
+            LirVerificationFaultKind::FunctionSymbolOrdinalOutOfRange);
+}
+
+ZC_TEST("LIR structural verifier rejects a function symbol address stored in an integer slot") {
+  Module module = functionSymbolAddrModule(/*targetFunctionOrdinal=*/2,
+                                           /*pointerDestination=*/false);
+  auto finding = LirStructuralVerifier::verify(module);
+  ZC_REQUIRE(finding != zc::none);
+  ZC_EXPECT(ZC_ASSERT_NONNULL(finding).fault == LirVerificationFaultKind::CarrierMismatch);
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::lir

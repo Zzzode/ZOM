@@ -66,6 +66,9 @@ enum class LirVerificationFaultKind : uint8_t {
   IndirectCallTargetNotPointer = 0x10,
   /// A GlobalAddr statement indexes a global outside the module range.
   GlobalOrdinalOutOfRange = 0x11,
+  /// A FunctionSymbolAddr statement indexes a function outside the module
+  /// range.
+  FunctionSymbolOrdinalOutOfRange = 0x12,
 };
 
 /// \brief One immutable structural verification finding.

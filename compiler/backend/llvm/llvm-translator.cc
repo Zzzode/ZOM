@@ -686,6 +686,17 @@ LlvmTranslationResult LlvmTranslator::translate(const lir::Module& module) {
                 zc::heapString("global ordinal out of range in GlobalAddr statement"));
           }
           stored = llvmGlobals[globalIndex];
+        } else if (statement.kind() == lir::StatementKind::FunctionSymbolAddr) {
+          // The function symbol is the internal LLVM function itself; its
+          // address is a constant pointer. Function ordinals are one-based
+          // dense (LIR-verifier validated), so the vector index is
+          // ordinal - 1.
+          const uint32_t functionIndex = statement.functionSymbolOrdinal() - 1;
+          if (functionIndex >= llvmFunctions.size()) {
+            return LlvmTranslationResult::failure(
+                zc::heapString("function ordinal out of range in FunctionSymbolAddr statement"));
+          }
+          stored = llvmFunctions[functionIndex];
         } else if (statement.kind() == lir::StatementKind::VtableSlotLoad) {
           // Load the vtable pointer from the base slot, then GEP to the slot
           // index and load the function pointer. The vtable is an array of

@@ -522,6 +522,21 @@ zc::Maybe<LirVerificationFinding> LirStructuralVerifier::verify(const Module& mo
             }
             break;
           }
+          case StatementKind::FunctionSymbolAddr: {
+            // The destination holds an opaque pointer to a module function.
+            if (destinationCarrier.kind() != ValueTypeKind::Pointer) {
+              return fault(LirVerificationFaultKind::CarrierMismatch, functionIndex, blockOrdinal,
+                           statementIndex);
+            }
+            // Function ordinals are one-based dense into the module's function
+            // vector.
+            if (statement.functionSymbolOrdinal() == 0 ||
+                statement.functionSymbolOrdinal() > static_cast<uint32_t>(functions.size())) {
+              return fault(LirVerificationFaultKind::FunctionSymbolOrdinalOutOfRange, functionIndex,
+                           blockOrdinal, statementIndex);
+            }
+            break;
+          }
         }
       }
 

@@ -149,6 +149,14 @@ Statement Statement::globalAddr(uint32_t destinationOrdinal, uint32_t globalOrdi
                    Operand::localUse(0), Operand::localUse(0), globalOrdinal);
 }
 
+Statement Statement::functionSymbolAddr(uint32_t destinationOrdinal,
+                                        uint32_t functionOrdinal) noexcept {
+  // FunctionSymbolAddr reads only the destination and function ordinal;
+  // leftValue and rightValue are never-read placeholders.
+  return Statement(StatementKind::FunctionSymbolAddr, destinationOrdinal, ComparisonOp::Eq,
+                   Operand::localUse(0), Operand::localUse(0), functionOrdinal);
+}
+
 // A never-read placeholder constant for terminators that carry no integer
 // constant. The i1 carrier always exists, so `from` cannot fail here.
 IntegerConstant Terminator::fallbackConstant() noexcept {

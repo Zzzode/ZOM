@@ -314,6 +314,7 @@ enum class StatementKind : uint8_t {
   VtableAddr = 0x09,
   VtableSlotLoad = 0x0a,
   GlobalAddr = 0x0b,
+  FunctionSymbolAddr = 0x0c,
 };
 
 /// \brief One LIR statement: store an operand or a comparison into a local slot,
@@ -398,6 +399,14 @@ public:
   /// must carry an opaque pointer.
   ZC_NODISCARD static Statement globalAddr(uint32_t destinationOrdinal,
                                            uint32_t globalOrdinal) noexcept;
+  /// \brief Stores the address of a module-local function into a pointer
+  /// destination slot (a non-capturing closure's bare code pointer). The
+  /// function is identified by its module-local ordinal (one-based, matching
+  /// the module's function vector). The destination must carry an opaque
+  /// pointer; the resulting slot is callable through an IndirectCall
+  /// terminator carrying the callee's return and parameter carriers.
+  ZC_NODISCARD static Statement functionSymbolAddr(uint32_t destinationOrdinal,
+                                                   uint32_t functionOrdinal) noexcept;
 
   ZC_NODISCARD StatementKind kind() const noexcept { return kindValue; }
   ZC_NODISCARD uint32_t destinationOrdinal() const noexcept { return destinationValue; }
@@ -426,6 +435,11 @@ public:
   /// statement. Reuses the field-offset storage; the two accessors name the
   /// same slot with the semantics each statement kind requires.
   ZC_NODISCARD uint32_t globalOrdinal() const noexcept { return fieldOffsetValue; }
+  /// \brief The one-based module-local function ordinal for a
+  /// FunctionSymbolAddr statement. Reuses the field-offset storage; the
+  /// accessors name the same slot with the semantics each statement kind
+  /// requires.
+  ZC_NODISCARD uint32_t functionSymbolOrdinal() const noexcept { return fieldOffsetValue; }
 
 private:
   Statement(StatementKind kind, uint32_t destinationOrdinal, ComparisonOp op, Operand left,

@@ -3890,5 +3890,96 @@ ZC_TEST("Float scalar return rejects a canonical width that does not match the c
                 function, typeContext.semanticTypes()) == zc::none);
 }
 
+// RFC 0057 slice 1b LIR carrier primitive: a one-parameter leaf returns its i32
+// parameter, and the entry materializes the leaf's function address into a
+// pointer body slot, calls through that slot with one i32 constant, and returns
+// the result. `targetFunctionOrdinal` selects the FunctionSymbolAddr ordinal so
+// the fail-closed out-of-range branch shares one builder.
+lir::Module buildFunctionSymbolAddressModule(uint32_t targetFunctionOrdinal) {
+  auto i32Maybe = lir::ValueType::integer(lir::IntegerBitWidth::Bit32);
+  ZC_REQUIRE(i32Maybe != zc::none);
+  const auto i32 = ZC_REQUIRE_NONNULL(i32Maybe);
+  const auto pointerCarrier = lir::ValueType::pointer(0);
+
+  auto entryBlockOne = lir::LirBlockId::fromOrdinal(1);
+  auto entryBlockTwo = lir::LirBlockId::fromOrdinal(2);
+  ZC_REQUIRE(entryBlockOne != zc::none);
+  ZC_REQUIRE(entryBlockTwo != zc::none);
+
+  zc::Vector<lir::Function> functions;
+  {
+    auto fortyTwo = lir::IntegerConstant::from(i32, 42);
+    ZC_REQUIRE(fortyTwo != zc::none);
+    zc::Vector<lir::Statement> statements;
+    statements.add(
+        lir::Statement::functionSymbolAddr(/*destinationOrdinal=*/1, targetFunctionOrdinal));
+    zc::Vector<lir::Operand> arguments;
+    arguments.add(lir::Operand::constant(ZC_REQUIRE_NONNULL(fortyTwo)));
+    zc::Vector<lir::ValueType> parameterCarriers;
+    parameterCarriers.add(i32);
+    auto indirect = lir::Terminator::indirectCall(
+        /*functionPointerOrdinal=*/1, /*destinationOrdinal=*/2, zc::mv(arguments), i32,
+        zc::mv(parameterCarriers), ZC_REQUIRE_NONNULL(entryBlockTwo));
+    zc::Vector<lir::BasicBlock> blocks;
+    blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(entryBlockOne), zc::mv(statements),
+                               ZC_ASSERT_NONNULL(zc::mv(indirect))));
+    blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(entryBlockTwo),
+                               lir::Terminator::returnLocal(/*localOrdinal=*/2)));
+    zc::Vector<lir::Local> parameters;
+    zc::Vector<lir::Local> locals;
+    locals.add(lir::Local(1, pointerCarrier));
+    locals.add(lir::Local(2, i32));
+    functions.add(lir::Function(tests::testDefinition(0), zc::heapString("zom.module_init"), i32,
+                                zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  {
+    zc::Vector<lir::BasicBlock> blocks;
+    blocks.add(lir::BasicBlock(ZC_REQUIRE_NONNULL(entryBlockOne),
+                               lir::Terminator::returnLocal(/*localOrdinal=*/1)));
+    zc::Vector<lir::Local> parameters;
+    parameters.add(lir::Local(1, i32));
+    zc::Vector<lir::Local> locals;
+    functions.add(lir::Function(tests::testDefinition(1), zc::heapString("zom.closure_callee"), i32,
+                                zc::mv(parameters), zc::mv(locals), zc::mv(blocks)));
+  }
+  return lir::Module(zc::mv(functions));
+}
+
+ZC_TEST("Function symbol address materializes a function pointer for a verified indirect call") {
+  auto module = buildFunctionSymbolAddressModule(/*targetFunctionOrdinal=*/2);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(module) == zc::none);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(result.verified());
+  if (!result.verified()) { ZC_FAIL_EXPECT(result.diagnostic().cStr()); }
+
+  const auto ir = result.textualIr();
+  // The leaf is materialized by address and the call goes through the loaded
+  // pointer slot, never a direct symbol call.
+  ZC_EXPECT(ir.contains("store ptr @zom.closure_callee"_zc));
+  ZC_EXPECT(ir.contains("call i32"_zc));
+  ZC_EXPECT(!ir.contains("call i32 @"_zc));
+
+  const auto object = result.objectCode();
+  ZC_EXPECT(object.size() > 0);
+  ZC_REQUIRE(object.size() >= 4);
+  ZC_EXPECT(object[0] == 0x7f);
+  ZC_EXPECT(object[1] == static_cast<uint8_t>('E'));
+  ZC_EXPECT(object[2] == static_cast<uint8_t>('L'));
+  ZC_EXPECT(object[3] == static_cast<uint8_t>('F'));
+}
+
+ZC_TEST("Function symbol address fails closed on an ordinal outside the module range") {
+  // Structural verification rejects this first; the translator must also fail
+  // closed when handed the malformed module directly.
+  auto module = buildFunctionSymbolAddressModule(/*targetFunctionOrdinal=*/3);
+  ZC_EXPECT(lir::LirStructuralVerifier::verify(module) != zc::none);
+
+  LlvmTranslator translator;
+  auto result = translator.translate(module);
+  ZC_EXPECT(!result.verified());
+}
+
 }  // namespace
 }  // namespace zomlang::compiler::backend::llvm
